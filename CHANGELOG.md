@@ -23,6 +23,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- When you talk over something Martlet says on its own, it gives way: a screen or camera remark stops at once, and a check-in or finished-work report you talked over for more than a moment doesn't pick up again later. Reminders still play on. A check-in that waited too long, or that the conversation has moved past, is now dropped instead of said late. ([#679](https://github.com/throndir2/Martlet/pull/679))
 - The Touch zones rows are tidier: each zone's reactions show as small chips, and its box and **Delete** wait under **More**. ([#676](https://github.com/throndir2/Martlet/pull/676))
 - Each built-in check-in now shows its prompt right on its card in Companion › Check-ins, so you can change it there like your own check-ins. Point at each "It gets to know" choice to see what it gives the check-in. ([#667](https://github.com/throndir2/Martlet/pull/667))
 - Built-in check-ins now work exactly like your own: change what they get to know, when they run, what their answer does and what they take right on their card. **Use built-in settings** puts Martlet's own back, and **Copy as your own** turns any of them into a check-in of your own to change freely. ([#671](https://github.com/throndir2/Martlet/pull/671))
@@ -30,6 +31,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- When you stop Martlet mid-reply (talking over it, Stop, Esc or a touch), the conversation now remembers your message and only what Martlet actually said aloud, so later replies don't assume you heard the rest. Its next reply can pick up what it hadn't said yet, or drop it. Change how in Companion › Prompts › **Cut off: what you hadn't said**. ([#680](https://github.com/throndir2/Martlet/pull/680))
 - **Read my screen now** and screen reading while Martlet watches now read all the text on your screen, not just a word or two. Martlet reads a full-size copy of the screen, and **Read my screen now** shows its size. ([#670](https://github.com/throndir2/Martlet/pull/670))
 - Thinking in Ollama on one of your computers now hears your voice when its model can hear, such as Gemma 4 E4B, instead of saying the model doesn't hear recordings. **Test hearing** works there too. Update Martlet on that computer as well. ([#668](https://github.com/throndir2/Martlet/pull/668))
 

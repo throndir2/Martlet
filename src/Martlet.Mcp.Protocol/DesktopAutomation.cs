@@ -564,8 +564,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
         // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
         // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what
-        // decided it and how long the judge and the pause took (never what was said).
-        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn",
+        // decided it and how long the judge and the pause took (never what was said). LiveUnprompted: how many things Martlet
+        // meant to say on its own were dropped (too old, the conversation moved on, talked over) and the newest drop's ID, kind
+        // and why (never its text).
+        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn", "LiveUnprompted",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard. Describe PC sounds (TalkDescribePcSounds saves the choice, so it needs
