@@ -517,6 +517,22 @@ ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner
 thighs) react too while **Include intimate zones** is on, which it is by
 default; turn it off to leave them out. The check box names each of these parts.
 
+**Start over**, at the end of the card, resets the character's touch to how a
+fresh character starts. Choose how much, then press **Reset...**:
+
+- **Zone reactions:** each zone plays what a fresh zone gets again, rests 4
+  seconds, Martlet notices it and your own words go. The zones and boxes stay.
+- **Zones:** this model's zones, found and added, go with their boxes, names,
+  reactions and pictures. Martlet places a first guess again, as for a new
+  character.
+- **Touch temperament:** the active persona's touch temperament, decided or
+  changed by you, goes with any temperament it uses instead. The Thinking
+  model decides it again from the personality. Your other computers share it.
+- **Everything:** the zones and the touch temperament.
+
+Martlet first lists exactly what you lose and resets nothing until you press
+**Reset**. Other models and personas keep theirs.
+
 - **First zones, with no AI.** The first time the page shows a model that has
   no zones and no picture yet, Martlet draws the character off screen (as
   Detect zones does, step 1 below) and places a first guess at the short list

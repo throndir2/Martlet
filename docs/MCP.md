@@ -2066,6 +2066,28 @@ makes the stand-in fail that request instead of answering, as a model whose
 computer stopped answering: *Detect zones* then stops there and keeps the zones
 from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
+At the end of the Touch zones card, *Start over* resets the character's touch
+to how a fresh character starts, for the model shown and the active persona
+only. `TouchZonesResetLevel` (a choice; its value is the level: *Zone
+reactions*, *Zones*, *Touch temperament* or *Everything*) chooses how much,
+and `TouchZonesResetNote` reads what that level clears (fixed text).
+`TouchZonesReset` (*Reset...*) opens a confirmation whose question,
+`TouchZonesResetQuestion`, lists exactly what is lost (zone names and counts,
+the persona's name, a custom temperament's name, the date the temperament was
+decided) and what happens after; `ConfirmationNo` (*Cancel*) leaves everything
+as it was and `ConfirmationYes` (*Reset*) resets. When the level has nothing to
+lose, no question opens. `TouchZonesResetState` reads what the last reset did
+(*Reset zones at 11:40 PM. Martlet places a first guess...*), *Nothing was
+reset.* after Cancel, or why it couldn't (*Not reset: ...*). *Zone reactions*
+gives every zone the reaction a fresh zone gets (its reactions, rest, *Martlet
+notices* and own words) and keeps the zones; *Zones* forgets this model's zones,
+found and added, with the picture and what the last detection sent, and the
+page then places a first guess again; *Touch temperament* forgets the persona's
+own temperament and what it uses instead, and the Thinking model decides it
+again from the personality when Martlet isn't replying; *Everything* does the
+last two. Choosing a level, Reset and its `ConfirmationYes` need
+`--allow-ui-effects`.
+
 `character_eyes` rehearses Companion › Eyes › [Where the eyes are](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
 width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the

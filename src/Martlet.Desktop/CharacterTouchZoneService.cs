@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 /// when the page opens on a model with none (<see cref="EstimateAsync"/>), then found per model by the Thinking model (when it
 /// can see) step by step in a snapshot of the character (<see cref="TouchZoneDetection"/>), bound to the model's drawables or
 /// bones, saved per model in character-touch-zones.json with the pictures the model saw, and what a touch on each does.</summary>
-internal sealed class CharacterTouchZoneService(string? dataDirectory)
+internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
 {
     /// <summary>A file whose zones (JSON as a vision model answers about the whole snapshot) stand in for the vision model: every
     /// request of a detection is answered from them (FIXTURE - NOT AI), so MCP verification runs the real snapshot, pictures,
