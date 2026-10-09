@@ -67,19 +67,21 @@ public partial class MainWindow
            ?? options.FirstOrDefault(o => o.Unavailable is null) ?? options.FirstOrDefault())?.Key ?? "";
 
     /// <summary>A card with <paramref name="heading"/>, <paramref name="note"/> and the picker for <paramref name="options"/>.
-    /// Choosing a row calls <paramref name="chosen"/> (default: show that option's details) and draws the page again.</summary>
+    /// Choosing a row calls <paramref name="chosen"/> (default: show that option's details) and draws the page again. With
+    /// <paramref name="details"/> false the list has no details panel: a card below it is the chosen option's details.</summary>
     private Border OptionPicker(string id, string heading, string? note, IReadOnlyList<PickerOption> options, string? shown = null,
-        Action<string>? chosen = null)
+        Action<string>? chosen = null, bool details = true)
     {
         var stack = new List<UIElement> { Heading(heading) };
         if (note is not null) stack.Add(Note(note, new Thickness(0, 0, 0, 8)));
-        stack.Add(OptionPickerBody(id, options, shown, chosen));
+        stack.Add(OptionPickerBody(id, options, shown, chosen, details));
         return Card([.. stack]);
     }
 
     /// <summary>The picker without its card: rows, Compare, the table when open and the shown option's details. A list of one
     /// option has nothing to choose, so it shows only that option's details.</summary>
-    private StackPanel OptionPickerBody(string id, IReadOnlyList<PickerOption> options, string? shown = null, Action<string>? chosen = null)
+    private StackPanel OptionPickerBody(string id, IReadOnlyList<PickerOption> options, string? shown = null, Action<string>? chosen = null,
+        bool details = true)
     {
         var body = new StackPanel();
         if (options.Count == 1)
@@ -111,7 +113,7 @@ public partial class MainWindow
             if (open) body.Children.Add(PickerTable(id, ordered.Where(o => !o.IsOff).ToList()));
         }
 
-        if (ordered.FirstOrDefault(o => o.Key == key) is { } selected) body.Children.Add(PickerDetails(id, selected));
+        if (details && ordered.FirstOrDefault(o => o.Key == key) is { } selected) body.Children.Add(PickerDetails(id, selected));
         return body;
     }
 

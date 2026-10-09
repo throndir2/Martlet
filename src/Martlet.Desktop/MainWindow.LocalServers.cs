@@ -113,12 +113,13 @@ public partial class MainWindow
             IsLocalOllama(route), IsLocalServer(route) ? route!.Origin : null);
         var shown = chosen == LocalApp.Ollama ? JobOptions.OllamaApp
             : PickedLocalServer(route) is { } server ? JobOptions.AppKey(server) : JobOptions.AddressApp;
+        // The chosen app's own card below is its details.
         return OptionPicker("LocalApp", "Model app", null, options, shown, key =>
         {
             localApp = key == JobOptions.OllamaApp ? LocalApp.Ollama : LocalApp.Other;
             if (key == JobOptions.AddressApp) localServerPicked = AnotherAddress;
             else if (others.FirstOrDefault(s => JobOptions.AppKey(s) == key) is { } picked) localServerPicked = picked.ChatCompletionsBaseUrl;
-        });
+        }, details: false);
     }
     /// <summary>A model app the owner already runs on this PC: pick a found one (or type its address), pick its model, test it,
     /// use it. Only a key the app asks for is entered, and it is kept in Windows Credential Manager like any route's key.</summary>
