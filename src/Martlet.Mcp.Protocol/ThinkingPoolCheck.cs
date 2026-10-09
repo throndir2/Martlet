@@ -109,6 +109,72 @@ internal static class ThinkingPoolCheck
         }
     }
 
+    // ---------- thinking_requests ----------
+
+    /// <summary>The states thinking_requests filters on: active (waiting, running or paused), done, problems (ended other than
+    /// succeeded or canceled, or with a retry or a stop for the conversation) or one exact state.</summary>
+    internal static readonly string[] RequestStates =
+        ["active", "done", "problems", .. Enum.GetNames<ThinkingRequestState>().Select(name => name.ToLowerInvariant())];
+
+    /// <summary>The job kinds thinking_requests filters on (their names in thinking-requests.json).</summary>
+    internal static readonly string[] RequestKinds = [.. ThinkingJobKinds.All.Select(ThinkingJobKinds.Name)];
+
+    internal const string RequestsFile = "thinking-requests.json";
+    private const long RequestsFileLimit = 4 * 1024 * 1024;
+
+    /// <summary>thinking_requests: the desktop's thinking-requests.json (every Thinking request kept, with its timings, and the
+    /// totals by kind; never a request's text, answer or topic), filtered by state and kind, newest last-ended first.</summary>
+    internal static object Requests(string dataDirectory, string? state, string? kind, int? limit)
+    {
+        state = state?.Trim().ToLowerInvariant();
+        kind = kind?.Trim().ToLowerInvariant();
+        if (state is not null && !RequestStates.Contains(state))
+            throw new ArgumentException($"state must be one of {string.Join(", ", RequestStates)}.");
+        if (kind is not null && !RequestKinds.Contains(kind))
+            throw new ArgumentException($"kind must be one of {string.Join(", ", RequestKinds)}.");
+        var take = Math.Clamp(limit ?? 50, 1, 200);
+        var path = Path.Combine(dataDirectory, RequestsFile);
+        JsonNode? file;
+        try
+        {
+            if (!File.Exists(path)) return new { state = "none", why = "The desktop hasn't written thinking-requests.json in this data directory (no request yet)." };
+            if (new FileInfo(path).Length > RequestsFileLimit) return new { state = "unreadable", why = $"{RequestsFile} is larger than 4 MiB." };
+            file = JsonNode.Parse(File.ReadAllText(path));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", why = error.GetType().Name };
+        }
+        if (file is not JsonObject root || root["requests"] is not JsonArray all)
+            return new { state = "unreadable", why = $"{RequestsFile} has no requests list." };
+
+        static string? Text(JsonNode? node, string name) => node?[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+        static int Number(JsonNode? node, string name) => node?[name] is JsonValue value && value.TryGetValue<int>(out var n) ? n : 0;
+        bool Matches(JsonNode? request)
+        {
+            if (kind is not null && Text(request, "kind") != kind) return false;
+            if (state is null) return true;
+            var now = Text(request, "state")?.ToLowerInvariant();
+            var active = now is "waiting" or "running" or "paused";
+            return state switch
+            {
+                "active" => active,
+                "done" => !active,
+                "problems" => !active && now is not ("succeeded" or "canceled") || Number(request, "retries") > 0 || Number(request, "preemptions") > 0,
+                _ => now == state
+            };
+        }
+        var matched = all.Where(Matches).ToArray();
+        return new
+        {
+            state = "loaded", file = path, schemaVersion = root["schemaVersion"]?.DeepClone(), updated = root["updated"]?.DeepClone(),
+            active = root["active"]?.DeepClone(), kept = root["kept"]?.DeepClone(), totals = root["totals"]?.DeepClone(),
+            filter = new { state, kind, limit = take }, matched = matched.Length, shown = Math.Min(take, matched.Length),
+            requests = new JsonArray([.. matched.Take(take).Select(request => request?.DeepClone())]),
+            note = "Each request's type, task, companion, member, tries and timings; never its text, answer or topic."
+        };
+    }
+
     // ---------- thinking_pool_check ----------
 
     private sealed record Step(string Name, bool Passed, string Detail);
@@ -413,6 +479,62 @@ internal static class ThinkingPoolCheck
                 pool.TakesQuickJobs(host.Key) && !pool.TakesLongJobs(host.Key) && pool.ForLongJobs().Members.Count == 0 &&
                 pool.Members.Count == 1 && removed.NoLongJobs.Count == 0 && removed.TakesLongJobs(host.Key),
                 $"long jobs see {pool.ForLongJobs().Members.Count} of {pool.Members.Count} members; after leaving: {removed.NoLongJobs.Count} kept from long jobs");
+        }
+
+        // 12. The request journal (ThinkingRequests: the Thinking requests page and thinking-requests.json): the board records a
+        // success, a retry on another member and a stale drop, each with plausible timings, and the totals by kind count them.
+        {
+            var places = new BackgroundPlaces();
+            BackgroundPlace bad = new("host:bad", "bad") { Slots = 1, Model = "fixture-a" }, ok = new("host:ok", "ok") { Slots = 1, Rank = 1, Model = "fixture-b" };
+            var board = new ThinkingJobBoard(places, () => [bad, ok], async (m, job, token) =>
+            {
+                await Task.Delay(60, token);
+                return job.Kind == ThinkingJobKind.Memory && m.Id == "host:bad" ? ThinkingAnswer.Failed("busy: job.busy") : ThinkingAnswer.Done("fixture answer");
+            });
+            var success = await board.RunAsync(Job(ThinkingJobKind.Digest), cancellation);
+            var retry = await board.RunAsync(Job(ThinkingJobKind.Memory), cancellation);
+            var heldBad = places.TryAcquire([bad], "other-job-1")!;
+            var heldOk = places.TryAcquire([ok], "other-job-2")!;
+            var stale = await board.RunAsync(Job(ThinkingJobKind.BargeInJudge, timeout: TimeSpan.FromMilliseconds(300), stale: true), cancellation);
+            heldBad.Dispose();
+            heldOk.Dispose();
+            var list = places.Requests.List(places);
+            var ofDigest = list.Single(r => r.Kind == ThinkingJobKind.Digest);
+            var ofMemory = list.Single(r => r.Kind == ThinkingJobKind.Memory);
+            var ofJudge = list.Single(r => r.Kind == ThinkingJobKind.BargeInJudge);
+            static string Timing(ThinkingRequestInfo r) =>
+                $"{r.Id} {r.KindName} {r.State}: {r.Attempts.Count} tries ({string.Join(", ", r.Attempts.Select(a => $"{a.Member} {a.Duration(r.Finished ?? r.Now).TotalMilliseconds:0} ms: {a.Ending}"))}), " +
+                $"waited {r.Waited.TotalMilliseconds:0} ms, ran {r.Ran.TotalMilliseconds:0} ms, total {r.Total.TotalMilliseconds:0} ms";
+            var second = TimeSpan.FromSeconds(1);
+            Check("requests: a success is recorded with one try and its timings",
+                success.Succeeded && ofDigest is { State: ThinkingRequestState.Succeeded, Attempts.Count: 1, Retries: 0, Start.Source: ThinkingRequestSource.Pool } &&
+                ofDigest.Attempts[0].Member == "bad" && ofDigest.Attempts[0].Model == "fixture-a" && ofDigest.Attempts[0].Ending == "answered" &&
+                ofDigest.Ran >= TimeSpan.FromMilliseconds(50) && ofDigest.Ran < 5 * second && ofDigest.Waited < second &&
+                ofDigest.Total >= ofDigest.Ran && ofDigest.AnswerLength == "fixture answer".Length && ofDigest.Finished is not null,
+                Timing(ofDigest));
+            Check("requests: a retry is recorded as two tries, the failed member then the one that answered",
+                retry.Succeeded && retry.Attempts == 2 && ofMemory is { State: ThinkingRequestState.Succeeded, Attempts.Count: 2, Retries: 1 } &&
+                ofMemory.Attempts[0].Member == "bad" && ofMemory.Attempts[0].Ending == "busy: job.busy" &&
+                ofMemory.Attempts[1].Member == "ok" && ofMemory.Attempts[1].Ending == "answered" &&
+                ofMemory.Attempts[1].Started >= ofMemory.Attempts[0].Ended && ofMemory.Ran >= TimeSpan.FromMilliseconds(100) &&
+                ofMemory.Ran < 5 * second && ofMemory.Waited < second,
+                Timing(ofMemory));
+            Check("requests: a stale judge is recorded as dropped after its wait, with no try",
+                stale.Outcome == ThinkingJobOutcome.Stale && ofJudge is { State: ThinkingRequestState.Stale, Attempts.Count: 0, Fast: true } &&
+                ofJudge.Ran == TimeSpan.Zero && ofJudge.Waited >= TimeSpan.FromMilliseconds(250) && ofJudge.Waited < 5 * second &&
+                ofJudge.Start.DropWhenStale && ofJudge.Note == stale.Problem,
+                $"{Timing(ofJudge)}; note: {ofJudge.Note}");
+            var totals = places.Requests.Totals;
+            var digestTotals = totals.GetValueOrDefault(ThinkingJobKind.Digest, ThinkingRequestTotals.Empty);
+            var memoryTotals = totals.GetValueOrDefault(ThinkingJobKind.Memory, ThinkingRequestTotals.Empty);
+            var judgeTotals = totals.GetValueOrDefault(ThinkingJobKind.BargeInJudge, ThinkingRequestTotals.Empty);
+            Check("requests: the totals by kind count the success, the retry and the drop",
+                totals.Count == 3 && places.Requests.ActiveCount == 0 && list.Count == 3 &&
+                digestTotals is { Count: 1, Succeeded: 1, Problems: 0, Retries: 0 } && memoryTotals is { Count: 1, Succeeded: 1, Problems: 0, Attempts: 2, Retries: 1 } &&
+                judgeTotals is { Count: 1, Succeeded: 0, Problems: 1, Attempts: 0 } && judgeTotals.MaxWaited >= TimeSpan.FromMilliseconds(250) &&
+                memoryTotals.MaxRan >= TimeSpan.FromMilliseconds(100),
+                string.Join("; ", totals.OrderBy(t => t.Key).Select(t => $"{ThinkingJobKinds.Name(t.Key)}: {t.Value.Count} ended, {t.Value.Succeeded} succeeded, " +
+                    $"{t.Value.Problems} problems, {t.Value.Retries} retries, average wait {t.Value.AverageWait.TotalMilliseconds:0} ms, average run {t.Value.AverageRun.TotalMilliseconds:0} ms")));
         }
 
         return new
