@@ -359,6 +359,24 @@ An unknown name or id is refused with what the model can use instead; nothing is
 guessed. Changes show in the conversation like remembering's (*Forgot: …*) and
 in the Tools page's log (`Martlet > manage_memories: forgot 2`, never a fact).
 
+**After the reply instead.** The **Memory** check-in tool set (`memory`, see
+[Check-in tool sets](CONVERSATION.md#check-in-tool-sets)) does the same work on
+the Thinking pool, so the reply doesn't wait for it. Its tools each run one
+action: `memory_find`, `memory_remember` (`fact`, optional `person`),
+`memory_update` (`id`, a new `fact` and/or `person`) and `memory_forget`
+(`ids`). `me` is whoever spoke last. The set takes over `manage_memories`
+(`Replaces`): while an After each exchange check-in that is on ticks it and the
+Thinking pool has a member that calls tools, the reply is not offered
+`manage_memories`. It is offered the read-only `find_memories` (`query` and/or
+`person`) in its place, so it can still answer *what do you remember about
+me?*, and it is told to say briefly that it will change its memory. Both are
+always worded the same, so the start of every request stays the same. Changes
+show in the conversation and the Tools log as before
+(`Martlet > memory_forget: forgot 1`). The first line of each answer, which
+the check-in's card and `check-ins-status.json` show, is the outcome only
+(*Memory: forgot 1.*), never a fact or a name. Automatic recall and
+remembering after a reply do not change.
+
 ## Whose memories
 
 Several people can talk to Martlet through one microphone, and

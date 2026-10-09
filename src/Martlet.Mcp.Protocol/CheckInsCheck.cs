@@ -81,7 +81,7 @@ internal static class CheckInsCheck
         mostPerHourChoices = CheckIns.MostPerHourChoices,
         maximumToolRounds = CheckIns.MaximumToolRounds, maximumToolCalls = CheckIns.MaximumToolCalls,
         maximumToolResultCharacters = CheckIns.MaximumToolResultCharacters,
-        toolSets = CheckInToolSets.All.Select(s => new { id = s.Id, name = s.Name, does = s.Does, tools = s.Tools.Select(t => t.Name).ToArray() }).ToArray()
+        toolSets = CheckInToolSets.All.Select(s => new { id = s.Id, name = s.Name, does = s.Does, tools = s.Tools.Select(t => t.Name).ToArray(), replaces = s.Replaces.ToArray() }).ToArray()
     };
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
