@@ -97,12 +97,12 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Your profiles"),
-            Note("Each profile is a whole character: its look, its voice and its personality. Use one to switch all three at once, " +
+            HelpTip.Explain("Each profile is a whole character: its look, its voice and its personality. Use one to switch all three at once, " +
                 "here, on Home or from Martlet's icon by the clock. Profiles are shared with your other Martlet computers.",
-                new Thickness(0, 0, 0, 6)),
-            Note("On each computer, a profile also keeps what you set there while you use it: where its character stands and how " +
+                new Thickness(0, 0, 0, 6), "Profiles", "profiles"),
+            HelpTip.Explain("On each computer, a profile also keeps what you set there while you use it: where its character stands and how " +
                 "big it is, where it looks, and which touches stop it while it talks. Switch back to it and they come back.",
-                new Thickness(0, 0, 0, 10))
+                new Thickness(0, 0, 0, 10), "ProfilesPerComputer", "profiles on each computer")
         };
         var status = Note(profiles.Count == 0 ? "No profiles yet."
             : $"{profiles.Count} profile{(profiles.Count == 1 ? "" : "s")}. " +

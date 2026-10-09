@@ -353,9 +353,9 @@ public partial class MainWindow
         model.LostKeyboardFocus += (_, _) => Choose(Picked());
 
         var panel = new StackPanel { Margin = new Thickness(0, 2, 0, 0) };
-        panel.Children.Add(Note($"A second model in Ollama on this PC describes the {SenseInputs(kind)} for Thinking. Ollama runs each model in " +
+        panel.Children.Add(HelpTip.Explain($"A second model in Ollama on this PC describes the {SenseInputs(kind)} for Thinking. Ollama runs each model in " +
             $"its own process, so it works while Thinking answers, but only while both fit on the graphics card: Martlet checks before each " +
-            $"job, and a reply never waits for it. {(image ? "Pictures" : "Recordings")} stay on this PC.", new Thickness(0, 0, 0, 8)));
+            $"job, and a reply never waits for it. {(image ? "Pictures" : "Recordings")} stay on this PC.", new Thickness(0, 0, 0, 8), "SenseModel", "the second model"));
         panel.Children.Add(new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 0, 0, 4) });
         panel.Children.Add(model);
         panel.Children.Add(listed);

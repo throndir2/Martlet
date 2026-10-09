@@ -73,10 +73,10 @@ public partial class MainWindow
         free.Checked += (_, _) => { if (!Talk.GazeFree) SaveTalk(Talk with { GazeFree = true }, render: true); };
         free.Unchecked += (_, _) => { if (Talk.GazeFree) SaveTalk(Talk with { GazeFree = false }, render: true); };
         stack.Add(free);
-        stack.Add(Note("In its replies the character can look away, follow your mouse or watch your window, and it stays that way " +
+        stack.Add(HelpTip.Explain("In its replies the character can look away, follow your mouse or watch your window, and it stays that way " +
             "until a reply changes it again or you choose here. Each reply is told its usual gaze, and a note says when its eyes " +
             "do something else. A touch can also turn its eyes to your mouse for a moment (Touch temperament, on the Touch page).",
-            new Thickness(0, 0, 0, 6)));
+            new Thickness(0, 0, 0, 6), "CharacterGaze", "where the eyes look"));
         characterGazeNow = Note(avatar.Gaze.Looking, new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(characterGazeNow, "CharacterGazeNow");
         AutomationProperties.SetHelpText(characterGazeNow, avatar.Gaze.LastLookText ?? "");
