@@ -71,6 +71,33 @@ public sealed class DeviceCapacityTests
     }
 
     [Fact]
+    public void Hovering_a_bar_breaks_it_down_by_job_free_kept_and_in_use()
+    {
+        var voice = new CapacityComponent("voice", "Voice (Dia)", new(6, 4, 1, 15), new(4, 3, 1, 15));
+        var vram = DeviceCapacity.Bars(Gpu24, [Thinking, voice], new CapacityLive(9.5, null), new CapacitySpecs(22, 60, 14, 490))
+            .Single(b => b.Resource == CapacityResource.GraphicsMemory);
+        Assert.Equal(["Thinking: 8 GB (33%)", "Voice (Dia): 4-6 GB (17-25%)", "Free for Martlet: 8 GB (33%)", "Kept for the system: 2 GB",
+            "In use now: 9.5 GB (40%)"], vram.Breakdown.Select(r => r.ToString()));
+        Assert.Equal([CapacityRowKind.Job, CapacityRowKind.Job, CapacityRowKind.Free, CapacityRowKind.Kept, CapacityRowKind.Live],
+            vram.Breakdown.Select(r => r.Kind));
+        Assert.Equal(string.Join(Environment.NewLine, "Graphics memory (24 GB)", "Thinking: 8 GB (33%)", "Voice (Dia): 4-6 GB (17-25%)",
+            "Free for Martlet: 8 GB (33%)", "Kept for the system: 2 GB", "In use now: 9.5 GB (40%)"), DeviceCapacity.BreakdownText(vram));
+
+        Assert.Equal(["Thinking: 8 GB (33%)", "Deep Thinking model: 6 GB (25%)", "Free: 10 GB (42%)"],
+            DeviceCapacity.Bars(Gpu24, [Thinking, Deep])[0].Breakdown.Select(r => r.ToString()));
+        Assert.Equal(["Thinking: 4 threads (25%)", "Deep Thinking model: 2 threads (12%)", "Free: 10 threads (62%)"],
+            DeviceCapacity.Bars(Gpu24, [Thinking, Deep]).Single(b => b.Resource == CapacityResource.Processor).Breakdown.Select(r => r.ToString()));
+
+        var tight = DeviceCapacity.Bars(new CapacitySpecs(13, 64, 16, 500), [Thinking, voice], usable: new CapacitySpecs(12, 60, 14, 490))[0];
+        Assert.Equal(["Thinking: 8 GB (62%)", "Voice (Dia): 4-6 GB (31-46%)", "More than it can give at their busiest: 2 GB",
+            "Kept for the system: 1 GB"], tight.Breakdown.Select(r => r.ToString()));
+        var over = DeviceCapacity.Bars(new CapacitySpecs(11, 64, 16, 500), [Thinking, voice])[0];
+        Assert.Equal("More than it can give: 1-3 GB", over.Breakdown[^1].ToString());
+        Assert.Equal(["Thinking: 10 GB", "Deep Thinking model: 20 GB"],
+            DeviceCapacity.Bars(new CapacitySpecs(8, null, 8, null), [Thinking, Deep])[3].Breakdown.Select(r => r.ToString()));
+    }
+
+    [Fact]
     public void Also_fits_and_network_lines_read_plainly()
     {
         // Most important part first; a part one copy of is enough names what would run.

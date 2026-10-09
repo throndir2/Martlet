@@ -11,6 +11,11 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Settings › Appearance has a **Custom** palette: start from any palette (Pink light, Rose dark or your character's), then choose each color with a color code, hue, saturation and lightness sliders, or one of your character's colors. Martlet changes as you go, tells you if anything gets hard to read and can fix it for you, and your other computers use the same colors. ([#655](https://github.com/throndir2/Martlet/pull/655))
+- Hover a resource bar on Devices to see what each job takes, what's free, what's kept for the system and what's in use now. Hover one part of the bar to see that job in bold. ([#653](https://github.com/throndir2/Martlet/pull/653))
+
+### Changed
+
+- Every Companion page now starts with **Now**: one line that says what the page uses and what stops it, such as "Tools: 3 MCP servers on, the terminal off." Speech bubbles, People, Tools, Smart home, Discord and Messaging then show their main choice with a clear **Off**, and the settings follow. ([#654](https://github.com/throndir2/Martlet/pull/654))
 
 ## [0.61.0] - 2026-10-08
 
