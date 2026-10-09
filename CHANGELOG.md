@@ -30,6 +30,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Pressing a letter key no longer starts listening or watching by itself. Before, an **L** or **W** on Home pressed **Start listening** or **Start watching**. The buttons that talk, listen, watch or show the character have no keyboard shortcut now, and every other underlined-letter shortcut needs Alt, so a stray key can't press **Exit Martlet** either. ([#684](https://github.com/throndir2/Martlet/pull/684))
 - When you stop Martlet mid-reply (talking over it, Stop, Esc or a touch), the conversation now remembers your message and only what Martlet actually said aloud, so later replies don't assume you heard the rest. Its next reply can pick up what it hadn't said yet, or drop it. Change how in Companion › Prompts › **Cut off: what you hadn't said**. ([#680](https://github.com/throndir2/Martlet/pull/680))
 - **Read my screen now** and screen reading while Martlet watches now read all the text on your screen, not just a word or two. Martlet reads a full-size copy of the screen, and **Read my screen now** shows its size. ([#670](https://github.com/throndir2/Martlet/pull/670))
 - Thinking in Ollama on one of your computers now hears your voice when its model can hear, such as Gemma 4 E4B, instead of saying the model doesn't hear recordings. **Test hearing** works there too. Update Martlet on that computer as well. ([#668](https://github.com/throndir2/Martlet/pull/668))
