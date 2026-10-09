@@ -271,4 +271,49 @@ public sealed class TouchLedgerTests
         Assert.False(plan.Combined);
         Assert.Equal("your words and 2 touches", MomentTurn.Describe(true, 0, false, null, 0, touches: 2));
     }
+
+    // A check-in's Touches fact reads the recent history without taking it: replies still drain what waits, exactly as before,
+    // and the history keeps what replies took, for OftenWindow and at most MaximumHistory runs.
+    [Fact]
+    public void TheHistoryIsReadWithoutTakingAndOutlivesReplies()
+    {
+        PhysicalEvent Stroke(double at) => new(PhysicalKind.Stroke, S(at), "down from your tail to your groin", "tail → groin", "slowly",
+            Zones: ["your tail", "your groin"], Intimate: true, Feeling: "you love being touched there");
+        var ledger = new TouchLedger();
+        Assert.Null(ledger.History(S(0)));
+        ledger.Record(Pat(10));
+        ledger.Record(Pat(11));
+        Assert.Equal("They patted the top of your head twice over 1 second.", ledger.Drain(S(12))!.Line);
+        ledger.Record(Stroke(100));
+        ledger.Record(Stroke(101));
+        ledger.Record(Stroke(102));
+        var waiting = ledger.Peek(S(103))!.Line;
+        var history = ledger.History(S(103))!;
+        Assert.Equal(waiting, ledger.Peek(S(103))!.Line);
+        Assert.Equal(S(103), history.Now);
+        Assert.Equal(5, history.Count);
+        Assert.Equal(3, history.Intimate);
+        Assert.Equal(["They patted the top of your head twice over 1 second.",
+            "They slowly stroked down from your tail to your groin 3 times over 2 seconds (you love being touched there)."],
+            history.Entries.Select(e => TouchWording.Line([e])));
+        Assert.Null(history.Often);
+        var taken = ledger.Drain(S(103))!;
+        Assert.Equal(waiting, taken.Line);
+        Assert.Equal(2, ledger.History(S(103))!.Entries.Count);
+
+        // The same thing, in the same place, adds to its run only within MaximumAge; places touched often are named.
+        ledger.Record(Stroke(102 + TouchLedger.MaximumAge.TotalSeconds + 1));
+        ledger.Record(Stroke(102 + TouchLedger.MaximumAge.TotalSeconds + 2));
+        var later = ledger.History(S(300))!;
+        Assert.Equal([2, 3, 2], later.Entries.Select(e => e.Count));
+        Assert.Equal([("your tail", 5), ("your groin", 5)], later.Often!.Select(h => (h.Place, h.Count)));
+        Assert.Equal(" They keep coming back to your tail (5 times) and your groin (5 times) in the last 4 minutes.", TouchWording.Often(later.Often));
+
+        // Older than OftenWindow, it is let go; at most MaximumHistory runs are kept; Clear forgets it.
+        Assert.Null(ledger.History(S(300) + TouchLedger.OftenWindow));
+        for (var i = 0; i < TouchLedger.MaximumHistory + 5; i++) ledger.Record(i % 2 == 0 ? Pat(400 + i) : Poke(400 + i));
+        Assert.Equal(TouchLedger.MaximumHistory, ledger.History(S(500))!.Entries.Count);
+        ledger.Clear();
+        Assert.Null(ledger.History(S(500)));
+    }
 }

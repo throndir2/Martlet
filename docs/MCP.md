@@ -650,7 +650,7 @@ waits, its last run, runs and actions since Martlet started). Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`), `CheckInWhen-<id>-<condition>` (when it
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`), `CheckInWhen-<id>-<condition>` (when it
 runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
 `Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`), the model it
 needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
@@ -4506,7 +4506,16 @@ wanted), `own: waits for the sound it records`, `own: the message carries what
 it took` (a real FIXTURE script, `Write-Output ('FIXTURE ' + (6 * 7))`, run by
 the production `TerminalRunner`, a FIXTURE picture and recording) and
 `own: only a capable member takes it` (a text-only member never gets it; a
-member with vision and audio gets the picture and the sound). `passed` and
+member with vision and audio gets the picture and the sound). `touches fact`
+records FIXTURE pats, strokes across intimate zones, a move and a poke on a
+production `TouchLedger`, with replies draining some of them, then fills
+`{touches}` into an own check-in: each run with when, which were intimate,
+the persona's feeling and the places touched again and again. It shows that
+reading the history (`TouchLedger.History`) leaves what the next reply gets
+the same, that the history outlives a reply's `Drain`, that the fact goes
+after the prompt when it is ticked but not placed, and that facts past
+`Touches` are refused. Its `detail` gives counts (`runs`, `things`,
+`intimate`, `often`), `filled` and the FIXTURE message. `passed` and
 each step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
