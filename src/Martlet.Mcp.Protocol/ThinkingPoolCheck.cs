@@ -29,7 +29,7 @@ internal static class ThinkingPoolCheck
         var plan = pool.Plan(routes);
         var places = ThinkLonger.Places(plan, null, member => ThinkingPoolCapabilities.For(member, abilities), choices: pool)
             .Where(p => p.Id != "thinking").ToArray();
-        var members = places.Select(p => new ThinkingPoolMemberStatus(p.Id, p.Name, p.Slots, 0, p.Can, p.Rank)).ToArray();
+        var members = places.Select(p => new ThinkingPoolMemberStatus(p.Id, p.Name, p.Slots, 0, p.Can, p.Rank) { Media = p.Media }).ToArray();
         var slots = members.Sum(m => m.Slots);
         var (desktop, file) = DesktopStatus(dataDirectory);
         // Which members' computers answer now: only the desktop knows (its host checks), through thinking-pool-status.json.
@@ -58,7 +58,9 @@ internal static class ThinkingPoolCheck
                     // Backup for slow replies (Backup Thinking), off by default; a paid cloud member only when ticked.
                     answersForConversation = pool.Answers(m.Key), paid = ThinkingBackupMembers.Paid(m),
                     // The Quick jobs and Long jobs boxes: the judges and summaries, and every other kind.
-                    quickJobs = pool.TakesQuickJobs(m.Key), longJobs = pool.TakesLongJobs(m.Key)
+                    quickJobs = pool.TakesQuickJobs(m.Key), longJobs = pool.TakesLongJobs(m.Key),
+                    // May receive pictures and recordings: an external member (an endpoint not on this PC) only when ticked.
+                    external = ThinkingPoolSettings.IsExternal(m), mayReceiveMedia = pool.MayReceiveMedia(m)
                 };
             }),
             // Backup Thinking: its choices and who it would ask now for a plain reply that is taken (the production choice, on
@@ -79,8 +81,8 @@ internal static class ThinkingPoolCheck
             // Per kind, only the members whose Quick jobs or Long jobs box lets them take it.
             canRun = ThinkingJobKinds.All.ToDictionary(ThinkingJobKinds.Name, kind => new
             {
-                text = places.Any(p => p.Takes(kind)), vision = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Vision)),
-                audio = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Audio)),
+                text = places.Any(p => p.Takes(kind)), vision = places.Any(p => p.Takes(kind) && p.Media && p.Can.HasFlag(ThinkingCapability.Vision)),
+                audio = places.Any(p => p.Takes(kind) && p.Media && p.Can.HasFlag(ThinkingCapability.Audio)),
                 tools = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Tools)),
                 priority = (int)ThinkingJobKinds.Priority(kind), fast = ThinkingJobKinds.IsFast(kind)
             }),
@@ -725,6 +727,37 @@ internal static class ThinkingPoolCheck
                 oneRetry = Outcome(Task.FromResult(retried)), noRetry = Outcome(Task.FromResult(failed)), timedOut = Outcome(Task.FromResult(slow)),
                 raisedThenFailed = Outcome(r), status = Counters(retryStatus)
             };
+        }
+
+        // 16. May receive pictures and recordings: an external member (an endpoint not on this PC) gets no job with a picture or a
+        // recording until the owner ticks it, but still takes text jobs; this PC and paired computers always may.
+        {
+            const ThinkingCapability Sees = ThinkingCapability.Text | ThinkingCapability.Vision;
+            var cloud = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "https://api.example.com/v1", ModelId = "gpt-fixture" };
+            var local = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "http://127.0.0.1:11434/v1", ModelId = "gemma3" };
+            var pool = new ThinkingPoolSettings().Add(cloud).Add(local);
+            var allowed = pool.WithMedia(cloud.Key, true);
+            BackgroundPlace outside = new(cloud.Key, "api.example.com") { Slots = 1, Can = Sees, Media = pool.MayReceiveMedia(cloud) };
+            var asked = 0;
+            var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [outside], (m, _, _) =>
+            {
+                Interlocked.Increment(ref asked);
+                return Task.FromResult(ThinkingAnswer.Done(m.Name));
+            });
+            var picture = await board.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), cancellation);
+            var text = await board.RunAsync(Job(ThinkingJobKind.CheckIn), cancellation);
+            var guidance = board.Status().Guidance;
+            var ticked = new ThinkingJobBoard(new BackgroundPlaces(), () => [outside with { Media = allowed.MayReceiveMedia(cloud) }],
+                (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+            var after = await ticked.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), cancellation);
+            Check("pictures and recordings: an external member gets them only when ticked; text jobs still go to it",
+                ThinkingPoolSettings.IsExternal(cloud) && !ThinkingPoolSettings.IsExternal(local) && pool.MayReceiveMedia(local) &&
+                picture.Outcome == ThinkingJobOutcome.NoMember && picture.Problem?.Contains("may not receive pictures") == true &&
+                text.Succeeded && asked == 1 && !board.CanRun(ThinkingJobKind.CheckIn, Sees) &&
+                guidance.Any(g => g.Contains("may receive pictures", StringComparison.OrdinalIgnoreCase)) &&
+                after.Succeeded && allowed.Remove(cloud.Key).MediaAllowed.Count == 0,
+                $"picture job before ticking: {picture.Outcome} ({picture.Problem}); text job {text.Outcome}; {asked} request(s); after " +
+                $"ticking: {after.Outcome} on {after.Member}");
         }
 
         return new

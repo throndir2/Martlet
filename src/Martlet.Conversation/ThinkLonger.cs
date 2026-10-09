@@ -77,7 +77,9 @@ public static class ThinkLonger
             Machine = LiveResources.MachineOf(spot.Settings),
             Gpus = gpus?.Invoke(spot.Settings) is { Count: > 0 } cards ? [.. cards.Take(16)] : [],
             QuickJobs = choices?.TakesQuickJobs(spot.Key) ?? true,
-            LongJobs = choices?.TakesLongJobs(spot.Key) ?? true
+            LongJobs = choices?.TakesLongJobs(spot.Key) ?? true,
+            // Without the pool's settings an external member gets no pictures or recordings, as with its box unticked.
+            Media = (choices ?? new()).MayReceiveMedia(spot.Settings)
         })];
     }
 

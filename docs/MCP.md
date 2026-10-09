@@ -261,7 +261,14 @@ pool work while you talk with Martlet because they share the conversation's
 computer). Each member has the boxes `ThinkingPoolQuick-<n>` (*Quick jobs*: the
 judges and the screen and sound summaries), `ThinkingPoolLong-<n>` (*Long
 jobs*: thinking longer, research, lyrics and the other helpers) and
-`ThinkingPoolAnswers-<n>` (*Backup for slow replies*). A paired computer's
+`ThinkingPoolAnswers-<n>` (*Backup for slow replies*). An external member (an
+endpoint not on this PC) also has `ThinkingPoolMedia-<n>` (*May receive
+pictures and recordings*, off by default): without it, the board gives that
+member no job with a screenshot or a recording. `thinking_pool_status` shows
+each member's `external` and `mayReceiveMedia`, `canRun` counts only members
+that may receive them, and `thinking-pool-status.json` gives each member
+`mayReceiveMedia`. The `thinking_pool_check` step *pictures and recordings*
+checks the gate with the production board. A paired computer's
 Thinking pool role sets its slots on that computer: its row has
 `DeepThinkingChangeModel-<host>` and no slot choice. Other members have
 `ThinkingPoolSlots-<n>` and `ThinkingPoolRemove-<n>`. *Add a machine* reads
@@ -4753,7 +4760,8 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, `maximumToolRounds` (4),
 `maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
-(each set's `id`, `name`, `does` and `tools`), the job kind
+(each set's `id`, `name`, `does`, `tools` and `replaces`: the reply tools it
+takes over, such as `manage_memories` for `memory`), the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
 and for triggers the `triggers` offered, `triggerAgeSeconds`,
 `touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).

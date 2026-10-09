@@ -518,6 +518,19 @@ cloud provider) and *Offline*. Each member has three boxes:
 - *Backup for slow replies* (`ThinkingPoolAnswers-<n>`, see
   [Backup Thinking](#backup-thinking-a-hedged-request)).
 
+An external member (an OpenAI-compatible endpoint that is not on this PC: a
+computer on the home network or a cloud provider) has a fourth box, *May
+receive pictures and recordings* (`ThinkingPoolMedia-<n>`), off by default.
+Check-ins, screen and sound summaries and other pool jobs can carry a
+screenshot or a recording (`ThinkingJob.Image`, `ThinkingJob.Audio`). The job
+board passes over an external member without this box for such jobs, as it
+passes over a member that can't see pictures; text-only jobs still go to it.
+When no other member can take such a job, the job gets *no member* with that
+reason, and the pool's guidance says so. This PC and paired Martlet computers
+always may receive them and show no box. Ticking the box saves the key in
+`MediaAllowed` in `thinking-pool.json` (a file without this list reads as
+empty); removing the member clears it.
+
 Quick jobs and Long jobs are on for every member. Unticking one saves the key
 in `NoQuickJobs` or `NoLongJobs` in `thinking-pool.json` (a file without these
 lists reads as every member taking every job). Removing a member clears its
@@ -1712,6 +1725,7 @@ does and its tools. Martlet offers:
 | Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
 | Discord calls and camera (`discord`) | `call_on_discord`, `set_camera_background` | Call a Discord friend you asked for, or change Martlet's webcam background in your Discord call ([Discord](DISCORD.md)). Offered only while Martlet can call someone or is in your Discord calls. Replaces the reply's tools of the same names. |
+| Memory (`memory`) | `memory_find`, `memory_remember`, `memory_update`, `memory_forget` | Find, remember, correct, give to someone else and forget facts, as `manage_memories` does ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. |
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls
