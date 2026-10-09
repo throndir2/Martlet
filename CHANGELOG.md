@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.62.1] - 2026-10-08
+
 ### Changed
 
 - Reconfigure never deletes models when your computers switch jobs. It now says it **turns a part off** and that its downloads stay, and a model your computer already has (such as Gemma 4) is turned back on without downloading it again or needing more disk space. Recommended setup also prefers a computer that already has the model. ([#664](https://github.com/throndir2/Martlet/pull/664))
