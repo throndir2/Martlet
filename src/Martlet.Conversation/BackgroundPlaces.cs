@@ -76,22 +76,25 @@ public sealed class BackgroundPlaceLease : IDisposable
 {
     private readonly BackgroundPlaces owner;
     private readonly CancellationTokenSource? stopping;
-    private int released, stopped;
+    private int released, stopped, forPriority;
 
     internal BackgroundPlaceLease(BackgroundPlaces owner, BackgroundPlace place, string holder, bool whole = false, ThinkingJobKind? kind = null,
-        bool preemptible = false)
+        bool preemptible = false, int? priority = null)
     {
         this.owner = owner;
         Place = place;
         Holder = holder;
         Whole = whole;
         Kind = kind;
+        Priority = priority;
         if (preemptible) stopping = new();
     }
 
     public BackgroundPlace Place { get; }
     /// <summary>The Thinking pool job kind that holds it, when it was asked for with a <see cref="ThinkingDemand"/>.</summary>
     public ThinkingJobKind? Kind { get; }
+    /// <summary>The priority of the Thinking pool demand that holds it (<see cref="ThinkingDemand.Priority"/>), else null.</summary>
+    public int? Priority { get; }
     /// <summary>Who holds it: a job ID such as think-2.</summary>
     public string Holder { get; }
     /// <summary>Whether it holds the whole place (every slot), such as a song being made on that computer.</summary>
@@ -104,9 +107,19 @@ public sealed class BackgroundPlaceLease : IDisposable
     public CancellationToken Stopping => stopping?.Token ?? CancellationToken.None;
     /// <summary>Whether the live floor asked the holder to stop.</summary>
     public bool StopRequested => Volatile.Read(ref stopped) != 0;
+    /// <summary>Whether higher-priority work stopped it (<see cref="ThinkingDemand.PreemptsLower"/>), not the live floor.</summary>
+    public bool StoppedForPriority => Volatile.Read(ref forPriority) != 0;
 
     // Marks the hold stopped (under the broker's gate); false when it can't be or already was.
     internal bool MarkStopped() => stopping is not null && !Released && Interlocked.Exchange(ref stopped, 1) == 0;
+
+    // Marks the hold stopped for higher-priority work (under the broker's gate).
+    internal bool MarkStoppedForPriority()
+    {
+        if (!MarkStopped()) return false;
+        Volatile.Write(ref forPriority, 1);
+        return true;
+    }
 
     // Asks the holder to stop; its callbacks run off this thread, so the live turn never waits for them.
     internal void Stop() => _ = stopping!.CancelAsync();
@@ -156,9 +169,11 @@ public interface IPlaceRules
 public sealed class BackgroundPlaces
 {
     private sealed record Waiter(IReadOnlyList<BackgroundPlace> Pool, string Holder, TaskCompletionSource<BackgroundPlaceLease> Done,
-        ThinkingDemand? Demand, long Order, bool Preemptible);
+        ThinkingDemand? Demand, long Order, bool Preemptible, bool Front = false);
 
     private long order;
+    // The holders whose work higher-priority work stopped: their next request waits at the front of the line for its priority.
+    private readonly HashSet<string> stoppedForPriority = new(StringComparer.Ordinal);
 
     private readonly object gate = new();
     private readonly List<BackgroundPlaceLease> leases = [];
@@ -219,8 +234,10 @@ public sealed class BackgroundPlaces
         get { lock (gate) return [.. Ordered().Where(w => w.Demand is not null && HeldByRules(w.Pool, w.Demand)).Select(w => w.Demand!.Kind)]; }
     }
 
-    // Highest priority first, then first come. Called under the gate.
-    private IEnumerable<Waiter> Ordered() => waiters.OrderByDescending(w => w.Demand?.Priority ?? 0).ThenBy(w => w.Order);
+    // Highest priority first, then work stopped for higher-priority work (the latest stopped first), then first come. Called
+    // under the gate.
+    private IEnumerable<Waiter> Ordered() => waiters.OrderByDescending(w => w.Demand?.Priority ?? 0).ThenBy(w => w.Front ? 0 : 1)
+        .ThenBy(w => w.Front ? -w.Order : w.Order);
 
     /// <summary>Whether <paramref name="holder"/> waits in line only because of the <see cref="Rules"/>: a place of its pool is
     /// free, but the live conversation needs it (waiting for the conversation).</summary>
@@ -274,21 +291,25 @@ public sealed class BackgroundPlaces
         Waiter waiter;
         BackgroundPlaceLease? now = null;
         var held = false;
+        List<BackgroundPlaceLease> stopping = [];
         lock (gate)
         {
+            var front = stoppedForPriority.Remove(holder) || demand is { Front: true };
             // Nobody earlier in line can use a free place (they'd have taken it), so a free one here is this holder's.
             if (Choose(pool, share: false, demand) is { } free)
             {
-                now = new BackgroundPlaceLease(this, free, holder, kind: demand?.Kind, preemptible: preemptible);
+                now = new BackgroundPlaceLease(this, free, holder, kind: demand?.Kind, preemptible: preemptible, priority: demand?.Priority);
                 leases.Add(now);
             }
-            waiter = new(pool, holder, new(TaskCreationOptions.RunContinuationsAsynchronously), demand, ++order, preemptible);
+            waiter = new(pool, holder, new(TaskCreationOptions.RunContinuationsAsynchronously), demand, ++order, preemptible, front);
             if (now is null)
             {
                 waiters.Add(waiter);
                 held = demand is not null && HeldByRules(pool, demand);
+                PreemptForPriority(stopping);
             }
         }
+        foreach (var lease in stopping) lease.Stop();
         if (held) Rules?.Held(holder, demand!.Kind);
         Changed?.Invoke();
         if (now is not null) return Task.FromResult(now);
@@ -339,13 +360,14 @@ public sealed class BackgroundPlaces
                     if (lease.Preemptible && !lease.StopRequested && current.MustStop(lease.Place, lease.Kind) && lease.MarkStopped())
                         stopping.Add(lease);
             Serve(served);
+            PreemptForPriority(stopping);
             if (current is not null)
                 held.AddRange(waiters.Where(w => w.Demand is not null && HeldByRules(w.Pool, w.Demand)).Select(w => (w.Holder, w.Demand!.Kind)));
         }
         foreach (var lease in stopping)
         {
             lease.Stop();
-            current!.Stopped(lease);
+            if (!lease.StoppedForPriority) current!.Stopped(lease);
         }
         foreach (var (holder, kind) in held) current!.Held(holder, kind);
         foreach (var (waiter, next) in served)
@@ -362,7 +384,7 @@ public sealed class BackgroundPlaces
         {
             var choice = Choose(pool, share, demand);
             if (choice is null) return null;
-            var lease = new BackgroundPlaceLease(this, choice, holder, kind: demand?.Kind, preemptible: preemptible);
+            var lease = new BackgroundPlaceLease(this, choice, holder, kind: demand?.Kind, preemptible: preemptible, priority: demand?.Priority);
             leases.Add(lease);
             return lease;
         }
@@ -437,11 +459,17 @@ public sealed class BackgroundPlaces
     {
         bool removed;
         List<(Waiter Waiter, BackgroundPlaceLease Lease)> served = [];
+        List<BackgroundPlaceLease> stopping = [];
         lock (gate)
         {
             removed = leases.Remove(lease);
-            if (removed) Serve(served);
+            if (removed)
+            {
+                Serve(served);
+                PreemptForPriority(stopping);
+            }
         }
+        foreach (var next in stopping) next.Stop();
         foreach (var (waiter, next) in served)
             if (!waiter.Done.TrySetResult(next)) next.Dispose();
         if (removed) Changed?.Invoke();
@@ -454,10 +482,46 @@ public sealed class BackgroundPlaces
         foreach (var waiter in Ordered().ToArray())
         {
             if (Choose(waiter.Pool, share: false, waiter.Demand) is not { } free) continue;
-            var next = new BackgroundPlaceLease(this, free, waiter.Holder, kind: waiter.Demand?.Kind, preemptible: waiter.Preemptible);
+            var next = new BackgroundPlaceLease(this, free, waiter.Holder, kind: waiter.Demand?.Kind, preemptible: waiter.Preemptible,
+                priority: waiter.Demand?.Priority);
             leases.Add(next);
             served.Add((waiter, next));
             waiters.Remove(waiter);
+        }
+    }
+
+    // Higher priority first: each waiter whose demand preempts lower work (ThinkingDemand.PreemptsLower) and that has no free
+    // place stops one running preemptible Thinking pool job of lower priority on its pool, when that job's slot would let it
+    // start. A hold already stopping on its pool counts as its coming slot, so one waiter never stops two jobs. The stopped
+    // holders' next requests wait at the front of the line for their priority. Called under the gate; the caller stops the
+    // returned leases outside it.
+    private void PreemptForPriority(List<BackgroundPlaceLease> stopping)
+    {
+        HashSet<BackgroundPlaceLease> claimed = [];
+        foreach (var waiter in Ordered().ToArray())
+        {
+            if (waiter.Demand is not { PreemptsLower: true } demand || Choose(waiter.Pool, share: false, demand) is not null) continue;
+            bool InPool(BackgroundPlaceLease lease) => waiter.Pool.Any(place => place.Id == lease.Place.Id);
+            if (leases.FirstOrDefault(lease => lease.StopRequested && !lease.Released && !claimed.Contains(lease) && InPool(lease)) is { } coming)
+            {
+                claimed.Add(coming);
+                continue;
+            }
+            var victims = leases.Select((lease, index) => (lease, index))
+                .Where(c => c.lease is { Preemptible: true, StopRequested: false, Released: false, Whole: false, Kind: not null, Priority: { } p } &&
+                    p < demand.Priority && InPool(c.lease))
+                .OrderBy(c => c.lease.Priority).ThenByDescending(c => c.index).ToArray();
+            foreach (var (victim, index) in victims)
+            {
+                leases.RemoveAt(index);
+                var opens = Choose(waiter.Pool, share: false, demand) is not null;
+                leases.Insert(index, victim);
+                if (!opens || !victim.MarkStoppedForPriority()) continue;
+                stoppedForPriority.Add(victim.Holder);
+                claimed.Add(victim);
+                stopping.Add(victim);
+                break;
+            }
         }
     }
     public override string ToString() => nameof(BackgroundPlaces);

@@ -625,13 +625,27 @@ thinks and research count against the same slots:
    under `resting`.
 4. When every capable slot is busy, the job waits in line. A freed slot goes
    to the highest priority first, then the oldest.
-5. Long kinds never take the last free slot that takes quick jobs while the
+5. Higher priority first (*Higher priority requests may stop lower ones*, on
+   by default; `ThinkingPoolSettings.PreemptLowerPriority`): a job that finds
+   no free slot stops one running pool job of lower priority whose slot it can
+   use. The stopped job keeps its priority and waits at the front of the line
+   for that priority. After every `RaisePriorityAfterStops` such stops
+   (default 3), its priority goes up by one, until it completes. A summary
+   stopped this way waits again; it is not dropped.
+6. A job that failed on every member it could use, or whose attempt timed out,
+   is tried again `RetriesOnFailure` times (default 1) at the priority it had
+   then. A job that is stale (`DropWhenStale`) is not tried after its time.
+   `ThinkingJobResult` reports `PriorityStops`, `Retries` and the final
+   `Priority`; `ThinkingPoolStatus` reports the `Policy` and the
+   `StoppedForPriority`, `Raised` and `Retried` counts.
+7. Long kinds never take the last free slot that takes quick jobs while the
    pool has two or more slots: that slot stays for fast kinds (`BargeInJudge`,
    `EndOfTurnJudge`, `Digest`). Only the slots of members that answer and take
    quick jobs count. A long job on a member without *Quick jobs* never takes
    such a slot, so it needs none kept free. With exactly one slot, long kinds
-   may take it, and fast jobs wait until their deadline. Only the
-   [live floor](#the-live-floor-the-live-turn-comes-first) stops running jobs.
+   may take it, and fast jobs stop them (rule 5) or wait until their deadline.
+   The [live floor](#the-live-floor-the-live-turn-comes-first) also stops
+   running jobs.
 
 | Kind (`ThinkingJobKind`) | Priority (`ThinkingPriority`) | Fast |
 | --- | --- | --- |
