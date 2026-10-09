@@ -17,7 +17,8 @@ public partial class MainWindow
         var handlers = new Dictionary<string, CheckInToolHandler>(StringComparer.Ordinal)
         {
             [CheckInToolSets.CharacterId] = CharacterToolAsync,
-            [CheckInToolSets.NextReplyId] = NextReplyToolAsync
+            [CheckInToolSets.NextReplyId] = NextReplyToolAsync,
+            [TouchReactions.SetId] = TouchReactionsToolAsync
         };
         // Only a PC that keeps reminders (a data folder) runs the reminders tool.
         if (conversation?.RemindersTool is not null) handlers[CheckInToolSets.RemindersId] = ReminderToolAsync;

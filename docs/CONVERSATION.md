@@ -1325,8 +1325,8 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** The first five and Describe touches are on by default.
-The four that wait
+**Built-in check-ins.** The first five, How I react and Describe touches are on
+by default. The four that wait
 for a signal (Welcome back, Unanswered question, On a call, Someone else is
 here) are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
@@ -1339,6 +1339,7 @@ own character and runs its own conversation.
 | Promises (`promises`) | 5 min | Did the character say it would do something it never started? The end of the conversation, the reminders set and this conversation's background work. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Saying the same things (`repeats`) | 10 min | Does the character keep saying the same things (the same remark, joke, question, opener or topic again and again, or something it said not long ago while nothing new happened)? [What it said lately](#what-you-said-lately), each with when (`10:05 PM (12 min ago)`), and the day and time. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
+| How I react (`reactions`) | After your touches, at most every 5 min | Did the character's feelings toward you change (it got angry, hurt or shy, or it warmed up)? Its personality, the end of the conversation and [how you touched it lately](#check-in-triggers). | Its [Touch reactions](#how-i-react) tools change how it reacts to your touches for a while. Its answer is only a short line for the log. |
 | Welcome back (`welcome`, off) | 30 min | You came back after 10 minutes or more away: should Martlet welcome you back? How long you were away and what happened meanwhile, what you do now, the personality. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
 | Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
 | On a call (`call`, off) | 2 min | A game, a call or a full-screen app started or ended: did a call start or end? What you do now and before. | A `REMIND:` line (keep quiet and short during the call, or talk as usual again) goes in the notes of the next message. `OK` changes nothing. |
@@ -1373,6 +1374,7 @@ built-in check-in can be recreated, and changed, as your own.
 | Promises | The conversation, reminders and background work | You talked lately, something new was said |
 | Staying in character | Its personality, Martlet's last replies | A personality is active, Martlet replied twice, 4 new replies |
 | Saying the same things | What Martlet said in the last hour | Martlet said 3 things lately, something new was said |
+| How I react | Its personality, the conversation, how you touched the character | A personality is active; it starts when your touches end (any trigger) |
 | Welcome back | What happened while you were away, what you are doing, its personality | You came back |
 | Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
 | On a call | What you are doing | What you do changed |
@@ -1694,6 +1696,7 @@ does and its tools. Martlet offers:
 | Emotes and gaze (`character`) | `turn_off_emote`, `look_usual` | Turn off one lingering emote a reply turned on (never a try or a touch's), or take the eyes back to their usual gaze. |
 | Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
 | Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
+| Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls
@@ -1732,6 +1735,60 @@ said or reminded.
 
 The card, the settings check (an unknown set or the same set twice is refused),
 the status and MCP pick up the new set by themselves.
+
+### How I react
+
+The character can change how it reacts to your touches, as itself. If it gets
+angry with you, a head pat can make it pout instead of smile, for a while.
+The built-in **How I react** check-in (`reactions`, on) does this with the
+**Touch reactions** tool set (`touch-reactions`).
+
+- **When it runs.** It starts when your touches end, after an intimate touch,
+  after a stroke across zones and when you keep touching one place
+  ([triggers](#check-in-triggers)), at most every 5 minutes. It does not also
+  run on a timer. It needs an active personality and a pool member whose model
+  can call tools.
+- **What it knows.** The personality, the end of the conversation and how you
+  touched the character in the last 10 minutes (`{touches}`). Its prompt is
+  *Check-in: how I react* on Companion › Prompts.
+- **What it does.** It reads how the character reacts now
+  (`read_touch_reactions`), then changes it when its feelings toward you
+  changed: `set_touch_mood` (every touch one or two steps less or more liked),
+  `change_touch_feeling` (how it feels about one category or zone, and which
+  reaction words play there) or `change_zone_reactions` (exactly what one zone
+  plays, by the emote, motion and gesture IDs the read lists, and
+  `sound:<sound>` for one of the voices' sounds). `undo_touch_change` ends its
+  own changes, for example after it calmed down. Each change needs a short
+  reason in its own words. Its answer is only a short line for the log.
+- **Limits** (`CharacterReactionChanges`). At most 4 changes in one run and 12
+  in a day, at most 8 in effect at once (a newer change of the same kind and
+  target replaces the older one). Each lasts 15 minutes to 72 hours (6 hours
+  by default) and then ends on its own. A feeling moves at most 2 steps from
+  what your temperament says, and a mood shifts at most 2 steps.
+- **How it applies.** The changes never edit your zones or your temperament.
+  While they last, a touch, a stroke and the touch line use them over yours
+  (`CharacterReactionChanges.Temperament` and `.Zone`). A changed feeling
+  plays its reaction words, or that feeling's own, on the zones it covers, and
+  changes escalation, lingering and looking. A mood leaves a zone's list as
+  you chose it when it doesn't change how much that zone is liked. Nothing
+  here is on the reply path: the check-in runs only on the Thinking pool, and
+  a touch reads the changes from memory.
+- **What you see.** Companion › Touch ›
+  [Changes the character made](AVATARS.md#changes-the-character-made) lists
+  the changes in effect (what, until when, when and why), with **Undo** and
+  **Undo all**, and the newest that ended. Touch zones' **Start over** undoes
+  them too. The check-in's card shows the first line of each tool's answer,
+  which never holds the character's reason. The changes are kept in
+  `character-reaction-changes.json` on this PC only.
+
+The tools run in `Martlet.Avatar.Hosting.CharacterReactionTools` (with no
+provider types, so the desktop's handler, `MainWindow.TouchReactionTools.cs`,
+and MCP's `character_reaction_changes` run the same calls). Checked locally:
+`CharacterReactionChangeTests` (each tool, every limit, the overlay on the
+temperament and the zones, undo and storage), the Start over level in
+`CharacterTouchResetTests` and step 12 of `check_ins_check` (the built-in
+check-in run end to end with a FIXTURE member that calls the tools). A real
+model calling these tools is **NOT RUN**.
 
 **Answers.** Martlet reads the last decisive line, so thinking written before
 the answer doesn't count. Markdown, bullets, quotes and a reasoning model's

@@ -53,4 +53,10 @@ public static class TouchReactions
             "\"change\":{\"type\":\"string\",\"description\":\"The id of one of your changes in effect, or all.\"}," +
             Why + "},\"required\":[\"change\",\"why\"],\"additionalProperties\":false}")
     ];
+
+    /// <summary>The set a check-in chooses on its card (<see cref="CheckInToolSets.All"/>).</summary>
+    public static CheckInToolSet Set { get; } = new(SetId, "Touch reactions",
+        "Lets the character change how it reacts to your touches for a while, as itself: a mood for every touch, how it feels " +
+        "about one part, or what one zone plays. Each change is limited and ends on its own; see and undo them on Companion › Touch.",
+        Tools);
 }

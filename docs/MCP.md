@@ -4722,8 +4722,16 @@ asks for the *Its tools act* answer; with no sets it waits) and `tools: only a
 member that calls tools runs them` (a text-only member never gets it; on a
 member that calls tools, FIXTURE calls are kept with their first line only, an
 unknown tool and a failing handler are errors, and every call after the eighth
-is refused). `passed` and each step's `passed` and `detail`. No model, network
-or credentials.
+is refused). `how I react: the built-in check-in changes how the character
+reacts, bounded` runs [How I react](CONVERSATION.md#how-i-react): it is on,
+starts only on touches (it waits without a trigger and runs with a fresh one),
+offers the five Touch reactions tools and asks with `{touches}`; on a FIXTURE
+member that calls them (NOT AI) through the production tool host and
+`CharacterReactionTools` on FIXTURE zones, a mood, a feeling, an arms feeling
+and a hand list are made, a call without a reason and a fifth change are
+refused, and no call's first line holds the character's reasons (`detail`:
+`waits`, `fired`, `tools`, `made`, `changes` and `hand`). `passed` and each
+step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
 lately](CONVERSATION.md#what-you-said-lately) with the production code

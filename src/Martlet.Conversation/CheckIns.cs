@@ -258,7 +258,8 @@ public sealed record CheckInVerdict(bool Act, IReadOnlyList<string> Tags, string
 /// </summary>
 public static partial class CheckIns
 {
-    public const string Emotes = "emotes", Gaze = "gaze", Promises = "promises", Character = "character", Repeats = "repeats";
+    public const string Emotes = "emotes", Gaze = "gaze", Promises = "promises", Character = "character", Repeats = "repeats",
+        Reactions = "reactions";
     /// <summary>Describe touches: right after the user touches the character, a pool member describes what they have been doing,
     /// for the next reply (<see cref="CheckInOutcome.Context"/>).</summary>
     public const string DescribeTouches = "touches";
@@ -306,9 +307,10 @@ public static partial class CheckIns
     public const int MaximumToolResultCharacters = 120;
 
     /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Saying the same things every 10,
-    /// Staying in character every 15); Welcome back, Unanswered question, On a call and Someone else is here off until the owner
-    /// turns them on; Describe touches on, started by touches at most once a minute. Each is only data (a prompt, facts,
-    /// conditions, triggers and an outcome) that the owner can change on its card or copy as their own.</summary>
+    /// Staying in character every 15); How I react on, after your touches (at most every 5 minutes); Welcome back, Unanswered
+    /// question, On a call and Someone else is here off until the owner turns them on; Describe touches on, started by touches at
+    /// most once a minute. Each is only data (a prompt, facts, conditions, triggers, tool sets and an outcome) that the owner can
+    /// change on its card or copy as their own.</summary>
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
     [
         new(Emotes, "Lingering emotes", "Checks whether the emotes a reply turned on and left on (such as a blush or glasses) still " +
@@ -341,6 +343,13 @@ public static partial class CheckIns
         {
             PromptId = PromptCatalog.CheckInRepeats, Facts = CheckInFacts.Said,
             Conditions = CheckInConditions.Sayings | CheckInConditions.SomethingNew
+        },
+        new(Reactions, "How I react", "After your touches, reads the conversation and how you touched the character, and when its " +
+            "feelings toward you changed (it got angry or hurt, or it warmed up to you), changes how it reacts to your touches for " +
+            "a while with its Touch reactions tools. See and undo its changes on Companion › Touch.", CheckInOutcome.Tools, true, 5)
+        {
+            PromptId = PromptCatalog.CheckInReactions, Facts = CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Touches,
+            Conditions = CheckInConditions.Persona, Triggers = AllTriggers, ToolSets = [TouchReactions.SetId]
         },
         new(Welcome, "Welcome back", "When you come back to the PC after 10 minutes or more away, has Martlet welcome you back " +
             "briefly, with what happened while you were away when it matters.", CheckInOutcome.Say, false, 30)
