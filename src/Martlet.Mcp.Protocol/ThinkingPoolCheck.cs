@@ -13,8 +13,9 @@ namespace Martlet.Mcp;
 /// can do, the plan (whether each member can run and why), the likely-slowdown warnings and guidance, and the desktop's
 /// thinking-pool-status.json (running and waiting jobs by kind, never a job's text). The check rehearses the production job board
 /// (<see cref="ThinkingJobBoard"/> over <see cref="BackgroundPlaces"/>) with simulated members, NOT models: no member, capability
-/// matching, the slot kept free for fast jobs, priorities, retry on another member, a stale job dropped, and the migration from
-/// deep-thinking.json. Nothing leaves the process.</summary>
+/// matching, the slot kept free for fast jobs, priorities, retry on another member, a stale job dropped, the migration from
+/// deep-thinking.json, and on a one-slot member the stops for priority, the raise after stops and the retries after a failure.
+/// Nothing leaves the process.</summary>
 internal static class ThinkingPoolCheck
 {
     // ---------- thinking_pool_status ----------
@@ -69,6 +70,9 @@ internal static class ThinkingPoolCheck
                 wouldAsk = ThinkingBackupMembers.Choose(pool, plan, places, LiveResources.For(routes), new BoundedTextInput("status"), held: false) is var choice
                     ? new { member = choice.Spot?.Settings.Describe(), why = choice.Why } : null
             },
+            // The line's rules from thinking-pool.json: stops for priority, the raise after stops and the retries after a failure.
+            line = ThinkingPoolPolicy.From(pool) is var policy
+                ? new { preemptLowerPriority = policy.PreemptLowerPriority, raiseAfterStops = policy.RaiseAfterStops, retries = policy.Retries } : null,
             usable = places.Length, slots, keepsFastSlot = slots >= 2,
             conversationModel = pool.Members.Count == 0 && pool.UseConversationModelWhenEmpty
                 ? new { used = true, available = plan.Plan.Available, why = plan.Plan.Why } : null,
@@ -240,12 +244,13 @@ internal static class ThinkingPoolCheck
             BackgroundPlace member = new("host:one", "one") { Slots = 1 };
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             List<ThinkingJobKind> order = [];
+            // Without stops for priority: the line alone decides (steps 12 to 15 stop the job that holds the slot).
             var board = new ThinkingJobBoard(places, () => [member], async (m, job, token) =>
             {
                 lock (order) order.Add(job.Kind);
                 if (order.Count == 1) await release.Task.WaitAsync(token);
                 return ThinkingAnswer.Done(m.Name);
-            });
+            }) { Policy = () => new(PreemptLowerPriority: false) };
             var holding = board.RunAsync(Job(ThinkingJobKind.ThinkLonger), cancellation);
             await WaitAsync(() => places.Leases.Count == 1, cancellation);
             var research = board.RunAsync(Job(ThinkingJobKind.Research), cancellation);
@@ -537,12 +542,230 @@ internal static class ThinkingPoolCheck
                     $"{t.Value.Problems} problems, {t.Value.Retries} retries, average wait {t.Value.AverageWait.TotalMilliseconds:0} ms, average run {t.Value.AverageRun.TotalMilliseconds:0} ms")));
         }
 
+        // 12 to 15. Priority on one member with one slot (a sequential local model): higher-priority work stops lower-priority work,
+        // the stopped job waits at the front of its priority, its priority goes up after every RaiseAfterStops stops, and a failed
+        // job is tried again at the priority it had. The outcomes go into the report's priority section.
+        Dictionary<string, object?> priority = [];
+        static ThinkingJob Labeled(ThinkingJobKind kind, string label, ThinkingPriority? priority = null, TimeSpan? timeout = null) =>
+            Job(kind, timeout: timeout) with { Text = label, Priority = priority };
+        static object Outcome(Task<ThinkingJobResult> task)
+        {
+            if (!task.IsCompletedSuccessfully) return "not finished";
+            var r = task.Result;
+            return new { outcome = r.Outcome.ToString(), r.Attempts, r.Preemptions, r.PriorityStops, r.Retries, r.Priority, r.Problem };
+        }
+        static object Counters(ThinkingPoolStatus status) => new
+        {
+            preemptLowerPriority = status.Policy.PreemptLowerPriority, raiseAfterStops = status.Policy.RaiseAfterStops, retries = status.Policy.Retries,
+            status.StoppedForPriority, status.Raised, status.Retried
+        };
+
+        // 12. A barge-in judge finds the one slot busy with research: research stops, the judge runs, research runs again later.
+        // With the stop turned off, the judge waits for research to end.
+        {
+            ThinkingPoolStatus? on = null, off = null;
+            string[] ranOn = [], ranOff = [];
+            Task<ThinkingJobResult> researchOn, judgeOn, researchOff, judgeOff;
+            bool tookOver, waitedOff;
+            {
+                var lane = new Lane("research");
+                var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [Local()], lane.RunAsync)
+                {
+                    Policy = () => new(PreemptLowerPriority: true, RaiseAfterStops: 3, Retries: 1)
+                };
+                researchOn = board.RunAsync(Labeled(ThinkingJobKind.Research, "research"), cancellation);
+                await WaitAsync(() => lane.Count("research") == 1, cancellation);
+                judgeOn = board.RunAsync(Labeled(ThinkingJobKind.BargeInJudge, "judge"), cancellation);
+                tookOver = await WithinAsync(judgeOn, Settle, cancellation);
+                await WaitAsync(() => lane.Count("research") == 2, cancellation);
+                lane.ReleaseAll();
+                await WithinAsync(Task.WhenAll(researchOn, judgeOn), Settle, cancellation);
+                on = board.Status();
+                ranOn = lane.Ran;
+            }
+            {
+                var lane = new Lane("research");
+                var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [Local()], lane.RunAsync)
+                {
+                    Policy = () => new(PreemptLowerPriority: false, RaiseAfterStops: 3, Retries: 1)
+                };
+                researchOff = board.RunAsync(Labeled(ThinkingJobKind.Research, "research"), cancellation);
+                await WaitAsync(() => lane.Count("research") == 1, cancellation);
+                judgeOff = board.RunAsync(Labeled(ThinkingJobKind.BargeInJudge, "judge"), cancellation);
+                waitedOff = !await WithinAsync(judgeOff, Brief, cancellation) && lane.Count("research") == 1;
+                lane.ReleaseAll();
+                await WithinAsync(Task.WhenAll(researchOff, judgeOff), Settle, cancellation);
+                off = board.Status();
+                ranOff = lane.Ran;
+            }
+            Check("priority stop: on one slot, a barge-in judge stops research and research runs again later",
+                tookOver && Done(judgeOn) && Done(researchOn) && researchOn.Result is { PriorityStops: 1, Preemptions: >= 1 } &&
+                researchOn.Result.Priority == (int)ThinkingPriority.Research && ranOn.SequenceEqual(["research", "judge", "research"]) &&
+                on is { StoppedForPriority: 1, Policy.PreemptLowerPriority: true },
+                $"judge {(tookOver ? "took the slot" : "waited")}; ran {string.Join(", ", ranOn)}; research {Json(Outcome(researchOn))}; " +
+                $"stopped for priority {on?.StoppedForPriority}");
+            Check("priority stop off: the judge waits for research to end",
+                waitedOff && Done(judgeOff) && Done(researchOff) && researchOff.Result.PriorityStops == 0 &&
+                ranOff.SequenceEqual(["research", "judge"]) && off is { StoppedForPriority: 0, Policy.PreemptLowerPriority: false },
+                $"judge {(waitedOff ? "waited" : "did not wait")}; ran {string.Join(", ", ranOff)}; stopped for priority {off?.StoppedForPriority}");
+            priority["stop"] = new { ran = ranOn, research = Outcome(researchOn), judge = Outcome(judgeOn), status = on is null ? null : Counters(on) };
+            priority["stopOff"] = new { ran = ranOff, research = Outcome(researchOff), judge = Outcome(judgeOff), status = off is null ? null : Counters(off) };
+        }
+
+        // 13. The stopped job keeps its priority and goes to the front of the line for it: research A, stopped by a judge, runs
+        // again before research B, which waited before the judge came. A summary (digest) stopped for priority waits again too.
+        {
+            var places = new BackgroundPlaces();
+            var lane = new Lane("a");
+            var board = new ThinkingJobBoard(places, () => [Local()], lane.RunAsync) { Policy = () => new(true, 3, 1) };
+            var a = board.RunAsync(Labeled(ThinkingJobKind.Research, "a"), cancellation);
+            await WaitAsync(() => lane.Count("a") == 1, cancellation);
+            var b = board.RunAsync(Labeled(ThinkingJobKind.Research, "b"), cancellation);
+            await WaitAsync(() => places.WaitingKinds.Count == 1, cancellation);
+            var judge = board.RunAsync(Labeled(ThinkingJobKind.BargeInJudge, "judge"), cancellation);
+            await WaitAsync(() => lane.Count("a") == 2, cancellation);
+            var line = places.WaitingKinds.Select(ThinkingJobKinds.Name).ToArray();
+            lane.ReleaseAll();
+            await WithinAsync(Task.WhenAll(a, b, judge), Settle, cancellation);
+            var ran = lane.Ran;
+            Check("priority stop: the stopped job keeps its priority and goes before same-priority jobs that waited",
+                Done(a) && Done(b) && Done(judge) && a.Result is { PriorityStops: 1 } && a.Result.Priority == (int)ThinkingPriority.Research &&
+                ran.SequenceEqual(["a", "judge", "a", "b"]),
+                $"ran {string.Join(", ", ran)}; line while a ran again {string.Join(" > ", line)}; a {Json(Outcome(a))}");
+            priority["front"] = new { ran, a = Outcome(a), b = Outcome(b), judge = Outcome(judge), status = Counters(board.Status()) };
+
+            var digestLane = new Lane("digest");
+            var digestBoard = new ThinkingJobBoard(new BackgroundPlaces(), () => [Local()], digestLane.RunAsync) { Policy = () => new(true, 3, 1) };
+            var digest = digestBoard.RunAsync(Labeled(ThinkingJobKind.Digest, "digest"), cancellation);
+            await WaitAsync(() => digestLane.Count("digest") == 1, cancellation);
+            var digestJudge = digestBoard.RunAsync(Labeled(ThinkingJobKind.BargeInJudge, "judge"), cancellation);
+            await WaitAsync(() => digestLane.Count("digest") == 2, cancellation);
+            digestLane.ReleaseAll();
+            await WithinAsync(Task.WhenAll(digest, digestJudge), Settle, cancellation);
+            Check("priority stop: a summary stopped for priority waits again and is not dropped",
+                Done(digest) && Done(digestJudge) && digest.Result.PriorityStops == 1 && digestLane.Ran.SequenceEqual(["digest", "judge", "digest"]),
+                $"ran {string.Join(", ", digestLane.Ran)}; digest {Json(Outcome(digest))}");
+            priority["digest"] = new { ran = digestLane.Ran, digest = Outcome(digest), judge = Outcome(digestJudge) };
+        }
+
+        // 14. Raise after stops (RaiseAfterStops 2): research at priority 10 is stopped twice and goes up to 11, so a job of
+        // priority 11 no longer stops it and waits.
+        {
+            var places = new BackgroundPlaces();
+            var lane = new Lane("low");
+            var board = new ThinkingJobBoard(places, () => [Local()], lane.RunAsync) { Policy = () => new(true, RaiseAfterStops: 2, Retries: 1) };
+            var low = board.RunAsync(Labeled(ThinkingJobKind.Research, "low", ThinkingPriority.Research), cancellation);
+            await WaitAsync(() => lane.Count("low") == 1, cancellation);
+            var first = board.RunAsync(Labeled(ThinkingJobKind.EndOfTurnJudge, "judge-1"), cancellation);
+            await WaitAsync(() => lane.Count("low") == 2, cancellation);
+            var second = board.RunAsync(Labeled(ThinkingJobKind.EndOfTurnJudge, "judge-2"), cancellation);
+            await WaitAsync(() => lane.Count("low") == 3, cancellation);
+            var raisedStatus = board.Status();
+            var even = board.RunAsync(Labeled(ThinkingJobKind.Research, "even", (ThinkingPriority)((int)ThinkingPriority.Research + 1)), cancellation);
+            var waited = !await WithinAsync(even, Brief, cancellation) && lane.Count("low") == 3;
+            lane.ReleaseAll();
+            await WithinAsync(Task.WhenAll(low, first, second, even), Settle, cancellation);
+            var ran = lane.Ran;
+            var status = board.Status();
+            Check("priority raise: after every 2 stops the stopped job's priority goes up by 1",
+                Done(low) && Done(first) && Done(second) && Done(even) && low.Result is { PriorityStops: 2 } &&
+                low.Result.Priority == (int)ThinkingPriority.Research + 1 && raisedStatus.Raised == 1 && status is { Raised: 1, StoppedForPriority: 2 },
+                $"low {Json(Outcome(low))}; raised {status.Raised}; stopped for priority {status.StoppedForPriority}");
+            Check("priority raise: a job of the raised priority no longer stops it",
+                waited && ran.SequenceEqual(["low", "judge-1", "low", "judge-2", "low", "even"]),
+                $"priority 11 job {(waited ? "waited" : "did not wait")}; ran {string.Join(", ", ran)}");
+            priority["raise"] = new { ran, low = Outcome(low), even = Outcome(even), status = Counters(status) };
+        }
+
+        // 15. Retries: a job that failed (or timed out) on the only member is tried again up to Retries times at the priority it had.
+        {
+            static Func<BackgroundPlace, ThinkingJob, CancellationToken, Task<ThinkingAnswer>> FailsFirst(bool hang)
+            {
+                var tries = 0;
+                return async (m, job, token) =>
+                {
+                    if (Interlocked.Increment(ref tries) > 1) return ThinkingAnswer.Done(m.Name);
+                    if (hang) await Task.Delay(Timeout.Infinite, token);
+                    return ThinkingAnswer.Failed($"{m.Name} failed (fixture)");
+                };
+            }
+            var retryBoard = new ThinkingJobBoard(new BackgroundPlaces(), () => [Local()], FailsFirst(hang: false)) { Policy = () => new(true, 3, Retries: 1) };
+            var retried = await retryBoard.RunAsync(Labeled(ThinkingJobKind.Memory, "flaky"), cancellation);
+            var retryStatus = retryBoard.Status();
+            var noRetryBoard = new ThinkingJobBoard(new BackgroundPlaces(), () => [Local()], FailsFirst(hang: false)) { Policy = () => new(true, 3, Retries: 0) };
+            var failed = await noRetryBoard.RunAsync(Labeled(ThinkingJobKind.Memory, "flaky"), cancellation);
+            var slowBoard = new ThinkingJobBoard(new BackgroundPlaces(), () => [Local()], FailsFirst(hang: true)) { Policy = () => new(true, 3, Retries: 1) };
+            var slow = await slowBoard.RunAsync(Labeled(ThinkingJobKind.Memory, "slow", timeout: TimeSpan.FromMilliseconds(300)), cancellation);
+            Check("retries: a failed job is tried again at its priority; with 0 retries it fails",
+                retried is { Succeeded: true, Retries: 1, Attempts: 2 } && retried.Priority == (int)ThinkingPriority.Helper && retryStatus.Retried == 1 &&
+                failed is { Outcome: ThinkingJobOutcome.Failed, Retries: 0 } && noRetryBoard.Status().Retried == 0,
+                $"1 retry: {Json(Outcome(Task.FromResult(retried)))}; 0 retries: {failed.Outcome} ({failed.Problem})");
+            Check("retries: a timed-out job is tried again", slow is { Succeeded: true, Retries: 1 } && slowBoard.Status().Retried == 1,
+                $"{Json(Outcome(Task.FromResult(slow)))}");
+
+            // Stopped once for priority (RaiseAfterStops 1: up to 11), then failed: the retry runs at 11.
+            var tries = 0;
+            var lane = new Lane("r");
+            var raisedBoard = new ThinkingJobBoard(new BackgroundPlaces(), () => [Local()], async (m, job, token) =>
+            {
+                var answer = await lane.RunAsync(m, job, token);
+                return job.Text == "r" && Interlocked.Increment(ref tries) == 1 ? ThinkingAnswer.Failed("r failed (fixture)") : answer;
+            }) { Policy = () => new(true, RaiseAfterStops: 1, Retries: 1) };
+            var r = raisedBoard.RunAsync(Labeled(ThinkingJobKind.Research, "r", ThinkingPriority.Research), cancellation);
+            await WaitAsync(() => lane.Count("r") == 1, cancellation);
+            var judge = raisedBoard.RunAsync(Labeled(ThinkingJobKind.BargeInJudge, "judge"), cancellation);
+            await WaitAsync(() => lane.Count("r") == 2, cancellation);
+            lane.ReleaseAll();
+            await WithinAsync(Task.WhenAll(r, judge), Settle, cancellation);
+            Check("retries: a raised job is tried again at the priority it was left at",
+                Done(r) && r.Result is { PriorityStops: 1, Retries: 1 } && r.Result.Priority == (int)ThinkingPriority.Research + 1,
+                $"ran {string.Join(", ", lane.Ran)}; r {Json(Outcome(r))}");
+            priority["retries"] = new
+            {
+                oneRetry = Outcome(Task.FromResult(retried)), noRetry = Outcome(Task.FromResult(failed)), timedOut = Outcome(Task.FromResult(slow)),
+                raisedThenFailed = Outcome(r), status = Counters(retryStatus)
+            };
+        }
+
         return new
         {
             passed = steps.All(s => s.Passed), elapsedMs = watch.ElapsedMilliseconds,
             steps = steps.Select(s => new { name = s.Name, passed = s.Passed, detail = s.Detail }),
+            priority,
             note = "In-process rehearsal of the production job board with simulated members (NOT models)."
         };
+    }
+
+    private static readonly TimeSpan Settle = TimeSpan.FromSeconds(5), Brief = TimeSpan.FromMilliseconds(300);
+
+    // The one-slot member of the priority steps: a sequential local model.
+    private static BackgroundPlace Local() => new("host:local", "local") { Slots = 1 };
+
+    private static bool Done(Task<ThinkingJobResult> task) => task.IsCompletedSuccessfully && task.Result.Succeeded;
+
+    private static async Task<bool> WithinAsync(Task task, TimeSpan time, CancellationToken token) =>
+        await Task.WhenAny(task, Task.Delay(time, token)) == task;
+
+    /// <summary>A simulated one-slot member that notes the job (its text) each time it starts one. A held job runs until it is
+    /// released or its attempt is stopped.</summary>
+    private sealed class Lane(params string[] held)
+    {
+        private readonly object gate = new();
+        private readonly List<string> starts = [];
+        private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string[] Ran { get { lock (gate) return [.. starts]; } }
+
+        public int Count(string label) { lock (gate) return starts.Count(s => s == label); }
+
+        public void ReleaseAll() => release.TrySetResult();
+
+        public async Task<ThinkingAnswer> RunAsync(BackgroundPlace member, ThinkingJob job, CancellationToken token)
+        {
+            lock (gate) starts.Add(job.Text);
+            if (held.Contains(job.Text)) await release.Task.WaitAsync(token);
+            return ThinkingAnswer.Done(job.Text);
+        }
     }
 
     private static string Json(object value) => JsonSerializer.Serialize(value);

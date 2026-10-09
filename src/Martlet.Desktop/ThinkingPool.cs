@@ -49,9 +49,16 @@ internal sealed partial class LiveConversationController
     /// <summary>The Thinking pool: post background model jobs here (<see cref="ThinkingPool.RunAsync"/>).</summary>
     internal ThinkingPool ThinkingPool => pool ??= NewThinkingPool();
 
+    /// <summary>What the pool does now, or null before any job or status made it (Companion › Thinking pool's Busy pool line).</summary>
+    internal ThinkingPoolStatus? PoolStatusNow() => Volatile.Read(ref pool)?.Status();
+
     private ThinkingPool NewThinkingPool()
     {
-        var board = new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock);
+        var board = new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock)
+        {
+            // Companion › Thinking pool's priority and retry choices, read on each job and each try.
+            Policy = () => ThinkingPoolPolicy.From(Volatile.Read(ref thinkingPool))
+        };
         board.Rested += PoolMemberRested;
         return new(board);
     }
@@ -363,6 +370,14 @@ internal sealed partial class LiveConversationController
             // The live floor: its level, jobs waiting only for the conversation (held), and jobs it stopped this turn and in all.
             floor = status.Floor, waitingForConversation = status.Held, stoppedThisTurn = status.StoppedNow, stopped = status.Stopped,
             sharesLive = status.SharesLive,
+            // The line's rules (Companion › Thinking pool) and, since the pool started, jobs stopped for higher-priority work,
+            // priority raises after stops and retries after a failure.
+            priority = new
+            {
+                preemptLowerPriority = status.Policy.PreemptLowerPriority, raiseAfterStops = status.Policy.RaiseAfterStops,
+                retriesOnFailure = status.Policy.Retries, stoppedForPriority = status.StoppedForPriority, raised = status.Raised,
+                retried = status.Retried
+            },
             // Members whose computer refused a request as invalid: no such jobs go there until the time shown.
             resting = status.Resting.Select(r => new { id = r.Id, name = r.Name, needs = ThinkingJobResult.Describe(r.Needs), until = r.Until }),
             warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? []),
