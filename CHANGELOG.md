@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-10-09
+
 ### Added
 
 - Martlet's Reading role can now read your screen with PaddleOCR's PP-OCRv5, the most accurate reader: it read every line of small text on a test 4K screen, where Windows OCR missed a quarter. Choose **PP-OCRv5 mobile** for your processor or **PP-OCRv5 server** for an NVIDIA graphics card in Companion › Reading, and **Switch to** changes a computer that already reads. Reads still happen off to the side, so replies never wait for them. ([#687](https://github.com/throndir2/Martlet/pull/687))
