@@ -1646,8 +1646,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
             "task and facts), check-ins-status.json written by the desktop on a companion PC (the pool member that can take them, " +
             "why each waits, the one running, runs and actions since Martlet started and each last run's time, member, duration and " +
-            "result in a few words; never what was said, answered or reminded) and the fixed rules (pace, minimum age, quiet and idle " +
-            "waits, the job kind's priority and live floor rule). Read-only.", new
+            "result in a few words; never what was said, answered or reminded; each check-in's triggers, a trigger it keeps and what " +
+            "started its last run, and the last touches that fired a trigger, in counts only) and the fixed rules (pace, minimum age, " +
+            "quiet and idle waits, the job kind's priority and live floor rule, the trigger age and touch thresholds). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1658,7 +1659,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "message each sends, their runs on a production Thinking pool job board with a fixture member, reading answers (OFF " +
             "tags, KEEP, USUAL, REMIND:, SAY:, OK, a <think> block, chatter), and what Martlet does: a reply's lingering emote off " +
             "on a production HeldEmotes (never the owner's try), a reminder on a production context board that goes with exactly " +
-            "one request, and something to bring up worded as the check-in's own beside a due reminder. No model, network or " +
+            "one request, and something to bring up worded as the check-in's own beside a due reminder; and check-in triggers with " +
+            "FIXTURE touches on a production touch ledger (a stroke across 3 zones, an intimate touch, a place touched again and " +
+            "again fire their triggers once the touches settle, the ledger keeps every touch, and a triggered check-in runs only on " +
+            "its own triggers, at most once per its pace, never held by a busy conversation). No model, network or " +
             "credentials.", new { }),
         Tool("said_lately_check", "Rehearse what Martlet said lately (docs/CONVERSATION.md#what-you-said-lately) with the " +
             "production code and FIXTURE sayings at fixed times (NOT anything Martlet said): what is noted (never a [pass] or " +
