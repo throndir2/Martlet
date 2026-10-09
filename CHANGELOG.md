@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Check-ins can now use tools. On a check-in's card, tick the tool sets it may use under **It may use these tools**: **Emotes and gaze**, **Martlet's next words** or **Reminders**. Choose **Its tools act** to make the tools what it does. The card shows which tools the last run called and what came of each. It needs a Thinking pool model that calls tools, such as an OpenAI-compatible endpoint, and it makes at most 8 calls in one run. ([#678](https://github.com/throndir2/Martlet/pull/678))
 - Your own check-ins can now know how you touched the character: pokes, pats, holds, strokes with their path, and moves from the last 10 minutes, each with when, which were intimate, how the personality feels about them and the places you keep coming back to. Tick **How you touched the character** or put `{touches}` in the prompt. It runs only on your Thinking pool, so replies don't wait for it and still get your touches. ([#674](https://github.com/throndir2/Martlet/pull/674))
 - Each touch zone can now have an **Autoplays** list of emotes and gestures that play by themselves, one after another, after the zone's reaction. Pick the emotes and how many seconds each one shows. Zone rows are simpler (rest and box moved under **Details**), and new **Reset reactions** and **Reset all zones** buttons ask first, then put zones back as for a fresh character. ([#672](https://github.com/throndir2/Martlet/pull/672))
 
