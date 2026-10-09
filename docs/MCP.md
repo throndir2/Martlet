@@ -326,6 +326,19 @@ wait and each member's box save `thinking-pool.json`, so they need
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"backup_thinking_check"}]'
 ```
 
+The *Busy pool* card reads through `ThinkingPoolPreempt` (*Higher priority
+requests may stop lower ones*, on by default), `ThinkingPoolRaiseAfterStops`
+(a stopped request becomes more important after 1-20 stops, 3 by default),
+`ThinkingPoolRetries` (a failed request is tried again 0-10 times, once by
+default) and `ThinkingPoolPriorityStatus` (the choices in words and, since
+Martlet started, how many requests were stopped, made more important and tried
+again). The box and both choices save `thinking-pool.json`
+(`PreemptLowerPriority`, `RaisePriorityAfterStops`, `RetriesOnFailure`), so
+they need `--allow-ui-effects`. The desktop's `thinking-pool-status.json` has a
+`priority` part with the same choices (`preemptLowerPriority`,
+`raiseAfterStops`, `retriesOnFailure`) and the counters `stoppedForPriority`,
+`raised` and `retried`.
+
 ### Image and audio models
 
 Thinking, the text model, writes every reply. Pictures and recordings go to it,
