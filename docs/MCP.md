@@ -3801,6 +3801,33 @@ and the newest desktop `log` lines about quick sounds (*Quick sound: "Mm," 712
 ms after the reply was confirmed (...)*, *Quick sounds: made 4 with ...*).
 Read-only; it never plays anything.
 
+`voice_sounds_status` reads the touch zones' voice sounds (`sound:<cue>`
+entries in a zone's reaction list) from a data directory (optional absolute
+`dataDirectory`; the script gives a disposable one): the `voice` replies speak
+with (`words`, its `engine`, whether it is `paid` and its `key` per voice and
+character, or null), `noSounds` (why no sound plays, when the voice makes none),
+each of the voice's `sounds` (`entry`, `cue`, `label`, the engine's `tag`,
+whether it is `made` on this PC and its `milliseconds`), every zone in `zones`
+that lists sounds (`model`, `zone`, `enabled`, and for each sound its `entry`
+and whether it `plays` with this voice), the clips `kept` in `voice-sounds\`,
+the `last` sound played or skipped (*Voice sound: laugh for a touch on hair not
+played (Martlet is speaking).*) and the newest desktop `log` lines about voice
+sounds. Read-only; it never plays anything.
+
+`voice_sounds_check` rehearses voice sounds with the production code and
+fixtures (a fixture voice makes a quiet tone, NOT AI; fixture speakers take
+audio at a real speaker's pace and play nothing). Scenarios (`scenario` runs
+one): `sounds` (the sounds each engine offers, and the words for a voice that
+makes none), `rules` (`VoiceSoundGate`: no sound with no voice, *Speak replies
+aloud* off, the conversation paused or muted, a sound the voice can't make,
+while Martlet speaks, while you talk or over another sound; a clip not made yet
+is made instead), `make` (the engine's tag alone through
+`ConversationRuntime.SynthesizeAsync`, trimmed and kept), `play`
+(`ConversationRuntime.PlayClipAsync` plays the clip whole with lip sync and
+refuses a second one meanwhile) and `cut` (a reply's own voice cuts a sound
+still playing; `replyFirstAudioMs` must be no later than
+`sameReplyWithoutSoundFirstAudioMs` plus 150 ms).
+
 `quick_sounds_check` rehearses quick sounds (see
 [Voice latency](VOICE_LATENCY.md#quick-sounds-while-martlet-thinks)) with the
 production rules (`QuickSoundGate`, `QuickSoundWatcher`,
@@ -7571,7 +7598,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

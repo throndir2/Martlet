@@ -874,6 +874,43 @@ default; turn it off to leave them out. The check box names each of these parts.
   your face*. Moving it around starts a short reply of its own, like a touch;
   the rest go with your next message.
 
+### Voice sounds
+
+A zone's reaction list can hold voice sounds as well as emotes: a laugh, a
+gasp, a sigh or a giggle that Martlet's own voice makes alone, with no words.
+Each one is saved as `sound:<cue>` (`sound:laugh`, `sound:gasp`), where the cue
+is the same for every voice. So a zone keeps its sounds when you change to
+another voice that makes them.
+
+- **Which sounds.** Only the sounds the voice replies speak with makes alone:
+  the sound tags of its engine. Chatterbox Turbo and Chatterbox Nano make nine
+  (laugh, chuckle, sigh, gasp, cough, clear throat, groan, sniff, shush), Dia
+  makes thirteen (also breaths, a hum, a sneeze and a whistle) and ElevenLabs
+  six. F5-TTS, XTTS-v2, GPT-SoVITS, the original Chatterbox and OpenAI's voice
+  say words only. With one of those voices the zone list says so, keeps the
+  sounds you added and plays none of them.
+- **Made once, then instant.** Martlet makes each sound once for each voice and
+  character: it sends the engine's own tag alone (`[laugh]` for Chatterbox,
+  `(laughs)` for Dia) on the reply's own voice path, cuts the silence around
+  it, keeps at most 2.5 seconds and stores it in `voice-sounds\` in the data
+  folder. A touch then plays the stored clip at once. It never asks the voice
+  for a sound at the touch. A sound that is not made yet is made in the
+  background and plays from the next touch. Sounds are made only while no reply
+  runs, so they never hold up a reply. A paid cloud voice (ElevenLabs) makes a
+  sound only when you click **Hear it**: one short request.
+- **When a sound plays.** A touched zone plays one of its sounds; with several,
+  they take turns. A sound plays through the same speakers as replies, at the
+  voice volume, and the character's mouth moves with it. It doesn't play while
+  Martlet speaks or sings, while always listening hears you, while the
+  conversation is paused or muted, or with *Speak Martlet's replies aloud* off.
+  A reply's own voice cuts a sound still playing the moment it starts. The reply
+  never waits for it, so it adds no time before Martlet's first word.
+- **Hear it** plays a sound now (making it first when needed) so you can try it.
+
+MCP's `voice_sounds_status` shows the voice, its sounds, which are made, which
+zones list sounds and the last one played or skipped and why.
+`voice_sounds_check` rehearses the rules, making and playing with fixtures.
+
 ### Eyes
 
 Some overlay emotes are drawn over the eyes (heart eyes, star eyes, the dizzy
