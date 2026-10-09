@@ -10,6 +10,13 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- A check-in can now start when you touch the character, instead of every few minutes: when your touches end, after an intimate touch, after a stroke across 3 zones, or when you keep coming back to one place. Tick them under **It starts when** on its card. It runs on the Thinking pool a moment after your touches stop, at most once per its **Every**, so replies never wait for it. ([#677](https://github.com/throndir2/Martlet/pull/677))
+
+## [0.63.0] - 2026-10-09
+
+### Added
+
+- Check-ins can now react to what happens around your PC. New built-in check-ins (off until you turn them on) welcome you back after time away, follow up once on a question you didn't answer, remind Martlet to keep quiet during a call, and remind it not to share private things when it hears someone else. Your own check-ins can wait for you to come back, a call to start or end, a flashing taskbar button or a notification, a song to end, or a script's output to change, run only between certain hours, run at most a few times an hour, and know what you are doing (`{activity}`), who is here (`{people}`) and what happened while you were away (`{away}`). ([#682](https://github.com/throndir2/Martlet/pull/682))
 - A check-in's answer can now **Add to what Martlet knows**: a short, vivid description of what is happening that Martlet's next reply can draw on, without any reply waiting for it. Change how Martlet reads it in Companion › Prompts › **Check-in: adds to what Martlet knows**. ([#673](https://github.com/throndir2/Martlet/pull/673))
 - Your own check-ins can now know how you touched the character: pokes, pats, holds, strokes with their path, and moves from the last 10 minutes, each with when, which were intimate, how the personality feels about them and the places you keep coming back to. Tick **How you touched the character** or put `{touches}` in the prompt. It runs only on your Thinking pool, so replies don't wait for it and still get your touches. ([#674](https://github.com/throndir2/Martlet/pull/674))
 - When Ollama on your PC keeps stopping, Home and Companion › Thinking now show Ollama's own error instead of "Ollama isn't running". If the cause is a models folder that was moved to another drive and linked back (Ollama 0.40.1 and later refuse that link), Martlet points Ollama at the real folder by itself, backs up Ollama's settings first and tells you what it changed. ([#669](https://github.com/throndir2/Martlet/pull/669))
@@ -18,10 +25,11 @@ Each release's section here is also its notes on GitHub.
 - Check-ins can now run every minute, and your own check-ins can record the last whole minute of the microphone or of what your PC plays. Gemma 4 and Gemma 3n hear only the first 30 seconds of a recording; Gemini, OpenAI's audio models and Voxtral hear the whole minute. ([#667](https://github.com/throndir2/Martlet/pull/667))
 - Your own check-ins can now do everything the built-in ones do. They can know what Martlet said in the last hour and its last replies, wait for things such as "Martlet replied twice" or "an emote a reply turned on shows", turn off lingering emotes or take the eyes back to their usual, and put any fact where you want it in the prompt with a placeholder such as `{said}`. Point at a choice to see what it does. ([#671](https://github.com/throndir2/Martlet/pull/671))
 - Each touch zone now has its own list of emotes, gestures and motions that play by themselves when you touch it. Add as many as eight, take any away and change their order; **Defaults** fills a list again from the character's touch temperament or the built-in reactions. The list shows exactly what plays, and zones you set up before keep playing what they did. ([#672](https://github.com/throndir2/Martlet/pull/672), [#676](https://github.com/throndir2/Martlet/pull/676))
-- New **Reset reactions** and **Reset all zones** buttons under Touch zones ask first, then put every zone's list, or all the zones, back as for a fresh character. ([#672](https://github.com/throndir2/Martlet/pull/672))
+- Companion › Touch › Touch zones has a **Start over** button that resets your character's touch to how a fresh character starts: just the zone reactions, the zones, the touch temperament or everything. Martlet lists exactly what you lose and asks first, and other characters keep theirs. ([#675](https://github.com/throndir2/Martlet/pull/675))
 
 ### Changed
 
+- When you talk over something Martlet says on its own, it gives way: a screen or camera remark stops at once, and a check-in or finished-work report you talked over for more than a moment doesn't pick up again later. Reminders still play on. A check-in that waited too long, or that the conversation has moved past, is now dropped instead of said late. ([#679](https://github.com/throndir2/Martlet/pull/679))
 - The Touch zones rows are tidier: each zone's reactions show as small chips, and its box and **Delete** wait under **More**. ([#676](https://github.com/throndir2/Martlet/pull/676))
 - Each built-in check-in now shows its prompt right on its card in Companion › Check-ins, so you can change it there like your own check-ins. Point at each "It gets to know" choice to see what it gives the check-in. ([#667](https://github.com/throndir2/Martlet/pull/667))
 - Built-in check-ins now work exactly like your own: change what they get to know, when they run, what their answer does and what they take right on their card. **Use built-in settings** puts Martlet's own back, and **Copy as your own** turns any of them into a check-in of your own to change freely. ([#671](https://github.com/throndir2/Martlet/pull/671))
@@ -29,6 +37,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- When you stop Martlet mid-reply (talking over it, Stop, Esc or a touch), the conversation now remembers your message and only what Martlet actually said aloud, so later replies don't assume you heard the rest. Its next reply can pick up what it hadn't said yet, or drop it. Change how in Companion › Prompts › **Cut off: what you hadn't said**. ([#680](https://github.com/throndir2/Martlet/pull/680))
 - **Read my screen now** and screen reading while Martlet watches now read all the text on your screen, not just a word or two. Martlet reads a full-size copy of the screen, and **Read my screen now** shows its size. ([#670](https://github.com/throndir2/Martlet/pull/670))
 - Thinking in Ollama on one of your computers now hears your voice when its model can hear, such as Gemma 4 E4B, instead of saying the model doesn't hear recordings. **Test hearing** works there too. Update Martlet on that computer as well. ([#668](https://github.com/throndir2/Martlet/pull/668))
 

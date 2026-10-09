@@ -48,7 +48,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Check-ins: Open Thinking pool only opens that page. Each check-in's On box, Every and Its answer choices,
-        // the fact and condition boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>), the name and task boxes, a
+        // the fact, condition and trigger boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>,
+        // CheckInTrigger-<id>-<trigger>), the name and task boxes, a
         // built-in check-in's prompt box (CheckInPrompt-<id>) and its Use built-in settings (CheckInReset-<id>), Copy as your
         // own (CheckInCopy-<id>), Add a check-in and Remove save check-ins.json or the prompts, and Check now
         // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
@@ -501,6 +502,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom",
+        // Touch zones › Start over: the level chosen to reset (TouchZonesResetLevel: Zone reactions, Zones, Touch temperament or
+        // Everything), what that level clears (fixed text), what the last reset did or why it couldn't, and the confirmation's
+        // question (what the owner loses: zone names, counts, the persona's and custom temperaments' names, a date). Choosing a
+        // level needs --allow-ui-effects; Reset (TouchZonesReset) opens the question and its ConfirmationYes resets, so they need
+        // --allow-ui-effects too.
+        "TouchZonesResetLevel", "TouchZonesResetNote", "TouchZonesResetState", "TouchZonesResetQuestion",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
@@ -563,8 +570,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
         // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
         // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what
-        // decided it and how long the judge and the pause took (never what was said).
-        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn",
+        // decided it and how long the judge and the pause took (never what was said). LiveUnprompted: how many things Martlet
+        // meant to say on its own were dropped (too old, the conversation moved on, talked over) and the newest drop's ID, kind
+        // and why (never its text).
+        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn", "LiveUnprompted",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard. Describe PC sounds (TalkDescribePcSounds saves the choice, so it needs
@@ -921,14 +930,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), and for every check-in, built-in or
         // the owner's own, its On box and Every choice ("CheckInOn-emotes", "CheckInEvery-emotes"), its Its answer choice
-        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), the
+        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), what
+        // starts it at once ("CheckInTrigger-c1-TouchesEnded"), the
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
         // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
-        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact and condition box, the answer and the
-        // length choice carry what they mean as "help". Changing any of them saves check-ins.json, so it needs
-        // --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
+        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact, condition and trigger box, the answer and the
+        // length choice carry what they mean as "help". The hours and cap choices ("CheckInFrom-welcome" reads "8 AM",
+        // "CheckInUntil-welcome" "10 PM", "CheckInMostPerHour-c1" "Once an hour") carry theirs too. Changing any of them saves
+        // check-ins.json, so it needs --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTrigger-",
+        "CheckInFrom-", "CheckInUntil-", "CheckInMostPerHour-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
         // button's name ("DeepThinkingAddRole-diva" reads "Add the Thinking pool role on diva"; clicking it installs the role, so it

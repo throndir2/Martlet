@@ -636,7 +636,8 @@ each offer, take and reminder said by id only (`Reminders:`). See
 minutes a Thinking pool member answers one short question for Martlet (do the
 lingering emotes still fit, does the gaze a reply chose still fit, did the
 character keep its promises, did it stay in character, does it keep saying the
-same things, and the owner's own),
+same things, the four that wait for a signal (welcome back, an unanswered
+question, a call, someone else here) and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
 instructions. A reminder for the next reply, or what a check-in adds to what
 Martlet knows, goes in the notes of that one
@@ -651,13 +652,21 @@ waits, its last run, runs and actions since Martlet started). Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`, `Touches`), `CheckInWhen-<id>-<condition>` (when it
-runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
-`Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`), the model it
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`),
+`CheckInWhen-<id>-<condition>` (when it runs: `CharacterShows`, `EmoteShown`,
+`GazeChosen`, `Talked`, `SomethingNew`, `Persona`, `Replies`, `NewReplies`,
+`Sayings`, `SlowWhenKept`, `CameBack`, `NotOnCall`, `ActivityChanged`,
+`Between`, `Unanswered`, `Attention`, `SongEnded`, `ScriptChanged`,
+`SomeoneElse`), `CheckInTrigger-<id>-<trigger>` (what starts it at once:
+`TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`), its
+hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
+as *8 AM* and *10 PM*, used with `Between`) and its cap
+(`CheckInMostPerHour-<id>`: *No limit*, *Once an hour* or *2*, *3*, *4*, *6* or
+*12 times an hour*), the model it
 needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
 when an input forces it) and what each run takes (`CheckInScreenshot-<id>`,
-`CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact and condition
-box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
+`CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact, condition and
+trigger box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
 the choice does (the same text as its tooltip), and which models hear a whole
 minute of recording. A built-in check-in's card has its prompt box
 (`CheckInPrompt-<id>`), its state (`CheckInPromptState-<id>`, such as *Edited.
@@ -687,6 +696,17 @@ NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
 the owner's own check-ins that use a line, so *Check now* shows the whole flow
 on a disposable data directory: a reminder waiting for the next reply,
 something Martlet brings up, or background for the next reply.
+
+[Check-in triggers](CONVERSATION.md#check-in-triggers) are driven live with
+`character_touch` and `character_stroke` (both need `--allow-ui-effects` and
+the character showing with touch zones): about 1.2 seconds after the last
+touch, `check_ins_status`'s `desktop.touches.lastFired` names the triggers
+that fired, and a check-in that starts on one shows its run with
+`last.trigger`, or keeps it as `pending` while its pace runs. Check one on a
+disposable data directory: write a `check-ins.json` with an own check-in that
+has `"Triggers": "TouchesEnded"`, launch with `MARTLET_CHECK_INS_FIXTURE`, show
+the character (`ToggleCharacter`), open `CompanionTab-Touch` so Martlet places
+its first zones, then tap it.
 
 ## Local MCP control (Windows)
 
@@ -2066,6 +2086,28 @@ makes the stand-in fail that request instead of answering, as a model whose
 computer stopped answering: *Detect zones* then stops there and keeps the zones
 from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
+At the end of the Touch zones card, *Start over* resets the character's touch
+to how a fresh character starts, for the model shown and the active persona
+only. `TouchZonesResetLevel` (a choice; its value is the level: *Zone
+reactions*, *Zones*, *Touch temperament* or *Everything*) chooses how much,
+and `TouchZonesResetNote` reads what that level clears (fixed text).
+`TouchZonesReset` (*Reset...*) opens a confirmation whose question,
+`TouchZonesResetQuestion`, lists exactly what is lost (zone names and counts,
+the persona's name, a custom temperament's name, the date the temperament was
+decided) and what happens after; `ConfirmationNo` (*Cancel*) leaves everything
+as it was and `ConfirmationYes` (*Reset*) resets. When the level has nothing to
+lose, no question opens. `TouchZonesResetState` reads what the last reset did
+(*Reset zones at 11:40 PM. Martlet places a first guess...*), *Nothing was
+reset.* after Cancel, or why it couldn't (*Not reset: ...*). *Zone reactions*
+gives every zone the reaction a fresh zone gets (its reactions, rest, *Martlet
+notices* and own words) and keeps the zones; *Zones* forgets this model's zones,
+found and added, with the picture and what the last detection sent, and the
+page then places a first guess again; *Touch temperament* forgets the persona's
+own temperament and what it uses instead, and the Thinking model decides it
+again from the personality when Martlet isn't replying; *Everything* does the
+last two. Choosing a level, Reset and its `ConfirmationYes` need
+`--allow-ui-effects`.
+
 `character_eyes` rehearses Companion › Eyes › [Where the eyes are](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
 width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
@@ -3406,6 +3448,15 @@ the whole reply. With `muted`, `ok` needs the voice muted at that piece
 text and captions that show all of it (every line unsaid for `text-only`).
 With `stopped`, `ok` needs the reply `Canceled` instead of completed, no voice
 failure and the `failAt`-th piece made; the text and the captions stop there.
+It also returns `cutOff`, what the conversation does with a reply the user
+stopped while Martlet said it (`CutOffReply`, as the talk window does):
+`saidAloud` (the turn's `SaidAloud`), `kept` (what the conversation keeps:
+only that, ending with the cut-off marker ` —`), `unsaid` (the rest of the
+reply's text so far) and `note` (the one-request note with the rest, from
+Companion › Prompts › *Cut off: what you hadn't said*, `prompt`), with
+`boardSource` and `noteAgeSeconds`. `cutOff.ok` (part of `ok`) needs `kept`
+to end with the marker, `saidAloud` to be the start of the reply's words and
+`saidAloud` and `unsaid` together to be all of them.
 Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
 spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
@@ -4480,22 +4531,36 @@ EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
 Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
 *Text, Vision, Audio*), the `screenshot`, the `recording` (*None*,
 *Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
-whether it runs a `script` and `scriptCharacters`, never the script itself), `desktop` from `check-ins-status.json` (written by
-the desktop on a companion PC: `role`, the check-in `running`, `pool` with
+whether it runs a `script` and `scriptCharacters`, never the script itself;
+`hours` such as *8 AM-10 PM* with `Between`, else null; `mostPerHour`, null
+without a cap; and its `triggers`, such as *None* or *TouchesEnded,
+IntimateTouch*), `desktop` from `check-ins-status.json` (written by
+the desktop on a companion PC: `role`, the check-in `running` and the
+triggered one `runningTriggered`, `touches` with `settling` (touches wait to
+settle), `settleMs` and `lastFired` (`triggers`, `at` and `what` in counts
+only, such as *3 touches, an intimate one*), `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
-`recording`, `recordingSeconds`, `script`, `waiting`, `nextAt`, `runs`, `acted`
-and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
+`recording`, `recordingSeconds`, `script`, `triggers`, `pending` (the trigger
+it keeps: `triggers`, `at`, `what` and `expiresAt`), `waiting`, `hours`, `mostPerHour`,
+`lastHour` (its runs in the last hour), `nextAt`, `runs`, `acted` and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
 took in a few words, such as *a screenshot (1280x720), 10 s of the
-microphone*) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
-`pcKept` and `pcHeard`; never what was said, answered, reminded, taken or
-printed) and the
+microphone*), `trigger` (what started it, or null) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
+`pcKept` and `pcHeard`; `signals` with `attentionWatched` (Martlet watches
+for flashing taskbar buttons and notifications because a check-in that is on
+waits for them), `activityKnown`, `cameBackMinutesAgo` and `voicesLately` (a
+count); never what was said, answered, reminded, taken or printed, what the
+user does or who spoke) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `saidLatelyMinutes` for Saying the same things, `recordingChoices`,
 `maximumScriptCharacters`, `maximumScriptOutputCharacters` and
-`scriptTimeoutSeconds` for the owner's inputs, the job kind
-`check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
+`scriptTimeoutSeconds` for the owner's inputs, `signalWindowMinutes`,
+`unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
+`mostPerHourChoices` for the signals, the job kind
+`check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
+and for triggers the `triggers` offered, `triggerAgeSeconds`,
+`touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
 Read-only.
 
 `check_ins_check` rehearses check-ins with the production code (`CheckIns`,
@@ -4541,6 +4606,17 @@ the same, that the history outlives a reply's `Drain`, that the fact goes
 after the prompt when it is ticked but not placed, and that facts past
 `Touches` are refused. Its `detail` gives counts (`runs`, `things`,
 `intimate`, `often`), `filled` and the FIXTURE message. Three
+`triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
+with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
+check-in's triggers, an unknown trigger refused, none by default),
+`triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
+and a stroke from the tail over the buttocks to the groin, after 5 earlier
+touches there, fire all four triggers once they settle; the ledger still holds
+every touch; a pat alone fires only `TouchesEnded`; a zoom fires nothing) and
+`triggers: when a triggered check-in waits` (only on its own triggers, not
+after 2 minutes, at most once per its pace, never held by a busy
+conversation, still off, still waiting while nobody is at the PC, *Check now*
+with no trigger, and a paced check-in still waiting for a busy conversation). Three
 `context:` steps check *Adds to what Martlet knows*: `context: asked and read`
 (an own check-in's message asks for a `KNOW:` line or `OK`, and a fixture
 member's `KNOW:` bullet after a `<think>` block is read on a production job
@@ -4549,8 +4625,20 @@ board), `context: goes with one request` (the description, wrapped in
 `check-in-c7` with one request only, is dropped after
 `CheckIns.ContextAge` (3 minutes) and is not posted when that prompt is
 emptied) and `context: nothing changes nothing` (`KNOW: nothing to add`, `OK`,
-a `REMIND:` line and chatter post nothing). `passed` and
-each step's `passed` and `detail`. No model, network or credentials.
+a `REMIND:` line and chatter post nothing). Three `signals:` steps check the
+signal conditions and facts with FIXTURE facts: `signals: when they wait` (each
+condition waits for its signal since the last run and runs on it: you came
+back, a call, a change in what you do, the hours past midnight, an unanswered
+question asked once, a flashing taskbar button, a song that ended, someone
+else's voice, a check-in with no script to compare, the per-hour cap, and a
+script whose output hash didn't change, which *Check now* still asks),
+`signals: the facts and the check-ins` (Welcome back, Unanswered question, On a
+call and Someone else is here send `{away}`, `{activity}` and `{people}` and
+read `SAY:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
+and read back` (equal hours, a cap of 5 and an unknown condition refused).
+The settings step also checks that these four built-in check-ins are off by
+default. `passed` and each step's `passed` and `detail`. No model, network or
+credentials.
 
 `said_lately_check` rehearses [what Martlet said
 lately](CONVERSATION.md#what-you-said-lately) with the production code
@@ -4891,7 +4979,18 @@ member lets the rules decide at once (*no Thinking pool judge was available*)
 and an answer without a verdict lets them decide; each with `answer`,
 `verdict`, `source`, `reason`, `tookMs` and `promptLines`) and `ok` when every
 expectation held. `thinking_pool_status` says whether the pool has a member
-that can run the judge.
+that can run the judge. `unprompted` (with `unpromptedOk`) checks [what
+Martlet says on its own](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)
+(`UnpromptedSpeech`): `talkOver` has one entry for each kind (`Reminder`,
+`FinishedWork`, `CheckIn`, `Remark`) with `pausedForJudge` (false for a
+remark: it is dropped at once) and what a not-for-Martlet verdict does after a
+600 ms and a 3000 ms pause (`Resume` or `Drop`; `resumeWithinMs` is the
+limit). `notices` starts a fixture check-in notice and a fixture reminder on
+the production `BackgroundJobs` with a simulated clock and checks them again
+as just before they are said: `action` `Say`, `Wait` (`code` `mid_utterance`
+or `live`) or `Drop` (`too_old` after `checkInMaxWaitMinutes`, `moved_on`
+after a kept exchange), a reminder never dropped, and `DropStale` dropping
+only the old check-in. Each has `why` in words, never the notice's text.
 Nothing is recorded or played and nothing leaves this PC. `spoken_reply_check`
 `paused` rehearses the pause and resume through the production runtime; the
 talk window's `LiveBargeIn` shows the last real decision.
@@ -7221,7 +7320,11 @@ talk window, `LiveBargeIn` (shown once you talked over Martlet with barge-in on)
 says what happened the last time, never the words: *Talked over at 14:02:11:
 paused 430 ms, then resumed (not for Martlet: agreeing or laughing along; rules
 judge, 1 ms).* or *... stopped at once (for Martlet: a stop word; a clear
-cue).* In the
+cue).* A remark Martlet started on its own ends *then dropped* when it was
+dropped. `LiveUnprompted` (shown after the first drop) counts what Martlet
+meant to say on its own but dropped, never the text: *Dropped on its own: 2 (1
+too old, 1 the conversation moved on, 0 talked over). Last: checkin-3 (a
+check-in) at 14:02:11: too old: ...*. In the
 talk window, what always listening ignored shows in `LiveHistory` as a faded
 note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
 *Always listening ignored what it heard: ...*, *Always listening heard you

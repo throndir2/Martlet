@@ -50,12 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.62.1
+## 🆕 What's new in 0.63.0
 
-- 📋 **Short lists you can compare**: Thinking, Voice, Listening and Lip-sync list their models, voice engines, apps and providers as one short row each. Each row says what it runs on, how much graphics memory it takes and how fast it is.
-- 🔍 **Every detail, one click away**: pick a row to see everything about it, such as whether a voice can laugh, which languages it speaks, its license, or what a provider costs and where your data goes. **Compare them** puts them side by side.
-- ✂️ **Lists that don't grow**: a long list shows the main choices first, and **Show more** lists the rest. The Optional extras' lists work the same way.
-- ⭕ **A clear Off**: *If Thinking fails* now has an explicit **Off**, like every optional part.
+- 👋 **Check-ins that notice what happens**: Martlet can welcome you back, follow up on a question you didn't answer, keep quiet during a call and stay discreet when someone else is around. Your own check-ins can wait for these moments too.
+- 🧠 **Smarter guidance between replies**: a check-in can add a short description of what is happening, or how you touched the character, for Martlet's next reply to draw on, and every built-in check-in can now be changed like your own.
+- ✋ **It gives way when you talk**: talking over a remark Martlet makes on its own stops it, and stale check-ins are dropped instead of said late.
+- ✂️ **It remembers only what you heard**: when you stop Martlet mid-reply, it keeps just what it said aloud and can pick up the rest later.
+- 🖐️ **Your own touch reactions**: each touch zone has its own list of emotes, gestures and motions, and **Start over** resets touch when you want a fresh start.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

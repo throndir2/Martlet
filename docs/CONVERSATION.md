@@ -187,7 +187,10 @@ and Ollama's own context length on this PC); oldest pairs are omitted until the
 whole request fits. Failed/refused/suppressed turns are excluded, and Refresh
 context, pause, lock, configuration load/change or closing the talk window
 clears the buffer; Stop keeps it, so the conversation continues after an
-interruption. The talk window's context line says how many exchanges are kept
+interruption. A reply you stop while Martlet says it (talking over it, Stop,
+Esc or a touch) keeps your message and only what Martlet said aloud, ending
+with a cut-off mark (see [Cut off](#voice-latency-streaming-overlap-and-barge-in)).
+The talk window's context line says how many exchanges are kept
 and about how many tokens of the context they take.
 
 **Context size.** Companion › Replies › Context size bounds every route:
@@ -1322,7 +1325,9 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** All are on by default. The choices are this PC's own
+**Built-in check-ins.** The first five are on by default. The four that wait
+for a signal (Welcome back, Unanswered question, On a call, Someone else is
+here) are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
 own character and runs its own conversation.
 
@@ -1333,6 +1338,10 @@ own character and runs its own conversation.
 | Promises (`promises`) | 5 min | Did the character say it would do something it never started? The end of the conversation, the reminders set and this conversation's background work. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Saying the same things (`repeats`) | 10 min | Does the character keep saying the same things (the same remark, joke, question, opener or topic again and again, or something it said not long ago while nothing new happened)? [What it said lately](#what-you-said-lately), each with when (`10:05 PM (12 min ago)`), and the day and time. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
+| Welcome back (`welcome`, off) | 30 min | You came back after 10 minutes or more away: should Martlet welcome you back? How long you were away and what happened meanwhile, what you do now, the personality. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| On a call (`call`, off) | 2 min | A game, a call or a full-screen app started or ended: did a call start or end? What you do now and before. | A `REMIND:` line (keep quiet and short during the call, or talk as usual again) goes in the notes of the next message. `OK` changes nothing. |
+| Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
 
 **One flow for every check-in.** A built-in check-in is only data: a prompt,
 the facts it gets to know, the conditions it waits for and what its answer
@@ -1343,6 +1352,7 @@ has the same editor:
 - *What it asks*: the prompt of a built-in check-in, or your own words.
 - *It gets to know*: the facts (table below).
 - *It runs when*: the conditions (table below).
+- *It starts when*: the triggers that start it at once ([below](#check-in-triggers)).
 - *Its answer*: what Martlet does with the answer.
 - *It takes*: a screenshot, a recording or a script's output, and the model
   it needs.
@@ -1360,9 +1370,14 @@ built-in check-in can be recreated, and changed, as your own.
 | Promises | The conversation, reminders and background work | You talked lately, something new was said |
 | Staying in character | Its personality, Martlet's last replies | A personality is active, Martlet replied twice, 4 new replies |
 | Saying the same things | What Martlet said in the last hour | Martlet said 3 things lately, something new was said |
+| Welcome back | What happened while you were away, what you are doing, its personality | You came back |
+| Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
+| On a call | What you are doing | What you do changed |
+| Someone else is here | Who is here, its personality | Someone else spoke |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
-check-ins, and the first one that may run starts. Only one runs at a time. A
+check-ins, and the first one that may run starts. Only one runs at a time (a
+check-in that a [trigger](#check-in-triggers) starts runs beside it). A
 check-in waits:
 
 - until its pace (1, 2, 5, 10, 15, 30, 60 or 120 minutes) has passed since it last
@@ -1383,7 +1398,23 @@ check-in waits:
   | An emote a reply turned on shows (`EmoteShown`) | until such an emote has shown for 3 minutes (any age for *Check now*); it reads only those emotes |
   | A reply chose where the eyes look (`GazeChosen`) | until a reply chose a gaze at least 3 minutes ago (any age for *Check now*) |
   | Slower when nothing changes (`SlowWhenKept`) | three times its pace, as above |
+  | You came back (`CameBack`) | until you use this PC again after 10 minutes or more away; it runs within 5 minutes of that, once each time |
+  | Not on a call (`NotOnCall`) | while you're in a call or a voice chat (Discord, Zoom, Teams...), as far as Martlet can tell from what this PC plays (also for *Check now*) |
+  | What you do changed (`ActivityChanged`) | until a game, a call or a full-screen app started or ended since it last ran (Martlet tells only while it hears what this PC plays) |
+  | Only between these hours (`Between`) | outside the hours chosen under it (*From* 8 AM *Until* 10 PM by default; past midnight when *Until* comes first, such as 10 PM to 6 AM) |
+  | Martlet asked something you didn't answer (`Unanswered`) | until Martlet's last remark ended with a question, nothing was said for 2 minutes after it, you used the PC in the last 2 minutes and it didn't run since that question; a question older than 30 minutes is let go |
+  | A taskbar button flashed or a notification showed (`Attention`) | until a taskbar button flashed or a pop-up notification showed since it last ran |
+  | A song ended (`SongEnded`) | until a song Martlet sang played to its end since it last ran |
+  | The script's output changed (`ScriptChanged`) | while it has no script. Its script runs at its pace, and when it prints the same as last time (the same hash), the run ends there without asking the Thinking pool (not for *Check now*) |
+  | Someone else spoke (`SomeoneElse`) | until Martlet heard a voice that isn't yours in the last 10 minutes, since it last ran (Voice ID; with no voice marked as yours, two different voices) |
 
+  For a check-in's first run, "since it last ran" means in the last 5 minutes
+  (`CheckIns.SignalWindow`). *Check now* skips the waits for a new signal, the
+  hours and the cap, but not a call or what there must be to check (a
+  question, someone else, a script);
+- while it ran as many times in the last hour as *At most* allows (*No limit*,
+  or once, 2, 3, 4, 6 or 12 times an hour), a guard however often its
+  conditions are met;
 - while its prompt is empty;
 - for a check-in that records the microphone or what this PC plays,
   until Martlet hears it (*Martlet doesn't hear the microphone now*);
@@ -1393,6 +1424,54 @@ check-in waits:
   Martlet), so the pool isn't asked again and again while nobody is there;
 - while no Thinking pool member can take it (*no Thinking pool member can take
   it (it needs a model for text and pictures)*).
+
+<a id="check-in-triggers"></a>
+**Triggers.** A check-in can also start when something happens, not only on its pace. Tick
+one or more boxes under *It starts when* on its card (`CheckInTriggers`, saved
+as `Triggers` in `check-ins.json`; the built-in check-ins have none). The
+first triggers come from the touches on the desktop character:
+
+| Trigger | It fires when |
+| --- | --- |
+| Your touches end (`TouchesEnded`) | a burst of touches Martlet noticed ends: 1.2 seconds pass after the last tap, pat, hold or stroke on a zone with *Martlet notices* on (`TouchDebounce.Quiet`) |
+| An intimate touch (`IntimateTouch`) | those touches included an intimate zone |
+| A stroke across 3 zones (`StrokeAcrossZones`) | a stroke among them crossed 3 or more noticed zones |
+| You keep coming back to one place (`KeepsComingBack`) | they touched a place touched 5 or more times in the last 10 minutes (the touch ledger's `TouchHabit`, *They keep coming back to ...*) |
+
+Moving, zooming, locking or hiding the character never fires a trigger. A
+check-in with triggers runs this way:
+
+- It runs only when one of its triggers fires. It doesn't also run on its
+  pace: *Every* is then its cooldown, so it runs at most once per pace.
+- The desktop looks at it as soon as the touches settle, not at the next
+  15-second look.
+- It keeps the newest trigger that fired for it (a newer one replaces it) for
+  2 minutes, as long as the touch ledger keeps touches
+  (`CheckIns.TriggerAge`). A trigger that fires during the cooldown runs when
+  the cooldown ends, if it is still that fresh.
+- Triggered check-ins run one at a time beside the paced ones, so a due
+  triggered check-in never waits behind a paced one.
+- It doesn't wait for the conversation to settle: the touches and the reply to
+  them would otherwise hold it up. Its other waits still apply: it is on,
+  someone uses this PC, its conditions, the sound it records and a pool member
+  that can take it. *Check now* runs it at once, with no trigger.
+- It runs only on the Thinking pool, like every check-in, never on the
+  conversation's own route, and the live floor still stops it while the live
+  turn runs on shared hardware. No reply waits for it, so the time to
+  Martlet's first words stays the same. The reply to touches keeps its instant
+  local wording. With no pool member, nothing runs.
+- Watching the touches never takes them from the touch ledger
+  (`TouchTriggers` reads `TouchLedger.Peek`), so the touch reply and the next
+  reply still get every touch.
+
+Its status line says *Waits: it waits for your touches to end.* and, while it
+keeps a trigger, *A trigger fired at 10:15 PM (3 touches, an intimate one).*
+The desktop log notes each trigger and run with counts only: *Check-ins:
+TouchesEnded, IntimateTouch fired (3 touches, an intimate one); it starts
+...*, then *... (started by 3 touches, an intimate one) ran on ...*. To add a
+trigger that is not about touches, add a `CheckInTriggers` flag, its words in
+`CheckIns.TriggerWords`, its box in `CheckInTriggerChoices` on the page, and
+call `MainWindow.FireCheckIns` with it when it happens.
 
 An answer that turns off emotes looks only at emotes a reply turned on (their
 own tag or a combo's). It never turns off an emote you turned on with *Try*,
@@ -1448,6 +1527,9 @@ Point at a fact or a condition on the page to see what it does:
 | What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. | `{sound}` |
 | Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. | `{presence}` |
 | How you touched the character | What you did to the character on the desktop in the last 10 minutes (pokes, pats, holds, strokes with their path and direction, moves), oldest first, each with when; which touches were intimate, how the personality feels about them and the places you keep coming back to. | `{touches}` |
+| What you are doing | What you seem to be doing on this PC (a game, a call or voice chat, a video, music, full screen), what it was before and when it changed. Martlet knows it only while it hears what this PC plays (`PcActivity`). | `{activity}` |
+| Who is here | The voices Martlet heard in the last 10 minutes (Voice ID), newest first: the names of the voices it knows, *a voice Martlet doesn't know*, which one is yours, each with when, and whether someone other than you seems to be here. Never what they said. | `{people}` |
+| What happened while you were away | After you come back from 10 minutes or more away: how long you were away and, from then, what Martlet said, the background work that finished and the reminders that came due. | `{away}` |
 
 A placeholder puts that fact where you write it in the prompt; `{name}` and
 `{time}` work too. The facts you tick that the prompt doesn't name go after it.
@@ -1462,12 +1544,44 @@ gets, and nothing is added to a reply's request. Like the other facts, it goes
 only to the pool member with the check, never to the log, the status file or
 MCP output.
 
+<<<<<<< a2c630c887626c944029e5763d0f82da5fdfbaad
 `{adult}` says whether Companion › Replies › Adult content is on, so a
 check-in follows the same choice as the replies. While it is on, `{adult}` is
 Companion › Prompts › *Check-in: adult content on* (the check-in may be
 explicit, never about anyone under 18). While it is off, it is *Check-in:
 adult content off* (keep it non-explicit). Empty either prompt and `{adult}`
 says nothing (`CheckIns.Adult`, `CheckInState.Adult`).
+=======
+**Signals.** Some facts and conditions follow things Martlet already notices
+on this PC (`CheckInSignals.cs`, `MainWindow.CheckInSignals.cs`). The desktop
+follows them at each 15-second look:
+
+- *You came back*: the keyboard and mouse (and talking with Martlet), as the
+  10-minute idle wait reads them. The start of a time away of 10 minutes or
+  more and when someone came back are kept in memory.
+- *What you are doing*: the PC activity monitor of *Hear what this PC plays*
+  (`PcActivityMonitor`). A change is a game, a call or voice chat, or a
+  full-screen app that starts or ends. The first look only learns what you do.
+- *A taskbar button flashed or a notification showed*: the same shell hook and
+  notification check that Martlet uses when it watches the whole screen
+  (`ScreenAttention`). It runs once a second, only while a check-in that is on
+  waits for it. Martlet reads no notification text.
+- *A song ended*: a song Martlet sang played to its end
+  (`ConversationSinging.EndedAt`).
+- *Who is here* and *Someone else spoke*: the voices Voice ID recognized in
+  what Martlet heard (`LiveConversationController.RecentVoices`), names and
+  times only, for 10 minutes.
+- *Martlet asked something you didn't answer*: the last thing Martlet said
+  (`CheckIns.LastQuestion`), how long the conversation has been quiet and how
+  long since you used the PC.
+- *The script's output changed*: a short SHA-256 hash of what the script
+  printed (`CheckIns.ScriptHash`), kept with the run, never the output.
+
+Like the other facts, these go only to the pool member with the check. The
+status and MCP say only counts and yes or no (`signals` in
+`check-ins-status.json`), and the waits say why in general words (*you're on a
+call*), never who spoke or what you do.
+>>>>>>> origin/main
 
 What happens with its answer:
 
@@ -1561,12 +1675,14 @@ the same for [MCP](MCP.md#check-ins). Neither keeps what was said, answered or
 reminded.
 
 **API** (`Martlet.Conversation.CheckIns`): `All(settings)` lists the
-check-ins, `Wait(checkIn, state, last, now)` says why one waits (null: it
+check-ins, `Wait(checkIn, state, last, now, prompts, fired)` says why one waits (null: it
 runs), `Focus` narrows the facts to what it may act on, `Prepare` makes the
 `ThinkingJob` (with `Needs`, and the screenshot and recording it took),
 `Gathered` words what a check-in took for the message, `ScriptRan` reads a
 script's run, `Read` reads the answer into a `CheckInVerdict` and `Note` words
-a reminder. The desktop gathers `CheckInState` on its UI thread
+a reminder. `TouchTriggers` collects a burst of touches and says which
+`CheckInTriggers` it fires once it settles (a `CheckInTrigger`), and `Fires`
+says whether a kept trigger still starts a check-in. The desktop gathers `CheckInState` on its UI thread
 (`MainWindow.CheckIns.cs`), and the screenshot, recording and script output
 just before the run. To add a built-in check-in:
 
@@ -1575,7 +1691,10 @@ just before the run. To add a built-in check-in:
    the answer format).
 2. For a new fact, add a `CheckInFacts` flag, its text in `CheckIns.Facts` and
    its placeholder in `CheckIns.Placeholders`. For a new condition, add a
-   `CheckInConditions` flag and its wait in `CheckIns.Wait`. Add each to the
+   `CheckInConditions` flag and its wait in `CheckIns.Wait` (a signal's wait
+   goes in `CheckInSignals.cs`, with the signal in `CheckInState` and followed
+   in `MainWindow.CheckInSignals.cs`). Widen `CheckIns.KnownFacts` or
+   `KnownConditions`, which `CheckInSettings.Validate` checks. Add each to the
    page's choices, so your own check-ins can use it too.
 3. Give it an outcome Martlet already acts on, or act on a new one in
    `MainWindow.ActOnCheckInAsync`.
@@ -1584,12 +1703,18 @@ Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
 wording beside a due reminder, settings, the model a check-in needs, what it
 takes, a script's run, each built-in check-in recreated as your own with the
 same message, waits and answers, and a built-in check-in's changes saved and
-read back), `SoundDigestTests` (the kept microphone and the
+read back; `CheckInsTests.Signals.cs`: each signal condition, the hours, an
+unanswered question, someone else's voice, the signal facts' words, the four
+signal check-ins, a script whose output didn't change and the per-hour cap; the triggers: what fixture touches fire, when a triggered
+check-in waits or runs, and triggers saved and read back),
+`SoundDigestTests` (the kept microphone and the
 sound kept for a check-in), the Desktop tests for an emote a reply
 turned on against a try, a check-in taking the eyes back to their usual gaze and
 the real talk window bringing up a check-in's `SAY:` through a fixture Thinking
 endpoint, MCP's `check_ins_check` and `check_ins_status`, and the page on a
-disposable data folder through `-Desktop`. A real model answering a check-in,
+disposable data folder through `-Desktop`, with `character_touch` and
+`character_stroke` firing a triggered check-in that the
+`MARTLET_CHECK_INS_FIXTURE` file answered. A real model answering a check-in,
 and a real screenshot or recording sent to a pool member, are **NOT RUN**.
 
 ## Singing in conversation
@@ -1906,7 +2031,8 @@ voice pipeline never waits for a whole reply:
   *Let me interrupt Martlet by talking* in Companion › Listening also lets you
   stop a reply by talking over it. Talking over a reply with real words
   stops it: the Thinking request is canceled, the queued audio is dropped and
-  what you said is answered next, with the reply so far kept in context. (A
+  what you said is answered next, with the reply so far kept in context (only
+  what was said aloud; see *Cut off* below). (A
   touch on the desktop character can stop a reply too, under its own setting:
   *Touching Martlet while it talks* in [Touch zones](AVATARS.md#touch-zones).)
   Of your voice, only the microphone can do this, and only with words
@@ -2004,6 +2130,71 @@ voice pipeline never waits for a whole reply:
   words stop the reply at once. MCP `barge_in_check` returns the verdicts, the
   deadline fallback and what a pause does; `spoken_reply_check` `paused`
   rehearses a pause and resume through the production runtime.
+- **What Martlet says on its own yields to you.** Martlet speaks without being
+  asked in four ways (`UnpromptedSpeech`, `LiveConversationOperation.Unprompted`):
+  a due reminder, finished background work, a check-in's notice (`checkin-N`)
+  and a screen or camera remark. A reply to you, to what this PC played or to a
+  touch is never one of them, and nothing here runs before a reply to you.
+  With *Pause and decide*, real words over one of them work as over a reply,
+  with these changes. A screen or camera remark is not paused for the judge: it
+  stops at once (*dropped*), because it would not play on after you talked over
+  it in any case, and no judge job runs. For the others, *interrupt* stops them
+  as before. When the words were not for Martlet, a reminder plays on (you
+  asked for it), and finished work or a check-in plays on only after a pause of
+  at most 1.5 s (`UnpromptedSpeech.ResumeWithin`); after a longer pause the rest
+  is dropped. A dropped report gives its finished work and notices back, so they
+  go in the notes of the reply to what you said next. The code knew a report
+  (`Report`) and a glance (`Commentary`) before, but a pause treated them as a
+  reply; this keeps one rule per kind, so a low-value remark is never played on
+  after a long pause. The desktop log says *Barge-in: Martlet paused its remark
+  (a check-in) ...*, then *... resumed its remark ...* or *Barge-in: Martlet
+  dropped its remark (a check-in) after a N ms pause: what you said wasn't for
+  it (...), but it plays on only after a pause of at most 1500 ms)*; the
+  `LiveBargeIn` line ends *then dropped*.
+- **Waiting things to say are checked again just before they are said.** A
+  notice or finished work waits for Martlet to be free, or for your next
+  message. Just before a report starts, and just before a reply takes what
+  waits into its notes, `UnpromptedSpeech.Recheck` looks at each one again
+  (local rules only: no request and no wait). A check-in's notice is dropped
+  when it waited more than 10 minutes (`CheckInMaxWait`), or when the
+  conversation moved on: an exchange with you was kept after the notice became
+  due, so the check-in decided on an older conversation. A due reminder and
+  finished work are what you asked for, so they are never dropped. A report
+  still waits while you talk (mid-utterance, or something you said is about to
+  be answered) and now also while the [live floor](#the-live-floor-the-live-turn-comes-first) is Live.
+  Each drop goes to the desktop log as *Said on its own: Martlet dropped
+  checkin-3 (a check-in) before saying it: too old: it waited 12 minutes, and a
+  check-in waits at most 10 minutes.* (the ID, kind and why, never the text).
+  The talk window's `LiveUnprompted` line counts the drops: *Dropped on its
+  own: 2 (1 too old, 1 the conversation moved on, 0 talked over). Last: ...*.
+  MCP `barge_in_check` `unprompted` rehearses both rules.
+- **Cut off.** When you stop a reply while Martlet says it (you talk over it
+  and it stops, you press Stop or Esc, or a touch stops it), the conversation
+  keeps your message and only what Martlet said aloud
+  (`ConversationTurn.SaidAloud`: each sentence that started playing, so the
+  sentence it was saying counts as said), ending with ` —`
+  (`CutOffReply.Kept`). The next replies never believe you heard the rest.
+  `Stop` (`LiveConversationController.Stop`) keeps it at once, before the
+  next reply's request is built, and adds no work
+  before the first audio. The words Martlet hadn't said yet
+  (`CutOffReply.Unsaid`, their start, at most 400 characters) go once in the
+  notes of the next request: a `consume` note on the [context
+  board](#context-board) (source `cut-off`, fresh for 2 minutes), from
+  Companion › Prompts › *Cut off: what you hadn't said* (`{unsaid}`; empty it
+  to send nothing). That reply may pick the rest up ("as I was saying") if it
+  still fits, or drop it. The note sits after your words, so the start of the
+  request stays the same for prompt caches. What Martlet said lately keeps the
+  same cut-off text, and the record of conversations keeps it as the reply.
+  A reply cut off is never remembered from (memory and learning names), and
+  finished background work it carried waits for the next reply. Before this,
+  a reply stopped while spoken was dropped from the conversation altogether,
+  your message too. The desktop log says *Cut off: you stopped Martlet while
+  it talked; the conversation keeps what it said aloud (N of M characters,
+  marked as cut off) and the N characters it hadn't said go once with the
+  next request* (sizes only). Martlet's own remarks, reports and touch
+  reactions are not changed by this. MCP `spoken_reply_check` with
+  `voiceFailure` `stopped` returns `cutOff`: what is kept, the rest and the
+  note.
 - **What is said aloud decides what stops it.** Each reply carries a playback
   mode (`PlaybackMode`: `Reply`, or `Song` for singing). A song keeps going
   while you talk and stops only when asked to: a stop word with Martlet's name

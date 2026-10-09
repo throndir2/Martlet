@@ -49,7 +49,15 @@ public enum CheckInFacts
     /// <summary>What the user did to the desktop character lately (pokes, pats, holds, strokes with their path, moves), each
     /// with when, which were intimate, how the persona feels about them and the places the user keeps coming back to; read
     /// without taking it, so the next reply still gets the touches.</summary>
-    Touches = 512
+    Touches = 512,
+    /// <summary>What the user seems to be doing on this PC (a game, a call, a video, full screen), while Martlet hears what it
+    /// plays, and what changed last (<see cref="CheckInState.Activity"/>).</summary>
+    Activity = 1024,
+    /// <summary>Who Martlet heard lately (Voice ID): the names of the voices it knows and how many it doesn't, each with when.</summary>
+    People = 2048,
+    /// <summary>What happened while the user was away from this PC: what Martlet said, the background work that finished and the
+    /// reminders that came due (<see cref="CheckInState.WhileAway"/>).</summary>
+    WhileAway = 4096
 }
 
 /// <summary>When a check-in runs: each condition chosen must hold, or it waits and says why on its card.</summary>
@@ -77,7 +85,27 @@ public enum CheckInConditions
     Sayings = 256,
     /// <summary>After an answer that kept everything, with nothing new said since, it waits <see cref="CheckIns.KeptPace"/> times
     /// as long.</summary>
-    SlowWhenKept = 512
+    SlowWhenKept = 512,
+    /// <summary>Someone came back to this PC after <see cref="CheckIns.Idle"/> or more away, within <see cref="CheckIns.SignalWindow"/>,
+    /// and it didn't run since.</summary>
+    CameBack = 1024,
+    /// <summary>The user isn't in a call or a voice chat (as far as Martlet can tell from what this PC plays).</summary>
+    NotOnCall = 2048,
+    /// <summary>What the user does changed since the last run: a game, a call or a full-screen app started or ended.</summary>
+    ActivityChanged = 4096,
+    /// <summary>Only between <see cref="CheckIn.FromHour"/> and <see cref="CheckIn.UntilHour"/> (local time).</summary>
+    Between = 8192,
+    /// <summary>Martlet's last remark asked the user something, the user is at the PC and didn't answer for
+    /// <see cref="CheckIns.UnansweredAfter"/>; once for each question.</summary>
+    Unanswered = 16384,
+    /// <summary>A taskbar button flashed or a notification showed since the last run.</summary>
+    Attention = 32768,
+    /// <summary>A song Martlet sang played to its end since the last run.</summary>
+    SongEnded = 65536,
+    /// <summary>What its script printed changed since the last run; when it didn't, the run ends without asking the Thinking pool.</summary>
+    ScriptChanged = 131072,
+    /// <summary>Martlet heard someone else's voice lately (Voice ID), since the last run.</summary>
+    SomeoneElse = 262144
 }
 
 /// <summary>What one of the owner's own check-ins hears with each run: nothing, the last seconds of the microphone, or the last
@@ -88,7 +116,7 @@ public enum CheckInRecording { None, Microphone, PcSound }
 /// the owner's own (<see cref="Custom"/>: its <see cref="Task"/>). Both run the same way: the <see cref="Facts"/> they get, the
 /// <see cref="Conditions"/> they wait for, what they gather for each run and what happens with the answer
 /// (<see cref="CheckIn.Outcome"/>).</summary>
-public sealed record CheckIn(string Id, string Name, string Does, CheckInOutcome Outcome, bool On, int EveryMinutes)
+public sealed partial record CheckIn(string Id, string Name, string Does, CheckInOutcome Outcome, bool On, int EveryMinutes)
 {
     public bool Custom { get; init; }
     /// <summary>A built-in check-in's prompt (on its card on Companion › Check-ins, and on Companion › Prompts).</summary>
@@ -109,6 +137,9 @@ public sealed record CheckIn(string Id, string Name, string Does, CheckInOutcome
     public string? Script { get; init; }
     public bool RunsScript => !string.IsNullOrWhiteSpace(Script);
     public TimeSpan Every => TimeSpan.FromMinutes(EveryMinutes);
+    /// <summary>What starts it at once (<see cref="CheckInTriggers"/>). With one or more, it runs only when one fires, at most
+    /// once per <see cref="Every"/>; with none, it runs on its pace.</summary>
+    public CheckInTriggers Triggers { get; init; }
 }
 
 /// <summary>One exchange of the conversation: what the user said and what the character answered.</summary>
@@ -123,7 +154,7 @@ public sealed record CheckInGaze(string Looking, string Usual, TimeSpan Since);
 
 /// <summary>What Martlet knows on this PC when a check-in may run (the desktop gathers it on its UI thread). It is private: it goes
 /// only to a Thinking pool member with the check, never to logs or status files.</summary>
-public sealed record CheckInState
+public sealed partial record CheckInState
 {
     /// <summary>The local time.</summary>
     public required DateTimeOffset Now { get; init; }
@@ -180,12 +211,14 @@ public sealed record CheckInState
 /// words (never what was said), whether Martlet acted on it, the pool member that answered and how long it took.
 /// <see cref="Kept"/>: the answer was read and asked for no change (KEEP, OK). <see cref="Gathered"/>: what one of the owner's
 /// check-ins took with it, in a few words (never the screenshot, the recording or what the script printed).</summary>
-public sealed record CheckInRun(DateTimeOffset At, long Exchanged, string Result, bool Acted)
+public sealed partial record CheckInRun(DateTimeOffset At, long Exchanged, string Result, bool Acted)
 {
     public string? Member { get; init; }
     public TimeSpan? Took { get; init; }
     public bool Kept { get; init; }
     public string? Gathered { get; init; }
+    /// <summary>What started this run, in a few words (<see cref="CheckInTrigger.What"/>), or null when its pace or Check now did.</summary>
+    public string? Trigger { get; init; }
 }
 
 /// <summary>What a check-in's answer asks for: <see cref="Act"/> with the emote <see cref="Tags"/> to turn off, or the
@@ -251,8 +284,9 @@ public static partial class CheckIns
     /// <summary>How long the owner's script may run before Martlet stops it.</summary>
     public static TimeSpan ScriptTimeout => TimeSpan.FromSeconds(20);
 
-    /// <summary>The built-in check-ins with their defaults: all on, every 5 minutes (Saying the same things every 10, Staying in
-    /// character every 15). Each is only data (a prompt, facts, conditions and an outcome) that the owner can change on its card
+    /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Saying the same things every 10,
+    /// Staying in character every 15); Welcome back, Unanswered question, On a call and Someone else is here off until the owner
+    /// turns them on. Each is only data (a prompt, facts, conditions and an outcome) that the owner can change on its card
     /// or copy as their own.</summary>
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
     [
@@ -286,6 +320,29 @@ public static partial class CheckIns
         {
             PromptId = PromptCatalog.CheckInRepeats, Facts = CheckInFacts.Said,
             Conditions = CheckInConditions.Sayings | CheckInConditions.SomethingNew
+        },
+        new(Welcome, "Welcome back", "When you come back to the PC after 10 minutes or more away, has Martlet welcome you back " +
+            "briefly, with what happened while you were away when it matters.", CheckInOutcome.Say, false, 30)
+        {
+            PromptId = PromptCatalog.CheckInWelcome, Facts = CheckInFacts.WhileAway | CheckInFacts.Activity | CheckInFacts.Persona,
+            Conditions = CheckInConditions.CameBack
+        },
+        new(Unanswered, "Unanswered question", "When Martlet asked you something, you're at the PC and didn't answer for a few " +
+            "minutes, has it follow up once, softly, or let it go.", CheckInOutcome.Say, false, 5)
+        {
+            PromptId = PromptCatalog.CheckInUnanswered, Facts = CheckInFacts.Conversation | CheckInFacts.Said | CheckInFacts.Activity,
+            Conditions = CheckInConditions.Unanswered | CheckInConditions.NotOnCall
+        },
+        new(Call, "On a call", "When a call or voice chat starts or ends on this PC, reminds Martlet in its next reply to keep " +
+            "quiet and short during it, or that it may talk as usual again.", CheckInOutcome.Note, false, 2)
+        {
+            PromptId = PromptCatalog.CheckInCall, Facts = CheckInFacts.Activity, Conditions = CheckInConditions.ActivityChanged
+        },
+        new(Others, "Someone else is here", "When Martlet hears a voice that isn't yours, reminds it in its next reply not to share " +
+            "private things it knows about you in front of others.", CheckInOutcome.Note, false, 10)
+        {
+            PromptId = PromptCatalog.CheckInOthers, Facts = CheckInFacts.People | CheckInFacts.Persona,
+            Conditions = CheckInConditions.SomeoneElse
         }
     ];
 
@@ -312,7 +369,10 @@ public static partial class CheckIns
             On = choice.On, EveryMinutes = choice.EveryMinutes, Facts = choice.Facts ?? checkIn.Facts,
             Conditions = choice.Conditions ?? checkIn.Conditions, Outcome = choice.Outcome ?? checkIn.Outcome,
             Screenshot = choice.Screenshot ?? checkIn.Screenshot, Recording = choice.Recording ?? checkIn.Recording,
-            RecordingSeconds = choice.RecordingSeconds ?? checkIn.RecordingSeconds, Script = choice.Script ?? checkIn.Script
+            RecordingSeconds = choice.RecordingSeconds ?? checkIn.RecordingSeconds, Script = choice.Script ?? checkIn.Script,
+            Triggers = choice.Triggers ?? checkIn.Triggers,
+            FromHour = choice.FromHour ?? checkIn.FromHour, UntilHour = choice.UntilHour ?? checkIn.UntilHour,
+            MostPerHour = choice.MostPerHour ?? checkIn.MostPerHour
         };
         return changed with { Needs = Needs(choice.Needs ?? checkIn.Needs, changed.Screenshot, changed.Recording) };
     }
@@ -329,7 +389,9 @@ public static partial class CheckIns
         }, custom.Outcome, custom.On, custom.EveryMinutes)
         {
             Custom = true, Task = custom.Task, Facts = custom.Facts, Conditions = custom.Conditions, Needs = Needs(custom),
-            Screenshot = custom.Screenshot, Recording = custom.Recording, RecordingSeconds = custom.RecordingSeconds, Script = custom.Script
+            Screenshot = custom.Screenshot, Recording = custom.Recording, RecordingSeconds = custom.RecordingSeconds, Script = custom.Script,
+            Triggers = custom.Triggers,
+            FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour
         };
 
     /// <summary>What a Thinking pool member must handle to take <paramref name="custom"/>: text, what the owner chose, pictures
@@ -360,12 +422,17 @@ public static partial class CheckIns
     /// <paramref name="now"/> (the owner's Check now) it runs whether it is on, due or settled, as long as it has something to
     /// check. <paramref name="last"/> is its last run on this PC. Every check-in waits the same way: for its pace, for someone to
     /// use this PC, for its prompt (<paramref name="prompts"/>), for each of its <see cref="CheckIn.Conditions"/>, for the sound it
-    /// records and for the conversation to settle.</summary>
-    public static string? Wait(CheckIn checkIn, CheckInState state, CheckInRun? last, bool now = false, PromptSettings? prompts = null)
+    /// records and for the conversation to settle. A check-in with <see cref="CheckIn.Triggers"/> also waits for one of them to
+    /// fire (<paramref name="fired"/>, not older than <see cref="TriggerAge"/>), its pace is then its cooldown, and it doesn't
+    /// wait for the conversation to settle: the touches that fired it, and the reaction to them, never hold it up.</summary>
+    public static string? Wait(CheckIn checkIn, CheckInState state, CheckInRun? last, bool now = false, PromptSettings? prompts = null,
+        CheckInTrigger? fired = null)
     {
         ArgumentNullException.ThrowIfNull(checkIn);
         ArgumentNullException.ThrowIfNull(state);
         if (!now && !checkIn.On) return "it's off";
+        var triggered = !now && checkIn.Triggers != CheckInTriggers.None;
+        if (triggered && !Fires(checkIn, fired, state.Now)) return "it waits for " + TriggerWords(checkIn.Triggers);
         var pace = Pace(checkIn, last, state.Exchanged);
         if (!now && last is not null && state.Now - last.At < pace)
             return "next in " + Reminders.Span(last.At + pace - state.Now);
@@ -397,7 +464,8 @@ public static partial class CheckIns
             if (when.HasFlag(CheckInConditions.NewReplies) && state.Exchanged - (last?.Exchanged ?? 0) < CharacterReplies)
                 return $"it waits for {CharacterReplies} new replies";
         }
-        return !now && state.Quiet is { } quiet && quiet < Settle ? "the conversation is busy" : null;
+        if (WaitForSignals(checkIn, state, last, now) is { } signal) return signal;
+        return !now && !triggered && state.Quiet is { } quiet && quiet < Settle ? "the conversation is busy" : null;
     }
 
     /// <summary>How long <paramref name="checkIn"/> waits after <paramref name="last"/> while the conversation has had
@@ -441,7 +509,8 @@ public static partial class CheckIns
         ("looking", CheckInFacts.Character), ("usual", CheckInFacts.Character), ("since", CheckInFacts.Character),
         ("persona", CheckInFacts.Persona), ("work", CheckInFacts.Work), ("screen", CheckInFacts.Screen), ("sound", CheckInFacts.Sound),
         ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies),
-        ("touches", CheckInFacts.Touches)
+        ("touches", CheckInFacts.Touches), ("activity", CheckInFacts.Activity), ("people", CheckInFacts.People),
+        ("away", CheckInFacts.WhileAway)
     ];
 
     /// <summary>The facts <paramref name="template"/> places itself with their placeholders.</summary>
@@ -469,7 +538,8 @@ public static partial class CheckIns
             ("persona", string.IsNullOrWhiteSpace(state.Persona) ? "(no personality written)" : Clip(state.Persona.Trim(), 2_000)),
             ("work", Work(state)), ("screen", Screen(state)), ("sound", Sound(state)), ("presence", Presence(state)),
             ("said", Said(state).Count > 0 ? SaidLately.Lines(Said(state), state.Now) : "(nothing)"),
-            ("replies", RepliesText(state)), ("touches", Touches(state))
+            ("replies", RepliesText(state)), ("touches", Touches(state)), ("activity", Activity(state)), ("people", People(state)),
+            ("away", Away(state))
         ]);
         var facts = string.Join("\n\n", new[] { Facts(checkIn.Facts & ~Placed(template), state), Gathered(checkIn, state) }
             .Where(part => part.Length > 0));
@@ -640,6 +710,9 @@ public static partial class CheckIns
             parts.Add(state.Sound is { Length: > 0 } ? "What the user's PC plays: " + Sound(state) : Sound(state));
         if (facts.HasFlag(CheckInFacts.Presence) && state.Away is not null) parts.Add(Presence(state));
         if (facts.HasFlag(CheckInFacts.Touches)) parts.Add(Touches(state));
+        if (facts.HasFlag(CheckInFacts.Activity)) parts.Add(Activity(state));
+        if (facts.HasFlag(CheckInFacts.People)) parts.Add(People(state));
+        if (facts.HasFlag(CheckInFacts.WhileAway)) parts.Add(Away(state));
         return string.Join("\n\n", parts);
     }
 

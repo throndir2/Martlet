@@ -235,13 +235,33 @@ internal static class SpokenReplyCheck
             };
             (string Text, long AtMs, bool Spoken)[] lines;
             lock (shown) lines = [.. shown];
+            // Stopped: what the conversation keeps of the reply (only what was said aloud, marked as cut off) and the rest that
+            // goes once in the next request's notes (CutOffReply, as the desktop does): together they are the reply's words.
+            var saidAloud = turn.SaidAloud;
+            var cutKept = CutOffReply.Kept(saidAloud);
+            var cutUnsaid = CutOffReply.Unsaid(text, saidAloud);
+            var cutOk = !stopped || cutKept is not null && cutKept.EndsWith(CutOffReply.Marker, StringComparison.Ordinal) &&
+                Plain(text).StartsWith(Plain(saidAloud), StringComparison.Ordinal) &&
+                Plain(saidAloud + " " + cutUnsaid) == Plain(text) &&
+                (cutUnsaid is null) == (CutOffReply.Note(null, cutUnsaid) is null);
             return new
             {
                 ok = (stopped || terminal.State == ConversationState.Completed && terminal.TextComplete && full && captionsComplete) &&
-                    voiceOk && latencyOk && thinkingOk && tagsHidden && characterOk,
+                    voiceOk && latencyOk && thinkingOk && tagsHidden && characterOk && cutOk,
                 voiceFailure = failure,
                 failAt = everyPiece || failure == "text-only" ? (int?)null : at,
                 endpoint = baseUrl,
+                cutOff = stopped ? new
+                {
+                    ok = cutOk,
+                    saidAloud,
+                    kept = cutKept,
+                    unsaid = cutUnsaid,
+                    note = CutOffReply.Note(null, cutUnsaid),
+                    prompt = PromptCatalog.CutOff,
+                    boardSource = CutOffReply.BoardSource,
+                    noteAgeSeconds = CutOffReply.NoteAge.TotalSeconds
+                } : null,
                 chattiness = chattiness ? new
                 {
                     offered = ChattinessTags.All,
@@ -367,6 +387,10 @@ internal static class SpokenReplyCheck
 
     private static string Words(string text) =>
         string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    // The words alone, lower case, without punctuation or spacing.
+    private static string Plain(string? text) =>
+        string.Join(' ', System.Text.RegularExpressions.Regex.Matches(text ?? "", @"[\p{L}\p{N}]+").Select(m => m.Value.ToLowerInvariant()));
 
     // A line is spoken when the fixture voice had already said that many pieces as it was shown; the rest are unsaid captions.
     // A spoken line is shown as its piece starts playing, which is when "stopped" stops the reply.
