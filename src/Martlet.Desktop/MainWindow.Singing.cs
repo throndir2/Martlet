@@ -137,12 +137,13 @@ public partial class MainWindow
         AutomationProperties.SetName(quality, "Quality");
         AutomationProperties.SetAutomationId(quality, "SingingQuality");
         quality.SelectionChanged += (_, _) => SaveSinging(p => p with { Quality = quality.SelectedIndex == 1 ? SongQuality.HighQuality : SongQuality.Fast },
-            null);
+            null, choice: false);
         var matches = OptionalExtras.VoiceMatches(preferences.VoiceMatch).Select(option =>
         {
             var match = Enum.Parse<SongVoiceMatch>(option.Key);
             var use = preferences.VoiceMatch == match ? null : (Func<Button?>)(() => PageButton($"Use {option.Name}",
-                () => SaveSinging(p => p with { VoiceMatch = match }, $"Songs now use {option.Name}."), primary: true, id: "SingingUse" + option.Key));
+                () => SaveSinging(p => p with { VoiceMatch = match }, $"Songs now use {option.Name}.", choice: false), primary: true,
+                id: "SingingUse" + option.Key));
             if (match != SongVoiceMatch.VevoSing || !(preferences.VoiceMatch == SongVoiceMatch.VevoSing && ready && (serviceKnown && !vevo || addingVevo)))
                 return option with { Action = use };
             // VevoSing is chosen but isn't set up where Martlet sings: Add VevoSing there.
@@ -211,8 +212,10 @@ public partial class MainWindow
             $"{(preferences.Quality == SongQuality.HighQuality ? "high quality" : "fast")}.";
     }
 
-    /// <summary>Saves a change to singing.json and shows <paramref name="done"/>; the next song uses it.</summary>
-    private void SaveSinging(Func<SingingPreferences, SingingPreferences> change, string? done)
+    /// <summary>Saves a change to singing.json and shows <paramref name="done"/>; the next song uses it. A change of the main
+    /// choice (<paramref name="choice"/>: Off, or where Martlet sings) shows the option in use again; a song choice keeps the
+    /// page as it is.</summary>
+    private void SaveSinging(Func<SingingPreferences, SingingPreferences> change, string? done, bool choice = true)
     {
         if (store is null) return;
         try
@@ -227,7 +230,7 @@ public partial class MainWindow
             ActionText.Text = $"Couldn't save the singing choices: {error.Message}";
             return;
         }
-        ForgetPicker("Singing");
+        if (choice) ForgetPicker("Singing");
         ForgetPicker("SingingVoiceMatch");
         Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.Singing) RenderTab(); });
     }
