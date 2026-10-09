@@ -60,7 +60,11 @@ public enum CheckInFacts
     People = 2048,
     /// <summary>What happened while the user was away from this PC: what Martlet said, the background work that finished and the
     /// reminders that came due (<see cref="CheckInState.WhileAway"/>).</summary>
-    WhileAway = 4096
+    WhileAway = 4096,
+    /// <summary>The newest exchange of the conversation in full (what the user said and the character's reply), or every exchange
+    /// since this check-in last ran (at most <see cref="CheckIns.MaximumLatest"/>), so a check-in that waited its pace misses
+    /// nothing (<see cref="CheckInState.Since"/>).</summary>
+    Latest = 8192
 }
 
 /// <summary>When a check-in runs: each condition chosen must hold, or it waits and says why on its card.</summary>
@@ -153,6 +157,10 @@ public sealed partial record CheckIn(string Id, string Name, string Does, CheckI
     public CheckInTriggers Triggers { get; init; }
 }
 
+/// <summary>One reply tool a check-in takes over (<see cref="CheckIns.HandOffs"/>): the tool, the check-in that does it after
+/// the reply and the tool set that does it.</summary>
+public sealed record CheckInHandOff(string Tool, string CheckInId, string CheckInName, string SetId, string SetName);
+
 /// <summary>One exchange of the conversation: what the user said and what the character answered.</summary>
 public sealed record CheckInExchange(string User, string Martlet);
 
@@ -179,6 +187,9 @@ public sealed partial record CheckInState
     /// <summary>How many exchanges the conversation has had in all: a count that only grows, so a check-in can tell whether
     /// anything new was said since it last ran.</summary>
     public long Exchanged { get; init; }
+    /// <summary>How many exchanges the conversation had when this check-in last ran (<see cref="CheckInRun.Exchanged"/>), or null
+    /// before its first run: <see cref="CheckInFacts.Latest"/> reads the exchanges since then.</summary>
+    public long? Since { get; init; }
     /// <summary>How long since the conversation last did something (the user spoke or typed, or a reply finished); zero while
     /// the user talks, null before anything.</summary>
     public TimeSpan? Quiet { get; init; }
@@ -260,6 +271,11 @@ public static partial class CheckIns
 {
     public const string Emotes = "emotes", Gaze = "gaze", Promises = "promises", Character = "character", Repeats = "repeats",
         Reactions = "reactions";
+    /// <summary>Act on what was said: after each exchange, a pool member calls the tools for what the user asked for or Martlet
+    /// promised, so the reply model needs fewer tools (<see cref="CheckInToolSet.Replaces"/>, <see cref="HandOffs"/>).</summary>
+    public const string Actions = "actions";
+    /// <summary>How many exchanges <see cref="CheckInFacts.Latest"/> shows at most.</summary>
+    public const int MaximumLatest = 6;
     /// <summary>Describe touches: right after the user touches the character, a pool member describes what they have been doing,
     /// for the next reply (<see cref="CheckInOutcome.Context"/>).</summary>
     public const string DescribeTouches = "touches";
@@ -349,7 +365,7 @@ public static partial class CheckIns
             "a while with its Touch reactions tools. See and undo its changes on Companion › Touch.", CheckInOutcome.Tools, true, 5)
         {
             PromptId = PromptCatalog.CheckInReactions, Facts = CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Touches,
-            Conditions = CheckInConditions.Persona, Triggers = AllTriggers, ToolSets = [TouchReactions.SetId]
+            Conditions = CheckInConditions.Persona, Triggers = ByTouches, ToolSets = [TouchReactions.SetId]
         },
         new(Welcome, "Welcome back", "When you come back to the PC after 10 minutes or more away, has Martlet welcome you back " +
             "briefly, with what happened while you were away when it matters.", CheckInOutcome.Say, false, 30)
@@ -381,8 +397,67 @@ public static partial class CheckIns
             PromptId = PromptCatalog.CheckInTouches,
             Facts = CheckInFacts.Touches | CheckInFacts.Conversation | CheckInFacts.Persona | CheckInFacts.Character,
             Conditions = CheckInConditions.CharacterShows, Triggers = CheckInTriggers.TouchesEnded
+        },
+        new(Actions, "Act on what was said", "Right after each reply, reads what you said and what Martlet answered, and does " +
+            "what you asked for or Martlet promised with its tools (such as setting a reminder), so Martlet's reply can stay " +
+            "short and quick. While it's on and a Thinking pool member calls tools, the reply leaves those tools to it.",
+            CheckInOutcome.Tools, true, 1)
+        {
+            PromptId = PromptCatalog.CheckInActions, Facts = CheckInFacts.Latest | CheckInFacts.Work,
+            Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded, ToolSets = ActionSets
         }
     ];
+
+    /// <summary>The tool sets Act on what was said uses by default: every set that takes over reply tools
+    /// (<see cref="CheckInToolSet.Replaces"/> not empty), in the order of <see cref="CheckInToolSets.All"/>. Computed, so a new
+    /// set that replaces reply tools joins it without a change here.</summary>
+    public static IReadOnlyList<string> ActionSets => [.. CheckInToolSets.All.Where(s => s.Replaces.Count > 0).Select(s => s.Id)];
+
+    /// <summary>Whether <paramref name="checkIn"/> runs after exchanges and takes over reply tools: an
+    /// <see cref="CheckInTriggers.ExchangeEnded"/> trigger and at least one set that replaces reply tools.</summary>
+    public static bool ActsAfterExchanges(CheckIn checkIn)
+    {
+        ArgumentNullException.ThrowIfNull(checkIn);
+        return checkIn.Triggers.HasFlag(CheckInTriggers.ExchangeEnded) &&
+            checkIn.ToolSets.Any(id => CheckInToolSets.Find(id) is { Replaces.Count: > 0 });
+    }
+
+    /// <summary>The reply tools the check-ins take over (docs/CONVERSATION.md#check-ins), each with the check-in and the set:
+    /// those a set names in <see cref="CheckInToolSet.Replaces"/> when a check-in that is on, starts after each exchange and has a
+    /// prompt ticks it, and only while <paramref name="poolCallsTools"/> (the configured Thinking pool has a member that takes
+    /// check-ins and calls tools, whether its computer answers now or not). From saved settings only, so the reply's tools stay
+    /// the same while computers come and go. Empty: the reply keeps every tool.</summary>
+    public static IReadOnlyList<CheckInHandOff> HandOffs(CheckInSettings? settings, PromptSettings? prompts, bool poolCallsTools) =>
+        HandOffs(settings, prompts, () => poolCallsTools);
+
+    /// <summary><see cref="HandOffs(CheckInSettings?, PromptSettings?, bool)"/> that asks <paramref name="poolCallsTools"/> only
+    /// when a check-in would take over a reply tool.</summary>
+    public static IReadOnlyList<CheckInHandOff> HandOffs(CheckInSettings? settings, PromptSettings? prompts, Func<bool> poolCallsTools)
+    {
+        ArgumentNullException.ThrowIfNull(poolCallsTools);
+        var handed = new List<CheckInHandOff>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var checkIn in All(settings))
+        {
+            if (!checkIn.On || !ActsAfterExchanges(checkIn) || string.IsNullOrWhiteSpace(Template(checkIn, prompts))) continue;
+            foreach (var id in checkIn.ToolSets)
+                if (CheckInToolSets.Find(id) is { } set)
+                    foreach (var tool in set.Replaces)
+                        if (seen.Add(tool)) handed.Add(new(tool, checkIn.Id, checkIn.Name, set.Id, set.Name));
+        }
+        return handed.Count > 0 && poolCallsTools() ? handed : [];
+    }
+
+    /// <summary>What the reply's instructions say about the tools handed off (Every reply › Things done after the reply): the
+    /// sets' names in plain words, or null when none are handed off or the owner emptied that prompt.</summary>
+    public static string? HandOffGuidance(IReadOnlyList<CheckInHandOff> handed, PromptSettings? prompts)
+    {
+        ArgumentNullException.ThrowIfNull(handed);
+        var names = handed.Select(h => h.SetName.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToArray();
+        if (names.Length == 0) return null;
+        var things = names.Length == 1 ? names[0] : string.Join(", ", names[..^1]) + " and " + names[^1];
+        return PromptSettings.Fill(prompts, PromptCatalog.HandedOffTools, ("things", things));
+    }
 
     /// <summary>The background job kind that brings up what a check-in said to bring up: a notice, always brought up as soon as
     /// Martlet is free (or with what the user says next), with the Check-in: brought up prompts.</summary>
@@ -564,7 +639,7 @@ public static partial class CheckIns
         ("persona", CheckInFacts.Persona), ("work", CheckInFacts.Work), ("screen", CheckInFacts.Screen), ("sound", CheckInFacts.Sound),
         ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies),
         ("touches", CheckInFacts.Touches), ("activity", CheckInFacts.Activity), ("people", CheckInFacts.People),
-        ("away", CheckInFacts.WhileAway)
+        ("away", CheckInFacts.WhileAway), ("exchange", CheckInFacts.Latest)
     ];
 
     /// <summary>The facts <paramref name="template"/> places itself with their placeholders.</summary>
@@ -593,7 +668,7 @@ public static partial class CheckIns
             ("work", Work(state)), ("screen", Screen(state)), ("sound", Sound(state)), ("presence", Presence(state)),
             ("said", Said(state).Count > 0 ? SaidLately.Lines(Said(state), state.Now) : "(nothing)"),
             ("replies", RepliesText(state)), ("touches", Touches(state)), ("activity", Activity(state)), ("people", People(state)),
-            ("away", Away(state))
+            ("away", Away(state)), ("exchange", Latest(state))
         ]);
         var facts = string.Join("\n\n", new[] { Facts(checkIn.Facts & ~Placed(template), state), Gathered(checkIn, state) }
             .Where(part => part.Length > 0));
@@ -773,7 +848,27 @@ public static partial class CheckIns
         if (facts.HasFlag(CheckInFacts.Activity)) parts.Add(Activity(state));
         if (facts.HasFlag(CheckInFacts.People)) parts.Add(People(state));
         if (facts.HasFlag(CheckInFacts.WhileAway)) parts.Add(Away(state));
+        if (facts.HasFlag(CheckInFacts.Latest)) parts.Add(Latest(state));
         return string.Join("\n\n", parts);
+    }
+
+    /// <summary>The newest exchange in full, or every exchange since the check-in last ran (<see cref="CheckInState.Since"/>; at
+    /// most <see cref="MaximumLatest"/>), oldest first (<see cref="CheckInFacts.Latest"/>).</summary>
+    public static string Latest(CheckInState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.Exchanges.Count == 0)
+            return state.Conversation ? "Nothing has been said in this conversation yet." : "No conversation is running now.";
+        var count = state.Since is { } since ? (int)Math.Clamp(state.Exchanged - since, 1, MaximumLatest) : 1;
+        var latest = state.Exchanges.TakeLast(count).ToArray();
+        var text = new StringBuilder(latest.Length == 1 ? "The latest exchange:"
+            : $"The latest {latest.Length} exchanges, oldest first:");
+        foreach (var exchange in latest)
+        {
+            text.Append("\nUser: ").Append(Clip(OneLine(exchange.User), 1_500));
+            text.Append('\n').Append(state.Who).Append(": ").Append(Clip(OneLine(exchange.Martlet), 1_500));
+        }
+        return text.ToString();
     }
 
     /// <summary>What the user did to the character lately (<see cref="CheckInFacts.Touches"/>), as the check reads it: one line

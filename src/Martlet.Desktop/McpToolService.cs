@@ -561,7 +561,8 @@ internal sealed class DesktopToolset : IConversationToolHost
                 map[name] = (status.Definition, tool);
             }
         return definitions.Count == 0 ? null : new(service, definitions, map, skipped,
-            map.Values.Select(v => v.Item1.Name).Distinct().ToArray(), terminal is not null, own, own.Count > 0 ? builtIns?.Guidance : null);
+            map.Values.Select(v => v.Item1.Name).Distinct().ToArray(), terminal is not null, own,
+            own.Count > 0 || builtIns is { Tools.Count: 0 } ? builtIns?.Guidance : null);
     }
 
     public async ValueTask<ConversationToolResult> CallAsync(TextToolCall call, CancellationToken token)

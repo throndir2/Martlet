@@ -153,6 +153,7 @@ public partial class MainWindow : ThemedWindow
             conversation.QuickSounds = Talk.QuickSoundOptions;
             conversation.QuickSoundsChanged += () => Dispatcher.BeginInvoke(ShowQuickSounds);
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
+            conversation.ExchangeEnded += () => Dispatcher.BeginInvoke(CheckInExchangeEnded);
             discord.UseReplies(setupService, vault, conversation, memory, lorebooks);
         }
         WireCharacterActions();

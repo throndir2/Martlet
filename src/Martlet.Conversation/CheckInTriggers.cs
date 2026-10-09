@@ -1,3 +1,4 @@
+using System.Globalization;
 using Martlet.Core.Contracts;
 
 namespace Martlet.Conversation;
@@ -19,7 +20,11 @@ public enum CheckInTriggers
     StrokeAcrossZones = 4,
     /// <summary>They touched a place the user keeps coming back to (a <see cref="Martlet.Conversation.TouchHabit"/> of the
     /// touch ledger).</summary>
-    KeepsComingBack = 8
+    KeepsComingBack = 8,
+    /// <summary>A reply ended (it was said, or written when Martlet doesn't speak) and its exchange is in the conversation; never
+    /// a [pass] or a reply that failed or was stopped. A check-in it starts gets the exchanges since it last ran
+    /// (<see cref="CheckInFacts.Latest"/>).</summary>
+    ExchangeEnded = 16
 }
 
 /// <summary>Triggers that fired (<see cref="Fired"/>, one flag or more), when, and what happened in a few words with counts only
@@ -83,9 +88,12 @@ public sealed class TouchTriggers
 
 public static partial class CheckIns
 {
-    /// <summary>Every trigger Martlet offers.</summary>
-    public const CheckInTriggers AllTriggers = CheckInTriggers.TouchesEnded | CheckInTriggers.IntimateTouch |
+    /// <summary>The triggers the touches on the desktop character fire (<see cref="Martlet.Conversation.TouchTriggers"/>).</summary>
+    public const CheckInTriggers ByTouches = CheckInTriggers.TouchesEnded | CheckInTriggers.IntimateTouch |
         CheckInTriggers.StrokeAcrossZones | CheckInTriggers.KeepsComingBack;
+
+    /// <summary>Every trigger Martlet offers.</summary>
+    public const CheckInTriggers AllTriggers = ByTouches | CheckInTriggers.ExchangeEnded;
 
     /// <summary>How many zones a stroke crosses to fire <see cref="CheckInTriggers.StrokeAcrossZones"/>.</summary>
     public const int StrokeZones = 3;
@@ -94,12 +102,37 @@ public static partial class CheckIns
     /// ledger keeps touches (<see cref="TouchLedger.MaximumAge"/>), so a check-in never runs on touches the ledger let go.</summary>
     public static TimeSpan TriggerAge => TouchLedger.MaximumAge;
 
+    /// <summary>How long an <see cref="CheckInTriggers.ExchangeEnded"/> trigger waits for its check-in: longer than touches, so
+    /// what the user asked for still gets done after a busy moment (a long talk, a pool member that was busy). A trigger that
+    /// gets this old without a run is a broken promise, and Martlet says so.</summary>
+    public static TimeSpan ExchangeAge => TimeSpan.FromMinutes(10);
+
+    /// <summary>How long <paramref name="fired"/> waits for its check-in: <see cref="ExchangeAge"/> when an exchange fired it,
+    /// else <see cref="TriggerAge"/>.</summary>
+    public static TimeSpan Age(CheckInTrigger fired)
+    {
+        ArgumentNullException.ThrowIfNull(fired);
+        return fired.Fired.HasFlag(CheckInTriggers.ExchangeEnded) ? ExchangeAge : TriggerAge;
+    }
+
+    /// <summary>The trigger an ended exchange fires at <paramref name="now"/>. With <paramref name="kept"/> (an exchange trigger
+    /// that still waits for the same check-in) it counts both ("2 exchanges"), so the run says it covered both.</summary>
+    public static CheckInTrigger ExchangeTrigger(DateTimeOffset now, CheckInTrigger? kept = null)
+    {
+        var count = 1;
+        if (kept is { } was && was.Fired.HasFlag(CheckInTriggers.ExchangeEnded) &&
+            int.TryParse(was.What.Split(' ')[0], NumberStyles.None, CultureInfo.InvariantCulture, out var before))
+            count += before;
+        return new(CheckInTriggers.ExchangeEnded, now, count == 1 ? "1 exchange" : $"{count} exchanges");
+    }
+
     private static readonly (CheckInTriggers Trigger, string Words)[] TriggerPhrases =
     [
         (CheckInTriggers.TouchesEnded, "your touches to end"),
         (CheckInTriggers.IntimateTouch, "an intimate touch"),
         (CheckInTriggers.StrokeAcrossZones, $"a stroke across {StrokeZones} zones"),
-        (CheckInTriggers.KeepsComingBack, "you to keep coming back to one place")
+        (CheckInTriggers.KeepsComingBack, "you to keep coming back to one place"),
+        (CheckInTriggers.ExchangeEnded, "a reply to end")
     ];
 
     /// <summary>The triggers in words, for "it waits for ...": "your touches to end or an intimate touch".</summary>
@@ -115,9 +148,9 @@ public static partial class CheckIns
     }
 
     /// <summary>Whether <paramref name="fired"/> starts <paramref name="checkIn"/> at <paramref name="now"/>: it is one of the
-    /// check-in's triggers and isn't older than <see cref="TriggerAge"/>.</summary>
+    /// check-in's triggers and isn't older than its <see cref="Age"/>.</summary>
     public static bool Fires(CheckIn checkIn, CheckInTrigger? fired, DateTimeOffset now) =>
-        fired is not null && (fired.Fired & checkIn.Triggers) != 0 && now - fired.At <= TriggerAge;
+        fired is not null && (fired.Fired & checkIn.Triggers) != 0 && now - fired.At <= Age(fired);
 
     internal static void CheckTriggers(CheckInTriggers triggers) =>
         ContractRules.Require((triggers & ~AllTriggers) == 0, "A check-in starts only on the triggers Martlet offers.");

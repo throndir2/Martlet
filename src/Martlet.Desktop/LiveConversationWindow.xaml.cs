@@ -225,6 +225,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
+        controller.AfterExchangeFailed += AfterExchangeFailed;
         controller.PictureShown += PictureShown;
         controller.VoicesNamed += VoicesNamed;
         controller.ChattinessDecided += ChattinessDecided;
@@ -3141,6 +3142,14 @@ public partial class LiveConversationWindow : ThemedWindow
         else AddNote(text);
     });
 
+    // Raised off the dispatcher when a check-in that does the reply's work after an exchange couldn't (once for each problem).
+    private void AfterExchangeFailed(string why) => Dispatcher.BeginInvoke(() =>
+    {
+        if (closed) return;
+        var text = "Couldn't do what was asked after the reply: " + why + ".";
+        if (lastReply is not null) lastReply.AddNote(text);
+        else AddNote(text);
+    });
     // Raised off the dispatcher once learning names changed voices from an exchange.
     private void VoicesNamed(IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult> learned) => Dispatcher.BeginInvoke(() =>
     {
@@ -3202,6 +3211,7 @@ public partial class LiveConversationWindow : ThemedWindow
         reader = null;
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
+        controller.AfterExchangeFailed -= AfterExchangeFailed;
         controller.PictureShown -= PictureShown;
         controller.VoicesNamed -= VoicesNamed;
         controller.ChattinessDecided -= ChattinessDecided;
