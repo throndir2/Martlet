@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Your own check-ins can say which model they need (text, pictures or recordings), so only Thinking pool models that can handle them take the check-in. Each check-in can also take a screenshot, the last seconds of your microphone or of what your PC plays, or what a script of yours prints (for example, the running programs). ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+
 ## [0.61.0] - 2026-10-08
 
 ### Added

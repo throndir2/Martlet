@@ -881,9 +881,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), its On box and Every choice
         // ("CheckInOn-emotes", "CheckInEvery-emotes"), and for the owner's own its Its answer choice and fact boxes
-        // ("CheckInOutcome-c1", "CheckInFact-c1-Conversation"). Changing any of them saves check-ins.json, so it needs
-        // --allow-ui-effects; the name and task boxes (the owner's own words) aren't read here.
+        // ("CheckInOutcome-c1", "CheckInFact-c1-Conversation"), the model it needs ("CheckInNeeds-c1-Vision"), its screenshot
+        // box ("CheckInScreenshot-c1"), its recording and length choices ("CheckInRecording-c1", "CheckInSeconds-c1"). Changing
+        // any of them saves check-ins.json, so it needs --allow-ui-effects; the name, task and script boxes (the owner's own
+        // words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-",
         // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.")
         // and, for one without the Deep thinking role, its Add button's name ("DeepThinkingAddRole-diva" reads "Add Deep thinking
         // on diva"; clicking it installs the role, so it needs --allow-ui-effects); for one with it, its Change model button's
