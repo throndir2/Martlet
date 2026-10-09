@@ -1343,6 +1343,7 @@ has the same editor:
 - *What it asks*: the prompt of a built-in check-in, or your own words.
 - *It gets to know*: the facts (table below).
 - *It runs when*: the conditions (table below).
+- *It starts when*: the triggers that start it at once ([below](#check-in-triggers)).
 - *Its answer*: what Martlet does with the answer.
 - *It takes*: a screenshot, a recording or a script's output, and the model
   it needs.
@@ -1362,7 +1363,8 @@ built-in check-in can be recreated, and changed, as your own.
 | Saying the same things | What Martlet said in the last hour | Martlet said 3 things lately, something new was said |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
-check-ins, and the first one that may run starts. Only one runs at a time. A
+check-ins, and the first one that may run starts. Only one runs at a time (a
+check-in that a [trigger](#check-in-triggers) starts runs beside it). A
 check-in waits:
 
 - until its pace (1, 2, 5, 10, 15, 30, 60 or 120 minutes) has passed since it last
@@ -1393,6 +1395,54 @@ check-in waits:
   Martlet), so the pool isn't asked again and again while nobody is there;
 - while no Thinking pool member can take it (*no Thinking pool member can take
   it (it needs a model for text and pictures)*).
+
+<a id="check-in-triggers"></a>
+**Triggers.** A check-in can also start when something happens, not only on its pace. Tick
+one or more boxes under *It starts when* on its card (`CheckInTriggers`, saved
+as `Triggers` in `check-ins.json`; the built-in check-ins have none). The
+first triggers come from the touches on the desktop character:
+
+| Trigger | It fires when |
+| --- | --- |
+| Your touches end (`TouchesEnded`) | a burst of touches Martlet noticed ends: 1.2 seconds pass after the last tap, pat, hold or stroke on a zone with *Martlet notices* on (`TouchDebounce.Quiet`) |
+| An intimate touch (`IntimateTouch`) | those touches included an intimate zone |
+| A stroke across 3 zones (`StrokeAcrossZones`) | a stroke among them crossed 3 or more noticed zones |
+| You keep coming back to one place (`KeepsComingBack`) | they touched a place touched 5 or more times in the last 10 minutes (the touch ledger's `TouchHabit`, *They keep coming back to ...*) |
+
+Moving, zooming, locking or hiding the character never fires a trigger. A
+check-in with triggers runs this way:
+
+- It runs only when one of its triggers fires. It doesn't also run on its
+  pace: *Every* is then its cooldown, so it runs at most once per pace.
+- The desktop looks at it as soon as the touches settle, not at the next
+  15-second look.
+- It keeps the newest trigger that fired for it (a newer one replaces it) for
+  2 minutes, as long as the touch ledger keeps touches
+  (`CheckIns.TriggerAge`). A trigger that fires during the cooldown runs when
+  the cooldown ends, if it is still that fresh.
+- Triggered check-ins run one at a time beside the paced ones, so a due
+  triggered check-in never waits behind a paced one.
+- It doesn't wait for the conversation to settle: the touches and the reply to
+  them would otherwise hold it up. Its other waits still apply: it is on,
+  someone uses this PC, its conditions, the sound it records and a pool member
+  that can take it. *Check now* runs it at once, with no trigger.
+- It runs only on the Thinking pool, like every check-in, never on the
+  conversation's own route, and the live floor still stops it while the live
+  turn runs on shared hardware. No reply waits for it, so the time to
+  Martlet's first words stays the same. The reply to touches keeps its instant
+  local wording. With no pool member, nothing runs.
+- Watching the touches never takes them from the touch ledger
+  (`TouchTriggers` reads `TouchLedger.Peek`), so the touch reply and the next
+  reply still get every touch.
+
+Its status line says *Waits: it waits for your touches to end.* and, while it
+keeps a trigger, *A trigger fired at 10:15 PM (3 touches, an intimate one).*
+The desktop log notes each trigger and run with counts only: *Check-ins:
+TouchesEnded, IntimateTouch fired (3 touches, an intimate one); it starts
+...*, then *... (started by 3 touches, an intimate one) ran on ...*. To add a
+trigger that is not about touches, add a `CheckInTriggers` flag, its words in
+`CheckIns.TriggerWords`, its box in `CheckInTriggerChoices` on the page, and
+call `MainWindow.FireCheckIns` with it when it happens.
 
 An answer that turns off emotes looks only at emotes a reply turned on (their
 own tag or a combo's). It never turns off an emote you turned on with *Try*,
@@ -1528,12 +1578,14 @@ the same for [MCP](MCP.md#check-ins). Neither keeps what was said, answered or
 reminded.
 
 **API** (`Martlet.Conversation.CheckIns`): `All(settings)` lists the
-check-ins, `Wait(checkIn, state, last, now)` says why one waits (null: it
+check-ins, `Wait(checkIn, state, last, now, prompts, fired)` says why one waits (null: it
 runs), `Focus` narrows the facts to what it may act on, `Prepare` makes the
 `ThinkingJob` (with `Needs`, and the screenshot and recording it took),
 `Gathered` words what a check-in took for the message, `ScriptRan` reads a
 script's run, `Read` reads the answer into a `CheckInVerdict` and `Note` words
-a reminder. The desktop gathers `CheckInState` on its UI thread
+a reminder. `TouchTriggers` collects a burst of touches and says which
+`CheckInTriggers` it fires once it settles (a `CheckInTrigger`), and `Fires`
+says whether a kept trigger still starts a check-in. The desktop gathers `CheckInState` on its UI thread
 (`MainWindow.CheckIns.cs`), and the screenshot, recording and script output
 just before the run. To add a built-in check-in:
 
@@ -1550,13 +1602,16 @@ just before the run. To add a built-in check-in:
 Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
 wording beside a due reminder, settings, the model a check-in needs, what it
 takes, a script's run, each built-in check-in recreated as your own with the
-same message, waits and answers, and a built-in check-in's changes saved and
-read back), `SoundDigestTests` (the kept microphone and the
+same message, waits and answers, a built-in check-in's changes saved and
+read back, and the triggers: what fixture touches fire, when a triggered
+check-in waits or runs, and triggers saved and read back), `SoundDigestTests` (the kept microphone and the
 sound kept for a check-in), the Desktop tests for an emote a reply
 turned on against a try, a check-in taking the eyes back to their usual gaze and
 the real talk window bringing up a check-in's `SAY:` through a fixture Thinking
 endpoint, MCP's `check_ins_check` and `check_ins_status`, and the page on a
-disposable data folder through `-Desktop`. A real model answering a check-in,
+disposable data folder through `-Desktop`, with `character_touch` and
+`character_stroke` firing a triggered check-in that the
+`MARTLET_CHECK_INS_FIXTURE` file answered. A real model answering a check-in,
 and a real screenshot or recording sent to a pool member, are **NOT RUN**.
 
 ## Singing in conversation

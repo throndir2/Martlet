@@ -578,4 +578,98 @@ public sealed class CheckInsTests
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         }
     }
+
+    [Fact]
+    public void TouchesFireTheirTriggersOnceTheySettleAndNeverTakeFromTheLedger()
+    {
+        var ledger = new TouchLedger();
+        var watch = new TouchTriggers();
+        var at = TimeSpan.FromMinutes(20);
+        for (var i = 0; i < 5; i++) ledger.Record(new(PhysicalKind.Tap, at + TimeSpan.FromSeconds(i * 10), "your groin", "groin", Zones: ["your groin"], Intimate: true));
+        ledger.Drain(at + TimeSpan.FromSeconds(60));
+        PhysicalEvent[] burst =
+        [
+            new(PhysicalKind.Pat, at + TimeSpan.FromSeconds(70), "the top of your head", "top of head", Zones: ["the top of your head"]),
+            new(PhysicalKind.Moved, at + TimeSpan.FromSeconds(71), Detail: "to another monitor"),
+            new(PhysicalKind.Stroke, at + TimeSpan.FromSeconds(72), Label: "tail, buttocks and groin", Detail: "slowly",
+                Zones: ["your tail", "your buttocks", "your groin"], Intimate: true)
+        ];
+        foreach (var physical in burst)
+        {
+            ledger.Record(physical);
+            watch.Touched(physical, ledger.Peek(physical.At)?.Often);
+        }
+        Assert.True(watch.Waiting);
+        var fired = watch.Settle(Now)!;
+        Assert.Equal(CheckIns.AllTriggers, fired.Fired);
+        Assert.Equal(Now, fired.At);
+        Assert.Equal("2 touches, an intimate one, a stroke across 3 zones, one place touched 6 times lately", fired.What);
+        Assert.False(watch.Waiting);
+        Assert.Equal(3, ledger.Peek(at + TimeSpan.FromSeconds(73))!.Touches);
+
+        // A stroke across 2 zones, a plain poke, and moving the character alone.
+        watch.Touched(new(PhysicalKind.Stroke, at + TimeSpan.FromSeconds(90), Zones: ["your chest", "your stomach"]));
+        Assert.Equal(CheckInTriggers.TouchesEnded, watch.Settle(Now)!.Fired);
+        watch.Touched(new(PhysicalKind.Tap, at + TimeSpan.FromSeconds(95), "your left cheek", "left cheek"));
+        Assert.Equal(("1 touch", CheckInTriggers.TouchesEnded), watch.Settle(Now) is { } poke ? (poke.What, poke.Fired) : default);
+        watch.Touched(new(PhysicalKind.Moved, at + TimeSpan.FromSeconds(99)));
+        Assert.False(watch.Waiting);
+        Assert.Null(watch.Settle(Now));
+    }
+
+    [Fact]
+    public void ACheckInWithTriggersRunsOnlyWhenOneFiresAtMostOncePerItsPace()
+    {
+        var checkIn = CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c1", Name = "Touches", On = true, EveryMinutes = 5, Task = "Describe the touches.",
+            Triggers = CheckInTriggers.IntimateTouch | CheckInTriggers.KeepsComingBack
+        });
+        var busy = State() with { Quiet = TimeSpan.Zero };
+        var fired = new CheckInTrigger(CheckInTriggers.TouchesEnded | CheckInTriggers.IntimateTouch, Now.AddSeconds(-1), "3 touches, an intimate one");
+        Assert.Equal("it waits for an intimate touch or you to keep coming back to one place", CheckIns.Wait(checkIn, State(), null));
+        Assert.Equal(CheckIns.Wait(checkIn, State(), null),
+            CheckIns.Wait(checkIn, State(), null, fired: fired with { Fired = CheckInTriggers.TouchesEnded }));
+        // The touches and the reply to them never hold it up; the pace is its cooldown.
+        Assert.Null(CheckIns.Wait(checkIn, busy, null, fired: fired));
+        Assert.Equal("next in 4 min", CheckIns.Wait(checkIn, State(), new(Now.AddMinutes(-1), 4, "nothing to remind Martlet of", false), fired: fired));
+        Assert.Equal(CheckIns.Wait(checkIn, State(), null), CheckIns.Wait(checkIn, State(), null, fired: fired with { At = Now - CheckIns.TriggerAge - TimeSpan.FromSeconds(1) }));
+        Assert.StartsWith("nobody used this PC", CheckIns.Wait(checkIn, State() with { Away = TimeSpan.FromMinutes(20) }, null, fired: fired));
+        Assert.Equal("it's off", CheckIns.Wait(checkIn with { On = false }, State(), null, fired: fired));
+        Assert.Equal("the character isn't showing",
+            CheckIns.Wait(checkIn with { Conditions = CheckInConditions.CharacterShows }, State() with { CharacterShows = false }, null, fired: fired));
+        Assert.Null(CheckIns.Wait(checkIn, busy, null, now: true));
+        // A check-in with no triggers runs as before.
+        Assert.Equal("the conversation is busy", CheckIns.Wait(checkIn with { Triggers = CheckInTriggers.None }, busy, null, fired: fired));
+        Assert.Equal("nothing", CheckIns.TriggerWords(CheckInTriggers.None));
+        Assert.Equal("your touches to end, an intimate touch, a stroke across 3 zones or you to keep coming back to one place",
+            CheckIns.TriggerWords(CheckIns.AllTriggers));
+    }
+
+    [Fact]
+    public void TriggersSaveReadBackAndRefuseWhatMartletDoesntOffer()
+    {
+        var settings = new CheckInSettings()
+            .With(new CustomCheckIn { Id = "c1", Name = "Touches", Task = "Describe them.", Triggers = CheckInTriggers.TouchesEnded | CheckInTriggers.StrokeAcrossZones })
+            .With(CheckIns.Gaze, new CheckInChoice(true, 5) { Triggers = CheckInTriggers.IntimateTouch });
+        settings.Validate();
+        Assert.All(CheckIns.All(null), c => Assert.Equal(CheckInTriggers.None, c.Triggers));
+        Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)16 }).Validate());
+        Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)32 }).Validate());
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.True(settings.Save(folder));
+            var (read, state) = CheckInSettings.Read(folder);
+            Assert.Equal("loaded", state);
+            var all = CheckIns.All(read);
+            Assert.Equal(CheckInTriggers.TouchesEnded | CheckInTriggers.StrokeAcrossZones, all.Single(c => c.Id == "c1").Triggers);
+            Assert.Equal(CheckInTriggers.IntimateTouch, all.Single(c => c.Id == CheckIns.Gaze).Triggers);
+            Assert.Contains("\"TouchesEnded, StrokeAcrossZones\"", File.ReadAllText(Path.Combine(folder, CheckInSettings.FileName)));
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+    }
 }

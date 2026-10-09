@@ -17,6 +17,7 @@ public sealed record CheckInChoice(bool On, int EveryMinutes)
     public CheckInRecording? Recording { get; init; }
     public int? RecordingSeconds { get; init; }
     public string? Script { get; init; }
+    public CheckInTriggers? Triggers { get; init; }
 }
 
 /// <summary>One of the owner's own check-ins (Companion › Check-ins › Your own check-ins): its name, what to check
@@ -48,6 +49,8 @@ public sealed record CustomCheckIn
     /// <summary>A Windows PowerShell script Martlet runs on this PC before each run (empty: none); its output goes with the
     /// check. Only the owner writes it, on the Check-ins page.</summary>
     public string Script { get; init; } = "";
+    /// <summary>What starts it at once (<see cref="CheckInTriggers"/>); none: it runs on its pace.</summary>
+    public CheckInTriggers Triggers { get; init; }
 }
 
 /// <summary>Companion › Check-ins on this PC (check-ins.json in the data folder; never shared, because each PC shows its own
@@ -113,6 +116,7 @@ public sealed record CheckInSettings
             Check(choice!.Facts ?? CheckInFacts.None, choice.Conditions ?? CheckInConditions.None, choice.Outcome ?? CheckInOutcome.Note,
                 choice.Needs ?? ThinkingCapability.Text, choice.Recording ?? CheckInRecording.None, choice.RecordingSeconds ?? 10,
                 choice.Script ?? "");
+            CheckIns.CheckTriggers(choice.Triggers ?? CheckInTriggers.None);
         }
         ContractRules.Require(Custom.Count <= CheckIns.MaximumCustom, $"You can have at most {CheckIns.MaximumCustom} check-ins of your own.");
         ContractRules.Require(Custom.Select(c => c?.Id).Distinct(StringComparer.Ordinal).Count() == Custom.Count, "Two of your check-ins have the same ID.");
@@ -127,6 +131,7 @@ public sealed record CheckInSettings
                 $"What a check-in checks is at most {CheckIns.MaximumTaskCharacters} characters.");
             ContractRules.Require(CheckIns.EveryChoices.Contains(checkIn.EveryMinutes), $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
             Check(checkIn.Facts, checkIn.Conditions, checkIn.Outcome, checkIn.Needs, checkIn.Recording, checkIn.RecordingSeconds, checkIn.Script);
+            CheckIns.CheckTriggers(checkIn.Triggers);
         }
     }
 

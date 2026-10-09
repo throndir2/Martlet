@@ -140,7 +140,9 @@ public partial class MainWindow
     {
         if (closing || Role == DeviceRole.Host || conversation is null || ConversationSession() is not { } talk) return;
         if (!talk.IsVisible) talk.StartInBackground();
-        talk.Physical(new PhysicalEvent(kind, conversation.TouchNow, zone, label, detail, hint, zones, intimate, feeling));
+        var physical = new PhysicalEvent(kind, conversation.TouchNow, zone, label, detail, hint, zones, intimate, feeling);
+        talk.Physical(physical);
+        CheckInTouched(physical);
     }
 
     private CancellationTokenSource? detectTouchZones;

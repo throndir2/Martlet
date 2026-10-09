@@ -102,6 +102,9 @@ public sealed record CheckIn(string Id, string Name, string Does, CheckInOutcome
     public string? Script { get; init; }
     public bool RunsScript => !string.IsNullOrWhiteSpace(Script);
     public TimeSpan Every => TimeSpan.FromMinutes(EveryMinutes);
+    /// <summary>What starts it at once (<see cref="CheckInTriggers"/>). With one or more, it runs only when one fires, at most
+    /// once per <see cref="Every"/>; with none, it runs on its pace.</summary>
+    public CheckInTriggers Triggers { get; init; }
 }
 
 /// <summary>One exchange of the conversation: what the user said and what the character answered.</summary>
@@ -173,6 +176,8 @@ public sealed record CheckInRun(DateTimeOffset At, long Exchanged, string Result
     public TimeSpan? Took { get; init; }
     public bool Kept { get; init; }
     public string? Gathered { get; init; }
+    /// <summary>What started this run, in a few words (<see cref="CheckInTrigger.What"/>), or null when its pace or Check now did.</summary>
+    public string? Trigger { get; init; }
 }
 
 /// <summary>What a check-in's answer asks for: <see cref="Act"/> with the emote <see cref="Tags"/> to turn off, or the
@@ -296,7 +301,8 @@ public static partial class CheckIns
             On = choice.On, EveryMinutes = choice.EveryMinutes, Facts = choice.Facts ?? checkIn.Facts,
             Conditions = choice.Conditions ?? checkIn.Conditions, Outcome = choice.Outcome ?? checkIn.Outcome,
             Screenshot = choice.Screenshot ?? checkIn.Screenshot, Recording = choice.Recording ?? checkIn.Recording,
-            RecordingSeconds = choice.RecordingSeconds ?? checkIn.RecordingSeconds, Script = choice.Script ?? checkIn.Script
+            RecordingSeconds = choice.RecordingSeconds ?? checkIn.RecordingSeconds, Script = choice.Script ?? checkIn.Script,
+            Triggers = choice.Triggers ?? checkIn.Triggers
         };
         return changed with { Needs = Needs(choice.Needs ?? checkIn.Needs, changed.Screenshot, changed.Recording) };
     }
@@ -312,7 +318,8 @@ public static partial class CheckIns
         }, custom.Outcome, custom.On, custom.EveryMinutes)
         {
             Custom = true, Task = custom.Task, Facts = custom.Facts, Conditions = custom.Conditions, Needs = Needs(custom),
-            Screenshot = custom.Screenshot, Recording = custom.Recording, RecordingSeconds = custom.RecordingSeconds, Script = custom.Script
+            Screenshot = custom.Screenshot, Recording = custom.Recording, RecordingSeconds = custom.RecordingSeconds, Script = custom.Script,
+            Triggers = custom.Triggers
         };
 
     /// <summary>What a Thinking pool member must handle to take <paramref name="custom"/>: text, what the owner chose, pictures
@@ -342,12 +349,17 @@ public static partial class CheckIns
     /// <paramref name="now"/> (the owner's Check now) it runs whether it is on, due or settled, as long as it has something to
     /// check. <paramref name="last"/> is its last run on this PC. Every check-in waits the same way: for its pace, for someone to
     /// use this PC, for its prompt (<paramref name="prompts"/>), for each of its <see cref="CheckIn.Conditions"/>, for the sound it
-    /// records and for the conversation to settle.</summary>
-    public static string? Wait(CheckIn checkIn, CheckInState state, CheckInRun? last, bool now = false, PromptSettings? prompts = null)
+    /// records and for the conversation to settle. A check-in with <see cref="CheckIn.Triggers"/> also waits for one of them to
+    /// fire (<paramref name="fired"/>, not older than <see cref="TriggerAge"/>), its pace is then its cooldown, and it doesn't
+    /// wait for the conversation to settle: the touches that fired it, and the reaction to them, never hold it up.</summary>
+    public static string? Wait(CheckIn checkIn, CheckInState state, CheckInRun? last, bool now = false, PromptSettings? prompts = null,
+        CheckInTrigger? fired = null)
     {
         ArgumentNullException.ThrowIfNull(checkIn);
         ArgumentNullException.ThrowIfNull(state);
         if (!now && !checkIn.On) return "it's off";
+        var triggered = !now && checkIn.Triggers != CheckInTriggers.None;
+        if (triggered && !Fires(checkIn, fired, state.Now)) return "it waits for " + TriggerWords(checkIn.Triggers);
         var pace = Pace(checkIn, last, state.Exchanged);
         if (!now && last is not null && state.Now - last.At < pace)
             return "next in " + Reminders.Span(last.At + pace - state.Now);
@@ -379,7 +391,7 @@ public static partial class CheckIns
             if (when.HasFlag(CheckInConditions.NewReplies) && state.Exchanged - (last?.Exchanged ?? 0) < CharacterReplies)
                 return $"it waits for {CharacterReplies} new replies";
         }
-        return !now && state.Quiet is { } quiet && quiet < Settle ? "the conversation is busy" : null;
+        return !now && !triggered && state.Quiet is { } quiet && quiet < Settle ? "the conversation is busy" : null;
     }
 
     /// <summary>How long <paramref name="checkIn"/> waits after <paramref name="last"/> while the conversation has had
