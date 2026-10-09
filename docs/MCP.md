@@ -4614,7 +4614,9 @@ about, chatter, `REMIND: nothing`); `built-in ones recreated as your own`
 (each built-in check-in copied as an own check-in with its prompt, facts,
 conditions and answer sends the same message, waits the same way and reads
 answers the same way, and an own check-in that gets what Martlet said in the
-last hour and its last replies); and what Martlet does: a reply's emote off
+last hour and its last replies); `adult content line` (`{adult}` is the
+non-explicit line while Adult content is off and the explicit line only while
+it is on); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
 `SAY:` worded in its own words beside a due reminder. Six `own:` steps check
@@ -4639,7 +4641,7 @@ after the prompt when it is ticked but not placed, and that facts past
 `intimate`, `often`), `filled` and the FIXTURE message. Three
 `triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
 with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
-check-in's triggers, an unknown trigger refused, none by default),
+check-in's triggers, an unknown trigger refused, only Describe touches has one by default),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
 touches there, fire all four triggers once they settle; the ledger still holds
@@ -4656,7 +4658,16 @@ board), `context: goes with one request` (the description, wrapped in
 `check-in-c7` with one request only, is dropped after
 `CheckIns.ContextAge` (3 minutes) and is not posted when that prompt is
 emptied) and `context: nothing changes nothing` (`KNOW: nothing to add`, `OK`,
-a `REMIND:` line and chatter post nothing). Three `signals:` steps check the
+a `REMIND:` line and chatter post nothing). `describe touches` checks the
+built-in Describe touches check-in end to end with FIXTURE touches and a
+canned answer: it is on, runs at most once a minute, adds to what Martlet
+knows and starts on *Your touches end*; it waits with no trigger, runs on a
+fired trigger while the touch reply keeps the conversation busy, waits during
+its cooldown and while the character is hidden; its message has the strokes
+from `{touches}`, the personality, the `KNOW:` format and the non-explicit
+`{adult}` line (the explicit line only with Adult content on); and a fixture
+member's `KNOW:` answer goes on a production context board as
+`check-in-touches` for one request only. Three `signals:` steps check the
 signal conditions and facts with FIXTURE facts: `signals: when they wait` (each
 condition waits for its signal since the last run and runs on it: you came
 back, a call, a change in what you do, the hours past midnight, an unanswered

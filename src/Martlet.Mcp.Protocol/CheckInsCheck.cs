@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Mcp;
@@ -204,7 +205,8 @@ internal static class CheckInsCheck
             [CheckIns.Welcome] = "SAY: Welcome back! Your trip plan finished while you were away.",
             [CheckIns.Unanswered] = "SAY: No pressure, but I'm still curious what you think!",
             [CheckIns.Call] = "REMIND: They just joined a call; stay quiet and keep any reply very short until it ends.",
-            [CheckIns.Others] = "REMIND: Someone else is here; don't share private things about the user."
+            [CheckIns.Others] = "REMIND: Someone else is here; don't share private things about the user.",
+            [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin."
         };
         var places = new BackgroundPlaces();
         BackgroundPlace member = new("endpoint:fixture", "FIXTURE member") { Slots = 2, Model = "fixture-model" };
@@ -285,7 +287,8 @@ internal static class CheckInsCheck
             var copy = CheckIns.Of(new CustomCheckIn
             {
                 Id = "c9", Name = builtIn.Name + " (copy)", On = true, EveryMinutes = builtIn.EveryMinutes,
-                Task = CheckIns.Template(builtIn, null) ?? "", Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome
+                Task = CheckIns.Template(builtIn, null) ?? "", Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome,
+                Triggers = builtIn.Triggers
             });
             var sameMessage = CheckIns.Message(builtIn, CheckIns.Focus(builtIn, facts), null) == CheckIns.Message(copy, CheckIns.Focus(copy, facts), null);
             var sameWaits = states.All(s => CheckIns.Wait(builtIn, s, null) == CheckIns.Wait(copy, s, null) &&
@@ -304,6 +307,15 @@ internal static class CheckInsCheck
             saidOwn.Contains("- 10:05 PM (12 min ago):", StringComparison.Ordinal) && saidOwn.Contains("last replies, oldest first", StringComparison.Ordinal) &&
             saidOwn.Contains("REMIND:", StringComparison.Ordinal),
             new { recreated, saidInTheLastHour = saidOwn });
+
+        // {adult} says whether Companion › Replies › Adult content is on: the explicit line only while it is.
+        var adultCheck = CheckIns.Of(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Task = "Describe it. {adult}" });
+        var adultOff = CheckIns.Message(adultCheck, facts, null) ?? "";
+        var adultOn = CheckIns.Message(adultCheck, facts with { Adult = true }, null) ?? "";
+        Step("adult content line", adultOff.Contains(PromptCatalog.DefaultCheckInAdultOffInstructions, StringComparison.Ordinal) &&
+            !adultOff.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, StringComparison.Ordinal) &&
+            adultOn.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, StringComparison.Ordinal) && !adultOn.Contains("{adult}", StringComparison.Ordinal),
+            new { off = CheckIns.Adult(facts, null), on = CheckIns.Adult(facts with { Adult = true }, null) });
 
         // 5. What Martlet does: emotes a reply turned on go off (never the owner's try), a reminder goes with exactly one request,
         //    and what to bring up is worded as the check-in's own, beside a due reminder.
@@ -344,9 +356,67 @@ internal static class CheckInsCheck
         TouchesFact(Step, now, facts);
         Triggers(Step, now, facts);
         await ContextAsync(Step, now, facts, cancellation);
+        await DescribeTouchesAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
         await ToolsAsync(Step, facts, cancellation);
         return new { passed = ok, steps };
+    }
+
+    /// <summary>11. The built-in Describe touches check-in end to end with FIXTURE touches and a canned answer (NOT AI): it waits
+    /// for touches, a fired trigger runs it even while the touch reply keeps the conversation busy, its message carries the touches,
+    /// the conversation, the personality, the emotes and the Adult content line, the answer is read on a production job board, and
+    /// the description goes on a production context board for exactly one request.</summary>
+    private static async Task DescribeTouchesAsync(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts,
+        CancellationToken cancellation)
+    {
+        var describe = CheckIns.All(null).Single(c => c.Id == CheckIns.DescribeTouches);
+        var ledger = new TouchLedger();
+        var clock = TimeSpan.FromMinutes(30);
+        for (var i = 0; i < 2; i++)
+            ledger.Record(new(PhysicalKind.Stroke, clock - TimeSpan.FromSeconds(20 - i), "down from your tail over your buttocks to your groin",
+                "tail → buttocks → groin", "slowly", Zones: ["your tail", "your buttocks", "your groin"], Intimate: true));
+        var state = facts with { Touches = ledger.History(clock) };
+        var fired = new CheckInTrigger(CheckInTriggers.TouchesEnded, now.AddSeconds(-2), "2 touches, an intimate one");
+        var waits = new Dictionary<string, string?>
+        {
+            ["no touches yet"] = CheckIns.Wait(describe, state, null),
+            ["touches ended, the touch reply talks"] = CheckIns.Wait(describe, state with { Quiet = TimeSpan.Zero }, null, fired: fired),
+            ["touches ended, ran 10 s ago"] = CheckIns.Wait(describe, state, new(now.AddSeconds(-10), 4, "nothing to add to what Martlet knows", false), fired: fired),
+            ["touches ended, character hidden"] = CheckIns.Wait(describe, state with { CharacterShows = false }, null, fired: fired)
+        };
+        var job = CheckIns.Prepare(describe, CheckIns.Focus(describe, state), null);
+        var adultJob = CheckIns.Prepare(describe, CheckIns.Focus(describe, state with { Adult = true }), null);
+        BackgroundPlace member = new("endpoint:fixture-touches", "FIXTURE member") { Slots = 1, Model = "fixture-model" };
+        const string answer = "<think>Two slow strokes, tail to groin.</think>\n" +
+            "KNOW: FIXTURE: Their slow strokes keep sliding from your tail over your buttocks down to your groin.";
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done(answer)));
+        var result = job is null ? null : await board.RunAsync(job, cancellation);
+        var verdict = CheckIns.Read(describe, result?.Text, state);
+        var context = new ContextBoard();
+        if (verdict is { Act: true, Text: { } text } && CheckIns.Context(null, text) is { } note)
+            context.Post(CheckIns.Source(describe.Id), note, now, CheckIns.ContextAge, consume: true);
+        var first = context.Snapshot(now.AddSeconds(30));
+        context.MarkSent(first);
+        var second = context.Snapshot(now.AddSeconds(40));
+        var message = job?.Text ?? "";
+        step("describe touches", describe is { On: true, EveryMinutes: 1, Outcome: CheckInOutcome.Context, Triggers: CheckInTriggers.TouchesEnded } &&
+            waits["no touches yet"] is not null && waits["touches ended, the touch reply talks"] is null &&
+            waits["touches ended, ran 10 s ago"] == "next in 50 s" && waits["touches ended, character hidden"] == "the character isn't showing" &&
+            job is { Kind: ThinkingJobKind.CheckIn } && message.Contains("has been touching it", StringComparison.Ordinal) &&
+            message.Contains("slowly stroked down from your tail over your buttocks to your groin twice", StringComparison.Ordinal) &&
+            message.Contains("playful and teasing", StringComparison.Ordinal) && message.Contains("KNOW:", StringComparison.Ordinal) &&
+            message.Contains(PromptCatalog.DefaultCheckInAdultOffInstructions, StringComparison.Ordinal) &&
+            !message.Contains("{touches}", StringComparison.Ordinal) && !message.Contains("{adult}", StringComparison.Ordinal) &&
+            adultJob?.Text.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, StringComparison.Ordinal) == true &&
+            result is { Succeeded: true } && verdict is { Act: true } &&
+            first.Sources.Contains(CheckIns.Source(CheckIns.DescribeTouches)) &&
+            first.Text!.Contains("Their slow strokes keep sliding", StringComparison.Ordinal) &&
+            !second.Sources.Contains(CheckIns.Source(CheckIns.DescribeTouches)),
+            new
+            {
+                waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), message, verdict.Act, verdict.Text,
+                firstRequestNotes = first.Text, secondRequestSources = second.Sources
+            });
     }
 
     /// <summary>10. Check-in triggers with FIXTURE touches (NOT AI): saved and read back, what a burst of touches fires once it
@@ -370,7 +440,7 @@ internal static class CheckInsCheck
             catch (Martlet.Core.Contracts.ContractException) { refused = true; }
             step("triggers: saved and read back", wrote && state == "loaded" && all.Single(c => c.Id == "c4").Triggers == custom.Triggers &&
                 all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
-                CheckIns.All(null).All(c => c.Triggers == CheckInTriggers.None) && refused,
+                CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded : CheckInTriggers.None)) && refused,
                 new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
         }
         finally

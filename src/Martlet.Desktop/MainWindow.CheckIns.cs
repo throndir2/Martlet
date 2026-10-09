@@ -185,7 +185,8 @@ public partial class MainWindow
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing. Its tools act: the tools it " +
         "calls (tick at least one set under It may use these tools) are what it does, and its answer only says what it did.";
 
-    private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {conversation}, " +
+    private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {adult} (whether " +
+        "Adult content is on: an explicit or a non-explicit line, from Companion › Prompts), {conversation}, " +
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
         "{presence}, {touches}, {activity}, {people} and {away}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
@@ -596,7 +597,8 @@ public partial class MainWindow
             Said = conversation?.RecentSayings(now) ?? [],
             // Read without taking: the next reply still drains these touches as before.
             Touches = conversation?.Touches.History(conversation.TouchNow),
-            HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh)
+            HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh),
+            Adult = GenerationSettings.Adult(homeSettings?.Generation)
         });
     }
 

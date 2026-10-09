@@ -94,6 +94,7 @@ public static class PromptCatalog
     public const string CheckInPromises = "check_in_promises";
     public const string CheckInCharacter = "check_in_character";
     public const string CheckInRepeats = "check_in_repeats";
+    public const string CheckInTouches = "check_in_touches";
     public const string CheckInWelcome = "check_in_welcome";
     public const string CheckInUnanswered = "check_in_unanswered";
     public const string CheckInCall = "check_in_call";
@@ -103,6 +104,8 @@ public static class PromptCatalog
     public const string CheckInContext = "check_in_context";
     public const string CheckInDue = "check_in_due";
     public const string CheckInDueNotes = "check_in_due_notes";
+    public const string CheckInAdultOn = "check_in_adult_on";
+    public const string CheckInAdultOff = "check_in_adult_off";
 
     public const string ConversationGroup = "Every reply";
     public const string VisionGroup = "Screen and camera glances";
@@ -241,6 +244,15 @@ public static class PromptCatalog
 
     public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. {answer}";
 
+    public const string DefaultCheckInTouchesInstructions =
+        "{name} is the user's desktop character, and the user has been touching it.\n{touches}\n\n{conversation}\n\n" +
+        "{name}'s personality:\n{persona}\n\nThe emotes {name} shows now:\n{emotes}\n\n" +
+        "Describe in two or three short, vivid sentences (at most 300 characters) what the user has been doing to {name} and how it feels, as the story so far: " +
+        "where their hands went and how they moved, the places they keep coming back to, and how it builds, true to {name}'s " +
+        "personality, to how it feels about being touched there and to what was said. Write it to {name} as \"you\", like the " +
+        "touch lines above. Don't list each touch again or copy those lines; tell it as one moment {name} can draw on in its " +
+        "next reply. If there is too little to describe (one light touch), nothing needs adding. {adult}";
+
     public const string DefaultCheckInNoteInstructions =
         "A reminder from your own check-in, for you only: {reminder} Follow it in this reply where it fits, without mentioning it.";
 
@@ -256,6 +268,15 @@ public static class PromptCatalog
     public const string DefaultCheckInDueNotesInstructions =
         "Your own check-in came up with something to bring up:\n{items}\nAnswer what the user just said first; then, where it " +
         "fits, bring it up in the same reply, in character, without mentioning notes or check-ins.";
+
+    public const string DefaultCheckInAdultOnInstructions =
+        "Adult content is on: the user is an adult and chose to allow sexual and explicit content with the character. You may " +
+        "be explicit where it fits, in plain words: the character's groin is its pussy or its cock (whichever its body has), its " +
+        "chest its breasts and its buttocks its ass, and touches there again and again are deliberate and sexual. Never anything " +
+        "sexual with or about anyone under 18: if the character is a minor or childlike, nothing sexual happens.";
+
+    public const string DefaultCheckInAdultOffInstructions =
+        "Adult content is off: keep it non-explicit. Say intimate touches tastefully, without sexual detail or explicit words.";
 
     public const string DefaultTouchedInstructions =
         "(Martlet's note, not said by the user: the user just touched you, their desktop character, or moved you around, without " +
@@ -893,7 +914,8 @@ public static class PromptCatalog
             DefaultCheckInInstructions, []),
         new(CheckInEmotes, CheckInGroup, "Check-in: lingering emotes",
             "What Lingering emotes checks. Every check-in's prompt may name any of these placeholders: {name} the character's " +
-            "name, {time} the day and time, {conversation} the end of the conversation, {emotes} the lingering emotes with their " +
+            "name, {time} the day and time, {adult} whether Adult content is on (Check-in: adult content on or off), " +
+            "{conversation} the end of the conversation, {emotes} the lingering emotes with their " +
             "hints and how long each has shown, {example} the first one's tag, {looking}, {usual} and {since} the gaze a reply " +
             "chose, {persona}, {work}, {screen}, {sound}, {presence}, {said} what it said in the last hour and {replies} its last " +
             "replies. Check-ins: each check adds the facts ticked that the prompt doesn't name and the answer format (OFF " +
@@ -918,6 +940,12 @@ public static class PromptCatalog
             "first), each with when it said it (\"10:05 PM (12 min ago)\"). Check-ins: each check adds the answer format (a " +
             "REMIND: line or OK).",
             DefaultCheckInRepeatsInstructions, ["name", "said"]),
+        new(CheckInTouches, CheckInGroup, "Check-in: describe touches",
+            "What Describe touches asks right after you touch the character. {touches} is what you did to it in the last 10 " +
+            "minutes, in the words of the touch reaction, {conversation} the end of the conversation, {persona} its personality, " +
+            "{emotes} the emotes it shows and {adult} whether Adult content is on. Check-ins: each check adds the answer format " +
+            "(a description that goes with the next reply, or nothing).",
+            DefaultCheckInTouchesInstructions, ["name", "touches", "conversation", "persona", "emotes", "adult"]),
         new(CheckInWelcome, CheckInGroup, "Check-in: welcome back",
             "What Welcome back checks, when the user comes back to the PC after 10 minutes or more away. {away} says how long " +
             "they were away and what happened meanwhile (what Martlet said, background work that finished, reminders that came " +
@@ -934,7 +962,8 @@ public static class PromptCatalog
         new(CheckInOthers, CheckInGroup, "Check-in: someone else is here",
             "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
             "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
-            DefaultCheckInOthersInstructions, ["name", "people"]),        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
+            DefaultCheckInOthersInstructions, ["name", "people"]),
+        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
             "Wraps the prompt of every check-in, built-in or your own. {task} is the check-in's prompt with its placeholders " +
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
@@ -958,6 +987,14 @@ public static class PromptCatalog
         new(CheckInDueNotes, CheckInGroup, "Check-in: brought up, with your message",
             "The same in the notes of your message, when you talk first. {items} is what it said to bring up.",
             DefaultCheckInDueNotesInstructions, ["items"]),
+        new(CheckInAdultOn, CheckInGroup, "Check-in: adult content on",
+            "Fills {adult} in a check-in's prompt while Companion › Replies › Adult content is on, so the check-in may be " +
+            "explicit, as the replies may.",
+            DefaultCheckInAdultOnInstructions, []),
+        new(CheckInAdultOff, CheckInGroup, "Check-in: adult content off",
+            "Fills {adult} in a check-in's prompt while Companion › Replies › Adult content is off, so the check-in stays " +
+            "non-explicit.",
+            DefaultCheckInAdultOffInstructions, []),
 
         new(HomeWrap, HomeGroup, "Smart home status",
             "Wraps every smart home note below. {label} is the block's marker; {body} is the note.",
