@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-10-08
+
 ### Added
 
 - Each machine in the Thinking pool has **Quick jobs** and **Long jobs** boxes. Untick Quick jobs to keep a machine for long thinking and research, or untick Long jobs to keep it free for quick checks while you talk. ([#658](https://github.com/throndir2/Martlet/pull/658))
