@@ -26,6 +26,6 @@ Open **Settings › Startup and closing** for **Start with Windows**, **Start in
 
 ## Appearance
 
-Open **Settings › Appearance**. Palettes include **Pink light**, **Rose dark**, **Character light** and **Character dark**. Windows high contrast overrides decorative colors.
+Open **Settings › Appearance**. Palettes include **Pink light**, **Rose dark**, **Character light**, **Character dark** and **Custom**. Choose **Custom** to make your own: start from any palette, then select a part (window background, text, accent and so on) and change its color with a color code, the sliders or one of your character's colors. **Make it easy to read** fixes colors that are hard to read. Windows high contrast overrides decorative colors.
 
 More detail: [Desktop app](https://github.com/throndir2/Martlet/blob/main/docs/DESKTOP_APP.md), [Windows packaging](https://github.com/throndir2/Martlet/blob/main/packaging/windows/README.md), [Troubleshooting](https://github.com/throndir2/Martlet/blob/main/docs/TROUBLESHOOTING.md).

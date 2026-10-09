@@ -220,7 +220,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "Creation-",
         // Background tasks: a task's Show or Show output ("TaskShow-3") only shows its run window again, or a finished task's
         // kept output.
-        "TaskShow-"];
+        "TaskShow-",
+        // Settings › Appearance › Custom: choosing a part ("CustomThemeRole-Accent") only shows its color in the editor.
+        "CustomThemeRole-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -738,10 +740,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
-        // Settings › Appearance: the palette (Pink light, Rose dark, Character light or Character dark; menus and every window
+        // Settings › Appearance: the palette (Pink light, Rose dark, Character light, Character dark or Custom; menus and every window
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
         "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus",
+        // Settings › Appearance › Custom (shown while the Custom palette is chosen): the palette Start from names, the selected
+        // part's name, help, color code (#RRGGBB) and the hint shown when a typed code isn't a color, its hue (degrees),
+        // saturation and lightness (%), whether every color is easy to read or what may be hard to read (CustomThemeCheck), the
+        // Make it easy to read button (shown only then) and the question Use its colors asks before it replaces colors the owner
+        // chose. Each part reads through CustomThemeRole- below. Changing a color (the code, a slider, a CustomThemePick-<n>,
+        // CustomThemeStartFrom or CustomThemeFix) saves appearance-custom.json, so it needs --allow-ui-effects.
+        "CustomThemeBase", "CustomThemeRoleName", "CustomThemeRoleHelp", "CustomThemeHex", "CustomThemeHexHint", "CustomThemeHue",
+        "CustomThemeSaturation", "CustomThemeLightness", "CustomThemeCheck", "CustomThemeFix", "CustomThemeStartFromQuestion",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role; and
         // under it, Your other computers: what the list offers (or why it is empty or can't switch them). Each computer's row reads
         // through OtherRole- below; its OtherRoleSwitch- button asks that computer to switch, so it needs --allow-ui-effects.
@@ -928,6 +938,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
+        // Settings › Appearance › Custom: each part of the custom palette with its color ("CustomThemeRole-Accent" reads "Accent:
+        // #A52D64") and the character's colors it can take ("CustomThemePick-0" reads "Use #2B3440 dark grayish blue").
+        "CustomThemeRole-", "CustomThemePick-",
         // Companion › Listening › Parakeet in Martlet: each model's title with its tags ("ListenParakeetModel-parakeet-tdt-110m-en"
         // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads
         // "Parakeet TDT 110M (English). Replies start sooner: ... Downloads once: 477 MB."). Its SetupListenParakeet-<model>

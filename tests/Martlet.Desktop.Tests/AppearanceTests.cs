@@ -112,6 +112,120 @@ public sealed class AppearanceTests
     }
 
     [Fact]
+    public void CustomPaletteRoundTripsCanonicallyAndStartsAsPinkLightWithoutOne()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Appearance." + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            Assert.Null(Appearance.LoadCustom(directory));
+            Assert.Equal(Own(dark: false), Appearance.LoadColors(directory, AppearanceTheme.Custom));
+            var colors = Own(dark: true);
+            colors["Accent"] = "3cb";
+            colors["Canvas"] = "#0a0b0c";
+            Appearance.SaveCustom(directory, colors);
+            var loaded = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(Appearance.LoadCustom(directory));
+            Assert.Equal("#33CCBB", loaded["Accent"]);
+            Assert.Equal("#0A0B0C", loaded["Canvas"]);
+            Assert.Equal(Martlet.Avatar.Hosting.ThemeRoles.All, loaded.Keys);
+            Assert.Equal(loaded, Appearance.LoadColors(directory, AppearanceTheme.Custom));
+            // The same colors are always the same text, so another computer reads back exactly what it shared.
+            var shared = File.ReadAllText(Appearance.CustomPath(directory));
+            Assert.Equal(shared, Appearance.ShareCustom(Appearance.ParseCustom(shared)!));
+            Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
+            colors.Remove("Glow");
+            Assert.Throws<ArgumentException>(() => Appearance.SaveCustom(directory, colors));
+            Assert.Null(Appearance.ParseCustom("""{"Colors":{"Canvas":"#FFFFFF"}}"""));
+            Assert.Null(Appearance.ParseCustom("not json"));
+            Assert.Null(Appearance.ParseCustom(null));
+            // A custom palette that can't be read starts as Pink light's colors, and Martlet says so.
+            Appearance.Save(directory, AppearanceTheme.Custom);
+            Assert.Null(Appearance.LoadForStartup(directory).Notice);
+            File.WriteAllText(Appearance.CustomPath(directory), "{");
+            var startup = Appearance.LoadForStartup(directory);
+            Assert.Equal(AppearanceTheme.Custom, startup.Theme);
+            Assert.Contains("custom palette", startup.Notice);
+            Assert.Equal(Own(dark: false), Appearance.LoadColors(directory, AppearanceTheme.Custom));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void CustomPaletteDrawsWithItsOwnColorsAndIsDarkWhenItsBackgroundIs()
+    {
+        var light = Own(dark: false);
+        light["Accent"] = "#1F6F8B";
+        Assert.False(AppearanceTheme.Custom.FromCharacter());
+        Assert.True(AppearanceTheme.Custom.HasColors());
+        Assert.False(AppearanceTheme.Custom.IsDark(light));
+        Assert.Equal("Custom", AppearanceTheme.Custom.Name());
+        Assert.Equal(AppearanceTheme.Custom, Appearance.Parse("Custom"));
+        var palette = Appearance.Palette(AppearanceTheme.Custom, false, light);
+        Assert.Equal((Color)ColorConverter.ConvertFromString("#1F6F8B"), ((SolidColorBrush)palette["AccentBrush"]).Color);
+        Assert.IsType<DrawingImage>(palette["MascotImage"]);
+        var dark = new Dictionary<string, string>(light) { ["Canvas"] = "#202020" };
+        Assert.True(AppearanceTheme.Custom.IsDark(dark));
+        Assert.True(AppearanceTheme.Custom.IsDark(new Dictionary<string, string>(light) { ["Canvas"] = "#5A5A5A" }));
+        Assert.False(AppearanceTheme.Custom.IsDark(new Dictionary<string, string>(light) { ["Canvas"] = "#A0A0A0" }));
+        Assert.False(AppearanceTheme.Custom.IsDark(null));
+        // Without colors a custom palette looks like Pink light; Martlet's own palettes still ignore colors.
+        Assert.Equal(((SolidColorBrush)Appearance.Palette(AppearanceTheme.Light, false)["CanvasBrush"]).Color,
+            ((SolidColorBrush)Appearance.Palette(AppearanceTheme.Custom, false)["CanvasBrush"]).Color);
+        Assert.False(AppearanceTheme.Light.HasColors());
+        Assert.True(AppearanceTheme.Dark.IsDark(light));
+        // Windows' high contrast wins over custom colors too.
+        Assert.Equal(SystemColors.WindowColor, ((SolidColorBrush)Appearance.Palette(AppearanceTheme.Custom, true, dark)["CanvasBrush"]).Color);
+    }
+
+    [Fact]
+    public void CustomPaletteReadabilityRulesFindAndFixUnreadableColors()
+    {
+        var colors = Own(dark: false);
+        var good = Martlet.Avatar.Hosting.ThemePalette.From(AppearanceTheme.Custom.IsDark(colors), colors)!;
+        Assert.Empty(Martlet.Avatar.Hosting.CharacterThemeRules.Problems(good));
+        colors["Text"] = "#C8C8C8";
+        colors["Soft"] = "#303030";
+        var bad = Martlet.Avatar.Hosting.ThemePalette.From(AppearanceTheme.Custom.IsDark(colors), colors)!;
+        Assert.Equal(new[] { "Soft" }, Martlet.Avatar.Hosting.CharacterThemeRules.WrongBackgrounds(bad));
+        Assert.Contains(Martlet.Avatar.Hosting.CharacterThemeRules.Problems(bad), problem => problem.StartsWith("Text on Canvas", StringComparison.Ordinal));
+        var (repaired, fixes) = Martlet.Avatar.Hosting.CharacterThemeRules.Repair(bad);
+        Assert.NotEmpty(fixes);
+        Assert.Empty(Martlet.Avatar.Hosting.CharacterThemeRules.Problems(repaired));
+        Assert.False(AppearanceTheme.Custom.IsDark(repaired.Colors));
+        Assert.Equal(Martlet.Avatar.Hosting.ThemeRoles.All, CustomThemeParts.All.Select(part => part.Role));
+        Assert.Equal("Buttons and side bar", CustomThemeParts.Name("Soft"));
+    }
+
+    [Theory]
+    [InlineData("#FF0000", 0, 100, 50)]
+    [InlineData("#00FF00", 120, 100, 50)]
+    [InlineData("#0000FF", 240, 100, 50)]
+    [InlineData("#FFFFFF", 0, 0, 100)]
+    [InlineData("#000000", 0, 0, 0)]
+    [InlineData("#808080", 0, 0, 50.2)]
+    [InlineData("#A52D64", 332.5, 57.1, 41.2)]
+    public void HslMatchesTheColorAndRoundTrips(string hex, double h, double s, double l)
+    {
+        var color = Hsl.FromHex(hex);
+        Assert.Equal(h, color.H, 0.1);
+        Assert.Equal(s, color.S, 0.1);
+        Assert.Equal(l, color.L, 0.1);
+        Assert.Equal(hex, color.Hex);
+        Assert.Equal(hex, new Hsl(color.H + 360, color.S, color.L).Hex);
+    }
+
+    [Fact]
+    public void HslSlidersReachEveryEndOfTheScale()
+    {
+        Assert.Equal("#FF0000", new Hsl(360, 100, 50).Hex);
+        Assert.Equal("#FFFFFF", new Hsl(200, 40, 100).Hex);
+        Assert.Equal("#000000", new Hsl(200, 40, 0).Hex);
+        Assert.Equal("#808080", new Hsl(200, 0, 50).Hex);
+        Assert.Equal("#FF00FF", new Hsl(300, 120, 50).Hex);
+        Assert.Throws<FormatException>(() => Hsl.FromHex("pink"));
+    }
+
+    [Fact]
     public void HighContrastUsesWindowsColorsInsteadOfPink()
     {
         var light = Appearance.Palette(AppearanceTheme.Light, highContrast: true);
@@ -247,6 +361,14 @@ public sealed class AppearanceTests
         }
         finally { owner.Close(); }
     });
+
+    /// <summary>Pink light's or Rose dark's colors by role, as their brushes draw them.</summary>
+    private static Dictionary<string, string> Own(bool dark)
+    {
+        var palette = Appearance.Palette(dark ? AppearanceTheme.Dark : AppearanceTheme.Light, highContrast: false);
+        return Martlet.Avatar.Hosting.ThemeRoles.All.ToDictionary(role => role, role =>
+            ((SolidColorBrush)palette[role + "Brush"]).Color is var c ? $"#{c.R:X2}{c.G:X2}{c.B:X2}" : "");
+    }
 
     private static double Contrast(ResourceDictionary palette, string foreground, string background)
     {

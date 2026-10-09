@@ -396,6 +396,7 @@ NVIDIA Build and its old key.
 | `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, how chatty Martlet is about what it sees and what the PC plays (Martlet decides included; a computer on an older Martlet reads it as Chatty) | Microphone sensitivity, cameras and video addresses, Watch on or off and what it looks at (consent at that screen), echo reduction, hearing what the PC plays |
 | `speech-display` | Whether speech bubbles and subtitles show | Where the bubble sits (beside the character or in one place, and its offsets): it depends on this PC's screens |
 | `appearance` | The theme | |
+| `appearance-custom` | The colors of the owner's custom palette (Settings › Appearance › Custom; `appearance-custom.json`). It travels before `appearance`, so a computer that switches to Custom has them; a computer on an older Martlet keeps its own theme | |
 | `voice-recognition` | Whether Martlet recognizes the people it hears (Companion › People) | |
 | `voice-id` | Voice ID on or off and the owner's voiceprint (numbers only, never audio; Companion › Listening) | |
 | `smart-home` | What Martlet may do with Home Assistant: use it when asked, locks, doors and alarms, flexible requests | |
