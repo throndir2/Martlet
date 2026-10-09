@@ -978,7 +978,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("reading_check", "Companion › Reading (docs/READING.md): read reading.json for a data directory (where Martlet reads " +
             "the text on the screen: Windows OCR on this PC, a host's Reading role or off) and read a drawn test picture with known " +
             "text (HEALTH 87 / 100, Score: 12450, VICTORY, a chat line) through Windows OCR on this PC, as watching does: lines, " +
-            "the joined text, missing words and milliseconds. With endpoint (a Reading role's worker on loopback, such as " +
+            "the joined text, missing words and milliseconds. desktop: a drawn 1920 x 1080 desktop of 108 small (12 px) text lines " +
+            "read at full size, as the desktop reads the screen, and at a vision look's 1024 x 576: lines found, lines read right " +
+            "and milliseconds for each. With endpoint (a Reading role's worker on loopback, such as " +
             "http://127.0.0.1:50087/) that worker's GET /status and POST /read read the same picture as a PNG. Never captures the " +
             "real screen.", new
         {

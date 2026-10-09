@@ -39,6 +39,8 @@ Each request has one operation.
 `status` returns the engine state.
 `read` sends one PNG or JPEG image.
 The image limit is 4 MiB.
+Martlet sends the full-size screenshot as a JPEG at quality 90.
+When that is more than 4 MiB, Martlet tries quality 75, then quality 60.
 The result limit is 256 KiB.
 
 A status result has this form:

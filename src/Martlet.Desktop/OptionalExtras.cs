@@ -187,7 +187,7 @@ internal static class OptionalExtras
                 [
                     new("runs-on", "Runs on", "the processor of this PC, inside Windows: no graphics card needed", "Processor (Windows)"),
                     new("download", "Download", "none: it is built into Windows", "No download"),
-                    new("speed", "Read time", "about 15 ms for a 1024 x 576 screenshot", "0.015 s a read",
+                    new("speed", "Read time", "about 140 ms for a full-size 1920 x 1080 screenshot", "0.14 s a read",
                         "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
                 ],
                 new("download", "Download", "none: it is built into Windows", "No download"),

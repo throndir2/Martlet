@@ -317,8 +317,8 @@ public partial class MainWindow
 
     // ---------- Read my screen now ----------
 
-    /// <summary>Takes one picture of the whole screen (kept only in memory) and reads it with the saved choice, then shows what
-    /// it read and how long it took. With the Reading role, that picture goes to that computer.</summary>
+    /// <summary>Takes one full-size picture of the whole screen (kept only in memory) and reads it with the saved choice, then
+    /// shows what it read, how long it took and the picture's size. With the Reading role, that picture goes to that computer.</summary>
     private async Task ReadScreenNowAsync()
     {
         if (store is null || readingTesting || closing) return;
@@ -336,9 +336,9 @@ public partial class MainWindow
         ScreenFrame? frame = null;
         try
         {
-            var result = await Task.Run(() => glancer.Capture(ScreenScope.ActiveScreen));
+            var result = await Task.Run(() => glancer.CaptureText(ScreenScope.ActiveScreen));
             frame = result.Frame;
-            if (frame?.CopyPixels() is not { } pixels)
+            if (frame?.TakePixels() is not { } pixels)
             {
                 readingTestState = result.Skip switch
                 {

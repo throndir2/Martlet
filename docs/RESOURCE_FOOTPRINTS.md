@@ -270,7 +270,7 @@ holds its own copy.
 | `vision:qwen3.5:4b` | any | **4.1** / 4.1 M | 0.5-1 E | 1-2 E | 4.0 S | not measured | M (as Thinking) |
 | `hearing:gemma4:e4b` | any | **4.9** / 4.9 M | 2.5-3 E | 1-2 E | 9.5 S | not measured | M (as Thinking) |
 | `vision:qwen2.5vl:7b` | any | 7 / 7.5 E | 1-1.5 E | 1-2 E | 6.0 S | not measured | E |
-| `reading:windows-ocr` | CPU (in Martlet, Windows) | 0 | 0.05-0.1 E | 1 E while it reads | 0 (built in) | ~15 ms per 1024 x 576 screenshot ([Reading](READING.md)) | E |
+| `reading:windows-ocr` | CPU (in Martlet, Windows) | 0 | 0.05-0.1 E | 1 E while it reads | 0 (built in) | ~140 ms per full-size 1920 x 1080 screenshot ([Reading](READING.md)) | E |
 | `reading:rapidocr` | CPU (`ocr` role) | 0 | 0.4-0.6 E | 4 S ([OCR host](OCR_HOST.md)) | 0.5 E (15 MB models + image) | **0.9 s** M on a 24-thread processor | E |
 | `smart-home:home-assistant` | CPU (`home-assistant` role, Linux Docker Engine) | 0 | 0.5-1 E | 0.2 / 1 E | 2 E (image) | | E |
 
