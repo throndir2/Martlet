@@ -3864,7 +3864,10 @@ builder (`RecommendedSetupInputs`) and runs the production recommender
 (`NetworkRecommender`). Give an absolute `dataDirectory` (default the current
 user's; the script gives a disposable one) to plan from that directory's
 `hosts.json`, `host-hardware.json`, `cluster.json`, `settings.json`,
-`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`. A data
+`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`, and this
+PC's page choices from `talk-preferences.json` (vision on, Let ... hear my
+voice), `sense-models.json`, `reading.json` and `smart-home.json` (its address
+only, never the token). A data
 directory has no live host checks: a host that `node-presence.json` (the
 desktop's presence report) last saw not answering counts as offline, as the
 desktop plans it, and every other host counts as online. Its roles are the
@@ -3889,14 +3892,19 @@ can't reply" problem. The result has:
 - `notes`: why a computer is left as it is.
 - `today`: each job's `host`, `off`, `option` and `pool` (the other computers
   that take its requests when the one in charge is busy, in Sharing work
-  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
+  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference`,
   `off` (the optional parts turned off in the review on this PC, from
-  `recommended-setup.json`).
+  `recommended-setup.json`) and `choices` (this PC's choice for each part set
+  on its Companion page: `part` (Vision, Reading, Hearing or Smart home),
+  `on`, `option` (the catalog option, such as `vision:thinking`,
+  `reading:windows-ocr`), `model`, `where` and `host`).
 - `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`,
   `components` (every part in priority order: `rank`, `part`, `need`
   (`needed` or `optional`), `on`, `where` (*Gemma 4 E4B in Ollama on This PC's
-  NVIDIA GeForce RTX 4070*, or *Off: Martlet doesn't sing.*), `why`, `canBeOff`
-  and `ownerOff`), the
+  NVIDIA GeForce RTX 4070*, or *Off: Martlet doesn't sing.*), `why`, `canBeOff`,
+  `ownerOff`, `offInReview` (the review has an Off box for it; false for the
+  parts this PC sets on their Companion page) and `page` (*Companion ›
+  Vision*)), the
   `changes` in the order Reconfigure makes them (`kind`, `computer`, `summary`, `why`, `away` (the sentence in
   `why` about a computer that isn't answering, which the review leaves out),
   `benefit`, `roleKind`, `model`, `job`, `needsSomeoneThere`, `downloadGb`,
@@ -3929,8 +3937,8 @@ otherwise), `RecommendedSetupTitle`,
 `RecommendedSetupPart-Thinking` reads *1. Thinking (needed): Gemma 4 E4B in
 Ollama on This PC's NVIDIA GeForce RTX 4070.* and an optional part that is off
 *7. Singing (optional): Off: Martlet doesn't sing.*, with why; parts are
-`Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `DeepThinking`,
-`Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
+`Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `Vision`, `Reading`,
+`Hearing`, `DeepThinking`, `SmartHome`, `Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
 computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
 words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
@@ -3961,7 +3969,8 @@ when the review sent the owner there. `RecommendedSetupApply`
 it saves `recommended-setup.json`) and each optional part's Off checkbox
 `RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
 again, in `recommended-setup.json`, and the review opens again planned that
-way) need `--allow-ui-effects`. Reconfigure
+way; Vision, Reading, Hearing and Smart home have none, because their
+Companion page turns them off) need `--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
@@ -4020,7 +4029,12 @@ card is only for Thinking and the voice, and Singing goes first as Required
 because it is optional; with a saved free key on an 8 GB card, Thinking uses
 the free hosted model and the voice gets the card); the parts the owner turned
 off (step 13: every part in priority order, and Singing, Deep thinking and
-advanced lip-sync off with their roles removed); heavy roles on a companion PC
+advanced lip-sync off with their roles removed); every way to extend Martlet
+(step 13: Vision, Reading, Hearing and Smart home have their own lines with
+Off on their Companion page; Vision on Thinking's own model, Hearing's model
+of its own on a companion PC's card with a note, Reading off on this PC so its
+`ocr` role goes, but not with a second companion PC, and Home Assistant stays
+while Smart home is off); heavy roles on a companion PC
 (they move to the host, Improvement); the setup order (step 12: job by job,
 Thinking first, each job make before break); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
