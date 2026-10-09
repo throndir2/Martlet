@@ -95,8 +95,10 @@ internal sealed class DeepThinkTarget
     public override string ToString() => nameof(DeepThinkTarget);
 
     /// <summary>A Thinking pool job's request (<see cref="ThinkingPool"/>): its own output budget and the time it may take,
-    /// Thinking steps as the job asks (null: the model's own default), no tools.</summary>
-    internal ConversationRequest OneShot(BoundedTextInput input, int maxOutputTokens, bool? reasoning, TimeSpan time)
+    /// Thinking steps as the job asks (null: the model's own default), and the job's tools (a check-in's tool sets) for up to
+    /// <paramref name="toolRounds"/> rounds, or none.</summary>
+    internal ConversationRequest OneShot(BoundedTextInput input, int maxOutputTokens, bool? reasoning, TimeSpan time,
+        IConversationToolHost? tools = null, int toolRounds = 0)
     {
         if (Host is not null && time > HostRequestTime) time = HostRequestTime;
         var generation = Host is not null
@@ -107,7 +109,8 @@ internal sealed class DeepThinkTarget
         {
             MaxOutputTokens = output, MaxContextTokens = Input.MaxInputTokens + output
         };
-        return new(input, Model, limits, ThinkLonger.TurnLimits(time), chat: Chat, host: Host, generation: generation);
+        var turn = tools is null ? ThinkLonger.TurnLimits(time) : ThinkLonger.TurnLimits(time) with { MaxToolRounds = toolRounds };
+        return new(input, Model, limits, turn, chat: Chat, host: Host, generation: generation, tools: tools);
     }
 
     /// <summary>Backup Thinking's request (<see cref="IThinkingBackup"/>): the reply's own <paramref name="input"/>, generation
@@ -128,13 +131,15 @@ internal sealed class DeepThinkTarget
 }
 
 /// <summary>The one-use permission for a background think's requests to its own destination (Companion › Deep thinking): exactly
-/// the think's request (and its retries: without Thinking steps when the model refuses them), bound to that endpoint and model
+/// the think's request (and its retries: without Thinking steps when the model refuses them, and one request for each of its
+/// <paramref name="toolRounds"/> tool rounds), bound to that endpoint and model
 /// or paired computer, until the think's time is up. An endpoint's key is its own (Windows Credential Manager), Thinking's for
 /// the same base URL, or none; a paired computer is reached with this PC's pairing, which the host client reads itself.</summary>
 internal sealed class DeepThinkAuthorization(DeepThinkTarget target, ConversationRequest request, Guid profileId, SetupRoute? thinking,
-    ICredentialStore vault, TimeProvider clock, DateTimeOffset expires, bool media = false) : IConversationAuthorizationSource, ICredentialAuthority
+    ICredentialStore vault, TimeProvider clock, DateTimeOffset expires, bool media = false, int toolRounds = 0)
+    : IConversationAuthorizationSource, ICredentialAuthority
 {
-    private const int MaximumRequests = 3;
+    private readonly int maximumRequests = 3 + Math.Max(0, toolRounds);
     private readonly object gate = new();
     private readonly HashSet<Guid> requests = [];
     private int tickets;
@@ -154,7 +159,7 @@ internal sealed class DeepThinkAuthorization(DeepThinkTarget target, Conversatio
             if (cancellationToken.IsCancellationRequested || clock.GetUtcNow() >= expires ||
                 !ReferenceEquals(action.Input, request.Input) && !ReferenceEquals(action.Input.Origin, request.Input) ||
                 action.Model != request.Model || action.Limits != request.TextLimits || action.Budget != expected ||
-                requests.Count >= MaximumRequests || !requests.Add(action.Context.Ids.RequestId))
+                requests.Count >= maximumRequests || !requests.Add(action.Context.Ids.RequestId))
                 return ValueTask.FromResult<AuthorizedTextOperation?>(null);
             tickets++;
         }

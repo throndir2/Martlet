@@ -938,13 +938,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), what
         // starts it at once ("CheckInTrigger-c1-TouchesEnded"), the
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
-        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
+        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), its tool set boxes ("CheckInTools-c1-next-reply", whose help says
+        // what the set does and its tools), and for a built-in one its prompt's state
         // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact, condition and trigger box, the answer and the
         // length choice carry what they mean as "help". The hours and cap choices ("CheckInFrom-welcome" reads "8 AM",
         // "CheckInUntil-welcome" "10 PM", "CheckInMostPerHour-c1" "Once an hour") carry theirs too. Changing any of them saves
         // check-ins.json, so it needs --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTrigger-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTools-",
+        "CheckInTrigger-",
         "CheckInFrom-", "CheckInUntil-", "CheckInMostPerHour-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
