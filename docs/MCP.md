@@ -201,11 +201,13 @@ task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
 background work ([The Thinking pool](CONVERSATION.md#the-thinking-pool)).
 `thinking_pool_status` (`dataDirectory`) reads `thinking-pool.json` (or what
 Martlet would make from the older `deep-thinking.json`, without writing it):
-each member with its slots, whether it sees pictures or hears recordings and
-whether it can run; the computers the owner keeps out (`leftByOwner`, host IDs
-only: they never join by themselves); *Use the conversation model when the pool is empty*; the
-usable slots and whether one stays free for fast jobs; each job kind's
-priority, whether it is fast and whether a member can run it (`canRun`);
+each member with its slots, whether it sees pictures or hears recordings,
+whether it can run and its `quickJobs` and `longJobs` boxes; the computers the
+owner keeps out (`leftByOwner`, host IDs only: they never join by themselves);
+whether thinking longer and research use the conversation model when no member
+takes long jobs (`useConversationModelWhenEmpty`); the usable slots and whether
+one stays free for fast jobs; each job kind's priority, whether it is fast and
+whether a member that takes that kind can run it (`canRun`);
 guidance and likely-slowdown warnings; and the desktop's
 `thinking-pool-status.json` (`leftByOwner`, running and waiting jobs by kind, the live floor's
 level, the jobs waiting for the conversation and the ones it stopped this turn
@@ -213,24 +215,42 @@ and in all, `resting`: each member whose computer refused a request as invalid
 with what such jobs need and when it gets them again, never a job's text).
 `thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
-on another member, a stale job dropped, the migration, and a member that
+on another member, a stale job dropped, the migration, a member that
 refused a request as invalid resting for such jobs while it still takes the
-others. Its `auto-join` steps
+others, and the `quick and long jobs` steps (a judge passes over a member
+kept from quick jobs, a long job passes over a member kept from long jobs, a
+long job on a member that takes no quick jobs keeps no slot free, and a member
+that leaves takes its boxes with it). Its `auto-join` steps
 run the production rule (`ThinkingPoolAutoJoin`) on sample hosts: a host with
 the Thinking pool role joins with its slots, an Ollama-only host joins unless it
 does this PC's Thinking, a member on Ollama moves to the role, and a computer
-kept out, one Sharing work never uses, a full pool and a host PC are skipped. On the desktop the
-card reads through `ThinkingPoolSummary`, `ThinkingPoolGuidance`,
-`ThinkingPoolWarnings`, `ThinkingPoolLiveFloor` (which members start no new
+kept out, one Sharing work never uses, a full pool and a host PC are skipped.
+
+On the desktop, the page's *Machines* card is one list. It reads through
+`DeepThinkingNow`, `DeepThinkingParallel`, `ThinkingPoolSummary`,
+`ThinkingPoolConversation` (the conversation's own model: never in the pool, so
+no pool job waits in front of a reply), then each member's
+`ThinkingPoolMember-<n>` (*Reads text and pictures; writes text. 2 slots, set
+on diva.*, with *Can't run now* or *Offline now* when that applies) and
+`ThinkingPoolBadges-<n>` (*Waits while you talk*, *Costs money*, *Offline*;
+hidden when none applies), then each paired computer that isn't a member
+(`DeepThinkingHost-<host>`: *Kept out of the pool*, why it can't join, or that
+it joins at its next check), and then `ThinkingPoolGuidance`,
+`ThinkingPoolWarnings` and `ThinkingPoolLiveFloor` (which members start no new
 pool work while you talk with Martlet because they share the conversation's
-computer) and `ThinkingPoolMember-<n>` (it says *Offline now* for a member whose
-computer doesn't answer); *One of your computers* reads through
-`DeepThinkingAutoJoin` (computers with a Thinking model join by themselves, and
-which ones are kept out) and `DeepThinkingHost-<host>` (*In the pool, offline
-now*, *Kept out of the pool*, or what joins at its next check). The
-`ThinkingPoolUseConversationModel` box, `ThinkingPoolSlots-<n>`,
-`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*In the Thinking
-pool*: unticking keeps the computer out, ticking adds it again) save
+computer). Each member has the boxes `ThinkingPoolQuick-<n>` (*Quick jobs*: the
+judges and the screen and sound summaries), `ThinkingPoolLong-<n>` (*Long
+jobs*: thinking longer, research, lyrics and the other helpers) and
+`ThinkingPoolAnswers-<n>` (*Backup for slow replies*). A paired computer's
+Thinking pool role sets its slots on that computer: its row has
+`DeepThinkingChangeModel-<host>` and no slot choice. Other members have
+`ThinkingPoolSlots-<n>` and `ThinkingPoolRemove-<n>`. *Add a machine* reads
+through `DeepThinkingAutoJoin` (computers with a Thinking model join by
+themselves, and which ones are kept out). The conversation row's
+`ThinkingPoolUseConversationModel` box (thinking longer and research run on the
+conversation model when no member takes long jobs), the members' boxes,
+`ThinkingPoolSlots-<n>`, `ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>`
+(*In the pool*: unticking keeps the computer out, ticking adds it again) save
 `thinking-pool.json`, so they need `--allow-ui-effects`.
 
 The pool follows which computers answer
@@ -278,7 +298,7 @@ first words, each endpoint's requests and whether its stream was stopped, and
 the reply latency line. On the desktop the card reads through
 `ThinkingPoolBackup` (the box), `ThinkingPoolBackupDelay` (the wait),
 `ThinkingPoolBackupStatus` (who may answer and the wait now) and each member's
-`ThinkingPoolAnswers-<n>` (*May answer for the conversation*); the box, the
+`ThinkingPoolAnswers-<n>` (*Backup for slow replies*); the box, the
 wait and each member's box save `thinking-pool.json`, so they need
 `--allow-ui-effects`.
 
@@ -4185,10 +4205,10 @@ check. With `live: true` it also asks Ollama on this PC (the saved local Thinkin
 model, or `model`) two made-up turns with the saved persona: `live.turns`
 (`outcome`, `reply`, `ms`). Loopback only; reads no credentials.
 
-The Companion › Thinking pool page's `DeepThinkingPoolStatus` says how many
-places think at once, and each paired computer's `DeepThinkingPool-<host>` box
-(*diva in the Thinking pool*, ticked or not) reads; changing it saves
-`thinking-pool.json`, so it needs `--allow-ui-effects`.
+On the Companion › Thinking pool page, each paired computer's
+`DeepThinkingPool-<host>` box (*diva in the Thinking pool*, ticked or not)
+reads; changing it saves `thinking-pool.json`, so it needs
+`--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
 from a data directory's `shared-settings.json` (optional absolute
@@ -6782,16 +6802,19 @@ singing*, a passive click: it only ends the song musically), with the status
 line reading *Starting to think it over in the background…* while
 `think_longer` runs, *Starting a song in the background…* while `sing_song`
 starts a song job, and *Martlet is bringing up what it worked on…* while
-Martlet's own report is on its way; Companion › **Deep thinking**'s
-`DeepThinkingNow` (*Thinks on diva (gemma4:27b), in parallel with the
-conversation.*, *On, but it can't think on the Thinking model (gemma4:e4b), so
-Martlet doesn't offer to think things over. Choose another place below.*, or
-*Off. Martlet answers everything right away and never thinks in the
+Martlet's own report is on its way; Companion › **Thinking pool**'s
+`DeepThinkingNow` (*The Thinking pool thinks on diva (gemma4:27b), in parallel
+with the conversation.*, *On, but the pool can't think on ..., so Martlet
+doesn't offer to think things over. Add a machine below, or tick Long jobs on
+one.*, or *Off. Martlet answers everything right away and never thinks in the
 background.*) and `DeepThinkingParallel` (why: *Thinking's model (gemma4:e4b)
 runs on this PC and can't think something over while it answers you. ...*,
 *It runs as a second model beside Thinking's gemma4:e4b on this PC, ...*, *diva
 does none of the conversation's jobs, so a think runs there alongside the
-conversation.*), `ThinkLongerStatus`
+conversation.*; both count only the members ticked for Long jobs), the
+`ThinkLongerOn` box (*Let Martlet think things over in the background*,
+`checkedState`; `ui_toggle` saves the reply settings, so it needs
+`--allow-ui-effects`), `ThinkLongerStatus`
 (*On. When a task needs it, Martlet says it'll think it over and works on it in
 the background (Medium effort, no time limit, no limit on how many) while you keep
 talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
@@ -6806,30 +6829,28 @@ off. ...*, *On. When you ask, Martlet looks it up (up to 12 minutes, at most 4 a
 hour), then offers the report.* or *On, but Martlet can't look things up yet:
 ...*), its fixed `WebResearchDisclosure` and the `WebResearchOn` check box
 (`checkedState`; `ui_toggle` saves the reply settings, so it needs
-`--allow-ui-effects`); *Where it thinks* with the passive options
-`DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
-`DeepPlace-Cloud` (each only shows its card): `DeepThinkingSameStatus` (what
-Same as Thinking thinks with, or why Thinking's own model can't think here),
-each paired computer's
-`DeepThinkingHost-<host ID>` (*diva: Its Deep thinking role runs qwen3-8b.*,
-*diva: Ollama runs gemma4:27b. Add the Deep thinking role ...*, *Thinks here
-(...)*, *Its Ollama (...) does Thinking for the conversation. Add the Deep
-thinking role there ...*; on Companion › Thinking pool also *In the pool,
-offline now: its 2 slots come back when it answers again.*, *... Kept out of
-the pool, because you unticked it. Tick In the Thinking pool to add it again.*
-and *... It joins the pool by itself at its next check.*) and, when Deep thinking there would share one
+`--allow-ui-effects`); in *Machines*, each paired computer that isn't a
+member: `DeepThinkingHost-<host ID>` (*diva: Its Thinking pool role runs
+qwen3-8b. It joins the pool by itself at its next check.*, *diva: Ollama runs
+gemma4:27b. ...*, *Its Ollama (...) does Thinking for the conversation. Add
+the Thinking pool role there to join the pool beside it.*, *... Kept out of
+the pool, because you unticked it. Tick In the pool to add it again.*, *Not
+reachable right now.*) and, when the pool role there would share one
 graphics card with the computer's Thinking model,
 `DeepThinkingShare-<host ID>` (*diva: diva already runs a Thinking model
 (gemma4:e4b) on its only graphics card. ... We recommend one graphics card for
 each Thinking model ...*), and, for a reachable computer without the role, its
-`DeepThinkingAddRole-<host ID>` button (returned: *Add Deep thinking on diva*;
-clicking it first asks `DeepThinkingShareQuestion` when the card is shared, then
-installs the role in a run window and then thinks there, so it
-needs `--allow-ui-effects`) or, for one with the role, its
-`DeepThinkingChangeModel-<host ID>` button (returned: *Change the Deep thinking
-model on diva (now gemma4:e4b)*; clicking it opens the role's settings there
-with that model selected, so it needs `--allow-ui-effects`), or `DeepThinkingHosts` when none is
-paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded),
+`DeepThinkingAddRole-<host ID>` button (returned: *Add the Thinking pool role
+on diva*; clicking it first asks `DeepThinkingShareQuestion` when the card is
+shared, then installs the role in a run window and then adds it to the pool,
+so it needs `--allow-ui-effects`) or, for one with the role, its
+`DeepThinkingChangeModel-<host ID>` button (returned: *Change the Thinking pool
+model and slots on diva (now gemma4:e4b)*; clicking it opens the role's
+settings there with that model selected, so it needs `--allow-ui-effects`).
+*Add a machine* has `DeepThinkingHosts` when no computer is paired, and the
+passive options `DeepPlace-ThisPc` (*Ollama on this PC*) and `DeepPlace-Cloud`
+(*A cloud provider or server*), each of which only shows its card:
+`DeepThinkingLocalStatus` (what Ollama on this PC has downloaded),
 `DeepThinkingLocalFit` (whether the model in `DeepThinkingLocalModel` fits
 beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
 `/api/tags` and the NVIDIA driver without loading anything: *Fits: gemma4:e2b
@@ -6839,16 +6860,13 @@ Ollama on this PC to itself ...*), `DeepThinkingLocalShare` (shown when Thinking
 uses Ollama on this PC and this PC has fewer than two graphics cards: *This PC
 already runs a Thinking model (...) on its only graphics card. ... We recommend
 one graphics card for each Thinking model ...*) and `DeepThinkingKeyStatus` (what the key
-field will do; never a key or typed base URL). `DeepThinkingTurnOff` (Off;
-saves the reply settings), `DeepThinkingUseSame`, `DeepThinkingUseHost-<host
-ID>` (checks that computer and saves its Deep thinking role's route, else its
-Ollama route), `DeepThinkingUseLocal`
+field will do; never a key or typed base URL). `DeepThinkingUseLocal`
 (refuses Thinking's own model, and asks `DeepThinkingShareQuestion` first when
 `DeepThinkingLocalShare` shows) and `DeepThinkingSaveCloud` (with
 `DeepThinkingProvider`, `DeepThinkingBaseUrl`, `DeepThinkingModel`,
-`DeepThinkingKey` and `DeepThinkingConsent`) save `deep-thinking.json` (and turn
-Deep thinking back on when it was off) and need `--allow-ui-effects`; an open
-conversation's next reply and think use it.
+`DeepThinkingKey` and `DeepThinkingConsent`) add a member to
+`thinking-pool.json` and need `--allow-ui-effects`; an open conversation's
+next think uses it.
 Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and

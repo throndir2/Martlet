@@ -199,6 +199,52 @@ public sealed class ThinkingPoolTests
     }
 
     [Fact]
+    public async Task Each_kind_goes_only_to_a_member_ticked_for_it()
+    {
+        BackgroundPlace big = new("host:big", "big") { QuickJobs = false }, fast = new("endpoint:fast", "fast") { LongJobs = false };
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [big, fast], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        Assert.Equal("endpoint:fast", board.Find(ThinkingJobKind.BargeInJudge)?.Id);
+        Assert.Equal("host:big", board.Find(ThinkingJobKind.Memory)?.Id);
+        Assert.Equal("fast", (await board.RunAsync(Job(ThinkingJobKind.EndOfTurnJudge), CancellationToken.None)).Member);
+        Assert.Equal("fast", (await board.RunAsync(Job(ThinkingJobKind.Digest), CancellationToken.None)).Member);
+        Assert.Equal("big", (await board.RunAsync(Job(ThinkingJobKind.ThinkLonger), CancellationToken.None)).Member);
+        Assert.Equal("big", (await board.RunAsync(Job(ThinkingJobKind.Naming), CancellationToken.None)).Member);
+
+        var quickOnly = new ThinkingJobBoard(new BackgroundPlaces(), () => [fast], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        Assert.True(quickOnly.CanRun(ThinkingJobKind.BargeInJudge));
+        Assert.False(quickOnly.CanRun(ThinkingJobKind.Research));
+        Assert.False(quickOnly.MayStartNow(ThinkingJobKind.Research));
+        Assert.Equal(ThinkingJobOutcome.NoMember, (await quickOnly.RunAsync(Job(ThinkingJobKind.Research), CancellationToken.None)).Outcome);
+    }
+
+    [Fact]
+    public async Task A_long_job_on_a_member_without_quick_jobs_needs_no_slot_kept_free()
+    {
+        var places = new BackgroundPlaces();
+        BackgroundPlace big = new("host:big", "big") { QuickJobs = false }, mixed = new("host:mixed", "mixed");
+        // The only slot that takes quick jobs is busy: a long job may still start on the member that never takes them.
+        using var judge = places.TryAcquire([mixed], "judge")!;
+        var board = new ThinkingJobBoard(places, () => [big, mixed], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        var think = await board.RunAsync(Job(ThinkingJobKind.ThinkLonger), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("big", think.Member);
+    }
+
+    [Fact]
+    public async Task A_long_job_leaves_the_last_slot_that_takes_quick_jobs_free()
+    {
+        var places = new BackgroundPlaces();
+        // Two slots in all, but only mixed's takes quick jobs: a long job may not take it.
+        BackgroundPlace mixed = new("host:mixed", "mixed"), fast = new("endpoint:fast", "fast") { LongJobs = false };
+        var board = new ThinkingJobBoard(places, () => [mixed, fast], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        using var held = places.TryAcquire([fast], "judge")!;
+        var think = board.RunAsync(Job(ThinkingJobKind.ThinkLonger), CancellationToken.None);
+        await Until(() => places.WaitingKinds.Count == 1);
+        Assert.False(think.IsCompleted);
+        held.Dispose();
+        Assert.Equal("mixed", (await think.WaitAsync(TimeSpan.FromSeconds(5))).Member);
+    }
+
+    [Fact]
     public void Guidance_names_one_slot_and_missing_senses()
     {
         var guidance = ThinkingJobBoard.Guidance([new("host:a", "a", 1, 0, ThinkingCapability.Text, 0)]);
