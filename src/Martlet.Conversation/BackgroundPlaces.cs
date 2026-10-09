@@ -35,6 +35,18 @@ public sealed record BackgroundPlace(string Id, string Name, int Rank = 0)
     /// <summary>The graphics cards it runs on, as its computer names them; empty when not known (then the whole computer counts).</summary>
     public IReadOnlyList<string> Gpus { get; init; } = [];
 
+    /// <summary>Whether it takes quick jobs: the judges and the screen and sound summaries (<see cref="ThinkingJobKinds.IsFast"/>).
+    /// The owner's Quick jobs box on Companion › Thinking pool; on unless unticked.</summary>
+    public bool QuickJobs { get; init; } = true;
+
+    /// <summary>Whether it takes long jobs: every other kind (thinking longer, research, a song's lyrics, touch zones, remembering,
+    /// naming and check-ins). The owner's Long jobs box on Companion › Thinking pool; on unless unticked.</summary>
+    public bool LongJobs { get; init; } = true;
+
+    /// <summary>Whether it takes a job of <paramref name="kind"/>: a quick kind where <see cref="QuickJobs"/>, any other where
+    /// <see cref="LongJobs"/>.</summary>
+    public bool Takes(ThinkingJobKind kind) => ThinkingJobKinds.IsFast(kind) ? QuickJobs : LongJobs;
+
     /// <summary>Where it stands in line for new work, lowest first: its rank, and a place kept free for other duties just after the
     /// places of the same rank without any. Deterministic: the same places and the same load always pick the same place.</summary>
     public int Standing => Rank * 2 + (Duties.Count > 0 ? 1 : 0);
@@ -378,10 +390,11 @@ public sealed class BackgroundPlaces
     // share of slots (a whole hold last). Called under the gate.
     private BackgroundPlace? Choose(IReadOnlyList<BackgroundPlace> pool, bool share, ThinkingDemand? demand = null, bool obey = true)
     {
-        if (demand is { KeepLastFree: true } && !LeavesFastSlot(demand.Pool ?? pool)) return null;
+        var whole = demand is { KeepLastFree: true } ? demand.Pool ?? pool : null;
         var current = obey ? Rules : null;
         var candidates = pool.Select((place, order) => (place, order, used: Used(place)))
-            .Where(c => Answers(c.place) && (current is null || current.MayStart(c.place, demand?.Kind))).ToArray();
+            .Where(c => Answers(c.place) && (current is null || current.MayStart(c.place, demand?.Kind)) &&
+                (whole is null || LeavesFastSlot(whole, c.place))).ToArray();
         var free = candidates.Where(c => c.used < c.place.Slots)
             .OrderBy(c => current?.Avoid(c.place) == true ? 1 : 0)
             .ThenBy(c => c.place.Standing).ThenBy(c => c.used).ThenBy(c => c.order).Select(c => c.place).FirstOrDefault();
@@ -395,14 +408,15 @@ public sealed class BackgroundPlaces
     private bool HeldByRules(IReadOnlyList<BackgroundPlace> pool, ThinkingDemand demand) =>
         Rules is not null && Choose(pool, share: false, demand) is null && Choose(pool, share: false, demand, obey: false) is not null;
 
-    // Whether a long job may take a slot of whole: always with one slot in all, else only while two or more are free (one stays
-    // free for fast jobs). Only places that answer count: an offline place's slots are neither there nor free. Called under the
-    // gate.
-    private bool LeavesFastSlot(IReadOnlyList<BackgroundPlace> whole)
+    // Whether a long job may take a slot on place, one of whole: always on a place that takes no quick jobs, always with one slot
+    // in all, else only while two or more slots that take quick jobs are free (one stays free for fast jobs). Only places that
+    // answer count: an offline place's slots are neither there nor free. Called under the gate.
+    private bool LeavesFastSlot(IReadOnlyList<BackgroundPlace> whole, BackgroundPlace place)
     {
-        var distinct = whole.DistinctBy(place => place.Id).Where(Answers).ToArray();
-        if (distinct.Sum(place => place.Slots) < 2) return true;
-        return distinct.Sum(place => Math.Max(0, place.Slots - Used(place))) >= 2;
+        if (!place.QuickJobs) return true;
+        var distinct = whole.DistinctBy(p => p.Id).Where(Answers).ToArray();
+        if (distinct.Sum(p => p.Slots) < 2) return true;
+        return distinct.Where(p => p.QuickJobs).Sum(p => Math.Max(0, p.Slots - Used(p))) >= 2;
     }
 
     /// <summary>What holds the places of <paramref name="pool"/> now, in words: "think-1 on diva and think-2 on ripley".</summary>

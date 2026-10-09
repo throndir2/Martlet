@@ -103,7 +103,7 @@ public sealed class BackupThinkingDesktopTests
     {
         Assert.StartsWith("Off.", LiveConversationController.BackupLine(new(), [], null, 0));
         var on = new ThinkingPoolSettings { BackupThinking = true };
-        Assert.Contains("no member may answer for the conversation yet", LiveConversationController.BackupLine(on, [], null, 0));
+        Assert.Contains("no machine is a backup for slow replies yet", LiveConversationController.BackupLine(on, [], null, 0));
         Assert.Contains("no words after 1200 ms, diva (qwen3-8b) may answer instead",
             LiveConversationController.BackupLine(on with { BackupDelayMs = 1_200 }, ["diva (qwen3-8b)"], null, 0));
         Assert.Contains("1180 ms (automatic, from 20 recent replies), diva (qwen3-8b) and ripley (qwen3-8b) may answer",

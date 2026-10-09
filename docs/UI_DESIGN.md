@@ -462,8 +462,9 @@ window ends it unless Martlet is listening or watching, which only hides it.
        Listening links here.
     8. *Thinking pool*: Now, then **Where it thinks**: Off, one of your
        computers, Ollama on this PC or a cloud provider (each option's
-       details add members there), then the pool's members, Backup Thinking,
-       Thinking longer and Web research.
+       details add machines there), then the machine list (Quick jobs, Long
+       jobs and Backup for slow replies on each machine), Thinking longer, Web
+       research and Backup for slow replies.
     9. *Smart home*: Now, then Home Assistant or Off in an option picker,
        then connecting and installing Home Assistant, then what Martlet may
        do, the devices and sharing.

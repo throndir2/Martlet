@@ -60,9 +60,11 @@ public static class ThinkLonger
     /// at once and the other work its computer is kept free for (<paramref name="duties"/>, by computer name: singing, image
     /// generation), so the broker places a think on a general computer first. <paramref name="can"/> says what each member can
     /// do (text only when null); each place also says which computer it runs on (<see cref="LiveResources.MachineOf(DeepThinkingSettings)"/>)
-    /// and, when <paramref name="gpus"/> knows, which graphics cards, for the live floor.</summary>
+    /// and, when <paramref name="gpus"/> knows, which graphics cards, for the live floor. <paramref name="choices"/> (the Thinking
+    /// pool's settings) says which members take quick jobs and long jobs (all of them when null).</summary>
     public static IReadOnlyList<BackgroundPlace> Places(DeepThinkingPool pool, IReadOnlyDictionary<string, IReadOnlyList<string>>? duties = null,
-        Func<DeepThinkingSettings, ThinkingCapability>? can = null, Func<DeepThinkingSettings, IReadOnlyList<string>>? gpus = null)
+        Func<DeepThinkingSettings, ThinkingCapability>? can = null, Func<DeepThinkingSettings, IReadOnlyList<string>>? gpus = null,
+        ThinkingPoolSettings? choices = null)
     {
         ArgumentNullException.ThrowIfNull(pool);
         return [.. pool.Usable.Take(MaxPlaces).Select(spot => new BackgroundPlace(spot.Key,
@@ -73,7 +75,9 @@ public static class ThinkLonger
             Can = can?.Invoke(spot.Settings) ?? ThinkingCapability.Text,
             Model = spot.Settings.Separate ? spot.Settings.ModelId : null,
             Machine = LiveResources.MachineOf(spot.Settings),
-            Gpus = gpus?.Invoke(spot.Settings) is { Count: > 0 } cards ? [.. cards.Take(16)] : []
+            Gpus = gpus?.Invoke(spot.Settings) is { Count: > 0 } cards ? [.. cards.Take(16)] : [],
+            QuickJobs = choices?.TakesQuickJobs(spot.Key) ?? true,
+            LongJobs = choices?.TakesLongJobs(spot.Key) ?? true
         })];
     }
 

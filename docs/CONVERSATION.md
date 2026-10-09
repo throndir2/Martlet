@@ -488,29 +488,55 @@ once, 1 to 8):
   below), Devices › Sharing work says the Thinking pool never uses it or keeps
   it for other companion PCs, the pool already has 8 members, or this PC is a
   host PC.
-- *In the Thinking pool* (`DeepThinkingPool-<host>`) is the owner's opt-out.
-  Unticking it, or *Remove* on the computer's member, takes the computer out
-  and adds its host ID to `LeftByOwner` in `thinking-pool.json` (a file saved
-  before this list existed reads as empty), so it doesn't join again. Ticking
-  it clears that and adds the computer at once. `DeepThinkingAutoJoin` states
-  the rule and names the computers kept out.
+- *In the pool* (`DeepThinkingPool-<host>`, on each paired computer's row) is
+  the owner's opt-out. Unticking it, or *Remove* on the computer's member, takes the computer out and adds its host ID to
+  `LeftByOwner` in `thinking-pool.json` (a file saved before this list existed
+  reads as empty), so it doesn't join again. Ticking it clears that and adds
+  the computer at once. `DeepThinkingAutoJoin` (*Add a machine*) states the rule
+  and names the computers kept out.
 - A model in Ollama on this PC, beside Thinking's (checked to fit on the
   graphics card before each job).
 - An OpenAI-compatible endpoint (a cloud provider or another server).
 
-The *Pool members* card lists each member (`ThinkingPoolMember-<n>`), with its
-slots (`ThinkingPoolSlots-<n>`), what it can do (text; pictures when its model
-sees; recordings only on an endpoint whose model hears, never a paired host,
-whose gateway takes no audio) and *Remove* (`ThinkingPoolRemove-<n>`).
+The *Machines* card is one list. The first row is the conversation's own model
+(`ThinkingPoolConversation`): it is never in the pool, so no pool job waits in
+front of a reply. Then each member (`ThinkingPoolMember-<n>`) shows what it
+reads and writes (text; pictures when its model sees; recordings only on an
+endpoint whose model hears, never a paired host, whose gateway takes no audio)
+and its slots. Badges (`ThinkingPoolBadges-<n>`) say *Waits while you talk*
+(it shares the conversation's computer, see the live floor), *Costs money* (a
+cloud provider) and *Offline*. Each member has three boxes:
+
+- *Quick jobs* (`ThinkingPoolQuick-<n>`): the fast kinds, the judges
+  (`BargeInJudge`, `EndOfTurnJudge`) and the screen and sound summaries
+  (`Digest`).
+- *Long jobs* (`ThinkingPoolLong-<n>`): every other kind, such as
+  `think_longer`, research, a song's lyrics and the other helpers.
+- *Backup for slow replies* (`ThinkingPoolAnswers-<n>`, see
+  [Backup Thinking](#backup-thinking-a-hedged-request)).
+
+Quick jobs and Long jobs are on for every member. Unticking one saves the key
+in `NoQuickJobs` or `NoLongJobs` in `thinking-pool.json` (a file without these
+lists reads as every member taking every job). Removing a member clears its
+keys. A paired computer's Thinking pool role sets its slots on that computer, so
+its row shows *N slots, set on diva* and *Change model*
+(`DeepThinkingChangeModel-<host>`), never a slot choice: Martlet resets those
+slots from the role at each check. Other members have a slot choice
+(`ThinkingPoolSlots-<n>`). A paired computer's row has *In the pool*; another
+member's row has *Remove* (`ThinkingPoolRemove-<n>`). Each paired
+computer that isn't a member follows the members, with why it isn't in
+(`DeepThinkingHost-<host>`). Priorities are fixed (see the job board), so the
+page has no priority choices.
 
 **Migration.** The first time Martlet reads the pool and `thinking-pool.json`
 is missing, it reads `deep-thinking.json` once and writes every separate place
 as a member (slots and keys kept). *Same as Thinking* is not a member: it
 becomes the empty-pool fallback.
 
-**Empty pool.** *Use the conversation model when the pool is empty*
-(`ThinkingPoolUseConversationModel`, on by default): with no member,
-`think_longer` and research run on the conversation's own Thinking route, as
+**Empty pool.** *Do thinking longer and research here when no machine in the
+pool takes long jobs* (`ThinkingPoolUseConversationModel`, on the conversation
+row, on by default): with no member that takes long jobs, `think_longer` and
+research run on the conversation's own Thinking route, as
 *Same as Thinking* did (only where its provider answers several requests at
 once). Other job kinds get `NoMember` at once, so their callers use their own
 fallback (simple rules, a CPU path, or nothing).
@@ -550,8 +576,8 @@ When a member's computer goes offline:
    pool (*Paused. Its computer stopped answering, so it goes on on another*),
    at most 3 times. This is not counted as a stop for the conversation.
 3. When every member that would run is offline, `think_longer` and research use
-   the conversation model, as with an empty pool, when *Use the conversation
-   model when the pool is empty* is on and that model can think in parallel.
+   the conversation model, as with an empty pool, when the conversation row's
+   box is ticked and that model can think in parallel.
    Otherwise they say *Every Thinking pool computer is offline (diva and
    ripley); their slots come back when they answer again.* Other job kinds get
    `NoMember` (*every Thinking pool member that can do text is offline*) and use
@@ -580,8 +606,8 @@ One in-process board (`ThinkingJobBoard`, Martlet.Conversation) over the same
 thinks and research count against the same slots:
 
 1. A job goes to a free slot on a member whose capabilities include the job's
-   needs (text, vision, audio), the member that shares least with the
-   conversation first.
+   needs (text, vision, audio) and that takes the job's kind (*Quick jobs* or
+   *Long jobs*), the member that shares least with the conversation first.
 2. A member that fails, is busy (`job.busy`) or is unavailable is passed over
    for the next capable member. Each member is tried once. A member whose
    computer is offline gets no job
@@ -596,10 +622,12 @@ thinks and research count against the same slots:
    under `resting`.
 4. When every capable slot is busy, the job waits in line. A freed slot goes
    to the highest priority first, then the oldest.
-5. Long kinds never take the pool's last free slot while the pool has two or
-   more slots: that slot stays for fast kinds (`BargeInJudge`,
-   `EndOfTurnJudge`, `Digest`). With exactly one slot, long kinds may take it,
-   and fast jobs wait until their deadline. Only the
+5. Long kinds never take the last free slot that takes quick jobs while the
+   pool has two or more slots: that slot stays for fast kinds (`BargeInJudge`,
+   `EndOfTurnJudge`, `Digest`). Only the slots of members that answer and take
+   quick jobs count. A long job on a member without *Quick jobs* never takes
+   such a slot, so it needs none kept free. With exactly one slot, long kinds
+   may take it, and fast jobs wait until their deadline. Only the
    [live floor](#the-live-floor-the-live-turn-comes-first) stops running jobs.
 
 | Kind (`ThinkingJobKind`) | Priority (`ThinkingPriority`) | Fast |
@@ -673,7 +701,7 @@ the ACM 56(2), 2013). When the reply's Thinking request has no first words
 after a wait, the same request also goes to a pool member, and the stream with
 words first gives the reply. The other stream stops at once.
 
-- **Who may answer.** Each member has *May answer for the conversation*
+- **Who may answer.** Each member has *Backup for slow replies*
   (`ThinkingPoolAnswers-<n>`, off by default; `AnswersForConversation` in
   `thinking-pool.json`). Choose members with the same model as the
   conversation, or a similar one. A paid cloud member is asked only when it is
@@ -856,8 +884,8 @@ string? note = rules.Period.Describe();             // "held 2 pool jobs, stoppe
 ## Thinking longer and background work
 
 Replies answer right away (Thinking steps are Off by default). **Thinking
-longer** (Companion › Thinking pool; on by default, and *Where it thinks* ›
-*Off* turns it off on all your computers) lets Martlet decide, sparingly, that a
+longer** (Companion › Thinking pool; on by default, and *Let Martlet think
+things over in the background* (`ThinkLongerOn`) turns it off on all your computers) lets Martlet decide, sparingly, that a
 task needs real thought and hand it to **Deep thinking**, which works it out in
 the background while Thinking keeps talking with you: parallel thinking, so it
 needs a model of its own.
@@ -890,25 +918,24 @@ spoken. Its message continues a reply's request (Companion › Prompts ›
 *Thinking longer: the task*); the picture or recording the message went with
 isn't sent again.
 
-**Where it thinks** (Companion › Thinking pool › *Where it thinks*; this PC's
-own choice, `deep-thinking.json` in the data folder, never shared, because
-which machine is free to think depends on the computer you talk to):
+**Where it thinks** (Companion › Thinking pool; this PC's own choice,
+`thinking-pool.json` in the data folder, never shared, because which machine
+is free to think depends on the computer you talk to). A think runs on a pool
+member ticked for *Long jobs*:
 
-- *Off*: Martlet answers everything right away and never offers to think
-  something over (Thinking longer off; saved with the reply settings, so all
-  your computers share it). Choosing any place below turns it back on.
-- *Same as Thinking* (default): Thinking's own model, with its tools described
-  so the request starts like the reply's and shares its prompt cache, and the
-  Thinking fallback. Only when Thinking's provider answers several requests at
-  once (a cloud provider), never Thinking's model on this PC or a paired
-  computer.
-- *Another of your computers*: a paired computer's own Deep thinking model (its
+- *The conversation's own model*: only when no member takes long jobs and *Do
+  thinking longer and research here when no machine in the pool takes long
+  jobs* is ticked (on by default). Its tools are described so the request
+  starts like the reply's and shares its prompt cache, with the Thinking
+  fallback. Only when Thinking's provider answers several requests at once (a
+  cloud provider), never Thinking's model on this PC or a paired computer.
+- *A paired computer*: a paired computer's own Deep thinking model (its
   Thinking pool role: a second Ollama server of its own, route
   `martlet.gateway.deep-thinking-chat.v1`) through its pinned gateway with this
   PC's pairing, or, on a computer without that role, its Ollama (its Thinking
   role). The page offers *Add the Thinking pool role* for a computer that lacks the role
   (`DeepThinkingAddRole-<host>`; its dialog asks which model it runs) and
-  switches Deep thinking to it once it runs, and *Change model*
+  adds it to the pool once it runs, and *Change model*
   (`DeepThinkingChangeModel-<host>`) for one that has it: the role's settings
   there, with its current model selected. The old model keeps thinking until the
   new one is downloaded and loaded; then this PC (and each of your computers, on
@@ -938,22 +965,23 @@ which machine is free to think depends on the computer you talk to):
   there to that and logs that the computer should be updated). A computer that
   also does Thinking for the conversation thinks only with its Deep thinking
   role, never with Thinking's own model.
-- *Ollama on this PC*: a second model of its own here, beside Thinking's (a
+- *Ollama on this PC* (*Add a machine*): a second model of its own here, beside Thinking's (a
   larger one can think while a small, fast one answers you), never Thinking's
   own model. The page shows whether it fits beside Thinking's on the graphics
   card (`DeepThinkingLocalFit`).
-- *A cloud provider or server*: OpenRouter, NVIDIA Build, OpenAI or any
+- *A cloud provider or server* (*Add a machine*): OpenRouter, NVIDIA Build, OpenAI or any
   OpenAI-compatible server (HTTPS, or a server on this PC), with its own key in
   Windows Credential Manager, Thinking's key for the same base URL, or none. The
   conversation that fits the model's context and the task go there, no tools.
 
 **Several computers at once.** Your paired computers with a Thinking model join
-the pool by themselves (see Members above); each one on *One of your computers*
-has *In the Thinking pool* (`DeepThinkingPool-<host>`): ticked, the pool thinks
+the pool by themselves (see Members above); each one in the *Machines* list
+has *In the pool* (`DeepThinkingPool-<host>`): ticked, the pool thinks
 there as well as on its other members, so several thinks run at once, one on
 each place (up to 8 places). Untick a computer to keep it out; tick it again to
 add it back. `think_longer` may then run several thinks at once: one fewer than the usable
-places' slots in all. A long job never takes the pool's last free slot while
+slots in all of the members ticked for *Long jobs*. A long job never takes the
+last free slot that takes quick jobs while
 the pool has two or more slots, because that slot stays free for quick jobs
 (judges and summaries); with one slot in all, one think runs at a time. The
 tool's description says how many (*Up to 2 at once; more wait in line* for

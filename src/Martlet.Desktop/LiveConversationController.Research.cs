@@ -48,7 +48,7 @@ internal sealed partial class LiveConversationController
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
         var start = jobs.Start(WebResearch.Kind, label, (job, token) =>
             ResearchAsync(job, arguments, configured, pool, sent, () => operation.Turn?.Content.Text, thinkingModel, token),
-            ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For));
+            ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool)));
         if (start.Job is not { } started)
         {
             tools?.Record(server, WebResearch.Name, "not started: " + start.Refusal, label, false);
