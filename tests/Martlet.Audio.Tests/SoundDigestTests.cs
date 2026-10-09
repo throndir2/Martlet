@@ -85,6 +85,64 @@ public sealed class SoundDigestTests
     }
 
     [Fact]
+    public void A_check_in_that_wants_sound_keeps_it_and_gets_only_fresh_sound_since_the_last_pause()
+    {
+        var time = new ManualTime();
+        var buffer = new PcSoundBuffer(TimeSpan.FromSeconds(10), time);
+        var fresh = TimeSpan.FromSeconds(3);
+        Assert.False(buffer.Keeps);
+        buffer.Wanted = true;
+        Assert.True(buffer.Keeps);
+        Assert.False(buffer.Hears(fresh));
+        Assert.Empty(buffer.Recent(TimeSpan.FromSeconds(5), fresh));
+        Play(buffer, time, 4);
+        Assert.True(buffer.Hears(fresh));
+        Assert.Equal(4 * PcSoundBuffer.SampleRate * 2, buffer.Recent(TimeSpan.FromSeconds(10), fresh).Length);
+        Assert.Equal(2 * PcSoundBuffer.SampleRate * 2, buffer.Recent(TimeSpan.FromSeconds(2), fresh).Length);
+
+        // A capture that stopped gives no old sound; after a pause only what came since.
+        time.Advance(TimeSpan.FromSeconds(4));
+        Assert.False(buffer.Hears(fresh));
+        Assert.Empty(buffer.Recent(TimeSpan.FromSeconds(10), fresh));
+        Play(buffer, time, 1);
+        Assert.Equal(PcSoundBuffer.SampleRate * 2, buffer.Recent(TimeSpan.FromSeconds(10), fresh).Length);
+
+        // The digest and a check-in share it: it is cleared only when neither keeps it.
+        buffer.Recording = true;
+        buffer.Wanted = false;
+        Assert.True(buffer.Keeps);
+        Assert.NotEqual(TimeSpan.Zero, buffer.Buffered);
+        buffer.Wanted = true;
+        buffer.Recording = false;
+        Assert.NotEqual(TimeSpan.Zero, buffer.Buffered);
+        buffer.Wanted = false;
+        Assert.False(buffer.Keeps);
+        Assert.Equal(TimeSpan.Zero, buffer.Buffered);
+        Assert.False(buffer.Hears(fresh));
+    }
+
+    [Fact]
+    public async Task A_kept_microphone_passes_its_sound_through_and_keeps_the_last_seconds_only_while_wanted()
+    {
+        var time = new SimulatedClock();
+        var buffer = new PcSoundBuffer(clock: time) { Wanted = true };
+        var kept = new KeptCaptureDeviceFactory(new PcAudioCaptureFactory(new ToneSources(time), time), buffer);
+        Assert.Same(buffer, kept.Sound);
+        var heard = await RecordAsync(kept);
+        Assert.True(heard.Length > 0);
+        Assert.InRange(buffer.Buffered.TotalSeconds, 2.8, 3.05);
+        var clip = buffer.Latest(TimeSpan.FromSeconds(1));
+        Assert.InRange(Math.Sqrt(clip.Average(s => (double)s * s)), 0.2, 0.25);
+        Assert.True(buffer.Hears(TimeSpan.FromSeconds(1)));
+        var recent = buffer.Recent(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1));
+        Assert.Equal(2 * PcSoundBuffer.SampleRate * 2, recent.Length);
+
+        var off = new PcSoundBuffer(clock: time);
+        Assert.True((await RecordAsync(new KeptCaptureDeviceFactory(new PcAudioCaptureFactory(new ToneSources(time), time), off))).Length > 0);
+        Assert.Equal(TimeSpan.Zero, off.Buffered);
+    }
+
+    [Fact]
     public void A_tagger_s_labels_become_one_line_about_the_sound_that_is_not_speech()
     {
         Assert.Equal("Music: pop and guitar with singing, happy; laughter",

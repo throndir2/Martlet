@@ -10,9 +10,11 @@ public partial class App : Application
 {
     private ResourceDictionary? palette;
     internal AppearanceTheme SelectedTheme { get; private set; }
-    /// <summary>The character colors applied while a character theme is chosen (null with Martlet's own palettes, or until the
-    /// character's colors are known).</summary>
+    /// <summary>The character's or the owner's colors applied while a character or custom theme is chosen (null with Martlet's
+    /// own palettes, or until the character's colors are known).</summary>
     internal IReadOnlyDictionary<string, string>? ThemeColors { get; private set; }
+    /// <summary>Whether the palette in use is dark (a custom palette's window background decides).</summary>
+    internal bool IsDarkTheme => SelectedTheme.IsDark(ThemeColors);
     internal string? AppearanceNotice { get; private set; }
     /// <summary>The --data-directory Martlet was started with, so an update restarts it with the same one.</summary>
     internal string? DataDirectoryArgument { get; private set; }
@@ -24,7 +26,7 @@ public partial class App : Application
     internal void ApplyTheme(AppearanceTheme theme, IReadOnlyDictionary<string, string>? colors = null)
     {
         SelectedTheme = theme;
-        ThemeColors = theme.FromCharacter() ? colors : null;
+        ThemeColors = theme.HasColors() ? colors : null;
         var next = Appearance.Palette(theme, SystemParameters.HighContrast, ThemeColors);
         if (palette is not null) Resources.MergedDictionaries.Remove(palette);
         Resources.MergedDictionaries.Add(next);

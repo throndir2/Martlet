@@ -515,16 +515,16 @@ public static class CharacterThemeRules
     /// <summary>Whether the palette's backgrounds are as dark (or light) as its kind needs.</summary>
     public static IReadOnlyList<string> Problems(ThemePalette palette)
     {
-        var problems = new List<string>();
-        foreach (var (role, light, darkest) in BackgroundBounds)
-        {
-            var l = Oklch.FromHex(palette[role]).L;
-            if (palette.Dark && l > darkest) problems.Add($"{role} is too light for a dark palette");
-            if (!palette.Dark && l < light) problems.Add($"{role} is too dark for a light palette");
-        }
+        var problems = WrongBackgrounds(palette)
+            .Select(role => palette.Dark ? $"{role} is too light for a dark palette" : $"{role} is too dark for a light palette").ToList();
         problems.AddRange(Check(palette).Where(c => !c.Ok).Select(c => $"{c.Role} on {c.On} is {c.Ratio:0.##}:1 (needs {c.Minimum:0.#}:1)"));
         return problems;
     }
+
+    /// <summary>The backgrounds (Canvas, Surface, Soft) too light for a dark palette, or too dark for a light one.</summary>
+    public static IReadOnlyList<string> WrongBackgrounds(ThemePalette palette) =>
+        BackgroundBounds.Where(bound => Oklch.FromHex(palette[bound.Role]).L is var l && (palette.Dark ? l > bound.Dark : l < bound.Light))
+            .Select(bound => bound.Role).ToArray();
 
     // The lightness a light palette's backgrounds need at least, and a dark palette's at most.
     private static readonly (string Role, double Light, double Dark)[] BackgroundBounds =

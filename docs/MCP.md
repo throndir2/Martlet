@@ -619,13 +619,20 @@ and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
 waits, its last run, runs and actions since Martlet started), `CheckInOn-<id>`
-and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>` and
-`CheckInFact-<id>-<fact>`. `CheckInsOpenPool`, `CheckInsOpenPrompts` and
-`CheckInPrompt-<id>` only open a page. The boxes and choices, the name and task
-boxes, *Add a check-in* (`CheckInAdd`) and *Remove* (`CheckInRemove-<id>`) save
+and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>`,
+`CheckInFact-<id>-<fact>`, the model it needs (`CheckInNeeds-<id>-Text`,
+`-Vision` and `-Audio`: checked, and disabled when an input forces it) and what
+each run takes (`CheckInScreenshot-<id>`, `CheckInRecording-<id>` and
+`CheckInSeconds-<id>`). The script box (`CheckInScript-<id>`) has an automation
+ID, but `ui_value` never reads it: the owner's script stays on the page.
+`CheckInsOpenPool`, `CheckInsOpenPrompts` and
+`CheckInPrompt-<id>` only open a page. The boxes and choices, the name, task
+and script boxes, *Add a check-in* (`CheckInAdd`) and *Remove* (`CheckInRemove-<id>`) save
 `check-ins.json`, and *Check now* (`CheckInRun-<id>`) sends the check to a
 Thinking pool member, which may be a paid provider, so they need
-`--allow-ui-effects`.
+`--allow-ui-effects`. *Check now* on a check-in with a script runs that script,
+takes a screenshot or sends a recording, so use it only on a disposable data
+directory with a check-in you made for the test.
 
 Setting `MARTLET_CHECK_INS_FIXTURE` to a text file before launching the desktop
 makes every check-in read its answer from that file instead of asking the
@@ -909,7 +916,7 @@ user's): `sync` as above, `state` (`none` before the first sync, else `loaded`),
 the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
 `replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
-`talk`, `speech-display`, `appearance`, `voice-recognition`, `voice-id`,
+`talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-recognition`, `voice-id`,
 `smart-home`, `updates`, a computer's own `pc.<device ID>`, a computer's
 `role.<device ID>` (`companion` or `host`: written by that computer, or by
 another one asking it to switch), or a newer
@@ -919,7 +926,8 @@ Martlet's), `updatedBy`, `updatedAt`,
 it can't follow it yet (or changed it since), `unknown` when it never had the
 setting. `value` is shown only for non-personal settings: each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
-memory, how you talk, speech bubbles and subtitles, the theme, recognizing
+memory, how you talk, speech bubbles and subtitles, the theme and the custom
+palette's colors (`Colors` by role), recognizing
 voices (`on`), what Martlet may do with Home Assistant (`control`,
 `allow_sensitive`, `model_tools`), app updates (`checks`,
 `interval_minutes`, `auto_install`, `auto_update_hosts`) and each computer's
@@ -3883,7 +3891,10 @@ builder (`RecommendedSetupInputs`) and runs the production recommender
 (`NetworkRecommender`). Give an absolute `dataDirectory` (default the current
 user's; the script gives a disposable one) to plan from that directory's
 `hosts.json`, `host-hardware.json`, `cluster.json`, `settings.json`,
-`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`. A data
+`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`, and this
+PC's page choices from `talk-preferences.json` (vision on, Let ... hear my
+voice), `sense-models.json`, `reading.json` and `smart-home.json` (its address
+only, never the token). A data
 directory has no live host checks: a host that `node-presence.json` (the
 desktop's presence report) last saw not answering counts as offline, as the
 desktop plans it, and every other host counts as online. Its roles are the
@@ -3908,14 +3919,19 @@ can't reply" problem. The result has:
 - `notes`: why a computer is left as it is.
 - `today`: each job's `host`, `off`, `option` and `pool` (the other computers
   that take its requests when the one in charge is busy, in Sharing work
-  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
+  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference`,
   `off` (the optional parts turned off in the review on this PC, from
-  `recommended-setup.json`).
+  `recommended-setup.json`) and `choices` (this PC's choice for each part set
+  on its Companion page: `part` (Vision, Reading, Hearing or Smart home),
+  `on`, `option` (the catalog option, such as `vision:thinking`,
+  `reading:windows-ocr`), `model`, `where` and `host`).
 - `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`,
   `components` (every part in priority order: `rank`, `part`, `need`
   (`needed` or `optional`), `on`, `where` (*Gemma 4 E4B in Ollama on This PC's
-  NVIDIA GeForce RTX 4070*, or *Off: Martlet doesn't sing.*), `why`, `canBeOff`
-  and `ownerOff`), the
+  NVIDIA GeForce RTX 4070*, or *Off: Martlet doesn't sing.*), `why`, `canBeOff`,
+  `ownerOff`, `offInReview` (the review has an Off box for it; false for the
+  parts this PC sets on their Companion page) and `page` (*Companion ›
+  Vision*)), the
   `changes` in the order Reconfigure makes them (`kind`, `computer`, `summary`, `why`, `away` (the sentence in
   `why` about a computer that isn't answering, which the review leaves out),
   `benefit`, `roleKind`, `model`, `job`, `needsSomeoneThere`, `downloadGb`,
@@ -3948,8 +3964,8 @@ otherwise), `RecommendedSetupTitle`,
 `RecommendedSetupPart-Thinking` reads *1. Thinking (needed): Gemma 4 E4B in
 Ollama on This PC's NVIDIA GeForce RTX 4070.* and an optional part that is off
 *7. Singing (optional): Off: Martlet doesn't sing.*, with why; parts are
-`Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `DeepThinking`,
-`Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
+`Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `Vision`, `Reading`,
+`Hearing`, `DeepThinking`, `SmartHome`, `Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
 computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
 words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
@@ -3980,7 +3996,8 @@ when the review sent the owner there. `RecommendedSetupApply`
 it saves `recommended-setup.json`) and each optional part's Off checkbox
 `RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
 again, in `recommended-setup.json`, and the review opens again planned that
-way) need `--allow-ui-effects`. Reconfigure
+way; Vision, Reading, Hearing and Smart home have none, because their
+Companion page turns them off) need `--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
@@ -4039,7 +4056,12 @@ card is only for Thinking and the voice, and Singing goes first as Required
 because it is optional; with a saved free key on an 8 GB card, Thinking uses
 the free hosted model and the voice gets the card); the parts the owner turned
 off (step 13: every part in priority order, and Singing, Deep thinking and
-advanced lip-sync off with their roles removed); heavy roles on a companion PC
+advanced lip-sync off with their roles removed); every way to extend Martlet
+(step 13: Vision, Reading, Hearing and Smart home have their own lines with
+Off on their Companion page; Vision on Thinking's own model, Hearing's model
+of its own on a companion PC's card with a note, Reading off on this PC so its
+`ocr` role goes, but not with a second companion PC, and Home Assistant stays
+while Smart home is off); heavy roles on a companion PC
 (they move to the host, Improvement); the setup order (step 12: job by job,
 Thinking first, each job make before break); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
@@ -4259,14 +4281,24 @@ data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
 *GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task` and
-`facts`, and what it `does`), `desktop` from `check-ins-status.json` (written by
+`facts`, and what it `does`; for every check-in the `needs` (*Text*, or
+*Text, Vision, Audio*), the `screenshot`, the `recording` (*None*,
+*Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
+whether it runs a `script` and `scriptCharacters`, never the script itself), `desktop` from `check-ins-status.json` (written by
 the desktop on a companion PC: `role`, the check-in `running`, `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
-check-in `waiting`, `nextAt`, `runs`, `acted` and `last` with `at`, `result`,
-`acted`, `member` and `ms`; never what was said, answered or reminded) and the
+check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
+`recording`, `recordingSeconds`, `script`, `waiting`, `nextAt`, `runs`, `acted`
+and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
+took in a few words, such as *a screenshot (1280x720), 10 s of the
+microphone*) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
+`pcKept` and `pcHeard`; never what was said, answered, reminded, taken or
+printed) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
-`saidLatelyMinutes` for Saying the same things, the job kind
+`saidLatelyMinutes` for Saying the same things, `recordingChoices`,
+`maximumScriptCharacters`, `maximumScriptOutputCharacters` and
+`scriptTimeoutSeconds` for the owner's inputs, the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
 Read-only.
 
@@ -4286,8 +4318,18 @@ after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, a
 about, chatter, `REMIND: nothing`); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
-`SAY:` worded in its own words beside a due reminder. `passed` and each step's
-`passed` and `detail`. No model, network or credentials.
+`SAY:` worded in its own words beside a due reminder. Six `own:` steps check
+the owner's inputs: `own: inputs saved and read back` (a recording length of 7,
+a script with a null character and an unknown ability refused), `own: the model
+it needs` (a screenshot adds pictures, a recording adds recordings),
+`own: the microphone's last seconds` (a production `PcSoundBuffer` keeps sound
+only while wanted, gives the last seconds and forgets them when no longer
+wanted), `own: waits for the sound it records`, `own: the message carries what
+it took` (a real FIXTURE script, `Write-Output ('FIXTURE ' + (6 * 7))`, run by
+the production `TerminalRunner`, a FIXTURE picture and recording) and
+`own: only a capable member takes it` (a text-only member never gets it; a
+member with vision and audio gets the picture and the sound). `passed` and
+each step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
 lately](CONVERSATION.md#what-you-said-lately) with the production code
@@ -7115,14 +7157,31 @@ see the character overlay above), the checkable
 current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
 column in the dark palettes; `ui_snapshot` returns the palette as `AppearanceTheme`
-(*Pink light*, *Rose dark*, *Character light* or *Character dark*; choosing one with
+(*Pink light*, *Rose dark*, *Character light*, *Character dark* or *Custom*; choosing one with
 `ui_select` saves `appearance.txt`, so it needs `--allow-ui-effects`) and
 Settings' line about it as `AppearanceStatus`. Settings › Appearance also has
 `AppearanceCharacterStatus` (the character's colors: how many and where the
 accent comes from, or why they couldn't be read; never its name),
 `AppearanceColor-<n>` (each main color: *#2B3440 31% dark grayish blue*),
 and `AppearancePreview-rules-<light|dark>` (each character palette's colors by
-role). The
+role). While *Custom* is chosen, the custom palette's editor shows:
+`CustomThemeRole-<role>` (each of the twelve parts with its color, for example
+*Accent: #A52D64*; clicking one only selects it, so it needs no
+`--allow-ui-effects`), `CustomThemeRoleName` and `CustomThemeRoleHelp` (the
+selected part), `CustomThemeHex` (its color code), `CustomThemeHue`,
+`CustomThemeSaturation` and `CustomThemeLightness` (sliders: degrees and
+percent), `CustomThemeHexHint` (shown when the typed code isn't a color),
+`CustomThemePick-<n>` (the character's colors: *Use #6F92D1 blue*),
+`CustomThemeBase` (the palette *Start from* names), `CustomThemeCheck` (*Easy
+to read: ...* or what may be hard to read, such as *Text on window background:
+1.3:1 (needs 7:1)*) and `CustomThemeFix` (*Make it easy to read*, shown only
+when something is hard to read). `ui_set_text` on `CustomThemeHex`,
+`ui_set_range` on a slider and `ui_click` on a `CustomThemePick-<n>`,
+`CustomThemeFix` or `CustomThemeStartFrom` change the palette and save
+`appearance-custom.json`, so they need `--allow-ui-effects`.
+`CustomThemeStartFrom` asks `CustomThemeStartFromQuestion` first when the
+colors were changed from every other palette (`ConfirmationYes` replaces them).
+The
 desktop log records *Read N colors from the character's textures.* and
 *Applied the Character dark palette (#D194AE accent on #161E24).*
 `character_theme` makes the same colors and palettes headlessly.

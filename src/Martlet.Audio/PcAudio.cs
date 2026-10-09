@@ -24,8 +24,8 @@ public interface IPcAudioSourceFactory
 /// device for always listening, beside the microphone. A loopback delivers nothing while nothing plays, so the gaps are filled
 /// with silence on the clock: the stream stays continuous and voice activity hears a video pause or go quiet as a pause, which
 /// ends the utterance. The audio only goes where the microphone's would (speech-to-text), never to Voice ID, voice recognition
-/// or memory, and is never kept. With <paramref name="sound"/>, the last seconds of it also stay in memory for the sound digest
-/// while that buffer is <see cref="PcSoundBuffer.Recording"/>.</summary>
+/// or memory, and is never kept. With <paramref name="sound"/>, the last seconds of it also stay in memory while that buffer
+/// <see cref="PcSoundBuffer.Keeps"/> sound: for the sound digest and for the owner's check-ins that ask for a recording of it.</summary>
 public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimeProvider? clock = null, PcSoundBuffer? sound = null)
     : ICaptureDeviceFactory
 {
@@ -188,14 +188,13 @@ public static class PcEcho
 
 /// <summary>One continuous stream of what the PC plays: real packets as they come, and silence for any stretch the loopback
 /// left empty once it is <see cref="Slack"/> overdue (a real packet never waits that long while something plays). With a sound
-/// buffer that records, each packet is also normalized to 16 kHz mono and kept there (a problem there never stops listening).</summary>
+/// buffer that keeps sound, each packet is also normalized to 16 kHz mono and kept there (a problem there never stops listening).</summary>
 internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock, PcSoundBuffer? sound = null) : ICaptureDevice
 {
     internal static TimeSpan Slack => TimeSpan.FromMilliseconds(120);
     private long started, frames;
     private bool running;
-    private CaptureNormalizer? normalizer;
-    private byte[]? normalized;
+    private readonly SoundKeeper keeper = new(sound);
 
     public CaptureSourceFormat Format => source.Format;
 
@@ -219,7 +218,7 @@ internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock, P
         if (packet.ByteCount > 0)
         {
             frames += packet.ByteCount / format.BlockAlignment;
-            Keep(destination[..packet.ByteCount], format);
+            keeper.Keep(destination[..packet.ByteCount], format);
             return new(packet.ByteCount);
         }
         var elapsed = clock.GetElapsedTime(started) - Slack;
@@ -231,15 +230,36 @@ internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock, P
         var bytes = count * format.BlockAlignment;
         destination[..bytes].Clear();
         frames += count;
-        Keep(destination[..bytes], format);
+        keeper.Keep(destination[..bytes], format);
         return new(bytes);
     }
 
-    // Keeps a copy for the sound digest while its buffer records; the normalizer goes when it stops, so a new one starts clean.
-    private void Keep(ReadOnlySpan<byte> packet, CaptureSourceFormat format)
+    public void Stop()
+    {
+        running = false;
+        source.Stop();
+        keeper.Forget();
+    }
+
+    public void Dispose()
+    {
+        keeper.Forget();
+        source.Dispose();
+    }
+}
+
+/// <summary>Keeps a copy of what a capture reads in a sound buffer while it <see cref="PcSoundBuffer.Keeps"/> sound, normalized
+/// to 16 kHz mono; a problem there never stops the capture. The normalizer goes when the buffer stops keeping or the capture
+/// stops, so a new one starts clean. Used on the capture's own worker only.</summary>
+internal sealed class SoundKeeper(PcSoundBuffer? sound)
+{
+    private CaptureNormalizer? normalizer;
+    private byte[]? normalized;
+
+    internal void Keep(ReadOnlySpan<byte> packet, CaptureSourceFormat format)
     {
         if (sound is null) return;
-        if (!sound.Recording)
+        if (!sound.Keeps)
         {
             Forget();
             return;
@@ -261,23 +281,54 @@ internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock, P
         catch (Exception error) when (error is CaptureDeviceException or ArgumentException) { Forget(); }
     }
 
-    private void Forget()
+    internal void Forget()
     {
         normalizer?.Dispose();
         normalizer = null;
         if (normalized is not null) Array.Clear(normalized);
     }
+}
+
+/// <summary>A microphone that also keeps its last seconds in <see cref="Sound"/> (normalized to 16 kHz mono) while that buffer
+/// <see cref="PcSoundBuffer.Keeps"/> sound: while one of the owner's check-ins that is on asks for the microphone. What the
+/// devices read passes through unchanged. The kept seconds stay in memory, are never saved or logged, and go only with that
+/// check-in to the Thinking pool member that takes it.</summary>
+public sealed class KeptCaptureDeviceFactory(ICaptureDeviceFactory inner, PcSoundBuffer sound) : ICaptureDeviceFactory
+{
+    /// <summary>The microphone's last seconds.</summary>
+    public PcSoundBuffer Sound => sound;
+    /// <summary>The microphone itself.</summary>
+    public ICaptureDeviceFactory Inner => inner;
+
+    public ICaptureDevice Open(CaptureDeviceAccess access, CancellationToken cancellationToken) =>
+        new KeptCaptureDevice(inner.Open(access, cancellationToken), sound);
+}
+
+internal sealed class KeptCaptureDevice(ICaptureDevice inner, PcSoundBuffer sound) : ICaptureDevice
+{
+    private readonly SoundKeeper keeper = new(sound);
+
+    public CaptureSourceFormat Format => inner.Format;
+
+    public void Start(CancellationToken cancellationToken) => inner.Start(cancellationToken);
+
+    public CapturePacket Read(Span<byte> destination, CancellationToken cancellationToken)
+    {
+        var packet = inner.Read(destination, cancellationToken);
+        if (packet.ByteCount > 0 && packet.ByteCount <= destination.Length && packet.ByteCount % inner.Format.BlockAlignment == 0)
+            keeper.Keep(destination[..packet.ByteCount], inner.Format);
+        return packet;
+    }
 
     public void Stop()
     {
-        running = false;
-        source.Stop();
-        Forget();
+        inner.Stop();
+        keeper.Forget();
     }
 
     public void Dispose()
     {
-        Forget();
-        source.Dispose();
+        keeper.Forget();
+        inner.Dispose();
     }
 }

@@ -9,9 +9,9 @@ using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
-/// <summary>Settings › Appearance: Martlet's own palettes, and light and dark palettes made by Martlet's rules from the colors
-/// of the character this PC shows. A character palette follows the character: choosing another character recolors every
-/// window and the character overlay.</summary>
+/// <summary>Settings › Appearance: Martlet's own palettes, light and dark palettes made by Martlet's rules from the colors
+/// of the character this PC shows, and the owner's custom palette (MainWindow.CustomTheme.cs). A character palette follows the
+/// character: choosing another character recolors every window and the character overlay.</summary>
 public partial class MainWindow
 {
     private readonly CharacterThemeService characterThemes;
@@ -26,12 +26,16 @@ public partial class MainWindow
 
     private static AppearanceTheme SelectedTheme => (Application.Current as App)?.SelectedTheme ?? AppearanceTheme.Light;
 
-    private void WireCharacterThemes() => characterThemes.Changed += () => Dispatcher.InvokeAsync(() =>
+    private void WireCharacterThemes()
     {
-        if (closing) return;
-        ApplyCharacterThemeAsync().Forget();
-        RenderAppearance();
-    });
+        characterThemes.Changed += () => Dispatcher.InvokeAsync(() =>
+        {
+            if (closing) return;
+            ApplyCharacterThemeAsync().Forget();
+            RenderAppearance();
+        });
+        WireCustomTheme();
+    }
 
     /// <summary>Keeps the loaded colors on the character this PC shows (or would show), while a character palette is chosen
     /// or Settings is open. Runs from the character timer.</summary>
@@ -60,10 +64,19 @@ public partial class MainWindow
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded || Application.Current is not App app || ThemeChoice.SelectedIndex < 0) return;
+        var previous = app.SelectedTheme;
         var theme = (AppearanceTheme)ThemeChoice.SelectedIndex;
-        var colors = characterThemes.Colors(theme);
+        var created = false;
+        IReadOnlyDictionary<string, string>? colors;
+        if (theme == AppearanceTheme.Custom) (colors, created) = OpenCustomTheme(previous);
+        else
+        {
+            FlushCustomTheme();
+            colors = characterThemes.Colors(theme);
+        }
         app.ApplyTheme(theme, colors);
         var note = theme.FromCharacter() && colors is null ? " Reading your character's colors..." : "";
+        var saved = created ? $"Custom saved. It starts from {previous.Name()}: choose any color below to change it." : $"{theme.Name()} saved." + note;
         if (store is null)
         {
             AppearanceStatus.Text = "Theme applied for this session. Choose a data folder to save it." + note;
@@ -73,8 +86,9 @@ public partial class MainWindow
         try
         {
             Appearance.Save(store.DataDirectory, theme);
-            if (colors is not null) Appearance.SaveColors(store.DataDirectory, theme, colors);
-            AppearanceStatus.Text = $"{theme.Name()} saved." + note;
+            if (theme == AppearanceTheme.Custom) { if (created) Appearance.SaveCustom(store.DataDirectory, colors!); }
+            else if (colors is not null) Appearance.SaveColors(store.DataDirectory, theme, colors);
+            AppearanceStatus.Text = saved;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -138,6 +152,7 @@ public partial class MainWindow
                 AppearanceSwatches.Children.Add(frame);
             }
         RenderPreviews(loaded);
+        RenderCustomTheme();
     }
 
     private void RenderPreviews(CharacterThemeService.Loaded? loaded)
