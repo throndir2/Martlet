@@ -183,6 +183,7 @@ public partial class MainWindow
             audioSessionEvents.LockedChanged -= AvatarSessionLocked;
             if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
             audioSessionEvents.Dispose();
+            ConversationsPage.Detach();
             lifetime.Cancel();
             setupOperations.RequestCancellation();
             return Task.CompletedTask;

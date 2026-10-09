@@ -173,7 +173,7 @@ public static class HistoryPlatforms
 public sealed record PlatformChangesStatus(int Pending, int Done, int Refused, int GaveUp, string? LastProblem,
     IReadOnlyDictionary<string, int> PendingByApp, IReadOnlyList<string> Connected, DateTimeOffset? NextAttempt)
 {
-    /// <summary>One line for the history window and MCP.</summary>
+    /// <summary>One line for the Conversations page and MCP.</summary>
     public string Describe()
     {
         var parts = new List<string>();

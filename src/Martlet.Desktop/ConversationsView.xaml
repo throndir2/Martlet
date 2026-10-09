@@ -1,12 +1,8 @@
-<local:ThemedWindow x:Class="Martlet.Desktop.ConversationHistoryWindow"
-        xmlns:local="clr-namespace:Martlet.Desktop"
-        Style="{DynamicResource AppWindowStyle}"
+<UserControl x:Class="Martlet.Desktop.ConversationsView"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Conversation history" Width="1040" Height="800" MinWidth="680" MinHeight="500"
-        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closed="Window_Closed"
-        AutomationProperties.Name="Conversation history">
-    <Window.Resources>
+        AutomationProperties.AutomationId="ConversationsPage" AutomationProperties.Name="Conversations">
+    <UserControl.Resources>
         <DataTemplate x:Key="WrappedText">
             <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,3" />
         </DataTemplate>
@@ -14,10 +10,10 @@
             <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
-    </Window.Resources>
-    <DockPanel Margin="20">
+    </UserControl.Resources>
+    <DockPanel Margin="36,30,36,24">
         <StackPanel DockPanel.Dock="Top">
-            <TextBlock Text="Conversation history" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="Conversations" Style="{DynamicResource PageTitle}" />
             <TextBlock Margin="0,8" TextWrapping="Wrap"
                        Text="Every conversation Martlet has had: on this PC and in Telegram, Discord and WhatsApp. It stays on this PC. Delete or edit a single message, a conversation or everything at any time." />
             <Label Target="{Binding ElementName=SearchText}" Content="_Search conversations" Padding="0,4" />
@@ -33,9 +29,9 @@
                 </ComboBox>
                 <Button DockPanel.Dock="Right" x:Name="ShowAllButton" Content="Show _all" Click="ShowAll_Click"
                         Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="HistoryShowAll" />
-                <Button DockPanel.Dock="Right" x:Name="SearchButton" Content="Searc_h" Click="Search_Click" IsDefault="True"
+                <Button DockPanel.Dock="Right" x:Name="SearchButton" Content="Searc_h" Click="Search_Click"
                         Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="HistorySearchRun" />
-                <TextBox x:Name="SearchText" MaxLength="300" AutomationProperties.AutomationId="HistorySearchText"
+                <TextBox x:Name="SearchText" MaxLength="300" KeyDown="SearchText_KeyDown" AutomationProperties.AutomationId="HistorySearchText"
                          AutomationProperties.Name="Words to search for" />
             </DockPanel>
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,8,0,4" AutomationProperties.AutomationId="HistoryWindowStatus"
@@ -60,8 +56,6 @@
                     AutomationProperties.AutomationId="HistoryDeleteConversation" />
             <Button x:Name="DeleteAllButton" Content="Delete _everything" Click="DeleteAll_Click" Padding="10,6" Margin="0,0,8,0"
                     AutomationProperties.AutomationId="HistoryDeleteAll" />
-            <Button Content="_Close" Click="Close_Click" IsCancel="True" Padding="10,6" Margin="0,0,8,0"
-                    AutomationProperties.AutomationId="HistoryClose" />
         </WrapPanel>
         <Grid>
             <Grid.ColumnDefinitions>
@@ -95,4 +89,4 @@
             </DockPanel>
         </Grid>
     </DockPanel>
-</local:ThemedWindow>
+</UserControl>

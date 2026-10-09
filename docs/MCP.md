@@ -3127,7 +3127,9 @@ shows `HistoryStatus` (text: whether Martlet keeps a record and may search it,
 and how many conversations and exchanges it holds since when; never what was
 said) and the checkboxes `HistoryKeep` and `HistorySearch` (toggling either
 saves `conversation-history.json`, so it needs `--allow-ui-effects`).
-`OpenHistory` opens the history window and `HistoryClose` closes it;
+`OpenHistory` (*Open conversations*) goes to the Conversations page, the same
+page as the side menu's `NavConversations` (a passive click; the page itself
+has the automation ID `ConversationsPage` and is hidden on a host PC);
 `HistorySearchRun` and `HistoryShowAll` only filter what it lists, and
 `HistoryEditMessage` only opens the editor (`HistoryEditCancel` closes it). Its
 `HistoryWindowStatus` reads as text (counts per app, or what a search or the
@@ -5370,7 +5372,7 @@ each way (-1 when it can't scroll that way) and which part of its content shows
 its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 `--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
+`NavDevices`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). Settings › Tools'
 `OpenTroubleshooting` opens Troubleshooting: `SupportReport` returns the status
 report (each check's state and remedy, and the last conversation activity),

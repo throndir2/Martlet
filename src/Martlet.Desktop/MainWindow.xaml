@@ -32,6 +32,8 @@
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavDevices"/>
                     <RadioButton x:Name="NavCompanion" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE76E;" Content="Companion"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavCompanion"/>
+                    <RadioButton x:Name="NavConversations" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE8BD;" Content="Conversations"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavConversations"/>
                     <RadioButton x:Name="NavCreations" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE790;" Content="Creations"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavCreations"/>
                     <!-- Background tasks: its count shows how many run now (MainWindow.Tasks.cs). -->
@@ -571,6 +573,10 @@
                     <StackPanel x:Name="CompanionContent" Margin="32,30,32,24" MaxWidth="1000" AutomationProperties.AutomationId="CompanionPage"/>
                 </ScrollViewer>
             </Grid>
+
+            <!-- Conversations: the record of every conversation, from this PC and the messaging apps, to read, search, edit and
+                 delete (ConversationsView.xaml; MainWindow.Shell.cs shows it). -->
+            <local:ConversationsView x:Name="ConversationsPage" Visibility="Collapsed" MaxWidth="1200"/>
 
             <!-- Creations: everything Martlet made, kept the same on all the owner's computers (MainWindow.Creations.cs, docs/CREATIONS.md).
                  No Play, Show or Activate here: Martlet performs its creations itself when asked. -->

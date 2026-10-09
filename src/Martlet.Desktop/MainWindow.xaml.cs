@@ -76,6 +76,7 @@ public partial class MainWindow : ThemedWindow
         companionService = store is null ? null : new CompanionSettingsService(store);
         memory = store is null ? null : new DesktopMemoryService(store);
         conversationHistory = store is null ? null : new DesktopConversationHistory(store.DataDirectory);
+        if (conversationHistory is not null) ConversationsPage.Attach(conversationHistory);
         lorebooks = store is null ? null : new LorebookStore(store.DataDirectory);
         smartHome = new(store?.DataDirectory, vault);
         discord = new(store?.DataDirectory, vault);
@@ -343,12 +344,11 @@ public partial class MainWindow : ThemedWindow
         await RefreshAsync();
     }
 
-    /// <summary>Companion › Memory › Open conversation history: the record of conversations on this PC, to read, search and delete.</summary>
+    /// <summary>Companion › Memory › Open conversations: goes to the Conversations page, to read, search, edit and delete the record.</summary>
     private void History_Click()
     {
         if (conversationHistory is null || closing) return;
-        new ConversationHistoryWindow(conversationHistory) { Owner = this }.ShowDialog();
-        if (!closing && openTab == CompanionTab.Memory) RenderTab();
+        Navigate(NavConversations);
     }
 
     /// <summary>Opens the talk window beside Martlet (modeless, so Home, Companion and the rest stay usable while you talk), or
