@@ -504,6 +504,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom", "TouchZonesVoiceSounds",
+        // Touch zones › Start over: the level chosen to reset (TouchZonesResetLevel: Zone reactions, Zones, Touch temperament or
+        // Everything), what that level clears (fixed text), what the last reset did or why it couldn't, and the confirmation's
+        // question (what the owner loses: zone names, counts, the persona's and custom temperaments' names, a date). Choosing a
+        // level needs --allow-ui-effects; Reset (TouchZonesReset) opens the question and its ConfirmationYes resets, so they need
+        // --allow-ui-effects too.
+        "TouchZonesResetLevel", "TouchZonesResetNote", "TouchZonesResetState", "TouchZonesResetQuestion",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
@@ -930,10 +936,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
         // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
         // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact and condition box, the answer and the
-        // length choice carry what they mean as "help". Changing any of them saves check-ins.json, so it needs
-        // --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
+        // length choice carry what they mean as "help". The hours and cap choices ("CheckInFrom-welcome" reads "8 AM",
+        // "CheckInUntil-welcome" "10 PM", "CheckInMostPerHour-c1" "Once an hour") carry theirs too. Changing any of them saves
+        // check-ins.json, so it needs --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
         "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-",
+        "CheckInFrom-", "CheckInUntil-", "CheckInMostPerHour-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
         // button's name ("DeepThinkingAddRole-diva" reads "Add the Thinking pool role on diva"; clicking it installs the role, so it

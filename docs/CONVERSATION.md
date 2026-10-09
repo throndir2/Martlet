@@ -1325,7 +1325,9 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** All are on by default. The choices are this PC's own
+**Built-in check-ins.** The first five are on by default. The four that wait
+for a signal (Welcome back, Unanswered question, On a call, Someone else is
+here) are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
 own character and runs its own conversation.
 
@@ -1336,6 +1338,10 @@ own character and runs its own conversation.
 | Promises (`promises`) | 5 min | Did the character say it would do something it never started? The end of the conversation, the reminders set and this conversation's background work. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Saying the same things (`repeats`) | 10 min | Does the character keep saying the same things (the same remark, joke, question, opener or topic again and again, or something it said not long ago while nothing new happened)? [What it said lately](#what-you-said-lately), each with when (`10:05 PM (12 min ago)`), and the day and time. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
+| Welcome back (`welcome`, off) | 30 min | You came back after 10 minutes or more away: should Martlet welcome you back? How long you were away and what happened meanwhile, what you do now, the personality. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| On a call (`call`, off) | 2 min | A game, a call or a full-screen app started or ended: did a call start or end? What you do now and before. | A `REMIND:` line (keep quiet and short during the call, or talk as usual again) goes in the notes of the next message. `OK` changes nothing. |
+| Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
 
 **One flow for every check-in.** A built-in check-in is only data: a prompt,
 the facts it gets to know, the conditions it waits for and what its answer
@@ -1363,6 +1369,10 @@ built-in check-in can be recreated, and changed, as your own.
 | Promises | The conversation, reminders and background work | You talked lately, something new was said |
 | Staying in character | Its personality, Martlet's last replies | A personality is active, Martlet replied twice, 4 new replies |
 | Saying the same things | What Martlet said in the last hour | Martlet said 3 things lately, something new was said |
+| Welcome back | What happened while you were away, what you are doing, its personality | You came back |
+| Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
+| On a call | What you are doing | What you do changed |
+| Someone else is here | Who is here, its personality | Someone else spoke |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
 check-ins, and the first one that may run starts. Only one runs at a time. A
@@ -1386,7 +1396,23 @@ check-in waits:
   | An emote a reply turned on shows (`EmoteShown`) | until such an emote has shown for 3 minutes (any age for *Check now*); it reads only those emotes |
   | A reply chose where the eyes look (`GazeChosen`) | until a reply chose a gaze at least 3 minutes ago (any age for *Check now*) |
   | Slower when nothing changes (`SlowWhenKept`) | three times its pace, as above |
+  | You came back (`CameBack`) | until you use this PC again after 10 minutes or more away; it runs within 5 minutes of that, once each time |
+  | Not on a call (`NotOnCall`) | while you're in a call or a voice chat (Discord, Zoom, Teams...), as far as Martlet can tell from what this PC plays (also for *Check now*) |
+  | What you do changed (`ActivityChanged`) | until a game, a call or a full-screen app started or ended since it last ran (Martlet tells only while it hears what this PC plays) |
+  | Only between these hours (`Between`) | outside the hours chosen under it (*From* 8 AM *Until* 10 PM by default; past midnight when *Until* comes first, such as 10 PM to 6 AM) |
+  | Martlet asked something you didn't answer (`Unanswered`) | until Martlet's last remark ended with a question, nothing was said for 2 minutes after it, you used the PC in the last 2 minutes and it didn't run since that question; a question older than 30 minutes is let go |
+  | A taskbar button flashed or a notification showed (`Attention`) | until a taskbar button flashed or a pop-up notification showed since it last ran |
+  | A song ended (`SongEnded`) | until a song Martlet sang played to its end since it last ran |
+  | The script's output changed (`ScriptChanged`) | while it has no script. Its script runs at its pace, and when it prints the same as last time (the same hash), the run ends there without asking the Thinking pool (not for *Check now*) |
+  | Someone else spoke (`SomeoneElse`) | until Martlet heard a voice that isn't yours in the last 10 minutes, since it last ran (Voice ID; with no voice marked as yours, two different voices) |
 
+  For a check-in's first run, "since it last ran" means in the last 5 minutes
+  (`CheckIns.SignalWindow`). *Check now* skips the waits for a new signal, the
+  hours and the cap, but not a call or what there must be to check (a
+  question, someone else, a script);
+- while it ran as many times in the last hour as *At most* allows (*No limit*,
+  or once, 2, 3, 4, 6 or 12 times an hour), a guard however often its
+  conditions are met;
 - while its prompt is empty;
 - for a check-in that records the microphone or what this PC plays,
   until Martlet hears it (*Martlet doesn't hear the microphone now*);
@@ -1451,6 +1477,9 @@ Point at a fact or a condition on the page to see what it does:
 | What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. | `{sound}` |
 | Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. | `{presence}` |
 | How you touched the character | What you did to the character on the desktop in the last 10 minutes (pokes, pats, holds, strokes with their path and direction, moves), oldest first, each with when; which touches were intimate, how the personality feels about them and the places you keep coming back to. | `{touches}` |
+| What you are doing | What you seem to be doing on this PC (a game, a call or voice chat, a video, music, full screen), what it was before and when it changed. Martlet knows it only while it hears what this PC plays (`PcActivity`). | `{activity}` |
+| Who is here | The voices Martlet heard in the last 10 minutes (Voice ID), newest first: the names of the voices it knows, *a voice Martlet doesn't know*, which one is yours, each with when, and whether someone other than you seems to be here. Never what they said. | `{people}` |
+| What happened while you were away | After you come back from 10 minutes or more away: how long you were away and, from then, what Martlet said, the background work that finished and the reminders that came due. | `{away}` |
 
 A placeholder puts that fact where you write it in the prompt; `{name}` and
 `{time}` work too. The facts you tick that the prompt doesn't name go after it.
@@ -1464,6 +1493,36 @@ log of the last 10 minutes (`OftenWindow`, at most 24 runs) that a reply's
 gets, and nothing is added to a reply's request. Like the other facts, it goes
 only to the pool member with the check, never to the log, the status file or
 MCP output.
+
+**Signals.** Some facts and conditions follow things Martlet already notices
+on this PC (`CheckInSignals.cs`, `MainWindow.CheckInSignals.cs`). The desktop
+follows them at each 15-second look:
+
+- *You came back*: the keyboard and mouse (and talking with Martlet), as the
+  10-minute idle wait reads them. The start of a time away of 10 minutes or
+  more and when someone came back are kept in memory.
+- *What you are doing*: the PC activity monitor of *Hear what this PC plays*
+  (`PcActivityMonitor`). A change is a game, a call or voice chat, or a
+  full-screen app that starts or ends. The first look only learns what you do.
+- *A taskbar button flashed or a notification showed*: the same shell hook and
+  notification check that Martlet uses when it watches the whole screen
+  (`ScreenAttention`). It runs once a second, only while a check-in that is on
+  waits for it. Martlet reads no notification text.
+- *A song ended*: a song Martlet sang played to its end
+  (`ConversationSinging.EndedAt`).
+- *Who is here* and *Someone else spoke*: the voices Voice ID recognized in
+  what Martlet heard (`LiveConversationController.RecentVoices`), names and
+  times only, for 10 minutes.
+- *Martlet asked something you didn't answer*: the last thing Martlet said
+  (`CheckIns.LastQuestion`), how long the conversation has been quiet and how
+  long since you used the PC.
+- *The script's output changed*: a short SHA-256 hash of what the script
+  printed (`CheckIns.ScriptHash`), kept with the run, never the output.
+
+Like the other facts, these go only to the pool member with the check. The
+status and MCP say only counts and yes or no (`signals` in
+`check-ins-status.json`), and the waits say why in general words (*you're on a
+call*), never who spoke or what you do.
 
 What happens with its answer:
 
@@ -1571,7 +1630,10 @@ just before the run. To add a built-in check-in:
    the answer format).
 2. For a new fact, add a `CheckInFacts` flag, its text in `CheckIns.Facts` and
    its placeholder in `CheckIns.Placeholders`. For a new condition, add a
-   `CheckInConditions` flag and its wait in `CheckIns.Wait`. Add each to the
+   `CheckInConditions` flag and its wait in `CheckIns.Wait` (a signal's wait
+   goes in `CheckInSignals.cs`, with the signal in `CheckInState` and followed
+   in `MainWindow.CheckInSignals.cs`). Widen `CheckIns.KnownFacts` or
+   `KnownConditions`, which `CheckInSettings.Validate` checks. Add each to the
    page's choices, so your own check-ins can use it too.
 3. Give it an outcome Martlet already acts on, or act on a new one in
    `MainWindow.ActOnCheckInAsync`.
@@ -1580,7 +1642,10 @@ Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
 wording beside a due reminder, settings, the model a check-in needs, what it
 takes, a script's run, each built-in check-in recreated as your own with the
 same message, waits and answers, and a built-in check-in's changes saved and
-read back), `SoundDigestTests` (the kept microphone and the
+read back; `CheckInsTests.Signals.cs`: each signal condition, the hours, an
+unanswered question, someone else's voice, the signal facts' words, the four
+signal check-ins, a script whose output didn't change and the per-hour cap),
+`SoundDigestTests` (the kept microphone and the
 sound kept for a check-in), the Desktop tests for an emote a reply
 turned on against a try, a check-in taking the eyes back to their usual gaze and
 the real talk window bringing up a check-in's `SAY:` through a fixture Thinking

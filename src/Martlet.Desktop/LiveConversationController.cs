@@ -4050,8 +4050,36 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         operation.Authorization.Check(worker);
         if (done != pending) return null;
         var heard = await pending.ConfigureAwait(false);
-        if (heard.Voices.Count > 0) operation.Publish(new("voices.recognized"));
+        if (heard.Voices.Count > 0)
+        {
+            operation.Publish(new("voices.recognized"));
+            NoteVoices(heard);
+        }
         return heard;
+    }
+
+    // The voices heard lately, for the check-ins (Who is here, Someone else is here): names and when, in memory only.
+    private readonly List<CheckInVoice> voicesLately = [];
+
+    private void NoteVoices(HeardVoices heard)
+    {
+        var at = clock.GetLocalNow();
+        lock (gate)
+        {
+            foreach (var voice in heard.Voices)
+                if (voice.Voice is { } known)
+                    voicesLately.Add(new(known.Named ? known.DisplayName : null, known.Owner, at) { Id = known.Id });
+            voicesLately.RemoveAll(v => at - v.At > CheckIns.PeopleWindow);
+            if (voicesLately.Count > 64) voicesLately.RemoveRange(0, voicesLately.Count - 64);
+        }
+    }
+
+    /// <summary>The voices Martlet heard within <see cref="CheckIns.PeopleWindow"/>, oldest first, and whether the owner marked one
+    /// of the voices it knows as their own, for a check-in. In memory only.</summary>
+    internal (IReadOnlyList<CheckInVoice> Voices, bool OwnerKnown) RecentVoices(DateTimeOffset now)
+    {
+        var ownerKnown = voices?.Roster.Voices.Any(v => v.Owner && !v.Removed) == true;
+        lock (gate) return ([.. voicesLately.Where(v => now - v.At <= CheckIns.PeopleWindow)], ownerKnown);
     }
 
     /// <summary>Starts recognizing who spoke in the utterance on this PC while it is transcribed. The samples are a private

@@ -587,33 +587,7 @@ public partial class MainWindow
             addRow.Children.Add(add);
             AddRow(list, addRow);
         }
-        var resetRow = new WrapPanel { Margin = new Thickness(0, 16, 0, 0) };
-        var resetReactions = Compact(PageButton("Reset reactions", () =>
-        {
-            if (!ConfirmReset("Reset what every zone plays to the defaults? Boxes, names and your own words stay.")) return;
-            var current = characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByOwner };
-            SaveAndRender(current with
-            {
-                IncludeIntimate = intimate.IsChecked == true,
-                Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()).Select(z => z with
-                {
-                    Reaction = CharacterTouchZones.FreshReaction(z, catalog, temperament) with { Notices = z.Reaction.Notices, Narration = z.Reaction.Narration }
-                })]
-            });
-        }, id: "TouchZonesResetReactions"));
-        AutomationProperties.SetHelpText(resetReactions, "Every zone's list goes back to what a new zone gets. Asks first.");
-        var resetZones = Compact(PageButton("Reset all zones", () =>
-        {
-            if (!ConfirmReset("Remove every zone, including the ones you added, and start again as for a fresh character? Martlet makes a first guess at the zones.")) return;
-            var current = characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId };
-            firstTouchZonesTried.Remove(modelId);
-            SaveAndRender(current with { Zones = [], DetectedBy = null, DetectedAt = null, Crop = null, Whole = false });
-        }, id: "TouchZonesResetAll"));
-        AutomationProperties.SetHelpText(resetZones, "Removes all zones and their reactions, then places a first guess again. Asks first.");
-        resetZones.Margin = new Thickness(8, 0, 0, 0);
-        resetRow.Children.Add(resetReactions);
-        resetRow.Children.Add(resetZones);
-        AddRow(list, resetRow);
+        stack.Add(TouchZonesResetSection(modelId, autoSave));
         var card = Card([.. stack]);
         card.Unloaded += (_, _) => { if (autoSave.Pending) autoSave.SaveNowAsync().Forget(); };
         return card;
@@ -626,9 +600,6 @@ public partial class MainWindow
             else if (openTab == CompanionTab.Touch) RenderTab();
         }
     }
-
-    private bool ConfirmReset(string question) =>
-        MessageBox.Show(this, question, "Martlet", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
 
     private const string TouchZonesZoomHelp = "Zoom in to move and resize the boxes precisely. Ctrl+wheel over the picture zooms where " +
         "the pointer is. Zoomed in, drag the picture (not a box) or scroll to look around it; Ctrl+drag or a middle-button drag moves it " +
