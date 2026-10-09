@@ -918,6 +918,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         jobs = new(this.clock);
         StartLiveFloor();
         StartPresence();
+        StartRequests();
         // The image and audio models this PC uses (docs/SENSE_MODELS.md), before anything can send them work, and what models were
         // found to hear and see, which routes them before a talk window loads the settings.
         senseModels = SenseModels.Load(dataDirectory);
@@ -993,6 +994,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // A settings change continues the conversation: what was said so far stays as context for the next reply.
             if (configuration?.Revision != next?.Revision) CancelCapturesLocked();
             configuration = next;
+            NameRequests(next);
             stop = RevokeLocked();
             stopListening = RevokeListeningLocked();
         }
@@ -5442,6 +5444,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             playing = pcListener;
         }
         owned?.Cancel("conversation.closed");
+        StopRequests();
         Cancel(stopListening);
         echoReducer?.Forget();
         soundDigest?.Dispose();

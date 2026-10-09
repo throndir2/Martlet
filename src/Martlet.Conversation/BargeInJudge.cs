@@ -119,7 +119,7 @@ public sealed class ModelBargeInJudge(Func<string, string, CancellationToken, Ta
             var result = await run(new ThinkingJob
             {
                 Kind = ThinkingJobKind.BargeInJudge, Instructions = instructions, Text = text, Timeout = BargeInJudging.Deadline,
-                DropWhenStale = true, MaxOutputTokens = MaxOutputTokens, Reasoning = false
+                DropWhenStale = true, MaxOutputTokens = MaxOutputTokens, Reasoning = false, Label = "Did the user mean to interrupt?"
             }, token).ConfigureAwait(false);
             return result.Outcome switch
             {

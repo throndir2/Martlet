@@ -97,6 +97,11 @@ public sealed record ThinkingJob
     public IConversationToolHost? ToolHost { get; init; }
     /// <summary>How many tool rounds one attempt may use before the model must answer in text.</summary>
     public int MaxToolRounds { get; init; }
+    /// <summary>A few words that say what the job is for, for the Thinking requests page and its status file (never private
+    /// text: no words from the conversation; cut to 200 characters there). Null: the kind's own name.</summary>
+    public string? Label { get; init; }
+    /// <summary>The companion the job is for (its name); null: the one the board's requests name (<see cref="ThinkingRequests.Origin"/>).</summary>
+    public string? Origin { get; init; }
 
     public ThinkingCapability Required => (Needs ?? ThinkingCapability.Text |
         (Image is null ? ThinkingCapability.None : ThinkingCapability.Vision) |
@@ -305,6 +310,42 @@ public sealed class ThinkingJobBoard
         ArgumentNullException.ThrowIfNull(job);
         job.Validate();
         token.ThrowIfCancellationRequested();
+        var holder = $"{ThinkingJobKinds.Name(job.Kind)}-{Interlocked.Increment(ref number)}";
+        if (holder.Length > 64) holder = holder[..64];
+        var request = Places.Requests.Post(new(job.Kind, ThinkingRequestSource.Pool, holder)
+        {
+            Task = job.Label, Origin = job.Origin, Priority = (int)(job.Priority ?? ThinkingJobKinds.Priority(job.Kind)), Needs = job.Required,
+            Timeout = job.Timeout, DropWhenStale = job.DropWhenStale, MaxOutputTokens = job.MaxOutputTokens, Reasoning = job.Reasoning,
+            Tools = job.Tools.Count
+        });
+        try
+        {
+            var result = await RunJobAsync(job, holder, request, token).ConfigureAwait(false);
+            request.Finish(result.Outcome switch
+            {
+                ThinkingJobOutcome.Succeeded => ThinkingRequestState.Succeeded,
+                ThinkingJobOutcome.NoMember => ThinkingRequestState.NoMember,
+                ThinkingJobOutcome.Stale => ThinkingRequestState.Stale,
+                ThinkingJobOutcome.TimedOut => ThinkingRequestState.TimedOut,
+                ThinkingJobOutcome.Preempted => ThinkingRequestState.Preempted,
+                _ => ThinkingRequestState.Failed
+            }, result.Problem, result.Text?.Length, result.Cut, result.Preemptions);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            request.Finish(ThinkingRequestState.Canceled, "its caller stopped waiting");
+            throw;
+        }
+        catch (Exception error)
+        {
+            request.Finish(ThinkingRequestState.Failed, $"it failed ({error.GetType().Name})");
+            throw;
+        }
+    }
+
+    private async Task<ThinkingJobResult> RunJobAsync(ThinkingJob job, string holder, ThinkingRequest request, CancellationToken token)
+    {
         var needs = job.Required;
         var pool = Members;
         var capable = pool.Where(member => member.Takes(job.Kind) && (member.Can & needs) == needs).ToArray();
@@ -315,8 +356,6 @@ public sealed class ThinkingJobBoard
                 $"{string.Join(", ", capable.Select(member => member.Name))} refused such a request as invalid a short time ago", 0);
         capable = [.. capable.Where(member => !Rests(member, needs))];
         if (!capable.Any(Places.Answers)) return ThinkingJobResult.Offline(needs);
-        var holder = $"{ThinkingJobKinds.Name(job.Kind)}-{Interlocked.Increment(ref number)}";
-        if (holder.Length > 64) holder = holder[..64];
         var demand = ThinkingDemand.For(job.Kind, pool, job.Priority);
         using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
@@ -351,6 +390,7 @@ public sealed class ThinkingJobBoard
             {
                 var member = lease.Place;
                 attempts++;
+                request.Begin(member);
                 using var limit = job.DropWhenStale ? CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token)
                     : CancellationTokenSource.CreateLinkedTokenSource(token);
                 if (!job.DropWhenStale) limit.CancelAfter(job.Timeout);
@@ -386,12 +426,15 @@ public sealed class ThinkingJobBoard
                             answer.Problem ?? $"the conversation needed {member.Name}", attempts) { Preemptions = preemptions };
                     // A member whose computer refused because a live turn holds its graphics card is asked again a moment later.
                     pause = !lease.StopRequested;
+                    request.End(lease.StopRequested ? $"the conversation needed {member.Name}" : answer.Problem ?? $"{member.Name} kept its graphics card for a live turn",
+                        paused: true, preempted: true);
                 }
                 else
                 {
                     problem = answer.Problem ?? $"{member.Name} came back empty";
                     tried.Add(member.Id);
                     if (answer.Refused) Rest(member, needs);
+                    request.End(problem);
                 }
             }
             if (!pause) continue;

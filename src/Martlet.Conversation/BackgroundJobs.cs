@@ -129,6 +129,7 @@ public sealed class BackgroundJob
     {
         Interlocked.Exchange(ref lease, null)?.Dispose();
         if (preempted) Interlocked.Increment(ref preemptions);
+        Request?.End(preempted ? "stopped for the conversation" : "its computer stopped answering", paused: true, preempted);
     }
 
     // The place it waited for, taken; false when the job already finished (the place goes straight back).
@@ -138,11 +139,15 @@ public sealed class BackgroundJob
             if (finishedAt == 0)
             {
                 Volatile.Write(ref lease, taken);
+                Request?.Begin(taken.Place);
                 return true;
             }
         taken.Dispose();
         return false;
     }
+
+    /// <summary>Its entry on the Thinking requests page, when it runs on the Thinking pool's slots.</summary>
+    internal ThinkingRequest? Request { get; set; }
 
     /// <summary>The job's ID in the conversation and the talk window, such as think-1.</summary>
     public string Id { get; }
@@ -190,6 +195,7 @@ public sealed class BackgroundJob
             state = now;
             progress = note;
         }
+        if (now != BackgroundJobState.Running) Request?.Say(note);
         Changed?.Invoke();
     }
 
@@ -210,6 +216,14 @@ public sealed class BackgroundJob
             delivery = by is CanceledByMartlet ? BackgroundDeliveryState.Delivered
                 : by is CanceledByClosing ? BackgroundDeliveryState.Dropped : BackgroundDeliveryState.Pending;
         }
+        Request?.Finish(end switch
+        {
+            BackgroundJobState.Succeeded => ThinkingRequestState.Succeeded,
+            BackgroundJobState.TimedOut => ThinkingRequestState.TimedOut,
+            BackgroundJobState.Canceled => ThinkingRequestState.Canceled,
+            _ => ThinkingRequestState.Failed
+        }, end == BackgroundJobState.Canceled ? $"stopped by {by ?? CanceledByYou}" : outcome?.Problem, outcome?.Result?.Length,
+            outcome?.Cut == true, Preemptions);
         // Its place is free for the next job.
         Volatile.Read(ref lease)?.Dispose();
     }
@@ -295,6 +309,7 @@ public sealed class BackgroundJobs : IDisposable
     public BackgroundJobs(TimeProvider? clock = null)
     {
         this.clock = clock ?? TimeProvider.System;
+        Places = new(this.clock);
         Places.Changed += Notify;
     }
 
@@ -305,7 +320,7 @@ public sealed class BackgroundJobs : IDisposable
 
     /// <summary>Which places (computers, providers) background work holds now: jobs started on a pool hold theirs until they
     /// finish; a step of a job may take one for a while (<see cref="BackgroundPlaces.TryAcquire"/>).</summary>
-    public BackgroundPlaces Places { get; } = new();
+    public BackgroundPlaces Places { get; }
 
     /// <summary>Every job not finished yet, oldest first.</summary>
     public IReadOnlyList<BackgroundJob> Active { get { lock (gate) return [.. jobs.Where(job => !job.Finished)]; } }
@@ -390,6 +405,16 @@ public sealed class BackgroundJobs : IDisposable
             jobs.Add(job);
             starts.Add((kind.Name, clock.GetUtcNow()));
             Trim();
+        }
+        if (pool is not null && kind.PoolKind is { } poolKind)
+        {
+            var demand = kind.Demand(pool);
+            job.Request = Places.Requests.Post(new(poolKind, ThinkingRequestSource.Conversation, job.Id)
+            {
+                Topic = job.Label, Priority = demand?.Priority, JobId = job.Id,
+                Timeout = kind.TimeLimit
+            });
+            if (job.Place is { } place) job.Request.Begin(place);
         }
         _ = Task.Run(() => RunAsync(job, run));
         Notify();
