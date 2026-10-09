@@ -10,8 +10,10 @@ namespace Martlet.Conversation;
 public sealed record CheckInChoice(bool On, int EveryMinutes);
 
 /// <summary>One of the owner's own check-ins (Companion › Check-ins › Your own check-ins): its name, what to check
-/// (<see cref="Task"/>, sent with the Check-in: your own prompt), what it gets to know (<see cref="Facts"/>) and what happens
-/// with its answer (<see cref="CheckInOutcome.Note"/> or <see cref="CheckInOutcome.Say"/>).</summary>
+/// (<see cref="Task"/>, sent with the Check-in: your own prompt), what it gets to know (<see cref="Facts"/>), what it gathers
+/// for each run (a <see cref="Screenshot"/>, a <see cref="Recording"/>, the output of a <see cref="Script"/>), what a Thinking
+/// pool member must handle to take it (<see cref="Needs"/>) and what happens with its answer
+/// (<see cref="CheckInOutcome.Note"/> or <see cref="CheckInOutcome.Say"/>).</summary>
 public sealed record CustomCheckIn
 {
     /// <summary>"c1" to "c99".</summary>
@@ -22,6 +24,19 @@ public sealed record CustomCheckIn
     public string Task { get; init; } = "";
     public CheckInFacts Facts { get; init; } = CheckInFacts.Conversation;
     public CheckInOutcome Outcome { get; init; } = CheckInOutcome.Note;
+    /// <summary>What a Thinking pool member must handle besides text: <see cref="ThinkingCapability.Vision"/> (pictures) and
+    /// <see cref="ThinkingCapability.Audio"/> (recordings). Only members that can are given the check-in. A screenshot adds
+    /// pictures and a recording adds recordings on their own (<see cref="CheckIns.Needs(CustomCheckIn)"/>).</summary>
+    public ThinkingCapability Needs { get; init; } = ThinkingCapability.Text;
+    /// <summary>A picture of the screen (private windows painted over) goes with each run.</summary>
+    public bool Screenshot { get; init; }
+    /// <summary>The last <see cref="RecordingSeconds"/> of the microphone or of what this PC plays go with each run.</summary>
+    public CheckInRecording Recording { get; init; }
+    /// <summary>How long the recording is: one of <see cref="CheckIns.RecordingChoices"/>.</summary>
+    public int RecordingSeconds { get; init; } = 10;
+    /// <summary>A Windows PowerShell script Martlet runs on this PC before each run (empty: none); its output goes with the
+    /// check. Only the owner writes it, on the Check-ins page.</summary>
+    public string Script { get; init; } = "";
 }
 
 /// <summary>Companion › Check-ins on this PC (check-ins.json in the data folder; never shared, because each PC shows its own
@@ -30,7 +45,8 @@ public sealed record CustomCheckIn
 public sealed record CheckInSettings
 {
     public const string FileName = "check-ins.json";
-    private const int MaxFileBytes = 64 * 1024;
+    // Eight check-ins with long tasks and scripts, every character escaped (\u0027), stay well below it.
+    private const int MaxFileBytes = 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
@@ -93,6 +109,13 @@ public sealed record CheckInSettings
             ContractRules.Require(checkIn.Outcome is CheckInOutcome.Note or CheckInOutcome.Say,
                 "A check-in of your own reminds Martlet in its next reply or has Martlet bring it up.");
             ContractRules.Require(((int)checkIn.Facts & ~127) == 0, "A check-in of your own gets only the facts Martlet offers.");
+            ContractRules.Require(((int)checkIn.Needs & ~(int)(ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio)) == 0,
+                "A check-in of your own needs only text, pictures or recordings.");
+            ContractRules.Require(Enum.IsDefined(checkIn.Recording), "A check-in of your own records the microphone, what the PC plays or nothing.");
+            ContractRules.Require(CheckIns.RecordingChoices.Contains(checkIn.RecordingSeconds),
+                $"A check-in's recording is {string.Join(", ", CheckIns.RecordingChoices.SkipLast(1))} or {CheckIns.RecordingChoices[^1]} seconds long.");
+            ContractRules.Require(checkIn.Script is { Length: <= CheckIns.MaximumScriptCharacters } script && !script.Contains('\0'),
+                $"A check-in's script is at most {CheckIns.MaximumScriptCharacters} characters.");
         }
     }
 

@@ -602,13 +602,20 @@ and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
 waits, its last run, runs and actions since Martlet started), `CheckInOn-<id>`
-and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>` and
-`CheckInFact-<id>-<fact>`. `CheckInsOpenPool`, `CheckInsOpenPrompts` and
-`CheckInPrompt-<id>` only open a page. The boxes and choices, the name and task
-boxes, *Add a check-in* (`CheckInAdd`) and *Remove* (`CheckInRemove-<id>`) save
+and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>`,
+`CheckInFact-<id>-<fact>`, the model it needs (`CheckInNeeds-<id>-Text`,
+`-Vision` and `-Audio`: checked, and disabled when an input forces it) and what
+each run takes (`CheckInScreenshot-<id>`, `CheckInRecording-<id>` and
+`CheckInSeconds-<id>`). The script box (`CheckInScript-<id>`) has an automation
+ID, but `ui_value` never reads it: the owner's script stays on the page.
+`CheckInsOpenPool`, `CheckInsOpenPrompts` and
+`CheckInPrompt-<id>` only open a page. The boxes and choices, the name, task
+and script boxes, *Add a check-in* (`CheckInAdd`) and *Remove* (`CheckInRemove-<id>`) save
 `check-ins.json`, and *Check now* (`CheckInRun-<id>`) sends the check to a
 Thinking pool member, which may be a paid provider, so they need
-`--allow-ui-effects`.
+`--allow-ui-effects`. *Check now* on a check-in with a script runs that script,
+takes a screenshot or sends a recording, so use it only on a disposable data
+directory with a check-in you made for the test.
 
 Setting `MARTLET_CHECK_INS_FIXTURE` to a text file before launching the desktop
 makes every check-in read its answer from that file instead of asking the
@@ -4254,14 +4261,24 @@ data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
 *GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task` and
-`facts`, and what it `does`), `desktop` from `check-ins-status.json` (written by
+`facts`, and what it `does`; for every check-in the `needs` (*Text*, or
+*Text, Vision, Audio*), the `screenshot`, the `recording` (*None*,
+*Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
+whether it runs a `script` and `scriptCharacters`, never the script itself), `desktop` from `check-ins-status.json` (written by
 the desktop on a companion PC: `role`, the check-in `running`, `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
-check-in `waiting`, `nextAt`, `runs`, `acted` and `last` with `at`, `result`,
-`acted`, `member` and `ms`; never what was said, answered or reminded) and the
+check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
+`recording`, `recordingSeconds`, `script`, `waiting`, `nextAt`, `runs`, `acted`
+and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
+took in a few words, such as *a screenshot (1280x720), 10 s of the
+microphone*) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
+`pcKept` and `pcHeard`; never what was said, answered, reminded, taken or
+printed) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
-`saidLatelyMinutes` for Saying the same things, the job kind
+`saidLatelyMinutes` for Saying the same things, `recordingChoices`,
+`maximumScriptCharacters`, `maximumScriptOutputCharacters` and
+`scriptTimeoutSeconds` for the owner's inputs, the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
 Read-only.
 
@@ -4281,8 +4298,18 @@ after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, a
 about, chatter, `REMIND: nothing`); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
-`SAY:` worded in its own words beside a due reminder. `passed` and each step's
-`passed` and `detail`. No model, network or credentials.
+`SAY:` worded in its own words beside a due reminder. Six `own:` steps check
+the owner's inputs: `own: inputs saved and read back` (a recording length of 7,
+a script with a null character and an unknown ability refused), `own: the model
+it needs` (a screenshot adds pictures, a recording adds recordings),
+`own: the microphone's last seconds` (a production `PcSoundBuffer` keeps sound
+only while wanted, gives the last seconds and forgets them when no longer
+wanted), `own: waits for the sound it records`, `own: the message carries what
+it took` (a real FIXTURE script, `Write-Output ('FIXTURE ' + (6 * 7))`, run by
+the production `TerminalRunner`, a FIXTURE picture and recording) and
+`own: only a capable member takes it` (a text-only member never gets it; a
+member with vision and audio gets the picture and the sound). `passed` and
+each step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
 lately](CONVERSATION.md#what-you-said-lately) with the production code
