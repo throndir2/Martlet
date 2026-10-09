@@ -93,6 +93,7 @@ public static class PromptCatalog
     public const string CheckInPromises = "check_in_promises";
     public const string CheckInCharacter = "check_in_character";
     public const string CheckInRepeats = "check_in_repeats";
+    public const string CheckInTouches = "check_in_touches";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInDue = "check_in_due";
@@ -213,6 +214,15 @@ public static class PromptCatalog
         "needs doing.";
 
     public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. {answer}";
+
+    public const string DefaultCheckInTouchesInstructions =
+        "{name} is the user's desktop character, and the user has been touching it.\n{touches}\n\n{conversation}\n\n" +
+        "{name}'s personality:\n{persona}\n\nThe emotes {name} shows now:\n{emotes}\n\n" +
+        "Describe in two to four vivid sentences what the user has been doing to {name} and how it feels, as the story so far: " +
+        "where their hands went and how they moved, the places they keep coming back to, and how it builds, true to {name}'s " +
+        "personality, to how it feels about being touched there and to what was said. Write it to {name} as \"you\", like the " +
+        "touch lines above. Don't list each touch again or copy those lines; tell it as one moment {name} can draw on in its " +
+        "next reply. If there is too little to describe (one light touch), nothing needs adding. {adult}";
 
     public const string DefaultCheckInNoteInstructions =
         "A reminder from your own check-in, for you only: {reminder} Follow it in this reply where it fits, without mentioning it.";
@@ -886,6 +896,12 @@ public static class PromptCatalog
             "first), each with when it said it (\"10:05 PM (12 min ago)\"). Check-ins: each check adds the answer format (a " +
             "REMIND: line or OK).",
             DefaultCheckInRepeatsInstructions, ["name", "said"]),
+        new(CheckInTouches, CheckInGroup, "Check-in: describe touches",
+            "What Describe touches asks right after you touch the character. {touches} is what you did to it in the last 10 " +
+            "minutes, in the words of the touch reaction, {conversation} the end of the conversation, {persona} its personality, " +
+            "{emotes} the emotes it shows and {adult} whether Adult content is on. Check-ins: each check adds the answer format " +
+            "(a description that goes with the next reply, or nothing).",
+            DefaultCheckInTouchesInstructions, ["name", "touches", "conversation", "persona", "emotes", "adult"]),
         new(CheckInCustom, CheckInGroup, "Check-ins: each check",
             "Wraps the prompt of every check-in, built-in or your own. {task} is the check-in's prompt with its placeholders " +
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
