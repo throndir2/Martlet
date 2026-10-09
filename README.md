@@ -56,7 +56,7 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 - ⏰ **Smarter check-ins**: your own check-ins can say which model they need. They can also take a screenshot, a few seconds of your microphone or your PC's sound, or what a script of yours prints.
 - 🎨 **Your own colors**: Settings › Appearance has a **Custom** palette. Choose each color yourself, and Martlet tells you if anything gets hard to read and can fix it for you.
 - 📋 **Every part in Recommended setup**: Vision, Reading, Hearing and Smart home now join the priority list, and each part says where it runs.
-- 👀 **Now on every Companion page**: each page starts with one line that says what it uses, then its main choice with a clear **Off**. Hover a resource bar on Devices to see what each job takes.
+- 👀 **Now on every Companion page**: each page, including the Optional extras, starts with one line that says what it uses, then its main choice with a clear **Off**. Choices show their key facts, and **Compare them** puts them side by side.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
