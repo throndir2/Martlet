@@ -64,9 +64,18 @@ internal static class SongsCheck
             {
                 name = tool.Name, description = tool.Description, parameters = JsonNode.Parse(tool.ParametersJson)
             }).ToArray(),
-            prompt = SongTools.Instructions(loaded.Settings?.Prompts)
+            prompt = SongTools.Instructions(loaded.Settings?.Prompts),
+            afterReply = CreationsAfterReply(singing: true)
         };
     }
+
+    /// <summary>The Songs, pictures and creations check-in tool set: its tools, the reply tools it takes over and the line a
+    /// reply gets in their place (docs/CONVERSATION.md#check-in-tool-sets).</summary>
+    internal static object CreationsAfterReply(bool singing) => new
+    {
+        set = CreationsCheckIn.SetId, tools = CreationsCheckIn.Tools.Select(t => t.Name).ToArray(), replaces = CreationsCheckIn.Replaced,
+        replyGuidance = CreationsCheckIn.ReplyGuidance(new HashSet<string>(CreationsCheckIn.Replaced, StringComparer.Ordinal), singing)
+    };
 
     // What the desktop wrote last (the song playing and the last stop; never titles or words), or why there is nothing.
     private static object Status(string dataDirectory)

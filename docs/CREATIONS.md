@@ -166,6 +166,13 @@ Neither asks first. The creations list is read from disk only when a tool is
 called, so a reply that doesn't use them costs nothing more, and with no kind
 registered the request is exactly as before.
 
+While the After each exchange check-in ticks the Songs, pictures and creations
+[tool set](CONVERSATION.md#check-in-tool-sets) (`songs-pictures`) and the
+Thinking pool has a member that calls tools, the reply keeps `list_creations`
+but doesn't get `perform_creation`: it says in a few words that it will perform
+it, and the check-in calls `list_creations` and `perform_creation` right after
+the reply, on the Thinking pool.
+
 ## The Creations page
 
 **Creations** sits between Companion and Diagnostics. It shows how many
