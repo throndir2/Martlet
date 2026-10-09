@@ -492,15 +492,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
         // the owner added, which Detect again looks for too, or "special to this character" for one Detect zones found as special to
         // it, and how the persona's temperament feels about it), and each entry of its reaction list, in play order
-        // (TouchZoneReactionItem-<n>-<k>: "Blush  ·  emote", "laugh  ·  sound", "F05  ·  not on this model"; TouchZoneReactionNone-<n>
-        // reads "nothing" for an empty list).
+        // (TouchZoneReactionItem-<n>-<k>: "Blush  ·  emote", "Laugh  ·  sound" for a voice sound the voice makes, "laugh  ·  sound,
+        // not with this voice", "F05  ·  not on this model"; TouchZoneReactionNone-<n> reads "nothing" for an empty list).
+        // TouchZonesVoiceSounds says which voice makes the voice sounds and which, or why none plays, what is being made, the last
+        // problem and what the last sound did (played or not, and why). ▶ on a sound (TouchZoneReactionHear-<n>-<k>) plays it,
+        // so it needs --allow-ui-effects.
         // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
         // Detect zones looks for, and that it also looks for anything special to the character (fixed text). TouchZonesZoom says how
         // far the zone map is zoomed in ("Zoom 2x").
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
-        "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom",
+        "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom", "TouchZonesVoiceSounds",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.

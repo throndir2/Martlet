@@ -104,7 +104,7 @@ public partial class MainWindow
                     intimate: zones.Any(z => CharacterTouchZones.Kind(z.Id)?.Intimate == true),
                     feeling: CharacterTouchTemperaments.Feeling(temperament, zones));
             }),
-            look: avatar.Gaze.Attend);
+            look: avatar.Gaze.Attend, sound: PlayTouchSoundsLater);
         return true;
     }
 
@@ -536,6 +536,9 @@ public partial class MainWindow
             {
                 CharacterActionKind.Expression => "emote", CharacterActionKind.Motion => "motion", _ => "gesture"
             }));
+        // The sounds the voice makes alone, after the model's own reactions.
+        reactionItems.AddRange(VoiceSoundItems());
+        stack.Add(VoiceSoundsNote());
         var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
         // The zones' rows, then the Add zone note and controls; on a page just opened they join a batch at a time (their boxes show
         // on the picture at once).
@@ -686,8 +689,9 @@ public partial class MainWindow
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) PlayTouchAsync(plan[i], $"a try of {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) avatar.Gaze.Attend(reaction.LookSeconds, $"a try of {zone.Name.ToLowerInvariant()}");
+        var sound = reaction.Sounds is { Count: > 0 } cues ? PlayTouchSounds(zone, cues, $"a try of {zone.Name.ToLowerInvariant()}") : null;
         characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
-                CharacterTouchZoneService.Describe(reaction, 1) + "." +
+                (sound is null ? "" : $"; voice sound {sound}") + CharacterTouchZoneService.Describe(reaction, 1) + "." +
                 (zone.Reaction.Notices ? " Martlet notices touches here" + (CharacterTouchZones.Narration(zone) is { } line ? $" (your words: \"{line}\")." : ".") : ""));
     }
 
@@ -723,6 +727,7 @@ public partial class MainWindow
         private readonly List<string> reactions;
         private readonly Button? addArea, removeArea;
         private readonly IReadOnlyList<(string Id, string Label)> items;
+        private readonly MainWindow window;
         private readonly Action edited;
         // The box field as the row showed it first: while it reads the same, the zone keeps its areas exactly as saved.
         private readonly string shown;
@@ -739,6 +744,7 @@ public partial class MainWindow
         {
             this.zone = zone;
             this.items = items;
+            this.window = window;
             this.edited = edited;
             follows = zone.Follows is not null;
             Number = number;
@@ -797,7 +803,7 @@ public partial class MainWindow
             add = Compact(new ComboBox { ItemsSource = new[] { AddChoice }.Concat(items.Select(i => i.Label)).ToArray(), SelectedIndex = 0, Width = 170 });
             AutomationProperties.SetName(add, $"Add a reaction to {zone.Name}");
             AutomationProperties.SetAutomationId(add, $"TouchZoneReactionAdd-{number}");
-            AutomationProperties.SetHelpText(add, $"Adds an emote, gesture or motion at the end of the list. A zone plays up to {CharacterTouchZones.MaximumActions}.");
+            AutomationProperties.SetHelpText(add, $"Adds an emote, gesture, motion or voice sound at the end of the list. A zone plays up to {CharacterTouchZones.MaximumActions}.");
             add.Margin = new Thickness(0, 4, 6, 0);
             add.SelectionChanged += (_, _) =>
             {
@@ -954,6 +960,10 @@ public partial class MainWindow
                     content.Children.Add(earlier);
                 }
                 content.Children.Add(text);
+                // A voice sound the voice makes can be heard here (made first when needed).
+                if (VoiceSounds.CueOf(reactions[k]) is { } cue && Known(reactions[k]))
+                    content.Children.Add(ChipButton("\u25B6", $"Hear {VoiceSounds.Label(cue).ToLowerInvariant()}", $"TouchZoneReactionHear-{Number}-{k + 1}",
+                        () => window.HearTouchSound(cue)));
                 content.Children.Add(ChipButton("\u00d7", $"Remove {label}", $"TouchZoneReactionRemove-{Number}-{k + 1}", () =>
                 {
                     reactions.RemoveAt(index);
@@ -978,14 +988,15 @@ public partial class MainWindow
             return button;
         }
 
-        // Whether the model has the entry in use (a voice sound counts: the voice plays it).
-        private bool Known(string entry) => CharacterTouchReaction.IsSound(entry) || items.Any(i => i.Id == entry);
+        // Whether the entry plays here: the model has it in use, or (a voice sound) the voice makes it.
+        private bool Known(string entry) => items.Any(i => i.Id == entry);
 
-        // "Blush  ·  emote" as Add a reaction names it; a voice sound "laugh  ·  sound"; an entry the model doesn't have (or has
-        // turned off) by its name, "F05  ·  not on this model".
+        // "Blush  ·  emote" as Add a reaction names it, "Laugh  ·  sound" for a sound the voice makes; a voice sound it doesn't make
+        // "laugh  ·  sound, not with this voice"; an entry the model doesn't have (or has turned off) by its name,
+        // "F05  ·  not on this model".
         private string Label(string entry) =>
             items.FirstOrDefault(i => i.Id == entry).Label ??
-            (CharacterTouchReaction.IsSound(entry) ? $"{entry[CharacterTouchReaction.SoundPrefix.Length..]}  \u00b7  sound"
+            (CharacterTouchReaction.IsSound(entry) ? $"{entry[CharacterTouchReaction.SoundPrefix.Length..]}  \u00b7  sound, not with this voice"
                 : $"{(entry.IndexOf(':') is var colon and >= 0 ? entry[(colon + 1)..] : entry)}  \u00b7  not on this model");
 
         private static Button Spaced(Button button)
