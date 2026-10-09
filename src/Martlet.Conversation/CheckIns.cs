@@ -17,6 +17,9 @@ public enum CheckInOutcome
     Note,
     /// <summary>Brings the answer's "SAY:" line up on Martlet's own as soon as it is free, or with what the user says next.</summary>
     Say,
+    /// <summary>Puts the answer's "KNOW:" line (a short description of what is happening) in the notes of the next message, once,
+    /// as background the conversation model may draw on, not an instruction (<see cref="CheckIns.ContextAge"/>).</summary>
+    Context = 4,
     /// <summary>Its tool calls are the action (<see cref="CheckIn.ToolSets"/>); the answer is only a short line that says what it
     /// did. The value is fixed, so other outcomes can take the values before it.</summary>
     Tools = 5
@@ -239,6 +242,9 @@ public static partial class CheckIns
     public static TimeSpan Idle => TimeSpan.FromMinutes(10);
     /// <summary>How long a reminder for the next reply waits on the context board for a message to carry it.</summary>
     public static TimeSpan NoteAge => TimeSpan.FromMinutes(30);
+    /// <summary>How long what a check-in adds to what Martlet knows waits on the context board for a message to carry it: short,
+    /// because it describes the moment.</summary>
+    public static TimeSpan ContextAge => TimeSpan.FromMinutes(3);
     /// <summary>How many times its pace Lingering emotes and Where the character looks wait after an answer that kept everything,
     /// while nothing new was said.</summary>
     public const int KeptPace = 3;
@@ -335,6 +341,7 @@ public static partial class CheckIns
             CheckInOutcome.EmotesOff => "Your own check-in: Martlet turns off the lingering emotes it names.",
             CheckInOutcome.GazeUsual => "Your own check-in: Martlet takes the eyes back to their usual when it says so.",
             CheckInOutcome.Tools => "Your own check-in: Martlet lets it use its tools.",
+            CheckInOutcome.Context => "Your own check-in: what it describes adds to what Martlet knows in its next reply.",
             _ => "Your own check-in: what it says reminds Martlet in its next reply."
         }, custom.Outcome, custom.On, custom.EveryMinutes)
         {
@@ -366,7 +373,8 @@ public static partial class CheckIns
         return parts.Count == 1 ? parts[0] : string.Join(", ", parts.SkipLast(1)) + " and " + parts[^1];
     }
 
-    /// <summary>The context board source of a check-in's reminder for the next reply ("check-in-promises").</summary>
+    /// <summary>The context board source of a check-in's reminder for the next reply, or of what it adds to what Martlet knows
+    /// ("check-in-promises").</summary>
     public static string Source(string id) => "check-in-" + id;
 
     /// <summary>Why <paramref name="checkIn"/> doesn't run now, in a few plain words, or null when it may. With
@@ -507,6 +515,9 @@ public static partial class CheckIns
                 $"says what {who} should bring up with the user now.",
             CheckInOutcome.Tools => "Use your tools for what needs doing. When you are done, write one short line that says what " +
                 "you did and why, or only OK when nothing needed doing.",
+            CheckInOutcome.Context => "If there is nothing worth adding, write only: OK\nOtherwise write one line that starts with KNOW: " +
+                $"and describes what is happening, briefly and vividly, as background {who} can draw on in its next reply. " +
+                $"Describe it; don't tell {who} what to do or say.",
             _ => $"If nothing needs doing now, write only: OK\nOtherwise write one line to {who} that starts with REMIND: and says " +
                 "what to keep in mind or do in its next reply."
         };
@@ -518,7 +529,7 @@ public static partial class CheckIns
 
     /// <summary>Reads a member's answer to <paramref name="checkIn"/> (asked with <paramref name="state"/>, narrowed with
     /// <see cref="Focus"/>). Lingering emotes: the tags of the emotes asked about on "OFF" lines; KEEP is nothing. Where the
-    /// character looks: USUAL or KEEP. The others: the text of a "REMIND:" (or "SAY:") line, or OK. The last such line decides,
+    /// character looks: USUAL or KEEP. The others: the text of a "REMIND:" (or "SAY:", or "KNOW:") line, or OK. The last such line decides,
     /// so thinking written before the answer doesn't count; markdown, bullets, quotes and a reasoning model's &lt;think&gt; block
     /// are skipped. Anything else reads as unreadable, which changes nothing.</summary>
     public static CheckInVerdict Read(CheckIn checkIn, string? answer, CheckInState state)
@@ -556,7 +567,12 @@ public static partial class CheckIns
                 return CheckInVerdict.Unreadable;
             default:
             {
-                string[] keywords = checkIn.Outcome == CheckInOutcome.Say ? ["SAY"] : ["REMIND", "REMINDER"];
+                string[] keywords = checkIn.Outcome switch
+                {
+                    CheckInOutcome.Say => ["SAY"],
+                    CheckInOutcome.Context => ["KNOW"],
+                    _ => ["REMIND", "REMINDER"]
+                };
                 foreach (var line in lines.Reverse())
                 {
                     if (keywords.FirstOrDefault(keyword => Starts(line, keyword)) is { } found)
@@ -575,6 +591,12 @@ public static partial class CheckIns
     /// for the next reply), or null when the owner emptied that prompt.</summary>
     public static string? Note(PromptSettings? prompts, string reminder) =>
         PromptSettings.Fill(prompts, PromptCatalog.CheckInNote, ("reminder", reminder));
+
+    /// <summary>What a check-in adds to what Martlet knows says in the notes of the next message (Companion › Prompts › Check-in:
+    /// adds to what Martlet knows): background the reply may draw on, not a reminder to follow. Null when the owner emptied that
+    /// prompt.</summary>
+    public static string? Context(PromptSettings? prompts, string context) =>
+        PromptSettings.Fill(prompts, PromptCatalog.CheckInContext, ("context", context));
 
     /// <summary>The day and time as a check reads it: "Wednesday, October 7, 10:17 PM".</summary>
     public static string Time(DateTimeOffset now) => now.ToString("dddd, MMMM d, h:mm tt", CultureInfo.InvariantCulture);
@@ -729,12 +751,13 @@ public static partial class CheckIns
             .Select(word => word.Trim('{', '}', '[', ']', '(', ')', '/', '.', ':', '!', '"', '\'', '*', '`'))
             .Where(word => word.Length > 0)];
 
-    // A REMIND: or SAY: line that says there is nothing to do.
+    // A REMIND:, SAY: or KNOW: line that says there is nothing to do.
     private static bool NothingSaid(string text)
     {
         var plain = text.Trim().TrimEnd('.', '!').Trim().ToLowerInvariant();
         return plain.Length == 0 || plain is "ok" or "okay" or "none" or "nothing" or "n/a" or "na" or "no" or "keep" or "no reminder" or
-            "nothing needed" or "no need" or "nothing to remind" or "nothing to say" or "nothing to bring up" or "nothing new";
+            "nothing needed" or "no need" or "nothing to remind" or "nothing to say" or "nothing to bring up" or "nothing new" or
+            "nothing to add";
     }
 
     private static string OneLine(string text) => Spaces().Replace(text, " ").Trim();

@@ -69,6 +69,10 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         sent.Pictures.FirstOrDefault(p => p.Kind == nameof(ZoneAskKind.Parts)) is { } first &&
         Path.Combine(folder, first.File) is var path && File.Exists(path) ? path : null;
 
+    /// <summary>Fills the reaction lists the zones don't have yet (<see cref="CharacterTouchZones.Filled"/>) once the model's emotes
+    /// are known; unchanged settings otherwise. Set by the main window; applied to the zones loaded and to every save.</summary>
+    internal Func<CharacterTouchZoneSettings, CharacterTouchZoneSettings>? Fill { get; set; }
+
     /// <summary>Loads the zones of the model with <paramref name="id"/> unless they are already loaded.</summary>
     internal void Follow(string? id)
     {
@@ -79,13 +83,24 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         Volatile.Write(ref detection, null);
         lock (rested) rested.Clear();
         lock (streaks) streaks.Clear();
+        FillLists();
         Changed?.Invoke();
+    }
+
+    /// <summary>Gives the loaded zones that have no reaction list yet (saved before reaction lists, or just found) the list they
+    /// play now, and saves them, once the model's emotes are known (<see cref="Fill"/>).</summary>
+    internal void FillLists()
+    {
+        if (Current is not { } loaded || Fill?.Invoke(loaded) is not { } filled || ReferenceEquals(filled, loaded)) return;
+        Volatile.Write(ref current, filled);
+        SaveAsync(filled, CancellationToken.None).Forget();
     }
 
     /// <summary>Saves the loaded model's zones; returns why they couldn't be saved, or null.</summary>
     internal async Task<string?> SaveAsync(CharacterTouchZoneSettings settings, CancellationToken token)
     {
         if (dataDirectory is null) return "Martlet's data folder isn't available.";
+        settings = Fill?.Invoke(settings) ?? settings;
         try
         {
             var saved = await CharacterTouchZones.SaveAsync(dataDirectory, settings, DateTimeOffset.Now, token);
@@ -432,7 +447,6 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) look?.Invoke(reaction.LookSeconds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
-        Autoplay(reaction, $"a {kind} on {zone.Name.ToLowerInvariant()}", play);
         Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({how}){with} at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
             (noticed is null ? "." : $", and Martlet noticed {noticed}."));
@@ -441,18 +455,6 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             $"{(heard.Length > 0 ? ", Martlet noticed " + string.Join(" + ", heard.Select(z => z.Id)) : "")}.");
         Changed?.Invoke();
         return match;
-    }
-
-    /// <summary>Plays the zone's autoplay list on its own: after the reaction, each emote or gesture in turn for the zone's step.</summary>
-    internal static void Autoplay(TouchReactionPlan reaction, string reason, Func<CharacterActionSource, string, double, Task> play)
-    {
-        if (reaction.Autoplay is not { Count: > 0 } list) return;
-        var step = Math.Max(1, reaction.AutoplaySeconds);
-        Task.Run(async () =>
-        {
-            await Task.Delay(TimeSpan.FromSeconds(step));
-            foreach (var source in list) await play(source, reason + " (autoplay)", step);
-        }).Forget();
     }
 
     /// <summary>How a touch found its zone, for the last-touch line and the log: "box", or "box, traced to the rest pose" when
@@ -486,7 +488,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     internal static string Describe(TouchReactionPlan reaction, int repeats) =>
         " (" + (reaction.Attitude is { } attitude ? attitude + " it, " : "") + reaction.From switch
         {
-            TouchReactionPlan.FromOwner => "your pick for the zone",
+            TouchReactionPlan.FromOwner => "its reaction list",
             TouchReactionPlan.FromTemperament => "from the persona's temperament",
             _ => "built-in reaction"
         } + (reaction.LookSeconds > 0 ? System.FormattableString.Invariant($", looks at your mouse for {reaction.LookSeconds:0.#} s") : "") +

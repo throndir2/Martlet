@@ -100,6 +100,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         var checkInSteps = ToolResult(messages[1]).GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("name").GetString()).ToArray();
         Assert.Contains("built-in ones recreated as your own", checkInSteps);
         Assert.Contains("tools: only a member that calls tools runs them", checkInSteps);
+        Assert.Contains("context: goes with one request", checkInSteps);
     }
 
     [Fact]
