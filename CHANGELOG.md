@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Recommended setup now lists every part of Martlet that uses your computers, in priority order: Vision, Reading, Hearing and Smart home join Thinking, the voice, listening, the character, lip-sync, Deep thinking, singing and pictures. Each one says where it runs (with Thinking's own model, a graphics card, a processor or online), or that it's off and where to turn it on. Option details now also say what a choice needs, such as Docker or a Linux computer. ([#656](https://github.com/throndir2/Martlet/pull/656))
+
 ## [0.61.0] - 2026-10-08
 
 ### Added
