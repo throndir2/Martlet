@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Mcp;
@@ -287,6 +288,15 @@ internal static class CheckInsCheck
             saidOwn.Contains("- 10:05 PM (12 min ago):", StringComparison.Ordinal) && saidOwn.Contains("last replies, oldest first", StringComparison.Ordinal) &&
             saidOwn.Contains("REMIND:", StringComparison.Ordinal),
             new { recreated, saidInTheLastHour = saidOwn });
+
+        // {adult} says whether Companion › Replies › Adult content is on: the explicit line only while it is.
+        var adultCheck = CheckIns.Of(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Task = "Describe it. {adult}" });
+        var adultOff = CheckIns.Message(adultCheck, facts, null) ?? "";
+        var adultOn = CheckIns.Message(adultCheck, facts with { Adult = true }, null) ?? "";
+        Step("adult content line", adultOff.Contains(PromptCatalog.DefaultCheckInAdultOffInstructions, StringComparison.Ordinal) &&
+            !adultOff.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, StringComparison.Ordinal) &&
+            adultOn.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, StringComparison.Ordinal) && !adultOn.Contains("{adult}", StringComparison.Ordinal),
+            new { off = CheckIns.Adult(facts, null), on = CheckIns.Adult(facts with { Adult = true }, null) });
 
         // 5. What Martlet does: emotes a reply turned on go off (never the owner's try), a reminder goes with exactly one request,
         //    and what to bring up is worded as the check-in's own, beside a due reminder.

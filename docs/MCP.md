@@ -4495,7 +4495,9 @@ about, chatter, `REMIND: nothing`); `built-in ones recreated as your own`
 (each built-in check-in copied as an own check-in with its prompt, facts,
 conditions and answer sends the same message, waits the same way and reads
 answers the same way, and an own check-in that gets what Martlet said in the
-last hour and its last replies); and what Martlet does: a reply's emote off
+last hour and its last replies); `adult content line` (`{adult}` is the
+non-explicit line while Adult content is off and the explicit line only while
+it is on); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
 `SAY:` worded in its own words beside a due reminder. Six `own:` steps check

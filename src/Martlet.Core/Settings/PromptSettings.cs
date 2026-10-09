@@ -97,6 +97,8 @@ public static class PromptCatalog
     public const string CheckInNote = "check_in_note";
     public const string CheckInDue = "check_in_due";
     public const string CheckInDueNotes = "check_in_due_notes";
+    public const string CheckInAdultOn = "check_in_adult_on";
+    public const string CheckInAdultOff = "check_in_adult_off";
 
     public const string ConversationGroup = "Every reply";
     public const string VisionGroup = "Screen and camera glances";
@@ -223,6 +225,15 @@ public static class PromptCatalog
     public const string DefaultCheckInDueNotesInstructions =
         "Your own check-in came up with something to bring up:\n{items}\nAnswer what the user just said first; then, where it " +
         "fits, bring it up in the same reply, in character, without mentioning notes or check-ins.";
+
+    public const string DefaultCheckInAdultOnInstructions =
+        "Adult content is on: the user is an adult and chose to allow sexual and explicit content with the character. You may " +
+        "be explicit where it fits, in plain words: the character's groin is its pussy or its cock (whichever its body has), its " +
+        "chest its breasts and its buttocks its ass, and touches there again and again are deliberate and sexual. Never anything " +
+        "sexual with or about anyone under 18: if the character is a minor or childlike, nothing sexual happens.";
+
+    public const string DefaultCheckInAdultOffInstructions =
+        "Adult content is off: keep it non-explicit. Say intimate touches tastefully, without sexual detail or explicit words.";
 
     public const string DefaultTouchedInstructions =
         "(Martlet's note, not said by the user: the user just touched you, their desktop character, or moved you around, without " +
@@ -849,7 +860,8 @@ public static class PromptCatalog
             DefaultCheckInInstructions, []),
         new(CheckInEmotes, CheckInGroup, "Check-in: lingering emotes",
             "What Lingering emotes checks. Every check-in's prompt may name any of these placeholders: {name} the character's " +
-            "name, {time} the day and time, {conversation} the end of the conversation, {emotes} the lingering emotes with their " +
+            "name, {time} the day and time, {adult} whether Adult content is on (Check-in: adult content on or off), " +
+            "{conversation} the end of the conversation, {emotes} the lingering emotes with their " +
             "hints and how long each has shown, {example} the first one's tag, {looking}, {usual} and {since} the gaze a reply " +
             "chose, {persona}, {work}, {screen}, {sound}, {presence}, {said} what it said in the last hour and {replies} its last " +
             "replies. Check-ins: each check adds the facts ticked that the prompt doesn't name and the answer format (OFF " +
@@ -892,6 +904,14 @@ public static class PromptCatalog
         new(CheckInDueNotes, CheckInGroup, "Check-in: brought up, with your message",
             "The same in the notes of your message, when you talk first. {items} is what it said to bring up.",
             DefaultCheckInDueNotesInstructions, ["items"]),
+        new(CheckInAdultOn, CheckInGroup, "Check-in: adult content on",
+            "Fills {adult} in a check-in's prompt while Companion › Replies › Adult content is on, so the check-in may be " +
+            "explicit, as the replies may.",
+            DefaultCheckInAdultOnInstructions, []),
+        new(CheckInAdultOff, CheckInGroup, "Check-in: adult content off",
+            "Fills {adult} in a check-in's prompt while Companion › Replies › Adult content is off, so the check-in stays " +
+            "non-explicit.",
+            DefaultCheckInAdultOffInstructions, []),
 
         new(HomeWrap, HomeGroup, "Smart home status",
             "Wraps every smart home note below. {label} is the block's marker; {body} is the note.",

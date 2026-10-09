@@ -165,6 +165,9 @@ public sealed record CheckInState
     /// <summary>What the user did to the desktop character over the last <see cref="TouchLedger.OftenWindow"/>, from the
     /// conversation's touch ledger, read without taking it (<see cref="TouchLedger.History"/>); null when they did nothing.</summary>
     public TouchHistory? Touches { get; init; }
+    /// <summary>Companion › Replies › Adult content is on: {adult} fills with Check-in: adult content on, else with its off
+    /// line.</summary>
+    public bool Adult { get; init; }
 
     /// <summary>The character's name for the check: the personality's, or Martlet.</summary>
     public string Who => string.IsNullOrWhiteSpace(Name) ? "Martlet" : Name.Trim();
@@ -451,7 +454,7 @@ public static partial class CheckIns
         var example = state.Emotes.Count > 0 ? "{" + state.Emotes[0].Tag + "}" : "{blush}";
         var task = PromptSettings.FillText(template.Trim(),
         [
-            ("name", who), ("time", time), ("conversation", Conversation(state)),
+            ("name", who), ("time", time), ("adult", Adult(state, prompts)), ("conversation", Conversation(state)),
             ("emotes", state.Emotes.Count > 0 ? EmoteLines(state) : "(none)"), ("example", example),
             ("looking", state.Gaze?.Looking ?? "do their usual"), ("usual", state.Gaze?.Usual ?? "do their usual"),
             ("since", state.Gaze is { } gaze ? Reminders.Span(gaze.Since) + " ago" : "not lately"),
@@ -536,6 +539,11 @@ public static partial class CheckIns
 
     /// <summary>The day and time as a check reads it: "Wednesday, October 7, 10:17 PM".</summary>
     public static string Time(DateTimeOffset now) => now.ToString("dddd, MMMM d, h:mm tt", CultureInfo.InvariantCulture);
+
+    /// <summary>What {adult} says: Check-in: adult content on while Companion › Replies › Adult content is on, else Check-in:
+    /// adult content off (empty when the owner emptied that prompt).</summary>
+    public static string Adult(CheckInState state, PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, state.Adult ? PromptCatalog.CheckInAdultOn : PromptCatalog.CheckInAdultOff) ?? "";
 
     /// <summary>The end of the conversation as a check reads it: the newest exchanges, oldest first, and how long it has been
     /// quiet; or that none runs or nothing was said yet.</summary>

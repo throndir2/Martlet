@@ -120,7 +120,8 @@ public partial class MainWindow
         "own as soon as it's free. Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing.";
 
-    private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {conversation}, " +
+    private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {adult} (whether " +
+        "Adult content is on: an explicit or a non-explicit line, from Companion › Prompts), {conversation}, " +
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
         "{presence} and {touches}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
@@ -414,7 +415,8 @@ public partial class MainWindow
             Said = conversation?.RecentSayings(now) ?? [],
             // Read without taking: the next reply still drains these touches as before.
             Touches = conversation?.Touches.History(conversation.TouchNow),
-            HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh)
+            HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh),
+            Adult = GenerationSettings.Adult(homeSettings?.Generation)
         };
     }
 

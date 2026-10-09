@@ -1449,6 +1449,13 @@ gets, and nothing is added to a reply's request. Like the other facts, it goes
 only to the pool member with the check, never to the log, the status file or
 MCP output.
 
+`{adult}` says whether Companion › Replies › Adult content is on, so a
+check-in follows the same choice as the replies. While it is on, `{adult}` is
+Companion › Prompts › *Check-in: adult content on* (the check-in may be
+explicit, never about anyone under 18). While it is off, it is *Check-in:
+adult content off* (keep it non-explicit). Empty either prompt and `{adult}`
+says nothing (`CheckIns.Adult`, `CheckInState.Adult`).
+
 What happens with its answer:
 
 - *Reminds Martlet in its next reply*: a `REMIND:` line goes on the context

@@ -326,7 +326,7 @@ public sealed class CheckInsTests
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
             PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
-            PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
+            PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes, PromptCatalog.CheckInAdultOn, PromptCatalog.CheckInAdultOff];
         foreach (var id in ids)
         {
             var prompt = PromptCatalog.Find(id)!;
@@ -585,6 +585,25 @@ public sealed class CheckInsTests
         Assert.Equal(waiting, ledger.Drain(at)!.Line);
         new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Touches", Facts = CheckInFacts.Touches }).Validate();
         Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", Facts = (CheckInFacts)1024 }).Validate());
+    }
+
+    [Fact]
+    public void ACheckInKnowsWhetherAdultContentIsOn()
+    {
+        var own = CheckIns.Of(new CustomCheckIn { Id = "c1", Name = "Adult", Task = "Describe what happened. {adult}" });
+        var off = CheckIns.Message(own, State(), null)!;
+        Assert.Contains("Describe what happened. " + PromptCatalog.DefaultCheckInAdultOffInstructions, off);
+        Assert.DoesNotContain(PromptCatalog.DefaultCheckInAdultOnInstructions, off);
+        var on = CheckIns.Message(own, State() with { Adult = true }, null)!;
+        Assert.Contains("Describe what happened. " + PromptCatalog.DefaultCheckInAdultOnInstructions, on);
+        Assert.Contains("under 18", on);
+
+        var edited = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInAdultOn] = "FIXTURE: be explicit." } };
+        Assert.Contains("Describe what happened. FIXTURE: be explicit.", CheckIns.Message(own, State() with { Adult = true }, edited));
+        var emptied = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInAdultOff] = "" } };
+        var nothing = CheckIns.Message(own, State(), emptied)!;
+        Assert.DoesNotContain("{adult}", nothing);
+        Assert.DoesNotContain("Adult content", nothing);
     }
 
     [Fact]
