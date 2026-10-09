@@ -2,17 +2,18 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Martlet.Conversation;
 
 namespace Martlet.Desktop;
 
-/// <summary>The record of conversations (Companion › Memory › Open conversation history): the conversations, newest first,
-/// from every app (this PC, Telegram, Discord, WhatsApp; filtered by app), each message of the one selected, a search over
-/// everything said, and deleting or editing one message, deleting one conversation or everything (each delete asked first, No
-/// by default). With <see cref="AlsoThere"/> (on), deletions and edits of Telegram and Discord messages are made there too, as
-/// far as each app allows, through a queue at each app's pace (<see cref="PlatformChanges"/>). It reads the record from memory
-/// once it is loaded; only deleting and editing write.</summary>
-public partial class ConversationHistoryWindow : ThemedWindow
+/// <summary>The Conversations page of the main window (also opened from Companion › Memory › Open conversations): the
+/// conversations, newest first, from every app (this PC, Telegram, Discord, WhatsApp; filtered by app), each message of the
+/// one selected, a search over everything said, and deleting or editing one message, deleting one conversation or everything
+/// (each delete asked first, No by default). With <see cref="AlsoThere"/> (on), deletions and edits of Telegram and Discord
+/// messages are made there too, as far as each app allows, through a queue at each app's pace (<see cref="PlatformChanges"/>).
+/// It reads the record once (<see cref="EnterAsync"/>) and then follows it; only deleting and editing write.</summary>
+public partial class ConversationsView : UserControl
 {
     private sealed record ConversationItem(HistoryConversation Conversation, string Text, string Name, IReadOnlySet<Guid> Hits)
     {
@@ -24,55 +25,84 @@ public partial class ConversationHistoryWindow : ThemedWindow
         public override string ToString() => Text;
     }
 
-    private readonly DesktopConversationHistory history;
-    private readonly Func<Window, string, string, bool> confirm;
+    private DesktopConversationHistory? record;
+    private Func<Window, string, string, bool> confirm = (owner, text, title) => ConfirmationDialog.Confirm(owner, text, title);
     private readonly CancellationTokenSource lifetime = new();
     private string? query;
     private bool busy;
+    private bool stale;
     private MessageItem? editing;
 
-    internal ConversationHistoryWindow(DesktopConversationHistory history, Func<Window, string, string, bool>? confirm = null)
+    public ConversationsView()
     {
-        this.history = history;
-        this.confirm = confirm ?? ((owner, text, title) => ConfirmationDialog.Confirm(owner, text, title));
         InitializeComponent();
+    }
+
+    private DesktopConversationHistory history => record ?? throw new InvalidOperationException("No record of conversations is attached.");
+
+    /// <summary>Connects the page to the record (once). It follows new exchanges and waiting app changes from then on.</summary>
+    internal void Attach(DesktopConversationHistory history, Func<Window, string, string, bool>? confirm = null)
+    {
+        if (record is not null) throw new InvalidOperationException("The page already shows a record.");
+        record = history;
+        if (confirm is not null) this.confirm = confirm;
+        history.Platforms.Changed += PlatformsChanged;
+        history.Changed += HistoryChanged;
         RenderButtons();
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    /// <summary>Stops following the record (the main window closes).</summary>
+    internal void Detach()
     {
-        StatusText.Text = "Reading the record…";
-        history.Platforms.Changed += PlatformsChanged;
-        RenderPlatforms();
-        try { await history.Store.LoadAsync(lifetime.Token); }
-        catch (OperationCanceledException) { return; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            StatusText.Text = "Couldn't read the record of conversations.";
-            return;
-        }
-        history.Changed += HistoryChanged;
-        Render();
-        SearchText.Focus();
-    }
-
-    private void Window_Closed(object? sender, EventArgs e)
-    {
-        history.Changed -= HistoryChanged;
-        history.Platforms.Changed -= PlatformsChanged;
         lifetime.Cancel();
+        if (record is null) return;
+        record.Changed -= HistoryChanged;
+        record.Platforms.Changed -= PlatformsChanged;
     }
 
-    // A new exchange or a deletion elsewhere: the list follows (the selection stays when it can).
+    /// <summary>The page shows: reads the record the first time, then shows what changed while it was hidden.</summary>
+    internal async Task EnterAsync()
+    {
+        if (record is null || lifetime.IsCancellationRequested) return;
+        RenderPlatforms();
+        if (!history.Store.Loaded)
+        {
+            StatusText.Text = "Reading the record…";
+            RenderButtons();
+            try { await history.Store.LoadAsync(lifetime.Token); }
+            catch (OperationCanceledException) { return; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                StatusText.Text = "Couldn't read the record of conversations.";
+                return;
+            }
+            Render();
+        }
+        else if (stale || ConversationsList.ItemsSource is null) Render();
+        stale = false;
+        if (IsVisible) SearchText.Focus();
+    }
+
+    // A new exchange or a deletion elsewhere: the list follows (the selection stays when it can); while the page is hidden
+    // it waits until the page shows again.
     private void HistoryChanged() => Dispatcher.InvokeAsync(() =>
     {
-        if (!lifetime.IsCancellationRequested && !busy && editing is null) Render();
+        if (lifetime.IsCancellationRequested) return;
+        if (!IsVisible || busy || editing is not null) stale = true;
+        else Render();
     });
 
     private void PlatformsChanged() => Dispatcher.InvokeAsync(() =>
     {
         if (!lifetime.IsCancellationRequested) RenderPlatforms();
     });
+
+    private void SearchText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        Search_Click(sender, e);
+    }
 
     private void RenderPlatforms()
     {
@@ -88,7 +118,7 @@ public partial class ConversationHistoryWindow : ThemedWindow
 
     private void AppFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (IsLoaded) Render();
+        if (record?.Store.Loaded == true) Render();
     }
 
     private void Search_Click(object sender, RoutedEventArgs e)
@@ -105,14 +135,13 @@ public partial class ConversationHistoryWindow : ThemedWindow
         Render();
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
-
     private static string Apps(HistoryConversation conversation) =>
         string.Join(", ", (conversation.Apps ?? [HistoryApps.Pc]).Select(HistoryApps.Name));
 
     private void Render()
     {
-        if (!history.Store.Loaded) return;
+        if (record?.Store.Loaded != true) return;
+        stale = false;
         StopEditing();
         var selected = (ConversationsList.SelectedItem as ConversationItem)?.Conversation.Id;
         var app = App;
@@ -203,16 +232,18 @@ public partial class ConversationHistoryWindow : ThemedWindow
 
     private void RenderButtons()
     {
-        var loaded = history.Store.Loaded;
+        var loaded = record?.Store.Loaded == true;
         var message = MessagesList.SelectedItem is MessageItem;
         DeleteButton.IsEnabled = !busy && loaded && ConversationsList.SelectedItem is ConversationItem;
-        DeleteAllButton.IsEnabled = !busy && loaded && history.Store.Stats.Exchanges > 0;
+        DeleteAllButton.IsEnabled = !busy && loaded && record!.Store.Stats.Exchanges > 0;
         DeleteMessageButton.IsEnabled = EditButton.IsEnabled = !busy && loaded && message && editing is null;
         EditSaveButton.IsEnabled = !busy && editing is not null;
         SearchButton.IsEnabled = ShowAllButton.IsEnabled = AppFilter.IsEnabled = !busy && loaded;
     }
 
     private bool There => AlsoThere.IsChecked == true;
+
+    private Window Owner => Window.GetWindow(this) ?? Application.Current.MainWindow;
 
     private static string Where(HistoryExchange exchange) => exchange.App == HistoryApps.Pc ? "" : $" in {HistoryApps.Name(exchange.App)}";
 
@@ -252,7 +283,7 @@ public partial class ConversationHistoryWindow : ThemedWindow
             StatusText.Text = "Nothing changed. " + StatusText.Text;
             return;
         }
-        if (string.IsNullOrWhiteSpace(text) && !confirm(this, "The new text is empty, so the message will be deleted. Delete it?", "Delete message"))
+        if (string.IsNullOrWhiteSpace(text) && !confirm(Owner, "The new text is empty, so the message will be deleted. Delete it?", "Delete message"))
             return;
         var there = There;
         StopEditing();
@@ -268,7 +299,7 @@ public partial class ConversationHistoryWindow : ThemedWindow
         if (busy || MessagesList.SelectedItem is not MessageItem item) return;
         var there = There && item.Exchange.Source is not null;
         var what = item.Side == HistorySide.User ? (item.Exchange.Speaker is null ? "your message" : "this message") : "Martlet's reply";
-        if (!confirm(this, $"Delete {what} of {PastConversations.When(item.Exchange.At, history.Zone)} from the record?" +
+        if (!confirm(Owner, $"Delete {what} of {PastConversations.When(item.Exchange.At, history.Zone)} from the record?" +
                 (there ? $" Martlet also deletes it{Where(item.Exchange)} when the app allows it." : "") +
                 " Martlet won't be able to bring it up again. This can't be undone.", "Delete message"))
             return;
@@ -283,7 +314,7 @@ public partial class ConversationHistoryWindow : ThemedWindow
     {
         if (busy || ConversationsList.SelectedItem is not ConversationItem item) return;
         var there = There && item.Conversation.Apps?.Any(app => app != HistoryApps.Pc) == true;
-        if (!confirm(this, $"Delete the conversation of {PastConversations.When(item.Conversation.Started, history.Zone)} " +
+        if (!confirm(Owner, $"Delete the conversation of {PastConversations.When(item.Conversation.Started, history.Zone)} " +
                 $"({item.Conversation.Exchanges} exchange{(item.Conversation.Exchanges == 1 ? "" : "s")}) from the record?" +
                 (there ? " Martlet also deletes its messages in Telegram and Discord where the app allows it." : "") +
                 " Martlet won't be able to bring it up again. Facts it remembered from it stay in Memory. This can't be undone.",
@@ -300,7 +331,7 @@ public partial class ConversationHistoryWindow : ThemedWindow
     {
         if (busy) return;
         var there = There && history.Store.Stats.Apps?.Keys.Any(app => app != HistoryApps.Pc) == true;
-        if (!confirm(this, "Delete the whole record of conversations on this PC?" +
+        if (!confirm(Owner, "Delete the whole record of conversations on this PC?" +
                 (there ? " Martlet also deletes every recorded message in Telegram and Discord where the app allows it." : "") +
                 " Martlet won't be able to bring any of them up again. Facts it remembered stay in Memory. This can't be undone.",
                 "Delete conversation history"))
@@ -318,7 +349,7 @@ public partial class ConversationHistoryWindow : ThemedWindow
     {
         var waiting = history.Platforms.Status.Pending;
         if (waiting == 0) return;
-        if (!confirm(this, $"Stop waiting to make {waiting} change{(waiting == 1 ? "" : "s")} in Telegram and Discord? Those messages stay " +
+        if (!confirm(Owner, $"Stop waiting to make {waiting} change{(waiting == 1 ? "" : "s")} in Telegram and Discord? Those messages stay " +
                 "there as they are; the record here doesn't change.", "Stop waiting changes"))
             return;
         history.Platforms.Clear();

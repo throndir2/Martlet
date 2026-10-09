@@ -20,7 +20,7 @@ Screen/camera glances and PC-audio notes are not remembered as facts.
 
 ## Conversation history
 
-**Companion › Memory › Conversation history** lets you browse, edit or delete recorded exchanges. Optional `search_conversations` lets Martlet search it during replies.
+The **Conversations** page in the side menu lets you browse, edit or delete recorded exchanges; **Companion › Memory › Conversation history** turns the record on or off. Optional `search_conversations` lets Martlet search it during replies.
 
 ## Sync
 
