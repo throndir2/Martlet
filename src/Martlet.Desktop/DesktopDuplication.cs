@@ -223,6 +223,21 @@ internal sealed class DesktopDuplication
     internal static void Downscale(RowReader read, int x, int y, int areaWidth, int areaHeight, byte[] destination, int width, int height)
     {
         var row = new byte[areaWidth * 4];
+        if (width == areaWidth && height == areaHeight)
+        {
+            // Full size (a text picture): rows are copied as they are, made opaque.
+            try
+            {
+                for (var dy = 0; dy < height; dy++)
+                {
+                    read(y + dy, x, row, areaWidth);
+                    for (var i = 3; i < row.Length; i += 4) row[i] = 255;
+                    Buffer.BlockCopy(row, 0, destination, dy * row.Length, row.Length);
+                }
+            }
+            finally { Array.Clear(row); }
+            return;
+        }
         var sums = new int[width * 3];
         var counts = new int[width];
         try

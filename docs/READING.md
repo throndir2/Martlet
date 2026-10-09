@@ -21,7 +21,7 @@ details and the button that uses it (for the Reading role, the computer and
 
 | Choice | What it uses | Where it runs | Data |
 | --- | --- | --- | --- |
-| **Windows OCR on this PC** (default, recommended) | Windows' own text recognition (`Windows.Media.Ocr`) in your Windows languages | This PC's processor, about 15 ms for a 1024 x 576 screenshot | Nothing leaves this PC |
+| **Windows OCR on this PC** (default, recommended) | Windows' own text recognition (`Windows.Media.Ocr`) in your Windows languages | This PC's processor, about 140 ms for a full-size 1920 x 1080 screenshot | Nothing leaves this PC |
 | **Martlet's Reading role** | RapidOCR 1.4.4 with its PaddleOCR PP-OCRv4 models, in Docker | The processor of this PC or of another of your computers. No graphics card is needed | Screenshots go to that computer. It reads them in memory and does not keep them |
 | **Off** | Nothing | | |
 
@@ -31,6 +31,7 @@ what to add in Windows Settings › Time & language › Language & region.
 
 The Reading role is often better with game fonts. It takes about 0.5 to 1 s for
 one screenshot on a desktop processor (measured: 0.9 s on a 24-thread processor).
+The time grows with the size of the screenshot.
 Set it up from **Companion › Reading › Martlet's Reading role › Set up**. That
 uses the same `martlet-host add ocr` flow as every other role. The role is
 described in [Reading host role](OCR_HOST.md).
@@ -42,12 +43,20 @@ described in [Reading host role](OCR_HOST.md).
 2. When the picture changed, or 9 seconds passed, Martlet reads the newest
    screenshot. It does one read at a time, off the UI thread and away from any
    reply. Nothing waits for a read.
-3. Martlet compares the words with the last read. New text makes a look more
+3. Martlet reads the screen at full size (at most 8192 pixels on the long
+   edge). The vision model's look is downscaled to at most 1024 pixels for each
+   monitor, and that makes normal 12-pixel text about 6 pixels high. OCR cannot
+   read text that small. So for each read, Martlet copies the same screen again
+   at full size, reads that copy and then clears it. In a test on a drawn
+   1920 x 1080 desktop with 108 lines of 12-pixel text, Windows OCR read 102
+   lines at full size in 138 ms, and no lines at 1024 x 576.
+4. Martlet compares the words with the last read. New text makes a look more
    likely, even when the picture barely changed. The same words add nothing.
-4. When Martlet takes a look on its own, the newest text (at most 10 seconds
+5. When Martlet takes a look on its own, the newest text (at most 10 seconds
    old) goes at the end of that look's message, after the glance prompt. The
    prompt is **Text on screen** on Companion › Prompts. Empty it to send no text.
-5. The conversation keeps only the look's short `[Screen]` line, never the text
+   At most 60 lines and 1,500 characters go, in reading order.
+6. The conversation keeps only the look's short `[Screen]` line, never the text
    that was read.
 
 Rules that keep conversations fast:
@@ -64,14 +73,17 @@ before a read, as for every look, and a private window in front stops the read.
 
 ## Read my screen now
 
-**Companion › Reading › Read my screen now** takes one picture of the whole
-screen and reads it with the saved choice. It shows the number of lines, the
-engine, the time and the text. With the Reading role, the picture goes to that
-computer. The talk window's vision tooltip also shows the newest read while you
-watch.
+**Companion › Reading › Read my screen now** takes one full-size picture of the
+whole screen and reads it with the saved choice. It shows the number of lines,
+the engine, the time, the size of the screenshot and the text. With the Reading
+role, the picture goes to that computer as a JPEG. A large screenshot is sent at
+a lower JPEG quality when it would be more than the role's 4 MiB limit. The
+talk window's vision tooltip also shows the newest read while you watch.
 
 ## Checking it
 
 The MCP tool `reading_check` reads `reading.json` and reads a drawn test picture
-with known text through Windows OCR. With `endpoint` it also sends the same
-picture to a Reading worker on loopback. See [MCP](MCP.md#reading).
+with known text through Windows OCR. It also reads a drawn 1920 x 1080 desktop
+of small text at full size and at 1024 x 576, to show why Martlet reads at full
+size. With `endpoint` it also sends the same picture to a Reading worker on
+loopback. See [MCP](MCP.md#reading).

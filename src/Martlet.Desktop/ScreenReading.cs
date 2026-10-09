@@ -12,12 +12,14 @@ using Martlet.Discord.Calls;
 namespace Martlet.Desktop;
 
 /// <summary>One read of the text on a screenshot: the lines in reading order, their text, how much the text changed since the
-/// read before (0 to 1; 0 for the first read), how long it took, which engine read it and when.</summary>
-internal sealed record ScreenRead(IReadOnlyList<ReadLine> Lines, string Text, double Change, TimeSpan Took, string Engine, DateTimeOffset At)
+/// read before (0 to 1; 0 for the first read), how long it took, which engine read it, when, and the screenshot's size.</summary>
+internal sealed record ScreenRead(IReadOnlyList<ReadLine> Lines, string Text, double Change, TimeSpan Took, string Engine, DateTimeOffset At,
+    int Width = 0, int Height = 0)
 {
     /// <summary>The read in words, for Companion › Reading and the talk window's vision tooltip.</summary>
     internal string Describe() =>
-        $"Read {Lines.Count} {(Lines.Count == 1 ? "line" : "lines")} with {Engine} in {Took.TotalMilliseconds:0} ms at {At.ToLocalTime():t}.";
+        $"Read {Lines.Count} {(Lines.Count == 1 ? "line" : "lines")} with {Engine} in {Took.TotalMilliseconds:0} ms at {At.ToLocalTime():t}" +
+        (Width > 0 && Height > 0 ? $" ({Width} x {Height} screenshot)." : ".");
 }
 
 /// <summary>Why the text on the screen couldn't be read (Windows has no OCR language, the host doesn't answer). <see cref="Busy"/>:
@@ -43,7 +45,8 @@ internal sealed class WindowsScreenTextReader : IScreenTextReader
         "Windows can't read text yet: it has no text recognition (OCR) language. Add your language in Windows Settings › Time & " +
         "language › Language & region (its Optical character recognition feature comes with it).";
 
-    private readonly WindowsCallTextReader reader = new();
+    // A full desktop has more lines than the 60 a prompt keeps; ScreenText.Order picks them in reading order.
+    private readonly WindowsCallTextReader reader = new(maximumLines: ScreenText.MaximumLines * 4);
 
     public string Engine => "Windows OCR on this PC";
 
@@ -111,17 +114,21 @@ internal sealed class HostScreenTextReader(string dataDirectory, string? hostId)
         }
     }
 
-    /// <summary>The screenshot as a JPEG for the host (quality 90 keeps small text sharp). WPF imaging runs on any thread here.</summary>
+    /// <summary>The screenshot as a JPEG for the host: quality 90 keeps small text sharp; a busy full-size screenshot that would
+    /// pass the host's limit is encoded at a lower quality instead. WPF imaging runs on any thread here.</summary>
     internal static byte[] Jpeg(byte[] bgra, int width, int height)
     {
         var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgr32, null, bgra, width * 4);
-        var encoder = new JpegBitmapEncoder { QualityLevel = 90 };
-        encoder.Frames.Add(BitmapFrame.Create(source));
-        using var stream = new MemoryStream();
-        encoder.Save(stream);
-        if (stream.Length > Audio2FaceHostConnection.OcrMaximumImageBytes)
-            throw new ScreenReadException("The screenshot is too large for the Reading role.");
-        return stream.ToArray();
+        foreach (var quality in (int[])[90, 75, 60])
+        {
+            var encoder = new JpegBitmapEncoder { QualityLevel = quality };
+            encoder.Frames.Add(BitmapFrame.Create(source));
+            using var stream = new MemoryStream();
+            encoder.Save(stream);
+            if (stream.Length <= Audio2FaceHostConnection.OcrMaximumImageBytes) return stream.ToArray();
+            Array.Clear(stream.GetBuffer());
+        }
+        throw new ScreenReadException("The screenshot is too large for the Reading role.");
     }
 
     /// <summary>The lines of a Reading role's answer: <c>lines</c>, each <c>text</c> and <c>box</c> [x, y, width, height].</summary>
@@ -238,11 +245,37 @@ internal sealed class ScreenReader : IDisposable
     internal string? Problem => problem;
 
     /// <summary>Starts reading <paramref name="frame"/> unless a read is running, or the picture barely changed and the last read
-    /// is recent. Returns the read (null when it failed), or null when it didn't start.</summary>
-    internal Task<ScreenRead?>? Offer(ScreenFrame frame)
+    /// is recent. With <paramref name="fullSize"/> (the same look at full size, <see cref="IScreenGlancer.CaptureText"/>), that
+    /// picture is taken off the UI thread and read instead: small text survives only at full size. Returns the read (null when
+    /// it failed or the full-size look was skipped), or null when it didn't start.</summary>
+    internal Task<ScreenRead?>? Offer(ScreenFrame frame, Func<ScreenFrame?>? fullSize = null)
     {
         if (Busy || lifetime.IsCancellationRequested) return null;
         if (latest is not null && frame.Change < PictureChange && lastStarted is { } at && clock.GetElapsedTime(at) < Refresh) return null;
+        if (fullSize is not null)
+        {
+            lastStarted = clock.GetTimestamp();
+            return running = Task.Run(async () =>
+            {
+                if (lifetime.IsCancellationRequested) return null;
+                ScreenFrame? full;
+                try { full = fullSize(); }
+                catch (Exception error) when (error is InvalidOperationException or ArgumentException or OutOfMemoryException or
+                    System.Runtime.InteropServices.ExternalException)
+                {
+                    problem = $"Couldn't take a full-size picture of the screen ({error.Message}).";
+                    return null;
+                }
+                if (full is null) return null;
+                var (width, height) = (full.Width, full.Height);
+                if (lifetime.IsCancellationRequested)
+                {
+                    full.Clear();
+                    return null;
+                }
+                return full.TakePixels() is { } taken ? await ReadAsync(taken, width, height).ConfigureAwait(false) : null;
+            });
+        }
         if (frame.CopyPixels() is not { } pixels) return null;
         lastStarted = clock.GetTimestamp();
         return running = ReadAsync(pixels, frame.Width, frame.Height);
@@ -253,7 +286,7 @@ internal sealed class ScreenReader : IDisposable
     {
         var started = clock.GetTimestamp();
         var lines = ScreenText.Order(await reader.ReadAsync(bgra, width, height, token).ConfigureAwait(false));
-        return new(lines, ScreenText.Join(lines), 0, clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow());
+        return new(lines, ScreenText.Join(lines), 0, clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow(), width, height);
     }
 
     private async Task<ScreenRead?> ReadAsync(byte[] pixels, int width, int height)
@@ -265,7 +298,7 @@ internal sealed class ScreenReader : IDisposable
             var text = ScreenText.Join(lines);
             var before = latest;
             var read = new ScreenRead(lines, text, before is null ? 0 : ScreenText.Change(before.Text, text),
-                clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow());
+                clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow(), width, height);
             latest = read;
             problem = null;
             return read;

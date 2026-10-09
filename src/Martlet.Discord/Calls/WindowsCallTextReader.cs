@@ -6,9 +6,10 @@ namespace Martlet.Discord.Calls;
 /// <summary>Windows' own OCR (Windows.Media.Ocr, in the user's profile languages) on a BGRA picture, entirely on this PC: no
 /// download, no network, nothing kept. Reached through the Windows Runtime's ABI directly so Martlet needs no Windows SDK
 /// projection. Returns nothing where Windows has no OCR language or the API is missing.</summary>
-public sealed class WindowsCallTextReader : ICallTextReader
+public sealed class WindowsCallTextReader(TimeSpan? limit = null, int maximumLines = 64) : ICallTextReader
 {
-    private static readonly TimeSpan Limit = TimeSpan.FromSeconds(3);
+    private readonly TimeSpan limit = limit ?? TimeSpan.FromSeconds(3);
+    private readonly uint maximumLines = (uint)Math.Clamp(maximumLines, 1, 1024);
 
     /// <summary>Whether this Windows can read text (an OCR engine exists for the user's languages); checked once.</summary>
     public static bool Available => available.Value;
@@ -20,7 +21,7 @@ public sealed class WindowsCallTextReader : ICallTextReader
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 10240) || width <= 0 || height <= 0 || bgra.Length < width * height * 4)
             return Task.FromResult<IReadOnlyList<TextLine>>([]);
         // Its own worker thread in the multithreaded apartment: never the UI thread.
-        return WinRtOcr.ReadAsync(bgra, width, height, Limit, token);
+        return WinRtOcr.ReadAsync(bgra, width, height, limit, maximumLines, token);
     }
 }
 
@@ -28,8 +29,9 @@ public sealed class WindowsCallTextReader : ICallTextReader
 internal static unsafe class WinRtOcr
 {
     // Below normal priority: reading the screen never slows the conversation's own work on this PC.
-    internal static Task<IReadOnlyList<TextLine>> ReadAsync(byte[] bgra, int width, int height, TimeSpan limit, CancellationToken token) =>
-        Martlet.Core.Platforms.LowPriority.RunAsync(() => Read(bgra, width, height, limit, token), token, "Martlet text reading");
+    internal static Task<IReadOnlyList<TextLine>> ReadAsync(byte[] bgra, int width, int height, TimeSpan limit, uint maximumLines,
+        CancellationToken token) =>
+        Martlet.Core.Platforms.LowPriority.RunAsync(() => Read(bgra, width, height, limit, maximumLines, token), token, "Martlet text reading");
 
     private static readonly Guid OcrEngineStatics = new("5BFFA85A-3384-3540-9940-699120D428A8");
     private static readonly Guid SoftwareBitmapFactory = new("C99FEB69-2D62-4D47-A6B3-4FDB6A07FDF8");
@@ -59,7 +61,7 @@ internal static unsafe class WinRtOcr
         }
     }
 
-    internal static IReadOnlyList<TextLine> Read(byte[] bgra, int width, int height, TimeSpan limit, CancellationToken token)
+    internal static IReadOnlyList<TextLine> Read(byte[] bgra, int width, int height, TimeSpan limit, uint maximumLines, CancellationToken token)
     {
         Apartment();
         nint statics = 0, engine = 0, bitmaps = 0, bitmap = 0, operation = 0, info = 0, result = 0, lines = 0;
@@ -94,7 +96,7 @@ internal static unsafe class WinRtOcr
             if (status != 1) return [];
             Check(Call(operation, 8, &result));
             Check(Call(result, 6, &lines));
-            return Lines(lines);
+            return Lines(lines, maximumLines);
         }
         finally
         {
@@ -143,12 +145,12 @@ internal static unsafe class WinRtOcr
         }
     }
 
-    private static List<TextLine> Lines(nint view)
+    private static List<TextLine> Lines(nint view, uint maximumLines)
     {
         var found = new List<TextLine>();
         uint count;
         Check(((delegate* unmanaged[Stdcall]<nint, uint*, int>)Slot(view, 7))(view, &count));
-        for (uint i = 0; i < Math.Min(count, 64u); i++)
+        for (uint i = 0; i < Math.Min(count, maximumLines); i++)
         {
             nint line = 0, words = 0;
             try

@@ -13,8 +13,9 @@ namespace Martlet.Mcp;
 /// on the screen) and a real read of a drawn test picture with known text (a HUD-like line, a score, "VICTORY" and a chat
 /// line). Windows OCR on this PC reads it through the same reader the desktop uses; with endpoint (a Reading role's worker on
 /// loopback, such as http://127.0.0.1:50087/) that worker reads the same picture as a PNG through its POST /read contract.
-/// Both go through Martlet's reading order and text join (<see cref="ScreenText"/>). The real screen is never captured, and no
-/// text from a real screen is returned.</summary>
+/// Both go through Martlet's reading order and text join (<see cref="ScreenText"/>). A drawn 1080p desktop of small text is
+/// also read at full size (how the desktop reads the screen) and at a vision look's 1024 x 576, to show the difference. The
+/// real screen is never captured, and no text from a real screen is returned.</summary>
 internal static class ReadingCheck
 {
     /// <summary>The words drawn on the test picture, and the ones a read must find.</summary>
@@ -25,6 +26,7 @@ internal static class ReadingCheck
         var (settings, state) = ReadingSettings.Read(dataDirectory);
         var (pixels, width, height) = await RenderAsync().ConfigureAwait(false);
         var windows = await WindowsAsync(pixels, width, height, cancellation).ConfigureAwait(false);
+        var desktop = await DesktopAsync(cancellation).ConfigureAwait(false);
         var worker = endpoint is null ? null : await WorkerAsync(Endpoint(endpoint), pixels, width, height, cancellation).ConfigureAwait(false);
         return new
         {
@@ -34,8 +36,104 @@ internal static class ReadingCheck
             },
             picture = new { width, height, expected = Expected },
             windowsOcr = windows,
+            desktop,
             worker
         };
+    }
+
+    /// <summary>A drawn 1920 x 1080 desktop with three panels of small (12 px, Windows' 9 pt) text, read by Windows OCR the way
+    /// the desktop reads the screen: at full size, and for comparison at the 1024 x 576 that a vision look shrinks it to.</summary>
+    private static async Task<object> DesktopAsync(CancellationToken cancellation)
+    {
+        if (!await Task.Run(() => WindowsCallTextReader.Available, cancellation).ConfigureAwait(false))
+            return new { ok = false, problem = "Windows has no text recognition (OCR) language." };
+        var (pixels, width, height, drawn) = await RenderDesktopAsync().ConfigureAwait(false);
+        var reader = new WindowsCallTextReader(maximumLines: ScreenText.MaximumLines * 4);
+        var full = await ReadDesktopAsync(reader, pixels, width, height, drawn, cancellation).ConfigureAwait(false);
+        var (small, smallWidth, smallHeight) = await Task.Run(() => Shrink(pixels, width, height, 1024), cancellation).ConfigureAwait(false);
+        var shrunk = await ReadDesktopAsync(reader, small, smallWidth, smallHeight, drawn, cancellation).ConfigureAwait(false);
+        return new
+        {
+            ok = full.LinesRead >= drawn.Count * 9 / 10, width, height, textPixels = 12, linesDrawn = drawn.Count,
+            fullSize = new { width, height, lines = full.Lines, linesRead = full.LinesRead, milliseconds = full.Milliseconds },
+            downscaled = new
+            {
+                width = smallWidth, height = smallHeight, lines = shrunk.Lines, linesRead = shrunk.LinesRead, milliseconds = shrunk.Milliseconds
+            }
+        };
+    }
+
+    private static async Task<(int Lines, int LinesRead, double Milliseconds)> ReadDesktopAsync(WindowsCallTextReader reader, byte[] pixels,
+        int width, int height, IReadOnlyList<string> drawn, CancellationToken cancellation)
+    {
+        var watch = Stopwatch.StartNew();
+        var lines = await reader.ReadAsync(pixels, width, height, cancellation).ConfigureAwait(false);
+        var milliseconds = Math.Round(watch.Elapsed.TotalMilliseconds);
+        var read = lines.Select(line => Squash(line.Text)).ToList();
+        return (lines.Count, drawn.Count(line => read.Any(text => text.Contains(Squash(line), StringComparison.Ordinal))), milliseconds);
+
+        static string Squash(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+    }
+
+    private static readonly string[] DesktopWords =
+    [
+        "report", "budget", "meeting", "project", "summary", "update", "review", "schedule", "invoice", "customer", "release",
+        "window", "folder", "network", "printer", "message", "account", "planning", "station", "monitor", "keyboard", "journal",
+        "picture", "library", "kitchen", "garden", "weather", "holiday", "morning", "evening", "quarter", "market", "chapter",
+        "service", "contract", "delivery", "payment", "question", "answer", "minutes"
+    ];
+
+    // Three panels (dark, light, blue-grey) of 36 lines each, like windows side by side on a 1080p desktop.
+    private static Task<(byte[] Pixels, int Width, int Height, IReadOnlyList<string> Drawn)> RenderDesktopAsync() => Task.Run(() =>
+    {
+        using var picture = new DiscordCallCheck.FixturePicture(1920, 1080);
+        (byte, byte, byte)[] backgrounds = [(32, 32, 32), (250, 250, 250), (44, 48, 64)];
+        (byte, byte, byte)[] colors = [(220, 220, 220), (30, 30, 30), (210, 215, 230)];
+        var drawn = new List<string>();
+        for (var panel = 0; panel < 3; panel++)
+        {
+            picture.Fill(panel * 640, 0, 640, 1080, backgrounds[panel]);
+            for (var row = 0; row < 36; row++)
+            {
+                var n = panel * 36 + row;
+                var text = string.Join(' ', Enumerable.Range(0, 5).Select(k => DesktopWords[(n * 7 + k * 11) % DesktopWords.Length])) + $" {n + 1}";
+                picture.Text(panel * 640 + 32, 48 + row * 26, text, 12, colors[panel]);
+                drawn.Add(text);
+            }
+        }
+        return (picture.Pixels(), picture.Width, picture.Height, (IReadOnlyList<string>)drawn);
+    });
+
+    // An area-average shrink to a long edge of at most `edge` pixels, like a vision look's screenshot.
+    private static (byte[] Pixels, int Width, int Height) Shrink(byte[] bgra, int width, int height, int edge)
+    {
+        var scale = Math.Min(1.0, (double)edge / Math.Max(width, height));
+        int w = Math.Max(1, (int)Math.Round(width * scale)), h = Math.Max(1, (int)Math.Round(height * scale));
+        var small = new byte[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            int top = y * height / h, bottom = Math.Max(top + 1, (y + 1) * height / h);
+            for (var x = 0; x < w; x++)
+            {
+                int left = x * width / w, right = Math.Max(left + 1, (x + 1) * width / w);
+                int b = 0, g = 0, r = 0, count = 0;
+                for (var sy = top; sy < bottom; sy++)
+                    for (var sx = left; sx < right; sx++)
+                    {
+                        var i = (sy * width + sx) * 4;
+                        b += bgra[i];
+                        g += bgra[i + 1];
+                        r += bgra[i + 2];
+                        count++;
+                    }
+                var o = (y * w + x) * 4;
+                small[o] = (byte)(b / count);
+                small[o + 1] = (byte)(g / count);
+                small[o + 2] = (byte)(r / count);
+                small[o + 3] = 255;
+            }
+        }
+        return (small, w, h);
     }
 
     private static async Task<object> WindowsAsync(byte[] pixels, int width, int height, CancellationToken cancellation)

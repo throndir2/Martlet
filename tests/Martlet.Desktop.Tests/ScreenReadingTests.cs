@@ -19,11 +19,13 @@ public sealed class ScreenReadingTests
     {
         private int next;
         public int Calls => next;
+        public (int Width, int Height) Size { get; private set; }
         public TaskCompletionSource? Gate { get; set; }
         public string Engine => "the test reader";
 
         public async Task<IReadOnlyList<ReadLine>> ReadAsync(byte[] bgra, int width, int height, CancellationToken token)
         {
+            Size = (width, height);
             var lines = reads[Math.Min(next++, reads.Length - 1)];
             if (Gate is { } gate) await gate.Task;
             return [.. lines.Select((text, i) => new ReadLine(text, 10, 10 + i * 30, 200, 20))];
@@ -33,6 +35,54 @@ public sealed class ScreenReadingTests
     }
 
     private static ScreenFrame Frame(double change) => new(new byte[8 * 4 * 4], 8, 4, "game", change);
+
+    [Fact]
+    public async Task Watching_reads_the_full_size_look_and_not_the_downscaled_one()
+    {
+        var fake = new FakeReader(["HEALTH 87"]);
+        using var reader = new ScreenReader(fake, new Clock());
+        var full = new ScreenFrame(new byte[32 * 16 * 4], 32, 16, "game", 0);
+
+        var read = await reader.Offer(Frame(1.0), () => full)!;
+
+        Assert.Equal((32, 16), fake.Size);
+        Assert.Equal((32, 16), (read!.Width, read.Height));
+        Assert.Null(full.CopyPixels());
+        Assert.EndsWith("(32 x 16 screenshot).", read.Describe(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_skipped_full_size_look_reads_nothing_and_frees_the_reader()
+    {
+        var fake = new FakeReader(["HEALTH 87"]);
+        using var reader = new ScreenReader(fake, new Clock());
+
+        Assert.Null(await reader.Offer(Frame(1.0), () => null)!);
+        Assert.Equal(0, fake.Calls);
+        Assert.False(reader.Busy);
+        Assert.Null(reader.Latest);
+        Assert.Null(await reader.Offer(Frame(1.0), () => throw new InvalidOperationException("no screen"))!);
+        Assert.Contains("Couldn't take a full-size picture of the screen (no screen)", reader.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_full_size_copy_keeps_every_pixel_and_makes_it_opaque()
+    {
+        const int width = 5, height = 3, sourceWidth = 9;
+        var source = new byte[sourceWidth * height * 4];
+        Random.Shared.NextBytes(source);
+        var destination = new byte[width * height * 4];
+        DesktopDuplication.Downscale((row, column, into, count) =>
+            Buffer.BlockCopy(source, (row * sourceWidth + column) * 4, into, 0, count * 4), 2, 0, width, height, destination, width, height);
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var from = (y * sourceWidth + x + 2) * 4;
+                var to = (y * width + x) * 4;
+                Assert.Equal(source[from..(from + 3)], destination[to..(to + 3)]);
+                Assert.Equal(255, destination[to + 3]);
+            }
+    }
 
     [Fact]
     public void New_text_on_screen_makes_a_look_more_likely_even_when_the_picture_barely_changed()

@@ -301,8 +301,8 @@ public sealed partial class FootprintCatalog
         new()
         {
             Id = "reading:windows-ocr", Component = PlanComponent.Reading, DisplayName = "Windows OCR", RunsInApp = true, Platforms = ["windows"],
-            Steady = new(0, 0.05, 1, 0), Peak = new(0, 0.1, 1, 0), QualityTier = 3, FirstWordMs = 15,
-            Source = $"docs/READING.md: about 15 ms for a 1024 x 576 screenshot, built into Windows (no download); memory estimate ({Doc})"
+            Steady = new(0, 0.05, 1, 0), Peak = new(0, 0.1, 1, 0), QualityTier = 3, FirstWordMs = 140,
+            Source = $"docs/READING.md: about 140 ms for a full-size 1920 x 1080 screenshot, built into Windows (no download); memory estimate ({Doc})"
         },
         new()
         {

@@ -558,7 +558,13 @@ off. The local server's `reading_check` reads a data directory's `reading.json`
 (`dataDirectory`), then reads a drawn 1024 x 576 test picture with known text
 (`HEALTH 87 / 100`, `Score: 12450`, `VICTORY`, a chat line) with Windows OCR on
 this PC, as watching does. It returns the lines, the joined text, the missing
-words and the milliseconds (the first read and a second one). With `endpoint`, a
+words and the milliseconds (the first read and a second one). Its `desktop`
+part draws a 1920 x 1080 desktop with 108 lines of small (12 px) text. Windows
+OCR reads it at full size, as Martlet reads the screen, and at the 1024 x 576
+of a vision look. For each size, `desktop` gives the lines found, the drawn lines
+read right (`linesRead`) and the milliseconds; `ok` is true when the full-size
+read gets at least 90% of the lines. On the test machine, the full-size read got
+102 of 108 lines in 138 ms, and the 1024 x 576 read got none. With `endpoint`, a
 Reading worker on loopback such as `http://127.0.0.1:50087/`, it also calls the
 worker's `GET /status` and `POST /read` with the same picture as a PNG. It never
 captures the real screen.
@@ -566,13 +572,15 @@ captures the real screen.
 Desktop automation: Companion › Reading's main choice is an option picker:
 `Picker-Reading-Off`, `Picker-Reading-ThisPc` and `Picker-Reading-Host` only show
 that option's details (with its facts, such as `PickerFacts-Reading-ThisPc`:
-*Processor (in Martlet) · 0.1 GB RAM · 0.02 s to read the screen*), and the
+*Processor (in Martlet) · 0.1 GB RAM · 0.14 s to read the screen*), and the
 `ReadingHost-<host>` pills in the role's details are passive clicks too.
 `ReadingNow`, `ReadingLast`, `ReadingTestState`, `ReadingWindowsState`,
 `ReadingHostState` and the labels of `ReadingSetUp`, `ReadingUseHost`,
 `ReadingUseThisPc`, `ReadingTurnOff` and `ReadingTest` are safe values. Read my
 screen now (`ReadingTest`) captures the screen, so it needs
-`--allow-ui-effects`. The text it read (`ReadingTestText`) is never returned.
+`--allow-ui-effects`. `ReadingTestState` gives the size of the full-size
+screenshot it read, for example *(1920 x 1080 screenshot)*. The text it read
+(`ReadingTestText`) is never returned.
 
 ### Pictures
 
