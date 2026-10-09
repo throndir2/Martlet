@@ -333,6 +333,38 @@ internal static class NetworkRecommendationCheck
             Option(mute) is null && mute.CannotSpeak && mute.Notes.Contains(mute.CannotSpeakNote) &&
                 mute.CannotSpeakNote!.Contains("host service", StringComparison.Ordinal) && !processor.CannotSpeak, Report(mute));
 
+        // Kept downloads: a role turned off keeps its model on its host, so turning it back on downloads nothing, and the
+        // review says a role it turns off keeps its downloads.
+        var twin = Network(Companion("desk-1"), Host("box-a", Nvidia(24, "RTX 4090")), Host("box-b", Nvidia(24, "RTX 4090"))) with
+        {
+            Wanted = [PlanComponent.Thinking]
+        };
+        var newTwin = NetworkRecommender.Recommend(twin);
+        var firstBox = newTwin.Target.Job(ClusterJobs.Thinking)?.HostId ?? "";
+        var keptModel = newTwin.Changes.FirstOrDefault(c => c.Kind == SetupChangeKind.AddRole && c.MachineId == firstBox && c.RoleKind == "ollama")?.Model ?? "";
+        var keptBox = firstBox == "box-a" ? "box-b" : "box-a";
+        var keptTwin = NetworkRecommender.Recommend(twin with
+        {
+            Machines = [.. twin.Machines.Select(m => m.Specs.Id == keptBox ? m with { Downloaded = [Role("ollama", keptModel.Replace(':', '-'))] } : m)]
+        });
+        var backOn = keptTwin.Changes.FirstOrDefault(c => c.Kind == SetupChangeKind.AddRole && c.MachineId == keptBox && c.RoleKind == "ollama");
+        Step("kept", "A kept download: Thinking goes to the host that still has its model, downloads nothing and says it is already downloaded",
+            keptModel.Length > 0 && keptTwin.Target.Job(ClusterJobs.Thinking)?.HostId == keptBox && backOn is { DownloadGb: null } &&
+                backOn.Summary.Contains("already downloaded", StringComparison.Ordinal),
+            new { withoutDownloads = Report(newTwin), withKeptDownload = Report(keptTwin) });
+        var turnOff = NetworkRecommender.Recommend(Network(Companion("desk-1"), Host("box-a", Nvidia(24, "RTX 4090")) with
+        {
+            Roles = [Role("ollama", "gemma4:e2b"), Role("singing", "ace-step-v15-soulx-svc")]
+        }) with
+        {
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, "box-a", OptionId: "gemma4:e2b")],
+            Off = [PlanComponent.Singing]
+        });
+        var singingOff = turnOff.Changes.FirstOrDefault(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "singing");
+        Step("kept", "Turning a part off: the review says \"Turn off\" and that its downloads stay (the host service deletes nothing)",
+            singingOff is not null && singingOff.Summary.StartsWith("Turn off ", StringComparison.Ordinal) && singingOff.Summary.Contains("downloads stay", StringComparison.Ordinal),
+            Report(turnOff));
+
         return new { ok, fixture = "built-in fixture networks (NOT real computers)", steps };
     }
 }

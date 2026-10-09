@@ -468,7 +468,7 @@ public static class SetupExecutor
         return change.Kind switch
         {
             SetupChangeKind.AddRole => $"Installing {role}" + (gpu is null ? "" : $" on its {gpu}"),
-            SetupChangeKind.RemoveRole => $"Removing {role}",
+            SetupChangeKind.RemoveRole => $"Turning off {role}",
             SetupChangeKind.ChangeModel => $"Switching {role} to {change.Model}",
             SetupChangeKind.MoveToGpu => $"Moving {role} to " + (gpu is null ? "another graphics card" : $"its {gpu}"),
             SetupChangeKind.AssignJob when change.MachineId.Length == 0 => $"Handing {Job(change.Job)} back to each companion PC's own choice",

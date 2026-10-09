@@ -542,6 +542,8 @@ public sealed class NetworkRecommenderTests
         {
             var remove = off.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == kind);
             Assert.StartsWith("You turned", remove.Why, StringComparison.Ordinal);
+            Assert.StartsWith("Turn off ", remove.Summary, StringComparison.Ordinal);
+            Assert.Contains("Its downloads stay", remove.Summary, StringComparison.Ordinal);
         }
         var parts = off.Components.ToDictionary(c => c.Component);
         Assert.True(parts[PlanComponent.Singing].OwnerOff);
@@ -1148,5 +1150,56 @@ public sealed class NetworkRecommenderTests
         });
         Assert.DoesNotContain(gpu.Changes, c => c.Kind is SetupChangeKind.ChangeModel or SetupChangeKind.RemoveRole && c.RoleKind == "stt");
         Assert.Contains(gpu.Target.Machine("h1")!.Usage!.Items, i => i.OptionId == "whisper-large-v3-turbo-cuda");
+    }
+
+    [Fact]
+    public void ARoleTurnedOffBeforeComesBackOnWithoutDownloadingItAgain()
+    {
+        var request = Network(Companion("c1"), Host("h1", Nvidia(24))) with { Wanted = [PlanComponent.Thinking, PlanComponent.Voice] };
+        var fresh = NetworkRecommender.Recommend(request);
+        var installs = fresh.Changes.Where(c => c.Kind == SetupChangeKind.AddRole && c.MachineId == "h1" && c.Model is not null).ToList();
+        Assert.Contains(installs, c => c.RoleKind == "ollama");
+        Assert.All(installs, c => Assert.True(c.DownloadGb > 0, c.Summary));
+
+        // The host service kept the models when Reconfigure turned these roles off; it reports them with the route's names.
+        var kept = request with
+        {
+            Machines = [request.Machines[0], request.Machines[1] with { Downloaded = [.. installs.Select(c => Role(c.RoleKind!, c.Model!.Replace(':', '-')))] }]
+        };
+        var again = NetworkRecommender.Recommend(kept);
+
+        Assert.Equal(RolesOf(fresh, "h1"), RolesOf(again, "h1"));
+        foreach (var install in installs)
+        {
+            var on = again.Changes.Single(c => c.Kind == SetupChangeKind.AddRole && c.MachineId == "h1" && c.RoleKind == install.RoleKind);
+            Assert.Null(on.DownloadGb);
+            Assert.StartsWith("Start ", on.Summary, StringComparison.Ordinal);
+            Assert.Contains("already downloaded", on.Summary, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void AKeptDownloadDecidesBetweenEqualHostsAndNeedsNoDiskSpace()
+    {
+        var request = Network(Companion("c1"), Host("h1", Nvidia(24)), Host("h2", Nvidia(24))) with { Wanted = [PlanComponent.Thinking] };
+        var fresh = NetworkRecommender.Recommend(request);
+        var first = fresh.Target.Job(ClusterJobs.Thinking)!.HostId!;
+        var model = fresh.Changes.Single(c => c.Kind == SetupChangeKind.AddRole && c.MachineId == first && c.RoleKind == "ollama").Model!;
+        var other = first == "h1" ? "h2" : "h1";
+
+        var kept = request with
+        {
+            Machines = [.. request.Machines.Select(m => m.Specs.Id == other ? m with { Downloaded = [Role("ollama", model)] } : m)]
+        };
+        var again = NetworkRecommender.Recommend(kept);
+        Assert.Equal(other, again.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.Null(again.Changes.Single(c => c.Kind == SetupChangeKind.AddRole && c.MachineId == other && c.RoleKind == "ollama").DownloadGb);
+
+        // A disk too full for a new download still turns a kept model back on.
+        var full = Host("h1", Nvidia(24)) with { Specs = Host("h1", Nvidia(24)).Specs with { DiskFreeGb = 10.5 } };
+        var noRoom = NetworkRecommender.Recommend(Network(Companion("c1"), full) with { Wanted = [PlanComponent.Thinking] });
+        Assert.DoesNotContain(RolesOf(noRoom, "h1"), r => r.Kind == "ollama");
+        var room = NetworkRecommender.Recommend(Network(Companion("c1"), full with { Downloaded = [Role("ollama", model)] }) with { Wanted = [PlanComponent.Thinking] });
+        Assert.Contains(RolesOf(room, "h1"), r => r.Kind == "ollama" && r.Model == model);
     }
 }
