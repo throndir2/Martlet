@@ -88,8 +88,16 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     public IReadOnlyCollection<string> ThinkingPoolOptOut { get; init; } = [];
     /// <summary>The parts the owner turned off (<see cref="ComponentRanking.CanBeOff"/>: lip-sync means advanced lip-sync, so
     /// the face follows the voice's loudness; Deep thinking, singing and pictures). The recommender removes their roles and
-    /// plans without them. Unlike <see cref="Wanted"/>, which leaves a part it doesn't plan as it is.</summary>
+    /// plans without them. Unlike <see cref="Wanted"/>, which leaves a part it doesn't plan as it is. A part this PC sets on
+    /// its Companion page (<see cref="ComponentRanking.SetOnPage"/>) is off by <see cref="Choices"/> instead.</summary>
     public IReadOnlyCollection<PlanComponent> Off { get; init; } = [];
+    /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="ComponentRanking.SetOnPage"/>:
+    /// Vision, Reading, Hearing and Smart home), for their lines in <see cref="NetworkRecommendation.Components"/>. A part with
+    /// no choice reads as its default.</summary>
+    public IReadOnlyList<PartChoice> Choices { get; init; } = [];
+    /// <summary>How many companion PCs the owner has, also the ones <see cref="Machines"/> leaves out (no hardware report); 0:
+    /// count the machines. A part this PC turned off on its page may still be used by another companion PC.</summary>
+    public int CompanionPcs { get; init; }
     /// <summary>Chat models the owner's own model apps (Ollama, LM Studio, llama.cpp, vLLM...) already serve on their computers.
     /// The owner runs them, so the recommender prefers them for Thinking where they fit (<see cref="ServedModels"/>). Empty
     /// when the owner turned "Use models your apps already run" off.</summary>
@@ -102,6 +110,20 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
 public sealed record ServedModel(string MachineId, string AppId, string AppName, string BaseUrl, string ModelId)
 {
     public double? SizeGb { get; init; }
+}
+
+/// <summary>How this PC does one part that its Companion page sets (<see cref="ComponentRanking.SetOnPage"/>). <see cref="On"/>
+/// false: it is off there. <see cref="OptionId"/>: the FootprintCatalog option doing it, when known; <see cref="Model"/>: the
+/// model of its own when the catalog doesn't know it ("qwen3-vl:8b"). <see cref="Where"/>: where it runs, in words, when no
+/// option or Ollama says it ("qwen3-vl:8b, online (api.example.com)", "your own Home Assistant at homeassistant.local").
+/// <see cref="HostId"/>: the computer that does it for this PC (a paired computer's model, the Reading role's host), or null for
+/// this PC itself or online.</summary>
+public sealed record PartChoice(PlanComponent Component, bool On)
+{
+    public string? OptionId { get; init; }
+    public string? Model { get; init; }
+    public string? Where { get; init; }
+    public string? HostId { get; init; }
 }
 
 /// <summary>AddRole / RemoveRole: install or remove a host role on a computer's host service. ChangeModel: the same role
@@ -162,12 +184,15 @@ public sealed record OfflineComputer(string Id, TimeSpan For, string Note);
 /// <summary>One part of Martlet in the recommended setup, in the priority list's order (<see cref="ComponentRanking"/>).
 /// <see cref="On"/> false: the part is off (<see cref="Where"/> says what that means). <see cref="Where"/> is where it runs
 /// ("Gemma 4 E2B in Ollama on This PC's NVIDIA GeForce RTX 4070"), <see cref="Why"/> the reason. <see cref="CanBeOff"/>: the
-/// owner can turn it off; <see cref="OwnerOff"/>: they did.</summary>
+/// owner can turn it off; <see cref="OwnerOff"/>: they did. <see cref="OffInReview"/>: the review's Off turns it off (it removes
+/// the part's host roles); a part set on its Companion page (<see cref="Page"/>) is turned off there.</summary>
 public sealed record ComponentStatus(PlanComponent Component, int Rank, ComponentNecessity Necessity, bool On, string Where, string Why)
 {
     public bool CanBeOff => ComponentRanking.CanBeOff(Component);
     public bool OwnerOff { get; init; }
     public string Name => ComponentRanking.Name(Component);
+    public bool OffInReview => CanBeOff && !ComponentRanking.SetOnPage(Component);
+    public string Page => ComponentRanking.Page(Component);
 }
 
 /// <summary>The recommended setup for all the owner's computers and the changes that get there from today's.

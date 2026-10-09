@@ -1,6 +1,7 @@
 using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
 using Martlet.Core.Planning;
+using Martlet.Core.Reading;
 using Martlet.Core.Settings;
 #if !MARTLET_MCP
 using Martlet.Core.Platforms;
@@ -54,6 +55,8 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     /// <summary>The chat models the owner's model apps on this PC serve (empty when "Use models your apps already run" is off);
     /// the request puts them on this PC.</summary>
     public IReadOnlyList<ServedModel> ServedModels { get; init; } = [];
+    /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="RecommendedSetupInputs.Choices"/>).</summary>
+    public IReadOnlyList<PartChoice> Choices { get; init; } = [];
 }
 
 /// <summary>The recommender's request and what the review says about computers the request leaves out.
@@ -128,10 +131,61 @@ internal static class RecommendedSetupInputs
             CurrentThinkingPool = [.. sources.ThinkingPool.Where(id => !sources.PoolOptOut.Contains(id, StringComparer.Ordinal)).Distinct(StringComparer.Ordinal)],
             ThinkingPoolOptOut = [.. sources.PoolOptOut.Distinct(StringComparer.Ordinal)],
             VoiceEngine = sources.VoiceEngine,
-            Off = [.. sources.Off.Where(ComponentRanking.CanBeOff).Distinct()],
+            Off = [.. sources.Off.Where(c => ComponentRanking.CanBeOff(c) && !ComponentRanking.SetOnPage(c)).Distinct()],
+            Choices = [.. sources.Choices.Where(c => c is not null && ComponentRanking.SetOnPage(c.Component)).DistinctBy(c => c.Component)],
+            CompanionPcs = sources.Computers.DistinctBy(c => c.Id).Count(c => c.Kind == NetworkMachineKind.Companion),
             ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc })]
         };
         return new(request, notes, names);
+    }
+
+    /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="ComponentRanking.SetOnPage"/>), for
+    /// their lines in the review. Vision: <paramref name="watch"/> (vision is on) and the image model in
+    /// <paramref name="senses"/>. Hearing: <paramref name="hearVoice"/> (Let ... hear my voice; null: never chosen, which counts as
+    /// on) and the audio model. Reading: <paramref name="reading"/>. Smart home: <paramref name="homeAddress"/>, the Home
+    /// Assistant this PC connects to (empty: none). Pure.</summary>
+    internal static IReadOnlyList<PartChoice> Choices(bool watch, bool? hearVoice, SenseModels senses, ReadingSettings reading, string? homeAddress)
+    {
+        ArgumentNullException.ThrowIfNull(senses);
+        ArgumentNullException.ThrowIfNull(reading);
+        var home = homeAddress?.Trim() ?? "";
+        return
+        [
+            Sense(PlanComponent.Vision, watch, senses.Place(SenseKind.Image)),
+            new PartChoice(PlanComponent.Reading, reading.On)
+            {
+                OptionId = reading.Place == ReadingPlace.Host ? "reading:rapidocr" : "reading:windows-ocr",
+                HostId = reading.Place == ReadingPlace.Host ? reading.HostId : null
+            },
+            Sense(PlanComponent.Hearing, hearVoice != false, senses.Place(SenseKind.Audio)),
+            new PartChoice(PlanComponent.SmartHome, home.Length > 0)
+            {
+                Where = home.Length == 0 ? null : $"Your own Home Assistant at {(Uri.TryCreate(home, UriKind.Absolute, out var uri) ? uri.Host : home)}"
+            }
+        ];
+    }
+
+    /// <summary>The image or audio model as a part choice: Thinking's own model (<paramref name="own"/> null), a model in Ollama
+    /// on this PC or a paired computer, a catalog provider online, or another server in words.</summary>
+    private static PartChoice Sense(PlanComponent part, bool on, DeepThinkingSettings? own)
+    {
+        var prefix = part == PlanComponent.Vision ? "vision:" : "hearing:";
+        var catalog = FootprintCatalog.Default;
+        if (own is null) return new(part, on) { OptionId = prefix + "thinking" };
+        var model = string.IsNullOrWhiteSpace(own.ModelId) ? null : own.ModelId.Trim();
+        var known = model is null ? null : catalog.Find(prefix + model)?.Id;
+        if (own.Place == DeepThinkingPlace.Host) return new(part, on) { OptionId = known, Model = model ?? "Its model", HostId = own.HostId };
+        if (ContextBudget.IsLocalOllama(SetupRouteType.ChatCompletions, own.Origin)) return new(part, on) { OptionId = known, Model = model ?? "Its model" };
+        var host = Uri.TryCreate(own.Origin, UriKind.Absolute, out var uri) ? uri.Host : own.Origin ?? "";
+        var provider = host.Contains("nvidia", StringComparison.OrdinalIgnoreCase) ? "nvidia-build"
+            : host.Contains("openai.com", StringComparison.OrdinalIgnoreCase) ? "openai" : null;
+        if (provider is not null && catalog.For(part).FirstOrDefault(o => !o.IsLocal && o.ProviderId == provider) is { } hosted)
+            return new(part, on) { OptionId = hosted.Id, Model = model };
+        return new(part, on)
+        {
+            Model = model,
+            Where = uri is { IsLoopback: true } ? $"{model ?? "A model"} on a model server on this PC" : $"{model ?? "A model"}, online ({host})"
+        };
     }
 
     /// <summary>What a host service runs: its last check's roles, else the shared plan's record of them.</summary>
@@ -287,7 +341,8 @@ internal static class RecommendedSetupInputs
     internal static SetupSources Sources(NetworkInputs inputs, IReadOnlyList<NetworkNode>? nodes, string device, string? ownHostId,
         double? diskFreeGb, Func<string, TimeSpan?>? offlineFor = null, WorkSharingSettings? sharing = null,
         IReadOnlyCollection<string>? thinkingPool = null, IReadOnlyCollection<string>? poolOptOut = null, string? voiceEngine = null,
-        IReadOnlyCollection<string>? configuredProviders = null, IReadOnlyCollection<PlanComponent>? off = null)
+        IReadOnlyCollection<string>? configuredProviders = null, IReadOnlyCollection<PlanComponent>? off = null,
+        IReadOnlyList<PartChoice>? choices = null)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         var computers = new List<SetupComputer>();
@@ -347,7 +402,7 @@ internal static class RecommendedSetupInputs
         {
             Plan = inputs.Plan, LocalJobs = jobs, JobOptions = options, Sharing = sharing ?? new(), Device = device,
             ThinkingPool = thinkingPool ?? [], PoolOptOut = poolOptOut ?? [], VoiceEngine = voiceEngine,
-            ConfiguredProviders = providers, Off = off ?? []
+            ConfiguredProviders = providers, Off = off ?? [], Choices = choices ?? []
         };
     }
 

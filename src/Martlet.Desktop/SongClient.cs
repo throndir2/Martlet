@@ -7,19 +7,20 @@ using Martlet.Core.Singing;
 
 namespace Martlet.Desktop;
 
-/// <summary>The Singing card's choices on this PC (singing.json in the data directory): how the music is written and how
-/// the singing is matched to the voice. A song job reads them when it starts. <paramref name="Host"/> is the paired computer
-/// the desktop last saw running Singing (written when it checks its computers), so <see cref="SongClient.IsSetUp"/> answers
-/// without the network.</summary>
+/// <summary>The Singing page's choices on this PC (singing.json in the data directory): whether Martlet sings at all
+/// (<paramref name="Off"/>: Companion › Singing's Off choice; the role stays set up), how the music is written and how the
+/// singing is matched to the voice. A song job reads them when it starts. <paramref name="Host"/> is the paired computer the
+/// desktop last saw running Singing (written when it checks its computers, or when you choose a computer to sing on), so
+/// <see cref="SongClient.IsSetUp"/> answers without the network.</summary>
 internal sealed record SingingPreferences(SongQuality Quality = SongQuality.Fast, SongVoiceMatch VoiceMatch = SongVoiceMatch.SoulX,
-    string? Host = null)
+    string? Host = null, bool Off = false)
 {
     internal const string FileName = "singing.json";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private sealed record Document(int Version, string Quality, string VoiceMatch, string? Host = null);
+    private sealed record Document(int Version, string Quality, string VoiceMatch, string? Host = null, bool? Off = null);
 
-    /// <summary>The saved choices, or the defaults (Fast, SoulX) when none are saved or the file can't be read.</summary>
+    /// <summary>The saved choices, or the defaults (on, Fast, SoulX) when none are saved or the file can't be read.</summary>
     internal static SingingPreferences Load(string dataDirectory)
     {
         try
@@ -30,7 +31,7 @@ internal sealed record SingingPreferences(SongQuality Quality = SongQuality.Fast
             if (document is not { Version: 1 }) return new();
             return new(document.Quality == "high_quality" ? SongQuality.HighQuality : SongQuality.Fast,
                 document.VoiceMatch == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX,
-                document.Host is { Length: > 0 and <= 128 } host ? host : null);
+                document.Host is { Length: > 0 and <= 128 } host ? host : null, document.Off == true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
     }
@@ -44,7 +45,7 @@ internal sealed record SingingPreferences(SongQuality Quality = SongQuality.Fast
         {
             File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(new Document(1,
                 Quality == SongQuality.HighQuality ? "high_quality" : "fast",
-                VoiceMatch == SongVoiceMatch.VevoSing ? "vevosing" : "soulx", Host), Json));
+                VoiceMatch == SongVoiceMatch.VevoSing ? "vevosing" : "soulx", Host, Off ? true : null), Json));
             File.Move(temporary, path, overwrite: true);
         }
         finally
@@ -71,12 +72,15 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
     internal static ISongMaker For(string dataDirectory) =>
         Environment.GetEnvironmentVariable(FixtureVariable) == "1" ? new FixtureSongMaker(TimeSpan.FromMilliseconds(400)) : new SongClient(dataDirectory);
 
-    /// <summary>Whether singing is set up, without the network: the fixture is on, or a computer still paired with this PC
-    /// ran Singing when the desktop last checked (<see cref="SingingPreferences.Host"/>). Cheap enough to ask for every reply.</summary>
+    /// <summary>Whether singing is set up, without the network: not turned off on Companion › Singing, and the fixture is on, or
+    /// a computer still paired with this PC ran Singing when the desktop last checked (<see cref="SingingPreferences.Host"/>).
+    /// Cheap enough to ask for every reply.</summary>
     internal static bool IsSetUp(string dataDirectory)
     {
+        var preferences = SingingPreferences.Load(dataDirectory);
+        if (preferences.Off) return false;
         if (Environment.GetEnvironmentVariable(FixtureVariable) == "1") return true;
-        if (SingingPreferences.Load(dataDirectory).Host is not { } host) return false;
+        if (preferences.Host is not { } host) return false;
         try { return HostRegistry.Load(dataDirectory).Any(h => h.HostId == host && !h.Shared); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
     }

@@ -33,16 +33,19 @@ internal sealed record RecommendedSetupMemory
 
     internal RecommendedSetupMemory WithServed(bool use) => this with { UseServedModels = use };
 
-    /// <summary>The parts turned off, as the planner takes them.</summary>
+    /// <summary>The parts turned off, as the planner takes them (a part this PC sets on its Companion page is turned off there,
+    /// not here: <see cref="ComponentRanking.SetOnPage"/>).</summary>
     internal IReadOnlyCollection<PlanComponent> OffParts =>
         [.. Off.Select(name => Enum.TryParse<PlanComponent>(name, out var part) ? part : (PlanComponent?)null)
-            .OfType<PlanComponent>().Where(ComponentRanking.CanBeOff).Distinct()];
+            .OfType<PlanComponent>().Where(OffHere).Distinct()];
 
-    /// <summary>The same memory with <paramref name="part"/> turned off or back on; a part that can't be off is ignored.</summary>
-    internal RecommendedSetupMemory WithOff(PlanComponent part, bool off) => !ComponentRanking.CanBeOff(part) ? this : this with
+    /// <summary>The same memory with <paramref name="part"/> turned off or back on; a part that can't be off here is ignored.</summary>
+    internal RecommendedSetupMemory WithOff(PlanComponent part, bool off) => !OffHere(part) ? this : this with
     {
         Off = [.. OffParts.Where(p => p != part).Concat(off ? [part] : []).Order().Select(p => p.ToString())]
     };
+
+    private static bool OffHere(PlanComponent part) => ComponentRanking.CanBeOff(part) && !ComponentRanking.SetOnPage(part);
 
     internal bool WasDeclined(string? fingerprint) =>
         fingerprint is { Length: > 0 } && Declined.Any(d => string.Equals(d.Fingerprint, fingerprint, StringComparison.Ordinal));
@@ -63,7 +66,7 @@ internal sealed record RecommendedSetupMemory
             return loaded is null ? new() : loaded with
             {
                 Declined = [.. (loaded.Declined ?? []).Where(d => d is { Fingerprint.Length: > 0 and <= 256 }).Take(Kept)],
-                Off = [.. (loaded.Off ?? []).Where(n => n is { Length: > 0 and <= 32 }).Distinct(StringComparer.Ordinal).Take(8)]
+                Off = [.. (loaded.Off ?? []).Where(n => n is { Length: > 0 and <= 32 }).Distinct(StringComparer.Ordinal).Take(16)]
             };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)

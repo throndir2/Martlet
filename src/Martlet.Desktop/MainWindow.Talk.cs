@@ -397,11 +397,11 @@ public partial class MainWindow
 
     // ---------- Listening: let Thinking (or the audio model) hear your voice ----------
 
-    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said, or, with an
-    /// audio model of its own (Companion › Listening › Audio model, docs/SENSE_MODELS.md), whether that model hears it and
+    /// <summary>Companion › Hearing › Hear how you say it: whether a Thinking model that hears also gets the recording of what you
+    /// said, or, with an audio model of its own (Companion › Hearing, docs/SENSE_MODELS.md), whether that model hears it and
     /// describes how you sound for Thinking. Your own choice always wins; never chosen, it is on only while the recording stays on
     /// this PC where it goes (Ollama on this PC, not a cloud model), and anywhere else ticking it is the consent. The text under it
-    /// says which applies, what is sent and where.</summary>
+    /// says which applies, what is sent and where; the Now card above says whether the model hears (TalkHearVoiceStatus).</summary>
     private Border HearVoiceCard()
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
@@ -418,13 +418,10 @@ public partial class MainWindow
         hear.Unchecked += (_, _) => { if (Talk.HearVoice != false) SaveTalk(Talk with { HearVoice = false }, render: true); };
         var choice = Note(LiveConversationConfiguration.HearVoiceChoice(Talk.HearVoice, thinking, audio), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(choice, "TalkHearVoiceChoice");
-        var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities, audio);
-        var status = hears || !on ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
-        AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
         // The straight path and Test hearing are about Thinking hearing you, which an audio model of its own replaces.
-        return Card([Heading("Hear how you say it"), hear, choice, status, .. hears && on && own is null ? VoicePathControls() : [],
+        return Card([Heading("Hear how you say it"), hear, choice, .. hears && on && own is null ? VoicePathControls() : [],
             .. own is null ? HearingTestControls(thinking) : [],
-            Note(LiveConversationConfiguration.HearingDisclosure(thinking, audio), new Thickness(0, 0, 0, 0))]);
+            Note(LiveConversationConfiguration.HearingDisclosure(thinking, audio), new Thickness(0, 6, 0, 0))]);
     }
 
     /// <summary>Companion › Listening › When Thinking can hear you, shown while Thinking hears your voice: your voice straight to
@@ -608,9 +605,11 @@ public partial class MainWindow
         var kind => new(kind)
     };
 
-    /// <summary>Companion › Vision: whether Martlet may look at your screen or a camera once you press Start watching (on by
-    /// default, at your whole screen), what it looks at and how chatty it is. Pressing Start watching is the consent; the text
-    /// above the button says exactly what is captured and where it is sent.</summary>
+    /// <summary>Companion › Vision (an optional extra, in the standard order): Now (whether vision is on, what Martlet looks at,
+    /// whether it can see and the image model's lines), then the main choice (Off, or the image model: Thinking's own model, the
+    /// audio model, Ollama on this PC, a cloud provider or server, or one of your computers), then what it looks at, how chatty it
+    /// is, its glances and screen summary, and what it sends. Vision is on by default, at your whole screen. Pressing Start
+    /// watching is the consent; What Martlet sends says exactly what is captured and where it is sent.</summary>
     private void RenderVisionPage(Panel page)
     {
         var prefs = Talk;
@@ -627,18 +626,45 @@ public partial class MainWindow
         {
             Text = prefs.Watch
                 ? $"On. Martlet looks at {source.Label} occasionally. Comments: {CommentsLabel(chattiness)}."
-                : "Off. Martlet doesn't look at your screen or cameras.",
+                : $"Off. {OptionalExtras.OffMeans(CompanionTab.Vision)}.",
             FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
         };
         AutomationProperties.SetAutomationId(nowText, "VisionNow");
         var now = new List<UIElement> { Heading("Now"), nowText };
         if (prefs.Watch && !chosen) now.Add(Warning(source.Kind == WatchKind.Camera ? "Choose a camera below." : "Enter the camera address below."));
         var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities, image);
-        var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 0)) : Warning(advice);
+        var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
         now.Add(adviceText);
+        now.AddRange(SenseNowLines(SenseKind.Image));
         page.Children.Add(Card([.. now]));
-        page.Children.Add(SenseModelCards(SenseKind.Image));
+
+        // The main choice: Off, or the image model. Its buttons turn vision off or on (VisionToggle).
+        Button? turnOn = null;
+        page.Children.Add(SenseChoiceCard(SenseKind.Image, prefs.Watch,
+            () => PageButton("Turn vision off", () =>
+            {
+                SaveTalk(Talk with { Watch = false }, render: true);
+                ActionText.Text = "Vision is off.";
+            }, primary: true, id: "VisionToggle"),
+            () =>
+            {
+                turnOn = PageButton("Turn vision on", () =>
+                {
+                    SaveTalk(Talk with { Watch = true }, render: true);
+                    ActionText.Text = "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look.";
+                }, primary: true, id: "VisionToggle");
+                turnOn.IsEnabled = canSee && chosen;
+                if (!turnOn.IsEnabled)
+                {
+                    var why = !canSee ? advice : source.Kind == WatchKind.Camera ? "Choose a camera below first." : "Enter the camera address below first.";
+                    turnOn.ToolTip = why;
+                    ToolTipService.SetShowOnDisabled(turnOn, true);
+                    AutomationProperties.SetHelpText(turnOn, why);
+                }
+                return turnOn;
+            },
+            "Vision is off. Turn it on to use this model."));
 
         var looks = new List<UIElement> { Heading("What Martlet looks at") };
         foreach (var (kind, title, detail) in new[]
@@ -654,7 +680,6 @@ public partial class MainWindow
             option.Checked += (_, _) => SaveTalk(Talk with { ScreenScope = (int)kind }, render: true);
             looks.Add(option);
         }
-        Button? toggle = null;
         if (source.Kind == WatchKind.Camera)
         {
             var cameras = new List<CameraDevice>();
@@ -694,7 +719,7 @@ public partial class MainWindow
                 var typed = address.Text.Trim();
                 visionAddress = typed.Length == 0 ? null : typed;
                 SaveTalk(Talk with { VideoAddress = WatchSource.WithoutCredentials(WatchSource.Normalize(typed)) });
-                if (toggle is not null && !Talk.Watch) toggle.IsEnabled = canSee && typed.Length > 0;
+                if (turnOn is not null && !Talk.Watch) turnOn.IsEnabled = canSee && typed.Length > 0;
             };
             looks.Add(address);
             looks.Add(Note("Example: http://192.168.1.20:8080/shot.jpg. Passwords are used for this session only and aren't saved.",
@@ -735,16 +760,10 @@ public partial class MainWindow
         page.Children.Add(GazeCard(prefs));
         page.Children.Add(ScreenSummaryCard(prefs, image.Path == SensePath.Described));
 
-        toggle = PageButton(prefs.Watch ? "Turn vision off" : "Turn vision on", () =>
-        {
-            var on = !Talk.Watch;
-            SaveTalk(Talk with { Watch = on }, render: true);
-            ActionText.Text = on ? "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look." : "Vision is off.";
-        }, primary: !prefs.Watch, id: "VisionToggle");
-        toggle.IsEnabled = prefs.Watch || canSee && chosen;
-        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source, image), new Thickness(0, 0, 0, 8));
+        // What Martlet captures and where it goes, for what it looks at and how chatty it is (Turn vision on is above).
+        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source, image), new Thickness(0, 0, 0, 0));
         AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
-        page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"), disclosure, Row(toggle)));
+        page.Children.Add(Card(Heading("What Martlet sends"), disclosure));
     }
 
     /// <summary>How the comments line reads: the level, or Martlet decides with the level it picked while a conversation runs.</summary>
@@ -838,7 +857,7 @@ public partial class MainWindow
 
     internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee, bool byImageModel = false) =>
         !on ? "Off. Replies know only the newest picture."
-        : !vision ? "On, but vision is off. Turn vision on below."
+        : !vision ? "On, but vision is off. Turn vision on above."
         : !canSee ? "Off for now: the Thinking pool has no other model that sees. Add one that sees in Companion › Thinking pool."
         : byImageModel ? "On. While Martlet watches, your image model sums up what changed for your next message."
         : "On. While Martlet watches, a Thinking model that sees sums up what changed for your next message.";
@@ -847,7 +866,7 @@ public partial class MainWindow
     {
         var usual = $"The character {CharacterGazeService.Describe(avatar.Gaze.Settings.Mode)}.";
         if (!prefs.DecideGaze) return usual;
-        if (!prefs.Watch) return "Vision is off, so the character keeps its usual gaze. Turn vision on below. " + usual;
+        if (!prefs.Watch) return "Vision is off, so the character keeps its usual gaze. Turn vision on above. " + usual;
         if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character keeps its usual gaze. " + usual;
         return avatar.Gaze.Status;
     }

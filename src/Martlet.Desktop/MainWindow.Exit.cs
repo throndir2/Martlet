@@ -145,6 +145,7 @@ public partial class MainWindow
     /// <summary>Closes Martlet: stops what the exit interrupts, then each part in turn, saying which; Exit now ends it early.</summary>
     private async Task CloseMartletAsync()
     {
+        FlushCustomTheme();
         closing = true;
         exiting = true;
         rowBatches.Stop();

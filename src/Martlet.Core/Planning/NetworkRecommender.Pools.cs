@@ -86,15 +86,19 @@ public static partial class NetworkRecommender
 
         private static bool LiveOn(Node node, int card) => node.Roles.Any(r => r.Card == card && r.Kind != DeepThinkingRole);
 
-        /// <summary>Needed jobs before optional extras (<see cref="ComponentRanking"/>): today's singing and pictures stay where
-        /// the jobs Martlet needs to talk (Thinking, the voice, listening, lip-sync) and their pools left room, and go where
-        /// they didn't.</summary>
+        /// <summary>Needed jobs before optional extras (<see cref="ComponentRanking"/>): today's singing, pictures and Reading roles
+        /// stay where the jobs Martlet needs to talk (Thinking, the voice, listening, lip-sync) and their pools left room, and go
+        /// where they didn't, or when the owner turned their part off. Reading is this PC's choice, so its role goes only while no
+        /// other companion PC may use it.</summary>
         private void Extras()
         {
+            var otherCompanions = Math.Max(request.CompanionPcs, nodes.Count(n => n.Companion)) > 1;
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
                 foreach (var role in node.Pending.Where(r => Extra(r.Kind) && r.Leave is null).ToList())
-                    if (KindComponent(role.Kind) is { } component && IsOff(component))
-                        role.Leave = (SetupChangeBenefit.Improvement, $"You turned {ComponentRanking.Name(component).ToLowerInvariant()} off.");
+                    if (KindComponent(role.Kind) is { } component && IsOff(component) && !(ComponentRanking.SetOnPage(component) && otherCompanions))
+                        role.Leave = (SetupChangeBenefit.Improvement, ComponentRanking.SetOnPage(component)
+                            ? $"{ComponentRanking.Name(component)} is off in {ComponentRanking.Page(component)}, and no other companion PC uses it."
+                            : $"You turned {ComponentRanking.Name(component).ToLowerInvariant()} off.");
                     else if (!Keep(node, role, Kept, out _))
                         role.Leave = (SetupChangeBenefit.Required,
                             $"{Label(role.Option, role.Kind)} is optional: {CardText(node, role.Card)} has no room left for it beside " +

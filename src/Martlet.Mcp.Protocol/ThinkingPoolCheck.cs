@@ -26,7 +26,8 @@ internal static class ThinkingPoolCheck
         var (pool, state) = ThinkingPoolSettings.Read(dataDirectory, save: false);
         var abilities = ModelAbilities.Load(dataDirectory);
         var plan = pool.Plan(routes);
-        var places = ThinkLonger.Places(plan, null, member => ThinkingPoolCapabilities.For(member, abilities)).Where(p => p.Id != "thinking").ToArray();
+        var places = ThinkLonger.Places(plan, null, member => ThinkingPoolCapabilities.For(member, abilities), choices: pool)
+            .Where(p => p.Id != "thinking").ToArray();
         var members = places.Select(p => new ThinkingPoolMemberStatus(p.Id, p.Name, p.Slots, 0, p.Can, p.Rank)).ToArray();
         var slots = members.Sum(m => m.Slots);
         var (desktop, file) = DesktopStatus(dataDirectory);
@@ -52,8 +53,10 @@ internal static class ThinkingPoolCheck
                     available = spot?.Plan.Available ?? false, rank = spot?.Plan.Rank, why = spot?.Plan.Why,
                     // Whether its computer answers now (null: the desktop hasn't said), and since when it doesn't.
                     online = seen?["online"]?.GetValue<bool>(), offlineSince = seen?["offlineSince"]?.GetValue<DateTimeOffset>(),
-                    // May answer for the conversation (Backup Thinking), off by default; a paid cloud member only when ticked.
-                    answersForConversation = pool.Answers(m.Key), paid = ThinkingBackupMembers.Paid(m)
+                    // Backup for slow replies (Backup Thinking), off by default; a paid cloud member only when ticked.
+                    answersForConversation = pool.Answers(m.Key), paid = ThinkingBackupMembers.Paid(m),
+                    // The Quick jobs and Long jobs boxes: the judges and summaries, and every other kind.
+                    quickJobs = pool.TakesQuickJobs(m.Key), longJobs = pool.TakesLongJobs(m.Key)
                 };
             }),
             // Backup Thinking: its choices and who it would ask now for a plain reply that is taken (the production choice, on
@@ -68,10 +71,11 @@ internal static class ThinkingPoolCheck
             usable = places.Length, slots, keepsFastSlot = slots >= 2,
             conversationModel = pool.Members.Count == 0 && pool.UseConversationModelWhenEmpty
                 ? new { used = true, available = plan.Plan.Available, why = plan.Plan.Why } : null,
+            // Per kind, only the members whose Quick jobs or Long jobs box lets them take it.
             canRun = ThinkingJobKinds.All.ToDictionary(ThinkingJobKinds.Name, kind => new
             {
-                text = members.Length > 0, vision = members.Any(m => m.Can.HasFlag(ThinkingCapability.Vision)),
-                audio = members.Any(m => m.Can.HasFlag(ThinkingCapability.Audio)),
+                text = places.Any(p => p.Takes(kind)), vision = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Vision)),
+                audio = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Audio)),
                 priority = (int)ThinkingJobKinds.Priority(kind), fast = ThinkingJobKinds.IsFast(kind)
             }),
             guidance = ThinkingJobBoard.Guidance(members),
@@ -365,6 +369,48 @@ internal static class ThinkingPoolCheck
                 rested is { Needs: Sees } rest && rest.Until - started >= ThinkingJobBoard.RefusedRest - TimeSpan.FromMinutes(1),
                 $"first {first.Outcome} ({first.Problem}); next picture job {again.Outcome} ({again.Problem}) without a request; text job " +
                 $"{text.Outcome}; {asked} requests in all; resting {string.Join(", ", resting.Select(r => $"{r.Name} for {ThinkingJobResult.Describe(r.Needs)} until {r.Until:HH:mm:ss}"))}");
+        }
+
+        // 11. Quick jobs and Long jobs (the owner's boxes for each machine on Companion › Thinking pool): a judge passes over a
+        // member kept from quick jobs, a long job passes over a member kept from long jobs, and a long job on a member that takes
+        // no quick jobs keeps no slot free (that member's slots were never the quick jobs' slots).
+        {
+            BackgroundPlace big = new("host:big", "big") { Slots = 1, QuickJobs = false }, fast = new("endpoint:fast", "fast") { Slots = 1, LongJobs = false };
+            var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [big, fast], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+            var judge = await board.RunAsync(Job(ThinkingJobKind.EndOfTurnJudge), cancellation);
+            var think = await board.RunAsync(Job(ThinkingJobKind.ThinkLonger), cancellation);
+            var quickOnly = new ThinkingJobBoard(new BackgroundPlaces(), () => [fast], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+            var noLong = await quickOnly.RunAsync(Job(ThinkingJobKind.Research), cancellation);
+            Check("quick and long jobs: each kind goes only to a member that takes it",
+                judge.Member == "fast" && think.Member == "big" && noLong.Outcome == ThinkingJobOutcome.NoMember &&
+                !quickOnly.CanRun(ThinkingJobKind.ThinkLonger) && quickOnly.CanRun(ThinkingJobKind.BargeInJudge),
+                $"judge on {judge.Member}; think on {think.Member} ({think.Outcome}); research with a quick-only member: {noLong.Outcome}");
+
+            // The only slot that takes quick jobs is busy: a long job still starts at once on the member that never takes them.
+            var slotPlaces = new BackgroundPlaces();
+            BackgroundPlace longOnly = new("host:big", "big") { Slots = 1, QuickJobs = false }, mixed = new("host:mixed", "mixed") { Slots = 1 };
+            var held = slotPlaces.TryAcquire([mixed], "judge");
+            var slotBoard = new ThinkingJobBoard(slotPlaces, () => [longOnly, mixed], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+            var run = slotBoard.RunAsync(Job(ThinkingJobKind.ThinkLonger), cancellation);
+            var atOnce = await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(5), cancellation)) == run;
+            held?.Dispose();
+            var beside = await run;
+            Check("quick and long jobs: a long job on a member that takes no quick jobs keeps no slot free",
+                held is not null && atOnce && beside.Member == "big",
+                $"the only quick-jobs slot busy; think {(atOnce ? "started at once" : "waited")} on {beside.Member} ({beside.Outcome})");
+
+            var host = new DeepThinkingSettings
+            {
+                Place = DeepThinkingPlace.Host, ModelId = "qwen3:8b", HostId = "diva", HostOrigin = "https://192.168.1.2:9443",
+                HostSpkiFingerprint = "sha256/fixture", HostDeviceId = "desk-pc", HostCredentialId = Guid.NewGuid(),
+                HostRouteId = SelfHostSetup.DeepThinkingRouteId, Slots = 2
+            };
+            var pool = new ThinkingPoolSettings().Add(host).WithJobs(host.Key, @long: false);
+            var removed = pool.Remove(host.Key);
+            Check("quick and long jobs: long jobs see only the members that take them, and leaving clears the boxes",
+                pool.TakesQuickJobs(host.Key) && !pool.TakesLongJobs(host.Key) && pool.ForLongJobs().Members.Count == 0 &&
+                pool.Members.Count == 1 && removed.NoLongJobs.Count == 0 && removed.TakesLongJobs(host.Key),
+                $"long jobs see {pool.ForLongJobs().Members.Count} of {pool.Members.Count} members; after leaving: {removed.NoLongJobs.Count} kept from long jobs");
         }
 
         return new

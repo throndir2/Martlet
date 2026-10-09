@@ -92,7 +92,8 @@ public partial class MainWindow
         if (SimulatedRecommendedSetup.Active)
             return SimulatedRecommendedSetup.Sources(DateTimeOffset.UtcNow) with
             {
-                ConfiguredProviders = ConfiguredProviders(), Off = RecommendedSetupMemory.Load(store?.DataDirectory).OffParts
+                ConfiguredProviders = ConfiguredProviders(), Off = RecommendedSetupMemory.Load(store?.DataDirectory).OffParts,
+                Choices = RecommendedSetupChoices(store?.DataDirectory)
             };
         var inputs = Inputs();
         var directory = store?.DataDirectory;
@@ -101,8 +102,13 @@ public partial class MainWindow
         return RecommendedSetupInputs.Sources(inputs, NetworkMap.Build(inputs), ClusterDevice, OwnHostId(), ThisPcDiskFreeGb(),
             offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
             poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
-            off: RecommendedSetupMemory.Load(directory).OffParts);
+            off: RecommendedSetupMemory.Load(directory).OffParts, choices: RecommendedSetupChoices(directory));
     }
+
+    /// <summary>This PC's choices for the parts it sets on their Companion pages (Vision, Reading, Hearing, Smart home), read
+    /// from the data folder: what the review says about them.</summary>
+    private IReadOnlyList<PartChoice> RecommendedSetupChoices(string? directory) => RecommendedSetupInputs.Choices(Talk.Watch, Talk.HearVoice,
+        SenseModels.Load(directory), Martlet.Core.Reading.ReadingSettings.Load(directory), HomePreferences.Load(directory).Address);
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
     {

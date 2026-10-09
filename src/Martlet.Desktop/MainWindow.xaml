@@ -554,7 +554,7 @@
                                     AutomationProperties.Name="Companion pages" AutomationProperties.AutomationId="CompanionNav"/>
                     </ScrollViewer>
                 </Border>
-                <ScrollViewer x:Name="CompanionScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="CompanionScroll" AutomationProperties.AutomationId="CompanionScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="CompanionContent" Margin="32,30,32,24" MaxWidth="1000" AutomationProperties.AutomationId="CompanionPage"/>
                 </ScrollViewer>
             </Grid>
@@ -739,9 +739,71 @@
                                 <ComboBoxItem Content="Rose dark"/>
                                 <ComboBoxItem Content="Character light"/>
                                 <ComboBoxItem Content="Character dark"/>
+                                <ComboBoxItem Content="Custom"/>
                             </ComboBox>
-                            <TextBlock x:Name="AppearanceStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0"
+                            <TextBlock x:Name="AppearanceStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AppearanceStatus"/>
+                            <!-- The owner's own palette, shown while Custom is chosen (MainWindow.CustomTheme.cs) -->
+                            <StackPanel x:Name="CustomThemePanel" Visibility="Collapsed" Margin="0,18,0,0">
+                                <TextBlock Text="Your custom palette" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,4"/>
+                                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                           Text="Start from a palette you like, then choose a color for each part of Martlet. Every window changes as you go, and your colors are saved on this PC."/>
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Label Content="Start f_rom" Target="{Binding ElementName=CustomThemeBase}" Padding="0,0,10,0" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="CustomThemeBase" Width="200" Margin="0,0,10,0" SelectedIndex="0"
+                                              AutomationProperties.AutomationId="CustomThemeBase" AutomationProperties.Name="Palette to start from">
+                                        <ComboBoxItem Content="Pink light"/>
+                                        <ComboBoxItem Content="Rose dark"/>
+                                        <ComboBoxItem Content="Character light"/>
+                                        <ComboBoxItem Content="Character dark"/>
+                                    </ComboBox>
+                                    <Button x:Name="CustomThemeStartFromButton" Content="Use its c_olors" Click="CustomThemeStartFrom_Click"
+                                            AutomationProperties.AutomationId="CustomThemeStartFrom"/>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,14,0,0">
+                                    <ListBox x:Name="CustomThemeRoles" Width="300" Margin="0,0,20,12" Padding="4" BorderThickness="1"
+                                             VerticalAlignment="Top" SelectionChanged="CustomThemeRole_Changed"
+                                             AutomationProperties.AutomationId="CustomThemeRoles" AutomationProperties.Name="Parts of Martlet to color"/>
+                                    <StackPanel Width="340" Margin="0,0,0,12">
+                                        <TextBlock x:Name="CustomThemeRoleName" FontWeight="SemiBold"
+                                                   AutomationProperties.AutomationId="CustomThemeRoleName"/>
+                                        <TextBlock x:Name="CustomThemeRoleHelp" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,10"
+                                                   AutomationProperties.AutomationId="CustomThemeRoleHelp"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="CustomThemeSwatch" Width="46" Height="46" CornerRadius="10" BorderThickness="1"
+                                                    BorderBrush="{DynamicResource BorderBrush}" Margin="0,0,12,0" VerticalAlignment="Bottom"/>
+                                            <StackPanel>
+                                                <Label Content="Color _code" Target="{Binding ElementName=CustomThemeHex}" Padding="0,0,0,4"/>
+                                                <TextBox x:Name="CustomThemeHex" Width="120" MaxLength="7" TextChanged="CustomThemeHex_Changed"
+                                                         LostKeyboardFocus="CustomThemeHex_LostFocus" KeyDown="CustomThemeHex_KeyDown"
+                                                         AutomationProperties.AutomationId="CustomThemeHex" AutomationProperties.Name="Color code, #RRGGBB"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <TextBlock x:Name="CustomThemeHexHint" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Visibility="Collapsed" Text="Type a color as #RRGGBB, for example #A52D64."
+                                                   AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="CustomThemeHexHint"/>
+                                        <Label Content="H_ue" Target="{Binding ElementName=CustomThemeHue}" Padding="0,12,0,2"/>
+                                        <Slider x:Name="CustomThemeHue" Style="{DynamicResource ColorSlider}" Minimum="0" Maximum="360"
+                                                SmallChange="1" LargeChange="15" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="CustomThemeSlider_Changed"
+                                                AutomationProperties.AutomationId="CustomThemeHue" AutomationProperties.Name="Hue, degrees"/>
+                                        <Label Content="S_aturation" Target="{Binding ElementName=CustomThemeSaturation}" Padding="0,8,0,2"/>
+                                        <Slider x:Name="CustomThemeSaturation" Style="{DynamicResource ColorSlider}" Minimum="0" Maximum="100"
+                                                SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="CustomThemeSlider_Changed"
+                                                AutomationProperties.AutomationId="CustomThemeSaturation" AutomationProperties.Name="Saturation, percent"/>
+                                        <Label Content="_Lightness" Target="{Binding ElementName=CustomThemeLightness}" Padding="0,8,0,2"/>
+                                        <Slider x:Name="CustomThemeLightness" Style="{DynamicResource ColorSlider}" Minimum="0" Maximum="100"
+                                                SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="CustomThemeSlider_Changed"
+                                                AutomationProperties.AutomationId="CustomThemeLightness" AutomationProperties.Name="Lightness, percent"/>
+                                        <TextBlock x:Name="CustomThemePicksLabel" Text="Or take one of your character's colors" Style="{DynamicResource Muted}"
+                                                   Margin="0,12,0,4" Visibility="Collapsed"/>
+                                        <WrapPanel x:Name="CustomThemePicks" AutomationProperties.Name="Your character's colors"/>
+                                    </StackPanel>
+                                </WrapPanel>
+                                <TextBlock x:Name="CustomThemeCheck" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                                           AutomationProperties.AutomationId="CustomThemeCheck"/>
+                                <Button x:Name="CustomThemeFixButton" Content="Make it easy to rea_d" HorizontalAlignment="Left" Margin="0,8,0,0"
+                                        Visibility="Collapsed" Click="CustomThemeFix_Click" AutomationProperties.AutomationId="CustomThemeFix"/>
+                            </StackPanel>
                             <!-- The character's colors and its palettes (MainWindow.Appearance.cs) -->
                             <TextBlock Text="Your character's colors" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
                             <TextBlock x:Name="AppearanceCharacterStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap"

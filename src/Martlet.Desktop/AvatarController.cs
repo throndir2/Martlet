@@ -418,7 +418,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
         try
         {
             if (renderer is { HasExited: false } current && Application.Current is App app)
-                await current.SendAsync("theme", new RendererTheme(app.SelectedTheme.IsDark(), app.ThemeColors), token);
+                await current.SendAsync("theme", new RendererTheme(app.IsDarkTheme, app.ThemeColors), token);
         }
         finally { changes.Release(); }
     }

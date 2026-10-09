@@ -243,7 +243,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
     private FrameworkElement PartRow(ReviewPart part)
     {
         var row = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
-        if (part.CanBeOff)
+        if (part.OffChoice)
         {
             var off = new CheckBox
             {

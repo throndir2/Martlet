@@ -204,8 +204,14 @@ public static partial class NetworkRecommender
 
         private bool Wants(PlanComponent component) => request.Wanted is null || request.Wanted.Contains(component);
 
-        /// <summary>The owner turned this part off (<see cref="NetworkSetupRequest.Off"/>): its roles go and it is planned off.</summary>
-        private bool IsOff(PlanComponent component) => ComponentRanking.CanBeOff(component) && (request.Off ?? []).Contains(component);
+        /// <summary>The owner turned this part off: in the review (<see cref="NetworkSetupRequest.Off"/>), or on its Companion page
+        /// for a part this PC sets there (<see cref="NetworkSetupRequest.Choices"/>). Its roles go and it is planned off.</summary>
+        private bool IsOff(PlanComponent component) => ComponentRanking.CanBeOff(component) && (ComponentRanking.SetOnPage(component)
+            ? Choice(component) is { On: false }
+            : (request.Off ?? []).Contains(component));
+
+        /// <summary>This PC's choice for a part it sets on its Companion page, or null when the request doesn't say.</summary>
+        private PartChoice? Choice(PlanComponent component) => (request.Choices ?? []).FirstOrDefault(c => c?.Component == component);
 
         /// <summary>The part a host role kind does, or null for a kind the recommender doesn't know.</summary>
         private PlanComponent? KindComponent(string kind) => kind switch
@@ -214,6 +220,8 @@ public static partial class NetworkRecommender
             DeepThinkingRole => PlanComponent.DeepThinking,
             ListeningRole => PlanComponent.Listening,
             LipSyncRole => PlanComponent.LipSync,
+            ReadingRole => PlanComponent.Reading,
+            SmartHomeRole => PlanComponent.SmartHome,
             SingingRole => PlanComponent.Singing,
             PicturesRole => PlanComponent.Pictures,
             _ => IsVoice(kind) ? PlanComponent.Voice : null
@@ -233,9 +241,9 @@ public static partial class NetworkRecommender
             _ => voiceKinds.Contains(kind) && Wants(PlanComponent.Voice)
         };
 
-        /// <summary>An optional extra (singing, pictures): it keeps its place only with the room the jobs Martlet needs to talk
-        /// leave (<see cref="ComponentRanking"/>).</summary>
-        private static bool Extra(string kind) => kind is SingingRole or PicturesRole;
+        /// <summary>An optional extra (singing, pictures, Reading): it keeps its place only with the room the jobs Martlet needs to
+        /// talk leave (<see cref="ComponentRanking"/>).</summary>
+        private static bool Extra(string kind) => kind is SingingRole or PicturesRole or ReadingRole;
 
         private bool IsVoice(string kind) => voiceKinds.Contains(kind);
 

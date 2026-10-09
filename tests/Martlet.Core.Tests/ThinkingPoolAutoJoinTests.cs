@@ -67,7 +67,7 @@ public sealed class ThinkingPoolAutoJoinTests
         var member = Assert.Single(moved.Pool.Members);
         Assert.True(member.OnHostRole);
         Assert.Equal(2, member.Slots);
-        // The same key: May answer for the conversation stays as it was.
+        // The same key: Backup for slow replies stays as it was.
         Assert.True(moved.Pool.Answers("host:quiet"));
 
         var again = ThinkingPoolAutoJoin.For(moved.Pool, Host("quiet", Ollama, Role), null, now: Now);

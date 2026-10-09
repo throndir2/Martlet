@@ -216,7 +216,7 @@ internal sealed partial class LiveConversationController
     {
         if (!pool.BackupThinking) return "Off. Each reply waits for the conversation's own Thinking model.";
         if (answering.Count == 0)
-            return "On, but no member may answer for the conversation yet. Tick May answer for the conversation on a member above.";
+            return "On, but no machine is a backup for slow replies yet. Tick Backup for slow replies on a machine above.";
         var names = answering.Count == 1 ? answering[0] : string.Join(", ", answering.Take(answering.Count - 1)) + " and " + answering[^1];
         var wait = pool.BackupDelayMs is { } chosen
             ? string.Create(CultureInfo.InvariantCulture, $"{chosen} ms")

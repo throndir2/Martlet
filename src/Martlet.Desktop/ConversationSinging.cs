@@ -45,7 +45,9 @@ internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
 
     public (SongSetup? Setup, string? Problem) Current()
     {
-        if (!SongClient.IsSetUp(dataDirectory)) return (null, "singing isn't set up on any of your computers (Companion › Singing).");
+        if (!SongClient.IsSetUp(dataDirectory))
+            return (null, SingingPreferences.Load(dataDirectory).Off ? "singing is off (Companion › Singing)."
+                : "singing isn't set up on any of your computers (Companion › Singing).");
         var voice = SongClient.SpeakingVoiceId(dataDirectory) ?? (Fixture ? "fixture-voice" : null);
         if (voice is null) return (null, "there's no voice to sing with yet (Companion › Voice).");
         var choices = SingingPreferences.Load(dataDirectory);

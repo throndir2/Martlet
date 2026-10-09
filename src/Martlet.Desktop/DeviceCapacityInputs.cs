@@ -71,6 +71,8 @@ internal static class DeviceCapacityInputs
         HostRoles.Ollama => PlanComponent.Thinking,
         HostRoles.DeepThinking => PlanComponent.DeepThinking,
         HostRoles.Stt => PlanComponent.Listening,
+        HostRoles.Ocr => PlanComponent.Reading,
+        "home-assistant" => PlanComponent.SmartHome,
         HostRoles.Singing => PlanComponent.Singing,
         HostRoles.Pictures => PlanComponent.Pictures,
         _ when HostRoles.Speaks(kind) => PlanComponent.Voice,
@@ -149,7 +151,11 @@ internal static class DeviceCapacityInputs
         PlanComponent.Voice => "voice engine",
         PlanComponent.Listening => "listening model",
         PlanComponent.LipSync => "advanced lip-sync service",
+        PlanComponent.Vision => "image model",
+        PlanComponent.Reading => "Reading role",
+        PlanComponent.Hearing => "audio model",
         PlanComponent.DeepThinking => "Deep thinking model",
+        PlanComponent.SmartHome => "Home Assistant",
         PlanComponent.Singing => "singing service",
         PlanComponent.Pictures => "picture service",
         _ => ComponentRanking.Name(component)
@@ -168,11 +174,12 @@ internal static class DeviceCapacityInputs
 
     /// <summary>What else fits on <paramref name="machineId"/> (null: across the network), most important part first: for
     /// Thinking and Deep thinking how many more of the model in use (or the best one that fits); for the other parts, the best
-    /// option, only while none of your computers runs that part. Things that run inside the app are left out.</summary>
+    /// option, only while none of your computers runs that part. Things that run inside the app, and the parts this PC chooses on
+    /// their Companion pages (<see cref="ComponentRanking.SetOnPage"/>: Vision, Reading, Hearing, Smart home), are left out.</summary>
     internal static IReadOnlyList<CapacityFit> Fits(PlacementPlan plan, FootprintCatalog catalog, string? machineId)
     {
         var fits = new List<CapacityFit>();
-        foreach (var info in ComponentRanking.All.Where(i => i.Component != PlanComponent.Character))
+        foreach (var info in ComponentRanking.All.Where(i => i.Component != PlanComponent.Character && !ComponentRanking.SetOnPage(i.Component)))
         {
             var candidates = catalog.For(info.Component).Where(o => o.IsLocal && !o.RunsInApp).ToList();
             if (candidates.Count == 0) continue;
@@ -253,7 +260,8 @@ internal static class DeviceCapacityInputs
                     (job switch { SetupRole.Llm => PlanComponent.Thinking, SetupRole.Stt => PlanComponent.Listening, _ => PlanComponent.Voice }) is var c &&
                     covered.Add(c))
                     hosted.Add($"{ComponentRanking.Name(c)} ({cloud.Title})");
-        var missing = ComponentRanking.All.Where(i => !covered.Contains(i.Component)).Select(i => i.Name).ToList();
+        // The parts this PC chooses on their Companion pages aren't on the Devices map unless a host runs their role.
+        var missing = ComponentRanking.All.Where(i => !covered.Contains(i.Component) && !ComponentRanking.SetOnPage(i.Component)).Select(i => i.Name).ToList();
         var totals = machines.Select(m => new CapacitySpecs(m.Gpus.Sum(g => g.VramGb), m.RamGb, m.CpuThreads, m.DiskFreeGb)).ToList();
         return new(DeviceCapacity.Coverage(local, hosted, missing), DeviceCapacity.Totals(totals), DeviceCapacity.NetworkFits(Fits(plan, catalog, null)));
     }

@@ -10,15 +10,17 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Voice › Voice engine: one list of every way Martlet can speak on the chosen computer (this PC, or
-/// another paired computer), each with what it needs and can do as short chips and one button that sets it up there and
-/// switches Speaking to it. Switching cleans up: a computer runs one voice engine at a time (martlet-host stops the others
-/// when one is added, and Martlet stops leftovers when it switches to one already installed), and the engine Speaking
-/// leaves on another computer stops there once Speaking has moved (<see cref="LeavingEngine"/>), unless failover keeps
-/// the same engine as a backup. Rows read as <c>VoiceEngine-&lt;key&gt;</c> (title and badge),
-/// <c>VoiceEngineFeatures-&lt;key&gt;</c>, <c>VoiceEngineState-&lt;key&gt;</c> and <c>VoiceEngineUse-&lt;key&gt;</c>;
-/// <c>VoiceEngineNone</c> says when no engine can run on the shown computer. Under Another of your computers,
-/// <c>SpeakingHost-&lt;host&gt;</c> picks the computer.</summary>
+/// <summary>Companion › Voice › Voice engine: one option picker (MainWindow.OptionPicker.cs) of every way Martlet can speak on
+/// the chosen computer (this PC, or another paired computer). Each row says where the engine runs, its graphics memory and how
+/// soon it speaks; the chosen engine's details add what it can do, its other needs as chips, its license and one button that
+/// sets it up there and switches Speaking to it. Switching cleans up: a computer runs one voice engine at a time (martlet-host
+/// stops the others when one is added, and Martlet stops leftovers when it switches to one already installed), and the engine
+/// Speaking leaves on another computer stops there once Speaking has moved (<see cref="LeavingEngine"/>), unless failover keeps
+/// the same engine as a backup. Rows read as <c>Picker-VoiceEngine-&lt;key&gt;</c> and <c>PickerFacts-VoiceEngine-&lt;key&gt;</c>;
+/// the shown engine's details as <c>PickerDetail-VoiceEngine</c>, <c>PickerFact-VoiceEngine-&lt;fact&gt;</c>,
+/// <c>PickerState-VoiceEngine</c>, <c>VoiceEngineAbilities-&lt;key&gt;</c>, <c>VoiceEngineFeatures-&lt;key&gt;</c> and its button
+/// <c>VoiceEngineUse-&lt;key&gt;</c>; <c>VoiceEngineNone</c> says when no engine can run on the shown computer. Under Another of
+/// your computers, <c>SpeakingHost-&lt;host&gt;</c> picks the computer.</summary>
 public partial class MainWindow
 {
     /// <summary>The computer Another of your computers' engine list sets up (null: the one that speaks, else the first).</summary>
@@ -26,7 +28,7 @@ public partial class MainWindow
 
     /// <summary>Where one engine stands on the shown computer: speaking there, installed, being set up, why it can't run
     /// there, and that in words (null when the button already says it: not set up yet).</summary>
-    private sealed record EngineSpot(bool InUse, bool Ready, bool Pending, string? Cannot, string? State);
+    internal sealed record EngineSpot(bool InUse, bool Ready, bool Pending, string? Cannot, string? State);
 
     private Border VoiceEnginesCard(SetupRoute? route, PairedHost? thisPc, bool onThisPc)
     {
@@ -59,7 +61,8 @@ public partial class MainWindow
         }
         else
         {
-            stack.Add(Note("Pick one. Martlet sets it up and switches to it; the engine it replaces stops.", new Thickness(0, 0, 0, 2)));
+            stack.Add(Note("Choose one to see what it needs and can do. Its button sets it up and switches to it; the engine it " +
+                "replaces stops.", new Thickness(0, 0, 0, 6)));
             if (thisPc is null && !machine.DockerRunning)
                 stack.Add(Note(machine.DockerInstalled ? "Engines run in Docker Desktop; Martlet starts it when needed."
                     : "Engines run in Docker Desktop; Martlet installs it on the first setup.", new Thickness(0, 0, 0, 2)));
@@ -72,20 +75,20 @@ public partial class MainWindow
         var recommended = spots.FirstOrDefault(s => s.Spot.Cannot is null && s.Engine.NeedsGpu).Engine ??
             spots.FirstOrDefault(s => s.Spot.Cannot is null && s.Engine == SpeechEngines.ChatterboxNano).Engine;
 
-        var rows = new List<UIElement>();
         if (!anyInUse && spots.All(s => s.Spot.Cannot is not null))
         {
             var none = Note($"No voice engine can run on {where}, so Martlet can't speak there. Pick another of your computers, " +
-                "or use OpenAI's voice below.", new Thickness(0, 4, 0, 6));
+                "or use a cloud voice under A cloud provider.", new Thickness(0, 4, 0, 6));
             none.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             AutomationProperties.SetAutomationId(none, "VoiceEngineNone");
-            rows.Add(none);
+            stack.Add(none);
         }
-        foreach (var (engine, spot) in spots.Where(s => s.Spot.Cannot is null))
-            rows.Add(EngineRow(engine, spot, target, onThisPc, !anyInUse && engine == recommended));
-        foreach (var (engine, spot) in spots.Where(s => s.Spot.Cannot is not null))
-            rows.Add(EngineRow(engine, spot, target, onThisPc, recommend: false));
-        stack.AddRange(rows);
+        var options = JobOptions.VoiceEngines(spots, anyInUse ? null : recommended).Select(option =>
+        {
+            var (engine, spot) = spots.First(s => s.Engine.Key == option.Key);
+            return option with { Details = () => EngineDetails(engine), Action = () => EngineButton(engine, spot, target, onThisPc) };
+        }).ToList();
+        stack.Add(OptionPickerBody("VoiceEngine", options));
 
         // A host set up before one engine per computer can still run engines Speaking no longer uses, each holding its model in
         // the graphics card's memory (the engine that speaks may then fail to load).
@@ -186,66 +189,35 @@ public partial class MainWindow
             : null;
     }
 
-    private Border EngineRow(SpeechEngine engine, EngineSpot spot, PairedHost? target, bool onThisPc, bool recommend)
+    /// <summary>An engine's button in its details: set it up and use it on the shown computer, use it when it is ready there,
+    /// or say it is in use or being set up (then it is off). <c>VoiceEngineUse-&lt;key&gt;</c>.</summary>
+    private Button EngineButton(SpeechEngine engine, EngineSpot spot, PairedHost? target, bool onThisPc)
     {
-        var label = spot.InUse ? "In use" : spot.Pending ? "Setting up..." : spot.Ready ? "Use" : "Set up and use";
+        var label = spot.InUse ? "In use" : spot.Pending ? "Setting up..." : spot.Ready ? $"Use {engine.Name}" : $"Set up and use {engine.Name}";
         var button = PageButton(label, () => UseVoiceEngineAsync(engine, onThisPc ? null : target).Forget(),
-            primary: recommend, id: "VoiceEngineUse-" + engine.Key);
-        AutomationProperties.SetName(button, $"{label} {engine.Name}");
+            primary: !spot.InUse && !spot.Pending, id: "VoiceEngineUse-" + engine.Key);
+        AutomationProperties.SetName(button, spot.InUse || spot.Pending ? $"{label} {engine.Name}" : label);
         button.IsEnabled = !spot.InUse && !spot.Pending && spot.Cannot is null;
-        if (spot.Cannot is not null)
-        {
-            button.ToolTip = spot.Cannot;
-            ToolTipService.SetShowOnDisabled(button, true);
-            AutomationProperties.SetHelpText(button, spot.Cannot);
-        }
+        return button;
+    }
+
+    /// <summary>An engine's own lines in its details: the rundown of what it can do (<see cref="AbilitiesLine"/>, whose
+    /// tooltips name its tags) and its other needs as chips (<c>VoiceEngineFeatures-&lt;key&gt;</c>).</summary>
+    private static IEnumerable<UIElement> EngineDetails(SpeechEngine engine)
+    {
         string? Tip(string feature) => feature switch
         {
             "Streams" => "Starts speaking before a sentence is finished.",
             _ => null
         };
-        return EngineRow(engine.Key, engine.Name, engine.Summary, engine.Abilities, engine.Tags, engine.RunsOn, engine.Features, Tip,
-            spot.InUse ? "in use" : recommend ? "recommended" : null, spot.State, warn: spot.Cannot is not null, spot.InUse, button);
+        yield return AbilitiesLine(engine.Key, engine.Abilities, engine.Tags);
+        var chips = Chips(engine.Key, engine.Features, Tip);
+        chips.Margin = new Thickness(0, 4, 0, 6);
+        yield return chips;
     }
 
     /// <summary>Where a voice that isn't an engine runs, from its footprint (<see cref="Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId"/>).</summary>
     internal static string RunsOnText(string footprintId) => Martlet.Core.Planning.FootprintCatalog.Default.Find(footprintId)?.WhereItRuns ?? "";
-
-    /// <summary>One engine: its name with a badge, its strength in a few words, the rundown of what it can do
-    /// (<see cref="AbilitiesLine"/>) and where it runs (<see cref="RunsOnLine"/>), its other needs as chips, where it stands
-    /// on the shown computer (when the button doesn't already say it), and its button on the right.</summary>
-    private Border EngineRow(string key, string name, string summary, VoiceAbilities abilities, IReadOnlyList<VoiceTag> tags,
-        string runsOn, IReadOnlyList<string> features, Func<string, string?>? tip, string? badge, string? state, bool warn, bool inUse,
-        Button button, IEnumerable<UIElement>? extra = null)
-    {
-        var title = OptionTitle(name, badge, 15);
-        AutomationProperties.SetName(title, name + (badge is null ? "" : " · " + badge));
-        AutomationProperties.SetAutomationId(title, "VoiceEngine-" + key);
-        var text = new StackPanel();
-        text.Children.Add(title);
-        text.Children.Add(Note(summary, new Thickness(0, 2, 0, 0)));
-        text.Children.Add(AbilitiesLine(key, abilities, tags));
-        text.Children.Add(RunsOnLine(key, runsOn));
-        text.Children.Add(Chips(key, features, tip));
-        if (state is not null)
-        {
-            var stateLine = Note(state, new Thickness(0, 4, 0, 0));
-            if (warn) stateLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-            AutomationProperties.SetAutomationId(stateLine, "VoiceEngineState-" + key);
-            text.Children.Add(stateLine);
-        }
-        foreach (var element in extra ?? []) text.Children.Add(element);
-        button.VerticalAlignment = VerticalAlignment.Top;
-        button.Margin = new Thickness(12, 0, 0, 0);
-        var row = new DockPanel();
-        DockPanel.SetDock(button, Dock.Right);
-        row.Children.Add(button);
-        row.Children.Add(text);
-        var option = new Border { Child = row, BorderThickness = new Thickness(inUse ? 2 : 1), CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(0, 8, 0, 0) };
-        option.SetResourceReference(Border.BorderBrushProperty, inUse ? "AccentBrush" : "BorderBrush");
-        return option;
-    }
 
     /// <summary>The quick rundown of what a voice can do, in one wrapping line: "✓ Voice cloning   ✓ Laughs &amp; sighs
     /// ◐ Emotions: whispering only" (✓ yes, ◐ partly, ✕ no). It reads as <see cref="VoiceAbilities.Describe"/>

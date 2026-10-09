@@ -7,8 +7,11 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
+using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Mcp.Client;
+using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
@@ -40,6 +43,12 @@ public partial class MainWindow
     private string? checkInStatusWritten;
     // Refreshes the open Check-ins page's status lines.
     private Action? showCheckIns;
+    // The last seconds of the microphone and of what this PC plays: kept in memory only while a check-in that is on asks for them
+    // (the PC sound also while the sound digest describes it), never saved or logged.
+    private readonly Martlet.Audio.PcSoundBuffer checkInMicrophone = new(CheckInKept), checkInPcSound = new(CheckInKept);
+    private static TimeSpan CheckInKept => TimeSpan.FromSeconds(30);
+    // A buffer that kept nothing new for this long doesn't hear now (the capture stopped).
+    private static TimeSpan CheckInFresh => TimeSpan.FromSeconds(2);
 
     private static readonly (CheckInFacts Fact, string Label)[] CheckInFactChoices =
     [
@@ -77,6 +86,7 @@ public partial class MainWindow
     private (CheckIn? Next, CheckInState? State) LookAtCheckIns(string? now = null)
     {
         var all = CheckIns.All(checkInSettings);
+        KeepCheckInSound(all);
         var blocked = Role != DeviceRole.Companion ? "this PC is a Martlet host" : conversation is null ? "Martlet can't talk on this PC" : null;
         if (blocked is not null || now is null && !all.Any(c => c.On))
         {
@@ -86,16 +96,30 @@ public partial class MainWindow
         conversation!.ReadThinkingPoolOnce();
         var state = CheckInStateNow();
         checkInExchanged = state.Exchanged;
-        var member = CheckInFixture() is not null || conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn);
+        var fixture = CheckInFixture() is not null;
         CheckIn? next = null;
         foreach (var checkIn in all)
         {
             var wait = CheckIns.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now);
-            if (wait is null && !member) wait = "no Thinking pool member can take it";
+            if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs))
+                wait = CheckInNoMember(checkIn);
             checkInWaits[checkIn.Id] = wait ?? "";
             if (wait is null && next is null && (now is null || checkIn.Id == now)) next = checkIn;
         }
         return (next, state);
+    }
+
+    private static string CheckInNoMember(CheckIn checkIn, bool ran = false) =>
+        $"no Thinking pool member {(ran ? "could" : "can")} take it" +
+        (checkIn.Needs == ThinkingCapability.Text ? "" : $" (it needs a model for {CheckIns.Describe(checkIn.Needs)})");
+
+    /// <summary>The microphone and what this PC plays keep their last seconds only while a check-in that is on asks for them, on
+    /// a companion PC.</summary>
+    private void KeepCheckInSound(IReadOnlyList<CheckIn> all)
+    {
+        var companion = Role == DeviceRole.Companion;
+        checkInMicrophone.Wanted = companion && all.Any(c => c is { On: true, Custom: true, Recording: CheckInRecording.Microphone });
+        checkInPcSound.Wanted = companion && all.Any(c => c is { On: true, Custom: true, Recording: CheckInRecording.PcSound });
     }
 
     /// <summary>One look at the check-ins: each says why it waits, and the first one that may run (or the one the owner asked
@@ -125,7 +149,7 @@ public partial class MainWindow
     {
         var focused = CheckIns.Focus(checkIn, state, now);
         var prompts = homeSettings?.Prompts;
-        if (CheckIns.Prepare(checkIn, focused, prompts) is not { } job)
+        if (CheckIns.Prepare(checkIn, focused, prompts) is null)
         {
             checkInWaits[checkIn.Id] = checkIn.Custom ? "its prompt is empty" : "its prompt on Companion › Prompts is empty";
             return;
@@ -135,36 +159,114 @@ public partial class MainWindow
         var began = Stopwatch.GetTimestamp();
         string result;
         bool acted = false, kept = false;
-        string? member = null;
+        string? member = null, gathered = null;
         try
         {
-            var done = CheckInFixture() is { } fixture
-                ? File.Exists(fixture)
-                    ? new ThinkingJobResult(ThinkingJobOutcome.Succeeded, await File.ReadAllTextAsync(fixture, lifetime.Token), "fixture",
-                        "FIXTURE - NOT AI", null, 1)
-                    : new ThinkingJobResult(ThinkingJobOutcome.Failed, null, null, null, $"{CheckInFixtureVariable} names no file", 0)
-                : await conversation!.ThinkingPool.RunAsync(job, lifetime.Token);
-            member = done.Member is { } name ? done.Model is { } model ? $"{name} ({model})" : name : null;
-            if (!done.Succeeded)
-                result = done.Outcome == ThinkingJobOutcome.NoMember ? "no Thinking pool member could take it"
-                    : $"the Thinking pool didn't answer ({done.Problem ?? done.Outcome.ToString()})";
+            var (withInputs, missing, took) = await GatherForCheckInAsync(checkIn, focused, lifetime.Token);
+            gathered = took;
+            if (missing is not null) result = missing;
+            else if (CheckIns.Prepare(checkIn, withInputs, prompts) is not { } job) result = "its prompt is empty";
             else
             {
-                var verdict = CheckIns.Read(checkIn, done.Text, focused);
-                kept = verdict is { Readable: true, Act: false };
-                (result, acted) = await ActOnCheckInAsync(checkIn, verdict, prompts);
+                var done = CheckInFixture() is { } fixture
+                    ? File.Exists(fixture)
+                        ? new ThinkingJobResult(ThinkingJobOutcome.Succeeded, await File.ReadAllTextAsync(fixture, lifetime.Token), "fixture",
+                            "FIXTURE - NOT AI", null, 1)
+                        : new ThinkingJobResult(ThinkingJobOutcome.Failed, null, null, null, $"{CheckInFixtureVariable} names no file", 0)
+                    : await conversation!.ThinkingPool.RunAsync(job, lifetime.Token);
+                member = done.Member is { } name ? done.Model is { } model ? $"{name} ({model})" : name : null;
+                if (!done.Succeeded)
+                    result = done.Outcome == ThinkingJobOutcome.NoMember ? CheckInNoMember(checkIn, ran: true)
+                        : $"the Thinking pool didn't answer ({done.Problem ?? done.Outcome.ToString()})";
+                else
+                {
+                    var verdict = CheckIns.Read(checkIn, done.Text, withInputs);
+                    kept = verdict is { Readable: true, Act: false };
+                    (result, acted) = await ActOnCheckInAsync(checkIn, verdict, prompts);
+                }
             }
         }
         catch (OperationCanceledException) { return; }
         finally { checkInRunning = null; }
-        var took = Stopwatch.GetElapsedTime(began);
-        var run = new CheckInRun(DateTimeOffset.Now, state.Exchanged, result, acted) { Member = member, Took = took, Kept = kept };
+        var elapsed = Stopwatch.GetElapsedTime(began);
+        var run = new CheckInRun(DateTimeOffset.Now, state.Exchanged, result, acted) { Member = member, Took = elapsed, Kept = kept, Gathered = gathered };
         checkInRuns[checkIn.Id] = run;
         checkInLast = (checkIn.Name, run);
         var counts = checkInCounts.GetValueOrDefault(checkIn.Id);
         checkInCounts[checkIn.Id] = (counts.Runs + 1, counts.Acted + (acted ? 1 : 0));
         checkInWaits[checkIn.Id] = "";
-        ErrorLog.Info($"Check-ins: {checkIn.Name}{(member is null ? "" : " ran on " + member)} in {took.TotalSeconds:0.0} s: {result}.");
+        ErrorLog.Info($"Check-ins: {checkIn.Name}{(member is null ? "" : " ran on " + member)} in {elapsed.TotalSeconds:0.0} s" +
+            $"{(gathered is null ? "" : " with " + gathered)}: {result}.");
+    }
+
+    /// <summary>What one of the owner's check-ins takes with this run: its script's output (Windows PowerShell, hidden, in the
+    /// home folder, stopped after <see cref="CheckIns.ScriptTimeout"/>), a screenshot of the screen in front and the last seconds
+    /// of the microphone or of what this PC plays. <c>Missing</c> says why the run can't go on (no screenshot, no recording);
+    /// <c>Took</c> says what it took in a few words (never the content).</summary>
+    private async Task<(CheckInState State, string? Missing, string? Took)> GatherForCheckInAsync(CheckIn checkIn, CheckInState state,
+        CancellationToken token)
+    {
+        if (!checkIn.Custom || !checkIn.Screenshot && checkIn.Recording == CheckInRecording.None && !checkIn.RunsScript) return (state, null, null);
+        var took = new List<string>();
+        string? output = null;
+        if (checkIn.RunsScript)
+        {
+            var ran = await TerminalRunner.RunAsync(new TerminalSettings { Shell = TerminalShell.WindowsPowerShell }, checkIn.Script!, token,
+                CheckIns.ScriptTimeout);
+            (output, var tookScript) = CheckIns.ScriptRan(ran.Problem, ran.TimedOut, ran.ExitCode, ran.Output, ran.Elapsed);
+            took.Add(tookScript);
+        }
+        BoundedImage? screenshot = null;
+        if (checkIn.Screenshot)
+        {
+            var glancer = new ScreenGlancer();
+            ScreenFrame? frame = null;
+            try
+            {
+                var shot = await Task.Run(() => glancer.Capture(ScreenScope.ActiveScreen), token);
+                frame = shot.Frame;
+                if (frame is null)
+                    return (state, "no screenshot: " + shot.Skip switch
+                    {
+                        GlanceSkip.MartletInFront => "Martlet's own windows cover the screen",
+                        GlanceSkip.Private => "a private window is in front",
+                        GlanceSkip.Blank => "the screen is black to Martlet (a locked screen, or protected video)",
+                        _ => "Martlet couldn't take one" + (shot.Note is { } why ? $" ({why})" : "")
+                    }, Joined(took));
+                screenshot = frame.Encode();
+                took.Add($"a screenshot ({screenshot.Width}x{screenshot.Height})");
+            }
+            catch (Exception error) when (error is InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
+            {
+                return (state, $"no screenshot: {error.Message}", Joined(took));
+            }
+            finally
+            {
+                frame?.Clear();
+                Task.Run(glancer.Release).Forget();
+            }
+        }
+        BoundedWaveAudio? recording = null;
+        if (checkIn.Recording != CheckInRecording.None)
+        {
+            var microphone = checkIn.Recording == CheckInRecording.Microphone;
+            var pcm = (microphone ? checkInMicrophone : checkInPcSound).Recent(TimeSpan.FromSeconds(checkIn.RecordingSeconds), CheckInFresh);
+            try
+            {
+                if (pcm.Length < Martlet.Audio.PcSoundBuffer.SampleRate * 2)
+                    return (state, "no recording: Martlet didn't hear " + (microphone ? "the microphone" : "what this PC plays") + " just now",
+                        Joined(took));
+                recording = BoundedWaveAudio.FromPcm(new PcmFormat
+                {
+                    SampleRate = Martlet.Audio.PcSoundBuffer.SampleRate, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian
+                }, pcm);
+                took.Add($"{recording.Duration.TotalSeconds:0.#} s of {(microphone ? "the microphone" : "what this PC plays")}");
+            }
+            finally { Array.Clear(pcm); }
+        }
+        return (state with { Screenshot = screenshot, Recording = recording, ScriptOutput = output }, null, Joined(took));
+
+        static string? Joined(List<string> parts) => parts.Count == 0 ? null : string.Join(", ", parts);
     }
 
     /// <summary>Does what the answer asks for and says what came of it in a few words (never the answer's own text).</summary>
@@ -245,7 +347,8 @@ public partial class MainWindow
             CharacterShows = showing, Emotes = emotes, Gaze = gaze, Work = CheckInWork(now),
             Screen = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Screen)?.Text,
             Sound = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Sound)?.Text,
-            Said = conversation?.RecentSayings(now) ?? []
+            Said = conversation?.RecentSayings(now) ?? [],
+            HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh)
         };
     }
 
@@ -337,8 +440,11 @@ public partial class MainWindow
         if (CheckInFixture() is not null) return $"{count}. FIXTURE - NOT AI: {CheckInFixtureVariable} answers them, not the Thinking pool.";
         if (conversation.ThinkingPool.Find(ThinkingJobKind.CheckIn) is not { } member)
             return $"{count}, but they wait: the Thinking pool has no member that can take them. Add one on Thinking pool.";
+        var unable = CheckIns.All(checkInSettings).Where(c => c.On && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs)).ToArray();
         return $"{count}. They run on the Thinking pool ({member.Name}{(member.Model is { } model ? ", " + model : "")} first), never on the " +
-            "conversation's own Thinking model.";
+            "conversation's own Thinking model." + (unable.Length == 0 ? ""
+                : $" {string.Join(", ", unable.Select(c => c.Name))} {(unable.Length == 1 ? "waits" : "wait")} for a member that can take " +
+                  $"{(unable.Length == 1 ? CheckIns.Describe(unable[0].Needs) : "what they need")}.");
     }
 
     private static string? CheckInFixture() => Environment.GetEnvironmentVariable(CheckInFixtureVariable) is { Length: > 0 } path ? path : null;
@@ -402,7 +508,9 @@ public partial class MainWindow
             Note("Write what the Thinking pool should check, such as \"If the user has been at it for hours, suggest a short break\" or " +
                 "\"If it's late at night, remind Martlet to talk more softly\". Choose what it gets to know (it always gets the day " +
                 "and time), how often it runs and what happens with its answer: a reminder in Martlet's next reply, or Martlet " +
-                "brings it up on its own as soon as it's free. A new check-in starts off.", new Thickness(0, 0, 0, 4))
+                "brings it up on its own as soon as it's free. A check-in can also take a screenshot, the last seconds of the " +
+                "microphone or of what this PC plays, and what a script of yours prints, and you choose what its model must " +
+                "handle. A new check-in starts off.", new Thickness(0, 0, 0, 4))
         };
         foreach (var custom in checkInSettings.Custom) stack.Add(OwnCheckInRow(custom, lines, rows, autoSave));
         var add = PageButton("Add a check-in", AddOwnCheckIn, id: "CheckInAdd");
@@ -463,12 +571,74 @@ public partial class MainWindow
         var status = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(status, "CheckInStatus-" + id);
         lines.Add(() => status.Text = CheckInLine(id));
+        // The model it needs: text always; pictures and recordings by choice, and always for a screenshot or a recording.
+        var ownVision = custom.Needs.HasFlag(ThinkingCapability.Vision);
+        var ownAudio = custom.Needs.HasFlag(ThinkingCapability.Audio);
+        var text = new CheckBox { Content = "Text", IsChecked = true, IsEnabled = false, Margin = new Thickness(0, 0, 16, 6) };
+        AutomationProperties.SetAutomationId(text, $"CheckInNeeds-{id}-Text");
+        var vision = new CheckBox { Content = "Sees pictures", Margin = new Thickness(0, 0, 16, 6) };
+        AutomationProperties.SetAutomationId(vision, $"CheckInNeeds-{id}-Vision");
+        AutomationProperties.SetHelpText(vision, "Only Thinking pool members whose model sees pictures take this check-in.");
+        var audio = new CheckBox { Content = "Hears recordings", Margin = new Thickness(0, 0, 16, 6) };
+        AutomationProperties.SetAutomationId(audio, $"CheckInNeeds-{id}-Audio");
+        AutomationProperties.SetHelpText(audio, "Only Thinking pool members whose model hears recordings take this check-in.");
+        var needs = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        needs.Children.Add(text);
+        needs.Children.Add(vision);
+        needs.Children.Add(audio);
+        var screenshot = new CheckBox
+        {
+            Content = "A screenshot of the screen in front", IsChecked = custom.Screenshot, Margin = new Thickness(0, 0, 16, 6),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        AutomationProperties.SetAutomationId(screenshot, "CheckInScreenshot-" + id);
+        AutomationProperties.SetHelpText(screenshot, "Each run takes a screenshot of the screen you work on. It doesn't run while a private window is in front.");
+        var recording = Compact(new ComboBox
+        {
+            ItemsSource = new[] { "No recording", "The last seconds of the microphone", "The last seconds of what this PC plays" },
+            SelectedIndex = (int)custom.Recording, Width = 280
+        });
+        AutomationProperties.SetAutomationId(recording, "CheckInRecording-" + id);
+        AutomationProperties.SetName(recording, "Recording with each run");
+        var seconds = Compact(new ComboBox
+        {
+            ItemsSource = CheckIns.RecordingChoices.Select(s => $"{s} seconds").ToArray(),
+            SelectedIndex = Math.Max(0, CheckIns.RecordingChoices.ToList().IndexOf(custom.RecordingSeconds)), Width = 120
+        });
+        AutomationProperties.SetAutomationId(seconds, "CheckInSeconds-" + id);
+        AutomationProperties.SetName(seconds, "How many seconds it records");
+        var script = new TextBox
+        {
+            Text = custom.Script, AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.NoWrap,
+            MaxLength = CheckIns.MaximumScriptCharacters, MinHeight = 40, MaxHeight = 160, FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(script, "CheckInScript-" + id);
+        AutomationProperties.SetName(script, "A script it runs first");
+        AutomationProperties.SetHelpText(script, "Windows PowerShell runs it hidden in your home folder before each run, " +
+            $"for at most {CheckIns.ScriptTimeout.TotalSeconds:0} seconds. What it prints goes to the check-in.");
+        void ShowNeeds()
+        {
+            // Disable before checking, so a forced tick isn't taken as the owner's choice.
+            vision.IsEnabled = screenshot.IsChecked != true;
+            vision.IsChecked = !vision.IsEnabled || ownVision;
+            audio.IsEnabled = recording.SelectedIndex <= 0;
+            audio.IsChecked = !audio.IsEnabled || ownAudio;
+            seconds.IsEnabled = recording.SelectedIndex > 0;
+        }
+        ShowNeeds();
         rows.Add(() => new CustomCheckIn
         {
             Id = id, Name = name.Text.Trim() is { Length: > 0 } named ? named : "My check-in", On = on.IsChecked == true,
             EveryMinutes = CheckIns.EveryChoices[Math.Max(0, every.SelectedIndex)], Task = task.Text.Replace("\r\n", "\n", StringComparison.Ordinal),
             Facts = boxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInFacts.None, (all, b) => all | b.Fact),
-            Outcome = outcome.SelectedIndex == 1 ? CheckInOutcome.Say : CheckInOutcome.Note
+            Outcome = outcome.SelectedIndex == 1 ? CheckInOutcome.Say : CheckInOutcome.Note,
+            Needs = ThinkingCapability.Text | (ownVision ? ThinkingCapability.Vision : ThinkingCapability.None) |
+                (ownAudio ? ThinkingCapability.Audio : ThinkingCapability.None),
+            Screenshot = screenshot.IsChecked == true, Recording = (CheckInRecording)Math.Max(0, recording.SelectedIndex),
+            RecordingSeconds = CheckIns.RecordingChoices[Math.Max(0, seconds.SelectedIndex)],
+            Script = script.Text.Replace("\r\n", "\n", StringComparison.Ordinal)
         });
         void Typed()
         {
@@ -477,6 +647,7 @@ public partial class MainWindow
         }
         name.TextChanged += (_, _) => Typed();
         task.TextChanged += (_, _) => Typed();
+        script.TextChanged += (_, _) => Typed();
         on.Checked += (_, _) => autoSave.SaveNowAsync().Forget();
         on.Unchecked += (_, _) => autoSave.SaveNowAsync().Forget();
         every.SelectionChanged += (_, _) => autoSave.SaveNowAsync().Forget();
@@ -486,6 +657,26 @@ public partial class MainWindow
             box.Checked += (_, _) => autoSave.SaveNowAsync().Forget();
             box.Unchecked += (_, _) => autoSave.SaveNowAsync().Forget();
         }
+        void Chose(CheckBox box, bool on)
+        {
+            if (!box.IsEnabled) return;
+            if (box == vision) ownVision = on;
+            else ownAudio = on;
+            autoSave.SaveNowAsync().Forget();
+        }
+        vision.Checked += (_, _) => Chose(vision, true);
+        vision.Unchecked += (_, _) => Chose(vision, false);
+        audio.Checked += (_, _) => Chose(audio, true);
+        audio.Unchecked += (_, _) => Chose(audio, false);
+        void Gathers()
+        {
+            ShowNeeds();
+            autoSave.SaveNowAsync().Forget();
+        }
+        screenshot.Checked += (_, _) => Gathers();
+        screenshot.Unchecked += (_, _) => Gathers();
+        recording.SelectionChanged += (_, _) => Gathers();
+        seconds.SelectionChanged += (_, _) => autoSave.SaveNowAsync().Forget();
         var top = new WrapPanel();
         top.Children.Add(RowGroup(name));
         top.Children.Add(RowGroup(on));
@@ -496,6 +687,27 @@ public partial class MainWindow
         view.Children.Add(task);
         view.Children.Add(new TextBlock { Text = "It gets to know", Margin = new Thickness(0, 8, 0, 0) });
         view.Children.Add(facts);
+        view.Children.Add(new TextBlock { Text = "With each run it takes", Margin = new Thickness(0, 4, 0, 0) });
+        var inputs = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        inputs.Children.Add(RowGroup(screenshot));
+        inputs.Children.Add(RowGroup(recording));
+        inputs.Children.Add(RowGroup(RowLabel("Length", seconds), seconds));
+        view.Children.Add(inputs);
+        view.Children.Add(new Label
+        {
+            Content = "A _script it runs first (Windows PowerShell, optional); the check-in reads what it prints", Target = script,
+            Padding = new Thickness(0, 6, 0, 0)
+        });
+        view.Children.Add(script);
+        view.Children.Add(Note("For example, the busiest programs: Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 " +
+            $"Name, CPU. It runs hidden in your home folder, as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.",
+            new Thickness(0, 2, 0, 0)));
+        view.Children.Add(new TextBlock { Text = "The model must handle", Margin = new Thickness(0, 8, 0, 0) });
+        view.Children.Add(needs);
+        view.Children.Add(Note("Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model " +
+            "that sees pictures, and a recording needs one that hears recordings. They go only to that member, which can be a " +
+            "cloud service. The microphone and what this PC plays are kept in memory, only while a check-in that is on asks for " +
+            "them and Martlet hears them.", new Thickness(0, 0, 0, 0)));
         view.Children.Add(status);
         async Task SaveThenCheckAsync()
         {
@@ -542,6 +754,7 @@ public partial class MainWindow
             return false;
         }
         checkInSettings = next;
+        KeepCheckInSound(CheckIns.All(next));
         if (said is not null) ActionText.Text = said;
         ShowCheckInsNow();
         WriteCheckInStatus();
@@ -584,16 +797,24 @@ public partial class MainWindow
                 {
                     id = c.Id, name = c.Name, custom = c.Custom, on = c.On, everyMinutes = c.EveryMinutes, outcome = c.Outcome.ToString(),
                     facts = c.Custom ? c.Facts.ToString() : null, prompt = c.PromptId,
+                    needs = c.Needs.ToString(), canRun = member is not null && conversation!.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs),
+                    screenshot = c.Screenshot, recording = c.Custom ? c.Recording.ToString() : null,
+                    recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds, script = c.RunsScript,
                     waiting = checkInWaits.GetValueOrDefault(c.Id) is { Length: > 0 } wait ? wait : null,
                     nextAt = last is null ? (DateTimeOffset?)null : last.At + CheckIns.Pace(c, last, checkInExchanged),
                     runs = counts.Runs, acted = counts.Acted,
                     last = last is null ? null : new
                     {
-                        at = last.At, result = last.Result, acted = last.Acted, member = last.Member,
+                        at = last.At, result = last.Result, acted = last.Acted, member = last.Member, gathered = last.Gathered,
                         ms = last.Took is { } took ? (long?)took.TotalMilliseconds : null
                     }
                 };
-            }).ToArray()
+            }).ToArray(),
+            sound = new
+            {
+                microphoneKept = checkInMicrophone.Keeps, microphoneHeard = checkInMicrophone.Hears(CheckInFresh),
+                pcKept = checkInPcSound.Keeps, pcHeard = checkInPcSound.Hears(CheckInFresh)
+            }
         }, new JsonSerializerOptions { WriteIndented = true });
     }
 }

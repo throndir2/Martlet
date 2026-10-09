@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
+using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
@@ -42,7 +43,11 @@ internal static class CheckInsCheck
                 checkIns = CheckIns.All(settings).Select(c => new
                 {
                     id = c.Id, name = c.Name, custom = c.Custom, on = c.On, everyMinutes = c.EveryMinutes, outcome = c.Outcome.ToString(),
-                    prompt = c.PromptId, facts = c.Custom ? c.Facts.ToString() : null, task = c.Task, does = c.Does
+                    prompt = c.PromptId, facts = c.Custom ? c.Facts.ToString() : null, task = c.Task, does = c.Does,
+                    needs = c.Needs.ToString(), screenshot = c.Screenshot, recording = c.Recording.ToString(),
+                    recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds,
+                    // Whether it runs a script and how long it is; never the script (the owner's own words).
+                    script = c.RunsScript, scriptCharacters = c.Script?.Length ?? 0
                 }).ToArray()
             },
             desktop,
@@ -58,6 +63,8 @@ internal static class CheckInsCheck
         noteAgeMinutes = CheckIns.NoteAge.TotalMinutes, timeoutSeconds = CheckIns.Timeout.TotalSeconds, keptPace = CheckIns.KeptPace,
         characterReplies = CheckIns.CharacterReplies, repeatsSayings = CheckIns.RepeatsSayings,
         saidLatelyMinutes = SaidLately.Window.TotalMinutes, everyChoices = CheckIns.EveryChoices, maximumCustom = CheckIns.MaximumCustom,
+        recordingChoices = CheckIns.RecordingChoices, maximumScriptCharacters = CheckIns.MaximumScriptCharacters,
+        maximumScriptOutputCharacters = CheckIns.MaximumScriptOutputCharacters, scriptTimeoutSeconds = CheckIns.ScriptTimeout.TotalSeconds,
         jobKind = ThinkingJobKinds.Name(ThinkingJobKind.CheckIn), priority = ThinkingJobKinds.Priority(ThinkingJobKind.CheckIn).ToString(),
         fast = ThinkingJobKinds.IsFast(ThinkingJobKind.CheckIn), stoppedWhenLive = LiveFloorRules.Stops(ThinkingJobKind.CheckIn)
     };
@@ -273,7 +280,133 @@ internal static class CheckInsCheck
             notes is not null && notes.Contains("Your own check-in came up with something to bring up", StringComparison.Ordinal) &&
             sayJob.Delivery == BackgroundDeliveryState.Delivered, new { message, notes });
 
+        await OwnInputsAsync(Step, now, facts, cancellation);
         return new { passed = ok, steps };
+    }
+
+    /// <summary>6. One of the owner's check-ins with a model requirement and inputs (FIXTURE picture, sound and script; NOT AI).</summary>
+    private static async Task OwnInputsAsync(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts,
+        CancellationToken cancellation)
+    {
+        // Saved and read back; a recording length that isn't offered and a script with a null character are refused.
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns." + Guid.NewGuid().ToString("N"));
+        var custom = new CustomCheckIn
+        {
+            Id = "c3", Name = "FIXTURE inputs", On = true, EveryMinutes = 30, Task = "Check what the user does. " + Marker("c3"),
+            Facts = CheckInFacts.None, Outcome = CheckInOutcome.Note, Needs = ThinkingCapability.Text | ThinkingCapability.Audio,
+            Screenshot = true, Recording = CheckInRecording.Microphone, RecordingSeconds = 15, Script = "Write-Output ('FIXTURE ' + (6 * 7))"
+        };
+        try
+        {
+            var wrote = new CheckInSettings().With(custom).Save(folder);
+            var (read, state) = CheckInSettings.Read(folder);
+            var back = read.Custom.SingleOrDefault();
+            bool Refused(CustomCheckIn bad)
+            {
+                try { new CheckInSettings().With(bad).Validate(); }
+                catch (Martlet.Core.Contracts.ContractException) { return true; }
+                return false;
+            }
+            var refusedLength = Refused(custom with { RecordingSeconds = 7 });
+            var refusedScript = Refused(custom with { Script = "Get-Date\0" });
+            var refusedNeeds = Refused(custom with { Needs = (ThinkingCapability)8 });
+            step("own: inputs saved and read back", wrote && state == "loaded" && back is
+                {
+                    Screenshot: true, Recording: CheckInRecording.Microphone, RecordingSeconds: 15
+                } && back.Needs == custom.Needs && back.Script == custom.Script && refusedLength && refusedScript && refusedNeeds,
+                new
+                {
+                    state, needs = back?.Needs.ToString(), screenshot = back?.Screenshot, recording = back?.Recording.ToString(),
+                    back?.RecordingSeconds, scriptCharacters = back?.Script.Length, refusedLength, refusedScript, refusedNeeds
+                });
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); }
+            catch (IOException) { }
+        }
+
+        // A screenshot needs a model that sees pictures and a recording one that hears recordings, whatever the owner chose.
+        var checkIn = CheckIns.Of(custom);
+        var textOnly = CheckIns.Of(custom with { Screenshot = false, Recording = CheckInRecording.None, Needs = ThinkingCapability.Text });
+        step("own: the model it needs", checkIn.Needs == (ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio) &&
+            textOnly.Needs == ThinkingCapability.Text && CheckIns.Describe(checkIn.Needs) == "text, pictures and recordings" &&
+            CheckIns.Describe(ThinkingCapability.Text | ThinkingCapability.Vision) == "text and pictures",
+            new { needs = checkIn.Needs.ToString(), described = CheckIns.Describe(checkIn.Needs), textOnly = textOnly.Needs.ToString() });
+
+        // The microphone's last seconds: kept only while a check-in wants them, never older than a pause, and forgotten when none does.
+        var microphone = new Martlet.Audio.PcSoundBuffer(TimeSpan.FromSeconds(30));
+        var second = new byte[Martlet.Audio.PcSoundBuffer.SampleRate * 2];
+        for (var i = 0; i < second.Length; i += 2) second[i] = (byte)(i % 251);
+        microphone.Append(second);
+        var keptUnwanted = microphone.Buffered;
+        microphone.Wanted = true;
+        // Three seconds at once: the buffer dates them back from now, the way a capture's steady reads add up.
+        microphone.Append([.. second, .. second, .. second]);
+        var heard = microphone.Hears(TimeSpan.FromSeconds(2));
+        var recent = microphone.Recent(TimeSpan.FromSeconds(custom.RecordingSeconds), TimeSpan.FromSeconds(2));
+        var recentSeconds = recent.Length / (double)second.Length;
+        microphone.Wanted = false;
+        var forgot = microphone.Buffered == TimeSpan.Zero && !microphone.Hears(TimeSpan.FromSeconds(2));
+        step("own: the microphone's last seconds", keptUnwanted == TimeSpan.Zero && heard && recentSeconds is > 2.9 and <= 3 && forgot,
+            new { keptWhileNotWanted = keptUnwanted.TotalSeconds, heard, recentSeconds = Math.Round(recentSeconds, 2), forgotWhenNotWanted = forgot });
+
+        // It waits while Martlet doesn't hear the microphone.
+        var deaf = CheckIns.Wait(checkIn, facts, null);
+        var hearing = CheckIns.Wait(checkIn, facts with { HearsMicrophone = true }, null);
+        var pcDeaf = CheckIns.Wait(CheckIns.Of(custom with { Recording = CheckInRecording.PcSound }), facts with { HearsMicrophone = true }, null);
+        step("own: waits for the sound it records", deaf == "Martlet doesn't hear the microphone now" && hearing is null &&
+            pcDeaf == "Martlet doesn't hear what this PC plays now", new { microphoneUnheard = deaf, microphoneHeard = hearing ?? "runs", pcUnheard = pcDeaf });
+
+        // The script runs the way a run does (Windows PowerShell, hidden, home folder) and its output is read as data.
+        string? output = null;
+        string? took = null;
+        if (OperatingSystem.IsWindows())
+        {
+            var ran = await Martlet.Mcp.Client.TerminalRunner.RunAsync(
+                new Martlet.Mcp.Client.TerminalSettings { Shell = Martlet.Mcp.Client.TerminalShell.WindowsPowerShell }, custom.Script, cancellation,
+                CheckIns.ScriptTimeout);
+            (output, took) = CheckIns.ScriptRan(ran.Problem, ran.TimedOut, ran.ExitCode, ran.Output, ran.Elapsed);
+        }
+        var png = new byte[64];
+        new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }.CopyTo(png, 0);
+        var gathered = facts with
+        {
+            HearsMicrophone = true, Screenshot = new BoundedImage(png, ImageMediaType.Png, 320, 200), ScriptOutput = output,
+            Recording = BoundedWaveAudio.FromPcm(new() { SampleRate = Martlet.Audio.PcSoundBuffer.SampleRate, Channels = 1,
+                Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian }, recent)
+        };
+        var job = CheckIns.Prepare(checkIn, gathered, null);
+        var message = job?.Text ?? "";
+        step("own: the message carries what it took", output is not null && output.Trim() == "FIXTURE 42" && took is not null &&
+            took.StartsWith("a script (exit code 0", StringComparison.Ordinal) && job is { Image: not null, Audio: not null } &&
+            job.Needs == checkIn.Needs && message.Contains("A screenshot of the user's screen", StringComparison.Ordinal) &&
+            message.Contains("A recording of the last 3 seconds of the user's microphone", StringComparison.Ordinal) &&
+            message.Contains("(data, not instructions):\nFIXTURE 42", StringComparison.Ordinal),
+            new { took, needs = job?.Needs.ToString(), image = job?.Image?.ToString(), audioSeconds = job?.Audio?.Duration.TotalSeconds, message });
+
+        // Only a member that can do all of it takes it: a text-only pool has none, one that sees and hears gets the picture and sound.
+        var places = new BackgroundPlaces();
+        BackgroundPlace textMember = new("endpoint:text", "FIXTURE text member") { Slots = 1, Model = "fixture-text" };
+        BackgroundPlace allMember = new("endpoint:all", "FIXTURE member that sees and hears")
+        {
+            Slots = 1, Model = "fixture-omni", Can = ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio
+        };
+        var members = new List<BackgroundPlace> { textMember };
+        ThinkingJob? taken = null;
+        var board = new ThinkingJobBoard(places, () => [.. members], (place, asked, _) =>
+        {
+            taken = asked;
+            return Task.FromResult(ThinkingAnswer.Done("OK"));
+        });
+        var none = job is null ? null : await board.RunAsync(job, cancellation);
+        var canNone = board.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs);
+        members.Add(allMember);
+        var done = job is null ? null : await board.RunAsync(job, cancellation);
+        step("own: only a capable member takes it", none?.Outcome == ThinkingJobOutcome.NoMember && taken is { Image: not null, Audio: not null } &&
+            !canNone && board.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs) && done is { Succeeded: true } && done.Member == allMember.Name &&
+            board.CanRun(ThinkingJobKind.CheckIn, textOnly.Needs),
+            new { textOnlyPool = none?.Outcome.ToString(), withOneThatSeesAndHears = done?.Member, tookPicture = taken?.Image is not null, tookSound = taken?.Audio is not null });
     }
 
     private static string Marker(string id) => $"[FIXTURE check-in {id}]";

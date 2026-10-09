@@ -172,14 +172,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // apps answer (GET of their model lists), and Find models only asks the address typed there (on this PC only) for its
         // models. Neither saves, sends a prompt or starts anything.
         "LocalServersScan", "LocalServerFind",
-        // Companion › Thinking's Image model and Audio model links (beside ThinkingSenses) only open Vision or Listening.
-        "ThinkingOpenImageModel", "ThinkingOpenAudioModel",
+        // Companion › Thinking's Image model and Audio model links (beside ThinkingSenses) only open Vision or Hearing, and
+        // Listening's link to Hearing only opens it.
+        "ThinkingOpenImageModel", "ThinkingOpenAudioModel", "ListeningOpenHearing",
         "DiscordCallCheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
-    /// "Where it runs" options ("Place-Voice-Computer") and the Image model and Audio model choices on Vision and Listening
-    /// ("Place-ImageModel-ThisPc", "Place-AudioModel-OtherSense") only show that place's choices, which their own buttons commit, and
+    /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit, and
     /// Voice engine's computer pills ("SpeakingHost-gpu-pc") and Singing's ("SingingHost-this-pc") only show that computer's engines. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
     /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
@@ -188,9 +188,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "SingingHost-", "HealthCheck-", "HealthOpen-",
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // An option picker's choice ("Picker-VoiceEngine-chatterbox", "Picker-Pictures-Off") only shows that option's details
-        // below the list, and its Compare ("PickerCompare-VoiceEngine") only shows or hides the table; the details' own button
-        // commits (and needs --allow-ui-effects). MainWindow.OptionPicker.cs.
-        "Picker-", "PickerCompare-",
+        // below the list, its Compare ("PickerCompare-VoiceEngine") only shows or hides the table, and its Show N more
+        // ("PickerMore-VoiceEngine") only shows or hides the rows past the first four; the details' own button commits (and needs
+        // --allow-ui-effects). MainWindow.OptionPicker.cs.
+        "Picker-", "PickerCompare-", "PickerMore-",
         // Devices' list filters ("DeviceFilter-attention") only filter the cards shown.
         "DeviceFilter-",
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
@@ -201,20 +202,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
-        // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
-        // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
-        "DeepPlace-",
-        // Companion › Thinking › This PC's "Model app" options ("LocalApp-Ollama", "LocalApp-Other") only show that app's card;
-        // its own Use button commits (and needs --allow-ui-effects).
-        "LocalApp-",
         // Companion › Check-ins: a check-in's Edit its prompt ("CheckInPrompt-emotes") only opens Prompts.
         "CheckInPrompt-",
-        // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
-        // ("PicturesHost-this-pc") only show that place's card; its own buttons commit.
-        "PicturesPlace-", "PicturesHost-",
-        // Companion › Reading's "Where it reads" options ("ReadingPlace-ThisPc", "ReadingPlace-Host") and its computer pills
-        // ("ReadingHost-this-pc") only show that place's card; its own buttons commit.
-        "ReadingPlace-", "ReadingHost-",
+        // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
+        // details, only show where it stands on that computer; their own buttons commit.
+        "PicturesHost-", "ReadingHost-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -222,7 +214,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "Creation-",
         // Background tasks: a task's Show or Show output ("TaskShow-3") only shows its run window again, or a finished task's
         // kept output.
-        "TaskShow-"];
+        "TaskShow-",
+        // Settings › Appearance › Custom: choosing a part ("CustomThemeRole-Accent") only shows its color in the editor.
+        "CustomThemeRole-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -264,7 +258,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // setup ("Configuring your computers: 1 of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4).", or how it
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
         "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
-        "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
         // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
         // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed
@@ -314,7 +308,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The character overlay's drag surface reads as its last tap's hit test (zone, hit areas, drawables, bone; model-authored
         // names only, never paths); character_touch taps it.
         "MoveAvatar",
-        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
+        // Companion › Lip-sync › This PC: its ways are an option picker (Picker-LipSync-Audio2Face, -Loudness, -Own); the shown
+        // way's details read what this PC's graphics card means for Audio2Face (LipSyncDockerAbout) and where your own service
+        // stands (LipSyncOwnState).
+        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnState", "LipSyncDockerAbout",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.
@@ -360,10 +357,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "FreeKeyTip-Thinking", "FreeKeyAdd-Thinking", "FreeKeyGet-Thinking", "SetupCloudGetKey-Thinking",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
-        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected) and VisionToggle's label says what it does
-        // (clicking it saves talk-preferences.json, so it needs --allow-ui-effects).
+        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected). VisionToggle is Turn vision off in the Off
+        // choice's details (Picker-Vision-Off) while vision is on, and Turn vision on in the saved image model's details while it
+        // is off; clicking it saves talk-preferences.json, so it needs --allow-ui-effects.
         "VisionNow", "VisionToggle",
-        // Companion › Listening › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
+        // Companion › Hearing's Now line (HearingNow: off and why, or what hears your voice), and HearingToggle: Turn hearing off in
+        // the Off choice's details (Picker-Hearing-Off) while a model hears you, Turn hearing on in the saved audio model's details
+        // after you turned it off; clicking it saves talk-preferences.json, so it needs --allow-ui-effects.
+        "HearingNow", "HearingToggle",
+        // Companion › Hearing › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
         // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
         // Thinking destination the page already shows.
         "TalkHearVoiceChoice",
@@ -376,11 +378,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // while Martlet watches: pictures kept, the last summary's age and time taken. Its help text is the last summary
         // (one or two lines on what changed on the screen, never a window title on its own).
         "VisionScreenSummary", "VisionScreenSummaryStatus", "LiveScreenSummary",
-        // Companion › Listening › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
+        // Companion › Hearing › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
         "TalkHearVoiceTestStatus",
-        // Companion › Vision › Image model and Companion › Listening › Audio model (MainWindow.SenseModels.cs): the choice in words
+        // Companion › Vision's and Companion › Hearing's Now card (MainWindow.SenseModels.cs): the image or audio model in words
         // (ImageModelNow: "Use the same model as the text model (Thinking: gemma4:e2b)." or "A model of its own: Ollama on this PC
         // (qwen2.5vl:7b), chosen on 10/8/2026."), where pictures or recordings go now and why (ImageModelRoute: the routing's
         // words), what the model that takes them is known to do and where that came from (ImageModelKnown), what is sent to a
@@ -390,7 +392,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // beside Thinking's on the graphics card (ImageModelLocalFit). Under A cloud provider or server: the provider picked
         // (ImageModelProvider) and what the key box will do (ImageModelKeyStatus; never the key, base URL or model ID typed). Under
         // One of your computers: ImageModelHosts when none is paired, and each computer's line in SafeValuePrefixes. The same with
-        // AudioModel. The Place-ImageModel-<choice> options only show a panel; ImageModelUseThinking, ImageModelUseOther,
+        // AudioModel. The Picker-Vision-<choice> and Picker-Hearing-<choice> options only show a panel; ImageModelUseThinking, ImageModelUseOther,
         // ImageModelUseLocal, ImageModelSaveCloud (with ImageModelConsent) and ImageModelUseHost-<host> save sense-models.json,
         // ImageModelPullModel downloads a model, ImageModelCheckOllama and ImageModelCheckHosts ask Ollama or the paired computers,
         // and ImageModelTest sends a test request, so they need --allow-ui-effects. Companion › Thinking's line on where pictures
@@ -400,25 +402,23 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AudioModelNow", "AudioModelRoute", "AudioModelKnown", "AudioModelSent", "AudioModelTestStatus", "AudioModelLocalModel",
         "AudioModelLocalStatus", "AudioModelLocalKnown", "AudioModelLocalFit", "AudioModelProvider", "AudioModelKeyStatus",
         "ThinkingSenses",
-        // Companion › Listening › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
+        // Companion › Hearing › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
         "TalkVoicePathStatus",
-        // Companion › Thinking › This PC: the suggested local model picked from SetupLocalModelPicks (its size, the card it fits,
-        // whether it hears your voice or gets the transcript, and whether it's the fastest or the smartest that fits; choosing
-        // one with ui_select only fills SetupLocalModel, the model name, so it needs --allow-ui-effects but saves nothing).
-        "SetupLocalModelPicks", "SetupLocalModel",
-        // Companion › Thinking › This PC › Ollama: what any Ollama model means (a library name, a Hugging Face GGUF, your own).
-        "SetupLocalOwnModels",
-        // Companion › Thinking › This PC › A model app you already use: what looking on this PC's loopback ports found (each app's
-        // name, base URL and model count, or that one asks for a key), the app picked (LocalServerPick: "LM Studio ·
-        // http://127.0.0.1:1234/v1 · 3 models" or "Another address on this PC"), the model in the box and what the app lists
-        // (LocalServerModels), what the key box will do (never the key), how to start the picked app's server and where messages
-        // go (LocalServerHint), and the last Test model result. Choosing LocalServerPick or LocalServerModel with ui_select only
+        // Companion › Thinking › This PC › Ollama: its models are an option picker (Picker-OllamaModel-gemma4:e2b,
+        // Picker-OllamaModel-Other); under Another Ollama model, the model typed (SetupLocalModel) and what any Ollama model means
+        // (SetupLocalOwnModels). Typing in SetupLocalModel saves nothing, but needs --allow-ui-effects.
+        "SetupLocalModel", "SetupLocalOwnModels",
+        // Companion › Thinking › This PC › Model app: the apps are an option picker (Picker-LocalApp-Ollama,
+        // Picker-LocalApp-lm-studio-1234, Picker-LocalApp-Address). For another app: what looking on this PC's loopback ports
+        // found (each app's name, base URL and model count, or that one asks for a key), the model in the box and what the app
+        // lists (LocalServerModels), what the key box will do (never the key), how to start the picked app's server and where
+        // messages go (LocalServerHint), and the last Test model result. Choosing LocalServerModel with ui_select only
         // fills the fields and saves nothing, but needs --allow-ui-effects; LocalServerTest sends the model a short loopback
         // request and LocalServerUse switches Thinking, so they need it too. Martlet.Companion's Find model apps result
         // (LocalModelsFound; its FindLocalModels button fills the unsaved Thinking fields, so it needs --allow-ui-effects).
-        "LocalServersStatus", "LocalServerPick", "LocalServerModel", "LocalServerModels", "LocalServerKeyStatus", "LocalServerHint",
+        "LocalServersStatus", "LocalServerModel", "LocalServerModels", "LocalServerKeyStatus", "LocalServerHint",
         "LocalServerTestResult", "LocalModelsFound",
         // The setup advisor: which step it shows and its plan's summary (the goal's one-line explanation).
         "AdvisorStep", "AdvisorSummary",
@@ -429,30 +429,32 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("F5AddVoiceRecording", then "F5AddVoiceRecording-2" and so on in SafeValuePrefixes), and its intro, which names the
         // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
         // prefix below.
-        // Companion › Singing (under Optional extras): the role on the shown computer (title with its badge, chips, where it stands: not set up,
-        // setting up, ready with the voice matches set up there, failed with the reason, or why that computer can't sing), the
-        // Set up button's label, whether it needs a graphics card of its own (SingingGpu, fixed text) and the saved quality and
-        // voice match; with VevoSing chosen where it isn't set up, that it isn't (or is being added) and the Add VevoSing there
-        // button's label. Set up and Add VevoSing there need --allow-ui-effects. Songs are only performed in conversation
+        // Companion › Singing (under Optional extras): whether and where Martlet sings (SingingNow), and in the Singing role's
+        // details (Picker-Singing-Role) where it stands on the shown computer (not set up, setting up, ready with the voice
+        // matches set up there, failed with the reason, or why that computer can't sing), whether it needs a graphics card of
+        // its own (SingingGpu, fixed text) and the buttons' labels (Set up, Sing on <computer>, Turn singing off in the Off
+        // choice's details); the saved quality; with VevoSing chosen where it isn't set up (Picker-SingingVoiceMatch-VevoSing),
+        // that it isn't (or is being added) and the Add VevoSing there button's label. Set up, Sing on, Turn singing off, Use
+        // SoulX-Singer or VevoSing and Add VevoSing there need --allow-ui-effects. Songs are only performed in conversation
         // (singing_check exercises them headlessly).
-        "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingGpu", "SingingQuality", "SingingVoiceMatch",
-        "SingingVoiceMatchState", "SingingSetUpVevo",
+        "SingingNow", "SingingState", "SingingSetUp", "SingingUse", "SingingTurnOff", "SingingGpu", "SingingQuality",
+        "SingingUseSoulX", "SingingUseVevoSing", "SingingVoiceMatchState", "SingingSetUpVevo",
         // Every Companion page: its group in the side list ("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its fixed intro, which
         // starts with "Optional." on a page Martlet works without.
         "CompanionGroupTitle", "CompanionIntro",
         // Companion › Pictures: where Martlet draws now (PicturesNow), what Check or Draw a test picture found (PicturesTestState:
-        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (title, chips,
-        // where it stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
+        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (where it
+        // stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
         // Z-Image Turbo is there), the chosen workflow, a cloud provider's model ID and whether a key is saved or Thinking's is
         // used (never the key), and the buttons' labels. Pictures themselves are never returned.
-        "PicturesNow", "PicturesTestState", "PicturesEngine", "PicturesFeatures", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
+        "PicturesNow", "PicturesTestState", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
         "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
         "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
         // Companion › Reading: where Martlet reads the text on the screen (ReadingNow), the newest read while watching and the
         // Read my screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds and when, or why
-        // it couldn't), whether Windows can read text here, the Reading role on the shown computer (title, chips, where it
-        // stands) and the buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
-        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingEngine", "ReadingFeatures", "ReadingHostState",
+        // it couldn't), whether Windows can read text here, the Reading role on the shown computer (where it stands) and the
+        // buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
+        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingHostState",
         "ReadingSetUp", "ReadingUseHost", "ReadingUseThisPc", "ReadingTurnOff", "ReadingTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
@@ -585,8 +587,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
         // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects), that the shown
         // Windows computer's graphics card also does other jobs, so its voice can fall behind (SpeakingEngineSharedGpu) and,
-        // under Another of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads
-        // through the VoiceEngine prefix below.
+        // under Another of your computers, that the shown computer isn't reachable (SpeakingHostStatus). The engines are an option
+        // picker (Picker-VoiceEngine-<key>); the shown engine's abilities and chips read through the VoiceEngine prefix below.
         "SpeakingEngineOthers", "SpeakingEngineSharedGpu", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Settings › App updates: this PC's own host service following the app's version (shown only when this PC runs one):
@@ -610,7 +612,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
         // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need
         // --allow-ui-effects); what Ollama on this PC has downloaded, whether the model typed for it fits beside Thinking's on the
-        // graphics card, why Same as Thinking can or can't think here, and what an endpoint's key field will do (never a key or
+        // graphics card, and what an endpoint's key field will do (never a key or
         // base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
         // background tasks chip (LiveTasks: "Background tasks: 1 running · 1 ready") and the task list's line under its title
         // (that tasks keep going while you talk and when finished work comes up; never what a task is about: LiveJob-<id> holds
@@ -618,22 +620,25 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // position, line number and section, lead-in, vamps, ducking, or
         // where and why it stopped; never its title or words: LiveSongLine holds those).
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
-        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare", "DeepThinkingSameStatus",
-        "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
-        // Companion › Thinking pool › One of your computers: the rule that computers with a Thinking model join by themselves,
-        // and which computers you keep out (computer names only).
+        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare",
+        "DeepThinkingKeyStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        // Companion › Thinking pool › Add a machine: the rule that computers with a Thinking model join by themselves, and which
+        // computers you keep out (computer names only).
         "DeepThinkingAutoJoin",
-        // Companion › Thinking pool › Pool members: the member count and usable slots, the guidance ("1 slot: long thinking can
-        // delay screen and sound summaries; add a second slot for the full experience."), the likely-slowdown warnings (a member
-        // beside the conversation's Thinking model or the voice), the live floor's line (which members start no new pool work
-        // while you talk with Martlet because they share the conversation's computer; computer names only) and the Use the
-        // conversation model when the pool is empty box (ticking it saves thinking-pool.json, so it needs --allow-ui-effects).
-        // Each member's line reads through ThinkingPoolMember- below.
-        "ThinkingPoolSummary", "ThinkingPoolGuidance", "ThinkingPoolWarnings", "ThinkingPoolLiveFloor", "ThinkingPoolUseConversationModel",
-        // Companion › Thinking pool › Backup Thinking (off by default): its box, how long a reply waits for its first words
-        // before a member that may answer for the conversation is asked too (automatic or a fixed time) and its line (which
-        // members may answer, and the wait now; member names only). The box and the wait save thinking-pool.json, so they need
-        // --allow-ui-effects. Each member's May answer for the conversation box reads through ThinkingPoolAnswers- below.
+        // Companion › Thinking pool › Machines: the member count and usable slots, the conversation's own row (it is never in the
+        // pool), the guidance ("1 slot: long thinking can delay screen and sound summaries; add a second slot for the full
+        // experience."), the likely-slowdown warnings (a member beside the conversation's Thinking model or the voice), the live
+        // floor's line (which members start no new pool work while you talk with Martlet because they share the conversation's
+        // computer; computer names only) and the conversation row's box that lets thinking longer and research run on the
+        // conversation model when no machine in the pool takes long jobs (ticking it saves thinking-pool.json, so it needs
+        // --allow-ui-effects). Each member's line reads through ThinkingPoolMember- below. Thinking longer's own on/off box
+        // (ThinkLongerOn) saves the reply settings, so it needs --allow-ui-effects.
+        "ThinkingPoolSummary", "ThinkingPoolConversation", "ThinkingPoolGuidance", "ThinkingPoolWarnings", "ThinkingPoolLiveFloor",
+        "ThinkingPoolUseConversationModel", "ThinkLongerOn",
+        // Companion › Thinking pool › Backup for slow replies (Backup Thinking, off by default): its box, how long a reply waits
+        // for its first words before a member ticked for it is asked too (automatic or a fixed time) and its line (which members
+        // may answer, and the wait now; member names only). The box and the wait save thinking-pool.json, so they need
+        // --allow-ui-effects. Each member's Backup for slow replies box reads through ThinkingPoolAnswers- below.
         "ThinkingPoolBackup", "ThinkingPoolBackupDelay", "ThinkingPoolBackupStatus",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
@@ -740,10 +745,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
-        // Settings › Appearance: the palette (Pink light, Rose dark, Character light or Character dark; menus and every window
+        // Settings › Appearance: the palette (Pink light, Rose dark, Character light, Character dark or Custom; menus and every window
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
         "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus",
+        // Settings › Appearance › Custom (shown while the Custom palette is chosen): the palette Start from names, the selected
+        // part's name, help, color code (#RRGGBB) and the hint shown when a typed code isn't a color, its hue (degrees),
+        // saturation and lightness (%), whether every color is easy to read or what may be hard to read (CustomThemeCheck), the
+        // Make it easy to read button (shown only then) and the question Use its colors asks before it replaces colors the owner
+        // chose. Each part reads through CustomThemeRole- below. Changing a color (the code, a slider, a CustomThemePick-<n>,
+        // CustomThemeStartFrom or CustomThemeFix) saves appearance-custom.json, so it needs --allow-ui-effects.
+        "CustomThemeBase", "CustomThemeRoleName", "CustomThemeRoleHelp", "CustomThemeHex", "CustomThemeHexHint", "CustomThemeHue",
+        "CustomThemeSaturation", "CustomThemeLightness", "CustomThemeCheck", "CustomThemeFix", "CustomThemeStartFromQuestion",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role; and
         // under it, Your other computers: what the list offers (or why it is empty or can't switch them). Each computer's row reads
         // through OtherRole- below; its OtherRoleSwitch- button asks that computer to switch, so it needs --allow-ui-effects.
@@ -813,12 +826,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "3 recordings, 14.5 seconds joined, added 10/2/2026. XTTS-v2 learns from each recording."; never names or words) and
     /// Add a voice's line on filling in each recording's words ("F5AddVoiceHeard" and "F5AddVoiceHeard-2" read "Filled in by
     /// Parakeet on this PC: 12 words. Check them and fix anything it misheard."; never the words);
-    /// Companion › Voice › Voice engine's rows, one per engine ("VoiceEngine-chatterbox" reads "Chatterbox Turbo · recommended",
-    /// "VoiceEngineAbilities-chatterbox" "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions: whispering only.",
-    /// "VoiceEngineRunsOn-chatterbox" "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).",
-    /// "VoiceEngineFeatures-chatterbox" "Docker, 5 s+ samples, English", "VoiceEngineState-chatterbox"
-    /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
-    /// Turbo"; "VoiceEngineNone" says when no engine can run there; clicking a button needs --allow-ui-effects) and its computer pills
+    /// Companion › Voice › Voice engine's shown engine (its row is the option picker's "Picker-VoiceEngine-chatterbox"):
+    /// "VoiceEngineAbilities-chatterbox" reads "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions: whispering only.",
+    /// "VoiceEngineFeatures-chatterbox" "Docker, 5 s+ samples, English", and its button "VoiceEngineUse-chatterbox" "Set up and
+    /// use Chatterbox Turbo"; "VoiceEngineNone" says when no engine can run there; clicking a button needs --allow-ui-effects) and its computer pills
     /// ("SpeakingHost-gpu-pc" reads "gpu-pc · speaking");
     /// each character's detail line in Companion › Character › Your characters
     /// ("CharacterModelState-builtin" reads "Live2D. Part of Martlet on every computer. Shown on this PC.",
@@ -901,41 +912,49 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), its On box and Every choice
         // ("CheckInOn-emotes", "CheckInEvery-emotes"), and for the owner's own its Its answer choice and fact boxes
-        // ("CheckInOutcome-c1", "CheckInFact-c1-Conversation"). Changing any of them saves check-ins.json, so it needs
-        // --allow-ui-effects; the name and task boxes (the owner's own words) aren't read here.
+        // ("CheckInOutcome-c1", "CheckInFact-c1-Conversation"), the model it needs ("CheckInNeeds-c1-Vision"), its screenshot
+        // box ("CheckInScreenshot-c1"), its recording and length choices ("CheckInRecording-c1", "CheckInSeconds-c1"). Changing
+        // any of them saves check-ins.json, so it needs --allow-ui-effects; the name, task and script boxes (the owner's own
+        // words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-",
-        // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.")
-        // and, for one without the Deep thinking role, its Add button's name ("DeepThinkingAddRole-diva" reads "Add Deep thinking
-        // on diva"; clicking it installs the role, so it needs --allow-ui-effects); for one with it, its Change model button's
-        // name ("DeepThinkingChangeModel-diva" reads "Change the Deep thinking model on diva (now gemma4:e4b)"; clicking it
-        // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
-        // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
-        // conversation model on diva (now gemma4-e4b)").
-        // Each paired computer's In the Thinking pool box ("DeepThinkingPool-diva" reads "diva in the Thinking pool" and whether
-        // it is ticked: a computer with a Thinking model joins by itself; unticking takes it out and keeps it out, ticking adds it
-        // again; both save thinking-pool.json, so they need --allow-ui-effects). Its line (DeepThinkingHost-diva) says when a
-        // member is offline now or a computer is kept out. Each pool member's line
-        // ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): 2 slots; text only."), its slot choice
-        // (ThinkingPoolSlots-0) and its Remove button (ThinkingPoolRemove-0); both save thinking-pool.json, so they need
-        // --allow-ui-effects. Its May answer for the conversation box ("ThinkingPoolAnswers-0" reads "diva's Thinking pool
-        // (qwen3-8b) may answer for the conversation" and whether it is ticked; ticking it saves thinking-pool.json, so it needs
-        // --allow-ui-effects).
-        // Each paired computer's shared-card warning, when Deep thinking there shares one graphics card with its Thinking model
-        // ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-",
+        // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
+        // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
+        // button's name ("DeepThinkingAddRole-diva" reads "Add the Thinking pool role on diva"; clicking it installs the role, so it
+        // needs --allow-ui-effects); for one with it, its Change model button's name ("DeepThinkingChangeModel-diva" reads "Change
+        // the Thinking pool model and slots on diva (now gemma4:e4b)"; clicking it reads the role's settings there and opens its
+        // dialog, so it needs --allow-ui-effects). Thinking's, Listening's and Lip-sync's computers have the same button for the
+        // role they run ("SetupChangeHost-thinking-diva" reads "Change model: conversation model on diva (now gemma4-e4b)").
+        // Each paired computer's In the pool box ("DeepThinkingPool-diva" reads "diva in the Thinking pool" and whether it is
+        // ticked: a computer with a Thinking model joins by itself; unticking takes it out and keeps it out, ticking adds it
+        // again; both save thinking-pool.json, so they need --allow-ui-effects). Its line (DeepThinkingHost-diva) says why a
+        // computer that isn't a member is out. Each machine in the pool has its line ("ThinkingPoolMember-0" reads "diva's
+        // Thinking pool (qwen3-8b): Reads text; writes text. 2 slots, set on diva."; a paired computer's role sets its slots
+        // there, so it has Change model instead of a slot choice), its badges ("ThinkingPoolBadges-0" reads "...: Waits while
+        // you talk · Costs money · Offline", only those that apply), its slot choice (ThinkingPoolSlots-0, not for a paired
+        // computer's role) and its Remove button (ThinkingPoolRemove-0, not for a paired computer). Its Quick jobs, Long jobs and
+        // Backup for slow replies boxes ("ThinkingPoolQuick-0", "ThinkingPoolLong-0", "ThinkingPoolAnswers-0" read "diva's Thinking
+        // pool (qwen3-8b): Quick jobs" and whether each is ticked). The slot choice, Remove and every box save thinking-pool.json,
+        // so they need --allow-ui-effects.
+        // Each paired computer's shared-card warning, when the Thinking pool role there shares one graphics card with its Thinking
+        // model ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
         "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
         // Companion › Vision › Image model › One of your computers: each paired computer's line ("ImageModelHost-diva" reads "Its
         // Thinking pool role runs qwen2.5vl:7b: it sees pictures.") and its Use for pictures button's name ("ImageModelUseHost-diva"
         // reads "Use diva for pictures"; clicking it checks diva and saves sense-models.json, so it needs --allow-ui-effects).
         "ImageModelHost-", "ImageModelUseHost-",
-        "ThinkingPoolMember-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-",
+        "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
-        // Companion › Listening › Parakeet in Martlet: each model's title with its tags ("ListenParakeetModel-parakeet-tdt-110m-en"
-        // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads
-        // "Parakeet TDT 110M (English). Replies start sooner: ... Downloads once: 477 MB."). Its SetupListenParakeet-<model>
+        // Settings › Appearance › Custom: each part of the custom palette with its color ("CustomThemeRole-Accent" reads "Accent:
+        // #A52D64") and the character's colors it can take ("CustomThemePick-0" reads "Use #2B3440 dark grayish blue").
+        "CustomThemeRole-", "CustomThemePick-",
+        // Companion › Listening › This PC: the speech recognizers are an option picker (Picker-Listening-parakeet-tdt-110m-en,
+        // Picker-Listening-whisper-gpu...); while a Parakeet model downloads, its details read the progress
+        // ("ListenParakeetModelState-parakeet-tdt-110m-en": "Downloading: 40% of 477 MB..."). Its SetupListenParakeet-<model>
         // button downloads (after a confirmation) and switches Listening, so it needs --allow-ui-effects.
-        "ListenParakeetModel",
+        "ListenParakeetModelState-",
         // Creations: each creation's line in the list ("CreationState-3f2a9c1b7d04" reads "Song · 1:02 · 6.6 MB · made 10/3/2026
         // 9:41 PM on DESK-PC · on this PC, on 2 of 2 hosts"; never its title).
         "CreationState-",

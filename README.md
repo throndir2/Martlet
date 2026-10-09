@@ -50,13 +50,12 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.61.0
+## 🆕 What's new in 0.62.1
 
-- 📋 **Every part, in priority order**: Recommended setup now lists all of Martlet's parts, from Thinking down to Pictures. It shows what each needs, where it runs, and which are optional.
-- ⭕ **Off is a real choice**: tick **Off** on an optional part (advanced lip-sync, Deep thinking, singing, pictures) and Martlet plans without it. Parts with no room show as Off, with the reason.
-- 🧠 **Thinking first on your PC**: with no API key and your other computers off, your PC's graphics card goes to a local Thinking model first. Then comes Chatterbox Turbo, or Chatterbox Nano when Turbo doesn't fit. Everything else runs on the processor.
-- 🔧 **Reconfigure in the right order**: it frees the graphics card first, sets up Thinking before anything else, then the rest by priority.
-- 🖥️ **Computers that are off are left out** of the recommendation right away.
+- 📋 **Short lists you can compare**: Thinking, Voice, Listening and Lip-sync list their models, voice engines, apps and providers as one short row each. Each row says what it runs on, how much graphics memory it takes and how fast it is.
+- 🔍 **Every detail, one click away**: pick a row to see everything about it, such as whether a voice can laugh, which languages it speaks, its license, or what a provider costs and where your data goes. **Compare them** puts them side by side.
+- ✂️ **Lists that don't grow**: a long list shows the main choices first, and **Show more** lists the rest. The Optional extras' lists work the same way.
+- ⭕ **A clear Off**: *If Thinking fails* now has an explicit **Off**, like every optional part.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

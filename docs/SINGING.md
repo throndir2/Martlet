@@ -194,13 +194,22 @@ No path or URL is ever accepted. Host configuration kind: `singing`.
 
 ## Desktop
 
-**Companion > Singing** (an optional extra, on its own page) works like a voice engine row: chips (NVIDIA GPU 6 GB+ shared,
-Docker, sings in your cloned voice, with backing music, a few minutes per song, the licences), where it stands on the
-shown computer (not set up, setting up, ready with the voice matches set up there, failed with the reason, or why that
-computer can't sing), and one **Set up** button for this PC or the computer picked in its pills, after a confirmation
-naming the downloads, licences and terms. A note under it answers whether Singing needs a graphics card of its own
-([below](#does-singing-need-its-own-graphics-card)).
-**Quality** (Fast, High quality) and **Voice match** (SoulX-Singer, the default, or VevoSing) are kept in `singing.json`.
+**Companion > Singing** (an optional extra, on its own page) has the standard page order:
+
+1. **Now**: whether Martlet sings, where and with what, and any problem (no voice to sing with, a failed setup).
+2. **How Martlet sings**, an option picker: **Off** (Martlet doesn't sing; the role stays set up on your computers,
+   kept as `off` in `singing.json`) or **Martlet's Singing role**. The role's row compares its facts with the catalog's
+   numbers: an NVIDIA graphics card, about 5.1 GB of graphics memory and up to 7.2 GB (a 6 GB+ card), the download
+   (about 31 GB with the image), about 1 to 2 minutes for a 30-second song, free, the licences, and that the lyrics,
+   the style and the voice's recording go to the computer that sings. Its details choose the computer (this PC or one in
+   its pills), say where it stands there (not set up, setting up, ready with the voice matches set up there, failed with
+   the reason, or why that computer can't sing) and answer whether Singing needs a graphics card of its own
+   ([below](#does-singing-need-its-own-graphics-card)). Its button is **Set up** there, after a confirmation naming the
+   downloads, licences and terms, or **Sing on ...** once it is ready there. Setting it up or singing there turns Off off.
+3. **Song choices**: **Quality** (Fast, High quality) and **Voice match**, a second option picker that compares
+   SoulX-Singer (the default; Apache-2.0, any use) and VevoSing (closer to the voice but may drift off-key;
+   CC-BY-NC-ND-4.0, personal, non-commercial use only). Both are kept in `singing.json`.
+
 There is no play button: Martlet performs its songs itself in conversation. The Devices map lists the role as "Singing"
 ("Ready. Martlet makes its songs here when you ask it to sing.").
 
@@ -216,7 +225,7 @@ Singing installs like every other role, through `martlet-host add singing`:
   a failed run says why and Set up tries again (downloads already verified are kept).
 - A plain Set up installs **ACE-Step, Demucs and SoulX-Singer only** (`SINGING_VOICE_MATCHES=soulx`, about 16 GB). The
   card reads the voice matches set up on the shown computer from its singing service, through the gateway.
-- **VevoSing is optional.** Choosing it under Voice match where only SoulX-Singer is set up says so ("Songs use
+- **VevoSing is optional.** Using it under Voice match where only SoulX-Singer is set up says so ("Songs use
   SoulX-Singer until you add it") and offers **Add VevoSing there**, with its own confirmation naming CC-BY-NC-ND-4.0
   (personal, non-commercial use only) and its downloads (Vevo1.5 and Whisper medium, about 4.5 GB), which happen only
   then (`martlet-host add singing` again with `soulx-vevosing`; SoulX-Singer's files are kept). A song asked for with
