@@ -22,7 +22,11 @@ internal interface IDiscordCaller
 /// <summary>call_on_discord: the owner says "call Ana" and Martlet rings that Discord friend through its home server.</summary>
 internal static class DiscordCallTool
 {
-    internal const string Name = "call_on_discord";
+    internal const string Name = DiscordCheckInTools.Call;
+
+    /// <summary>The reply's guidance while the After each exchange check-in places calls instead (call_on_discord handed off).</summary>
+    internal const string AfterReply = "To call one of your Discord friends when the user asks, say briefly that you'll call them: " +
+        "the call is placed right after your reply.";
     internal static TextToolDefinition Definition { get; } = new(Name,
         "Call one of your Discord friends: you open a private voice channel in your Discord server, DM them a link and join it. " +
         "Use it only when the user asks you to call someone on Discord. Tell the user what the result says.",

@@ -22,6 +22,9 @@ public partial class MainWindow
         };
         // Only a PC that keeps reminders (a data folder) runs the reminders tool.
         if (conversation?.RemindersTool is not null) handlers[CheckInToolSets.RemindersId] = ReminderToolAsync;
+        // Discord calls and camera only while Martlet can call a Discord friend or is in the owner's Discord calls.
+        if (conversation is { RunsDiscordCheckInTools: true } talk)
+            handlers[DiscordCheckInTools.SetId] = (call, context, token) => talk.RunDiscordCheckInToolAsync(call, token);
         return handlers;
     }
 
