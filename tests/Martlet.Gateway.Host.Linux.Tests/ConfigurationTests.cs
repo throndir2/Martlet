@@ -255,10 +255,34 @@ public sealed class ConfigurationTests
         var one = Assert.Single(HostConfiguration.Parse(RoleConfig(
             "[{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\"}]")).Roles);
         Assert.Equal(1, ((Martlet.Gateway.Ollama.OllamaRelayWorker)NativeHostPlatform.RoleWorker(one)).Route.MaximumConcurrency);
-        // Only the deep-thinking role has slots, from one to the bound.
+        // Only the Thinking pool roles have slots (deep-thinking, and deep-thinking-2... on extra cards), from one to the bound.
         Assert.Throws<HostInputException>(() => Roles("ollama", "2"));
         foreach (var bad in new[] { "0", "5", "\"2\"", "-1", "1.5" })
             Assert.Throws<HostInputException>(() => Roles("deep-thinking", bad));
+    }
+
+    [Fact]
+    public void Each_extra_graphics_cards_Thinking_pool_role_relays_on_a_route_of_its_own()
+    {
+        var roles = HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\",\"slots\":2}," +
+            "{\"kind\":\"deep-thinking-2\",\"endpoint\":\"http://127.0.0.1:11436/\",\"model\":\"qwen3:8b\",\"slots\":3}," +
+            "{\"kind\":\"deep-thinking-4\",\"endpoint\":\"http://127.0.0.1:11438/\",\"model\":\"gemma4:e4b\"}]")).Roles;
+        var routes = roles.Select(role => ((Martlet.Gateway.Ollama.OllamaRelayWorker)NativeHostPlatform.RoleWorker(role)).Route).ToArray();
+        Assert.Equal([Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteIdFor(2),
+            Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteIdFor(4)], routes.Select(r => r.RouteId));
+        Assert.Equal([2, 3, 1], routes.Select(r => r.MaximumConcurrency));
+        Assert.Equal(3, routes.Select(r => r.Path).Distinct().Count());
+        // gpus.json places each card's role on its own card.
+        var gpus = HostGpus.Parse(Encoding.UTF8.GetBytes(
+            "{\"schemaVersion\":1,\"roles\":{\"deep-thinking\":[\"GPU-aaaa-1111\"],\"deep-thinking-2\":[\"GPU-bbbb-2222\"]}}\n"));
+        Assert.Equal(["GPU-bbbb-2222"], gpus["deep-thinking-2"]);
+        // Only cards 2 to 4 exist, and a host runs each at most once.
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"deep-thinking-5\",\"endpoint\":\"http://127.0.0.1:11439/\",\"model\":\"qwen3:8b\"}]")));
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"deep-thinking-2\",\"endpoint\":\"http://127.0.0.1:11436/\",\"model\":\"qwen3:8b\"}," +
+            "{\"kind\":\"deep-thinking-2\",\"endpoint\":\"http://127.0.0.1:11437/\",\"model\":\"qwen3:8b\"}]")));
     }
 
     [Fact]

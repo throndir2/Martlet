@@ -320,8 +320,9 @@ public partial class MainWindow
     {
         if (JobForRole(role.Kind) is not { } job)
         {
-            var deep = store is null ? null : ThinkingPoolSettings.Load(store.DataDirectory).Places;
-            if (role.Kind == HostRoles.DeepThinking && deep is { OnHostRole: true } && deep.HostId == host.HostId)
+            IReadOnlyList<DeepThinkingSettings> members = store is null ? [] : ThinkingPoolSettings.Load(store.DataDirectory).Members;
+            if (SelfHostSetup.DeepThinkingCardOfRole(role.Kind) is { } card &&
+                members.Any(m => m is { OnHostRole: true } && m.HostId == host.HostId && m.Card == card))
             {
                 if (!ConfirmationDialog.Confirm(this, $"Remove {role.Name} from {host.HostId}? It is in this PC's Thinking pool, so " +
                         "pool jobs stop running there. Add another member in Companion > Thinking pool if the pool becomes empty.",

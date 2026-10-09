@@ -101,9 +101,9 @@ public sealed partial class GatewayInferenceRoute
             maximumDuration > TimeSpan.Zero &&
             maximumDuration <= GatewayInferenceProtocol.MaximumJobDuration, "worker.invalid");
         GatewayRules.Defined(cancellation);
-        // Only the Deep thinking role's own Ollama runs several requests at once (its OLLAMA_NUM_PARALLEL slots).
+        // Only the Thinking pool roles' own Ollama servers run several requests at once (their OLLAMA_NUM_PARALLEL slots).
         GatewayRules.Require(maximumConcurrency == 1 || kind == GatewayInferenceKind.OllamaChat &&
-            routeId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId &&
+            Martlet.Core.Settings.SelfHostSetup.IsDeepThinkingRoute(routeId) &&
             maximumConcurrency is > 1 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots, "worker.invalid");
 
         Kind = kind;
@@ -158,8 +158,9 @@ public sealed partial class GatewayInferenceRoute
     internal PerceptionWorkerIdentity? PerceptionIdentity { get; }
 
     /// <summary>A host's own loopback Ollama: the conversation model (<c>ollama</c> role), or with <paramref name="deepThinking"/>
-    /// the deep-thinking role's second Ollama, which has its own route and path but the same native-chat contract and runs
-    /// <paramref name="slots"/> thinks at once (its OLLAMA_NUM_PARALLEL).</summary>
+    /// a Thinking pool role's own Ollama (card <paramref name="card"/>: deep-thinking for card 1, deep-thinking-2... for the
+    /// others), which has its own route and path but the same native-chat contract and runs <paramref name="slots"/> thinks at
+    /// once (its OLLAMA_NUM_PARALLEL).</summary>
     public static GatewayInferenceRoute OllamaChat(
         string destinationId,
         string workerId,
@@ -167,17 +168,20 @@ public sealed partial class GatewayInferenceRoute
         string modelRevision,
         string modelSha256,
         bool deepThinking = false,
-        int slots = 1)
+        int slots = 1,
+        int card = 1)
     {
         ArgumentNullException.ThrowIfNull(selection);
         GatewayRules.Token(modelRevision, 128);
         GatewayRules.Sha256(modelSha256);
+        GatewayRules.Require(card is >= 1 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumCards && (deepThinking || card == 1),
+            "worker.invalid");
         var capabilities = OllamaChatAdapter.Describe(selection);
         return new(
             GatewayInferenceKind.OllamaChat,
             GatewayRole.Voice,
-            deepThinking ? Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId : Martlet.Core.Settings.SelfHostSetup.OllamaRouteId,
-            deepThinking ? Martlet.Core.Settings.SelfHostSetup.DeepThinkingPath : Martlet.Core.Settings.SelfHostSetup.OllamaPath,
+            deepThinking ? Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteIdFor(card) : Martlet.Core.Settings.SelfHostSetup.OllamaRouteId,
+            deepThinking ? Martlet.Core.Settings.SelfHostSetup.DeepThinkingPathFor(card) : Martlet.Core.Settings.SelfHostSetup.OllamaPath,
             OllamaChatAdapter.Protocol,
             GatewayInferenceProtocol.RegistryVersion,
             destinationId,

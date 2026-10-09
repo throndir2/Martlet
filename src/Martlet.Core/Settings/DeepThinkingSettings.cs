@@ -34,8 +34,9 @@ public sealed record DeepThinkingSettings
     public string? HostSpkiFingerprint { get; init; }
     public string? HostDeviceId { get; init; }
     public Guid? HostCredentialId { get; init; }
-    /// <summary>Which of the paired computer's routes thinks: its Deep thinking role's own Ollama
-    /// (<see cref="SelfHostSetup.DeepThinkingRouteId"/>), or its Ollama role's (null, as saved before that role existed).</summary>
+    /// <summary>Which of the paired computer's routes thinks: one of its Thinking pool roles' own Ollama
+    /// (<see cref="SelfHostSetup.DeepThinkingRouteId"/>, or <see cref="SelfHostSetup.DeepThinkingRouteIdFor"/> for the model on an
+    /// extra graphics card), or its Ollama role's (null, as saved before that role existed).</summary>
     public string? HostRouteId { get; init; }
     public DateTimeOffset? ChosenAt { get; init; }
 
@@ -65,14 +66,35 @@ public sealed record DeepThinkingSettings
     /// <summary>Every place it thinks on, this one first.</summary>
     [JsonIgnore] public IReadOnlyList<DeepThinkingSettings> Places => [Single, .. Pool ?? []];
 
-    /// <summary>A place's key: one per computer (<c>host:diva</c>), endpoint and model, or <c>thinking</c>.</summary>
+    /// <summary>A place's key: one per computer (<c>host:diva</c>) and per extra graphics card of its own Thinking pool model
+    /// (<c>host:diva#gpu2</c>, see <see cref="Card"/>), endpoint and model, or <c>thinking</c>.</summary>
     [JsonIgnore]
     public string Key => Place switch
     {
-        DeepThinkingPlace.Host => "host:" + HostId,
+        DeepThinkingPlace.Host => KeyOf(HostId!, Card),
         DeepThinkingPlace.Endpoint => $"endpoint:{Origin}|{ModelId}",
         _ => "thinking"
     };
+
+    private const string HostKeyPrefix = "host:", CardKeyMark = "#gpu";
+
+    /// <summary>The key of <paramref name="hostId"/>'s member on its card <paramref name="card"/>: <c>host:diva</c> for card 1
+    /// (and a member on the host's Ollama), <c>host:diva#gpu2</c> for card 2.</summary>
+    public static string KeyOf(string hostId, int card = 1) => card <= 1 ? HostKeyPrefix + hostId : $"{HostKeyPrefix}{hostId}{CardKeyMark}{card}";
+
+    /// <summary>The paired computer of a member key or background place ID (<c>host:diva</c> and <c>host:diva#gpu2</c> are
+    /// diva), or null for an endpoint or the conversation model.</summary>
+    public static string? HostOfKey(string? key)
+    {
+        if (key is null || !key.StartsWith(HostKeyPrefix, StringComparison.Ordinal)) return null;
+        var host = key[HostKeyPrefix.Length..];
+        var mark = host.IndexOf(CardKeyMark, StringComparison.Ordinal);
+        return mark >= 0 ? host[..mark] : host;
+    }
+
+    /// <summary>The paired computer's graphics card this place thinks on: 2 to <see cref="SelfHostSetup.DeepThinkingMaximumCards"/>
+    /// for the Thinking pool model on an extra card (deep-thinking-2...), else 1.</summary>
+    [JsonIgnore] public int Card => Place == DeepThinkingPlace.Host ? SelfHostSetup.DeepThinkingCard(HostRouteId) ?? 1 : 1;
 
     /// <summary>This place first, then <paramref name="pool"/>'s other places (none twice, at most <see cref="MaxPlaces"/>).</summary>
     public DeepThinkingSettings WithPool(IEnumerable<DeepThinkingSettings> pool)
@@ -110,7 +132,7 @@ public sealed record DeepThinkingSettings
     [JsonIgnore] public bool Separate => Place != DeepThinkingPlace.SameAsThinking;
 
     /// <summary>Whether it thinks with a paired computer's Deep thinking role, a model of its own beside that computer's Thinking.</summary>
-    [JsonIgnore] public bool OnHostRole => Place == DeepThinkingPlace.Host && HostRouteId == SelfHostSetup.DeepThinkingRouteId;
+    [JsonIgnore] public bool OnHostRole => Place == DeepThinkingPlace.Host && SelfHostSetup.IsDeepThinkingRoute(HostRouteId);
 
     /// <summary>The paired computer's route a think goes to (Place Host).</summary>
     [JsonIgnore] public string HostRoute => HostRouteId ?? SelfHostSetup.OllamaRouteId;
@@ -123,6 +145,7 @@ public sealed record DeepThinkingSettings
     /// "diva's Deep thinking (qwen3-8b)", "openrouter.ai (x-ai/grok-4.3)".</summary>
     public string Describe() => Place switch
     {
+        DeepThinkingPlace.Host when OnHostRole && Card > 1 => $"{HostId}'s Thinking pool, card {Card} ({ModelId})",
         DeepThinkingPlace.Host when OnHostRole => $"{HostId}'s Thinking pool ({ModelId})",
         DeepThinkingPlace.Host => $"{HostId} ({ModelId})",
         DeepThinkingPlace.Endpoint when string.Equals(Origin, GenerationSupport.LocalOllamaChatBaseUrl, StringComparison.Ordinal) =>
@@ -148,7 +171,7 @@ public sealed record DeepThinkingSettings
                     Uri.TryCreate(HostOrigin, UriKind.Absolute, out var origin) && origin.Scheme == Uri.UriSchemeHttps &&
                     HostSpkiFingerprint is { Length: > 0 and <= 200 } && HostDeviceId is { Length: > 0 and <= 128 } &&
                     HostCredentialId is { } pairing && pairing != Guid.Empty && CredentialId is null && Origin is null &&
-                    HostRouteId is null or SelfHostSetup.OllamaRouteId or SelfHostSetup.DeepThinkingRouteId,
+                    (HostRouteId is null or SelfHostSetup.OllamaRouteId || SelfHostSetup.IsDeepThinkingRoute(HostRouteId)),
                     "The paired computer in the Thinking pool is incomplete. Add it again.");
                 ChatCompletionsSetup.ModelId(ModelId ?? "");
                 break;
@@ -278,8 +301,11 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
             // Its Deep thinking role is an Ollama server of its own, so it thinks beside the computer's Thinking model.
             if (deep.OnHostRole)
                 return shared.Length > 0
-                    ? new(true, $"{deep.HostId}'s Thinking pool role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
-                        "alongside the conversation and shares its graphics card.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
+                    ? deep.Card > 1
+                        ? new(true, $"{deep.HostId}'s Thinking pool model on its graphics card {deep.Card} runs beside {Jobs(shared)} there, " +
+                            "so a think runs alongside the conversation.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
+                        : new(true, $"{deep.HostId}'s Thinking pool role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
+                            "alongside the conversation and shares its graphics card.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
                     : new(true, $"{deep.HostId}'s Thinking pool role does none of the conversation's jobs, so a think runs there alongside the conversation.");
             if (shared.Any(r => r.Role == SetupRole.Llm))
                 return new(false, $"{deep.HostId} also does Thinking for the conversation, and its model can't think something over while " +
