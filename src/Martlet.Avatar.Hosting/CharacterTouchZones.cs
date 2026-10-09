@@ -73,6 +73,12 @@ public sealed record CharacterTouchReaction
     }
     public string? Narration { get; init; }
     public double CooldownSeconds { get; init; } = DefaultCooldown;
+    /// <summary>Emotes and gestures (their <see cref="CharacterActionSource.Id"/>s) that play on their own, one after another,
+    /// each for <see cref="AutoplaySeconds"/>, after the zone's reaction. Null or empty: none.</summary>
+    public IReadOnlyList<string>? Autoplay { get; init; }
+    public double AutoplaySeconds { get; init; } = DefaultAutoplaySeconds;
+    public const double DefaultAutoplaySeconds = 4, MaximumAutoplaySeconds = 120;
+    public const int MaximumAutoplay = 12;
 }
 
 /// <summary>One area of a zone: its box in the snapshot (fractions of the picture) and the Live2D drawables, VRM humanoid bones
@@ -858,6 +864,18 @@ public static partial class CharacterTouchZones
     /// the temperament.</summary>
     public static TouchReactionPlan React(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
     {
+        var plan = ReactCore(zone, catalog, temperament, repeats);
+        if (zone.Reaction.Autoplay is not { Count: > 0 } ids || catalog is null) return plan;
+        var entries = catalog.Entries.Where(e => e.Action.Enabled).ToArray();
+        return plan with
+        {
+            Autoplay = [.. ids.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Take(CharacterTouchReaction.MaximumAutoplay)],
+            AutoplaySeconds = zone.Reaction.AutoplaySeconds
+        };
+    }
+
+    private static TouchReactionPlan ReactCore(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
+    {
         var attitude = CharacterTouchTemperaments.Attitude(temperament, zone.Id);
         var entry = CharacterTouchTemperaments.Entry(temperament, zone.Id);
         var look = entry?.LookSeconds ?? 0;
@@ -976,6 +994,9 @@ public static partial class CharacterTouchZones
             if (zone.Label is { Length: > MaximumLabelLength }) return $"A zone's name can be at most {MaximumLabelLength} characters.";
             if (zone.Reaction.Narration is { Length: > MaximumNarrationLength }) return $"What a touch tells the character can be at most {MaximumNarrationLength} characters.";
             if (zone.Reaction.Actions is { Count: > MaximumActions }) return $"A zone plays at most {MaximumActions} emotes or gestures.";
+            if (zone.Reaction.Autoplay is { Count: > CharacterTouchReaction.MaximumAutoplay }) return $"A zone autoplays at most {CharacterTouchReaction.MaximumAutoplay} emotes.";
+            if (!double.IsFinite(zone.Reaction.AutoplaySeconds) || zone.Reaction.AutoplaySeconds is < 1 or > CharacterTouchReaction.MaximumAutoplaySeconds)
+                return $"A zone's autoplay step must be 1 to {CharacterTouchReaction.MaximumAutoplaySeconds:0} seconds.";
             if (!double.IsFinite(zone.Reaction.CooldownSeconds) || zone.Reaction.CooldownSeconds is < 0 or > CharacterTouchReaction.MaximumCooldown)
                 return $"A zone's rest must be 0 to {CharacterTouchReaction.MaximumCooldown:0} seconds.";
         }

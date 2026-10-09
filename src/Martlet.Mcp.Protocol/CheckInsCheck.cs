@@ -329,11 +329,12 @@ internal static class CheckInsCheck
             sayJob.Delivery == BackgroundDeliveryState.Delivered, new { message, notes });
 
         await OwnInputsAsync(Step, now, facts, cancellation);
+        TouchesFact(Step, now, facts);
         await ToolsAsync(Step, facts, cancellation);
         return new { passed = ok, steps };
     }
 
-    /// <summary>7. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools
+    /// <summary>8. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools
     /// (FIXTURE handlers and calls; NOT AI).</summary>
     private static async Task ToolsAsync(Action<string, bool, object?> step, CheckInState facts, CancellationToken cancellation)
     {
@@ -437,6 +438,68 @@ internal static class CheckInsCheck
             {
                 textOnlyPool = none?.Outcome.ToString(), withOneThatCallsTools = done?.Member, calls = uses.Count, made = CheckIns.ToolsText(uses),
                 answer = done?.Text
+            });
+    }
+
+    /// <summary>7. The Touches fact ({touches}): FIXTURE touches on a production <see cref="TouchLedger"/>, some taken by replies
+    /// and some still waiting, read without taking them and filled into one of the owner's check-ins (NOT AI).</summary>
+    private static void TouchesFact(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
+    {
+        var ledger = new TouchLedger();
+        var clock = TimeSpan.FromMinutes(30);
+        TimeSpan Ago(double seconds) => clock - TimeSpan.FromSeconds(seconds);
+        PhysicalEvent Stroke(TimeSpan at) => new(PhysicalKind.Stroke, at, "down from your tail over your buttocks to your groin",
+            "tail → buttocks → groin", "slowly", Zones: ["your tail", "your buttocks", "your groin"], Intimate: true,
+            Feeling: "FIXTURE: you love being touched there");
+        // Earlier touches, each taken by a reply as the desktop's ledger does; then strokes that wait for the next reply.
+        for (var i = 0; i < 3; i++) ledger.Record(new(PhysicalKind.Pat, Ago(480 - i), "the top of your head", "top of head", Zones: ["the top of your head"]));
+        ledger.Drain(Ago(470));
+        for (var i = 0; i < 2; i++) ledger.Record(Stroke(Ago(300)));
+        ledger.Drain(Ago(290));
+        ledger.Record(new(PhysicalKind.Moved, Ago(180), Detail: "to their other monitor"));
+        ledger.Record(new(PhysicalKind.Tap, Ago(60), "your groin", "groin", Zones: ["your groin"], Intimate: true));
+        ledger.Drain(Ago(50));
+        for (var i = 0; i < 3; i++) ledger.Record(Stroke(Ago(10)));
+        var waitingBefore = ledger.Peek(clock)?.Line;
+        var history = ledger.History(clock);
+        var waitingAfter = ledger.Peek(clock)?.Line;
+        var taken = ledger.Drain(clock);
+        var kept = ledger.History(clock);
+        var state = facts with { Touches = history };
+        var placed = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c7", Name = "FIXTURE touches", Task = "How the user touched {name} lately:\n{touches}\nDescribe it.", Facts = CheckInFacts.Touches
+        }), state, null) ?? "";
+        var ticked = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c7", Name = "FIXTURE touches", Task = "Describe how the user touched the character.", Facts = CheckInFacts.Touches
+        }), state, null) ?? "";
+        var none = CheckIns.Touches(facts with { Touches = null });
+        var refused = false;
+        try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = (CheckInFacts)1024 }).Validate(); }
+        catch (Martlet.Core.Contracts.ContractException) { refused = true; }
+        var accepted = true;
+        try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = CheckInFacts.Touches }).Validate(); }
+        catch (Martlet.Core.Contracts.ContractException) { accepted = false; }
+        const string header = "What the user did to Mira's character on the desktop in the last 10 minutes, oldest first";
+        step("touches fact", history is { Count: 10, Intimate: 6, Entries.Count: 5 } && history.Often is [{ Place: "your groin", Count: 6 }, ..] &&
+            waitingBefore is not null && waitingBefore == waitingAfter && taken is { Count: 3 } && kept?.Entries.Count == 5 &&
+            CheckIns.Placed("{touches}") == CheckInFacts.Touches &&
+            placed.StartsWith("How the user touched Mira lately:\n" + header, StringComparison.Ordinal) &&
+            placed.Contains("- 10:09 PM (8 min ago): They patted the top of your head 3 times over 2 seconds.", StringComparison.Ordinal) &&
+            placed.Contains("- 10:12 PM (5 min ago, intimate): They slowly stroked down from your tail over your buttocks to your groin twice " +
+                "(FIXTURE: you love being touched there).", StringComparison.Ordinal) &&
+            placed.Contains("- 10:14 PM (3 min ago): They moved you to their other monitor.", StringComparison.Ordinal) &&
+            placed.Contains("They keep coming back to your groin (6 times)", StringComparison.Ordinal) &&
+            placed.IndexOf(header, StringComparison.Ordinal) == placed.LastIndexOf(header, StringComparison.Ordinal) &&
+            ticked.Contains(header, StringComparison.Ordinal) && none == "The user didn't touch Mira's character on the desktop in the last 10 minutes." &&
+            refused && accepted,
+            new
+            {
+                runs = history?.Entries.Count, things = history?.Count, intimate = history?.Intimate, often = history?.Often?.Count,
+                readingLeftTheNextReply = waitingBefore is not null && waitingBefore == waitingAfter, replyTook = taken?.Count,
+                keptAfterTheReply = kept?.Entries.Count, filled = placed.Contains(header, StringComparison.Ordinal) && !placed.Contains("{touches}", StringComparison.Ordinal),
+                unknownFactRefused = refused, touchesFactAccepted = accepted, fixtureMessage = placed, nothingTouched = none
             });
     }
 

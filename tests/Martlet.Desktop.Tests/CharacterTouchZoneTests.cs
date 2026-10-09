@@ -625,7 +625,7 @@ public sealed class CharacterTouchZoneTests
             var edited = first with
             {
                 IncludeIntimate = true,
-                Zones = [first.Zones[0] with { Label = "Crown", Enabled = false, Reaction = new() { Notices = true, CooldownSeconds = 9 } }]
+                Zones = [first.Zones[0] with { Label = "Crown", Enabled = false, Reaction = new() { Notices = true, CooldownSeconds = 9, Autoplay = ["emote:a", "emote:b"], AutoplaySeconds = 6 } }]
             };
             await CharacterTouchZones.SaveAsync(directory, edited, DateTimeOffset.Now);
             await CharacterTouchZones.SaveAsync(directory, new() { ModelId = "model-2" }, DateTimeOffset.Now);
@@ -641,6 +641,9 @@ public sealed class CharacterTouchZoneTests
             Assert.Equal(0.3, again.Zones[0].Box.X);
             Assert.False(again.Zones[0].Enabled);
             Assert.Equal(9, again.Zones[0].Reaction.CooldownSeconds);
+            Assert.Equal(["emote:a", "emote:b"], again.Zones[0].Reaction.Autoplay);
+            Assert.Equal(6, again.Zones[0].Reaction.AutoplaySeconds);
+            Assert.NotNull(CharacterTouchZones.Problem(again with { Zones = [again.Zones[0] with { Reaction = new() { AutoplaySeconds = 0 } }] }));
             Assert.True(again.Zones[0].Reaction.Notices);
             Assert.DoesNotContain("\"tell\"", File.ReadAllText(CharacterTouchZones.Path(directory)), StringComparison.Ordinal);
             Assert.Equal(["leftHand"], again.Zones[1].Bones);
