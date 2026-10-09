@@ -496,6 +496,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom",
+        // Touch zones › Start over: the level chosen to reset (TouchZonesResetLevel: Zone reactions, Zones, Touch temperament or
+        // Everything), what that level clears (fixed text), what the last reset did or why it couldn't, and the confirmation's
+        // question (what the owner loses: zone names, counts, the persona's and custom temperaments' names, a date). Choosing a
+        // level needs --allow-ui-effects; Reset (TouchZonesReset) opens the question and its ConfirmationYes resets, so they need
+        // --allow-ui-effects too.
+        "TouchZonesResetLevel", "TouchZonesResetNote", "TouchZonesResetState", "TouchZonesResetQuestion",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
