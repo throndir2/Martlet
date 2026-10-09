@@ -455,7 +455,7 @@ your other computers, not uploaded and not part of configuration backup.
 `conversation-history.json` beside it holds this PC's two choices.
 
 **Reading it.** The record is read once, in the background, when a
-conversation opens (or the history window or the Memory page needs it) and
+conversation opens (or the Conversations page or the Memory page needs it) and
 kept in memory with a lexical (BM25) index of what was said; nothing is
 embedded or sent anywhere. The newest 100,000 exchanges are indexed; older
 ones stay in their files. With 20,000 synthetic exchanges (7.3 MB) reading takes
@@ -500,8 +500,8 @@ bytes, about 153 estimated tokens) goes at the start of every request: providers
 cache it after the first reply of a conversation, but that first reply reads it
 too.
 
-**Seeing, searching, editing and deleting it.** Companion › Memory › **Open
-conversation history** lists the conversations, newest first, with the apps
+**Seeing, searching, editing and deleting it.** The **Conversations** page (in the main window's side menu, also opened from
+Companion › Memory › **Open conversations**) lists the conversations, newest first, with the apps
 they happened in (this PC, Telegram, Discord, WhatsApp) and the chat's name;
 the app box shows only one app's conversations and messages. The selected
 conversation shows one entry per message (yours and Martlet's, with when, who,

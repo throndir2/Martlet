@@ -1976,7 +1976,7 @@ public partial class MainWindow
             Note("With a Thinking model that uses tools, Martlet can also look things up in the record whenever it thinks that " +
                 "helps. Its search tool makes every request a little longer, so the first reply of a conversation may start a " +
                 "little later.", new Thickness(24, 2, 0, 0)),
-            Row(PageButton("Open conversation history", History_Click, id: "OpenHistory")));
+            Row(PageButton("Open conversations", History_Click, id: "OpenHistory")));
     }
 
     // ---------- small builders ----------

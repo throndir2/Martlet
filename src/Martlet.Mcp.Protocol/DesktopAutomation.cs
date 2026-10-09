@@ -18,7 +18,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SupportRefresh",
         "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack",
+        "NavHome", "NavDevices", "NavCompanion", "NavConversations", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack",
         // The welcome wizard: Look again only asks the local network which Martlet desktops answer (as Add a computer's Find
         // again does), Enter an address opens Add a computer, Next on the hardware step and the two preference cards only move
         // on and show the suggestion. Choosing a network saves the device role, Join asks the other computer, Use these
@@ -123,13 +123,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // only expand. Typing a search (MemorySearch) is ui_set_text; Add, Save changes and every Delete button change facts (Delete
         // asks first), so they need --allow-ui-effects.
         "MemoryNewFact", "MemoryStorageSection", "MemoryExportSection",
-        // Companion › Memory's Open conversation history opens the record's window, Close closes it, and Search and Show all
+        // Companion › Memory's Open conversations goes to the Conversations page (NavConversations), and Search and Show all
         // only filter what it lists (from memory; nothing is written). Edit message only opens the editor with the selected
         // message and its Cancel closes it (nothing is saved until Save edit). Its two choices save conversation-history.json,
         // typing a search or an edit is ui_set_text, choosing an app, a conversation or a message is ui_select, and Save edit,
         // Delete message, Delete this conversation, Delete everything and Stop waiting changes write (deletes ask first; with
         // HistoryAlsoThere on they also queue changes for Telegram and Discord), so they need --allow-ui-effects.
-        "OpenHistory", "HistoryClose", "HistorySearchRun", "HistoryShowAll", "HistoryEditMessage", "HistoryEditCancel",
+        "OpenHistory", "HistorySearchRun", "HistoryShowAll", "HistoryEditMessage", "HistoryEditCancel",
         // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
         // --allow-ui-effects.
         "ProblemClose",
@@ -342,7 +342,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // or why it can't be (fixed text, never a fact or a folder).
         "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus", "MemoryStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
-        // (conversations, exchanges, since when, per app); the history window's status line (counts, or what a search found) and
+        // (conversations, exchanges, since when, per app); the Conversations page's status line (counts, or what a search found) and
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the
         // window's lists (HistoryConversations, HistoryMessages, whose items are named "Conversation 2 (Telegram)" and
         // "Message 3: Martlet · Discord") and the editor are not readable values.

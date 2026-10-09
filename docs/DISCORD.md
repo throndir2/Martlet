@@ -88,7 +88,7 @@ the decisions so tests and MCP (`discord_text_check`) run them with a fake trans
   Channels) saves the current channel's rule in `discord.json`.
 - **History:** each answered text message (and `/martlet`) is recorded in the record of conversations while it is kept,
   in one conversation per channel or DM, with the server, channel and the Discord IDs of the person's message and Martlet's
-  reply pieces (`DiscordService.History.cs`). Deleting or editing it in Companion › Memory › Open conversation history
+  reply pieces (`DiscordService.History.cs`). Deleting or editing it on the Conversations page
   deletes or edits it in Discord while the bot is online: Martlet's own messages always, the person's only in a server (with
   Manage Messages), never in a DM, through a queue at one change a second that waits out 429s
   ([Conversation history](MEMORY.md#conversation-history)). `/martlet` answers are interaction follow-ups and stay in

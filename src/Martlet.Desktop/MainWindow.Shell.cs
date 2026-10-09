@@ -181,22 +181,24 @@ public partial class MainWindow
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomePage is null || DevicesPage is null || CompanionPage is null || CreationsPage is null || TasksPage is null ||
-            DiagnosticsPage is null || SettingsPage is null) return;
+        if (HomePage is null || DevicesPage is null || CompanionPage is null || ConversationsPage is null || CreationsPage is null ||
+            TasksPage is null || DiagnosticsPage is null || SettingsPage is null) return;
         if (sender is RadioButton { IsChecked: false }) return;
         FrameworkElement page = ReferenceEquals(sender, NavDevices) ? DevicesPage
             : ReferenceEquals(sender, NavCompanion) ? CompanionPage
+            : ReferenceEquals(sender, NavConversations) ? ConversationsPage
             : ReferenceEquals(sender, NavCreations) ? CreationsPage
             : ReferenceEquals(sender, NavTasks) ? TasksPage
             : ReferenceEquals(sender, NavDiagnostics) ? DiagnosticsPage
             : ReferenceEquals(sender, NavSettings) ? SettingsPage
             : HomePage;
         openTab = null;
-        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, CreationsPage, TasksPage, DiagnosticsPage, SettingsPage })
+        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, ConversationsPage, CreationsPage, TasksPage, DiagnosticsPage, SettingsPage })
             candidate.Visibility = ReferenceEquals(candidate, page) ? Visibility.Visible : Visibility.Collapsed;
         if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
+        if (ReferenceEquals(page, ConversationsPage)) ConversationsPage.EnterAsync().Forget();
         if (ReferenceEquals(page, CreationsPage)) RenderCreations();
         if (ReferenceEquals(page, TasksPage)) EnterTasks();
         else LeaveTasks();
@@ -270,10 +272,12 @@ public partial class MainWindow
         CompanionHome.Visibility = host ? Visibility.Collapsed : Visibility.Visible;
         HostHome.Visibility = host ? Visibility.Visible : Visibility.Collapsed;
         NavCompanion.Visibility = host ? Visibility.Collapsed : Visibility.Visible;
+        // A host PC doesn't talk, so it has no conversations of its own to show.
+        NavConversations.Visibility = host || conversationHistory is null ? Visibility.Collapsed : Visibility.Visible;
         ShowMode();
         UseCompanionButton.IsEnabled = host;
         UseHostButton.IsEnabled = !host;
-        if (host && NavCompanion.IsChecked == true) Navigate(NavHome);
+        if (host && (NavCompanion.IsChecked == true || NavConversations.IsChecked == true)) Navigate(NavHome);
     }
 
     /// <summary>The three ways a PC runs Martlet: a companion PC, a companion PC that also runs a host service for your

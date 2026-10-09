@@ -48,7 +48,7 @@ How it works:
 - Martlet reads text only for now (photos, voice notes and stickers get a short
   note). A tool call or smart-home action that asks first waits for you at the
   PC and otherwise times out.
-- Each answered message is in Companion › Memory › Open conversation history
+- Each answered message is on the Conversations page
   with its Telegram message IDs (yours and Martlet's reply pieces). Deleting a
   message there deletes it in Telegram too (within Telegram's 48 hours), and
   editing Martlet's reply edits it there; your own messages can't be edited by a

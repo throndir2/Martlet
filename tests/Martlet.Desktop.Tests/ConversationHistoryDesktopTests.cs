@@ -209,7 +209,7 @@ public sealed class ConversationHistoryDesktopTests
     }
 
     [Fact]
-    public Task TheWindowListsSearchesAndDeletesConversations() => OnDispatcher(async () =>
+    public Task TheConversationsPageListsSearchesAndDeletesConversations() => OnDispatcher(async () =>
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.History.Window." + Guid.NewGuid().ToString("N"));
         try
@@ -221,34 +221,32 @@ public sealed class ConversationHistoryDesktopTests
             history.Record(cat, HistoryInputKind.Typed, "Biscuit goes to the vet.", "Good luck, Biscuit.", null);
             await history.Idle;
             var asked = new List<string>();
-            var window = new ConversationHistoryWindow(history, (_, _, title) => { asked.Add(title); return true; })
-            { ShowActivated = false, ShowInTaskbar = false };
-            window.Show();
+            var (host, page) = await Show(history, asked);
             try
             {
-                var list = Control<ListBox>(window, "ConversationsList");
+                var list = Control<ListBox>(page, "ConversationsList");
                 await Until(() => list.Items.Count == 2);
-                Assert.Contains("2 conversations and 3 exchanges", Control<TextBlock>(window, "StatusText").Text);
-                Assert.Equal("HistoryWindowStatus", AutomationProperties.GetAutomationId(Control<TextBlock>(window, "StatusText")));
-                Assert.Contains("Biscuit goes to the vet.", Texts(Control<ListBox>(window, "MessagesList")));
+                Assert.Contains("2 conversations and 3 exchanges", Control<TextBlock>(page, "StatusText").Text);
+                Assert.Equal("HistoryWindowStatus", AutomationProperties.GetAutomationId(Control<TextBlock>(page, "StatusText")));
+                Assert.Contains("Biscuit goes to the vet.", Texts(Control<ListBox>(page, "MessagesList")));
 
-                Control<TextBox>(window, "SearchText").Text = "kyoto";
-                Click(window, "SearchButton");
+                Control<TextBox>(page, "SearchText").Text = "kyoto";
+                Click(page, "SearchButton");
                 Assert.Single(list.Items);
-                Assert.Contains("Found 1 exchange in 1 conversation", Control<TextBlock>(window, "StatusText").Text);
-                Assert.StartsWith("▶ ", Texts(Control<ListBox>(window, "MessagesList")));
+                Assert.Contains("Found 1 exchange in 1 conversation", Control<TextBlock>(page, "StatusText").Text);
+                Assert.StartsWith("▶ ", Texts(Control<ListBox>(page, "MessagesList")));
 
-                Click(window, "DeleteButton");
+                Click(page, "DeleteButton");
                 await Until(() => history.Store.Stats.Exchanges == 1);
                 Assert.Equal(["Delete conversation"], asked);
-                Click(window, "ShowAllButton");
+                Click(page, "ShowAllButton");
                 Assert.Single(list.Items);
 
-                Click(window, "DeleteAllButton");
+                Click(page, "DeleteAllButton");
                 await Until(() => history.Store.Stats.Exchanges == 0 && list.Items.Count == 0);
                 Assert.Empty(ConversationHistory.MonthFiles(history.Store.Directory));
             }
-            finally { window.Close(); }
+            finally { page.Detach(); host.Close(); }
         }
         finally
         {
@@ -257,7 +255,7 @@ public sealed class ConversationHistoryDesktopTests
     });
 
     [Fact]
-    public Task TheWindowFiltersByAppAndDeletesAndEditsSingleMessagesHereAndThere() => OnDispatcher(async () =>
+    public Task TheConversationsPageFiltersByAppAndDeletesAndEditsSingleMessagesHereAndThere() => OnDispatcher(async () =>
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.History.Messages." + Guid.NewGuid().ToString("N"));
         try
@@ -275,57 +273,87 @@ public sealed class ConversationHistoryDesktopTests
             Assert.Equal(["102"], history.Store.FindMessage(HistoryApps.Telegram, "42", "101")!.Source!.ReplyMessages);
 
             var asked = new List<string>();
-            var window = new ConversationHistoryWindow(history, (_, _, title) => { asked.Add(title); return true; })
-            { ShowActivated = false, ShowInTaskbar = false };
-            window.Show();
+            var (host, page) = await Show(history, asked);
             try
             {
-                var list = Control<ListBox>(window, "ConversationsList");
-                var messages = Control<ListBox>(window, "MessagesList");
+                var list = Control<ListBox>(page, "ConversationsList");
+                var messages = Control<ListBox>(page, "MessagesList");
                 await Until(() => list.Items.Count == 2);
-                Assert.Contains("Discord 1", Control<TextBlock>(window, "StatusText").Text);
+                Assert.Contains("Discord 1", Control<TextBlock>(page, "StatusText").Text);
 
                 // Only Discord: one conversation, its two messages.
-                Control<ComboBox>(window, "AppFilter").SelectedIndex = 3;
+                Control<ComboBox>(page, "AppFilter").SelectedIndex = 3;
                 Assert.Single(list.Items);
                 Assert.Equal(2, messages.Items.Count);
                 Assert.Contains("#maps in Guild", list.Items[0]!.ToString());
 
                 // Delete Martlet's reply here and in Discord: both its pieces are queued; the person's message stays.
                 messages.SelectedIndex = 1;
-                Click(window, "DeleteMessageButton");
-                await Until(() => history.Platforms.Status.Pending == 2 && Control<TextBlock>(window, "StatusText").Text.StartsWith("Deleted the message."));
+                Click(page, "DeleteMessageButton");
+                await Until(() => history.Platforms.Status.Pending == 2 && Control<TextBlock>(page, "StatusText").Text.StartsWith("Deleted the message."));
                 Assert.Equal(["Delete message"], asked);
                 Assert.Equal(["5002", "5003"], history.Platforms.Pending.Select(change => change.Message));
                 Assert.Equal("", history.Store.Exchanges(channel).Single().Reply);
-                Assert.Contains("2 changes waiting for Discord", Control<TextBlock>(window, "PlatformText").Text);
+                Assert.Contains("2 changes waiting for Discord", Control<TextBlock>(page, "PlatformText").Text);
 
                 // Edit the Telegram reply here and there.
-                Control<ComboBox>(window, "AppFilter").SelectedIndex = 2;
+                Control<ComboBox>(page, "AppFilter").SelectedIndex = 2;
                 Assert.Single(messages.Items.Cast<object>(), item => item.ToString()!.Contains("Hi Sam!"));
                 messages.SelectedIndex = 1;
-                Click(window, "EditButton");
-                Assert.Equal(Visibility.Visible, Control<StackPanel>(window, "EditorPanel").Visibility);
-                Control<TextBox>(window, "EditText").Text = "Hi Sam, good to hear from you!";
-                Click(window, "EditSaveButton");
-                await Until(() => history.Platforms.Status.Pending == 3 && Control<TextBlock>(window, "StatusText").Text.StartsWith("Saved the edit."));
+                Click(page, "EditButton");
+                Assert.Equal(Visibility.Visible, Control<StackPanel>(page, "EditorPanel").Visibility);
+                Control<TextBox>(page, "EditText").Text = "Hi Sam, good to hear from you!";
+                Click(page, "EditSaveButton");
+                await Until(() => history.Platforms.Status.Pending == 3 && Control<TextBlock>(page, "StatusText").Text.StartsWith("Saved the edit."));
                 var edit = history.Platforms.Pending[^1];
                 Assert.Equal((PlatformChangeKind.Edit, "102", "Hi Sam, good to hear from you!"), (edit.Kind, edit.Message, edit.Text));
                 Assert.NotNull(history.Store.FindMessage(HistoryApps.Telegram, "42", "101")!.Edited);
 
                 // Without "also there", deleting a whole conversation leaves the apps alone.
-                Control<CheckBox>(window, "AlsoThere").IsChecked = false;
-                Control<ComboBox>(window, "AppFilter").SelectedIndex = 0;
+                Control<CheckBox>(page, "AlsoThere").IsChecked = false;
+                Control<ComboBox>(page, "AppFilter").SelectedIndex = 0;
                 list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("Telegram"));
-                Click(window, "DeleteButton");
+                Click(page, "DeleteButton");
                 await Until(() => history.Store.Stats.Exchanges == 1);
                 Assert.Equal(3, history.Platforms.Status.Pending);
             }
-            finally { window.Close(); }
+            finally { page.Detach(); host.Close(); }
         }
         finally
         {
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    });
+
+    [Fact]
+    public Task TheSideMenuOpensTheConversationsPage() => OnDispatcher(async () =>
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Martlet.History.Nav." + Guid.NewGuid().ToString("N"));
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        // Unshown, so nothing the main window starts once shown runs.
+        var main = new MainWindow(new Martlet.Core.Settings.SettingsStore(Path.Combine(root, "data")), null)
+            { ShowActivated = false, ShowInTaskbar = false };
+        try
+        {
+            var nav = Assert.IsType<RadioButton>(main.FindName("NavConversations"));
+            Assert.Equal("NavConversations", AutomationProperties.GetAutomationId(nav));
+            var page = Assert.IsType<ConversationsView>(main.FindName("ConversationsPage"));
+            Assert.Equal("ConversationsPage", AutomationProperties.GetAutomationId(page));
+            Assert.Equal(Visibility.Collapsed, page.Visibility);
+
+            nav.IsChecked = true;
+            Assert.Equal(Visibility.Visible, page.Visibility);
+            Assert.Equal(Visibility.Collapsed, Assert.IsType<ScrollViewer>(main.FindName("HomePage")).Visibility);
+            await Until(() => Control<TextBlock>(page, "StatusText").Text == "Nothing is recorded yet.");
+            Assert.Equal("HistoryConversations", AutomationProperties.GetAutomationId(Control<ListBox>(page, "ConversationsList")));
+
+            Assert.IsType<RadioButton>(main.FindName("NavHome")).IsChecked = true;
+            Assert.Equal(Visibility.Collapsed, page.Visibility);
+        }
+        finally
+        {
+            main.Close();
+            try { Directory.Delete(root, true); } catch (IOException) { }
         }
     });
 
@@ -363,8 +391,19 @@ public sealed class ConversationHistoryDesktopTests
         return at < 0 ? null : last[at..];
     }
 
-    private static T Control<T>(Window window, string name) where T : FrameworkElement => Assert.IsType<T>(window.FindName(name));
-    private static void Click(Window window, string name) => Control<Button>(window, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    /// <summary>The Conversations page as the main window shows it: attached to the record, in a window, entered.</summary>
+    private static async Task<(Window Host, ConversationsView Page)> Show(DesktopConversationHistory history, List<string> asked)
+    {
+        var page = new ConversationsView();
+        page.Attach(history, (_, _, title) => { asked.Add(title); return true; });
+        var host = new Window { Content = page, ShowActivated = false, ShowInTaskbar = false, Width = 1000, Height = 760 };
+        host.Show();
+        await page.EnterAsync();
+        return (host, page);
+    }
+
+    private static T Control<T>(FrameworkElement page, string name) where T : FrameworkElement => Assert.IsType<T>(page.FindName(name));
+    private static void Click(FrameworkElement page, string name) => Control<Button>(page, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
     private static async Task Until(Func<bool> condition)
     {
