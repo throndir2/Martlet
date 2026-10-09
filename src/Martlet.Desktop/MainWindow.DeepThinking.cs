@@ -81,6 +81,7 @@ public partial class MainWindow
         page.Children.Add(ThinkLongerCard(homeSettings?.Generation?.ThinkLonger, route, plan, on));
         page.Children.Add(WebResearchCard(ThinkLongerSettings.Of(homeSettings?.Generation), route, plan));
         page.Children.Add(BackupThinkingCard(poolSettings));
+        page.Children.Add(PriorityCard(poolSettings));
     }
 
     /// <summary>The machine list: the conversation's own model (never in the pool), each member (<see cref="MemberRow"/>) and each
@@ -464,6 +465,94 @@ public partial class MainWindow
             for (var i = 0; i < list.Count; i++) if (list[i] == value) return i;
             return -1;
         }
+    }
+
+    /// <summary>Companion › Thinking pool's line of requests: whether higher-priority requests may stop lower ones, after how many
+    /// stops a stopped request's priority goes up, and how many times a failed request is tried again.</summary>
+    private Border PriorityCard(ThinkingPoolSettings pool)
+    {
+        var preempt = new CheckBox
+        {
+            IsChecked = pool.PreemptLowerPriority, Margin = new Thickness(0, 0, 0, 8),
+            Content = new TextBlock { Text = "Higher priority requests may stop lower ones", TextWrapping = TextWrapping.Wrap }
+        };
+        AutomationProperties.SetAutomationId(preempt, "ThinkingPoolPreempt");
+        AutomationProperties.SetName(preempt, "Higher priority requests may stop lower ones");
+        void Preempt(bool value) => SavePoolAsync(p => p with { PreemptLowerPriority = value }, value
+            ? "Higher priority requests may stop lower ones when the pool is full."
+            : "Requests wait for a free slot and never stop each other.").Forget();
+        preempt.Checked += (_, _) => Preempt(true);
+        preempt.Unchecked += (_, _) => Preempt(false);
+
+        var raiseChoices = Enumerable.Range(ThinkingPoolSettings.MinRaiseAfterStops,
+            ThinkingPoolSettings.MaxRaiseAfterStops - ThinkingPoolSettings.MinRaiseAfterStops + 1).ToArray();
+        var raise = new ComboBox
+        {
+            Width = 260, HorizontalAlignment = HorizontalAlignment.Left,
+            ItemsSource = raiseChoices.Select(n => n == 1 ? "After every stop" : $"After {n} stops").ToArray(),
+            SelectedIndex = Array.IndexOf(raiseChoices, pool.RaisePriorityAfterStops) is var at and >= 0 ? at : Array.IndexOf(raiseChoices, ThinkingPoolSettings.DefaultRaiseAfterStops),
+            IsEnabled = pool.PreemptLowerPriority
+        };
+        AutomationProperties.SetAutomationId(raise, "ThinkingPoolRaiseAfterStops");
+        AutomationProperties.SetName(raise, "Raise a stopped request's priority after this many stops");
+        raise.SelectionChanged += (_, _) =>
+        {
+            if (raise.SelectedIndex < 0) return;
+            var value = raiseChoices[raise.SelectedIndex];
+            SavePoolAsync(p => p with { RaisePriorityAfterStops = value }, value == 1
+                ? "A stopped request becomes more important each time it's stopped."
+                : $"A stopped request becomes more important after every {value} stops.").Forget();
+        };
+
+        var retryChoices = Enumerable.Range(0, ThinkingPoolSettings.MaxRetries + 1).ToArray();
+        var retries = new ComboBox
+        {
+            Width = 260, HorizontalAlignment = HorizontalAlignment.Left,
+            ItemsSource = retryChoices.Select(n => n switch { 0 => "Don't try again", 1 => "Once more", _ => $"{n} more times" }).ToArray(),
+            SelectedIndex = Math.Clamp(pool.RetriesOnFailure, 0, ThinkingPoolSettings.MaxRetries)
+        };
+        AutomationProperties.SetAutomationId(retries, "ThinkingPoolRetries");
+        AutomationProperties.SetName(retries, "Try a failed request again this many times");
+        retries.SelectionChanged += (_, _) =>
+        {
+            if (retries.SelectedIndex < 0) return;
+            var value = retryChoices[retries.SelectedIndex];
+            SavePoolAsync(p => p with { RetriesOnFailure = value }, value switch
+            {
+                0 => "A failed request isn't tried again.",
+                1 => "A failed request is tried once more.",
+                _ => $"A failed request is tried up to {value} more times."
+            }).Forget();
+        };
+
+        var status = Note(PriorityLine(pool, conversation?.PoolStatusNow()), new Thickness(0, 8, 0, 0));
+        AutomationProperties.SetAutomationId(status, "ThinkingPoolPriorityStatus");
+        return Card(Heading("Busy pool"),
+            Note("When every slot is busy, a more important request can stop a less important one to go first. The stopped request " +
+                "keeps its place at the front of its line and starts again when there's room. If it keeps getting stopped, it becomes " +
+                "more important so it finishes in the end. A request that fails can be tried again, at the importance it had.",
+                new Thickness(0, 0, 0, 8)),
+            preempt, TerminalRow("More important after", raise), TerminalRow("Try a failed request again", retries), status);
+    }
+
+    /// <summary>Companion › Thinking pool's Busy pool line (MCP reads it as ThinkingPoolPriorityStatus): the choices in words and,
+    /// when the pool runs, how many requests were stopped, raised and tried again since Martlet started.</summary>
+    internal static string PriorityLine(ThinkingPoolSettings pool, ThinkingPoolStatus? status)
+    {
+        var rules = pool.PreemptLowerPriority
+            ? $"More important requests may stop less important ones; a request stopped {Times(pool.RaisePriorityAfterStops)} becomes more important."
+            : "Requests wait for a free slot and never stop each other.";
+        var retry = pool.RetriesOnFailure switch
+        {
+            0 => " A failed request isn't tried again.",
+            1 => " A failed request is tried once more.",
+            var n => $" A failed request is tried up to {n} more times."
+        };
+        var counts = status is null ? "" :
+            $" Since Martlet started: {status.StoppedForPriority} stopped, {status.Raised} made more important, {status.Retried} tried again.";
+        return rules + retry + counts;
+
+        static string Times(int n) => n == 1 ? "once" : $"{n} times";
     }
 
     /// <summary>Companion › Thinking pool's live floor line (MCP reads it as ThinkingPoolLiveFloor): which members wait while you
