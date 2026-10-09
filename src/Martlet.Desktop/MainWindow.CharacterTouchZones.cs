@@ -578,6 +578,30 @@ public partial class MainWindow
             addRow.Children.Add(add);
             AddRow(list, addRow);
         }
+        var resetRow = new WrapPanel { Margin = new Thickness(0, 16, 0, 0) };
+        var resetReactions = Compact(PageButton("Reset reactions", () =>
+        {
+            if (!ConfirmReset("Reset what every zone plays to the defaults? Boxes, names and your own words stay. Autoplay lists are cleared.")) return;
+            var current = characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByOwner };
+            SaveAndRender(current with
+            {
+                IncludeIntimate = intimate.IsChecked == true,
+                Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()).Select(z => z with { Reaction = new() { Notices = z.Reaction.Notices, Narration = z.Reaction.Narration } })]
+            });
+        }, id: "TouchZonesResetReactions"));
+        AutomationProperties.SetHelpText(resetReactions, "Every zone plays its default again and its autoplay list is emptied. Asks first.");
+        var resetZones = Compact(PageButton("Reset all zones", () =>
+        {
+            if (!ConfirmReset("Remove every zone, including the ones you added, and start again as for a fresh character? Martlet makes a first guess at the zones.")) return;
+            var current = characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId };
+            firstTouchZonesTried.Remove(modelId);
+            SaveAndRender(current with { Zones = [], DetectedBy = null, DetectedAt = null, Crop = null, Whole = false });
+        }, id: "TouchZonesResetAll"));
+        AutomationProperties.SetHelpText(resetZones, "Removes all zones and their reactions, then places a first guess again. Asks first.");
+        resetZones.Margin = new Thickness(8, 0, 0, 0);
+        resetRow.Children.Add(resetReactions);
+        resetRow.Children.Add(resetZones);
+        AddRow(list, resetRow);
         var card = Card([.. stack]);
         card.Unloaded += (_, _) => { if (autoSave.Pending) autoSave.SaveNowAsync().Forget(); };
         return card;
@@ -590,6 +614,9 @@ public partial class MainWindow
             else if (openTab == CompanionTab.Touch) RenderTab();
         }
     }
+
+    private bool ConfirmReset(string question) =>
+        MessageBox.Show(this, question, "Martlet", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
 
     private const string TouchZonesZoomHelp = "Zoom in to move and resize the boxes precisely. Ctrl+wheel over the picture zooms where " +
         "the pointer is. Zoomed in, drag the picture (not a box) or scroll to look around it; Ctrl+drag or a middle-button drag moves it " +
@@ -650,6 +677,7 @@ public partial class MainWindow
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) PlayTouchAsync(plan[i], $"a try of {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) avatar.Gaze.Attend(reaction.LookSeconds, $"a try of {zone.Name.ToLowerInvariant()}");
+        CharacterTouchZoneService.Autoplay(reaction, $"a try of {zone.Name.ToLowerInvariant()}", PlayTouchAsync);
         characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
                 CharacterTouchZoneService.Describe(reaction, 1) + "." +
                 (zone.Reaction.Notices ? " Martlet notices touches here" + (CharacterTouchZones.Narration(zone) is { } line ? $" (your words: \"{line}\")." : ".") : ""));
@@ -676,11 +704,15 @@ public partial class MainWindow
     /// again, and Martlet finds what of the model it follows from there.</summary>
     private sealed class ZoneRow
     {
-        private const string DefaultChoice = "(default)", NothingChoice = "(nothing)", NoSecond = "(nothing else)";
+        private const string DefaultChoice = "(default)", NothingChoice = "(nothing)", AddChoice = "(add an emote)";
+        private readonly List<string> autoplay;
+        private readonly TextBlock autoplayText;
+        private readonly ComboBox addAutoplay;
+        private readonly TextBox step;
         private readonly CharacterTouchZone zone;
         private readonly CheckBox on, notices;
         private readonly TextBox name, narration, rest, box;
-        private readonly ComboBox first, second;
+        private readonly ComboBox first;
         private readonly Button? addArea, removeArea;
         private readonly IReadOnlyList<(string Id, string Label)> items;
         private readonly Action edited;
@@ -752,11 +784,6 @@ public partial class MainWindow
             first.SelectedIndex = chosen is null ? 0 : chosen.Count == 0 ? 1 : Math.Max(0, IndexOf(chosen[0]) + 2);
             AutomationProperties.SetName(first, $"What {zone.Name} plays");
             AutomationProperties.SetAutomationId(first, $"TouchZoneReaction-{number}");
-            second = Compact(new ComboBox { ItemsSource = new[] { NoSecond }.Concat(items.Select(i => i.Label)).ToArray(), Width = 150 });
-            second.SelectedIndex = chosen is { Count: > 1 } ? Math.Max(0, IndexOf(chosen[1]) + 1) : 0;
-            second.IsEnabled = first.SelectedIndex > 1;
-            AutomationProperties.SetName(second, $"What else {zone.Name} plays");
-            AutomationProperties.SetAutomationId(second, $"TouchZoneReaction2-{number}");
             notices = new CheckBox
             {
                 Content = "Martlet notices", IsChecked = zone.Reaction.Notices, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 6)
@@ -806,31 +833,60 @@ public partial class MainWindow
                 removeArea.Margin = new Thickness(6, 0, 0, 0);
             }
 
+            // A second pick saved before the list existed becomes the list's first emote.
+            autoplay = [.. zone.Reaction.Autoplay is { Count: > 0 } saved ? saved : chosen is { Count: > 1 } ? chosen.Skip(1) : []];
+            autoplayText = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0), TextWrapping = TextWrapping.Wrap };
+            autoplayText.SetResourceReference(StyleProperty, "Muted");
+            AutomationProperties.SetAutomationId(autoplayText, $"TouchZoneAutoplayList-{number}");
+            addAutoplay = Compact(new ComboBox { ItemsSource = new[] { AddChoice }.Concat(items.Select(i => i.Label)).ToArray(), Width = 170, SelectedIndex = 0 });
+            AutomationProperties.SetName(addAutoplay, $"Add an emote {zone.Name} autoplays");
+            AutomationProperties.SetAutomationId(addAutoplay, $"TouchZoneAutoplayAdd-{number}");
+            var clearAutoplay = Compact(PageButton("Clear", () => { autoplay.Clear(); ShowAutoplay(); edited(); }, id: $"TouchZoneAutoplayClear-{number}"));
+            clearAutoplay.Margin = new Thickness(6, 0, 0, 0);
+            step = Compact(new TextBox { Text = zone.Reaction.AutoplaySeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 48 });
+            AutomationProperties.SetName(step, $"Seconds each autoplayed emote of {zone.Name} shows");
+            AutomationProperties.SetAutomationId(step, $"TouchZoneAutoplaySeconds-{number}");
+            AutomationProperties.SetHelpText(addAutoplay, "Emotes and gestures this zone plays on its own, one after another, after its reaction.");
+            addAutoplay.SelectionChanged += (_, _) =>
+            {
+                if (addAutoplay.SelectedIndex <= 0) return;
+                if (autoplay.Count < CharacterTouchReaction.MaximumAutoplay) autoplay.Add(items[addAutoplay.SelectedIndex - 1].Id);
+                addAutoplay.SelectedIndex = 0;
+                ShowAutoplay();
+                edited();
+            };
+            step.TextChanged += (_, _) => edited();
+            var autoplayGroup = RowGroup(RowLabel("Autoplays", addAutoplay, width: 70), addAutoplay, clearAutoplay, autoplayText,
+                RowLabel("each", step, 6), step, RowLabel("seconds", step, 6, 0));
+            ShowAutoplay();
+
             on.Checked += (_, _) => edited();
             on.Unchecked += (_, _) => edited();
             name.TextChanged += (_, _) => edited();
-            first.SelectionChanged += (_, _) => { second.IsEnabled = first.SelectedIndex > 1; edited(); };
-            second.SelectionChanged += (_, _) => edited();
+            first.SelectionChanged += (_, _) => edited();
             notices.Checked += (_, _) => { words.Visibility = Visibility.Visible; edited(); };
             notices.Unchecked += (_, _) => { words.Visibility = Visibility.Collapsed; edited(); };
             narration.TextChanged += (_, _) => edited();
             rest.TextChanged += (_, _) => edited();
             box.TextChanged += (_, _) => { Place(); edited(); };
 
-            // Lined up under the name: what it plays, how long it rests, its box and Martlet notices; the owner's words take the rest
-            // of the line, or a line of their own.
+            // Lined up under the name: what it plays and its autoplay list, and Martlet notices; rest and box sit under Details.
             var fields = new FillWrapPanel { Margin = new Thickness(RowIndent, 6, 0, 0), FillMinimum = 200 };
-            var plays = RowGroup(RowLabel("Plays", first, width: 44), first);
+            var plays = RowGroup(RowLabel("Plays", first, width: 70), first);
             plays.Margin = new Thickness(0, 0, 0, 6);
             fields.Children.Add(plays);
-            fields.Children.Add(RowGroup(RowLabel("and", second, 8), second));
-            fields.Children.Add(RowGroup(RowLabel("Rests", rest), rest, RowLabel("seconds", rest, 6, 0)));
-            fields.Children.Add(addArea is null ? RowGroup(RowLabel("Box", box, width: 44), box)
-                : RowGroup(RowLabel("Box", box, width: 44), box, Spaced(addArea), removeArea!));
+            fields.Children.Add(autoplayGroup);
             fields.Children.Add(notices);
             fields.Children.Add(words);
+            var details = new FillWrapPanel { Margin = new Thickness(0, 6, 0, 0), FillMinimum = 200 };
+            details.Children.Add(RowGroup(RowLabel("Rests", rest), rest, RowLabel("seconds", rest, 6, 0)));
+            details.Children.Add(addArea is null ? RowGroup(RowLabel("Box", box, width: 44), box)
+                : RowGroup(RowLabel("Box", box, width: 44), box, Spaced(addArea), removeArea!));
+            var more = new Expander { Header = "Details (rest, box)", Content = details, Margin = new Thickness(RowIndent, 0, 0, 0) };
+            AutomationProperties.SetAutomationId(more, $"TouchZoneDetails-{number}");
             View.Children.Add(header);
             View.Children.Add(fields);
+            View.Children.Add(more);
             ShowAreaButtons();
         }
 
@@ -839,6 +895,9 @@ public partial class MainWindow
             button.Margin = new Thickness(8, 0, 0, 0);
             return button;
         }
+
+        private void ShowAutoplay() => autoplayText.Text = autoplay.Count == 0 ? "nothing" :
+            string.Join(" → ", autoplay.Select(id => items.FirstOrDefault(i => i.Id == id).Label ?? id));
 
         private int IndexOf(string id)
         {
@@ -896,8 +955,7 @@ public partial class MainWindow
             {
                 <= 0 => null,
                 1 => [],
-                var i => new[] { items[i - 2].Id }.Concat(second.SelectedIndex > 0 ? [items[second.SelectedIndex - 1].Id] : Array.Empty<string>())
-                    .Distinct(StringComparer.Ordinal).ToArray()
+                var i => new[] { items[i - 2].Id }
             };
             var given = name.Text.Trim();
             var line = narration.Text.Trim();
@@ -920,6 +978,9 @@ public partial class MainWindow
                 Reaction = new()
                 {
                     Actions = actions, Notices = notices.IsChecked == true,
+                    Autoplay = autoplay.Count == 0 ? null : [.. autoplay],
+                    AutoplaySeconds = double.TryParse(step.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var each) &&
+                        each is >= 1 and <= CharacterTouchReaction.MaximumAutoplaySeconds ? each : zone.Reaction.AutoplaySeconds,
                     Narration = line.Length == 0 || line == CharacterTouchZones.Kind(zone.Id)?.Narration ? null : line,
                     CooldownSeconds = double.TryParse(rest.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds) &&
                         seconds is >= 0 and <= CharacterTouchReaction.MaximumCooldown ? seconds : zone.Reaction.CooldownSeconds

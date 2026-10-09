@@ -83,7 +83,12 @@ public partial class MainWindow
             "Martlet's newest words about what this PC plays (music, videos, games), while it hears it. It isn't a recording: " +
             "choose one below for that. Placeholder: {sound}."),
         (CheckInFacts.Presence, "Whether you're at the PC",
-            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse. Placeholder: {presence}.")
+            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse. Placeholder: {presence}."),
+        (CheckInFacts.Touches, "How you touched the character",
+            $"What you did to the character on the desktop in the last {TouchLedger.OftenWindow.TotalMinutes:0} minutes, oldest " +
+            "first, each with when: pokes, pats, holds, strokes with their path and direction, and moves. It says which touches " +
+            "were intimate, how the personality feels about them and the places you keep coming back to. Martlet only reads " +
+            "it: its next reply still gets your touches. Placeholder: {touches}.")
     ];
 
     private static readonly (CheckInConditions Condition, string Label, string Help)[] CheckInConditionChoices =
@@ -144,8 +149,8 @@ public partial class MainWindow
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing.";
 
     private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {conversation}, " +
-        "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound} and " +
-        "{presence}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
+        "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
+        "{presence} and {touches}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
     private void InitializeCheckIns()
     {
@@ -478,7 +483,8 @@ public partial class MainWindow
 
     /// <summary>What the check-ins may know now (on the UI thread): the time, the personality, the conversation's newest
     /// exchanges, what Martlet said lately with when, how long it and this PC have been quiet, the lingering emotes a reply
-    /// turned on, a gaze a reply chose, the reminders and background work, and the context board's screen and sound notes.</summary>
+    /// turned on, a gaze a reply chose, the reminders and background work, the context board's screen and sound notes, and what
+    /// the user did to the character lately (read without taking it from the next reply).</summary>
     private CheckInState CheckInStateNow()
     {
         var now = DateTimeOffset.Now;
@@ -505,6 +511,8 @@ public partial class MainWindow
             Screen = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Screen)?.Text,
             Sound = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Sound)?.Text,
             Said = conversation?.RecentSayings(now) ?? [],
+            // Read without taking: the next reply still drains these touches as before.
+            Touches = conversation?.Touches.History(conversation.TouchNow),
             HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh)
         };
     }

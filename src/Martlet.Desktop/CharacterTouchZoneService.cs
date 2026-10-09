@@ -432,6 +432,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) look?.Invoke(reaction.LookSeconds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
+        Autoplay(reaction, $"a {kind} on {zone.Name.ToLowerInvariant()}", play);
         Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({how}){with} at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
             (noticed is null ? "." : $", and Martlet noticed {noticed}."));
@@ -440,6 +441,18 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             $"{(heard.Length > 0 ? ", Martlet noticed " + string.Join(" + ", heard.Select(z => z.Id)) : "")}.");
         Changed?.Invoke();
         return match;
+    }
+
+    /// <summary>Plays the zone's autoplay list on its own: after the reaction, each emote or gesture in turn for the zone's step.</summary>
+    internal static void Autoplay(TouchReactionPlan reaction, string reason, Func<CharacterActionSource, string, double, Task> play)
+    {
+        if (reaction.Autoplay is not { Count: > 0 } list) return;
+        var step = Math.Max(1, reaction.AutoplaySeconds);
+        Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(step));
+            foreach (var source in list) await play(source, reason + " (autoplay)", step);
+        }).Forget();
     }
 
     /// <summary>How a touch found its zone, for the last-touch line and the log: "box", or "box, traced to the rest pose" when

@@ -650,7 +650,7 @@ waits, its last run, runs and actions since Martlet started). Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`), `CheckInWhen-<id>-<condition>` (when it
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`), `CheckInWhen-<id>-<condition>` (when it
 runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
 `Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`),
 `CheckInTrigger-<id>-<trigger>` (what starts it at once: `TouchesEnded`,
@@ -1966,7 +1966,9 @@ zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 (*When you touch Martlet while it talks*: radio buttons whose `selected` state
 reads in `ui_snapshot`; choosing one saves `talk-preferences.json`, so it
 needs `--allow-ui-effects`),
-`TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
+`TouchZonesSaveState` and each zone's `TouchZoneAutoplayList-<n>` (the emotes
+the zone autoplays, as *A → B*, or *nothing*; the touch-zone check also lists
+`autoplays`), and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows, for a zone with several areas how many, for a zone that follows the
 model's own part *follows the model's own 尾巴 wherever it moves: 21 parts in 6
 areas*, *added by you* for a zone the owner added, which *Detect again*
@@ -4526,7 +4528,16 @@ wanted), `own: waits for the sound it records`, `own: the message carries what
 it took` (a real FIXTURE script, `Write-Output ('FIXTURE ' + (6 * 7))`, run by
 the production `TerminalRunner`, a FIXTURE picture and recording) and
 `own: only a capable member takes it` (a text-only member never gets it; a
-member with vision and audio gets the picture and the sound). Three
+member with vision and audio gets the picture and the sound). `touches fact`
+records FIXTURE pats, strokes across intimate zones, a move and a poke on a
+production `TouchLedger`, with replies draining some of them, then fills
+`{touches}` into an own check-in: each run with when, which were intimate,
+the persona's feeling and the places touched again and again. It shows that
+reading the history (`TouchLedger.History`) leaves what the next reply gets
+the same, that the history outlives a reply's `Drain`, that the fact goes
+after the prompt when it is ticked but not placed, and that facts past
+`Touches` are refused. Its `detail` gives counts (`runs`, `things`,
+`intimate`, `often`), `filled` and the FIXTURE message. Three
 `triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
 with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
 check-in's triggers, an unknown trigger refused, none by default),
