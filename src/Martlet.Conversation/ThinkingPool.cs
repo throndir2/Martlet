@@ -240,21 +240,21 @@ public sealed class ThinkingJobBoard
     /// <summary>Whether a member that answers now can take a job of <paramref name="kind"/> that needs <paramref name="needs"/>,
     /// without posting it (no waiting and no slot taken): callers choose their fallback when it is false.</summary>
     public bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text) =>
-        Online.Any(member => Takes(member, needs));
+        Online.Any(member => Takes(member, kind, needs));
 
     /// <summary>Whether a member that can take such a job may start it now (it answers, and the live floor's rules allow it; no
     /// slot taken), so a caller doesn't prepare work no member would take before it is stale.</summary>
     public bool MayStartNow(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Online.Any(member => Takes(member, needs) && (rules?.MayStart(member, kind) ?? true));
+        return Online.Any(member => Takes(member, kind, needs) && (rules?.MayStart(member, kind) ?? true));
     }
 
     /// <summary>Whether a member that answers and can take such a job shares no hardware with the live conversation (no slot taken).</summary>
     public bool CanRunBeside(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Online.Any(member => Takes(member, needs) && rules?.Shares(member) != true);
+        return Online.Any(member => Takes(member, kind, needs) && rules?.Shares(member) != true);
     }
 
     /// <summary>The member a job of <paramref name="kind"/> needing <paramref name="needs"/> would go to first when every slot is
@@ -263,12 +263,14 @@ public sealed class ThinkingJobBoard
     public BackgroundPlace? Find(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Online.Where(member => Takes(member, needs))
+        return Online.Where(member => Takes(member, kind, needs))
             .OrderBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
     }
 
-    // A member takes a job when it can do what the job needs and doesn't rest for such jobs.
-    private bool Takes(BackgroundPlace member, ThinkingCapability needs) => (member.Can & needs) == needs && !Rests(member, needs);
+    // A member takes a job when the owner lets it take the job's kind (Quick jobs, Long jobs), it can do what the job needs and it
+    // doesn't rest for such jobs.
+    private bool Takes(BackgroundPlace member, ThinkingJobKind kind, ThinkingCapability needs) =>
+        member.Takes(kind) && (member.Can & needs) == needs && !Rests(member, needs);
 
     // A member rests for the jobs that need at least what a job it refused needed, until its rest ends.
     private bool Rests(BackgroundPlace member, ThinkingCapability needs) =>
@@ -293,7 +295,7 @@ public sealed class ThinkingJobBoard
         token.ThrowIfCancellationRequested();
         var needs = job.Required;
         var pool = Members;
-        var capable = pool.Where(member => (member.Can & needs) == needs).ToArray();
+        var capable = pool.Where(member => member.Takes(job.Kind) && (member.Can & needs) == needs).ToArray();
         if (capable.Length == 0) return ThinkingJobResult.NoMember(needs);
         // A computer that refused such a request as invalid gets no more of them until its rest ends; the caller's fallback runs.
         if (capable.All(member => Rests(member, needs)))

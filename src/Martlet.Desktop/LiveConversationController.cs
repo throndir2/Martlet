@@ -949,14 +949,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// routes, with every computer counted as online: what the reply's tools come from.</summary>
     private DeepThinkingPlan DeepPlan(LiveConversationConfiguration configured) => DeepPool(configured).Plan;
 
-    /// <summary>Every Thinking pool member (or the conversation model while the pool is empty and that is allowed), each with
+    /// <summary>Every Thinking pool member that takes long jobs (or the conversation model while none does and that is allowed), each with
     /// whether a think can run there, with every computer counted as online. The tools a reply offers come from this, so they stay
     /// the same while computers come and go (<see cref="LivePool"/> places the work).</summary>
-    private DeepThinkingPool DeepPool(LiveConversationConfiguration configured) => PoolPlan(configured.Routes);
+    private DeepThinkingPool DeepPool(LiveConversationConfiguration configured) => PoolPlan(configured.Routes, longJobs: true);
 
     /// <summary>As <see cref="DeepPool"/>, but members whose computers are offline now can't run, and the conversation model
     /// stands in when none can and that is allowed: whether a think, research or a song's lyrics can start now, and where.</summary>
-    private DeepThinkingPool LivePool(LiveConversationConfiguration configured) => PoolPlan(configured.Routes, live: true);
+    private DeepThinkingPool LivePool(LiveConversationConfiguration configured) => PoolPlan(configured.Routes, live: true, longJobs: true);
 
     internal void Configure(SettingsLoadResult loaded)
     {
@@ -1276,7 +1276,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// sound is let go like a cough), or the microphone is the FIXTURE one that hears only its clips. Echo reduction that is off,
     /// couldn't start or was lost can't tell Martlet's voice from yours: listening would hear Martlet and answer its own words.</summary>
     private bool ListensOverMartlet(ListeningOptions options, EchoTimeline? echo = null) =>
-        options.BargeIn || captureDevices is SimulatedMicrophone || options.ReduceEcho && echoReducer?.Works(echo) == true;
+        options.BargeIn || captureDevices is SimulatedMicrophone or KeptCaptureDeviceFactory { Inner: SimulatedMicrophone } ||
+        options.ReduceEcho && echoReducer?.Works(echo) == true;
 
     /// <summary>Always listening holds off while other setup work (a microphone test, Voice ID enrollment) owns the app slot,
     /// and, when it can't tell Martlet's own voice from yours (<paramref name="overMartlet"/> false), while Martlet speaks (a
@@ -2995,7 +2996,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // Members that are offline now stay in the list: the broker passes over them, and a think waiting in line goes to one as
         // soon as it answers again.
         var pool = Placing(DeepPool(configured), live);
-        var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For);
+        var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool));
         var thinkingRoute = configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var start = jobs.Start(ThinkLonger.Kind(settings, ThinkLonger.Slots(places)), ThinkLonger.Label(task!), async (job, token) =>
         {
@@ -3174,7 +3175,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
             // Members that are offline now stay in the list: the broker passes over them until they answer again.
             var pool = Placing(DeepPool(configured), live);
-            var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan);
+            var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, choices: Volatile.Read(ref thinkingPool));
             where = places.Count == 1
                 ? pool.Usable[0].Settings is { Separate: true } only ? only.Describe() : thinkingModel
                 : $"whichever of {places.Count} Thinking pool members is free";

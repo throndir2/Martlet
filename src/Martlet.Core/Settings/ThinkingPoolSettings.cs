@@ -54,6 +54,41 @@ public sealed record ThinkingPoolSettings
         AnswersForConversation = [.. AnswersForConversation.Where(k => k != key), .. answers ? new[] { key } : []]
     };
 
+    /// <summary>The members (by <see cref="DeepThinkingSettings.Key"/>) the owner keeps from quick jobs (Quick jobs unticked): the
+    /// judges and the screen and sound summaries. Empty: every member takes them. A file saved before this list existed reads as
+    /// empty.</summary>
+    public IReadOnlyList<string> NoQuickJobs { get => noQuickJobs; init => noQuickJobs = value ?? []; }
+    private readonly IReadOnlyList<string> noQuickJobs = [];
+
+    /// <summary>The members (by <see cref="DeepThinkingSettings.Key"/>) the owner keeps from long jobs (Long jobs unticked): thinking
+    /// longer, research, a song's lyrics, touch zones, remembering, naming and check-ins. Empty: every member takes them. A file
+    /// saved before this list existed reads as empty.</summary>
+    public IReadOnlyList<string> NoLongJobs { get => noLongJobs; init => noLongJobs = value ?? []; }
+    private readonly IReadOnlyList<string> noLongJobs = [];
+
+    /// <summary>Whether the member with <paramref name="key"/> takes quick jobs.</summary>
+    public bool TakesQuickJobs(string key) => !NoQuickJobs.Contains(key, StringComparer.Ordinal);
+
+    /// <summary>Whether the member with <paramref name="key"/> takes long jobs.</summary>
+    public bool TakesLongJobs(string key) => !NoLongJobs.Contains(key, StringComparer.Ordinal);
+
+    /// <summary>The pool with the member with <paramref name="key"/> taking quick jobs (<paramref name="quick"/>) and long jobs
+    /// (<paramref name="long"/>), or as before where null.</summary>
+    public ThinkingPoolSettings WithJobs(string key, bool? quick = null, bool? @long = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        return this with
+        {
+            NoQuickJobs = quick is { } q ? [.. NoQuickJobs.Where(k => k != key), .. q ? [] : new[] { key }] : NoQuickJobs,
+            NoLongJobs = @long is { } l ? [.. NoLongJobs.Where(k => k != key), .. l ? [] : new[] { key }] : NoLongJobs
+        };
+    }
+
+    /// <summary>The pool as long jobs see it (thinking longer, research and a song's lyrics): only the members that take long
+    /// jobs. When none does, those jobs act as with an empty pool: the conversation model, when that is allowed.</summary>
+    public ThinkingPoolSettings ForLongJobs() =>
+        NoLongJobs.Count == 0 ? this : this with { Members = [.. Members.Where(m => TakesLongJobs(m.Key))] };
+
     /// <summary>The paired computers (host IDs) the owner took out of the pool (In the Thinking pool unticked). Martlet adds a
     /// computer with a Thinking model by itself (<see cref="ThinkingPoolAutoJoin"/>), but never one in this list; ticking it
     /// again takes it off the list. A file saved before this list existed reads as empty.</summary>
@@ -101,10 +136,11 @@ public sealed record ThinkingPoolSettings
         return this with { Members = [.. Members, single] };
     }
 
-    /// <summary>The pool without the member whose key is <paramref name="key"/>.</summary>
+    /// <summary>The pool without the member whose key is <paramref name="key"/>, and without its rules.</summary>
     public ThinkingPoolSettings Remove(string key) => this with
     {
-        Members = [.. Members.Where(m => m.Key != key)], AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)]
+        Members = [.. Members.Where(m => m.Key != key)], AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)],
+        NoQuickJobs = [.. NoQuickJobs.Where(k => k != key)], NoLongJobs = [.. NoLongJobs.Where(k => k != key)]
     };
 
     /// <summary>Every place the planner considers: the members, or the conversation model while the pool is empty and that is
@@ -139,6 +175,9 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(AnswersForConversation.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
             AnswersForConversation.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl)),
             "The members that may answer for the conversation are a short list of member keys.");
+        ContractRules.Require(new[] { NoQuickJobs, NoLongJobs }.All(keys => keys.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
+            keys.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl))),
+            "The members kept from quick or long jobs are a short list of member keys.");
         ContractRules.Require(LeftByOwner.Count <= MaxLeftByOwner &&
             LeftByOwner.All(h => h is { Length: > 0 and <= 128 } && !h.Any(char.IsControl)) &&
             LeftByOwner.Distinct(StringComparer.Ordinal).Count() == LeftByOwner.Count,
