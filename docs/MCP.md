@@ -5890,6 +5890,20 @@ filter pills, list items), a combo box in the status fields reads as its
 chosen option, and a check box in the status fields reads as its label (its
 `checkedState` says whether it is ticked).
 
+Keyboard shortcuts (underlined letters, such as the *x* of Settings' *Exit
+Martlet*) need Alt: Martlet ignores the plain letter, so a stray key never
+presses a button. Enter and Esc still press a dialog's default and cancel
+buttons, and an open menu still takes plain letters. The controls that talk,
+listen, watch or show the character have no shortcut at all: Home's
+`HomeListen`, `HomeWatch`, `OpenLiveConversation`, `ToggleCharacter` and the
+character buttons beside them, the talk window's `LiveStop` and `LivePtt`, and
+the notification-area menu's `TrayTalk`, `TrayStartListening`,
+`TrayStopListening`, `TrayStartWatching`, `TrayStopWatching`, `TrayPause`,
+`TrayResume`, `TrayEndTalk`, `TrayCharacter`, `TrayCharacterClickThrough` and
+`TrayCharacterProfiles`. UI Automation doesn't report WPF's shortcuts, so
+`ui_snapshot` can't show them; `AccessKeysTests` in `Martlet.Desktop.Tests`
+checks the Alt rule.
+
 Companion's side list starts with *How it works*, the jobs Martlet needs in
 priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
 `CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
@@ -7495,7 +7509,8 @@ talk window* while it is open), and while the talk window is open `TrayPause` or
 `TrayCharacterClickThrough` (while the character shows or click-through is on;
 see the character overlay above), the checkable
 `TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
-current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
+current choice) and `TrayExit`. Each item reads as its label in `value`
+(*Start listening*, *Pause Martlet*, *Exit Martlet*...). The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
 column in the dark palettes; `ui_snapshot` returns the palette as `AppearanceTheme`
 (*Pink light*, *Rose dark*, *Character light*, *Character dark* or *Custom*; choosing one with
