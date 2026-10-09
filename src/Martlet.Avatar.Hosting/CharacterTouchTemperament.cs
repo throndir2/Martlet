@@ -154,8 +154,9 @@ public sealed record TouchTemperamentSet
 /// touches escalated it, and how many seconds the character looks at the mouse pointer after it (the temperament's; 0: it
 /// doesn't).</summary>
 public sealed record TouchReactionPlan(IReadOnlyList<CharacterActionSource> Actions, double LingerSeconds = 0, string? Attitude = null,
-    string From = TouchReactionPlan.FromDefault, bool Escalated = false, double LookSeconds = 0)
-{
+    string From = TouchReactionPlan.FromDefault,     bool Escalated = false, double LookSeconds = 0,
+        IReadOnlyList<CharacterActionSource>? Autoplay = null, double AutoplaySeconds = 0)
+    {
     public const string FromOwner = "owner", FromTemperament = "temperament", FromDefault = "default";
 }
 
