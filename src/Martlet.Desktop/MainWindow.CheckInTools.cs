@@ -22,6 +22,13 @@ public partial class MainWindow
         };
         // Only a PC that keeps reminders (a data folder) runs the reminders tool.
         if (conversation?.RemindersTool is not null) handlers[CheckInToolSets.RemindersId] = ReminderToolAsync;
+        // Discord calls and camera only while Martlet can call a Discord friend or is in the owner's Discord calls.
+        if (conversation is { RunsDiscordCheckInTools: true } talk)
+            handlers[DiscordCheckInTools.SetId] = (call, context, token) => talk.RunDiscordCheckInToolAsync(call, token);
+        // Only while memory is on does the memory tool set run.
+        if (conversation?.Configuration?.Memory is { Enabled: true })
+            handlers[MemoryToolSet.Id] = (call, context, token) => conversation is { } live
+                ? live.CheckInMemoryAsync(call, context.CheckInName, token) : new(new ConversationToolResult("Memory: off.\nMemory is off.", true));
         return handlers;
     }
 

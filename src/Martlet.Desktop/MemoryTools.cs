@@ -34,6 +34,31 @@ internal static class MemoryTools
 
     internal static TextToolDefinition Definition { get; } = new(Name, Description, ParametersJson);
 
+    /// <summary>find_memories: the read-only find the reply is offered in place of manage_memories while the Memory check-in tool
+    /// set takes it over (<see cref="MemoryToolSet"/>), so the reply can still answer what Martlet remembers. Always the same text.</summary>
+    internal const string FindName = "find_memories";
+
+    internal static TextToolDefinition FindDefinition { get; } = new(FindName,
+        "Your long-term memory of the user and the people you know by voice. Use it when the user asks what you remember: look up " +
+        "facts by query words and/or person (empty lists the newest).",
+        """{"type":"object","properties":{"query":{"type":"string","description":"Words to look for (empty lists the newest)."},"person":{"type":"string","description":"Whose facts: a name or voice tag like V3, \"me\" for who is speaking, or \"everyone\" for no one in particular."}},"additionalProperties":false}""");
+
+    /// <summary>What the reply is told while the Memory check-in tool set takes manage_memories over. Always the same text.</summary>
+    internal const string HandedOffGuidance =
+        "Your memory changes after your reply: when the user asks you to remember, correct, give to someone else or forget " +
+        "something, say briefly that you will, and it is done after you answer. Use find_memories to look up what you remember.";
+
+    /// <summary><paramref name="argumentsJson"/> (a JSON object, else empty) with its action set to <paramref name="action"/>, for a
+    /// tool that runs one action of manage_memories.</summary>
+    internal static string WithAction(string? argumentsJson, string action)
+    {
+        JsonObject arguments;
+        try { arguments = JsonNode.Parse(string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson) as JsonObject ?? []; }
+        catch (JsonException) { arguments = []; }
+        arguments["action"] = action;
+        return arguments.ToJsonString();
+    }
+
     private static readonly string[] Everyone = ["everyone", "everybody", "no one", "noone", "nobody", "none", "general", "anyone"];
     private static readonly string[] Me = ["me", "i", "myself", "user", "the user", "speaker", "the speaker"];
 

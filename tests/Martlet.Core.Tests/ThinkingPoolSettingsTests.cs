@@ -137,6 +137,41 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Priority_and_retry_choices_have_defaults_and_ranges()
+    {
+        var pool = new ThinkingPoolSettings();
+        Assert.True(pool.PreemptLowerPriority);
+        Assert.Equal(3, pool.RaisePriorityAfterStops);
+        Assert.Equal(1, pool.RetriesOnFailure);
+        pool.Validate();
+        new ThinkingPoolSettings { PreemptLowerPriority = false, RaisePriorityAfterStops = 1, RetriesOnFailure = 0 }.Validate();
+        new ThinkingPoolSettings { RaisePriorityAfterStops = 20, RetriesOnFailure = 10 }.Validate();
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RaisePriorityAfterStops = 0 }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RaisePriorityAfterStops = 21 }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RetriesOnFailure = -1 }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RetriesOnFailure = 11 }.Validate());
+    }
+
+    [Fact]
+    public void Priority_and_retry_choices_are_saved_and_an_older_file_reads_as_defaults()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName),
+            """{ "SchemaVersion": 1, "Members": [], "UseConversationModelWhenEmpty": true }""");
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.True(loaded.PreemptLowerPriority);
+        Assert.Equal(ThinkingPoolSettings.DefaultRaiseAfterStops, loaded.RaisePriorityAfterStops);
+        Assert.Equal(ThinkingPoolSettings.DefaultRetries, loaded.RetriesOnFailure);
+
+        Assert.True((loaded with { PreemptLowerPriority = false, RaisePriorityAfterStops = 7, RetriesOnFailure = 4 }).Save(directory));
+        var saved = ThinkingPoolSettings.Load(directory);
+        Assert.False(saved.PreemptLowerPriority);
+        Assert.Equal(7, saved.RaisePriorityAfterStops);
+        Assert.Equal(4, saved.RetriesOnFailure);
+    }
+
+    [Fact]
     public void An_older_file_without_the_kept_out_list_reads_as_empty()
     {
         Directory.CreateDirectory(directory);

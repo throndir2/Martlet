@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Discord.Calls;
 using NAudio.CoreAudioApi;
@@ -89,8 +90,10 @@ internal static class DiscordCallCheck
                 cameraBackground = saved.CameraBackground.ToString(), cameraPicture = saved.CameraPicture?.ToString(),
                 cameraPictureSaved = DiscordCallPreferences.HasPicture(dataDirectory),
                 cameraTool = saved.On
-                    ? "set_camera_background (color, picture or draw) is offered to every tool-capable reply while the mode is on"
-                    : "set_camera_background isn't offered while the mode is off"
+                    ? "set_camera_background (color, picture or draw) is offered to every tool-capable reply while the mode is on, " +
+                      "unless the After each exchange check-in takes it over with the discord tool set"
+                    : "set_camera_background isn't offered while the mode is off",
+                checkInToolSet = new { id = DiscordCheckInTools.SetId, tools = DiscordCheckInTools.Tools.Select(t => t.Name).ToArray(), replaces = DiscordCheckInTools.Set.Replaces }
             },
             doctor = new
             {
