@@ -2091,7 +2091,8 @@ from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 At the end of the Touch zones card, *Start over* resets the character's touch
 to how a fresh character starts, for the model shown and the active persona
 only. `TouchZonesResetLevel` (a choice; its value is the level: *Zone
-reactions*, *Zones*, *Touch temperament* or *Everything*) chooses how much,
+reactions*, *Zones*, *Touch temperament*, *The character's own changes* or
+*Everything*) chooses how much,
 and `TouchZonesResetNote` reads what that level clears (fixed text).
 `TouchZonesReset` (*Reset...*) opens a confirmation whose question,
 `TouchZonesResetQuestion`, lists exactly what is lost (zone names and counts,

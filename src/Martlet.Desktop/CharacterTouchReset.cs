@@ -5,10 +5,11 @@ using Martlet.Core.Settings;
 namespace Martlet.Desktop;
 
 /// <summary>What Touch zones' Reset works on: the shown model's zones (<see cref="Zones"/> follows only that model), the active
-/// persona (null when there is none) and its temperaments, what a fresh zone's reaction is (<see cref="Fresh"/>), and
-/// <see cref="Redecide"/>, which has the persona's temperament decided again from its personality in the background.</summary>
+/// persona (null when there is none) and its temperaments, what a fresh zone's reaction is (<see cref="Fresh"/>),
+/// <see cref="Redecide"/>, which has the persona's temperament decided again from its personality in the background, and the
+/// changes the character made itself (<see cref="ReactionChanges"/>; null: none to undo).</summary>
 internal sealed record TouchResetTarget(CharacterTouchZoneService Zones, CharacterTemperamentService Temperaments, PersonaProfile? Persona,
-    Func<CharacterTouchZone, CharacterTouchReaction> Fresh, Action<PersonaProfile> Redecide);
+    Func<CharacterTouchZone, CharacterTouchReaction> Fresh, Action<PersonaProfile> Redecide, CharacterReactionChangeService? ReactionChanges = null);
 
 /// <summary>One level of Touch zones' Reset: its ID (for the log), its label in the list, what it clears (the note under the
 /// list), what the owner loses now (the confirmation's lines; none: nothing to reset), what happens after it (or null), and the
@@ -25,7 +26,8 @@ internal sealed record TouchResetLevel(string Id, string Label, string Clears,
 /// Everything) and Everything includes it.</summary>
 internal static class CharacterTouchReset
 {
-    internal const string ReactionsId = "reactions", ZonesId = "zones", TemperamentId = "temperament", EverythingId = "everything";
+    internal const string ReactionsId = "reactions", ZonesId = "zones", TemperamentId = "temperament", ReactionChangesId = "reaction-changes",
+        EverythingId = "everything";
     private const int MostNames = 6;
 
     /// <summary>Every level, in the order the list shows them; Everything last.</summary>
@@ -46,8 +48,13 @@ internal static class CharacterTouchReset
             "Forgets the active persona's touch temperament (decided from its personality or changed by you) and any temperament it " +
             "uses instead. Martlet then decides it again from the personality.",
             TemperamentLosses, TemperamentAfter, ForgetTemperamentAsync),
+        new(ReactionChangesId, "The character's own changes",
+            "Undoes the changes the active persona's character made itself to how it reacts to touches (the How I react " +
+            "check-in), so touches play what you chose again. Your zones and temperament stay.",
+            ReactionChangeLosses, _ => null, UndoReactionChangesAsync),
         new(EverythingId, "Everything",
-            "All of the above: this model's zones and the active persona's touch temperament start again as a fresh character's.",
+            "All of the above: this model's zones and the active persona's touch temperament start again as a fresh character's, " +
+            "and the changes its character made itself end.",
             target => [.. Parts().SelectMany(level => level.Loses(target))],
             target => Parts().Where(level => level.Loses(target).Count > 0).Select(level => level.After(target)).OfType<string>()
                 .Aggregate((string?)null, (all, next) => all is null ? next : all + " " + next),
@@ -148,6 +155,24 @@ internal static class CharacterTouchReset
         if (why is null && !string.IsNullOrWhiteSpace(persona.Text)) target.Redecide(persona);
         return why;
     }
+
+    // The changes the active persona's character made itself that are in effect now, in one line.
+    private static IReadOnlyList<string> ReactionChangeLosses(TouchResetTarget target)
+    {
+        if (target.Persona is not { } persona || target.ReactionChanges is not { } changes) return [];
+        var active = changes.Active(persona.Id);
+        if (active.Count == 0) return [];
+        var what = active.Take(MostNames).Select(c => CharacterReactionChanges.Describe(c, target.Zones.Current)).ToList();
+        if (active.Count > MostNames) what.Add($"{active.Count - MostNames} more");
+        return [$"{(active.Count == 1 ? "the change" : $"the {active.Count} changes")} {persona.Name} made itself to how it reacts to " +
+            "touches (" + string.Join("; ", what) + ")"];
+    }
+
+    // Ends the active persona's own changes (never another persona's), as Reset.
+    private static async Task<string?> UndoReactionChangesAsync(TouchResetTarget target, CancellationToken token) =>
+        target.Persona is not { } persona ? "No persona is active."
+            : target.ReactionChanges is not { } changes ? null
+            : await changes.EndAsync(null, persona.Id, CharacterReactionChange.ByReset, token);
 
     // Everything: each part with something to lose, in order; the reasons any of them failed, or null.
     private static async Task<string?> RunAllAsync(TouchResetTarget target, CancellationToken token)

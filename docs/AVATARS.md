@@ -528,7 +528,12 @@ fresh character starts. Choose how much, then press **Reset...**:
 - **Touch temperament:** the active persona's touch temperament, decided or
   changed by you, goes with any temperament it uses instead. The Thinking
   model decides it again from the personality. Your other computers share it.
-- **Everything:** the zones and the touch temperament.
+- **The character's own changes:** the changes the active persona's
+  character made itself to how it reacts to touches
+  ([Changes the character made](#changes-the-character-made)) end, so
+  touches play what you chose again.
+- **Everything:** the zones, the touch temperament and the character's own
+  changes.
 
 Martlet first lists exactly what you lose and resets nothing until you press
 **Reset**. Other models and personas keep theirs.
@@ -1125,8 +1130,9 @@ Every change is limited:
 Companion › Touch › **Changes the character made** lists the active persona's
 changes in effect: what each does, until when, when it was made and why.
 **Undo** ends one now and **Undo all** ends them all. *Ended lately* shows the
-newest five that ended, and who ended them. **Reset** ends them too, at its
-*Undo the character's own reaction changes* level. The changes are kept in
+newest five that ended, and who ended them. Touch zones' **Start over** ends
+them too, at its *The character's own changes* level (and at *Everything*).
+The changes are kept in
 `character-reaction-changes.json` on this PC only; they don't travel with the
 shared settings. To stop new changes, turn off How I react on Companion ›
 Check-ins.

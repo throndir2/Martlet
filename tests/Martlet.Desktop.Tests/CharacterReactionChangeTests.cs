@@ -1,6 +1,7 @@
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Conversation;
+using Martlet.Core.Settings;
 
 namespace Martlet.Desktop.Tests;
 
@@ -222,6 +223,36 @@ public sealed class CharacterReactionChangeTests
         Assert.Contains("; Teased.", text);
         Assert.Contains("Limits: 3 more changes this check, 11 more today and 7 more in effect at once.", text);
         Assert.Contains("There is no tool", CharacterReactionTools.Call("delete_everything", "{}", context, saved).Result);
+    }
+
+    [Fact]
+    public async Task ResetUndoesOnlyTheActivePersonasOwnChanges()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-reaction-reset-").FullName;
+        try
+        {
+            var mira = new PersonaProfile { Id = Persona, ConfigurationRevision = Guid.NewGuid(), Name = "Mira", Text = "Shy." };
+            var other = Guid.NewGuid();
+            var now = DateTimeOffset.UtcNow;
+            var (_, mine) = Call(CharacterReactionTools.Mood, "{\"shift\":-1,\"why\":\"Teased.\"}", [], Context(now: now));
+            var (_, both) = Call(CharacterReactionTools.Mood, "{\"shift\":1,\"why\":\"Happy.\"}", mine, Context(now: now) with { PersonaId = other });
+            await CharacterReactionChanges.UpdateAsync(directory, _ => both);
+            var changes = new CharacterReactionChangeService(directory);
+            var target = new TouchResetTarget(new CharacterTouchZoneService(directory), new CharacterTemperamentService(directory), mira,
+                _ => new CharacterTouchReaction(), _ => { }, changes);
+            var level = CharacterTouchReset.Level(CharacterTouchReset.ReactionChangesId);
+
+            Assert.Equal(["the change Mira made itself to how it reacts to touches (Every touch: one step less liked)"], level.Loses(target));
+            Assert.Contains("\u2022 The change Mira made itself", CharacterTouchReset.Question(level, target, level.Loses(target)));
+            var everything = CharacterTouchReset.Level(CharacterTouchReset.EverythingId);
+            Assert.Equal(level.Loses(target), everything.Loses(target));
+            Assert.Null(await everything.Run(target, CancellationToken.None));
+            Assert.Empty(changes.Active(Persona));
+            Assert.Single(changes.Active(other));
+            Assert.Empty(level.Loses(target));
+            Assert.Equal(CharacterReactionChange.ByReset, CharacterReactionChanges.Load(directory).Single(c => c.PersonaId == Persona).EndedBy);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     [Fact]

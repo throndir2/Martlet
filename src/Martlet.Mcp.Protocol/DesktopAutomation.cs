@@ -505,9 +505,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom", "TouchZonesVoiceSounds",
-        // Touch zones › Start over: the level chosen to reset (TouchZonesResetLevel: Zone reactions, Zones, Touch temperament or
-        // Everything), what that level clears (fixed text), what the last reset did or why it couldn't, and the confirmation's
-        // question (what the owner loses: zone names, counts, the persona's and custom temperaments' names, a date). Choosing a
+        // Touch zones › Start over: the level chosen to reset (TouchZonesResetLevel: Zone reactions, Zones, Touch temperament, The
+        // character's own changes or Everything), what that level clears (fixed text), what the last reset did or why it couldn't,
+        // and the confirmation's question (what the owner loses: zone names, counts, the persona's and custom temperaments' names,
+        // a date, and what each of the character's own changes does, never why). Choosing a
         // level needs --allow-ui-effects; Reset (TouchZonesReset) opens the question and its ConfirmationYes resets, so they need
         // --allow-ui-effects too.
         "TouchZonesResetLevel", "TouchZonesResetNote", "TouchZonesResetState", "TouchZonesResetQuestion",
