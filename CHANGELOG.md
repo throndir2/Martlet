@@ -10,12 +10,9 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-<<<<<<< b6eb68fed0f57bf26dcb87991a9b67a249cb21c3
 - Martlet now gets a richer picture of how you touch the character. Right after your touches end, a new built-in check-in, **Describe touches**, has your Thinking pool describe what you have been doing in a few vivid words, true to the character's personality, and Martlet's next reply can draw on it. The touch reaction never waits for it, and it is explicit only while **Adult content** is on. Your own check-ins can follow that choice too with `{adult}`. ([#PR_NUMBER](https://github.com/throndir2/Martlet/pull/PR_NUMBER))
-=======
 - Touch zones can make sounds in Martlet's own voice: add a laugh, a gasp, a sigh or a giggle to a zone's list with **Add a reaction...**, and press **▶** to hear it. Only the sounds your voice can make are offered (Chatterbox Turbo and Nano, Dia and ElevenLabs make them). A sound never plays while Martlet speaks or you talk, and Martlet's replies never wait for one. ([#681](https://github.com/throndir2/Martlet/pull/681))
 - Check-ins can now use tools. On a check-in's card, tick the tool sets it may use under **It may use these tools**: **Emotes and gaze**, **Martlet's next words** or **Reminders**. Choose **Its tools act** to make the tools what it does. The card shows which tools the last run called and what came of each. It needs a Thinking pool model that calls tools, such as an OpenAI-compatible endpoint, and it makes at most 8 calls in one run. ([#678](https://github.com/throndir2/Martlet/pull/678))
->>>>>>> origin/main
 - A check-in can now start when you touch the character, instead of every few minutes: when your touches end, after an intimate touch, after a stroke across 3 zones, or when you keep coming back to one place. Tick them under **It starts when** on its card. It runs on the Thinking pool a moment after your touches stop, at most once per its **Every**, so replies never wait for it. ([#677](https://github.com/throndir2/Martlet/pull/677))
 
 ### Fixed
