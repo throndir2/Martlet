@@ -372,12 +372,8 @@ public sealed class CheckInsTests
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
             PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
-<<<<<<< 356fbeea5b0843622af2892392a0a6f4e749af1e
-            PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes, PromptCatalog.CheckInAdultOn, PromptCatalog.CheckInAdultOff,
-            PromptCatalog.CheckInTouches];
-=======
-            PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
->>>>>>> origin/main
+            PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes, PromptCatalog.CheckInAdultOn,
+            PromptCatalog.CheckInAdultOff, PromptCatalog.CheckInTouches];
         foreach (var id in ids)
         {
             var prompt = PromptCatalog.Find(id)!;
