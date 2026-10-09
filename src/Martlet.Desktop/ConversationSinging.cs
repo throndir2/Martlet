@@ -182,6 +182,9 @@ internal sealed class ConversationSinging : IAsyncDisposable
     /// <summary>A song is playing (or still ending).</summary>
     internal bool Playing { get { lock (gate) return player is { Active: true }; } }
     internal SongStopRecord? Last { get { lock (gate) return last; } }
+    private DateTimeOffset? endedAt;
+    /// <summary>When a song last played to its end (nobody stopped it), for the check-ins; null before.</summary>
+    internal DateTimeOffset? EndedAt { get { lock (gate) return endedAt; } }
 
     /// <summary>Plays <paramref name="song"/> (with its <paramref name="audio"/> and <paramref name="mouth"/> track) from
     /// <paramref name="from"/> through <paramref name="output"/>: a song already playing stops at once. <paramref name="talking"/>
@@ -275,6 +278,7 @@ internal sealed class ConversationSinging : IAsyncDisposable
         var record = await watched.Completion.ConfigureAwait(false);
         lock (gate)
         {
+            if (record.Cause == SongStopCause.Ended) endedAt = clock.GetLocalNow();
             // Played to its end or failed: nobody stopped it, so the conversation hears of it now (a stop was noted already).
             if (record.Cause is SongStopCause.Ended or SongStopCause.Failed && ReferenceEquals(player, watched))
             {

@@ -4,7 +4,7 @@ using Martlet.Providers;
 
 namespace Martlet.Conversation.Tests;
 
-public sealed class CheckInsTests
+public sealed partial class CheckInsTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 7, 22, 17, 0, TimeSpan.FromHours(-7));
 
@@ -38,8 +38,10 @@ public sealed class CheckInsTests
     public void BuiltInCheckInsAreOnByDefaultAndFollowTheOwnersChoices()
     {
         var defaults = CheckIns.All(null);
-        Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats], defaults.Select(c => c.Id));
-        Assert.All(defaults, c => Assert.True(c.On));
+        Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats, CheckIns.Welcome,
+            CheckIns.Unanswered, CheckIns.Call, CheckIns.Others], defaults.Select(c => c.Id));
+        // The check-ins that wait for a signal are off until the owner turns them on.
+        Assert.Equal([true, true, true, true, true, false, false, false, false], defaults.Select(c => c.On));
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
         Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
             defaults.Single(c => c.Id == CheckIns.Repeats) is var repeats ? (repeats.EveryMinutes, repeats.Outcome, repeats.PromptId) : default);
@@ -47,10 +49,10 @@ public sealed class CheckInsTests
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);
-        Assert.Equal(6, all.Count);
+        Assert.Equal(10, all.Count);
         Assert.Equal((false, 30), (all[1].On, all[1].EveryMinutes));
-        Assert.True(all[5].Custom);
-        Assert.Equal(CheckInOutcome.Say, all[5].Outcome);
+        Assert.True(all[9].Custom);
+        Assert.Equal(CheckInOutcome.Say, all[9].Outcome);
         Assert.Equal("check-in-promises", CheckIns.Source(CheckIns.Promises));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Character)));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Repeats)));
@@ -340,7 +342,7 @@ public sealed class CheckInsTests
             File.WriteAllText(Path.Combine(folder, CheckInSettings.FileName), "{ not json");
             var (fallback, unreadable) = CheckInSettings.Read(folder);
             Assert.Equal("unreadable", unreadable);
-            Assert.All(CheckIns.All(fallback), c => Assert.True(c.On));
+            Assert.Equal(CheckIns.All(null).Select(c => c.On), CheckIns.All(fallback).Select(c => c.On));
         }
         finally
         {
@@ -357,7 +359,7 @@ public sealed class CheckInsTests
             Facts = CheckInFacts.Character | CheckInFacts.Said | CheckInFacts.Replies
         }).Validate();
         Assert.Throws<ContractException>(() =>
-            new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", Conditions = (CheckInConditions)4096 }).Validate());
+            new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", Conditions = (CheckInConditions)(1 << 20) }).Validate());
         Assert.Throws<ContractException>(() =>
             new CheckInSettings().With(CheckIns.Emotes, new CheckInChoice(true, 5) { Outcome = (CheckInOutcome)9 }).Validate());
         Assert.Throws<ContractException>(() =>
@@ -371,7 +373,8 @@ public sealed class CheckInsTests
     public void CheckInPromptsAreInTheirOwnGroupAndTheBroughtUpMessageCantBeEmptied()
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
-            PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
+            PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInWelcome, PromptCatalog.CheckInUnanswered,
+            PromptCatalog.CheckInCall, PromptCatalog.CheckInOthers, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
             PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
         foreach (var id in ids)
         {
@@ -533,13 +536,14 @@ public sealed class CheckInsTests
         Assert.Equal(30, BoundedTextInput.MessageAudioSeconds);
     }
 
-    public static TheoryData<string> BuiltInIds => [CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats];
+    public static TheoryData<string> BuiltInIds => [CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats,
+        CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others];
 
     [Theory]
     [MemberData(nameof(BuiltInIds))]
     public void EveryBuiltInCheckInCanBeRecreatedAsYourOwn(string id)
     {
-        var builtIn = Built(id);
+        var builtIn = Built(id) with { On = true };
         var copy = CheckIns.Of(new CustomCheckIn
         {
             Id = "c1", Name = builtIn.Name + " (copy)", On = true, EveryMinutes = builtIn.EveryMinutes, Task = CheckIns.Template(builtIn, null)!,
@@ -630,7 +634,7 @@ public sealed class CheckInsTests
         // Reading it never takes what the next reply gets.
         Assert.Equal(waiting, ledger.Drain(at)!.Line);
         new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Touches", Facts = CheckInFacts.Touches }).Validate();
-        Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", Facts = (CheckInFacts)1024 }).Validate());
+        Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", Facts = (CheckInFacts)(1 << 20) }).Validate());
     }
 
     [Fact]
