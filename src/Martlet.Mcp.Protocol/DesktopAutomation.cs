@@ -868,7 +868,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
         // free for Martlet."; a range such as "11-14 of 32 GB planned (34-44%)" when jobs grow while they work, with ", tight: ..."
-        // when only the usual amounts fit; keys vram, ram, cpu, disk), each job's share ("DeviceShare-deep-thinking-gemma4-12b" reads
+        // when only the usual amounts fit; keys vram, ram, cpu, disk; its help text is the bar's hover breakdown, a line per job,
+        // then free, kept for the system and in use now), each job's share ("DeviceShare-deep-thinking-gemma4-12b" reads
         // "Deep thinking (Gemma 4 12B): 25% graphics memory, 3% memory, 6% processor.") and what else fits there
         // ("DeviceAlsoFits-0" reads "Room for another Deep thinking model (Gemma 4 12B) here.").
         "DeviceResource-", "DeviceShare-", "DeviceAlsoFits-",

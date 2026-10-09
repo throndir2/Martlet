@@ -227,7 +227,10 @@ to bottom: the **map**, the **selected device** with what it does, and
     (*12-14 of 24 GB*). When the usual amounts fit but the most does not, the
     bar is *tight*: its lighter parts take the warning color and the text says
     the jobs can slow down or fail at their busiest. When even the usual
-    amounts do not fit, the whole bar takes the warning color. Under
+    amounts do not fit, the whole bar takes the warning color. Hovering a bar
+    shows its breakdown: what each job takes (with a swatch in its segment's
+    shade, and the job under the mouse in bold), what is free for Martlet,
+    what is kept for the system and what is in use now. Under
     the bars: each job's share in words, what is left free for Martlet and
     *Room for ...* lines from the engine (*Room for another Deep thinking
     model (Gemma 4 12B) here.*), which count only room for the most a job
