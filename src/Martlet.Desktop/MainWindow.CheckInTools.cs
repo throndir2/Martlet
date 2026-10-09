@@ -22,6 +22,9 @@ public partial class MainWindow
         };
         // Only a PC that keeps reminders (a data folder) runs the reminders tool.
         if (conversation?.RemindersTool is not null) handlers[CheckInToolSets.RemindersId] = ReminderToolAsync;
+        // Only a PC that keeps creations (a data folder) runs the songs, pictures and creations tools; each tool keeps the
+        // reply's own gate (singing set up, pictures set up, creation kinds registered).
+        if (conversation is { RunsCreationsCheckIn: true } creations) handlers[CreationsCheckIn.SetId] = creations.CreationsCheckInAsync;
         return handlers;
     }
 

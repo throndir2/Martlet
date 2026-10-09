@@ -620,7 +620,9 @@ lines (where, size, seconds; never the description).
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
 the loaded workflow's node count, the picture creations (shape, size, engine,
-model, seconds, fixture; never titles or descriptions) and the tool and job kind.
+model, seconds, fixture; never titles or descriptions), the tool and job kind,
+and `afterReply` (the Songs, pictures and creations check-in tool set, as
+`songs_status` shows it).
 `pictures_check` draws one picture through the production maker: `place`
 `fixture` (default) or `comfyui` with `address` (and `workflow`
 `z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
@@ -4649,7 +4651,7 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, `maximumToolRounds` (4),
 `maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
-(each set's `id`, `name`, `does` and `tools`), the job kind
+(each set's `id`, `name`, `does`, `tools` and the reply tools it `replaces`), the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
 and for triggers the `triggers` offered, `triggerAgeSeconds`,
 `touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
@@ -4931,8 +4933,11 @@ shapes* through the character's mouth mapping or *mouth opening*), its `stop` pl
 `cause` (*UserWords*, *Button*, *Martlet*, *Ended*, *Failed*), `ended`,
 `wordsCharacters` and a button's `reason`; and `noteWaiting`), the song job
 `kind` (one at a time, 4 an hour, 15 minutes, `offer`, *Making a song*), the
-three `tools` exactly as the Thinking model gets them and the filled Singing
-`prompt`. Read-only.
+three `tools` exactly as the Thinking model gets them, the filled Singing
+`prompt` and `afterReply` (the Songs, pictures and creations
+[check-in tool set](CONVERSATION.md#check-in-tool-sets): its `set`, its
+`tools`, the reply tools it `replaces` and the `replyGuidance` line a reply gets
+in their place). Read-only.
 
 `song_playback_check` runs the production playback (`SongTransport`,
 `SongMixer`, `SongPlayer` pumping a fixture output that plays ten times faster

@@ -1711,6 +1711,7 @@ does and its tools. Martlet offers:
 | Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
 | Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
+| Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Pictures](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls
