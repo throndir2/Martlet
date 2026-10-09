@@ -2310,7 +2310,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             described,
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),
                             picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply),
-                            describes ? PictureDescriptions.Instructions(prompts) : null),
+                            describes ? PictureDescriptions.Instructions(prompts) : null,
+                            // Every one of Martlet's own tools was handed off and no other tool is offered: what the reply is told
+                            // instead still reaches it (with tools, it follows the tools prompt).
+                            toolset is null && builtIns is { Tools.Count: 0 } ? builtIns.Guidance : null),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null && describedNote is null ? null : noticed, recalled, songNote, whileSinging, touchNote),
@@ -2900,21 +2903,39 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             own.Add((definitions[1], PerformCreationAsync));
         }
         // manage_memories while memory is on: last, so the tools before it start every request the same as before it existed.
+        // While the Memory check-in tool set takes it over, the reply gets the read-only find_memories in its place instead.
         if (configured.SupportsTools && memory is not null && configured.Memory is { Enabled: true } remembered)
-            own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(operation, remembered.ConfigurationRevision, call, token)));
+        {
+            if (HandedOffReplyTools(configured).Contains(MemoryTools.Name))
+            {
+                own.Add((MemoryTools.FindDefinition, (call, token) => ManageMemoriesAsync(remembered.ConfigurationRevision,
+                    MemoryTools.WithAction(call.ArgumentsJson, "find"), operation.Heard?.Speaker?.Voice, MemoryTools.FindName, null, token)));
+                guidance = Join(guidance, MemoryTools.HandedOffGuidance);
+            }
+            else
+                own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(remembered.ConfigurationRevision, call.ArgumentsJson,
+                    operation.Heard?.Speaker?.Voice, MemoryTools.Name, null, token)));
+        }
         // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
         if (configured.SupportsTools && RemindersTool is { } remind)
             own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
         // call_on_discord after them while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the
-        // connection).
+        // connection). While the After each exchange check-in takes it over, the reply only says it will call.
+        var handedOff = configured.SupportsTools ? HandedOffReplyTools(configured) : null;
         if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
-            own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
+        {
+            if (handedOff!.Contains(DiscordCallTool.Name)) guidance = Join(guidance, DiscordCallTool.AfterReply);
+            else own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
+        }
         // set_camera_background last, while Martlet is in the owner's Discord calls (the saved choice only).
         if (configured.SupportsTools && CallCamera is { Offered: true } camera)
-            own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
+        {
+            if (handedOff!.Contains(CameraBackgroundTool.Name)) guidance = Join(guidance, CameraBackgroundTool.AfterReply);
+            else own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
+        }
         // The tools a check-in that runs after each exchange takes over go to it instead, with one line that says so.
         var handed = HandOffs(configured);
-        return WithoutHandedOff(own.Count == 0 ? null : new(own, guidance), handed, CheckIns.HandOffGuidance(handed, configured.Prompts));
+        return WithoutHandedOff(new(own, guidance), handed, CheckIns.HandOffGuidance(handed, configured.Prompts));
     }
 
     /// <summary>Changes the webcam background in the owner's Discord calls; null while that isn't wired.</summary>
@@ -2922,7 +2943,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>set_camera_background: a color or a kept picture at once; a new picture is drawn first (draw_picture's job) and
     /// used when it's ready.</summary>
-    private async ValueTask<ConversationToolResult> SetCameraBackgroundAsync(LiveConversationOperation operation,
+    private async ValueTask<ConversationToolResult> SetCameraBackgroundAsync(LiveConversationOperation? operation,
         LiveConversationConfiguration configured, ICallCamera camera, TextToolCall call, CancellationToken token)
     {
         var (arguments, problem) = CameraBackgroundTool.Parse(call.ArgumentsJson);
@@ -2942,6 +2963,31 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>Rings a Discord friend for call_on_discord; null while Discord isn't wired.</summary>
     internal IDiscordCaller? DiscordCaller { get; set; }
+
+    /// <summary>Whether a check-in may run the Discord calls and camera set (<see cref="DiscordCheckInTools"/>) now: Martlet can
+    /// call a Discord friend or is in the owner's Discord calls.</summary>
+    internal bool RunsDiscordCheckInTools => DiscordCaller is { CanCall: true } || CallCamera is { Offered: true };
+
+    /// <summary>Runs one call of the Discord calls and camera check-in tool set, on a pool thread after the reply: the same work,
+    /// arguments, gates and limits as the reply's tools of the same names. A new background picture is drawn by draw_picture's job.</summary>
+    internal ValueTask<ConversationToolResult> RunDiscordCheckInToolAsync(TextToolCall call, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        switch (call.Name)
+        {
+            case DiscordCheckInTools.Call:
+                return DiscordCaller is { CanCall: true } caller ? CallOnDiscordAsync(caller, call, token)
+                    : new(new ConversationToolResult("Martlet can't call anyone on Discord now.", true));
+            case DiscordCheckInTools.Background:
+                if (CallCamera is not { Offered: true } camera)
+                    return new(new ConversationToolResult("Martlet isn't in the owner's Discord calls, so there's no webcam background.", true));
+                if (Configuration is not { } configured)
+                    return new(new ConversationToolResult("The conversation isn't set up, so the background can't change now.", true));
+                return SetCameraBackgroundAsync(null, configured, camera, call, token);
+            default:
+                return new(new ConversationToolResult($"This set has no tool called {call.Name}.", true));
+        }
+    }
 
     private async ValueTask<ConversationToolResult> CallOnDiscordAsync(IDiscordCaller caller, TextToolCall call, CancellationToken token)
     {
@@ -3003,17 +3049,22 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted
-    /// in the talk window like background remembering's.</summary>
-    private async ValueTask<ConversationToolResult> ManageMemoriesAsync(LiveConversationOperation operation, Guid revision, TextToolCall call,
-        CancellationToken token)
+    /// <summary>manage_memories (and find_memories, and the Memory check-in tool set's tools): finds, adds, corrects, reassigns or
+    /// forgets facts. Changes are noted in the talk window like background remembering's and in the Tools log under
+    /// <paramref name="tool"/>; <paramref name="by"/> names the check-in that called it (null: the reply).</summary>
+    private async ValueTask<ConversationToolResult> ManageMemoriesAsync(Guid revision, string argumentsJson, Martlet.Core.Speakers.KnownVoice? speaker,
+        string tool, string? by, CancellationToken token) =>
+        (await RunMemoryToolAsync(revision, argumentsJson, speaker, tool, by, token).ConfigureAwait(false)).Result;
+
+    private async Task<MemoryToolOutcome> RunMemoryToolAsync(Guid revision, string argumentsJson, Martlet.Core.Speakers.KnownVoice? speaker,
+        string tool, string? by, CancellationToken token)
     {
         var roster = voices?.Roster;
         MemoryToolOutcome outcome;
         try
         {
-            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, call.ArgumentsJson, roster,
-                operation.Heard?.Speaker?.Voice, token), token).ConfigureAwait(false);
+            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, argumentsJson, roster, speaker, token),
+                token).ConfigureAwait(false);
         }
         catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
             ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -3026,13 +3077,34 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             };
             outcome = new(new(why + " Tell the user briefly.", true), "failed", []);
         }
-        tools?.Record("Martlet", MemoryTools.Name, outcome.Outcome, "", outcome.Result.IsError);
+        tools?.Record("Martlet", tool, outcome.Outcome, "", outcome.Result.IsError);
         if (outcome.Changes.Count > 0)
         {
-            ErrorLog.Info($"Memory: manage_memories {outcome.Outcome}.");
+            ErrorLog.Info($"Memory: {tool} {outcome.Outcome}{(by is null ? "" : $" by the check-in {by}")}.");
             MemoryCaptured?.Invoke(new(outcome.Changes.Select(change => change with { Person = MemoryPeople.Label(change.VoiceId, roster) }).ToArray()));
         }
-        return outcome.Result;
+        return outcome;
+    }
+
+    /// <summary>Runs one call of the Memory check-in tool set (<see cref="MemoryToolSet"/>) for the check-in <paramref name="by"/>,
+    /// as its matching manage_memories action, while memory is on. "Me" is whoever spoke last.</summary>
+    internal async ValueTask<ConversationToolResult> CheckInMemoryAsync(TextToolCall call, string by, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        if (MemoryToolSet.Action(call.Name) is not { } action) return new($"This set has no tool called {call.Name}.", true);
+        LiveConversationConfiguration? configured;
+        Martlet.Core.Speakers.KnownVoice? speaker;
+        lock (gate)
+        {
+            configured = configuration;
+            speaker = lastAsked.Heard?.Speaker?.Voice;
+        }
+        if (memory is null || configured?.Memory is not { Enabled: true } remembered)
+            return new("Memory: off.\nMemory is off, so nothing changed.", true);
+        var outcome = await RunMemoryToolAsync(remembered.ConfigurationRevision, MemoryTools.WithAction(call.ArgumentsJson, action),
+            speaker, call.Name, by, token).ConfigureAwait(false);
+        // The first line (shown on the card and in check-ins-status.json) is the outcome only, never a fact or a name.
+        return new($"Memory: {outcome.Outcome}.\n{outcome.Result.Output}", outcome.Result.IsError);
     }
 
     /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has), the
@@ -3538,7 +3610,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>Starts a picture job for <paramref name="tool"/>; <paramref name="then"/> runs once the picture is kept (and its
     /// words are added to the note the conversation gets).</summary>
-    private ConversationToolResult StartPicture(LiveConversationOperation operation, LiveConversationConfiguration configured,
+    private ConversationToolResult StartPicture(LiveConversationOperation? operation, LiveConversationConfiguration configured,
         DrawArguments arguments, string tool, Func<Creation, CancellationToken, Task<string>>? then)
     {
         const string server = "Martlet";
@@ -3549,7 +3621,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             tools?.Record(server, tool, "not started: pictures off", arguments.About, false);
             return new(PictureTools.Unavailable("pictures aren't set up (Companion › Pictures)"), true);
         }
-        var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
+        var toldUser = !string.IsNullOrWhiteSpace(operation?.Turn?.Content.Text);
         var author = new CreationAuthor
         {
             Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName,

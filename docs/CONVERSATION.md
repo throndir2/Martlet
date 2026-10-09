@@ -625,13 +625,27 @@ thinks and research count against the same slots:
    under `resting`.
 4. When every capable slot is busy, the job waits in line. A freed slot goes
    to the highest priority first, then the oldest.
-5. Long kinds never take the last free slot that takes quick jobs while the
+5. Higher priority first (*Higher priority requests may stop lower ones*, on
+   by default; `ThinkingPoolSettings.PreemptLowerPriority`): a job that finds
+   no free slot stops one running pool job of lower priority whose slot it can
+   use. The stopped job keeps its priority and waits at the front of the line
+   for that priority. After every `RaisePriorityAfterStops` such stops
+   (default 3), its priority goes up by one, until it completes. A summary
+   stopped this way waits again; it is not dropped.
+6. A job that failed on every member it could use, or whose attempt timed out,
+   is tried again `RetriesOnFailure` times (default 1) at the priority it had
+   then. A job that is stale (`DropWhenStale`) is not tried after its time.
+   `ThinkingJobResult` reports `PriorityStops`, `Retries` and the final
+   `Priority`; `ThinkingPoolStatus` reports the `Policy` and the
+   `StoppedForPriority`, `Raised` and `Retried` counts.
+7. Long kinds never take the last free slot that takes quick jobs while the
    pool has two or more slots: that slot stays for fast kinds (`BargeInJudge`,
    `EndOfTurnJudge`, `Digest`). Only the slots of members that answer and take
    quick jobs count. A long job on a member without *Quick jobs* never takes
    such a slot, so it needs none kept free. With exactly one slot, long kinds
-   may take it, and fast jobs wait until their deadline. Only the
-   [live floor](#the-live-floor-the-live-turn-comes-first) stops running jobs.
+   may take it, and fast jobs stop them (rule 5) or wait until their deadline.
+   The [live floor](#the-live-floor-the-live-turn-comes-first) also stops
+   running jobs.
 
 | Kind (`ThinkingJobKind`) | Priority (`ThinkingPriority`) | Fast |
 | --- | --- | --- |
@@ -1697,6 +1711,8 @@ does and its tools. Martlet offers:
 | Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
 | Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
+| Discord calls and camera (`discord`) | `call_on_discord`, `set_camera_background` | Call a Discord friend you asked for, or change Martlet's webcam background in your Discord call ([Discord](DISCORD.md)). Offered only while Martlet can call someone or is in your Discord calls. Replaces the reply's tools of the same names. |
+| Memory (`memory`) | `memory_find`, `memory_remember`, `memory_update`, `memory_forget` | Find, remember, correct, give to someone else and forget facts, as `manage_memories` does ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. |
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls

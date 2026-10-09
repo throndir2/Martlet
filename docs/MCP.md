@@ -226,6 +226,26 @@ the Thinking pool role joins with its slots, an Ollama-only host joins unless it
 does this PC's Thinking, a member on Ollama moves to the role, and a computer
 kept out, one Sharing work never uses, a full pool and a host PC are skipped.
 
+`thinking_pool_status` gives the line's rules from `thinking-pool.json` as
+`line` (`preemptLowerPriority`, `raiseAfterStops`, `retries`). The `priority`
+steps of `thinking_pool_check` use one member with one slot (a sequential
+local model) and set these rules on each board:
+
+- `priority stop`: a barge-in judge that finds the slot busy stops research.
+  The judge runs, and research runs again later at its priority. With
+  `preemptLowerPriority` off, the judge waits for research to end.
+- The stopped job goes to the front of the line for its priority, before a
+  job of the same priority that waited before. A digest stopped for priority
+  waits again and is not dropped.
+- `priority raise` (`raiseAfterStops` 2): research stopped twice goes from
+  priority 10 to 11. Then a job of priority 11 no longer stops it.
+- `retries`: a job that failed or timed out is tried again at its priority.
+  A job raised to 11 and then failed is tried again at 11. With `retries` 0
+  the job fails.
+
+The report's `priority` section gives each job's outcome (`priorityStops`,
+`retries`, final `priority`), the order the member ran the jobs, and the
+board's `stoppedForPriority`, `raised` and `retried` counters.
 On the desktop, the page's *Machines* card is one list. It reads through
 `DeepThinkingNow`, `DeepThinkingParallel`, `ThinkingPoolSummary`,
 `ThinkingPoolConversation` (the conversation's own model: never in the pool, so
@@ -305,6 +325,19 @@ wait and each member's box save `thinking-pool.json`, so they need
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"backup_thinking_check"}]'
 ```
+
+The *Busy pool* card reads through `ThinkingPoolPreempt` (*Higher priority
+requests may stop lower ones*, on by default), `ThinkingPoolRaiseAfterStops`
+(a stopped request becomes more important after 1-20 stops, 3 by default),
+`ThinkingPoolRetries` (a failed request is tried again 0-10 times, once by
+default) and `ThinkingPoolPriorityStatus` (the choices in words and, since
+Martlet started, how many requests were stopped, made more important and tried
+again). The box and both choices save `thinking-pool.json`
+(`PreemptLowerPriority`, `RaisePriorityAfterStops`, `RetriesOnFailure`), so
+they need `--allow-ui-effects`. The desktop's `thinking-pool-status.json` has a
+`priority` part with the same choices (`preemptLowerPriority`,
+`raiseAfterStops`, `retriesOnFailure`) and the counters `stoppedForPriority`,
+`raised` and `retried`.
 
 ### Image and audio models
 
@@ -4649,7 +4682,8 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, `maximumToolRounds` (4),
 `maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
-(each set's `id`, `name`, `does` and `tools`), the job kind
+(each set's `id`, `name`, `does`, `tools` and `replaces`: the reply tools it
+takes over, such as `manage_memories` for `memory`), the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
 and for triggers the `triggers` offered, `triggerAgeSeconds`,
 `touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
@@ -5120,8 +5154,10 @@ talk window's `LiveBargeIn` shows the last real decision.
 `EverythingButMartlet`; `seeSpeakers`; `ownerNameSet`, never the name;
 `output`, the chosen output's name; `alsoSpeakers`; `bargeIn`;
 `cameraBackground`; `cameraPicture`, where a saved picture came from,
-`cameraPictureSaved`, and `cameraTool`, whether replies get
-`set_camera_background`). `doctor` checks this PC without recording or playing:
+`cameraPictureSaved`, `cameraTool`, whether replies get
+`set_camera_background`, and `checkInToolSet`, the Discord calls and camera
+check-in tool set: its `id` (`discord`), its `tools` and the reply tools it
+`replaces`). `doctor` checks this PC without recording or playing:
 `appLoopback` (Windows can hear one app alone: a process loopback of Discord,
 or of the MCP server itself while Discord isn't running, is set up and closed
 unstarted, so `recorded` is always false; `appLoopbackProblem` otherwise),
@@ -7586,7 +7622,9 @@ gets `set_camera_background` (last among Martlet's own tools): `color`,
 background. It updates `DiscordCallCameraPictureStatus` like the card's own
 choices (*...a picture from Creations* / *a picture Martlet drew*, never a
 title), and the desktop log notes *Discord call: set_camera_background chose
-...*.
+...*. When the After each exchange check-in takes it over (the `discord`
+check-in tool set), the reply is not offered it and the check-in's run record
+lists the call instead (`check_ins` status, `CheckInRun.Tools`).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process (and its own character renderer child process), then verifies ownership

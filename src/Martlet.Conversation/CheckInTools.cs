@@ -68,7 +68,7 @@ public static class CheckInToolSets
         "Sets, lists and cancels your reminders, as Martlet does when you ask it in a conversation.", [Reminders.Definition]);
 
     /// <summary>Every set, in the order the card shows them. The static sets above come first, so they exist when this list is made.</summary>
-    public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set];
+    public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set, DiscordCheckInTools.Set, MemoryToolSet.Set];
 
     public static CheckInToolSet? Find(string? id) => id is null ? null : All.FirstOrDefault(s => s.Id == id);
 

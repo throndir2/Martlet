@@ -42,6 +42,22 @@ public sealed record ThinkingPoolSettings
     public IReadOnlyList<string> AnswersForConversation { get => answering; init => answering = value ?? []; }
     private readonly IReadOnlyList<string> answering = [];
 
+    /// <summary>Higher priority first: when the pool has no free slot for a request, it stops a running request of lower
+    /// priority to make space. The stopped request keeps its priority and goes back to the front of the line for that priority.
+    /// On by default.</summary>
+    public bool PreemptLowerPriority { get; init; } = true;
+
+    /// <summary>After a request was stopped this many times for higher-priority work, its priority goes up by one, and again after
+    /// each further such number of stops, until it completes (<see cref="MinRaiseAfterStops"/>-<see cref="MaxRaiseAfterStops"/>).</summary>
+    public int RaisePriorityAfterStops { get; init; } = DefaultRaiseAfterStops;
+
+    /// <summary>How many more times a Thinking request that failed (or timed out) is tried again, at the priority it had, before it
+    /// fails (0-<see cref="MaxRetries"/>).</summary>
+    public int RetriesOnFailure { get; init; } = DefaultRetries;
+
+    public const int DefaultRaiseAfterStops = 3, MinRaiseAfterStops = 1, MaxRaiseAfterStops = 20;
+    public const int DefaultRetries = 1, MaxRetries = 10;
+
     /// <summary>The fixed delays Backup Thinking offers, in milliseconds.</summary>
     public static IReadOnlyList<int> BackupDelayChoices { get; } = [500, 700, 900, 1200, 1500, 2000, 3000];
 
@@ -178,6 +194,9 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(new[] { NoQuickJobs, NoLongJobs }.All(keys => keys.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
             keys.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl))),
             "The members kept from quick or long jobs are a short list of member keys.");
+        ContractRules.Require(RaisePriorityAfterStops is >= MinRaiseAfterStops and <= MaxRaiseAfterStops,
+            $"A stopped request's priority goes up after {MinRaiseAfterStops}-{MaxRaiseAfterStops} stops.");
+        ContractRules.Require(RetriesOnFailure is >= 0 and <= MaxRetries, $"A failed request is tried again 0-{MaxRetries} times.");
         ContractRules.Require(LeftByOwner.Count <= MaxLeftByOwner &&
             LeftByOwner.All(h => h is { Length: > 0 and <= 128 } && !h.Any(char.IsControl)) &&
             LeftByOwner.Distinct(StringComparer.Ordinal).Count() == LeftByOwner.Count,

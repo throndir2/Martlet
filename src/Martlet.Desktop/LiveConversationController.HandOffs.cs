@@ -61,13 +61,14 @@ internal sealed partial class LiveConversationController
         if (problem is not null) AfterExchangeFailed?.Invoke(problem);
     }
 
-    // Leaves out the tools handed off (and adds what the reply is told instead); null when nothing is left to say.
-    private static BuiltInTools? WithoutHandedOff(BuiltInTools? tools, IReadOnlyList<CheckInHandOff> handed, string? guidance)
+    // Leaves out the tools handed off and adds what the reply is told instead (guidance). Null when no tool and nothing to say is
+    // left; without hand-offs, null when there are no tools (as before hand-offs existed).
+    private static BuiltInTools? WithoutHandedOff(BuiltInTools tools, IReadOnlyList<CheckInHandOff> handed, string? guidance)
     {
-        if (handed.Count == 0) return tools;
+        if (handed.Count == 0) return tools.Tools.Count == 0 && tools.Guidance is null ? null : tools;
         var names = handed.Select(h => h.Tool).ToHashSet(StringComparer.Ordinal);
-        var kept = tools?.Tools.Where(t => !names.Contains(t.Definition.Name)).ToArray() ?? [];
-        var said = guidance is null ? tools?.Guidance : tools?.Guidance is { } before ? before + "\n\n" + guidance : guidance;
+        var kept = tools.Tools.Where(t => !names.Contains(t.Definition.Name)).ToArray();
+        var said = guidance is null ? tools.Guidance : tools.Guidance is { } before ? before + "\n\n" + guidance : guidance;
         return kept.Length == 0 && said is null ? null : new(kept, said);
     }
 }
