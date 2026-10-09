@@ -157,15 +157,23 @@ public enum ThinkingJobOutcome { Succeeded, NoMember, Stale, Failed, TimedOut, P
 /// <see cref="HeldForLive"/>: the member's computer keeps its graphics card for a live conversation turn (its own or another
 /// companion PC's), so the job waits and tries again; it is not a failure of the member. <see cref="Refused"/>: the member's
 /// computer refused the request itself as invalid (a paired computer's gateway answered request.invalid), so it would refuse the
-/// same kind of job again: the board passes it over for such jobs for a while (<see cref="ThinkingJobBoard.RefusedRest"/>).</summary>
+/// same kind of job again: the board passes it over for such jobs for a while (<see cref="ThinkingJobBoard.RefusedRest"/>).
+/// <see cref="RateLimited"/>: the member's provider limited the request (busy now, such as HTTP 429), so the member cools down
+/// (<see cref="ThinkingPoolLimits"/>, for <see cref="RetryAfter"/> when the provider said how long) and the job waits in line
+/// for it or another member; it is not a failure of the job.</summary>
 public sealed record ThinkingAnswer(string? Text, string? Problem = null, bool Cut = false)
 {
     public bool HeldForLive { get; init; }
     public bool Refused { get; init; }
+    public bool RateLimited { get; init; }
+    /// <summary>How long the provider asked Martlet to wait (its Retry-After), when <see cref="RateLimited"/> and it said so.</summary>
+    public TimeSpan? RetryAfter { get; init; }
     public static ThinkingAnswer Done(string text, bool cut = false) => new(text, null, cut);
     public static ThinkingAnswer Failed(string problem) => new(null, problem);
     public static ThinkingAnswer Held(string problem) => new(null, problem) { HeldForLive = true };
     public static ThinkingAnswer Rejected(string problem) => new(null, problem) { Refused = true };
+    public static ThinkingAnswer Limited(string problem, TimeSpan? retryAfter = null) =>
+        new(null, problem) { RateLimited = true, RetryAfter = retryAfter };
     public override string ToString() => $"{nameof(ThinkingAnswer)} (problem: {Problem is not null})";
 }
 
@@ -218,6 +226,10 @@ public sealed record ThinkingPoolMemberStatus(string Id, string Name, int Slots,
     public bool Online { get; init; } = true;
     /// <summary>Whether it may receive pictures and recordings (<see cref="BackgroundPlace.Media"/>).</summary>
     public bool Media { get; init; } = true;
+    /// <summary>How many jobs it may start at once now (<see cref="ThinkingPoolLimits"/>): 0 while its provider asks Martlet to
+    /// wait (until <see cref="CoolsUntil"/>), fewer than <see cref="Slots"/> for a while after it limited requests.</summary>
+    public int SlotsNow { get; init; }
+    public DateTimeOffset? CoolsUntil { get; init; }
 }
 
 /// <summary>Pictures and recordings in Thinking pool jobs: an external member gets them only when the owner allows it.</summary>
@@ -262,6 +274,8 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
     public int StoppedForPriority { get; init; }
     public int Raised { get; init; }
     public int Retried { get; init; }
+    /// <summary>The members whose providers limited requests: they wait, or run fewer jobs at once, for a while.</summary>
+    public IReadOnlyList<ThinkingPoolCooling> Cooling { get; init; } = [];
 }
 
 /// <summary>The Thinking pool's job board: one in-process board for every Thinking pool job. Members are places
@@ -281,6 +295,10 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
 /// The <see cref="Policy"/> adds: a job that finds no free slot stops a running job of lower priority (it keeps its priority,
 /// waits at the front of the line for it and rises one priority after every RaiseAfterStops such stops), and a job that failed or
 /// timed out is tried again up to Retries times at the priority it had.
+/// A member whose provider limited a request (<see cref="ThinkingAnswer.RateLimited"/>) cools down and runs fewer jobs at once
+/// (<see cref="Limits"/>): the job isn't counted as failed there, and it waits in line for that member or another while its
+/// timeout allows, so a busy free cloud endpoint is asked again later instead of failing the job. Only after
+/// <see cref="MaxLimitedAnswers"/> such answers from one member does the job count that member as failed.
 /// Thread-safe.</summary>
 public sealed class ThinkingJobBoard
 {
@@ -289,6 +307,8 @@ public sealed class ThinkingJobBoard
     /// <summary>How long a member whose computer refused a request as invalid gets no job that needs at least what that job
     /// needed: the refusal comes again for each such job until that computer and this PC run versions that agree.</summary>
     public static TimeSpan RefusedRest { get; } = TimeSpan.FromMinutes(10);
+    /// <summary>How many times one job lets a member limit its requests before it counts that member as failed for the job.</summary>
+    public const int MaxLimitedAnswers = 5;
     private readonly Func<IReadOnlyList<BackgroundPlace>> members;
     private readonly Func<BackgroundPlace, ThinkingJob, CancellationToken, Task<ThinkingAnswer>> run;
     private readonly TimeProvider clock;
@@ -307,6 +327,8 @@ public sealed class ThinkingJobBoard
         this.members = members ?? throw new ArgumentNullException(nameof(members));
         this.run = run ?? throw new ArgumentNullException(nameof(run));
         this.clock = clock ?? TimeProvider.System;
+        Limits = new(places.Reconsider, this.clock);
+        places.SlotLimit = Limits.SlotsNow;
     }
 
     public BackgroundPlaces Places { get; }
@@ -315,6 +337,11 @@ public sealed class ThinkingJobBoard
     public Func<ThinkingPoolPolicy> Policy { get; set; } = () => ThinkingPoolPolicy.Off;
 
     private int stoppedForPriority, raised, retried;
+    /// <summary>The members whose providers limited requests: their waits and live slot limits (the broker obeys them).</summary>
+    public ThinkingPoolLimits Limits { get; }
+
+    /// <summary>Raised on the job's thread when a member's provider limited a request, after the board recorded it.</summary>
+    public event Action<ThinkingPoolCooling>? Limited;
 
     /// <summary>Every member, whether its computer answers now or not.</summary>
     public IReadOnlyList<BackgroundPlace> Members => members();
@@ -335,7 +362,7 @@ public sealed class ThinkingJobBoard
     public bool MayStartNow(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Online.Any(member => Takes(member, kind, needs) && (rules?.MayStart(member, kind) ?? true));
+        return Online.Any(member => Takes(member, kind, needs) && Limits.SlotsNow(member) > 0 && (rules?.MayStart(member, kind) ?? true));
     }
 
     /// <summary>Whether a member that answers and can take such a job shares no hardware with the live conversation (no slot taken).</summary>
@@ -352,7 +379,8 @@ public sealed class ThinkingJobBoard
     {
         var rules = Places.Rules;
         return Online.Where(member => Takes(member, kind, needs))
-            .OrderBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
+            .OrderBy(member => Limits.Cooling(member) ? 1 : 0)
+            .ThenBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
     }
 
     // A member takes a job when the owner lets it take the job's kind (Quick jobs, Long jobs), it can do what the job needs, the
@@ -430,12 +458,19 @@ public sealed class ThinkingJobBoard
                 $"{string.Join(", ", capable.Select(member => member.Name))} refused such a request as invalid a short time ago", 0);
         capable = [.. capable.Where(member => !Rests(member, needs))];
         if (!capable.Any(Places.Answers)) return ThinkingJobResult.Offline(needs);
+        // A job dropped when stale doesn't wait for members whose providers ask Martlet to wait longer than it may: the caller's
+        // fallback runs at once.
+        if (job.DropWhenStale && Limits.Now(capable).Where(c => c.Until is not null).ToArray() is { Length: > 0 } cooling &&
+            capable.Where(Places.Answers).All(member => cooling.Any(c => c.Id == member.Id && c.Until > clock.GetUtcNow() + job.Timeout)))
+            return new(ThinkingJobOutcome.NoMember, null, null, null, string.Join("; ", cooling.Select(c => c.Describe(clock.GetUtcNow()))), 0);
         var demand = ThinkingDemand.For(job.Kind, pool, job.Priority);
         var priority = demand.Priority;
         var front = false;
         using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
         HashSet<string> tried = new(StringComparer.Ordinal);
+        Dictionary<string, int> limited = new(StringComparer.Ordinal);
+        ThinkingPoolCooling? cooled = null;
         string? problem = null;
         int attempts = 0, preemptions = 0, priorityStops = 0, retries = 0, conversationStops = 0;
         ThinkingJobResult Ended(ThinkingJobResult result) =>
@@ -447,6 +482,7 @@ public sealed class ThinkingJobBoard
             var conversation = conversationStops > 0 || rules is not null && capable.All(member => !rules.MayStart(member, job.Kind));
             return Ended(new(ThinkingJobOutcome.Stale, null, null, null,
                 conversation ? $"the conversation needed its members for more than {Wait(job.Timeout)}"
+                : cooled is not null ? $"{cooled.Name} kept limiting requests, and no member came free within {Wait(job.Timeout)}"
                 : priorityStops > 0 ? $"higher-priority work kept its members busy for more than {Wait(job.Timeout)}"
                 : $"no member came free within {Wait(job.Timeout)}", attempts));
         }
@@ -511,7 +547,10 @@ public sealed class ThinkingJobBoard
                     answer = ThinkingAnswer.Failed($"{member.Name} failed ({error.GetType().Name})");
                 }
                 if (answer.Text is { Length: > 0 } text)
+                {
+                    Limits.Succeeded(member);
                     return Ended(new(ThinkingJobOutcome.Succeeded, text, member.Id, member.Name, null, attempts, answer.Cut) { Model = member.Model });
+                }
                 if (lease.StoppedForPriority)
                 {
                     // Higher-priority work took the slot: the job keeps its priority and waits at the front of the line for it, and
@@ -541,6 +580,20 @@ public sealed class ThinkingJobBoard
                     request.End(lease.StopRequested ? $"the conversation needed {member.Name}" : answer.Problem ?? $"{member.Name} kept its graphics card for a live turn",
                         paused: true, preempted: true);
                 }
+                else if (answer.RateLimited)
+                {
+                    // Not a failure: the member cools down and the job waits in line for it (or takes another member), unless the
+                    // member kept limiting this job's requests.
+                    problem = answer.Problem ?? $"{member.Name} is limiting requests";
+                    cooled = Limits.Limited(member, answer.RetryAfter, problem);
+                    Limited?.Invoke(cooled);
+                    if ((limited[member.Id] = limited.GetValueOrDefault(member.Id) + 1) >= MaxLimitedAnswers)
+                    {
+                        problem = $"{member.Name} kept limiting requests";
+                        tried.Add(member.Id);
+                    }
+                    request.End(cooled.Describe(clock.GetUtcNow()), paused: true);
+                }
                 else
                 {
                     problem = answer.Problem ?? $"{member.Name} came back empty";
@@ -562,11 +615,16 @@ public sealed class ThinkingJobBoard
     {
         var pool = Members;
         var now = clock.GetUtcNow();
-        return Describe(pool, Places) with
+        var status = Describe(pool, Places);
+        var cooling = Limits.Now(pool);
+        return status with
         {
             Policy = Policy(),
             StoppedForPriority = Volatile.Read(ref stoppedForPriority), Raised = Volatile.Read(ref raised), Retried = Volatile.Read(ref retried),
-            Resting = [.. rests.Values.Where(rest => rest.Until > now && pool.Any(member => member.Id == rest.Id)).OrderBy(rest => rest.Id, StringComparer.Ordinal)]
+            Resting = [.. rests.Values.Where(rest => rest.Until > now && pool.Any(member => member.Id == rest.Id)).OrderBy(rest => rest.Id, StringComparer.Ordinal)],
+            Members = [.. status.Members.Select(m => cooling.FirstOrDefault(c => c.Id == m.Id) is { } c ? m with { CoolsUntil = c.Until } : m)],
+            Cooling = cooling,
+            Guidance = [.. status.Guidance, .. cooling.Select(c => c.Describe(now) + ".")]
         };
     }
 
@@ -579,7 +637,7 @@ public sealed class ThinkingJobBoard
         var members = pool.Select(member => new ThinkingPoolMemberStatus(member.Id, member.Name, member.Slots,
             Math.Min(member.Slots, leases.Where(l => l.Place.Id == member.Id).Sum(l => l.Whole ? member.Slots : 1)), member.Can, member.Rank)
         {
-            Online = places.Answers(member), Media = member.Media
+            Online = places.Answers(member), Media = member.Media, SlotsNow = places.Room(member)
         }).ToArray();
         var online = members.Where(m => m.Online).ToArray();
         var slots = online.Sum(m => m.Slots);

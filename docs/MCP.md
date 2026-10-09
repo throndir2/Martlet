@@ -212,12 +212,19 @@ guidance and likely-slowdown warnings; and the desktop's
 `thinking-pool-status.json` (`leftByOwner`, running and waiting jobs by kind, the live floor's
 level, the jobs waiting for the conversation and the ones it stopped this turn
 and in all, `resting`: each member whose computer refused a request as invalid
-with what such jobs need and when it gets them again, never a job's text).
+with what such jobs need and when it gets them again, `cooling`: each member
+whose provider limits requests with `coolsUntil`, `slotsNow` of `slots` and
+what it says in plain words, and each member's `slotsNow` and `coolsUntil`,
+never a job's text; the `presence` summary repeats the plain words as
+`limiting`).
 `thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
 on another member, a stale job dropped, the migration, a member that
 refused a request as invalid resting for such jobs while it still takes the
-others, and the `quick and long jobs` steps (a judge passes over a member
+others, the `rate limits` steps (an endpoint member at NVIDIA Build's address
+answers 429 with Retry-After 1 s: it cools down, runs 2 of 4 jobs at once, and
+the job waits for it instead of failing with no retries allowed; while it cools
+down, its jobs go to another member), and the `quick and long jobs` steps (a judge passes over a member
 kept from quick jobs, a long job passes over a member kept from long jobs, a
 long job on a member that takes no quick jobs keeps no slot free, and a member
 that leaves takes its boxes with it). Its `auto-join` steps
@@ -251,9 +258,11 @@ On the desktop, the page's *Machines* card is one list. It reads through
 `ThinkingPoolConversation` (the conversation's own model: never in the pool, so
 no pool job waits in front of a reply), then each member's
 `ThinkingPoolMember-<n>` (*Reads text and pictures; writes text. 2 slots, set
-on diva.*, with *Can't run now* or *Offline now* when that applies) and
-`ThinkingPoolBadges-<n>` (*Waits while you talk*, *Costs money*, *Offline*;
-hidden when none applies), then each paired computer that isn't a member
+on diva.*, with *Can't run now*, *Offline now* or what a member that limits
+requests does, such as *NVIDIA is limiting requests; tries again in 40 s*, when
+that applies) and
+`ThinkingPoolBadges-<n>` (*Waits while you talk*, *Costs money*, *Offline*,
+*Limiting requests*; hidden when none applies), then each paired computer that isn't a member
 (`DeepThinkingHost-<host>`: *Kept out of the pool*, why it can't join, or that
 it joins at its next check), and then `ThinkingPoolGuidance`,
 `ThinkingPoolWarnings` and `ThinkingPoolLiveFloor` (which members start no new

@@ -111,10 +111,13 @@ public partial class MainWindow
         stack.Add(summary);
         stack.Add(ConversationRow(pool, route));
         var resources = LiveResources.For(routes, HostRouteGpus.For);
+        // Members whose providers limit requests now (a busy free cloud endpoint): they wait, or run fewer jobs at once, for a while.
+        var cooling = conversation?.PoolCooling() ?? [];
         for (var i = 0; i < pool.Members.Count; i++)
         {
             var member = pool.Members[i];
-            stack.Add(MemberRow(pool, plan, member, i, members[i].Can, places.FirstOrDefault(p => p.Id == member.Key), resources, hosts));
+            stack.Add(MemberRow(pool, plan, member, i, members[i].Can, places.FirstOrDefault(p => p.Id == member.Key), resources, hosts,
+                cooling.FirstOrDefault(c => c.Id == member.Key)));
         }
         var others = hosts.Where(h => !pool.Members.Any(m => m is { Place: DeepThinkingPlace.Host } && m.HostId == h.HostId)).ToArray();
         if (others.Length > 0)
@@ -189,7 +192,7 @@ public partial class MainWindow
     /// slots, In the pool (a paired computer) or Remove. A paired computer's Thinking pool role sets its slots there (Change
     /// model), because each check of that computer takes the role's slot count again.</summary>
     private UIElement MemberRow(ThinkingPoolSettings pool, DeepThinkingPool plan, DeepThinkingSettings member, int i, ThinkingCapability can,
-        BackgroundPlace? place, LiveResources resources, IReadOnlyList<PairedHost> hosts)
+        BackgroundPlace? place, LiveResources resources, IReadOnlyList<PairedHost> hosts, ThinkingPoolCooling? cooling = null)
     {
         var key = member.Key;
         var name = member.Describe();
@@ -206,7 +209,9 @@ public partial class MainWindow
             $"{slots} slot{(slots == 1 ? "" : "s")}{(member.OnHostRole && hostId is not null ? $", set on {hostId}" : "")}." +
             (plan.Find(key) is { Plan.Available: false } spot ? $" Can't run now: {spot.Plan.Why}" : "") +
             // A paired computer that stopped answering stays a member: its slots come back by themselves.
-            (offline ? $" Offline now: its slot{(slots == 1 ? "" : "s")} come{(slots == 1 ? "s" : "")} back when it answers again." : "");
+            (offline ? $" Offline now: its slot{(slots == 1 ? "" : "s")} come{(slots == 1 ? "s" : "")} back when it answers again." : "") +
+            // Its provider limited requests: it waits, or runs fewer jobs at once, and its jobs wait in line instead of failing.
+            (cooling is not null ? $" {cooling.Describe(DateTimeOffset.UtcNow)}." : "");
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock { Text = name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         var line = Note(detail, new Thickness(0, 2, 0, 0));
@@ -214,12 +219,14 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(line, $"ThinkingPoolMember-{i}");
         text.Children.Add(line);
         string[] badges = [.. place is not null && resources.Shares(place) ? ["Waits while you talk"] : Array.Empty<string>(),
-            .. paid ? ["Costs money"] : Array.Empty<string>(), .. offline ? ["Offline"] : Array.Empty<string>()];
+            .. paid ? ["Costs money"] : Array.Empty<string>(), .. offline ? ["Offline"] : Array.Empty<string>(),
+            .. cooling is not null ? ["Limiting requests"] : Array.Empty<string>()];
         var badgeLine = Note(string.Join("  \u00b7  ", badges), new Thickness(0, 2, 0, 0));
         badgeLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         badgeLine.Visibility = badges.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         badgeLine.ToolTip = "Waits while you talk: it shares the conversation's computer, so it starts no new pool work while you talk. " +
-            "Costs money: a paid cloud provider. Offline: its computer doesn't answer now.";
+            "Costs money: a paid cloud provider. Offline: its computer doesn't answer now. Limiting requests: its provider asked " +
+            "Martlet to slow down, so it gets fewer jobs for a while and its jobs wait instead of failing.";
         AutomationProperties.SetName(badgeLine, $"{name}: {badgeLine.Text}");
         AutomationProperties.SetAutomationId(badgeLine, $"ThinkingPoolBadges-{i}");
         text.Children.Add(badgeLine);
