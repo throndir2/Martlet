@@ -40,7 +40,7 @@ audio model was NOT RUN; see [Checks](#checks).
 | If Thinking fails | Companion › Thinking | Answers when Thinking fails before it says anything. Gets text and pictures, never recordings. |
 | Thinking pool | Companion › Thinking pool | Background jobs: thinking longer, research, screen and sound summaries, judges and helpers. |
 | Image model | Companion › Vision | Takes pictures when it isn't the text model. New. |
-| Audio model | Companion › Listening | Takes recordings when it isn't the text model. New. |
+| Audio model | Companion › Hearing | Takes recordings when it isn't the text model. New. |
 
 **A reply's request.** It starts with the instructions, which stay the same
 from request to request. The conversation so far follows, each message exactly
@@ -82,24 +82,35 @@ and recordings.
 - A model's key is in Windows Credential Manager. A model on the same base URL
   as Thinking can use Thinking's key.
 
-### The cards on Vision and Listening
+### The choice on Vision and Hearing
 
-Companion › Vision has an **Image model** card right after *Now*, and
-Companion › Listening has an **Audio model** card above *Hear how you say it*
-(`MainWindow.SenseModels.cs`). Each card has two parts.
+Companion › Vision and Companion › Hearing are Optional extras with the
+standard page order (`MainWindow.SenseModels.cs`, `MainWindow.Hearing.cs`):
 
-1. **What takes it now:** the choice (`ImageModelNow`), where the input goes
+1. **Now** says what takes the input now: the choice (`ImageModelNow`), where the input goes
    and why (`ImageModelRoute`, the words of `SenseRouting.For`), what the
    model is known to do (`ImageModelKnown`) and, for a model of its own, what
    is sent and where (`ImageModelSent`). Then the card's test: **Test vision**
    (`ImageModelTest`) asks the model that takes pictures, and **Test hearing**
    (`AudioModelTest`) asks an audio model of its own. Thinking's own Test
    hearing stays under *Hear how you say it* (`TalkHearVoiceTest`).
-2. **The choice:** one option for each row of the table above
-   (`Place-ImageModel-Thinking`, `-OtherSense`, `-ThisPc`, `-Cloud` and
-   `-Computer`; `Place-AudioModel-...` without `-Computer`). An option only
-   shows its panel. The panel's own button saves `sense-models.json`, and the
-   running conversation follows at once (`ReloadSenseModels`).
+2. **The main choice** is an option picker (*How Martlet sees*, *How Martlet
+   hears your tone*): **Off** first, then one option for each row of the
+   table above (`Picker-Vision-Off`, `-Thinking`, `-OtherSense`, `-ThisPc`,
+   `-Cloud` and `-Computer`; `Picker-Hearing-...` without `-Computer`). Each
+   row shows its key facts (where it runs, extra graphics memory, cost, where
+   the pictures or recordings go), and **Compare them** shows them side by
+   side. Choosing a row only shows its details and panel. The panel's own
+   button saves `sense-models.json`, and the running conversation follows at
+   once (`ReloadSenseModels`). Saving a model also turns vision on, and turns
+   hearing back to its usual rule if you turned it off.
+3. **Off** is vision off (`Watch` in `talk-preferences.json`: Martlet doesn't
+   look at your screen or camera) or hearing off (*Let ... hear my voice*
+   off: Martlet gets only the words you say). While the part is off, the
+   saved model's row reads *chosen*, and its details offer *Turn vision on*
+   or *Turn hearing on*. On Hearing, *Hear how you say it* follows: the
+   consent check box, the voice path and Test hearing. Listening links to
+   Hearing.
 
 The panels:
 
@@ -121,8 +132,8 @@ Keys follow these rules (`SenseModelChoice`):
   Manager when no choice uses it any more.
 
 Companion › Thinking's *Now* card says that Thinking is the text model and
-where pictures and recordings go (`ThinkingSenses`), with links to the two
-cards (`ThinkingOpenImageModel`, `ThinkingOpenAudioModel`).
+where pictures and recordings go (`ThinkingSenses`), with links to Vision and
+Hearing (`ThinkingOpenImageModel`, `ThinkingOpenAudioModel`).
 
 ## Where each kind of input goes
 
@@ -351,7 +362,7 @@ the default (the text model) nothing below runs and no request changes.
   Thinking hear my voice*: your own choice wins; never chosen, it is on only
   while the recording stays on this PC (the audio model is Ollama on this PC,
   not a `:cloud` or `-cloud` model). The check box, its words and the
-  disclosure on Companion › Listening name the audio model then (*Let the
+  disclosure on Companion › Hearing name the audio model then (*Let the
   audio model hear my voice*; `TalkHearVoice`, `TalkHearVoiceChoice`,
   `TalkHearVoiceStatus`), and the straight path and *Test hearing* (both about
   Thinking hearing you) are hidden.

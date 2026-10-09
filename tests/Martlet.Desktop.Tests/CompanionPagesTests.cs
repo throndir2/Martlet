@@ -22,12 +22,16 @@ public sealed class CompanionPagesTests
     [Fact]
     public void TheJobsMartletNeedsComeFirstAndTheExtrasSayTheyAreOptional()
     {
-        var groups = Enum.GetValues<CompanionTab>().GroupBy(MainWindow.GroupOf).ToDictionary(g => g.Key, g => g.ToArray());
+        var groups = MainWindow.SideListOrder().GroupBy(MainWindow.GroupOf).ToDictionary(g => g.Key, g => g.ToArray());
         Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Lip-sync" }, groups[CompanionGroup.HowItWorks].Select(MainWindow.TabTitle));
-        Assert.Equal(new[] { CompanionTab.DeepThinking, CompanionTab.Singing, CompanionTab.Pictures, CompanionTab.Vision, CompanionTab.Reading },
-            groups[CompanionGroup.Extras]);
+        // The Optional extras follow the priority list: vision, reading, hearing, the Thinking pool, smart home, singing, pictures.
+        Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Thinking pool", "Smart home", "Singing", "Pictures" },
+            groups[CompanionGroup.Extras].Select(MainWindow.TabTitle));
         Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional.", MainWindow.TabIntro(tab)));
+        Assert.All(groups[CompanionGroup.Extras], tab => Assert.EndsWith($" Off: {OptionalExtras.OffMeans(tab)}.", MainWindow.TabIntro(tab)));
         Assert.All(groups[CompanionGroup.HowItWorks], tab => Assert.DoesNotContain("Optional", MainWindow.TabIntro(tab)));
+        // The side list holds every page once, each group together.
+        Assert.Equal(Enum.GetValues<CompanionTab>().Length, MainWindow.SideListOrder().Distinct().Count());
     }
 
     [Theory]

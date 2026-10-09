@@ -23,14 +23,15 @@ namespace Martlet.Desktop;
 /// TabIntro and RenderTab.</summary>
 internal enum CompanionTab
 {
-    Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Profiles, Personality, Prompts, Lorebook,
+    Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Hearing, Profiles, Personality, Prompts, Lorebook,
     Memory, People, Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, SmartHome, Discord, Messaging
 }
 
 /// <summary>The side list's groups, in order: how it works (the jobs Martlet needs, in priority order: Thinking, then listening,
-/// voice and lip-sync), optional extras (jobs Martlet works without: the Thinking pool, singing, pictures and seeing your screen),
-/// who it is (personality and what it knows), how it looks (the desktop character: its model, speech bubbles, emotes, eyes and
-/// touch) and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
+/// voice and lip-sync), optional extras (parts Martlet works without, in the priority list's order: vision, reading, hearing, the
+/// Thinking pool, smart home, singing and pictures; <see cref="OptionalExtras.Order"/>), who it is (personality and what it
+/// knows), how it looks (the desktop character: its model, speech bubbles, emotes, eyes and touch) and what it does (how it
+/// answers and acts). A group with no pages yet is not shown.</summary>
 internal enum CompanionGroup { HowItWorks, Extras, WhoItIs, HowItLooks, WhatItDoes }
 
 /// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the graphics card
@@ -39,9 +40,9 @@ internal enum CompanionGroup { HowItWorks, Extras, WhoItIs, HowItLooks, WhatItDo
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb, bool Hears);
 
 /// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Listening, Voice, Lip-sync; Optional
-/// extras: Thinking pool, Singing, Pictures, Vision, Reading; Who it is: Profiles, Personality, Lorebook, Memory; How it looks:
-/// Character, Speech bubbles, Emotes and motions, Eyes, Touch; What it does: Smart home, Discord). Each job page asks where the
-/// job runs (this PC by default, another of your computers, or a
+/// extras: Vision, Reading, Hearing, Thinking pool, Smart home, Singing, Pictures; Who it is: Profiles, Personality, Lorebook,
+/// Memory; How it looks: Character, Speech bubbles, Emotes and motions, Eyes, Touch; What it does: Discord). Each job page asks
+/// where the job runs (this PC by default, another of your computers, or a
 /// cloud provider; voice loudness for lip-sync) and shows only that place's fields, including the API key for a cloud provider.
 /// Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
@@ -119,17 +120,27 @@ public partial class MainWindow
     internal static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
-        CompanionTab.DeepThinking or CompanionTab.Singing or CompanionTab.Pictures or CompanionTab.Vision or CompanionTab.Reading => CompanionGroup.Extras,
+        CompanionTab.DeepThinking or CompanionTab.Singing or CompanionTab.Pictures or CompanionTab.Vision or CompanionTab.Reading or
+            CompanionTab.Hearing or CompanionTab.SmartHome => CompanionGroup.Extras,
         CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Character or CompanionTab.SpeechBubbles or CompanionTab.Emotes or CompanionTab.Eyes or CompanionTab.Touch => CompanionGroup.HowItLooks,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.CheckIns => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
-        CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
         CompanionTab.Discord => CompanionGroup.WhatItDoes,
         CompanionTab.Messaging => CompanionGroup.WhatItDoes,
         _ => CompanionGroup.WhatItDoes
     };
+
+    /// <summary>The side list's pages in order: by group, then the jobs and the other groups in their list order, and the
+    /// Optional extras in the priority list's order (<see cref="OptionalExtras.Order"/>).</summary>
+    internal static IReadOnlyList<CompanionTab> SideListOrder() =>
+    [
+        .. Enum.GetValues<CompanionTab>().Select((tab, index) => (tab, index))
+            .OrderBy(t => GroupOf(t.tab))
+            .ThenBy(t => GroupOf(t.tab) == CompanionGroup.Extras ? OptionalExtras.Order(t.tab) : t.index)
+            .Select(t => t.tab)
+    ];
 
     internal static string GroupTitle(CompanionGroup group) => group switch
     {
@@ -149,6 +160,7 @@ public partial class MainWindow
         CompanionTab.Listening => "Listening",
         CompanionTab.Vision => "Vision",
         CompanionTab.Reading => "Reading",
+        CompanionTab.Hearing => "Hearing",
         CompanionTab.LipSync => "Lip-sync",
         CompanionTab.Profiles => "Profiles",
         CompanionTab.Character => "Character",
@@ -181,6 +193,7 @@ public partial class MainWindow
         CompanionTab.Listening => "\uE720",
         CompanionTab.Vision => "\uE890",
         CompanionTab.Reading => "\uE7BC",
+        CompanionTab.Hearing => "\uE7F6",
         CompanionTab.LipSync => "\uE8BD",
         CompanionTab.Profiles => "\uE748",
         CompanionTab.Character => "\uE77B",
@@ -203,16 +216,18 @@ public partial class MainWindow
         _ => "\uE76E"
     };
 
-    /// <summary>The line under the page title: what the page decides, in one or two sentences.</summary>
+    /// <summary>The line under the page title: what the page decides, in one or two sentences. Every Optional extras page starts
+    /// with "Optional." and ends with what Off means (<see cref="OptionalExtras.OffMeans"/>).</summary>
     internal static string TabIntro(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Martlet needs Thinking to answer you. Choose where it thinks and which model it uses. This PC keeps conversations local, free and with no account.",
-        CompanionTab.DeepThinking => "Optional. Thinking answers you. The Thinking pool works out hard tasks and other background jobs on your other models, ideally on another machine, so Martlet keeps talking.",
-        CompanionTab.Singing => "Optional. Martlet sings songs you ask for, in the voice it speaks with. It needs an NVIDIA graphics card; Martlet talks fine without it.",
+        CompanionTab.DeepThinking => Extra(section, "Other models work out hard tasks and background jobs, ideally on another computer, so Thinking keeps talking at full speed."),
+        CompanionTab.Singing => Extra(section, "Martlet sings songs you ask for, in the voice it speaks with, on an NVIDIA graphics card."),
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
-        CompanionTab.Vision => "Optional. Choose whether Martlet can see your screen or camera once you press Start watching.",
-        CompanionTab.Reading => "Optional. Choose where Martlet reads the text on your screen while it watches: Windows OCR on this PC, or Martlet's Reading role on one of your computers.",
+        CompanionTab.Vision => Extra(section, "Martlet looks at your screen or a camera once you press Start watching, with the model you choose."),
+        CompanionTab.Reading => Extra(section, "While Martlet watches your screen, it reads the text on it: with Windows OCR on this PC or Martlet's Reading role."),
+        CompanionTab.Hearing => Extra(section, "A model hears how you say things (your tone, laughter, sighs and the sounds around you), not only your words."),
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
         CompanionTab.Character => "Choose Martlet's character, and its size and position on your desktop.",
@@ -228,12 +243,15 @@ public partial class MainWindow
         CompanionTab.Replies => "Control reply length and creativity.",
         CompanionTab.CheckIns => "Every few minutes the Thinking pool checks what Martlet left on and said, and reminds it of what it forgot: small models forget a lot.",
         CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
-        CompanionTab.Pictures => "Optional. Let Martlet draw pictures when you ask: on your own graphics card with ComfyUI, or with a paid cloud provider.",
-        CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
+        CompanionTab.Pictures => Extra(section, "Martlet draws pictures when you ask: on your own graphics card or with a cloud provider."),
+        CompanionTab.SmartHome => Extra(section, "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask."),
         CompanionTab.Discord => "Put Martlet on Discord: set up its bot, connect it, invite it to servers and choose where it chats.",
         CompanionTab.Messaging => "Talk to Martlet from Telegram or WhatsApp on your phone, with the same memory and personality, while Martlet runs on this PC.",
         _ => ""
     };
+
+    /// <summary>An Optional extras page's intro: "Optional.", what it does, then what Off means.</summary>
+    private static string Extra(CompanionTab section, string what) => $"Optional. {what} Off: {OptionalExtras.OffMeans(section)}.";
 
     /// <summary>Recommended local model: the fastest, gemma4:e2b, on every PC. It starts a spoken reply soonest (about 150 ms to
     /// its first sentence on an RTX 4070, against 100-200 ms more for E4B and 12B; docs/VOICE_LATENCY.md) and hears recordings
@@ -372,7 +390,7 @@ public partial class MainWindow
     private void BuildCompanionNav()
     {
         if (companionNav.Count > 0) return;
-        foreach (var group in Enum.GetValues<CompanionTab>().GroupBy(GroupOf).OrderBy(g => g.Key))
+        foreach (var group in SideListOrder().GroupBy(GroupOf).OrderBy(g => g.Key))
         {
             var title = new TextBlock { Text = GroupTitle(group.Key).ToUpperInvariant(), Margin = new Thickness(12, companionNav.Count == 0 ? 0 : 18, 0, 4) };
             title.SetResourceReference(StyleProperty, "Eyebrow");
@@ -429,6 +447,7 @@ public partial class MainWindow
             case CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening: RenderJobTab(body, section); break;
             case CompanionTab.Vision: RenderVisionPage(body); break;
             case CompanionTab.Reading: RenderReadingTab(body); break;
+            case CompanionTab.Hearing: RenderHearingPage(body); break;
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Profiles: RenderProfilesTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
@@ -444,7 +463,7 @@ public partial class MainWindow
             case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.CheckIns: RenderCheckInsTab(body); break;
             case CompanionTab.DeepThinking: RenderDeepThinkingTab(body); break;
-            case CompanionTab.Singing: body.Children.Add(SingingCard()); break;
+            case CompanionTab.Singing: RenderSingingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: RenderPicturesTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
@@ -562,8 +581,10 @@ public partial class MainWindow
         if (section == CompanionTab.Listening) page.Children.Add(TalkModeCard());
         if (section == CompanionTab.Listening) page.Children.Add(EchoCard());
         if (section == CompanionTab.Listening) page.Children.Add(PcAudioCard());
-        if (section == CompanionTab.Listening) page.Children.Add(SenseModelCards(SenseKind.Audio));
-        if (section == CompanionTab.Listening) page.Children.Add(HearVoiceCard());
+        // How you say things (the audio model, and whether a model hears your recording) is on Companion › Hearing.
+        if (section == CompanionTab.Listening)
+            page.Children.Add(Card(Heading("How Martlet hears your tone"),
+                Row(PageButton("Companion › Hearing", () => OpenCompanion(CompanionTab.Hearing), link: true, id: "ListeningOpenHearing"))));
         if (section == CompanionTab.Listening)
             page.Children.Add(Card(Heading("Who is talking"),
                 Note(localVoices.Active
