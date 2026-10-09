@@ -11,6 +11,7 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Thinking pool machines on busy cloud providers (such as NVIDIA Build's free models) now wait and try again when the provider asks Martlet to slow down, instead of failing the job. That machine runs fewer jobs at once for a while, and the Thinking pool page says when it tries again. ([#704](https://github.com/throndir2/Martlet/pull/704))
+- Check-ins can start Martlet's long thinking and web research with the new **Background work** tool set. When the after-reply check-in uses it, replies no longer decide that themselves: Martlet just tells you it'll think it over, and your Thinking pool starts the work right after the reply, so replies stay quick. The result still comes back the same way. ([#702](https://github.com/throndir2/Martlet/pull/702))
 - Check-ins have a new tool set, **Songs, pictures and creations**: after a reply, the Thinking pool can start the song or picture you asked for, sing a finished song or show something Martlet made, so the reply itself doesn't stop to do it. If it can't start, Martlet tells you why on its own. ([#699](https://github.com/throndir2/Martlet/pull/699))
 - A new **Thinking requests** page in the side menu shows everything your companions ask the Thinking pool to do: what each request is for, which companion asked, its type and priority, where it runs, its retries, and how long it waited and ran. **Timing by type** sums up wait and run times since Martlet started. ([#690](https://github.com/throndir2/Martlet/pull/690))
 - Thinking pool machines outside this PC and your paired computers (a cloud provider or another computer's endpoint) now get check-ins and summaries with a screenshot or a recording only after you tick **May receive pictures and recordings** for them on Companion › Thinking pool. Text-only jobs still go to them. ([#698](https://github.com/throndir2/Martlet/pull/698))
@@ -21,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Pages are shorter and easier to scan. Long explanations now sit behind a small **?**: point at it to read, or click it to keep the text open. On Companion › Check-ins, each check-in shows only its switch, how often it runs, its answer and its status, and the rest waits under **More settings**. ([#701](https://github.com/throndir2/Martlet/pull/701))
 - When an after-each-exchange check-in has the **Reminders** tools, Martlet sets and cancels your reminders on the Thinking pool right after it answers, so its reply starts sooner. It can still tell you which reminders are waiting. ([#700](https://github.com/throndir2/Martlet/pull/700))
 
 ## [0.64.0] - 2026-10-09

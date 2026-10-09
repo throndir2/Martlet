@@ -957,6 +957,21 @@ is already being spoken, and if it said nothing the result tells it to say so
 now (a reply may end with nothing more after its tool calls). The tool never
 holds up the reply. `cancel_thinking` (optional `id`) stops a think.
 
+**After the exchange instead.** A check-in can start the same think and web
+research after the reply, on the Thinking pool, with the **Background work**
+tool set (`background-work`, `BackgroundWorkTools`). Its `think_longer` and
+`research` take the same arguments and keep the same limits, gates and job
+kinds as the reply's. The work continues the last exchange's request and what
+the reply said, and Martlet brings the result up the same way. The check-in
+gets `Started think-1.` (or `think-1 waits in line.`) on the first line, never
+the task. The set takes over the reply's `think_longer` and `research`
+(`Replaces`): while the after-exchange `actions` check-in uses it, the reply
+gets neither tool and no *Thinking longer* or *Web research* prompt. It gets a
+short line that says to tell you it'll think it over or look into it, because
+that work starts after the reply. `cancel_thinking` stays on the reply. The
+set is offered only while Thinking longer is on and Deep thinking can think;
+`research` also needs Web research on.
+
 **The background request** runs on its own runtime with Thinking steps **On**
 at the chosen effort (*Medium* or *High*: `reasoning_effort` medium/high for
 Ollama on this PC, OpenAI and Gemini, OpenRouter's `reasoning.effort`, the chat
@@ -1760,6 +1775,7 @@ does and its tools. Martlet offers:
 | Discord calls and camera (`discord`) | `call_on_discord`, `set_camera_background` | Call a Discord friend you asked for, or change Martlet's webcam background in your Discord call ([Discord](DISCORD.md)). Offered only while Martlet can call someone or is in your Discord calls. Replaces the reply's tools of the same names. |
 | Memory (`memory`) | `memory_find`, `memory_remember`, `memory_update`, `memory_forget` | Find, remember, correct, give to someone else and forget facts, as `manage_memories` does ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. |
 | Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Pictures](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
+| Background work (`background-work`) | `think_longer`, `research` | Start a background think or web research on the last exchange, which Martlet brings up when done. Takes over the reply's `think_longer` and `research` ([Thinking longer](#thinking-longer-and-background-work)). Offered only while Thinking longer is on and Deep thinking can think. |
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls

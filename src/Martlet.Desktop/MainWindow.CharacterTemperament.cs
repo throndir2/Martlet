@@ -107,9 +107,9 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Touch temperament"),
-            Note("How the character reacts when you touch each part of it, and where its eyes usually go. When you save a " +
+            HelpTip.Explain("How the character reacts when you touch each part of it, and where its eyes usually go. When you save a " +
                 "personality, your Thinking model decides this from it in the background. Your own changes stay until you re-decide. " +
-                "Make a custom temperament to use the same one for several personas.", new Thickness(0, 0, 0, 12))
+                "Make a custom temperament to use the same one for several personas.", new Thickness(0, 0, 0, 12), "CharacterTemperament", "touch temperament")
         };
         var temperament = characterTemperaments.For(persona?.Id);
         // Who decided it, or what the persona uses instead, with the whole temperament in words as its tooltip (and help text, for
@@ -297,8 +297,8 @@ public partial class MainWindow
         stack.Add(useState);
         if (builtIn)
         {
-            stack.Add(Note("Every part plays its own built-in reaction, and the eyes follow your mouse. To change how it reacts, choose " +
-                "another temperament under Uses, or make a custom one: it starts with the built-in reactions.", new Thickness(0, 12, 0, 0)));
+            stack.Add(HelpTip.Explain("Every part plays its own built-in reaction, and the eyes follow your mouse. To change how it reacts, choose " +
+                "another temperament under Uses, or make a custom one: it starts with the built-in reactions.", new Thickness(0, 12, 0, 0), "TemperamentParts", "reactions"));
             stack.Add(saveState);
             return Card([.. stack]);
         }

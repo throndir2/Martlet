@@ -32,8 +32,14 @@ public partial class MainWindow
         if (conversation?.Configuration?.Memory is { Enabled: true })
             handlers[MemoryToolSet.Id] = (call, context, token) => conversation is { } live
                 ? live.CheckInMemoryAsync(call, context.CheckInName, token) : new(new ConversationToolResult("Memory: off.\nMemory is off.", true));
+        // Background work only while Thinking longer is on and Deep thinking can think.
+        if (conversation?.OffersBackgroundWork == true) handlers[BackgroundWorkTools.SetId] = BackgroundWorkToolAsync;
         return handlers;
     }
+
+    private ValueTask<ConversationToolResult> BackgroundWorkToolAsync(TextToolCall call, CheckInToolContext context, CancellationToken token) =>
+        new(conversation is { } live ? live.StartBackgroundWork(call, context.CheckInName)
+            : new ConversationToolResult(BackgroundWorkTools.NotStarted("there is no conversation"), true));
 
     private ValueTask<ConversationToolResult> CharacterToolAsync(TextToolCall call, CheckInToolContext context, CancellationToken token) =>
         new(Dispatcher.InvokeAsync(async () =>

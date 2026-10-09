@@ -75,10 +75,10 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Your characters"),
-            Note("Add a Live2D model (its .model3.json) or a VRM model (.vrm). Martlet keeps its own copy and copies it to your " +
+            HelpTip.Explain("Add a Live2D model (its .model3.json) or a VRM model (.vrm). Martlet keeps its own copy and copies it to your " +
                 "paired Martlet computers, so any of them can show the same character. The one you use is the one all of them show " +
                 "while Martlet is kept the same on all your computers (Devices).",
-                new Thickness(0, 0, 0, 10))
+                new Thickness(0, 0, 0, 10), "Characters", "adding a character")
         };
         var dataDirectory = store?.DataDirectory;
         var library = CharacterModelLibrary.Empty;

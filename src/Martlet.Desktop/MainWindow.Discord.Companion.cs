@@ -205,10 +205,10 @@ public partial class MainWindow
         {
             Header = "What Discord allows",
             Margin = new Thickness(0, 8, 0, 0),
-            Content = Note("A Discord bot can't start a DM call, join a group DM or send camera video. So Martlet calls through a " +
+            Content = HelpTip.Explain("A Discord bot can't start a DM call, join a group DM or send camera video. So Martlet calls through a " +
                 "private voice channel in your home server (only you, the friend and Martlet can see it; it's removed after the call), " +
                 "its Discord picture follows the character, and /selfie posts a picture of it. Showing the live character in a call " +
-                "would need a Discord Activity, a possible later step.", new Thickness(0, 4, 0, 0))
+                "would need a Discord Activity, a possible later step.", new Thickness(0, 4, 0, 0), "DiscordBot", "Discord bots")
         };
         AutomationProperties.SetAutomationId(about, "DiscordFriendsAbout");
         stack.Add(about);
