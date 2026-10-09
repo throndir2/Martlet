@@ -30,6 +30,9 @@ public sealed record NetworkMachine(MachineSpecs Specs, NetworkMachineKind Kind)
     public bool Manageable { get; init; } = true;
     /// <summary>The host roles its host service runs now.</summary>
     public IReadOnlyList<HostedRolePlacement> Roles { get; init; } = [];
+    /// <summary>The role models its host service keeps downloaded (its machine report's downloads), also for roles that are
+    /// off or run another model now. Turning one of them back on, or switching back to it, downloads nothing.</summary>
+    public IReadOnlyList<HostedRolePlacement> Downloaded { get; init; } = [];
     /// <summary>Its host roles run on Windows (Martlet.Core.Installation.SharedGpu.OnWindows: this PC's Docker Desktop, or a
     /// host whose report names Windows or a WSL 2 kernel), where the graphics card's memory pages into main memory instead of
     /// failing. Null: <see cref="MachineSpecs.Platform"/> says.</summary>

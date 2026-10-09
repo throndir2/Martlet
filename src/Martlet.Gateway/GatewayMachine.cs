@@ -17,6 +17,16 @@ public sealed record GatewayMachineGpu
     public bool? Persistence { get; init; }
 }
 
+/// <summary>A model a host role ran on this host whose download the host keeps (in the role's data volumes): turning the
+/// role back on, or switching back to the model, downloads nothing.</summary>
+public sealed record GatewayMachineDownload
+{
+    /// <summary>The host role, for example ollama or chatterbox.</summary>
+    public required string Role { get; init; }
+    /// <summary>The model, as the role's route names it (for example gemma4:e4b).</summary>
+    public required string Model { get; init; }
+}
+
 /// <summary>What a host machine is like, collected by <c>martlet-host</c> on the host itself and served to paired
 /// desktops so they can plan which computer runs which role. Unauthenticated host-reported facts, not a
 /// qualification or readiness claim.</summary>
@@ -51,6 +61,9 @@ public sealed record GatewayMachineReport
     public bool? UnifiedMemory { get; init; }
     /// <summary>Macs: how much memory the GPU may use for models (Metal's recommended working set), in GB.</summary>
     public double? GpuWorkingSetGb { get; init; }
+    /// <summary>The downloads the host keeps for roles that are off or that run another model now (Linux host engine).
+    /// Absent on older hosts and on hosts without the list.</summary>
+    public IReadOnlyList<GatewayMachineDownload>? Downloads { get; init; }
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -89,7 +102,16 @@ public sealed record GatewayMachineReport
         Gpus.All(gpu => gpu is not null && Text(gpu.Name, required: true) && Text(gpu.Driver) &&
             gpu.Vendor is "nvidia" or "amd" or "intel" or "apple" or "other" &&
             gpu.MemoryMb is null or (> 0 and <= 1_048_576) &&
-            gpu.PowerLimitW is null or (> 0 and <= 10_000) && gpu.PowerDefaultW is null or (> 0 and <= 10_000));
+            gpu.PowerLimitW is null or (> 0 and <= 10_000) && gpu.PowerDefaultW is null or (> 0 and <= 10_000)) &&
+        (Downloads is null || Downloads is { Count: <= 64 } && Downloads.All(d => d is not null && RoleName(d.Role) && ModelName(d.Model)));
+
+    private static bool RoleName(string? value) =>
+        value is { Length: > 0 and <= 32 } && value.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-');
+
+    /// <summary>The host engine's model pattern: ^[A-Za-z0-9][A-Za-z0-9._:/-]*$, 128 characters at most.</summary>
+    private static bool ModelName(string? value) =>
+        value is { Length: > 0 and <= 128 } && char.IsAsciiLetterOrDigit(value[0]) &&
+        value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or ':' or '/' or '-');
 
     private static bool Text(string? value, bool required = false) =>
         value is null ? !required : value.Length is > 0 and <= 128 && value.All(c => c is >= ' ' and <= '~');

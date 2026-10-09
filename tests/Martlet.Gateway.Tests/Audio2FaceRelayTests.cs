@@ -118,7 +118,8 @@ public sealed class Audio2FaceRelayTests
             "{\"collected_at\":\"2026-09-29T18:00:00Z\",\"method\":\"docker\",\"operating_system\":\"Docker Desktop\"," +
             "\"processor_threads\":24,\"memory_gb\":31.2,\"nvidia_containers\":\"yes\",\"gpus\":[" +
             "{\"name\":\"NVIDIA GeForce RTX 4080\",\"vendor\":\"nvidia\",\"memory_mb\":16376,\"driver\":\"566.03\"}," +
-            "{\"name\":\"AMD Radeon RX 6800\",\"vendor\":\"amd\",\"memory_mb\":16368}]}"));
+            "{\"name\":\"AMD Radeon RX 6800\",\"vendor\":\"amd\",\"memory_mb\":16368}]," +
+            "\"downloads\":[{\"role\":\"ollama\",\"model\":\"gemma4:e4b\"},{\"role\":\"chatterbox\",\"model\":\"chatterbox-turbo\"}]}"));
         var report = await connection.ReadMachineAsync();
 
         Assert.NotNull(report);
@@ -129,5 +130,7 @@ public sealed class Audio2FaceRelayTests
         Assert.Equal(Martlet.Core.Installation.AdvisorGpu.Nvidia16, report.AdvisorGpu);
         Assert.Equal(new DateTimeOffset(2026, 9, 29, 18, 0, 0, TimeSpan.Zero), report.CollectedAt);
         Assert.Equal(version, report.MartletVersion);
+        Assert.Equal(new Martlet.Core.Installation.HostDownload[] { new("ollama", "gemma4:e4b"), new("chatterbox", "chatterbox-turbo") },
+            report.Downloads);
     }
 }

@@ -54,7 +54,7 @@ exposure            how this host is reached from outside home: [--outside <name
 roles               what this host can run
 describe <role>     a role's terms, secrets (stored or missing, never values), choices, GPU/CPU option and route-less feature, and what an installed one runs with now, machine-readable
 add <role>          install a role, e.g. add ollama, add deep-thinking, add stt, add f5, add xtts, add chatterbox, add chatterbox-original, add chatterbox-nano, add gpt-sovits, add dia, add singing, add pictures, add audio2face or add home-assistant (same flow for every role); for an installed role it changes what is answered (its model...) and keeps the rest
-remove <role>       stop a role and unpublish it (keeps its data)
+remove <role>       turn a role off: stop it and unpublish it (keeps its downloads and data; adding it again downloads nothing)
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
 update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
 status | config     show the gateway and roles | print the generated host.json
@@ -569,8 +569,15 @@ Adding a role that is already installed is a reconfiguration, not a reinstall:
   suggestions). Martlet's *Change ... settings* shows them and sends them all.
 - Images, downloads and data volumes are kept (also by `remove` and by an
   `exclusive` replacement), so adding a role again, or switching back to one,
-  downloads nothing new. Compose recreates a container only when its
-  configuration changed; an unchanged one keeps running.
+  downloads nothing new. `remove` turns a role off; it deletes nothing.
+  Compose recreates a container only when its configuration changed; an
+  unchanged one keeps running.
+- The machine report lists the kept downloads (`downloads`: each role and
+  model that ran on this host, 16 at most for each role, from
+  `downloads/<role>` in the host config). A role whose data volumes were
+  deleted (`docker volume rm`) is left out. Martlet's recommended setup uses the
+  list: turning a role back on, or switching back to a model, says *already
+  downloaded* and counts no download.
 - The gateway (the single entry point every role on the host goes through)
   restarts only when something it opens changed: `host.json`, the machine report
   (apart from when it was collected), `gpus.json` (where each role runs) or the

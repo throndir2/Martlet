@@ -972,7 +972,8 @@ on that computer, this PC's own host engine, or SSH). The preflight shows:
   uses, for example Parakeet's or Whisper's),
 - each secret that a role needs and that the host does not store yet (for
   example an NGC API key; the change then needs you),
-- about how much each change downloads,
+- about how much each change downloads (nothing for a model that the host kept
+  from a role it turned off before: its machine report lists it in `downloads`),
 - the changes that need someone at that computer, and the changes that Martlet
   cannot make, each with the reason.
 
@@ -988,7 +989,7 @@ remove roles). It uses only the paths that already exist:
 | Change | Path |
 | --- | --- |
 | Add a role, change its model, move it to a graphics card | `host.add-role` with `choice.<VAR>` answers through Martlet on that computer; this PC's own host engine; or the SSH runner without questions, as automatic host updates use it. The model selects its choice and its variant (`choice.STT_ENGINE=parakeet` for a Parakeet model). A choice that selects a variant is always sent, with its default when the change names none, so the host installs the variant whose terms the review showed. An installed role keeps what it runs with now. `choice.gpu` is the UUID of the card from the describe output, found by the card's exact name (then a name that contains the other, then its place among the NVIDIA cards). |
-| Remove a role | `host.remove-role`, or `martlet-host remove` on this PC or over SSH |
+| Remove (turn off) a role | `host.remove-role`, or `martlet-host remove` on this PC or over SSH. It stops the role and takes it out of the gateway. Its images, volumes and models stay, so adding it again downloads nothing. |
 | Hand a job to a computer | The shared cluster plan, as *Use for ...* on the Devices map does, with failover on. Without a host, each companion PC uses its own choice again. |
 | Hand a job to no host | The way of doing it that the recommendation names (`JobPlan.OptionId`). Martlet switches this PC with the Companion page's own path when it can: a model in this PC's Ollama (*Use Ollama on this PC*), Parakeet or loudness lip-sync. That path also records in the shared plan that no host does the job, and your other companion PCs follow the shared route when they can. A hosted provider is switched only when this PC already uses it; otherwise the review says where you choose it (for example *Choose OpenAI for thinking in Companion › Thinking*), and Martlet never reports that change as made. |
 | Share speaking or listening | Devices › Sharing work (`work-sharing.json`, the `work-sharing` shared setting): the computer is no longer in the job's *never* list, and sharing is on. Leaving puts it on that list. |

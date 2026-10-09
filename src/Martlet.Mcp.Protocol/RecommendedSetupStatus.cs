@@ -84,7 +84,8 @@ internal static class RecommendedSetupStatus
                     ? $"{string.Join(", ", specs.Gpus.Select(g => $"{g.Name} {g.VramGb:0.#} GB"))}{(specs.Gpus.Count == 0 ? "no graphics card" : "")}; " +
                       $"{specs.RamGb:0} GB memory; {specs.CpuThreads} threads"
                     : "not reported",
-                roles = build.Request.Machines.FirstOrDefault(m => m.Specs.Id == c.Id)?.Roles.Select(r => r.Model is null ? r.Kind : $"{r.Kind}={r.Model}") ?? []
+                roles = build.Request.Machines.FirstOrDefault(m => m.Specs.Id == c.Id)?.Roles.Select(r => r.Model is null ? r.Kind : $"{r.Kind}={r.Model}") ?? [],
+                downloads = build.Request.Machines.FirstOrDefault(m => m.Specs.Id == c.Id)?.Downloaded.Select(r => $"{r.Kind}={r.Model}") ?? []
             }),
             notes = build.Notes,
             servedModels = new

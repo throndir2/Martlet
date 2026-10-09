@@ -3956,7 +3956,9 @@ It asks nothing when the directory's `recommended-setup.json` has
 - `source` and `computers`: each computer's `id` (the cluster plan's host ID,
   else the device ID), `name`, `kind` (`Companion` or `Host`), `thisPc`,
   `hasHostService`, `manageable`, `online`, `planned` (false: left as it is),
-  `hardware` and `roles` (`kind=model`).
+  `hardware`, `roles` (`kind=model`) and `downloads` (`kind=model`: the role
+  models its host service keeps from roles it turned off, from the `downloads`
+  of its report in `host-hardware.json`).
 - `notes`: why a computer is left as it is.
 - `servedModels`: `use` (*Use models your apps already run* is on), `looked`
   (models were looked for: the fixture's, or `lookOnThisPc`), `found` (each
@@ -4125,8 +4127,11 @@ only a processor host (it stays: no added latency); hosted Thinking that the
 owner chose (it stays, unless everything is kept local); a host left out of
 the Thinking pool; the voice host not answering just now, for 4 and for 25
 minutes (Speaking moves as Required each time, and nothing changes on that
-host); and the applied recommendation (no changes and the
-same fingerprint in any order). Four `voice` steps check the fallback when no
+host); the applied recommendation (no changes and the
+same fingerprint in any order); and two `kept` steps: two equal hosts where one
+kept Thinking's model from a role it turned off (Thinking goes there, the change
+downloads nothing and says *already downloaded*), and a part turned off (the
+review says *Turn off* and that its downloads stay). Four `voice` steps check the fallback when no
 computer has room for the owner's voice engine: Chatterbox Nano on a 4 GB card;
 Chatterbox Nano on the processor (about 8 threads) with no card; the hosted
 voice with a saved key when no computer can run an engine; otherwise a note

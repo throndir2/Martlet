@@ -696,6 +696,11 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
                 Features = machine.TryGetProperty("features", out var features) && features.ValueKind == JsonValueKind.Array
                     ? features.EnumerateArray().Take(16).Where(f => f.ValueKind == JsonValueKind.String)
                         .Select(f => Clean(f.GetString())).OfType<string>().ToArray()
+                    : null,
+                Downloads = machine.TryGetProperty("downloads", out var downloads) && downloads.ValueKind == JsonValueKind.Array
+                    ? downloads.EnumerateArray().Take(64).Where(d => d.ValueKind == JsonValueKind.Object)
+                        .Select(d => Text(d, "role") is { } role && Text(d, "model") is { } model ? new HostDownload(role, model) : null)
+                        .OfType<HostDownload>().ToArray()
                     : null
             }, version);
         }

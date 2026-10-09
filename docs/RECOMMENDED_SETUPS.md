@@ -378,7 +378,14 @@ memory.
   processor option (singing, pictures, Deep thinking), is off. The review shows
   each part as *Off*, with why. You can also tick **Off** for an optional part
   in the review: Martlet saves the choice on this PC (`recommended-setup.json`),
-  plans again without that part, and Reconfigure removes its roles.
+  plans again without that part, and Reconfigure turns its roles off.
+- **Turning a part off deletes nothing.** Reconfigure stops the part's roles
+  and takes them out of the gateway, but the host keeps their models, images
+  and data. Each host service reports the models it keeps (`downloads` in its
+  machine report). When a part comes back, the review says *Start ... again*
+  and *already downloaded*, and it shows no download size. The planner also
+  prefers a computer that still has the model, and it does not need free disk
+  space there.
 - **Vision, Reading, Hearing and Smart home are this PC's choice.** You turn
   them on or off on their Companion pages (`sense-models.json`, `reading.json`,
   the talk preferences and the Home Assistant connection;
@@ -410,7 +417,7 @@ memory.
 For example, one companion PC with a 12 GB RTX 4070, no API key and its hosts
 switched off gets: Gemma 4 E4B (Thinking) and Chatterbox Turbo on the card,
 Parakeet on the processor, lip-sync by the voice's loudness, and Deep thinking,
-singing and pictures off. Reconfigure removes singing first, then sets up
+singing and pictures off. Reconfigure turns singing off first, then sets up
 Thinking, then listening, lip-sync and the voice.
 
 ### Every way to extend Martlet
