@@ -2091,7 +2091,8 @@ from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 At the end of the Touch zones card, *Start over* resets the character's touch
 to how a fresh character starts, for the model shown and the active persona
 only. `TouchZonesResetLevel` (a choice; its value is the level: *Zone
-reactions*, *Zones*, *Touch temperament* or *Everything*) chooses how much,
+reactions*, *Zones*, *Touch temperament*, *The character's own changes* or
+*Everything*) chooses how much,
 and `TouchZonesResetNote` reads what that level clears (fixed text).
 `TouchZonesReset` (*Reset...*) opens a confirmation whose question,
 `TouchZonesResetQuestion`, lists exactly what is lost (zone names and counts,
@@ -2235,6 +2236,39 @@ each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
 source `fixture`). Saving a changed personality (`OpenCompanion`,
 `CompanionText`, `CompanionClose`) then runs the real decide, store and route
 path with no model.
+
+`character_reaction_changes` rehearses Companion › Touch ›
+[Changes the character made](AVATARS.md#changes-the-character-made) with no
+model request. It returns `set` (the Touch reactions tool set the How I react
+check-in calls: its `id`, `tools` and `limits`), `model` (`modelId`, the
+`catalog` used: the model's own emotes when `modelPath` is given, else a
+FIXTURE catalog of Martlet's gestures, and how many `zones` the
+`dataDirectory`'s `character-touch-zones.json` has for it), `temperament` (what
+`personaId` uses, in words), `changes` (every change kept in
+`character-reaction-changes.json`: `id`, `persona`, `kind`, `target`, `what`,
+`why`, `at`, `until`, `active`, `endedBy` and `by`), and `before` and `after`
+(for `personaId`: how many changes are in effect, the feeling for each
+category, and for each zone in use its `feeling`, what it `plays`, its `list`
+and `changedByCharacter`). `tool` (`read_touch_reactions`,
+`change_touch_feeling`, `change_zone_reactions`, `set_touch_mood` or
+`undo_touch_change`) with `arguments` (the JSON a model sends) runs one call
+as the desktop runs it, with every limit, and returns `call` (`result`,
+`failed`, `changed` and `saved`). `undo` (a change ID, or `all`) ends changes
+as the owner's **Undo** does. `save` writes the call's change or the undo into
+an explicit, disposable `dataDirectory`. `at` sets the time (ISO 8601) and
+`checkInId` the calling check-in (`reactions`). `read` is what
+`read_touch_reactions` returns afterwards.
+
+The card's `ReactionChangesStatus` says how many changes of the active persona
+are in effect. `ReactionChange-<n>` is each change in effect (what it does,
+until when, and when and by which check-in it was made),
+`ReactionChangeEnded-<n>` each of the newest five that ended (and who ended
+it), and `ReactionChangesState` what the last **Undo** did. The character's
+reasons (`ReactionChangeWhy-<n>`, `ReactionChangeEndedWhy-<n>`) come from the
+conversation, so they aren't values MCP reads; `character_reaction_changes`
+shows `why` and `read` only for an explicit `dataDirectory`.
+`ReactionChangeUndo-<n>` and `ReactionChangesUndoAll` end changes, so they need
+`--allow-ui-effects`.
 
 `character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 `usual` is the usual gaze from the `dataDirectory`'s `talk-preferences.json`
@@ -4688,8 +4722,16 @@ asks for the *Its tools act* answer; with no sets it waits) and `tools: only a
 member that calls tools runs them` (a text-only member never gets it; on a
 member that calls tools, FIXTURE calls are kept with their first line only, an
 unknown tool and a failing handler are errors, and every call after the eighth
-is refused). `passed` and each step's `passed` and `detail`. No model, network
-or credentials.
+is refused). `how I react: the built-in check-in changes how the character
+reacts, bounded` runs [How I react](CONVERSATION.md#how-i-react): it is on,
+starts only on touches (it waits without a trigger and runs with a fresh one),
+offers the five Touch reactions tools and asks with `{touches}`; on a FIXTURE
+member that calls them (NOT AI) through the production tool host and
+`CharacterReactionTools` on FIXTURE zones, a mood, a feeling, an arms feeling
+and a hand list are made, a call without a reason and a fifth change are
+refused, and no call's first line holds the character's reasons (`detail`:
+`waits`, `fired`, `tools`, `made`, `changes` and `hand`). `passed` and each
+step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
 lately](CONVERSATION.md#what-you-said-lately) with the production code
@@ -7781,7 +7823,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -1593,6 +1593,7 @@ public partial class MainWindow
         page.Children.Add(CharacterTouchZonesCard());
         page.Children.Insert(0, TouchNowCard());
         AddRow(page, CharacterTemperamentCard());
+        page.Children.Add(CharacterReactionChangesCard());
     }
 
     private ComboBox? bubblePlacementChoice;

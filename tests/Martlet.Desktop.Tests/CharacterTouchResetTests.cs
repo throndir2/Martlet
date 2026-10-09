@@ -45,8 +45,10 @@ public sealed class CharacterTouchResetTests : IDisposable
         var ids = CharacterTouchReset.Levels.Select(l => l.Id).ToArray();
         Assert.Equal(ids.Length, ids.Distinct().Count());
         Assert.Equal(CharacterTouchReset.EverythingId, ids[^1]);
-        // Removing the zones removes their reactions too, so Everything forgets the zones and the temperament.
-        Assert.Equal([CharacterTouchReset.ZonesId, CharacterTouchReset.TemperamentId], CharacterTouchReset.Parts().Select(l => l.Id));
+        // Removing the zones removes their reactions too, so Everything forgets the zones and the temperament, and ends the
+        // character's own reaction changes.
+        Assert.Equal([CharacterTouchReset.ZonesId, CharacterTouchReset.TemperamentId, CharacterTouchReset.ReactionChangesId],
+            CharacterTouchReset.Parts().Select(l => l.Id));
         Assert.Same(CharacterTouchReset.Levels[0], CharacterTouchReset.Level("no such level"));
     }
 

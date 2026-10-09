@@ -93,9 +93,9 @@ public partial class MainWindow
         if (closing || !avatar.IsShowing) return false;
         var catalog = characterActions.For(avatar.InspectedProfile?.ModelPath);
         characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
-        var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
+        var temperament = FeltTemperament();
         // Where zones overlap the touch is on each of them: Martlet hears every one it notices, in one line.
-        characterTouchZones.React(touch, (zone, repeats) => TouchPlan(zone, catalog, temperament, repeats), PlayTouchAsync,
+        characterTouchZones.React(touch, (zone, repeats) => TouchPlan(ChangedZone(zone, catalog), catalog, temperament, repeats), PlayTouchAsync,
             zones => Dispatcher.InvokeAsync(() =>
             {
                 if (CharacterPhysicalWords.Touch(zones) is not { } words) return;

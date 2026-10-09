@@ -25,7 +25,8 @@ public partial class MainWindow
             zone => catalog is null ? new CharacterTouchReaction() : CharacterTouchZones.FreshReaction(zone, catalog, temperament),
             persona => characterTemperaments.PersonalitySaved(persona, () => conversation?.Replying == true || openConversation?.HearingYou == true,
                 AskThinkingForTemperamentAsync, lifetime.Token,
-                news: $"{persona.Name}'s touch temperament was reset; Martlet decides it again from the personality in a moment."));
+                news: $"{persona.Name}'s touch temperament was reset; Martlet decides it again from the personality in a moment."),
+            characterReactionChanges);
     }
 
     /// <summary>The Start over section at the end of the Touch zones card: the level list (TouchZonesResetLevel), what the level

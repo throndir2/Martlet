@@ -810,6 +810,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" },
             estimate = new { type = "boolean" }, special = new { type = "integer", minimum = 0, maximum = 10 }
         }),
+        Tool("character_reaction_changes", "Companion > Touch > Changes the character made (Martlet.Avatar.Hosting " +
+            "CharacterReactionChanges and CharacterReactionTools; docs/CONVERSATION.md \"How I react\") with NO model request: the " +
+            "Touch reactions tool set the How I react check-in calls (its tools and limits), the changes the character made itself in " +
+            "the dataDirectory's character-reaction-changes.json (what, why, when, until, whether in effect, who ended it), and what " +
+            "each zone of the model (modelId, or modelPath to read its emotes; else a FIXTURE catalog of Martlet's gestures) plays and " +
+            "how personaId's character feels about each category and zone before and after. tool (read_touch_reactions, " +
+            "change_touch_feeling, change_zone_reactions, set_touch_mood or undo_touch_change) with arguments (the JSON a model would " +
+            "send, such as {\"target\":\"head\",\"feeling\":\"dislikes\",\"why\":\"...\"}) runs one call as the desktop runs it, with " +
+            "every bound; undo (a change id, or all) ends changes as the owner's Undo does. save writes the call's change or the undo " +
+            "into an explicit, disposable dataDirectory; at (an ISO time) sets the time; checkInId the check-in that calls (reactions). " +
+            "read is what read_touch_reactions returns after it. Contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }, personaId = new { type = "string" }, modelId = new { type = "string" },
+            modelPath = new { type = "string" }, tool = new { type = "string" }, arguments = new { type = "string" },
+            undo = new { type = "string" }, save = new { type = "boolean" }, at = new { type = "string" }, checkInId = new { type = "string" }
+        }),
         Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
             "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
@@ -2197,6 +2213,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
                     OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false,
                     OptionalInt(arguments, "special")),
+                "character_reaction_changes" => await ReactionChangesCheck.RunAsync(DataDirectory(arguments),
+                    OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "personaId"), OptionalString(arguments, "modelId"),
+                    OptionalString(arguments, "modelPath"), OptionalString(arguments, "tool"), OptionalString(arguments, "arguments"),
+                    OptionalString(arguments, "undo"), OptionalBool(arguments, "save") ?? false, OptionalString(arguments, "at"),
+                    OptionalString(arguments, "checkInId"), cancellation),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),

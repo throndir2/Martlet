@@ -99,6 +99,7 @@ public static class PromptCatalog
     public const string CheckInUnanswered = "check_in_unanswered";
     public const string CheckInCall = "check_in_call";
     public const string CheckInOthers = "check_in_others";
+    public const string CheckInReactions = "check_in_reactions";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInContext = "check_in_context";
@@ -241,6 +242,18 @@ public static class PromptCatalog
         "seems to be here, tell {name} not to share private things it knows about the user (memories, plans, health, " +
         "relationships, anything personal) in front of others, and to be a little more reserved until they are alone. If only " +
         "the user is here, nothing needs doing.";
+
+    public const string DefaultCheckInReactionsInstructions =
+        "{name} is the user's desktop companion. The user can touch {name}'s body on screen, and {name} reacts with emotes, " +
+        "gestures and sounds. {name}'s personality:\n{persona}\n\n{conversation}\n\nHow the user touched {name} lately:\n" +
+        "{touches}\n\nYou decide, as {name}, how it reacts to touches now. Check whether {name}'s feelings toward the user " +
+        "changed: it got angry, hurt, annoyed or shy with them, or it warmed up to them, forgave them or grew fond of them, or " +
+        "the user keeps touching a place {name} doesn't want touched. If they did, call read_touch_reactions first, then change " +
+        "how {name} reacts so it fits how it feels now, each change with a short why in its own words: set_touch_mood for how " +
+        "it feels about every touch, change_touch_feeling for one category or one zone, change_zone_reactions to choose " +
+        "exactly what one zone plays. When the reason for one of its earlier changes has passed, end it with " +
+        "undo_touch_change. Keep changes small and let them last a few hours, as a mood does, and stay in character. If " +
+        "nothing changed, change nothing.";
 
     public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. {answer}";
 
@@ -963,6 +976,12 @@ public static class PromptCatalog
             "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
             "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
             DefaultCheckInOthersInstructions, ["name", "people"]),
+        new(CheckInReactions, CheckInGroup, "Check-in: how I react",
+            "What How I react checks. {persona} is the active personality, {conversation} the end of the conversation and " +
+            "{touches} how the user touched the character lately. It changes nothing itself: the Touch reactions tools it calls " +
+            "(read_touch_reactions, set_touch_mood, change_touch_feeling, change_zone_reactions and undo_touch_change) do, " +
+            "each change bounded and lasting a few hours at most.",
+            DefaultCheckInReactionsInstructions, ["name", "persona", "conversation", "touches"]),
         new(CheckInCustom, CheckInGroup, "Check-ins: each check",
             "Wraps the prompt of every check-in, built-in or your own. {task} is the check-in's prompt with its placeholders " +
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +

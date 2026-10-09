@@ -206,7 +206,8 @@ internal static class CheckInsCheck
             [CheckIns.Unanswered] = "SAY: No pressure, but I'm still curious what you think!",
             [CheckIns.Call] = "REMIND: They just joined a call; stay quiet and keep any reply very short until it ends.",
             [CheckIns.Others] = "REMIND: Someone else is here; don't share private things about the user.",
-            [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin."
+            [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin.",
+            [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome."
         };
         var places = new BackgroundPlaces();
         BackgroundPlace member = new("endpoint:fixture", "FIXTURE member") { Slots = 2, Model = "fixture-model" };
@@ -288,7 +289,7 @@ internal static class CheckInsCheck
             {
                 Id = "c9", Name = builtIn.Name + " (copy)", On = true, EveryMinutes = builtIn.EveryMinutes,
                 Task = CheckIns.Template(builtIn, null) ?? "", Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome,
-                Triggers = builtIn.Triggers
+                Triggers = builtIn.Triggers, ToolSets = builtIn.ToolSets
             });
             var sameMessage = CheckIns.Message(builtIn, CheckIns.Focus(builtIn, facts), null) == CheckIns.Message(copy, CheckIns.Focus(copy, facts), null);
             var sameWaits = states.All(s => CheckIns.Wait(builtIn, s, null) == CheckIns.Wait(copy, s, null) &&
@@ -359,6 +360,7 @@ internal static class CheckInsCheck
         await DescribeTouchesAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
         await ToolsAsync(Step, facts, cancellation);
+        await ReactionsAsync(Step, facts, cancellation);
         return new { passed = ok, steps };
     }
 
@@ -419,6 +421,84 @@ internal static class CheckInsCheck
             });
     }
 
+    /// <summary>12. How I react: the built-in check-in that changes how the character reacts to touches, as itself, with the Touch
+    /// reactions tools. It waits for touches, then runs on a FIXTURE member that calls the tools (NOT AI) through the production
+    /// tool host and Martlet.Avatar.Hosting's CharacterReactionTools, on FIXTURE zones; every change is bounded, and the run
+    /// record keeps only each call's first line, never the character's reasons.</summary>
+    private static async Task ReactionsAsync(Action<string, bool, object?> step, CheckInState facts, CancellationToken cancellation)
+    {
+        var checkIn = CheckIns.All(null).Single(c => c.Id == CheckIns.Reactions);
+        var state = facts with { Persona = string.IsNullOrWhiteSpace(facts.Persona) ? "FIXTURE: proud and easily flustered." : facts.Persona };
+        var waits = CheckIns.Wait(checkIn, state, null);
+        var fired = CheckIns.Wait(checkIn, state, null, fired: new CheckInTrigger(CheckInTriggers.TouchesEnded, state.Now, "FIXTURE: 3 touches"));
+        var persona = Guid.NewGuid();
+        var zones = new CharacterTouchZoneSettings
+        {
+            ModelId = "fixture-model",
+            Zones = [new() { Id = "top_of_head", Box = new(0.4, 0, 0.2, 0.1) }, new() { Id = "hand_left", Box = new(0.7, 0.5, 0.1, 0.1) }]
+        };
+        var inventory = new CharacterActionInventory("fixture-model", Martlet.Avatars.AvatarRenderer.Live2D,
+            [.. CharacterActionInventory.AllGestures.Select(g => new CharacterActionSource(g.Id, CharacterActionKind.Gesture, g.Name, g.Does))]);
+        var catalog = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null));
+        IReadOnlyList<CharacterReactionChange> changes = [];
+        var handlers = new Dictionary<string, CheckInToolHandler>
+        {
+            [TouchReactions.SetId] = (call, context, _) =>
+            {
+                var answer = CharacterReactionTools.Call(call.Name, call.ArgumentsJson, new ReactionToolContext
+                {
+                    PersonaId = Guid.Parse(context.PersonaId!), Who = state.Who, Zones = zones, Catalog = catalog,
+                    CheckInId = context.CheckInId, Run = context.Now, Now = context.Now
+                }, changes);
+                if (answer.Changes is { } next) changes = next;
+                return ValueTask.FromResult(new ConversationToolResult(answer.Result, answer.Failed));
+            }
+        };
+        var host = new CheckInToolHost(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, persona.ToString(), state.Now), handlers);
+        var job = CheckIns.Prepare(checkIn, CheckIns.Focus(checkIn, state), null, host);
+        var message = job?.Text ?? "";
+        BackgroundPlace toolMember = new("endpoint:tools", "FIXTURE member that calls tools")
+        {
+            Slots = 1, Model = "fixture-tools", Can = ThinkingCapability.Text | ThinkingCapability.Tools
+        };
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [toolMember], async (_, asked, token) =>
+        {
+            var n = 0;
+            async Task Call(string name, string arguments) =>
+                await asked.ToolHost!.CallAsync(new TextToolCall("call-" + n++, name, arguments), token);
+            await Call(TouchReactions.Read, "{}");
+            await Call(TouchReactions.Mood, """{"shift":-1,"hours":3,"why":"FIXTURE private: they mocked my ears."}""");
+            await Call(TouchReactions.Feel, """{"target":"head","feeling":"hates","why":"FIXTURE private: no head pats now."}""");
+            await Call(TouchReactions.Feel, """{"target":"arms","feeling":"dislikes","why":"FIXTURE private: and the arms."}""");
+            await Call(TouchReactions.React, """{"zone":"hand_left","plays":["shake","sound:sigh"],"why":"FIXTURE private: hands off."}""");
+            await Call(TouchReactions.Mood, """{"shift":-2}""");
+            await Call(TouchReactions.Feel, """{"target":"torso","feeling":"dislikes","why":"FIXTURE private: one too many."}""");
+            return ThinkingAnswer.Done("Sulking after being teased, so touches are less welcome for a while.");
+        });
+        var done = job is null ? null : await board.RunAsync(job, cancellation);
+        var uses = host.Uses;
+        var active = CharacterReactionChanges.Active(changes, persona, state.Now);
+        var felt = CharacterReactionChanges.Temperament(null, active, persona);
+        var hand = CharacterReactionChanges.Zone(zones.Zones[1], null, active, catalog);
+        step("how I react: the built-in check-in changes how the character reacts, bounded",
+            checkIn is { On: true, Outcome: CheckInOutcome.Tools, Triggers: CheckIns.AllTriggers } && checkIn.ToolSets.SequenceEqual([TouchReactions.SetId]) &&
+            checkIn.Needs.HasFlag(ThinkingCapability.Tools) && waits is not null && waits.StartsWith("it waits for", StringComparison.Ordinal) && fired is null &&
+            job is not null && job.Tools.Select(t => t.Name).SequenceEqual(CharacterReactionTools.Names) && message.Contains("read_touch_reactions", StringComparison.Ordinal) &&
+            message.Contains("How the user touched", StringComparison.Ordinal) && done is { Succeeded: true } &&
+            uses.Count == 7 && uses[0].Result.StartsWith("How ", StringComparison.Ordinal) && !uses[0].Failed &&
+            uses.Skip(1).Take(4).All(u => !u.Failed && u.Set == TouchReactions.SetId) && uses[5].Failed &&
+            uses[6] is { Failed: true } && uses[6].Result.Contains("already made 4 changes", StringComparison.Ordinal) &&
+            !uses.Any(u => u.Result.Contains("private", StringComparison.Ordinal)) && active.Count == 4 &&
+            felt?.Groups["head"].Attitude == -2 && felt.Groups["arms"].Attitude == -1 && felt.Groups["lower_body"].Attitude == -1 &&
+            hand.Reaction.Actions is ["gesture:shake", "sound:sigh"],
+            new
+            {
+                waits, fired, tools = job?.Tools.Select(t => t.Name), member = done?.Member, made = CheckIns.ToolsText(uses),
+                changes = active.Select(c => CharacterReactionChanges.Describe(c, zones, catalog)),
+                hand = hand.Reaction.Actions
+            });
+    }
+
     /// <summary>10. Check-in triggers with FIXTURE touches (NOT AI): saved and read back, what a burst of touches fires once it
     /// settles (never taking a touch from the production TouchLedger), and when a check-in that starts on a trigger waits or runs.</summary>
     private static void Triggers(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
@@ -440,7 +520,8 @@ internal static class CheckInsCheck
             catch (Martlet.Core.Contracts.ContractException) { refused = true; }
             step("triggers: saved and read back", wrote && state == "loaded" && all.Single(c => c.Id == "c4").Triggers == custom.Triggers &&
                 all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
-                CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded : CheckInTriggers.None)) && refused,
+                CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
+                    : c.Id == CheckIns.Reactions ? CheckIns.AllTriggers : CheckInTriggers.None)) && refused,
                 new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
         }
         finally
