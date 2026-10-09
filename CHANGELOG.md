@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Already run a chat model in Ollama, LM Studio, llama.cpp or vLLM on your PC? Recommended setup and **Set it all up for me** now find it and think with it when it fits beside the voice, so nothing downloads. Untick **Use models your apps already run** to keep Martlet's own fast model. ([#665](https://github.com/throndir2/Martlet/pull/665))
+
 ### Changed
 
 - Reconfigure never deletes models when your computers switch jobs. It now says it **turns a part off** and that its downloads stay, and a model your computer already has (such as Gemma 4) is turned back on without downloading it again or needing more disk space. Recommended setup also prefers a computer that already has the model. ([#664](https://github.com/throndir2/Martlet/pull/664))

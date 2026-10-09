@@ -54,6 +54,9 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     public IReadOnlyCollection<string> ConfiguredProviders { get; init; } = [];
     /// <summary>The parts the owner turned off in the review (RecommendedSetupMemory.Off).</summary>
     public IReadOnlyCollection<PlanComponent> Off { get; init; } = [];
+    /// <summary>The chat models the owner's model apps on this PC serve (empty when "Use models your apps already run" is off);
+    /// the request puts them on this PC.</summary>
+    public IReadOnlyList<ServedModel> ServedModels { get; init; } = [];
     /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="RecommendedSetupInputs.Choices"/>).</summary>
     public IReadOnlyList<PartChoice> Choices { get; init; } = [];
 }
@@ -122,6 +125,7 @@ internal static class RecommendedSetupInputs
 
         // A job with no entry is one nobody set up: the recommender may plan it.
         var jobs = ClusterJobs.All.Select(job => Job(job, sources)).OfType<JobPlan>().ToArray();
+        var thisPc = sources.Computers.FirstOrDefault(c => c.ThisPc)?.Id ?? "";
         var request = new NetworkSetupRequest(machines)
         {
             Preference = PreferenceFor(sources.ConfiguredProviders),
@@ -132,7 +136,8 @@ internal static class RecommendedSetupInputs
             VoiceEngine = sources.VoiceEngine,
             Off = [.. sources.Off.Where(c => ComponentRanking.CanBeOff(c) && !ComponentRanking.SetOnPage(c)).Distinct()],
             Choices = [.. sources.Choices.Where(c => c is not null && ComponentRanking.SetOnPage(c.Component)).DistinctBy(c => c.Component)],
-            CompanionPcs = sources.Computers.DistinctBy(c => c.Id).Count(c => c.Kind == NetworkMachineKind.Companion)
+            CompanionPcs = sources.Computers.DistinctBy(c => c.Id).Count(c => c.Kind == NetworkMachineKind.Companion),
+            ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc })]
         };
         return new(request, notes, names);
     }
@@ -301,6 +306,38 @@ internal static class RecommendedSetupInputs
             Plan = plan, Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind
         };
     }
+
+    /// <summary>FIXTURE, NOT real computers (recommended_setup_status's fixture "served"): this PC alone, a companion PC with an
+    /// RTX 5090 (32 GB) and nothing installed, whose Thinking is Gemma 4 E2B in Martlet's Ollama. LM Studio on it serves
+    /// qwen3-32b and an embedding model, and Ollama serves llama3.3:70b, which is too big for the card.</summary>
+    internal static SetupSources ServedFixture(DateTimeOffset now) => new(
+    [
+        new("desk-host", "This PC", NetworkMachineKind.Companion)
+        {
+            Specs = MachineSpecs.ThisPc([new MachineGpu("NVIDIA GeForce RTX 5090", GpuVendor.Nvidia, 32)], 64, 32, diskFreeGb: 800),
+            HasHostService = true, Reachable = true, ThisPc = true, Offers = new Dictionary<string, string>()
+        }
+    ])
+    {
+        LocalJobs = [new JobPlan(ClusterJobs.Thinking, null)],
+        JobOptions = new Dictionary<string, string> { [ClusterJobs.Thinking] = "gemma4:e2b" },
+        Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind,
+        ServedModels =
+        [
+            new("", "lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "qwen3-32b") { SizeGb = 19.8 },
+            new("", "lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "text-embedding-nomic-embed-text-v1.5") { SizeGb = 0.1 },
+            new("", "ollama", "Ollama", "http://127.0.0.1:11434/v1", "llama3.3:70b") { SizeGb = 42.5 }
+        ]
+    };
+
+    /// <summary>The chat models the model apps found on this PC serve (<see cref="Martlet.Providers.LocalModelServers.DetectAsync"/>),
+    /// as the recommender takes them; an app that asks for a key first lists none. The request puts them on this PC.</summary>
+    internal static IReadOnlyList<ServedModel> Served(IEnumerable<Martlet.Providers.LocalModelServer>? servers) =>
+        [.. (servers ?? []).Where(s => !s.NeedsKey).SelectMany(s => s.Models.Select(model =>
+            new ServedModel("", s.Id, s.Name, s.ChatCompletionsBaseUrl, model)
+            {
+                SizeGb = s.SizesGb.TryGetValue(model, out var gb) && gb > 0 ? gb : null
+            }))];
 
 #if !MARTLET_MCP
     /// <summary>The desktop's view of the owner's computers as recommender sources: this PC (its own host service's id when it

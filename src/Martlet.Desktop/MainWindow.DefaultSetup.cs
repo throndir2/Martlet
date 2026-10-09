@@ -1,4 +1,5 @@
 using System.Globalization;
+using Martlet.Core.Planning;
 using Martlet.Core.Settings;
 using Martlet.Sherpa;
 
@@ -32,7 +33,10 @@ public partial class MainWindow
         catch (OperationCanceledException) { gpus = []; }
         var current = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         double? thinkingGb = thinking ? null : IsLocalOllama(current) ? ListeningAdvisor.OllamaModelGb(current!.ModelId) : 0;
-        return DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb, machine.MemoryGb);
+        var plan = DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb, machine.MemoryGb);
+        if (!thinking) return plan;
+        var served = await FindServedModelsAsync();
+        return DefaultSetup.WithServed(plan, served, gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, machine.MemoryGb);
     }
 
     /// <summary>Sets up the chosen jobs that aren't set up yet, as planned for this PC (or as <paramref name="planned"/>, the
@@ -58,31 +62,66 @@ public partial class MainWindow
             var plan = planned ?? await DefaultPlanAsync(thinking);
             if (closing) return false;
             var parakeetModel = ParakeetModels.Find(plan.ParakeetModel);
-            var downloads = new List<string>();
-            if (thinking)
-                downloads.Add((Prerequisites.IsMissing(Prerequisites.Ollama) ? "Ollama and " : "") + $"{plan.Thinking.Id} ({plan.Thinking.Size})");
-            if (listening && parakeetModel is not null && parakeet?.Installed(parakeetModel.Id) != true)
-                downloads.Add($"{parakeetModel.Name} ({SherpaComponents.Megabytes(parakeetModel.DownloadBytes)})");
-            if (voice && plan.Voice is { } gpuVoice)
-                downloads.Add((machine.DockerInstalled ? "" : "Docker Desktop (it shows its own terms) and ") + $"{gpuVoice.Name} (a large download)");
-            if (listening && plan.ListenOnGpu) downloads.Add($"Whisper {plan.Listening.GpuModel}");
-            if (!ConfirmationDialog.Confirm(this,
-                    $"Set up Martlet for this PC ({plan.Gpu})?\n\n{plan.Describe(thinking, listening, voice)}{(extra is null ? "" : "\n" + extra)}\n\n" +
+            while (true)
+            {
+                var downloads = new List<string>();
+                if (thinking && plan.Served is null)
+                    downloads.Add((Prerequisites.IsMissing(Prerequisites.Ollama) ? "Ollama and " : "") + $"{plan.Thinking.Id} ({plan.Thinking.Size})");
+                if (listening && parakeetModel is not null && parakeet?.Installed(parakeetModel.Id) != true)
+                    downloads.Add($"{parakeetModel.Name} ({SherpaComponents.Megabytes(parakeetModel.DownloadBytes)})");
+                if (voice && plan.Voice is { } gpuVoice)
+                    downloads.Add((machine.DockerInstalled ? "" : "Docker Desktop (it shows its own terms) and ") + $"{gpuVoice.Name} (a large download)");
+                if (listening && plan.ListenOnGpu) downloads.Add($"Whisper {plan.Listening.GpuModel}");
+                // Use models your apps already run: offered when the owner turned it off, or when an app serves a chat model.
+                var useServed = UseServedModels;
+                var chats = ServedModels.Usable(lastServed.Select(m => m with { MachineId = DefaultSetup.ThisPc }), FootprintCatalog.Default)
+                    .Select(m => $"{m.ModelId} in {m.AppName}").ToList();
+                var offer = planned is null && thinking && (!useServed || chats.Count > 0);
+                var unused = offer && useServed && plan.Served is null
+                    ? $"\nYour apps run {string.Join(", ", chats.Take(3))}, but none fits the graphics card beside the voice, so Martlet uses its own model."
+                    : "";
+                var question =
+                    $"Set up Martlet for this PC ({plan.Gpu})?\n\n{plan.Describe(thinking, listening, voice)}{unused}{(extra is null ? "" : "\n" + extra)}\n\n" +
                     (downloads.Count > 0 ? $"Martlet downloads {string.Join(", ", downloads)}. " : "") +
                     (thinking || homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is not { RouteType: SetupRouteType.ChatCompletions or SetupRouteType.OpenAi }
                         ? "Everything runs on this PC: what you say and Martlet's replies aren't sent online. "
                         : "Listening and the voice run on this PC; Thinking uses the online service you chose. ") + "The microphone only listens " +
                     "after you press Start listening." +
-                    (voice && plan.Voice is { } terms ? "\n\n" + EngineTerms(terms) : "") + " The models' own licenses apply.",
-                    "Set it all up for me", "Set it up", "Not now", questionId: "DefaultSetupQuestion"))
-            {
-                ActionText.Text = "Nothing changed. Set up each job in Companion whenever you like.";
-                return false;
+                    (voice && plan.Voice is { } terms ? "\n\n" + EngineTerms(terms) : "") + " The models' own licenses apply.";
+                bool yes;
+                if (offer)
+                {
+                    var answer = ConfirmationDialog.Confirm(this, question, "Set it all up for me", "Use models your apps already run", useServed,
+                        "Set it up", "Not now", questionId: "DefaultSetupQuestion");
+                    if (answer.Changed)
+                    {
+                        var directory = store?.DataDirectory;
+                        if (!RecommendedSetupMemory.Load(directory).WithServed(!useServed).Save(directory))
+                        {
+                            ActionText.Text = "Martlet couldn't save that choice on this PC.";
+                            return false;
+                        }
+                        ErrorLog.Info($"Set it all up for me: Use models your apps already run is {(useServed ? "off" : "on")} on this PC.");
+                        ActionText.Text = "Checking what fits this PC...";
+                        plan = await DefaultPlanAsync(thinking);
+                        if (closing) return false;
+                        continue;
+                    }
+                    yes = answer.Yes;
+                }
+                else
+                    yes = ConfirmationDialog.Confirm(this, question, "Set it all up for me", "Set it up", "Not now", questionId: "DefaultSetupQuestion");
+                if (!yes)
+                {
+                    ActionText.Text = "Nothing changed. Set up each job in Companion whenever you like.";
+                    return false;
+                }
+                break;
             }
             ErrorLog.Info($"Setting up this PC's defaults ({plan.Gpu}): {plan.Describe(thinking, listening, voice).Replace('\n', ' ')}");
 
             // Quick parts first, so Martlet can talk within minutes.
-            if (thinking && !await SetUpDefaultThinkingAsync(plan.Thinking.Id))
+            if (thinking && !(plan.Served is { } served ? await UseServedThinkingAsync(served) : await SetUpDefaultThinkingAsync(plan.Thinking.Id)))
                 ErrorLog.Warn("The default setup couldn't set up Thinking; it carries on with the voice and listening.");
             if (listening && !closing)
             {

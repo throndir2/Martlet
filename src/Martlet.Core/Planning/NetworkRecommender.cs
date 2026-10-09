@@ -37,7 +37,9 @@ namespace Martlet.Core.Planning;
 /// (<see cref="ComponentOption.FirstWordMs"/>) or to a busier card than today's, unless its computer stays away or its card
 /// is too full. New jobs get the fastest options (a small model that hears on an idle card; docs/RECOMMENDED_SETUPS.md).</item>
 /// <item>The owner's choices stand: the hosting preference, a hosted Thinking provider (unless they keep everything local),
-/// the voice engine, loudness lip-sync. The recommender changes where things run and adds pool places, not what runs.</item>
+/// the voice engine, loudness lip-sync. The recommender changes where things run and adds pool places, not what runs. A chat
+/// model the owner's own model app already serves on the one companion PC (<see cref="NetworkSetupRequest.ServedModels"/>)
+/// is their choice too: Thinking uses the best one that fits a graphics card there, before Martlet's own models.</item>
 /// <item>Pools after the primaries: the voice engine and listening on more hosts (useful up to the number of companion PCs),
 /// then Deep thinking on every host with a card free (the Thinking pool; more is better; never on a host the owner left out).
 /// Thinking's own job has no pool (its prompt cache; docs/CLUSTER.md).</item>
@@ -76,7 +78,7 @@ public static partial class NetworkRecommender
     public static NetworkRecommendation Recommend(NetworkSetupRequest request, FootprintCatalog? catalog = null)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return new Planner(request, catalog ?? FootprintCatalog.Default).Run();
+        return new Planner(request, (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels)).Run();
     }
 
     /// <summary>Today's setup as <paramref name="request"/> describes it: each computer's roles and how full they make it,
@@ -84,7 +86,7 @@ public static partial class NetworkRecommender
     public static NetworkSetup Today(NetworkSetupRequest request, FootprintCatalog? catalog = null)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return new Planner(request, catalog ?? FootprintCatalog.Default).Current;
+        return new Planner(request, (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels)).Current;
     }
 
     /// <summary>A stable hash of <paramref name="setup"/>'s computers, roles, jobs, pools and Thinking pool (sorted; reasons

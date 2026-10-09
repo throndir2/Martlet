@@ -12,12 +12,17 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <TextBlock Text="Please confirm" Style="{DynamicResource SectionHeading}"/>
         <ScrollViewer Grid.Row="1" MaxHeight="460" VerticalScrollBarVisibility="Auto">
             <TextBlock x:Name="QuestionText" TextWrapping="Wrap" Margin="0,4,8,12"/>
         </ScrollViewer>
-        <Grid Grid.Row="2">
+        <!-- An optional choice that changes the question (Set it all up for me's Use models your apps already run): changing
+             it closes the dialog, and the caller asks again with the new answer. -->
+        <CheckBox x:Name="OptionBox" Grid.Row="2" Visibility="Collapsed" Margin="0,0,0,12"
+                  AutomationProperties.AutomationId="ConfirmationOption" Checked="Option_Changed" Unchecked="Option_Changed"/>
+        <Grid Grid.Row="3">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="NoButton" Content="_No" IsDefault="True" IsCancel="True"
                         Click="No_Click" MinWidth="90" Margin="0,0,12,0"

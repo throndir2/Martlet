@@ -93,7 +93,8 @@ internal static class DeviceCapacityInputs
             {
                 (SetupRole.Stt, SetupRouteType.LocalParakeet) => catalog.For(plan).FirstOrDefault(o => o.IsLocal && o.RunsInApp),
                 (SetupRole.Stt, SetupRouteType.LocalWindowsStt) => null,
-                (SetupRole.Llm, _) => Find(catalog, plan, route?.ModelId ?? offers?.GetValueOrDefault(HostRoles.Ollama), HostRoles.Ollama),
+                (SetupRole.Llm, _) => Served(catalog, node, route) ??
+                    Find(catalog, plan, route?.ModelId ?? offers?.GetValueOrDefault(HostRoles.Ollama), HostRoles.Ollama),
                 (SetupRole.Stt, _) => Find(catalog, plan, route?.ModelId ?? offers?.GetValueOrDefault(HostRoles.Stt), HostRoles.Stt),
                 _ => offers?.Keys.FirstOrDefault(HostRoles.Speaks) is { } engine
                     ? Find(catalog, plan, offers[engine], engine)
@@ -113,6 +114,14 @@ internal static class DeviceCapacityInputs
         }
         return null;
     }
+
+    /// <summary>Thinking in a model app on this PC (Ollama, LM Studio and the others) with a model the catalog doesn't know: the
+    /// owner's own served model (<see cref="ServedModels"/>), not the first Ollama option.</summary>
+    private static ComponentOption? Served(FootprintCatalog catalog, NetworkNode node, SetupRoute? route) =>
+        node.Kind == NodeKind.ThisPc && route is { RouteType: SetupRouteType.ChatCompletions, ModelId: { Length: > 0 } model } &&
+        catalog.FindModel(PlanComponent.Thinking, model) is not { IsLocal: true }
+            ? ServedModels.Option(model)
+            : null;
 
     /// <summary>The local option running <paramref name="model"/>, else the first one of the host role <paramref name="kind"/>.</summary>
     private static ComponentOption? Find(FootprintCatalog catalog, PlanComponent component, string? model, string? kind)

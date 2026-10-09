@@ -34,12 +34,17 @@ public partial class RecommendedSetupWindow : ThemedWindow
     private readonly Dictionary<string, PasswordBox> secretBoxes = new(StringComparer.Ordinal);
     private RecommendedSetupPreflightView? preflight;
     private bool applying;
+    private bool rendering;
 
     /// <summary>The owner chose Not now: the review's fingerprint.</summary>
     internal event Action<string>? Declined;
 
     /// <summary>The owner ticked or cleared an optional part's Off. The review closes; Martlet saves the choice and plans again.</summary>
     internal event Action<PlanComponent, bool>? PartOff;
+
+    /// <summary>The owner ticked or cleared Use models your apps already run. The review closes; Martlet saves the choice and
+    /// plans again.</summary>
+    internal event Action<bool>? ServedChanged;
 
     /// <summary>Reconfigure started (it carries on in Background tasks), in words.</summary>
     internal string? Outcome { get; private set; }
@@ -63,6 +68,12 @@ public partial class RecommendedSetupWindow : ThemedWindow
         SummaryText.Text = review.Summary;
         OfflineText.Text = review.Offline ?? "";
         OfflineText.Visibility = review.Offline is null ? Visibility.Collapsed : Visibility.Visible;
+        rendering = true;
+        UseServedBox.IsChecked = review.UseServed;
+        rendering = false;
+        ServedText.Text = !review.UseServed ? "Off: Martlet plans only with its own models and your keys."
+            : review.Served.Count == 0 ? "No model app on this PC serves a chat model now."
+            : "Found: " + string.Join(", ", review.Served) + ".";
         RenderBanner();
         PartsSection.Visibility = review.Parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         PartsPanel.Children.Clear();
@@ -203,6 +214,19 @@ public partial class RecommendedSetupWindow : ThemedWindow
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void UseServed_Changed(object sender, RoutedEventArgs e)
+    {
+        var now = UseServedBox.IsChecked == true;
+        if (rendering || now == review.UseServed) return;
+        if (applying)
+        {
+            UseServedBox.IsChecked = review.UseServed;
+            return;
+        }
+        ServedChanged?.Invoke(now);
+        Close();
+    }
 
     private void Window_Closing(object? sender, CancelEventArgs e) => lifetime.Cancel();
 

@@ -141,7 +141,8 @@ public static partial class NetworkRecommender
                 (role.Fixed ? node.Roles : node.Pending).Add(role);
             }
             if (node.Companion && node.Presence != Presence.Gone && TodayJob(ClusterJobs.Thinking) is { HostId: null } thinking &&
-                Find(thinking.OptionId) is { IsLocal: true, Component: PlanComponent.Thinking } local)
+                Find(thinking.OptionId) is { IsLocal: true, Component: PlanComponent.Thinking } local &&
+                (local.ServedOn is null || local.ServedOn == node.Id))
             {
                 var role = new Role
                 {

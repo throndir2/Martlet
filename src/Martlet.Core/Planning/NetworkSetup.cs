@@ -101,6 +101,18 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// <summary>How many companion PCs the owner has, also the ones <see cref="Machines"/> leaves out (no hardware report); 0:
     /// count the machines. A part this PC turned off on its page may still be used by another companion PC.</summary>
     public int CompanionPcs { get; init; }
+    /// <summary>Chat models the owner's own model apps (Ollama, LM Studio, llama.cpp, vLLM...) already serve on their computers.
+    /// The owner runs them, so the recommender prefers them for Thinking where they fit (<see cref="ServedModels"/>). Empty
+    /// when the owner turned "Use models your apps already run" off.</summary>
+    public IReadOnlyList<ServedModel> ServedModels { get; init; } = [];
+}
+
+/// <summary>A chat model that a model app on a computer already serves: <paramref name="AppName"/> ("LM Studio") at
+/// <paramref name="BaseUrl"/> (its Chat Completions address) on <paramref name="MachineId"/>. <see cref="SizeGb"/> is the
+/// model's download size when the app reports it (Ollama does), else null (sized from its name).</summary>
+public sealed record ServedModel(string MachineId, string AppId, string AppName, string BaseUrl, string ModelId)
+{
+    public double? SizeGb { get; init; }
 }
 
 /// <summary>How this PC does one part that its Companion page sets (<see cref="ComponentRanking.SetOnPage"/>). <see cref="On"/>

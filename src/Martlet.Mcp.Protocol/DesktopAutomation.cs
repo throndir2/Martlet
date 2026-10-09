@@ -69,9 +69,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // closing it only change what it shows (the answers stay in memory); its plan's Install on this PC buttons do the work.
         "OpenSetupAdvisor", "AdvisorBack", "AdvisorNext", "AdvisorClose", "GoalBalanced", "GoalSmartest", "GoalFastest", "GoalPrivate",
         // Home's Recommended setup: in a Martlet network it opens the review of the recommended setup (worked out on this PC from
-        // what it already knows; nothing is contacted or changed), and on a PC alone it opens Set it all up for me's question.
+        // what it already knows and, when Use models your apps already run is on, the models the model apps on this PC serve,
+        // asked at 127.0.0.1 only; nothing changes), and on a PC alone it opens Set it all up for me's question.
         // The review's Close only closes it. Reconfigure (RecommendedSetupApply) changes every computer, Not now
-        // (RecommendedSetupCancel) saves recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
+        // (RecommendedSetupCancel) and Use models your apps already run (RecommendedSetupUseServedModels, and ConfirmationOption in
+        // Set it all up for me's question) save recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
         "HomeRecommendedSetup", "RecommendedSetupClose",
         // The free API key prompt (FreeKeyPrompt): Add your key (the review's RecommendedSetupFreeKeyAdd, Companion › Thinking's
         // FreeKeyAdd-Thinking, Home's HealthOpen-recommended-setup-free-key) only opens Companion › Thinking at A cloud provider
@@ -793,9 +795,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the one-graphics-card-for-each-Thinking-model advice. ConfirmationYes adds or uses it, so it needs --allow-ui-effects.
         "DeepThinkingShareQuestion",
         // Set it all up for me: its one confirmation (the plan, the downloads, lip-sync from the welcome wizard and the voice
-        // engine's terms). The welcome wizard's Use these suggestions, the Home fixes and ConfirmationYes install and download, so
-        // they need --allow-ui-effects.
-        "DefaultSetupQuestion",
+        // engine's terms), and its Use models your apps already run choice (ConfirmationOption: whether it is ticked; changing it
+        // saves recommended-setup.json and asks again). The welcome wizard's Use these suggestions, the Home fixes and
+        // ConfirmationYes install and download, so they need --allow-ui-effects.
+        "DefaultSetupQuestion", "ConfirmationOption",
         // The welcome wizard: what Look for Martlet found, this PC's hardware (graphics card and memory, memory, processor
         // threads), the suggestion's summary (the preference chosen and whether Thinking goes online), its totals as shares of
         // this PC, and the NVIDIA key step's intro, numbered steps and outcome. Never the key.
@@ -987,7 +990,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // show in its run window and Background tasks). Computer names, host IDs, model names and fixed text. The banner at the
         // top ("RecommendedSetupBanner", "RecommendedSetupBannerTitle", "RecommendedSetupBannerText": Martlet can't reply, or the
         // free API key tip), the line on computers that haven't answered ("RecommendedSetupOffline") and the free key buttons'
-        // labels ("RecommendedSetupFreeKeyAdd", "RecommendedSetupFreeKeyGet") read through the same prefix.
+        // labels ("RecommendedSetupFreeKeyAdd", "RecommendedSetupFreeKeyGet"), Use models your apps already run (whether
+        // "RecommendedSetupUseServedModels" is ticked) and the models found ("RecommendedSetupServedModels": model names and apps)
+        // read through the same prefix.
         "RecommendedSetup"];
     private int? processId;
 

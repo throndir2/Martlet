@@ -19,11 +19,19 @@ internal sealed record DefaultSetupPlan(LocalChatModel Thinking, bool ThinkingOn
         "graphics card with 4 GB or more, or about 8 free processor threads and 4.5 GB of free memory. Free some room, or set up " +
         "a voice on another computer in Companion › Voice.";
 
+    /// <summary>A chat model one of the owner's model apps already serves on this PC, which Thinking uses instead of
+    /// <see cref="Thinking"/> (Use models your apps already run); null: Thinking uses Martlet's Ollama model.</summary>
+    internal ServedModel? Served { get; init; }
+
     /// <summary>One line per job, as the confirmation shows them.</summary>
     internal string Describe(bool thinking = true, bool listening = true, bool voice = true)
     {
         var lines = new List<string>();
-        if (thinking)
+        if (thinking && Served is { } served)
+            lines.Add($"Thinking: {served.ModelId} in {served.AppName} on this PC (about " +
+                $"{ServedModels.Gb(served)?.ToString("0.#", CultureInfo.InvariantCulture) ?? "?"} GB on the graphics card). " +
+                "You already run it there, so nothing downloads. Its first word may come later than with a small model.");
+        else if (thinking)
             lines.Add($"Thinking: {Thinking.Id} in Ollama on this PC ({Thinking.Size}{(ThinkingOnGpu ? ", on the graphics card" : ", on the processor")}). " +
                 (Thinking.Hears ? "It's the fastest model that also hears your voice." : "It's the fastest model that fits."));
         if (voice)
@@ -79,6 +87,28 @@ internal static class DefaultSetup
         var wanted = thinkingGb is null ? Conversation : Conversation.Where(c => c != PlanComponent.Thinking).ToArray();
         var plan = PlacementEngine.Plan(new PlanRequest([specs]) { Preference = HostingPreference.PreferLocal, Wanted = wanted }, Catalog(gpus));
         return FromPlacement(plan, gpus, windowsGpu, threads, language);
+    }
+
+    /// <summary>Use models your apps already run, on a PC alone: Thinking uses the best chat model in <paramref name="served"/>
+    /// (the biggest first) that fits the graphics card beside the voice <paramref name="plan"/> places, so the voice doesn't move
+    /// off the card or go away. Martlet's own Ollama models stay its own; with no graphics card, or none that fits,
+    /// <paramref name="plan"/> stays as it is.</summary>
+    internal static DefaultSetupPlan WithServed(DefaultSetupPlan plan, IEnumerable<ServedModel>? served, IReadOnlyList<GpuNow> gpus,
+        GpuInfo? windowsGpu, int threads, CultureInfo language, double? ramGb = null)
+    {
+        var card = Specs(gpus, windowsGpu, ramGb, threads).Gpus.FirstOrDefault();
+        if (card is null) return plan;
+        var candidates = ServedModels.Usable((served ?? []).Select(m => m with { MachineId = ThisPc }), FootprintCatalog.Default)
+            .Select(m => (Model: m, Option: ServedModels.Option(m)))
+            .Where(x => x.Option.UsesGpu && x.Option.GpuGb > 0 && x.Option.GpuGb <= card.VramGb - card.UsedGb)
+            .OrderByDescending(x => x.Option.QualityTier).ThenByDescending(x => x.Option.GpuGb).ThenBy(x => x.Model.ModelId, StringComparer.Ordinal);
+        foreach (var (model, option) in candidates)
+        {
+            var withIt = Plan(gpus, windowsGpu, threads, language, option.GpuGb, ramGb);
+            if (plan.Voice is not null && (withIt.Voice is null || plan.VoiceOnGpu && !withIt.VoiceOnGpu)) continue;
+            return withIt with { Thinking = plan.Thinking, ThinkingOnGpu = true, Served = model };
+        }
+        return plan;
     }
 
     /// <summary>What the first-run setup can set up by itself: the default voice engine (the others need a voice recording

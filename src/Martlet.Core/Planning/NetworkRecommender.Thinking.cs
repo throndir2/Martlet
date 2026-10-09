@@ -181,6 +181,7 @@ public static partial class NetworkRecommender
             if (Settled(job)) return;
             var host = NodeOf(TodayJob(job)?.HostId);
             var now = TodayOption(job);
+            if (ServedThinking(now)) return;
             if (now is { IsLocal: false })
             {
                 // Rule 8: the provider the owner chose stays, unless they keep everything on their computers (and only as fast).
@@ -209,6 +210,58 @@ public static partial class NetworkRecommender
                 return;
             }
             ChooseThinking((SetupChangeBenefit.Required, "Martlet can't reply without Thinking.", true), null);
+        }
+
+        /// <summary>Rule 8: a chat model the owner's own model app serves (<see cref="NetworkSetupRequest.ServedModels"/>).
+        /// Thinking keeps one it already uses. Otherwise, with one companion PC and no host, Thinking uses the best served model that
+        /// fits a graphics card there beside the jobs placed so far (the biggest first). It never replaces a hosted provider the
+        /// owner chose or moves Thinking off a host; a note names the model instead.</summary>
+        private bool ServedThinking(ComponentOption? now)
+        {
+            const string job = ClusterJobs.Thinking;
+            if (ServedModels.IsServed(now))
+            {
+                foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
+                    foreach (var role in node.Pending.Where(r => r.Native && r.Kind == ThinkingRole).ToList()) Commit(node, role, role.Card, job);
+                Decide(job, null, now!.Id, $"{Plain(now)} in {now.ServedBy} on {OwnPcs()}, as you chose.");
+                return true;
+            }
+            var served = catalog.For(PlanComponent.Thinking).Where(o => o.ServedOn is not null).ToList();
+            if (served.Count == 0) return false;
+            var names = List([.. served.Take(3).Select(o => $"{Plain(o)} in {o.ServedBy}")]);
+            if (now is { IsLocal: false })
+            {
+                notes.Add($"You also run {names}. Choose it in Companion › Thinking to think with it instead of {now.DisplayName}.");
+                return false;
+            }
+            if (nodes.FirstOrDefault(n => n.Presence == Presence.Here && !n.Companion) is { } host)
+            {
+                notes.Add($"You also run {names}, but {host.Name} can think for you, so your companion PC stays light. Choose it in Companion › Thinking to think with it.");
+                return false;
+            }
+            var here = nodes.Where(n => n.Presence == Presence.Here && n.Companion).ToList();
+            if (here.Count != 1)
+            {
+                notes.Add($"You run {names}, but Martlet plans Thinking for all your companion PCs, so it keeps its own model.");
+                return false;
+            }
+            // Thinking can come before the voice (PreferLocal): on a PC alone, keep room for the voice beside the served model.
+            var voiceGb = singlePc && !decisions.ContainsKey(ClusterJobs.Speaking) && engine is { } kind
+                ? catalog.Options.Where(o => o.IsLocal && o.UsesGpu && o.HostRoleKind == kind).Select(o => o.GpuGb).DefaultIfEmpty(0).Min() : 0;
+            var order = served.Where(o => o.ServedOn == here[0].Id && o.UsesGpu && here[0].Cards(o).Any(c => here[0].Free(c) >= o.GpuGb + voiceGb))
+                .OrderByDescending(o => o.QualityTier).ThenByDescending(o => o.GpuGb).ThenBy(o => o.Id, StringComparer.Ordinal);
+            var slot = FindSlot(order, new Query(ThinkingRole) { Native = true, Companions = true, Only = here[0].Id });
+            if (slot is null)
+            {
+                notes.Add($"You run {names}, but no graphics card on {here[0].Name} has room for it beside the voice, so Martlet keeps its own model.");
+                return false;
+            }
+            var benefit = now is null ? SetupChangeBenefit.Required : SetupChangeBenefit.Improvement;
+            var why = $"You already run {Plain(slot.Option)} in {slot.Option.ServedBy}, so Martlet thinks with it on {CardText(slot)}" +
+                (now is null ? "." : $" instead of {Plain(now)}. Its first word may come later.");
+            Place(slot, ThinkingRole, job, benefit, why);
+            Decide(job, null, slot.Option.Id, why, benefit);
+            return true;
         }
 
         /// <summary>Thinking in each companion PC's own Ollama today: a host takes it when it can run the same model as soon.</summary>

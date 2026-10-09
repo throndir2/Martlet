@@ -71,7 +71,10 @@ public partial class MainWindow
     {
         if (ReferenceEquals(machine, MachineInfo.Unknown)) await ReadMachineAsync();
         if (closing) return null;
-        var build = RecommendedSetupInputs.Request(RecommendedSetupSources());
+        var sources = RecommendedSetupSources();
+        if (!SimulatedRecommendedSetup.Active) sources = sources with { ServedModels = await FindServedModelsAsync() };
+        if (closing) return null;
+        var build = RecommendedSetupInputs.Request(sources);
         try
         {
             var recommendation = await Task.Run(() => NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default), lifetime.Token);
@@ -109,11 +112,12 @@ public partial class MainWindow
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
     {
-        var review = RecommendedSetupReview.From(recommendation, build);
+        var review = RecommendedSetupReview.From(recommendation, build) with { UseServed = UseServedModels };
         var window = new RecommendedSetupWindow(review, RecommendedPrepare(recommendation, build.Names), RecommendedApply(recommendation));
         if (IsVisible) window.Owner = this;
         window.Declined += DeclineRecommendedSetup;
         window.PartOff += TurnRecommendedPartOff;
+        window.ServedChanged += UseServedChanged;
         window.OpenThinking += use => OpenFreeKey(use, fromReview: true);
         window.Closed += (_, _) =>
         {
