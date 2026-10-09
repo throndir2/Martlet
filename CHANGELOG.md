@@ -22,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- When you talk over something Martlet says on its own, it gives way: a screen or camera remark stops at once, and a check-in or finished-work report you talked over for more than a moment doesn't pick up again later. Reminders still play on. A check-in that waited too long, or that the conversation has moved past, is now dropped instead of said late. ([#679](https://github.com/throndir2/Martlet/pull/679))
 - The Touch zones rows are tidier: each zone's reactions show as small chips, and its box and **Delete** wait under **More**. ([#676](https://github.com/throndir2/Martlet/pull/676))
 - Each built-in check-in now shows its prompt right on its card in Companion › Check-ins, so you can change it there like your own check-ins. Point at each "It gets to know" choice to see what it gives the check-in. ([#667](https://github.com/throndir2/Martlet/pull/667))
 - Built-in check-ins now work exactly like your own: change what they get to know, when they run, what their answer does and what they take right on their card. **Use built-in settings** puts Martlet's own back, and **Copy as your own** turns any of them into a check-in of your own to change freely. ([#671](https://github.com/throndir2/Martlet/pull/671))

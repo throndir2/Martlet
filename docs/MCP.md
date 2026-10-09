@@ -4889,7 +4889,18 @@ member lets the rules decide at once (*no Thinking pool judge was available*)
 and an answer without a verdict lets them decide; each with `answer`,
 `verdict`, `source`, `reason`, `tookMs` and `promptLines`) and `ok` when every
 expectation held. `thinking_pool_status` says whether the pool has a member
-that can run the judge.
+that can run the judge. `unprompted` (with `unpromptedOk`) checks [what
+Martlet says on its own](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)
+(`UnpromptedSpeech`): `talkOver` has one entry for each kind (`Reminder`,
+`FinishedWork`, `CheckIn`, `Remark`) with `pausedForJudge` (false for a
+remark: it is dropped at once) and what a not-for-Martlet verdict does after a
+600 ms and a 3000 ms pause (`Resume` or `Drop`; `resumeWithinMs` is the
+limit). `notices` starts a fixture check-in notice and a fixture reminder on
+the production `BackgroundJobs` with a simulated clock and checks them again
+as just before they are said: `action` `Say`, `Wait` (`code` `mid_utterance`
+or `live`) or `Drop` (`too_old` after `checkInMaxWaitMinutes`, `moved_on`
+after a kept exchange), a reminder never dropped, and `DropStale` dropping
+only the old check-in. Each has `why` in words, never the notice's text.
 Nothing is recorded or played and nothing leaves this PC. `spoken_reply_check`
 `paused` rehearses the pause and resume through the production runtime; the
 talk window's `LiveBargeIn` shows the last real decision.
@@ -7219,7 +7230,11 @@ talk window, `LiveBargeIn` (shown once you talked over Martlet with barge-in on)
 says what happened the last time, never the words: *Talked over at 14:02:11:
 paused 430 ms, then resumed (not for Martlet: agreeing or laughing along; rules
 judge, 1 ms).* or *... stopped at once (for Martlet: a stop word; a clear
-cue).* In the
+cue).* A remark Martlet started on its own ends *then dropped* when it was
+dropped. `LiveUnprompted` (shown after the first drop) counts what Martlet
+meant to say on its own but dropped, never the text: *Dropped on its own: 2 (1
+too old, 1 the conversation moved on, 0 talked over). Last: checkin-3 (a
+check-in) at 14:02:11: too old: ...*. In the
 talk window, what always listening ignored shows in `LiveHistory` as a faded
 note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
 *Always listening ignored what it heard: ...*, *Always listening heard you

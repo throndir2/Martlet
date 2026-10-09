@@ -21,13 +21,16 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
     PolicyReason? Policy = null, ProviderFailureCode? ProviderFailure = null, ErrorCode? AudioFailure = null);
 
 /// <summary>Talking over Martlet stopped it: why (<see cref="BargeInPolicy"/>), how long after the user's voice began that was
-/// decided, how many quick checks of their words it took and when (controller clock) their voice began.</summary>
+/// decided, how many quick checks of their words it took and when (controller clock) their voice began. <paramref name="Dropped"/>:
+/// it was a remark Martlet started on its own, dropped (<see cref="UnpromptedSpeech"/>) rather than stopped for words meant for it.</summary>
 internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, int Checks, long StartedAt,
-    BargeInRuling? Ruling = null, TimeSpan? Paused = null);
+    BargeInRuling? Ruling = null, TimeSpan? Paused = null, bool Dropped = false);
 
 /// <summary>A reply paused because the user talked over it (Pause and decide): the pause's state, the paused turn, what the
-/// quick check decided, when the user's voice began and after how many checks. Finished once (stop or play on).</summary>
-internal sealed class HeldReply(BargeInHold hold, ConversationTurn turn, BargeInDecision decision, long startedAt, int checks)
+/// quick check decided, when the user's voice began and after how many checks, and what Martlet said on its own when it wasn't a
+/// reply (<see cref="UnpromptedKind"/>; null for a reply). Finished once (stop or play on).</summary>
+internal sealed class HeldReply(BargeInHold hold, ConversationTurn turn, BargeInDecision decision, long startedAt, int checks,
+    UnpromptedKind? remark = null)
 {
     private int finished;
     internal BargeInHold Hold { get; } = hold;
@@ -35,6 +38,7 @@ internal sealed class HeldReply(BargeInHold hold, ConversationTurn turn, BargeIn
     internal BargeInDecision Decision { get; } = decision;
     internal long StartedAt { get; } = startedAt;
     internal int Checks { get; } = checks;
+    internal UnpromptedKind? Remark { get; } = remark;
     internal bool Finished => Volatile.Read(ref finished) != 0;
     internal bool TryFinish() => Interlocked.Exchange(ref finished, 1) == 0;
 }
@@ -264,6 +268,11 @@ internal sealed class LiveConversationOperation
     internal bool Touch { get; init; }
     /// <summary>Martlet started this reply on its own (a report or a reaction to being touched), not an answer to the user.</summary>
     internal bool OnItsOwn => Report || Touch;
+    /// <summary>What Martlet says here on its own, without the user asking (<see cref="UnpromptedSpeech"/>): a report's reminder,
+    /// finished work or check-in, or a screen or camera remark. Null for a reply (to the user, to what this PC played or to a
+    /// touch, which answers what the user did).</summary>
+    internal UnpromptedKind? Unprompted => Commentary ? UnpromptedKind.Remark
+        : Report ? UnpromptedSpeech.Of(Delivery?.Jobs.Select(job => job.Kind) ?? []) : null;
     /// <summary>A message from a paired messaging chat (or another remote ask): text in, text out.</summary>
     internal bool Remote { get; init; }
     /// <summary>What the user did to the desktop character that this reply carries (its message for a touch-only reply, its
@@ -2154,10 +2163,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // played when Martlet may bring it up on its own.
             if (!operation.Report && operation.Delivery is null)
             {
-                if (own is not null || straight) operation.Delivery = jobs.Take(onItsOwn: false);
+                if (own is not null || straight) operation.Delivery = TakeJobs(onItsOwn: false);
                 // A due reminder comes up as soon as Martlet is free even when other finished work waits for the user's next message.
                 else if (operation.BringUp)
-                    operation.Delivery = jobs.Take(onItsOwn: true, noticesOnly: configured.ThinkLonger.When != ThinkDelivery.WhenFree);
+                    operation.Delivery = TakeJobs(onItsOwn: true, noticesOnly: configured.ThinkLonger.When != ThinkDelivery.WhenFree);
             }
             var builtIns = BuiltIns(operation, configured, conversation);
             // A message carrying finished work gets the tools a report gets, so a later tool can act on the user's yes.
@@ -2511,6 +2520,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                                 (passed ? " (it stayed quiet about it)." : "."));
                         }
                         if (!operation.OnItsOwn) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
+                        // The conversation moved on: a check-in made before this exchange is out of date (UnpromptedSpeech).
+                        if (!operation.Report) Interlocked.Exchange(ref lastExchangeTicks, clock.GetUtcNow().UtcTicks);
                         // The note about the last song is in the conversation now.
                         if (songNote is not null) singing?.NoteDelivered(songNote);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
@@ -3617,7 +3628,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     internal LiveConversationOperation? StartReport(bool voice, bool noticesOnly = false, SeenScreen? seen = null,
         AttentionSignal? attention = null, bool look = false)
     {
-        var delivery = jobs.Take(onItsOwn: true, noticesOnly);
+        var delivery = TakeJobs(onItsOwn: true, noticesOnly);
         if (delivery is null) return null;
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         LiveConversationOperation operation;
@@ -4896,6 +4907,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     }
                 }
                 if (!decision.Interrupt) return;
+                // A screen or camera remark Martlet started on its own is dropped at once: whatever the verdict, it wouldn't play on.
+                if (!decision.Cue && mode == PlaybackMode.Reply && DropAtOnce(operation, decision, startedAt, checks)) return;
                 // Pause and decide: words that aren't a clear cue pause the reply at once, and a judge decides.
                 if (!decision.Cue && options.BargeInStyle == BargeInBehavior.PauseAndDecide && mode == PlaybackMode.Reply &&
                     Hold(operation, decision, startedAt, checks) is { } paused)
@@ -4944,6 +4957,67 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>A paused reply that is to stop now, taken once by the talk window.</summary>
     internal TalkOverResult? TakeHeldStop() => Interlocked.Exchange(ref heldStop, null);
 
+    // ---------- speak, wait or drop for what Martlet says on its own (UnpromptedSpeech) ----------
+
+    /// <summary>How many things Martlet meant to say on its own were dropped in this conversation, and why (counts and words only,
+    /// never what they said): too old, the conversation moved on, or the user talked over them. <see cref="Last"/> describes the
+    /// newest drop.</summary>
+    internal sealed record UnpromptedDrops(int TooOld, int MovedOn, int TalkedOver, string? Last)
+    {
+        internal int Total => TooOld + MovedOn + TalkedOver;
+    }
+
+    private UnpromptedDrops unpromptedDrops = new(0, 0, 0, null);
+    // When the last exchange that wasn't Martlet's own was kept (UTC ticks; 0: none yet), for "the conversation moved on".
+    private long lastExchangeTicks;
+
+    /// <summary>What Martlet dropped of what it meant to say on its own (<see cref="UnpromptedSpeech"/>).</summary>
+    internal UnpromptedDrops DroppedOnItsOwn => Volatile.Read(ref unpromptedDrops);
+
+    /// <summary>When the last exchange that wasn't Martlet's own (a reply to the user, to what this PC played or to a touch) was
+    /// kept in the conversation, or null.</summary>
+    internal DateTimeOffset? LastExchange => Interlocked.Read(ref lastExchangeTicks) is > 0 and var ticks ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+
+    private void NoteDropped(UnpromptedKind kind, string code, string why, string? id = null)
+    {
+        var at = clock.GetLocalNow().ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        var last = $"{id ?? UnpromptedSpeech.Describe(kind)}{(id is null ? "" : " (" + UnpromptedSpeech.Describe(kind) + ")")} at {at}: {why}";
+        UnpromptedDrops before, after;
+        do
+        {
+            before = Volatile.Read(ref unpromptedDrops);
+            after = code switch
+            {
+                "too_old" => before with { TooOld = before.TooOld + 1, Last = last },
+                "moved_on" => before with { MovedOn = before.MovedOn + 1, Last = last },
+                _ => before with { TalkedOver = before.TalkedOver + 1, Last = last }
+            };
+        }
+        while (!ReferenceEquals(Interlocked.CompareExchange(ref unpromptedDrops, after, before), before));
+    }
+
+    /// <summary>Checks the notices that wait again (<see cref="UnpromptedSpeech.DropStale"/>) and drops a check-in that is too old
+    /// or that the conversation moved on from, before Martlet says what waits on its own or with the user's next message. Local
+    /// rules only: no request and no wait. Each drop goes to the desktop log with its ID, kind and why (never its text).</summary>
+    internal int DropStaleNotices()
+    {
+        var dropped = UnpromptedSpeech.DropStale(jobs, clock.GetUtcNow(), LastExchange);
+        foreach (var (job, check) in dropped)
+        {
+            var kind = UnpromptedSpeech.Of(job.Kind);
+            NoteDropped(kind, check.Code, check.Why, job.Id);
+            ErrorLog.Info($"Said on its own: Martlet dropped {job.Id} ({UnpromptedSpeech.Describe(kind)}) before saying it: {check.Why}.");
+        }
+        return dropped.Count;
+    }
+
+    // The finished background work and notices one reply takes, after stale notices were dropped.
+    private BackgroundDelivery? TakeJobs(bool onItsOwn, bool noticesOnly = false)
+    {
+        DropStaleNotices();
+        return jobs.Take(onItsOwn, noticesOnly);
+    }
+
     private void Remember(BargeInRecord record)
     {
         lock (bargeIns)
@@ -4963,15 +5037,48 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private HeldReply? Hold(LiveConversationOperation operation, BargeInDecision decision, long startedAt, int checks)
     {
         ConversationTurn? turn;
+        UnpromptedKind? remark;
         lock (gate)
-            turn = active is { Worker: not null, Playback: PlaybackMode.Reply } reply && !reply.OwnershipReleased ? reply.Turn : null;
+        {
+            var reply = active is { Worker: not null, Playback: PlaybackMode.Reply } speaking && !speaking.OwnershipReleased ? speaking : null;
+            turn = reply?.Turn;
+            remark = reply?.Unprompted;
+        }
         if (turn is null || !turn.Pause()) return null;
-        var held = new HeldReply(new BargeInHold(clock), turn, decision, startedAt, checks);
+        var held = new HeldReply(new BargeInHold(clock), turn, decision, startedAt, checks, remark);
         operation.Held = held;
-        ErrorLog.Info($"Barge-in: Martlet paused its reply {clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started " +
+        ErrorLog.Info($"Barge-in: Martlet paused its {(remark is { } kind ? "remark (" + UnpromptedSpeech.Describe(kind) + ")" : "reply")} " +
+            $"{clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started " +
             $"talking over it ({decision.Reason}); the {CurrentJudge().Name} judge decides whether it stops or plays on.");
         Task.Run(() => WatchHoldAsync(operation, held)).Forget();
         return held;
+    }
+
+    // What Martlet is saying on its own right now (UnpromptedSpeech), or null for a reply or when it isn't speaking.
+    private UnpromptedKind? ActiveRemark()
+    {
+        lock (gate)
+            return active is { Worker: not null, Playback: PlaybackMode.Reply } speaking && !speaking.OwnershipReleased ? speaking.Unprompted : null;
+    }
+
+    // A remark that is never paused for the judge (a screen or camera remark: UnpromptedSpeech.Judged) is dropped at once when
+    // real words are said over it, whatever they were. The talk window stops it as it stops a reply (TakeHeldStop). False when
+    // Martlet isn't saying such a remark.
+    private bool DropAtOnce(LiveConversationOperation operation, BargeInDecision decision, long startedAt, int checks)
+    {
+        if (ActiveRemark() is not { } remark || UnpromptedSpeech.Judged(remark)) return false;
+        // A later quick check of the same words, before the talk window stopped it: dropped already.
+        if (operation.TalkOver is { Dropped: true }) return true;
+        var why = $"{UnpromptedSpeech.Describe(remark)} is dropped when you talk over it";
+        Remember(new(clock.GetUtcNow(), BargeInSource.Judge, BargeInVerdict.Interrupt, $"{decision.Reason}; {why}", "none", TimeSpan.Zero,
+            null, "dropped"));
+        NoteDropped(remark, "talked over", "you talked over it");
+        ErrorLog.Info($"Barge-in: Martlet dropped its remark ({UnpromptedSpeech.Describe(remark)}) " +
+            $"{clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started talking over it ({decision.Reason}; no judge: {why}).");
+        var result = new TalkOverResult(decision, clock.GetElapsedTime(startedAt), checks, startedAt, Dropped: true);
+        operation.TalkOver = result;
+        Volatile.Write(ref heldStop, result);
+        return true;
     }
 
     // The judge rules on what was said so far (within BargeInJudging.Deadline, or the local rules decide); the pause then stops
@@ -5025,18 +5132,33 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var source = hold.Source ?? BargeInSource.Limit;
         var judged = ruling is null ? "no verdict" : ruling.Source == BargeInSource.Cue ? "a clear cue"
             : $"the {ruling.Judge} judge in {ruling.JudgeTime.TotalMilliseconds:0} ms";
+        // Words not for Martlet over what it said on its own: a reminder plays on, a report or check-in only after a short pause,
+        // a remark never (UnpromptedSpeech.AfterNotForMe). The rest is dropped; a report's news waits for the next message.
+        var drop = outcome == BargeInOutcome.Resume && held.Remark is { } remark &&
+            UnpromptedSpeech.AfterNotForMe(remark, hold.Paused) == UnpromptedAfterTalkOver.Drop;
         Remember(new(clock.GetUtcNow(), source, outcome == BargeInOutcome.Stop ? BargeInVerdict.Interrupt : BargeInVerdict.NotForMe,
-            why, ruling?.Judge ?? "none", ruling?.JudgeTime ?? TimeSpan.Zero, hold.Paused, outcome == BargeInOutcome.Stop ? "stopped" : "resumed"));
-        if (outcome == BargeInOutcome.Resume)
+            why, ruling?.Judge ?? "none", ruling?.JudgeTime ?? TimeSpan.Zero, hold.Paused,
+            outcome == BargeInOutcome.Stop ? "stopped" : drop ? "dropped" : "resumed"));
+        if (outcome == BargeInOutcome.Resume && !drop)
         {
             held.Turn.Resume();
-            ErrorLog.Info($"Barge-in: Martlet resumed its reply after a {hold.Paused.TotalMilliseconds:0} ms pause: what you said " +
+            ErrorLog.Info($"Barge-in: Martlet resumed its {(held.Remark is { } kind ? "remark (" + UnpromptedSpeech.Describe(kind) + ")" : "reply")} " +
+                $"after a {hold.Paused.TotalMilliseconds:0} ms pause: what you said " +
                 $"wasn't for it ({why}; {(source == BargeInSource.Limit ? "the pause reached its limit" : judged)}; " +
                 $"{hold.Voice.TotalMilliseconds:0} ms of your voice during the pause).");
             return;
         }
+        if (drop)
+        {
+            NoteDropped(held.Remark!.Value, "talked over", "you talked over it");
+            ErrorLog.Info($"Barge-in: Martlet dropped its remark ({UnpromptedSpeech.Describe(held.Remark.Value)}) after a " +
+                $"{hold.Paused.TotalMilliseconds:0} ms pause: what you said wasn't for it ({why}; " +
+                $"{(source == BargeInSource.Limit ? "the pause reached its limit" : judged)}), but " +
+                (held.Remark == UnpromptedKind.Remark ? "a remark never plays on after you talked over it)."
+                    : $"it plays on only after a pause of at most {UnpromptedSpeech.ResumeWithin.TotalMilliseconds:0} ms)."));
+        }
         var result = new TalkOverResult(held.Decision with { Reason = why }, clock.GetElapsedTime(held.StartedAt), held.Checks,
-            held.StartedAt, ruling, hold.Paused);
+            held.StartedAt, ruling, hold.Paused, drop);
         operation.TalkOver = result;
         Volatile.Write(ref heldStop, result);
     }
@@ -5056,8 +5178,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             return utterance.TalkOver?.Decision;
         }
         if (!decision.Interrupt) return null;
+        var spokeAt = utterance.SpeechStartedAt == 0 ? clock.GetTimestamp() : utterance.SpeechStartedAt;
+        if (!decision.Cue && mode == PlaybackMode.Reply && DropAtOnce(utterance, decision, spokeAt, 0)) return decision;
         if (!decision.Cue && options.BargeInStyle == BargeInBehavior.PauseAndDecide && mode == PlaybackMode.Reply &&
-            Hold(utterance, decision, utterance.SpeechStartedAt == 0 ? clock.GetTimestamp() : utterance.SpeechStartedAt, 0) is { } paused)
+            Hold(utterance, decision, spokeAt, 0) is { } paused)
         {
             paused.Hold.Ended();
             await JudgeHeldAsync(utterance, paused, text, words, options, confidence).ConfigureAwait(false);

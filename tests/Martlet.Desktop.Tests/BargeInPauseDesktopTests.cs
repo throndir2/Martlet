@@ -82,8 +82,26 @@ public sealed class BargeInPauseDesktopTests
             Assert.Equal(3, result.GetProperty("modelJudge").GetArrayLength());
             Assert.True(result.GetProperty("modelJudgeOk").GetBoolean());
             Assert.Equal("Timeout", result.GetProperty("deadlines")[0].GetProperty("source").GetString());
+            // What Martlet says on its own: each kind's rule and the waiting notices checked again just before they are said.
+            Assert.True(result.GetProperty("unpromptedOk").GetBoolean(), result.ToString());
+            var unprompted = result.GetProperty("unprompted");
+            Assert.Equal(4, unprompted.GetProperty("talkOver").GetArrayLength());
+            Assert.Equal(7, unprompted.GetProperty("notices").GetArrayLength());
+            Assert.DoesNotContain("FIXTURE", unprompted.ToString());
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void The_talk_window_says_what_martlet_dropped_of_what_it_says_on_its_own_never_the_text()
+    {
+        Assert.Equal("", LiveConversationWindow.UnpromptedLine(new(0, 0, 0, null)));
+        var line = LiveConversationWindow.UnpromptedLine(new(1, 1, 2, "checkin-3 (a check-in) at 14:02:11: too old"));
+        Assert.Equal("Dropped on its own: 4 (1 too old, 1 the conversation moved on, 2 talked over). " +
+            "Last: checkin-3 (a check-in) at 14:02:11: too old.", line);
+        var dropped = LiveConversationWindow.BargeInLine(new(DateTimeOffset.Now, BargeInSource.Judge, BargeInVerdict.NotForMe,
+            "agreeing or laughing along", "rules", TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(2400), "dropped"));
+        Assert.EndsWith("paused 2400 ms, then dropped (not for Martlet: agreeing or laughing along; rules judge, 1 ms).", dropped);
     }
 
     [Fact]
