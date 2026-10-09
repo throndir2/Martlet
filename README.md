@@ -50,13 +50,12 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.62.0
+## 🆕 What's new in 0.62.1
 
-- 🧠 **One simple Thinking pool**: Companion › Thinking pool is now one list of your machines. Tick **Quick jobs** or **Long jobs** on each one to keep it for quick checks while you talk or for long thinking and research.
-- ⏰ **Smarter check-ins**: your own check-ins can say which model they need. They can also take a screenshot, a few seconds of your microphone or your PC's sound, or what a script of yours prints.
-- 🎨 **Your own colors**: Settings › Appearance has a **Custom** palette. Choose each color yourself, and Martlet tells you if anything gets hard to read and can fix it for you.
-- 📋 **Every part in Recommended setup**: Vision, Reading, Hearing and Smart home now join the priority list, and each part says where it runs.
-- 👀 **Now on every Companion page**: each page, including the Optional extras, starts with one line that says what it uses, then its main choice with a clear **Off**. Choices show their key facts, and **Compare them** puts them side by side.
+- 📋 **Short lists you can compare**: Thinking, Voice, Listening and Lip-sync list their models, voice engines, apps and providers as one short row each. Each row says what it runs on, how much graphics memory it takes and how fast it is.
+- 🔍 **Every detail, one click away**: pick a row to see everything about it, such as whether a voice can laugh, which languages it speaks, its license, or what a provider costs and where your data goes. **Compare them** puts them side by side.
+- ✂️ **Lists that don't grow**: a long list shows the main choices first, and **Show more** lists the rest. The Optional extras' lists work the same way.
+- ⭕ **A clear Off**: *If Thinking fails* now has an explicit **Off**, like every optional part.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
