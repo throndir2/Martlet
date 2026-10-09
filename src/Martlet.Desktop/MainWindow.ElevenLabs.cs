@@ -23,15 +23,15 @@ public partial class MainWindow
         public override string ToString() => Name;
     }
 
-    private Border ElevenLabsCard(SetupRoute? route)
+    /// <summary>ElevenLabs' own lines in Companion › Voice › Cloud voice's details: what it can do, where it stands, the model,
+    /// the voice to clone, the key, the consent box and its button.</summary>
+    private List<UIElement> ElevenLabsFields(SetupRoute? route)
     {
         var saved = route?.RouteType == SetupRouteType.ElevenLabs ? route : null;
         var engine = SpeechEngines.ElevenLabs;
         var stack = new List<UIElement>
         {
-            Heading("ElevenLabs: your cloned voice with tones"),
             AbilitiesLine("elevenlabs", engine.Abilities, engine.Tags),
-            RunsOnLine("elevenlabs", engine.RunsOn),
             Note("ElevenLabs copies one of your voices and speaks replies with it in real time, with tones such as [whispers], " +
                 "[happy] or [sad] and sounds such as [laughs]. Martlet follows ElevenLabs' documentation; it hasn't been tried with " +
                 "a live ElevenLabs account yet.", new Thickness(0, 6, 0, 0))
@@ -109,7 +109,7 @@ public partial class MainWindow
             consent,
             Row(save)
         ]);
-        return Card([.. stack]);
+        return stack;
     }
 
     private static string ElevenLabsModelChoice(string id) => id == ElevenLabsSetup.V4Turbo

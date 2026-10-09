@@ -186,9 +186,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "SingingHost-", "HealthCheck-", "HealthOpen-",
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // An option picker's choice ("Picker-VoiceEngine-chatterbox", "Picker-Pictures-Off") only shows that option's details
-        // below the list, and its Compare ("PickerCompare-VoiceEngine") only shows or hides the table; the details' own button
-        // commits (and needs --allow-ui-effects). MainWindow.OptionPicker.cs.
-        "Picker-", "PickerCompare-",
+        // below the list, its Compare ("PickerCompare-VoiceEngine") only shows or hides the table, and its Show N more
+        // ("PickerMore-VoiceEngine") only shows or hides the rows past the first four; the details' own button commits (and needs
+        // --allow-ui-effects). MainWindow.OptionPicker.cs.
+        "Picker-", "PickerCompare-", "PickerMore-",
         // Devices' list filters ("DeviceFilter-attention") only filter the cards shown.
         "DeviceFilter-",
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
@@ -199,9 +200,6 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
-        // Companion › Thinking › This PC's "Model app" options ("LocalApp-Ollama", "LocalApp-Other") only show that app's card;
-        // its own Use button commits (and needs --allow-ui-effects).
-        "LocalApp-",
         // Companion › Check-ins: a check-in's Edit its prompt ("CheckInPrompt-emotes") only opens Prompts.
         "CheckInPrompt-",
         // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
@@ -258,7 +256,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // setup ("Configuring your computers: 1 of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4).", or how it
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
         "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
-        "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
         // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
         // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed
@@ -308,7 +306,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The character overlay's drag surface reads as its last tap's hit test (zone, hit areas, drawables, bone; model-authored
         // names only, never paths); character_touch taps it.
         "MoveAvatar",
-        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
+        // Companion › Lip-sync › This PC: its ways are an option picker (Picker-LipSync-Audio2Face, -Loudness, -Own); the shown
+        // way's details read what this PC's graphics card means for Audio2Face (LipSyncDockerAbout) and where your own service
+        // stands (LipSyncOwnState).
+        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnState", "LipSyncDockerAbout",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.
@@ -403,21 +404,19 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
         "TalkVoicePathStatus",
-        // Companion › Thinking › This PC: the suggested local model picked from SetupLocalModelPicks (its size, the card it fits,
-        // whether it hears your voice or gets the transcript, and whether it's the fastest or the smartest that fits; choosing
-        // one with ui_select only fills SetupLocalModel, the model name, so it needs --allow-ui-effects but saves nothing).
-        "SetupLocalModelPicks", "SetupLocalModel",
-        // Companion › Thinking › This PC › Ollama: what any Ollama model means (a library name, a Hugging Face GGUF, your own).
-        "SetupLocalOwnModels",
-        // Companion › Thinking › This PC › A model app you already use: what looking on this PC's loopback ports found (each app's
-        // name, base URL and model count, or that one asks for a key), the app picked (LocalServerPick: "LM Studio ·
-        // http://127.0.0.1:1234/v1 · 3 models" or "Another address on this PC"), the model in the box and what the app lists
-        // (LocalServerModels), what the key box will do (never the key), how to start the picked app's server and where messages
-        // go (LocalServerHint), and the last Test model result. Choosing LocalServerPick or LocalServerModel with ui_select only
+        // Companion › Thinking › This PC › Ollama: its models are an option picker (Picker-OllamaModel-gemma4:e2b,
+        // Picker-OllamaModel-Other); under Another Ollama model, the model typed (SetupLocalModel) and what any Ollama model means
+        // (SetupLocalOwnModels). Typing in SetupLocalModel saves nothing, but needs --allow-ui-effects.
+        "SetupLocalModel", "SetupLocalOwnModels",
+        // Companion › Thinking › This PC › Model app: the apps are an option picker (Picker-LocalApp-Ollama,
+        // Picker-LocalApp-lm-studio-1234, Picker-LocalApp-Address). For another app: what looking on this PC's loopback ports
+        // found (each app's name, base URL and model count, or that one asks for a key), the model in the box and what the app
+        // lists (LocalServerModels), what the key box will do (never the key), how to start the picked app's server and where
+        // messages go (LocalServerHint), and the last Test model result. Choosing LocalServerModel with ui_select only
         // fills the fields and saves nothing, but needs --allow-ui-effects; LocalServerTest sends the model a short loopback
         // request and LocalServerUse switches Thinking, so they need it too. Martlet.Companion's Find model apps result
         // (LocalModelsFound; its FindLocalModels button fills the unsaved Thinking fields, so it needs --allow-ui-effects).
-        "LocalServersStatus", "LocalServerPick", "LocalServerModel", "LocalServerModels", "LocalServerKeyStatus", "LocalServerHint",
+        "LocalServersStatus", "LocalServerModel", "LocalServerModels", "LocalServerKeyStatus", "LocalServerHint",
         "LocalServerTestResult", "LocalModelsFound",
         // The setup advisor: which step it shows and its plan's summary (the goal's one-line explanation).
         "AdvisorStep", "AdvisorSummary",
@@ -586,8 +585,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
         // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects), that the shown
         // Windows computer's graphics card also does other jobs, so its voice can fall behind (SpeakingEngineSharedGpu) and,
-        // under Another of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads
-        // through the VoiceEngine prefix below.
+        // under Another of your computers, that the shown computer isn't reachable (SpeakingHostStatus). The engines are an option
+        // picker (Picker-VoiceEngine-<key>); the shown engine's abilities and chips read through the VoiceEngine prefix below.
         "SpeakingEngineOthers", "SpeakingEngineSharedGpu", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Settings › App updates: this PC's own host service following the app's version (shown only when this PC runs one):
@@ -824,12 +823,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "3 recordings, 14.5 seconds joined, added 10/2/2026. XTTS-v2 learns from each recording."; never names or words) and
     /// Add a voice's line on filling in each recording's words ("F5AddVoiceHeard" and "F5AddVoiceHeard-2" read "Filled in by
     /// Parakeet on this PC: 12 words. Check them and fix anything it misheard."; never the words);
-    /// Companion › Voice › Voice engine's rows, one per engine ("VoiceEngine-chatterbox" reads "Chatterbox Turbo · recommended",
-    /// "VoiceEngineAbilities-chatterbox" "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions: whispering only.",
-    /// "VoiceEngineRunsOn-chatterbox" "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).",
-    /// "VoiceEngineFeatures-chatterbox" "Docker, 5 s+ samples, English", "VoiceEngineState-chatterbox"
-    /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
-    /// Turbo"; "VoiceEngineNone" says when no engine can run there; clicking a button needs --allow-ui-effects) and its computer pills
+    /// Companion › Voice › Voice engine's shown engine (its row is the option picker's "Picker-VoiceEngine-chatterbox"):
+    /// "VoiceEngineAbilities-chatterbox" reads "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions: whispering only.",
+    /// "VoiceEngineFeatures-chatterbox" "Docker, 5 s+ samples, English", and its button "VoiceEngineUse-chatterbox" "Set up and
+    /// use Chatterbox Turbo"; "VoiceEngineNone" says when no engine can run there; clicking a button needs --allow-ui-effects) and its computer pills
     /// ("SpeakingHost-gpu-pc" reads "gpu-pc · speaking");
     /// each character's detail line in Companion › Character › Your characters
     /// ("CharacterModelState-builtin" reads "Live2D. Part of Martlet on every computer. Shown on this PC.",
@@ -950,11 +947,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Appearance › Custom: each part of the custom palette with its color ("CustomThemeRole-Accent" reads "Accent:
         // #A52D64") and the character's colors it can take ("CustomThemePick-0" reads "Use #2B3440 dark grayish blue").
         "CustomThemeRole-", "CustomThemePick-",
-        // Companion › Listening › Parakeet in Martlet: each model's title with its tags ("ListenParakeetModel-parakeet-tdt-110m-en"
-        // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads
-        // "Parakeet TDT 110M (English). Replies start sooner: ... Downloads once: 477 MB."). Its SetupListenParakeet-<model>
+        // Companion › Listening › This PC: the speech recognizers are an option picker (Picker-Listening-parakeet-tdt-110m-en,
+        // Picker-Listening-whisper-gpu...); while a Parakeet model downloads, its details read the progress
+        // ("ListenParakeetModelState-parakeet-tdt-110m-en": "Downloading: 40% of 477 MB..."). Its SetupListenParakeet-<model>
         // button downloads (after a confirmation) and switches Listening, so it needs --allow-ui-effects.
-        "ListenParakeetModel",
+        "ListenParakeetModelState-",
         // Creations: each creation's line in the list ("CreationState-3f2a9c1b7d04" reads "Song · 1:02 · 6.6 MB · made 10/3/2026
         // 9:41 PM on DESK-PC · on this PC, on 2 of 2 hosts"; never its title).
         "CreationState-",

@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Thinking, Voice, Listening and Lip-sync now list their models, voice engines, apps and providers as short rows you can compare at a glance: each row says what it runs on, how much graphics memory it takes and how fast it is. A long list shows the main choices first, and **Show more** lists the rest. Pick one to see everything about it (such as whether a voice can laugh, which languages it speaks, its license, what a provider costs and where your data goes), or press **Compare them** for a side-by-side table. *If Thinking fails* now has a clear **Off**, and the Optional extras' lists show at most four rows too. ([#660](https://github.com/throndir2/Martlet/pull/660))
+
 ## [0.62.0] - 2026-10-08
 
 ### Added

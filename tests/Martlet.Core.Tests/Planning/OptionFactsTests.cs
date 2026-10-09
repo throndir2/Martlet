@@ -59,6 +59,91 @@ public sealed class OptionFactsTests
     }
 
     [Fact]
+    public void AThinkingModelSaysWhetherItFitsThisCardCallsToolsAndLeadsWithItsFit()
+    {
+        var gemma12 = Option("gemma4:12b");
+        var roomy = OptionFacts.ThinkingModel(gemma12, cardGb: 16, comfortableGb: 16, callsTools: true).ToDictionary(f => f.Key);
+        Assert.StartsWith("yes", roomy["fits"].Value, StringComparison.Ordinal);
+        Assert.Null(roomy["fits"].Short);
+        Assert.StartsWith("yes", roomy["tools"].Value, StringComparison.Ordinal);
+        Assert.Contains("8,192 tokens", roomy["context"].Value, StringComparison.Ordinal);
+
+        var tight = OptionFacts.ThinkingModel(gemma12, cardGb: 11.6, comfortableGb: 16, callsTools: true);
+        Assert.Equal("fits", tight[0].Key);
+        Assert.Equal("tight here", tight[0].Short);
+        var tooBig = OptionFacts.ThinkingModel(Option("gemma4:26b"), cardGb: 8, comfortableGb: 24, callsTools: true);
+        Assert.Equal("too big here", tooBig[0].Short);
+        Assert.Equal("no card here", OptionFacts.ThinkingModel(gemma12, null, 16, true)[0].Short);
+        Assert.Equal("evidence", tooBig[^1].Key);
+    }
+
+    [Fact]
+    public void AVoiceEngineSaysWhatItCanDoItsLanguagesAndWhetherItsLicenseAllowsCommercialUse()
+    {
+        var turbo = OptionFacts.VoiceEngine(Martlet.Core.Settings.SpeechEngines.Chatterbox).ToDictionary(f => f.Key);
+        Assert.Equal("yes", turbo["cloning"].Value);
+        Assert.Equal("laughs", turbo["sounds"].Short);
+        Assert.Equal("whispering only", turbo["emotions"].Value);
+        Assert.Equal("MIT: commercial use allowed", turbo["license"].Value);
+        Assert.Equal("4.2 GB VRAM", turbo["vram"].Short);
+
+        var f5 = OptionFacts.VoiceEngine(Martlet.Core.Settings.SpeechEngines.F5).ToDictionary(f => f.Key);
+        Assert.EndsWith("non-commercial use only", f5["license"].Value, StringComparison.Ordinal);
+        Assert.Equal("English, Chinese", f5["languages"].Value);
+        Assert.StartsWith("yes", OptionFacts.VoiceEngine(Martlet.Core.Settings.SpeechEngines.Xtts).Single(f => f.Key == "streams").Value, StringComparison.Ordinal);
+
+        var nano = OptionFacts.VoiceEngine(Martlet.Core.Settings.SpeechEngines.ChatterboxNano).ToDictionary(f => f.Key);
+        Assert.Equal("NVIDIA GPU or processor", nano["runs-on"].Short);
+
+        var eleven = OptionFacts.VoiceEngine(Martlet.Core.Settings.SpeechEngines.ElevenLabs).ToDictionary(f => f.Key);
+        Assert.Equal("Online", eleven["runs-on"].Short);
+        Assert.Equal("paid", eleven["cost"].Short);
+        Assert.DoesNotContain("vram", eleven.Keys);
+    }
+
+    [Fact]
+    public void ASpeechRecognizerLeadsWithWhereItRunsHowSoonAndItsLanguages()
+    {
+        var facts = OptionFacts.SpeechRecognizer(Option("parakeet-tdt-0.6b-v3-cpu"), "25 European languages", "very good", streams: false);
+        Assert.Equal(["runs-on", "speed", "languages"], facts.Take(3).Select(f => f.Key));
+        Assert.Equal("Processor (in Martlet)", facts[0].Short);
+        Assert.Contains(facts, f => f.Key == "cpu" && f.Value.StartsWith("2.6 threads", StringComparison.Ordinal));
+        Assert.Contains(facts, f => f.Key == "accuracy" && f.Value == "very good");
+        Assert.Equal("evidence", facts[^1].Key);
+    }
+
+    [Fact]
+    public void AHostedProviderSaysWhatItCostsWhatItNeedsAndWhatLeavesThisPc()
+    {
+        var nvidia = OptionFacts.Hosted("NVIDIA Build", Option("hosted:nvidia-build"), free: true, keyNeeded: true, "your messages");
+        Assert.Equal(["runs-on", "cost", "speed"], nvidia.Take(3).Select(f => f.Key));
+        var facts = nvidia.ToDictionary(f => f.Key);
+        Assert.Equal("free tier", facts["cost"].Short);
+        Assert.Equal("your own key", facts["key"].Value);
+        Assert.Equal("sent to NVIDIA Build", facts["data"].Value);
+        Assert.StartsWith("NVIDIA Build gets your messages", facts["data"].Help, StringComparison.Ordinal);
+        Assert.Contains("reliability", facts.Keys);
+
+        var custom = OptionFacts.Hosted("the server", null, null, keyNeeded: false, "your messages").ToDictionary(f => f.Key);
+        Assert.Equal("depends on the server", custom["cost"].Value);
+        Assert.Equal("only if the server asks", custom["key"].Value);
+        Assert.Null(custom["cost"].Short);
+        Assert.DoesNotContain("evidence", custom.Keys);
+        Assert.DoesNotContain("evidence", facts.Keys);
+        var gemini = OptionFacts.Hosted("Google Gemini", null, true, true, "your messages", hears: true, sees: true).ToDictionary(f => f.Key);
+        Assert.Equal("hears", gemini["hears"].Short);
+    }
+
+    [Fact]
+    public void LeadMovesTheChosenFactsFirstAndKeepsTheRest()
+    {
+        var facts = OptionFacts.Of(Option("chatterbox-turbo"));
+        var led = OptionFacts.Lead(facts, "speed", "missing", "runs-on");
+        Assert.Equal(["speed", "runs-on"], led.Take(2).Select(f => f.Key));
+        Assert.Equal(facts.Count, led.Count);
+    }
+
+    [Fact]
     public void ThinkingsOwnModelTakesNothingAndIsAsGoodAsThinking()
     {
         var facts = OptionFacts.Of(Option("vision:thinking")).ToDictionary(f => f.Key);

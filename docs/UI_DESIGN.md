@@ -536,13 +536,20 @@ window ends it unless Martlet is listening or watching, which only hides it.
 
   **Lists of choices use the option picker** (`MainWindow.OptionPicker.cs`),
   so a list that keeps growing stays short. Each option is one compact row:
-  its name, a badge (*in use*, *recommended*) and its key facts in one line,
-  for example *NVIDIA GPU · 4.2 GB VRAM · 0.45 s to first audio*. Choosing a
-  row shows that option's details under the list: what it is good at, every
-  fact, where it stands on the shown computer, its own lines (abilities,
-  license) and its button. **Compare them** opens a table of the facts that
-  differ between the options. Options that can't run here are listed last, with
-  why. The facts come from the footprint catalog (`OptionFacts` in
+  its name, a badge (*in use*, *recommended*) and its key facts on the same
+  line, for example *NVIDIA GPU · 4.2 GB VRAM · 0.45 s to first audio*.
+  Choosing a row shows that option's details under the list: what it is good
+  at, every fact (short facts two to a line), where it stands on the shown
+  computer, its own lines (abilities, license, fields) and its button.
+  A list shows at most four rows: the one in use, the recommended one and the
+  shown one first, then the others. **Show N more** lists the rest (a page may
+  show fewer by default, such as *If Thinking fails*: *Off* and the
+  recommended provider). **Compare them** opens a table of the facts that
+  differ between all the options, also the hidden ones.
+  Options that can't run here are listed last, with why. A list of one option
+  shows only its details. A list whose chosen option has its own card below
+  (Thinking's *Model app*) has no details panel. The facts come from the
+  footprint catalog (`OptionFacts` in
   `Martlet.Core.Planning`), so every page describes an option in the same
   words: where it runs (graphics card, processor, inside Martlet or online),
   graphics memory, memory, processor threads, download size, how soon its
@@ -553,6 +560,26 @@ window ends it unless Martlet is listening or watching, which only hides it.
   your data goes for every option, the license (VevoSing is non-commercial
   only), how long a song or picture takes and its size, the languages and
   game fonts OCR reads, and whether an image or audio model sees or hears.
+  Each kind of job part adds its own facts too: a Thinking model
+  whether it fits this PC's graphics card, calls tools and its context; a
+  voice engine voice cloning, laughs and sighs, emotions, streaming, languages,
+  the recordings it learns from and its license (commercial use or not); a
+  speech recognizer its languages, accuracy and streaming; a cloud provider
+  what it costs, whether it has a free tier, the key it needs and what leaves
+  this PC (`JobOptions` in `Martlet.Desktop` builds the job pages' lists).
+
+  The job pages' lists: Thinking › This PC's *Model app* (Ollama, each model
+  app found on this PC, an app typed by its address) and Ollama's models (the
+  suggestions, the models Ollama already has and *Another Ollama model*, whose
+  details hold the name box); *A cloud provider* (NVIDIA Build, OpenAI,
+  OpenRouter, Google Gemini, a custom server; the shown one's details hold its
+  model, key and consent); *If Thinking fails* (*Off* first, then every
+  provider and Ollama on this PC); Voice's engines and *Cloud voice* (OpenAI's
+  voices, ElevenLabs); Listening › This PC's speech recognizers (three Parakeet
+  models inside Martlet, Whisper on the graphics card or the processor); and
+  Lip-sync › This PC's ways (Audio2Face, voice loudness, your own Audio2Face
+  service). **Where it runs** stays three radio cards, each with one line on
+  what it uses, its cost and where your data goes.
 
   Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: Voices (the F5 voice
@@ -575,12 +602,12 @@ window ends it unless Martlet is listening or watching, which only hides it.
     confirmation when Ollama doesn't have it and then loading it, and switches
     Thinking only once it is loaded, so the current Thinking answers until then
     and the first reply doesn't wait; a model that can't download or load leaves
-    Thinking unchanged). Voice offers a one-click choice: **F5 voice, with Docker** (*Set up F5 with
-    Docker* sets up and pairs Martlet's host service on this PC, so this PC
-    also becomes one of your hosts, installs F5 and switches over with the first
-    of Martlet's starter voices, Jenny (Dioco), a professional voice-over artist). Windows voices were removed. Listening offers the same kind
-    of two choices for whisper in Martlet's host service: **On the graphics
-    card** or **On the processor**. Martlet reads the card live (nvidia-smi:
+    Thinking unchanged). Voice lists every voice engine in one option picker;
+    the chosen engine's button sets up Martlet's host service on this PC when
+    needed (so this PC also becomes one of your hosts), installs the engine and
+    switches over. Listening lists Parakeet inside Martlet (no Docker) and
+    Whisper in Martlet's host service **on the graphics card** or **on the
+    processor** in one option picker. Martlet reads the card live (nvidia-smi:
     memory in use, driver 580+ for whisper's CUDA build) and adds what it
     already runs there (Ollama's model, F5, Audio2Face), then recommends the
     card (large-v3-turbo, or small when memory is tight) unless it is too busy
@@ -590,7 +617,8 @@ window ends it unless Martlet is listening or watching, which only hides it.
     engine asks nothing.
   - *Another of your computers*: every paired host with what it runs and *Use
     it*, plus *Add a computer*, *Check hosts* and the Devices map.
-  - *A cloud provider*: provider, model (and voice), API key and an explicit
+  - *A cloud provider*: the providers as an option picker; the shown
+    provider's details hold its model (and voice), API key and an explicit
     choice checkbox. Saving stores the route, then the key in Windows Credential
     Manager, then the confirmed choice.
 
@@ -602,20 +630,19 @@ window ends it unless Martlet is listening or watching, which only hides it.
   computer can run Audio2Face. Each card's button commits the choice, which
   switches right away, even while the character talks:
 
-  - *This PC*: two ways, the one in use first, like the voice. **Audio2Face,
-    with Docker** (*Set up Audio2Face with Docker* sets up and pairs Martlet's
+  - *This PC*: three ways in one option picker. **Audio2Face on this PC**
+    (*Set up Audio2Face with Docker* sets up and pairs Martlet's
     host service on this PC, then hands lip-sync to it, installing Audio2Face
     with its open-source engine, no key; once the host service exists, *Use Audio2Face on this
     PC* and *Check it*; recommended with an NVIDIA graphics card of 4 GB or
-    more) or **Voice loudness, no setup** (*Use voice loudness* turns
-    Audio2Face off; recommended otherwise). Below them, an advanced **Your own
-    Audio2Face service** line covers an Audio2Face service you run yourself at
-    the character's loopback endpoint (*Use my own service*). That is
-    Martlet's default: it only looks for a service there before each sentence,
-    so voice loudness is marked *in use* and the line says *not running* when
-    nothing answers; only when one answers (or Audio2Face-only is activated)
-    does it become a full option marked *in use*. It never implies Audio2Face
-    is installed.
+    more), **Voice loudness** (advanced lip-sync off: *Use voice loudness*
+    turns Audio2Face off; recommended otherwise) and the advanced **Your own
+    Audio2Face service**, a service you run yourself at the character's
+    loopback endpoint (*Use my own service*). That is Martlet's default: it
+    only looks for a service there before each sentence, so voice loudness is
+    marked *in use* and your own service *not running* when nothing answers;
+    only when one answers (or Audio2Face-only is activated) is it marked
+    *in use*. It never implies Audio2Face is installed.
   - *Another of your computers*: the same host list as the job tabs, with *Use
     it*, *Add a computer*, *Check hosts* and the Devices map.
 
