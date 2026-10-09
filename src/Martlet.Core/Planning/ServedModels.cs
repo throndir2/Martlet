@@ -75,9 +75,13 @@ public static partial class ServedModels
 
     /// <summary>1 to 5 from the parameter count (from the name, else from the download size at about 4-bit weights): bigger
     /// models think better.</summary>
-    private static int Tier(ServedModel served)
+    private static int Tier(ServedModel served) => Tier(served.ModelId, served.SizeGb);
+
+    /// <summary>1 to 5 for <paramref name="model"/> from the parameter count in its name, else from
+    /// <paramref name="sizeGb"/> (its download size at about 4-bit weights).</summary>
+    public static int Tier(string model, double? sizeGb = null)
     {
-        var billions = Billions(served.ModelId) ?? (served.SizeGb is { } size && size > 0 ? size / 0.6 : null);
+        var billions = Billions(model) ?? (sizeGb is { } size && size > 0 ? size / 0.6 : null);
         return billions switch
         {
             null or < 4 => 1,

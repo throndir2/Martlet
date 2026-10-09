@@ -47,6 +47,12 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     /// <summary>The chat models the model apps on this PC serve: "qwen3:32b in LM Studio (about 21 GB)".</summary>
     public IReadOnlyList<string> Served { get; init; } = [];
 
+    /// <summary>Prefer models your hosts already have is on: the recommendation plans Thinking with <see cref="HostModels"/>.</summary>
+    public bool PreferHostModels { get; init; }
+
+    /// <summary>The chat models your hosts run or keep downloaded for Thinking: "qwen2.5:14b on gpu-box".</summary>
+    public IReadOnlyList<string> HostModels { get; init; } = [];
+
     /// <summary>The review of <paramref name="recommendation"/> for the computers in <paramref name="build"/>. Pure.</summary>
     internal static RecommendedSetupReview From(NetworkRecommendation recommendation, SetupRequestBuild build, FootprintCatalog? catalog = null)
     {
@@ -135,9 +141,20 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         {
             Parts = [.. recommendation.Components.Select(c => new ReviewPart(c.Component, c.Rank, c.Name, c.CanBeOff ? "Optional" : "Needed",
                 c.On, c.Where, c.Why, c.OffInReview, c.OwnerOff))],
-            Served = ServedLines(request.ServedModels)
+            Served = ServedLines(request.ServedModels),
+            PreferHostModels = request.PreferHostModels,
+            HostModels = HostModelLines(request.Machines, Name)
         };
     }
+
+    /// <summary>One line per Thinking chat model (the ollama role) a host service runs or keeps downloaded, on a computer that
+    /// answers: "qwen2.5:14b on gpu-box". An Ollama tag's ':' and a route's '-' are the same model.</summary>
+    internal static IReadOnlyList<string> HostModelLines(IEnumerable<NetworkMachine> machines, Func<string?, string> name) =>
+        [.. machines.Where(m => m.Online && m.HasHostService)
+            .SelectMany(m => m.Roles.Concat(m.Downloaded)
+                .Where(r => r.Kind == "ollama" && r.Model is { Length: > 0 } model && ServedModels.Chats(model))
+                .DistinctBy(r => r.Model!.Replace(':', '-'), StringComparer.OrdinalIgnoreCase)
+                .Select(r => $"{r.Model} on {name(m.Specs.Id)}"))];
 
     /// <summary>One line per chat model the owner's model apps serve, biggest first: "qwen3:32b in LM Studio (about 21 GB)".</summary>
     internal static IReadOnlyList<string> ServedLines(IEnumerable<ServedModel> served) =>

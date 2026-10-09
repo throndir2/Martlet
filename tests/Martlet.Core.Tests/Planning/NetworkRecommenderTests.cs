@@ -1202,4 +1202,72 @@ public sealed class NetworkRecommenderTests
         var room = NetworkRecommender.Recommend(Network(Companion("c1"), full with { Downloaded = [Role("ollama", model)] }) with { Wanted = [PlanComponent.Thinking] });
         Assert.Contains(RolesOf(room, "h1"), r => r.Kind == "ollama" && r.Model == model);
     }
+
+    private static NetworkSetupRequest ThinksOnH1(string model, params HostedRolePlacement[] kept) =>
+        Network(Companion("c1"), Host("h1", Nvidia(24)) with { Roles = [Role("ollama", model)], Downloaded = kept }) with
+        {
+            Wanted = [PlanComponent.Thinking],
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, "h1", OptionId: model)]
+        };
+
+    [Fact]
+    public void PreferHostModelsThinksWithABetterModelTheHostKeeps()
+    {
+        var request = ThinksOnH1("gemma4:e4b", Role("ollama", "qwen2.5:14b"));
+        var off = NetworkRecommender.Recommend(request);
+        Assert.Contains(RolesOf(off, "h1"), r => r.Kind == "ollama" && r.Model == "gemma4:e4b");
+
+        var on = NetworkRecommender.Recommend(request with { PreferHostModels = true });
+        Assert.Equal("h1", on.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.Contains(RolesOf(on, "h1"), r => r.Kind == "ollama" && r.Model == "qwen2.5:14b");
+        var change = on.Changes.Single(c => c.MachineId == "h1" && c.RoleKind == "ollama" && c.Model == "qwen2.5:14b");
+        Assert.Null(change.DownloadGb);
+        Assert.Contains("already has qwen2.5:14b", change.Why, StringComparison.Ordinal);
+        Assert.Contains("first word may come later", change.Why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PreferHostModelsKeepsTodaysModelOverASmallerOrNonChatOrDeepThinkingModel()
+    {
+        var request = ThinksOnH1("gemma4:12b", Role("ollama", "gemma4:e2b"), Role("ollama", "nomic-embed-text"),
+            Role("deep-thinking", "qwen2.5:14b")) with { PreferHostModels = true };
+        var recommendation = NetworkRecommender.Recommend(request);
+        Assert.Equal("h1", recommendation.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.Contains(RolesOf(recommendation, "h1"), r => r.Kind == "ollama" && r.Model == "gemma4:12b");
+        Assert.DoesNotContain(recommendation.Changes, c => c.RoleKind == "ollama");
+    }
+
+    [Fact]
+    public void PreferHostModelsMovesThinkingToTheHostThatHasABetterModel()
+    {
+        var request = Network(Companion("c1"), Host("h1", Nvidia(24)) with { Roles = [Role("ollama", "gemma4:e4b")] },
+            Host("h2", Nvidia(24)) with { Downloaded = [Role("ollama", "qwen2.5:14b")] }) with
+        {
+            Wanted = [PlanComponent.Thinking],
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, "h1", OptionId: "gemma4:e4b")],
+            PreferHostModels = true
+        };
+        var recommendation = NetworkRecommender.Recommend(request);
+        Assert.Equal("h2", recommendation.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.Contains(RolesOf(recommendation, "h2"), r => r.Kind == "ollama" && r.Model == "qwen2.5:14b");
+        Assert.Null(recommendation.Changes.Single(c => c.MachineId == "h2" && c.RoleKind == "ollama").DownloadGb);
+    }
+
+    [Fact]
+    public void PreferHostModelsSetsUpThinkingWithAKeptModelInsteadOfADownload()
+    {
+        var request = Network(Companion("c1"), Host("h1", Nvidia(24)) with { Downloaded = [Role("ollama", "llama3.1:8b")] }) with
+        {
+            Wanted = [PlanComponent.Thinking]
+        };
+        var off = NetworkRecommender.Recommend(request);
+        Assert.DoesNotContain(RolesOf(off, "h1"), r => r.Kind == "ollama" && r.Model == "llama3.1:8b");
+
+        var on = NetworkRecommender.Recommend(request with { PreferHostModels = true });
+        Assert.Equal("h1", on.Target.Job(ClusterJobs.Thinking)!.HostId);
+        var add = on.Changes.Single(c => c.MachineId == "h1" && c.RoleKind == "ollama");
+        Assert.Equal("llama3.1:8b", add.Model);
+        Assert.Null(add.DownloadGb);
+        Assert.Equal(SetupChangeBenefit.Required, add.Benefit);
+    }
 }

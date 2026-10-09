@@ -46,6 +46,20 @@ public partial class MainWindow
         Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync().Forget());
     }
 
+    /// <summary>The review's Prefer models your hosts already have: saved on this PC, then the review opens again, planned with
+    /// (or without) the models your hosts keep.</summary>
+    private void PreferHostModelsChanged(bool prefer)
+    {
+        var directory = store?.DataDirectory;
+        if (!RecommendedSetupMemory.Load(directory).WithHostModels(prefer).Save(directory))
+        {
+            ActionText.Text = "Martlet couldn't save that choice on this PC.";
+            return;
+        }
+        ErrorLog.Info($"Recommended setup: Prefer models your hosts already have is {(prefer ? "on" : "off")} on this PC.");
+        Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync().Forget());
+    }
+
     /// <summary>Thinking with a model the owner's own model app serves on this PC, the way Companion › Thinking › This PC uses
     /// it. Ollama's own address goes through Ollama's choice.</summary>
     private async Task<bool> UseServedThinkingAsync(ServedModel served)

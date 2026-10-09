@@ -3947,6 +3947,12 @@ RTX 5090 (32 GB) that thinks with Gemma 4 E2B in Martlet's Ollama. LM Studio on
 it serves `qwen3-32b` (19.8 GB) and an embedding model, and Ollama serves
 `llama3.3:70b` (42.5 GB). Its recommended setup thinks with
 `served:qwen3-32b` in LM Studio; the 70B model doesn't fit beside the voice.
+Give `fixture: "hostmodels"` to plan the built-in host-models network (**NOT
+real computers or models**): this PC, a companion PC with no graphics card, and
+`gpu-box`, a Linux host with an RTX 4090 (24 GB) that thinks with Gemma 4 E4B
+and keeps `qwen2.5:14b` downloaded. *Prefer models your hosts already have* is
+on, so its recommended setup thinks with `qwen2.5:14b` on `gpu-box` and
+downloads nothing.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.
@@ -3967,6 +3973,12 @@ It asks nothing when the directory's `recommended-setup.json` has
   (the app's own size; only Ollama says it), `estimatedGb` (the graphics
   memory the planner counts) and `option` (`served:<model>`, the job option
   the recommendation uses)) and `note`.
+- `hostModels`: `prefer` (*Prefer models your hosts already have* is on: the
+  fixture's, or `PreferHostModels` in the directory's
+  `recommended-setup.json`; off by default), `found` (each Thinking chat model
+  a host that answers runs or keeps downloaded: `model`, `computer`, `running`
+  (false: kept downloaded) and `tier` (the quality tier the planner ranks by))
+  and `note`.
 - `today`: each job's `host`, `off`, `option` and `pool` (the other computers
   that take its requests when the one in charge is busy, in Sharing work
   order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference`,
@@ -4056,7 +4068,11 @@ way; Vision, Reading, Hearing and Smart home have none, because their
 Companion page turns them off) and `RecommendedSetupUseServedModels`
 (`ui_toggle`, *Use models your apps already run*, on by default: it saves
 `UseServedModels` in `recommended-setup.json` and the review opens again
-planned that way) need `--allow-ui-effects`. Reconfigure
+planned that way) and `RecommendedSetupPreferHostModels` (`ui_toggle`, *Prefer
+models your hosts already have*, off by default: it saves `PreferHostModels`
+in `recommended-setup.json` and the review opens again planned that way) need
+`--allow-ui-effects`. `RecommendedSetupHostModels` reads the models your hosts
+keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox

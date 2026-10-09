@@ -105,6 +105,10 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// The owner runs them, so the recommender prefers them for Thinking where they fit (<see cref="ServedModels"/>). Empty
     /// when the owner turned "Use models your apps already run" off.</summary>
     public IReadOnlyList<ServedModel> ServedModels { get; init; } = [];
+    /// <summary>"Prefer models your hosts already have": Thinking (and a new Deep thinking role) uses a better model a host
+    /// service already runs or keeps downloaded (<see cref="NetworkMachine.Roles"/>, <see cref="NetworkMachine.Downloaded"/>)
+    /// before a model it must download, also when its first word comes later. Off by default.</summary>
+    public bool PreferHostModels { get; init; }
 }
 
 /// <summary>A chat model that a model app on a computer already serves: <paramref name="AppName"/> ("LM Studio") at

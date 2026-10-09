@@ -72,8 +72,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // what it already knows and, when Use models your apps already run is on, the models the model apps on this PC serve,
         // asked at 127.0.0.1 only; nothing changes), and on a PC alone it opens Set it all up for me's question.
         // The review's Close only closes it. Reconfigure (RecommendedSetupApply) changes every computer, Not now
-        // (RecommendedSetupCancel) and Use models your apps already run (RecommendedSetupUseServedModels, and ConfirmationOption in
-        // Set it all up for me's question) save recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
+        // (RecommendedSetupCancel), Use models your apps already run (RecommendedSetupUseServedModels, and ConfirmationOption in
+        // Set it all up for me's question) and Prefer models your hosts already have (RecommendedSetupPreferHostModels) save
+        // recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
         "HomeRecommendedSetup", "RecommendedSetupClose",
         // The free API key prompt (FreeKeyPrompt): Add your key (the review's RecommendedSetupFreeKeyAdd, Companion › Thinking's
         // FreeKeyAdd-Thinking, Home's HealthOpen-recommended-setup-free-key) only opens Companion › Thinking at A cloud provider
@@ -991,8 +992,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // top ("RecommendedSetupBanner", "RecommendedSetupBannerTitle", "RecommendedSetupBannerText": Martlet can't reply, or the
         // free API key tip), the line on computers that haven't answered ("RecommendedSetupOffline") and the free key buttons'
         // labels ("RecommendedSetupFreeKeyAdd", "RecommendedSetupFreeKeyGet"), Use models your apps already run (whether
-        // "RecommendedSetupUseServedModels" is ticked) and the models found ("RecommendedSetupServedModels": model names and apps)
-        // read through the same prefix.
+        // "RecommendedSetupUseServedModels" is ticked) and the models found ("RecommendedSetupServedModels": model names and apps),
+        // and Prefer models your hosts already have (whether "RecommendedSetupPreferHostModels" is ticked) and the models your
+        // hosts keep ("RecommendedSetupHostModels": model names and computer names) read through the same prefix.
         "RecommendedSetup"];
     private int? processId;
 

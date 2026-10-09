@@ -23,6 +23,7 @@ internal static class RecommendedSetupStatus
     internal const string FixtureName = "network";
     internal const string OfflineFixtureName = "offline";
     internal const string ServedFixtureName = "served";
+    internal const string HostModelsFixtureName = "hostmodels";
 
     /// <summary><paramref name="lookOnThisPc"/>: with a data directory whose Use models your apps already run is on, Martlet
     /// asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.</summary>
@@ -52,13 +53,21 @@ internal static class RecommendedSetupStatus
                 source = "fixture served (NOT real computers or apps): this PC alone (a companion PC with an RTX 5090, 32 GB) that thinks with " +
                     "Gemma 4 E2B in Martlet's Ollama; LM Studio on it serves qwen3-32b and an embedding model, and Ollama serves llama3.3:70b";
             }
-            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\" or \"{ServedFixtureName}\".");
+            else if (fixture == HostModelsFixtureName)
+            {
+                sources = RecommendedSetupInputs.HostModelsFixture(DateTimeOffset.UtcNow);
+                source = "fixture hostmodels (NOT real computers or models): this PC (a companion PC without a graphics card) and gpu-box " +
+                    "(a Linux host with an RTX 4090, 24 GB) that thinks with Gemma 4 E4B and keeps qwen2.5:14b downloaded; Prefer models " +
+                    "your hosts already have is on";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\" or \"{HostModelsFixtureName}\".");
         }
         else
         {
             ArgumentNullException.ThrowIfNull(dataDirectory);
             sources = await FromDataDirectoryAsync(dataDirectory, cancellation);
             source = "data directory";
+            sources = sources with { PreferHostModels = RecommendedSetupMemory.Load(dataDirectory).PreferHostModels };
             if (lookOnThisPc && RecommendedSetupMemory.Load(dataDirectory).UseServedModels)
             {
                 sources = sources with
@@ -101,6 +110,18 @@ internal static class RecommendedSetupStatus
                     : looked ? "Martlet asked the model apps on this PC (127.0.0.1 only)."
                     : !memory.UseServedModels ? "Use models your apps already run is off in this data directory."
                     : "Not looked: a data directory contacts nothing. Pass lookOnThisPc to ask the model apps on this PC."
+            },
+            hostModels = new
+            {
+                prefer = build.Request.PreferHostModels,
+                found = build.Request.Machines.Where(m => m.Online && m.HasHostService)
+                    .SelectMany(m => m.Roles.Select(r => (Role: r, Running: true)).Concat(m.Downloaded.Select(r => (Role: r, Running: false)))
+                        .Where(r => r.Role.Kind == "ollama" && r.Role.Model is { Length: > 0 } model && ServedModels.Chats(model))
+                        .DistinctBy(r => r.Role.Model!.Replace(':', '-'), StringComparer.OrdinalIgnoreCase)
+                        .Select(r => new { model = r.Role.Model, computer = Name(m.Specs.Id), running = r.Running, tier = ServedModels.Tier(r.Role.Model!) })),
+                note = build.Request.PreferHostModels
+                    ? "Thinking uses the best chat model a host runs or keeps downloaded, before one it must download."
+                    : "Prefer models your hosts already have is off."
             },
             today = new
             {

@@ -60,6 +60,15 @@
                 <TextBlock x:Name="ServedText" TextWrapping="Wrap" Margin="24,0,0,16" Foreground="{DynamicResource MutedBrush}"
                            AutomationProperties.AutomationId="RecommendedSetupServedModels"/>
 
+                <!-- Prefer models your hosts already have (RecommendedSetupMemory.PreferHostModels): Thinking uses a better model
+                     a host service already runs or keeps downloaded, before one it must download. Changing it plans again. -->
+                <CheckBox x:Name="PreferHostModelsBox" Content="Prefer models your hosts already have" Margin="0,0,0,4"
+                          AutomationProperties.AutomationId="RecommendedSetupPreferHostModels"
+                          ToolTip="Thinking uses the best model your hosts already run or keep downloaded, so nothing downloads. Its first word may come later than with a smaller model."
+                          Checked="PreferHostModels_Changed" Unchecked="PreferHostModels_Changed"/>
+                <TextBlock x:Name="HostModelsText" TextWrapping="Wrap" Margin="24,0,0,16" Foreground="{DynamicResource MutedBrush}"
+                           AutomationProperties.AutomationId="RecommendedSetupHostModels"/>
+
                 <!-- Every part of Martlet in priority order (ComponentRanking): where it runs, or Off. Optional parts that run as
                      host roles have an explicit Off choice; the review then plans again without them. Vision, Reading, Hearing
                      and Smart home are this PC's choice on their Companion pages (ComponentRanking.SetOnPage). -->
