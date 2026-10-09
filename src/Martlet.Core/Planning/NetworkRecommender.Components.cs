@@ -60,7 +60,7 @@ public static partial class NetworkRecommender
             var natives = nodes.Where(n => n.Presence == Presence.Here)
                 .SelectMany(n => n.Roles.Where(r => r.Native && MatchesJob(job, r.Kind)).Select(r => (Node: n, Role: r))).ToList();
             var where = natives.Count == 1 ? CardText(natives[0].Node, natives[0].Role.Card) : OwnPcs();
-            return (true, $"{Plain(chosen)} in Ollama on {where}", plan.Why);
+            return (true, $"{Plain(chosen)} in {chosen.ServedBy ?? "Ollama"} on {where}", plan.Why);
         }
 
         private (bool On, string Where, string Why) LipSyncStatus(NetworkSetup target)

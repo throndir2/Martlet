@@ -74,6 +74,12 @@ public sealed class LocalModelServersTests
         Assert.Equal(["ai/smollm2"], LocalModelServers.ParseModels("""{"object":"list","data":[{"id":"ai/smollm2"}]}""", ollamaTags: false));
         Assert.Null(LocalModelServers.ParseModels("<html>not a model server</html>", ollamaTags: false));
         Assert.Null(LocalModelServers.ParseModels("""{"error":"nope"}""", ollamaTags: true));
+
+        // Ollama says each model's download size in bytes; an OpenAI-style list doesn't.
+        var sizes = LocalModelServers.ParseSizes("""{"models":[{"name":"llama3.3:70b","size":42520413916},{"name":"gemma4:e2b"}]}""", ollamaTags: true);
+        Assert.Equal(42.52, Assert.Single(sizes, s => s.Key == "llama3.3:70b").Value);
+        Assert.False(sizes.ContainsKey("gemma4:e2b"));
+        Assert.Empty(LocalModelServers.ParseSizes("""{"data":[{"id":"qwen3-32b","size":1000}]}""", ollamaTags: false));
     }
 
     [Fact]
@@ -86,7 +92,7 @@ public sealed class LocalModelServersTests
             Assert.True(IPAddress.IsLoopback(IPAddress.Parse(request.RequestUri!.Host)));
             return request.RequestUri!.AbsoluteUri switch
             {
-                "http://127.0.0.1:11434/api/tags" => Json("""{"models":[{"name":"gemma4:e4b"}]}"""),
+                "http://127.0.0.1:11434/api/tags" => Json("""{"models":[{"name":"gemma4:e4b","size":9608350718}]}"""),
                 "http://127.0.0.1:1234/v1/models" => Json("""{"data":[{"id":"qwen/qwen3-8b","owned_by":"organization_owner"},{"id":"bad name@q4"}]}"""),
                 "http://127.0.0.1:8080/v1/models" => Json("""{"object":"list","data":[{"id":"gemma-3-4b-it-q4_k_m.gguf","owned_by":"llamacpp"}]}"""),
                 // vLLM started with --api-key.
@@ -103,6 +109,8 @@ public sealed class LocalModelServersTests
         Assert.Equal(["ollama", "lm-studio", "llama-cpp", "port-8000"], servers.Select(s => s.Id));
         Assert.Equal("http://127.0.0.1:11434/v1", servers[0].ChatCompletionsBaseUrl);
         Assert.Equal(["gemma4:e4b"], servers[0].Models);
+        Assert.Equal(9.61, servers[0].SizesGb["gemma4:e4b"]);
+        Assert.Empty(servers[1].SizesGb);
         Assert.Equal(["qwen/qwen3-8b"], servers[1].Models);
         Assert.Equal(["bad name@q4"], servers[1].Unusable);
         Assert.Equal("llama.cpp server", servers[2].Name);

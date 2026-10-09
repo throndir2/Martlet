@@ -369,7 +369,8 @@ public partial class MainWindow
             return Task.FromResult(SetupRoutes.Read(job, optionId, new(window.Role == DeviceRole.Host,
                 window.homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role),
                 Prerequisites.IsMissing(Prerequisites.Ollama), parakeet is null ? null : parakeet.Installed,
-                LocalChatModels.FirstOrDefault(m => m.Id == FootprintCatalog.Default.Find(optionId)?.ModelId)?.Size)));
+                LocalChatModels.FirstOrDefault(m => m.Id == FootprintCatalog.Default.Find(optionId)?.ModelId)?.Size,
+                window.ServedApp(ServedModels.ModelOf(optionId)))));
         }
 
         public async Task<SetupStepResult> UseRouteAsync(string job, string optionId, CancellationToken cancel)
@@ -379,6 +380,10 @@ public partial class MainWindow
             // Already used here: only the shared plan changes (no host does it).
             if (reading.InUse) return await AssignJobAsync(job, null, false, cancel) is { State: SetupMachineState.Done } ? SetupStepResult.Done(reading.Text)
                 : SetupStepResult.Attention(reading.Text + " Who does it on your other computers didn't change: Keep in sync is off.");
+            // A model the owner's own model app serves: Thinking switches to that app's address on this PC.
+            if (job == ClusterJobs.Thinking && window.ServedApp(ServedModels.ModelOf(optionId)) is { } served)
+                return await window.UseServedThinkingAsync(served) ? SetupStepResult.Done(reading.Text)
+                    : SetupStepResult.Failed($"Thinking didn't change on this PC: {window.ActionText.Text}");
             var option = FootprintCatalog.Default.Find(optionId)!;
             // A voice engine runs in the host service, never in the app, so Speaking is never a route this PC makes itself.
             if (job is not (ClusterJobs.Thinking or ClusterJobs.Listening))
@@ -610,9 +615,10 @@ internal static class SetupRoleReading
 
 /// <summary>What this PC knows when it reads how it would do a job no host does next (<see cref="SetupRoutes.Read"/>): whether
 /// it is a host PC (it uses no jobs), its route for the job now, whether Ollama is missing, which Parakeet models it has (null:
-/// Parakeet can't run here) and the download size of the Ollama model named, when known.</summary>
+/// Parakeet can't run here), the download size of the Ollama model named, when known, and for a model one of the owner's model
+/// apps serves, the app found running it (<paramref name="Served"/>; null when Martlet didn't find it this time).</summary>
 internal sealed record SetupRouteFacts(bool HostPc, SetupRoute? Route, bool OllamaMissing, Func<string, bool>? ParakeetInstalled,
-    string? OllamaModelSize = null);
+    string? OllamaModelSize = null, ServedModel? Served = null);
 
 /// <summary>How this PC does a job that no host does next, for the recommended setup: the Companion page's own choices it
 /// makes itself (a model in this PC's Ollama, Parakeet) and, for everything else (a hosted provider that
@@ -647,6 +653,14 @@ internal static class SetupRoutes
         const string Others = " Your other companion PCs follow it through the shared settings once they can (their Companion page says what they need).";
         switch (job, option)
         {
+            case (ClusterJobs.Thinking, { ModelId: { } served }) when ServedModels.IsServed(option):
+                if (route is { RouteType: SetupRouteType.ChatCompletions } && route.ModelId == served &&
+                    (facts.Served is null || route.Origin == facts.Served.BaseUrl))
+                    return new(SetupStepVerdict.Ready, $"Thinking already uses {served} on this PC.") { InUse = true };
+                if (facts.Served is not { BaseUrl.Length: > 0 } app)
+                    return new(SetupStepVerdict.NeedsOwner, $"Martlet didn't find the app that runs {served} on this PC this time. " +
+                        $"Start it, then choose it in {tab} › This PC.");
+                return new(SetupStepVerdict.Ready, $"Thinking uses {served} in {app.AppName} on this PC. It already runs there, so nothing downloads.{Others}");
             case (ClusterJobs.Thinking, { IsLocal: true, HostRoleKind: HostRoles.Ollama, ModelId: { } model }):
                 if (route is { RouteType: SetupRouteType.ChatCompletions, Origin: MainWindow.LocalOllamaBaseUrl } && route.ModelId == model)
                     return new(SetupStepVerdict.Ready, $"Thinking already uses {model} in Ollama on this PC.") { InUse = true };

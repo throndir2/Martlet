@@ -15,7 +15,8 @@ internal sealed record DeclinedSetup(string Fingerprint, DateTimeOffset At);
 /// <summary>The recommended setups declined on this PC (recommended-setup.json in the data folder; never shared): an automatic
 /// check doesn't ask about the same recommended setup again until something changes it. The newest <see cref="Kept"/> are kept.
 /// <see cref="Off"/> holds the parts the owner turned off in the review (<see cref="ComponentRanking.CanBeOff"/>), by name;
-/// the recommendation removes them and plans without them.</summary>
+/// the recommendation removes them and plans without them. <see cref="UseServedModels"/>: the review's Use models your apps
+/// already run.</summary>
 internal sealed record RecommendedSetupMemory
 {
     internal const string FileName = "recommended-setup.json";
@@ -25,6 +26,12 @@ internal sealed record RecommendedSetupMemory
     public IReadOnlyList<DeclinedSetup> Declined { get; init; } = [];
 
     public IReadOnlyList<string> Off { get; init; } = [];
+
+    /// <summary>Use models your apps already run: the recommendation looks for the chat models the model apps on this PC serve
+    /// (Ollama, LM Studio, llama.cpp, vLLM...) and plans Thinking with the best one that fits. On unless the owner turns it off.</summary>
+    public bool UseServedModels { get; init; } = true;
+
+    internal RecommendedSetupMemory WithServed(bool use) => this with { UseServedModels = use };
 
     /// <summary>The parts turned off, as the planner takes them.</summary>
     internal IReadOnlyCollection<PlanComponent> OffParts =>

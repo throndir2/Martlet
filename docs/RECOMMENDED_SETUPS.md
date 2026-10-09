@@ -491,6 +491,66 @@ The planner uses these rules, in this order of importance:
     processor option, or because you ticked **Off** in the review. Their roles
     go and the review says why each part is off.
 
+### Models your apps already run
+
+If you already run a chat model in a model app on this PC, Martlet assumes
+that you want to use it. A model app is a program that serves models, such as
+Ollama, LM Studio, the llama.cpp server or vLLM. **Use models your apps already
+run** is on by default. It is a checkbox in the review window and in *Set it
+all up for me*'s question. Martlet saves your choice on this PC
+(`recommended-setup.json`).
+
+- **What Martlet asks.** It asks the same model apps that Companion › Thinking
+  finds, on 127.0.0.1 only, for their model lists. It skips an app that wants
+  an API key. It skips models that Thinking can't use: embedding, speech and
+  picture models.
+- **How big a model is.** Ollama says each model's download size. For other
+  apps, Martlet estimates the size from the model's name (for example *32b*).
+  The planner adds the same context and headroom as for its own models
+  ([Resource footprints](RESOURCE_FOOTPRINTS.md)).
+- **When Martlet uses one.** Each served chat model becomes a Thinking choice
+  (`served:<model>`). On a PC alone, and on a companion PC that plans Thinking
+  for itself, Martlet picks the best served model that fits the graphics card
+  beside the voice: the biggest in the best quality tier. It never pushes the
+  voice off the card. If none fits, Martlet says so and uses its own model.
+- **What changes.** Thinking uses the model in its app, through the app's
+  Chat Completions address. Nothing downloads. The review and the question say
+  which app runs it.
+- **Latency.** A bigger model can make the first word come later. The review
+  says so. Turn the checkbox off to keep Martlet's fastest model.
+- **On a network.** When a host does Thinking for all your companion PCs, a
+  served model on one PC only adds a note.
+
+### Keeping model choices current
+
+Today the model choices are a bundled list that ships with each release. The
+next step ([#663](https://github.com/throndir2/Martlet/issues/663)) is a model
+catalog that updates itself, so the suggestions stay good without a
+maintainer and scale with the hardware:
+
+1. **A bundled snapshot.** Each release ships a catalog: model, open weights,
+   parameters (total and active), what it can take in (text, pictures, audio),
+   tool calls, reasoning, context length and release date.
+2. **An optional background refresh.** Martlet downloads public model lists
+   that need no key, off the reply path, and keeps the last good catalog in the
+   data directory. It never adds latency to a conversation.
+3. **Public sources.**
+   - OpenRouter (`https://openrouter.ai/api/v1/models`): modalities, context
+     length, supported parameters (tools, reasoning), the Hugging Face ID and
+     the date it was added.
+   - models.dev (`https://models.dev/api.json`): reasoning, tool calls,
+     modalities, open weights and release date.
+   - Hugging Face (`/api/models/{repo}?expand[]=safetensors`): the parameter
+     count, and the GGUF files for each quantization's size.
+   - NVIDIA Build (`https://integrate.api.nvidia.com/v1/models`): which hosted
+     models exist (IDs only).
+4. **Ranking.** Open-weight models are ranked by: fits the card with headroom,
+   hears audio (for live Thinking), tool calls, newer release, then active
+   parameters (speed). Models that your apps already run come first.
+5. **Live Thinking stays fast.** The model you talk to stays the fastest model
+   that hears your voice ([rule 7](#the-rules)). Bigger models go to Deep
+   thinking and to hosts with free cards.
+
 **Qualification:** `NetworkRecommenderTests` and the MCP tool
 `network_recommendation_check` run the planner on fixture networks
 ([MCP](MCP.md)). They do not use real computers.

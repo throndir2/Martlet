@@ -51,6 +51,15 @@
                 <TextBlock x:Name="OfflineText" TextWrapping="Wrap" Margin="0,-8,0,16" Visibility="Collapsed"
                            Foreground="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="RecommendedSetupOffline"/>
 
+                <!-- Use models your apps already run (RecommendedSetupMemory.UseServedModels): Martlet looks for the chat models
+                     the model apps on this PC serve and plans Thinking with the best one that fits. Changing it plans again. -->
+                <CheckBox x:Name="UseServedBox" Content="Use models your apps already run" Margin="0,0,0,4"
+                          AutomationProperties.AutomationId="RecommendedSetupUseServedModels"
+                          ToolTip="Martlet looks for the chat models that Ollama, LM Studio, llama.cpp, vLLM and other model apps on this PC run, and thinks with the best one that fits."
+                          Checked="UseServed_Changed" Unchecked="UseServed_Changed"/>
+                <TextBlock x:Name="ServedText" TextWrapping="Wrap" Margin="24,0,0,16" Foreground="{DynamicResource MutedBrush}"
+                           AutomationProperties.AutomationId="RecommendedSetupServedModels"/>
+
                 <!-- Every part of Martlet in priority order (ComponentRanking): where it runs, or Off. Optional parts have an
                      explicit Off choice; the review then plans again without them. -->
                 <StackPanel x:Name="PartsSection" Visibility="Collapsed">

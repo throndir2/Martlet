@@ -3879,13 +3879,30 @@ with no graphics card, 4 GB memory and 4 threads, and two hosts, `MIKU` and
 `IMOUTO`, that haven't answered for 155 minutes (MIKU ran Thinking, Speaking
 and Lip-sync, IMOUTO ran Listening), with no API key saved. Its recommended
 setup has nobody doing Thinking, so the desktop's review shows its "Martlet
-can't reply" problem. The result has:
+can't reply" problem. Give `fixture: "served"` to plan the built-in served
+network (**NOT real computers or apps**): this PC alone, a companion PC with an
+RTX 5090 (32 GB) that thinks with Gemma 4 E2B in Martlet's Ollama. LM Studio on
+it serves `qwen3-32b` (19.8 GB) and an embedding model, and Ollama serves
+`llama3.3:70b` (42.5 GB). Its recommended setup thinks with
+`served:qwen3-32b` in LM Studio; the 70B model doesn't fit beside the voice.
+Give `lookOnThisPc: true` with a data directory to ask the model apps on this
+PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
+finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.
+It asks nothing when the directory's `recommended-setup.json` has
+`UseServedModels` off. The result has:
 
 - `source` and `computers`: each computer's `id` (the cluster plan's host ID,
   else the device ID), `name`, `kind` (`Companion` or `Host`), `thisPc`,
   `hasHostService`, `manageable`, `online`, `planned` (false: left as it is),
   `hardware` and `roles` (`kind=model`).
 - `notes`: why a computer is left as it is.
+- `servedModels`: `use` (*Use models your apps already run* is on), `looked`
+  (models were looked for: the fixture's, or `lookOnThisPc`), `found` (each
+  model's `model`, `app`, `address`, `computer`, `chat` (false for an
+  embedding, speech or picture model, which Thinking can't use), `downloadGb`
+  (the app's own size; only Ollama says it), `estimatedGb` (the graphics
+  memory the planner counts) and `option` (`served:<model>`, the job option
+  the recommendation uses)) and `note`.
 - `today`: each job's `host`, `off`, `option` and `pool` (the other computers
   that take its requests when the one in charge is busy, in Sharing work
   order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
@@ -3915,7 +3932,8 @@ can't reply" problem. The result has:
   automatic check (`Ask`, `Wait` or `Nothing`, and why), with `declinedHere`
   (this setup is in the directory's `recommended-setup.json`).
 
-It is read-only, contacts nothing and reads no keys. On the desktop, Home's
+It is read-only and reads no keys. It contacts nothing, except the model apps
+on this PC (127.0.0.1) when `lookOnThisPc` is true. On the desktop, Home's
 `HomeRecommendedSetup` is in `SafeClicks`. In a Martlet network it opens the
 review window (`RecommendedSetupWindow`). On a PC alone, it opens Set it all up
 for me's question (`DefaultSetupQuestion`). In the review, `ui_snapshot` reads
@@ -3933,7 +3951,12 @@ Ollama on This PC's NVIDIA GeForce RTX 4070.* and an optional part that is off
 computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
 words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
-it isn't answering*), `RecommendedSetupChange-<n>` (its name is the
+it isn't answering*), `RecommendedSetupServedModels` (the chat models the model
+apps on this PC serve, biggest first, such as *Found: llama3.3:70b in Ollama
+(about 46 GB), qwen3-32b in LM Studio (about 22 GB).*, *No model app on this
+PC serves a chat model now.* or *Off: Martlet plans only with its own models
+and your keys.*),
+`RecommendedSetupChange-<n>` (its name is the
 benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupComputerKind-<n>`, `RecommendedSetupToday-<n>`,
 `RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
@@ -3960,7 +3983,10 @@ when the review sent the owner there. `RecommendedSetupApply`
 it saves `recommended-setup.json`) and each optional part's Off checkbox
 `RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
 again, in `recommended-setup.json`, and the review opens again planned that
-way) need `--allow-ui-effects`. Reconfigure
+way) and `RecommendedSetupUseServedModels` (`ui_toggle`, *Use models your apps
+already run*, on by default: it saves `UseServedModels` in
+`recommended-setup.json` and the review opens again planned that way) need
+`--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
@@ -4908,7 +4934,16 @@ Home and asks `DefaultSetupQuestion`. `WizardKeyOpen` opens the browser and
 this PC, lip-sync and the downloads; `ConfirmationYes` installs and downloads,
 so it needs `--allow-ui-effects` (as do `HealthFix-thinking-setup-defaults` on
 Home and `HealthFix-listening-setup-defaults` / `HealthFix-voice-setup-defaults`
-for one job). `ConfirmationNo` changes nothing. Companion's side list items (`CompanionTab-<Page>`,
+for one job). `ConfirmationNo` changes nothing. When Thinking would run on this PC and a
+model app on it serves a chat model, the question also has the checkbox
+`ConfirmationOption` (*Use models your apps already run*, readable; ticked by
+default). While it is ticked, `DefaultSetupQuestion` names the served model
+that Thinking uses (*Thinking: qwen3-32b in LM Studio on this PC (about 22 GB
+on the graphics card). You already run it there, so nothing downloads. ...*), or says
+why none fits (*Your apps run qwen3-32b in LM Studio, but none fits the
+graphics card beside the voice, so Martlet uses its own model.*). Changing it
+saves `recommended-setup.json` and asks again, so it needs
+`--allow-ui-effects`. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleNow` (its Now line: *Voice recognition on: 3 voices known, 2 with a name.*,
 *Off: Martlet doesn't check who is talking.*) and `PeopleNowProblem` (the

@@ -70,6 +70,13 @@ public sealed record ComponentOption
     public FootprintEvidence Evidence { get; init; } = FootprintEvidence.Estimate;
     /// <summary>Where the numbers come from (doc link, measurement host).</summary>
     public string Source { get; init; } = "";
+    /// <summary>Thinking with a model the owner's own model app already serves (<see cref="ServedModels"/>): the app's name
+    /// ("LM Studio"), or null for Martlet's own options.</summary>
+    public string? ServedBy { get; init; }
+    /// <summary>The computer whose app serves the model (<see cref="ServedBy"/>), or null when not known.</summary>
+    public string? ServedOn { get; init; }
+    /// <summary>The app's Chat Completions address (<see cref="ServedBy"/>), or null when not known.</summary>
+    public string? ServedAt { get; init; }
 
     public bool IsLocal => Hosting == OptionHosting.Local;
     /// <summary>Graphics memory reserved on a card: peak VRAM plus one context.</summary>

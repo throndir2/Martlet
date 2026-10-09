@@ -90,6 +90,18 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// the face follows the voice's loudness; Deep thinking, singing and pictures). The recommender removes their roles and
     /// plans without them. Unlike <see cref="Wanted"/>, which leaves a part it doesn't plan as it is.</summary>
     public IReadOnlyCollection<PlanComponent> Off { get; init; } = [];
+    /// <summary>Chat models the owner's own model apps (Ollama, LM Studio, llama.cpp, vLLM...) already serve on their computers.
+    /// The owner runs them, so the recommender prefers them for Thinking where they fit (<see cref="ServedModels"/>). Empty
+    /// when the owner turned "Use models your apps already run" off.</summary>
+    public IReadOnlyList<ServedModel> ServedModels { get; init; } = [];
+}
+
+/// <summary>A chat model that a model app on a computer already serves: <paramref name="AppName"/> ("LM Studio") at
+/// <paramref name="BaseUrl"/> (its Chat Completions address) on <paramref name="MachineId"/>. <see cref="SizeGb"/> is the
+/// model's download size when the app reports it (Ollama does), else null (sized from its name).</summary>
+public sealed record ServedModel(string MachineId, string AppId, string AppName, string BaseUrl, string ModelId)
+{
+    public double? SizeGb { get; init; }
 }
 
 /// <summary>AddRole / RemoveRole: install or remove a host role on a computer's host service. ChangeModel: the same role

@@ -28,6 +28,8 @@ public sealed record LocalModelServer(string Id, string Name, string ChatComplet
     public bool NeedsKey { get; init; }
     public IReadOnlyList<string> Unusable { get; init; } = [];
     public string? HowToStart { get; init; }
+    /// <summary>Download sizes in GB by model, when the app says them (Ollama's <c>/api/tags</c>).</summary>
+    public IReadOnlyDictionary<string, double> SizesGb { get; init; } = new Dictionary<string, double>();
 }
 
 public enum LocalServerAnswerKind
@@ -47,6 +49,7 @@ public enum LocalServerAnswerKind
 public sealed record LocalServerAnswer(LocalServerAnswerKind Kind, IReadOnlyList<string> Models, string? OwnedBy, string? Problem)
 {
     public IReadOnlyList<string> Unusable { get; init; } = [];
+    public IReadOnlyDictionary<string, double> SizesGb { get; init; } = new Dictionary<string, double>();
 }
 
 /// <summary>What testing a model in a model app on this computer found: the summary in words, whether it works with a
@@ -199,7 +202,8 @@ public static class LocalModelServers
             var name = app?.Name ?? $"Model app on port {apps[0].Port.ToString(CultureInfo.InvariantCulture)}";
             found.Add(new(app?.Id ?? $"port-{apps[0].Port.ToString(CultureInfo.InvariantCulture)}", name, apps[0].BaseUrl, answer.Models)
             {
-                NeedsKey = answer.Kind == LocalServerAnswerKind.NeedsKey, Unusable = answer.Unusable, HowToStart = app?.HowToStart
+                NeedsKey = answer.Kind == LocalServerAnswerKind.NeedsKey, Unusable = answer.Unusable, HowToStart = app?.HowToStart,
+                SizesGb = answer.SizesGb
             });
         }
         return found;
@@ -244,11 +248,11 @@ public static class LocalModelServers
             if (!response.IsSuccessStatusCode || body is null)
                 return new(LocalServerAnswerKind.NotAModelServer, [], null,
                     $"Something answers there, but it didn't list models (error {(int)response.StatusCode}). Check the address and port.");
-            var (models, ownedBy) = ParseList(body, ollamaTags);
+            var (models, ownedBy, sizes) = ParseList(body, ollamaTags);
             if (models is null)
                 return new(LocalServerAnswerKind.NotAModelServer, [], null, "Something answers there, but it isn't a model app's API. Check the port and path.");
             var usable = models.Where(Usable).ToArray();
-            return new(LocalServerAnswerKind.Models, usable, ownedBy, null) { Unusable = [.. models.Where(m => !Usable(m))] };
+            return new(LocalServerAnswerKind.Models, usable, ownedBy, null) { Unusable = [.. models.Where(m => !Usable(m))], SizesGb = sizes };
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -297,15 +301,20 @@ public static class LocalModelServers
     /// null when the reply is neither (another program on that port).</summary>
     internal static IReadOnlyList<string>? ParseModels(string json, bool ollamaTags) => ParseList(json, ollamaTags).Models;
 
-    private static (IReadOnlyList<string>? Models, string? OwnedBy) ParseList(string json, bool ollamaTags)
+    /// <summary>Download sizes in GB by model name from Ollama's /api/tags (<c>"size"</c> in bytes); empty for other lists.</summary>
+    internal static IReadOnlyDictionary<string, double> ParseSizes(string json, bool ollamaTags) => ParseList(json, ollamaTags).SizesGb;
+
+    private static (IReadOnlyList<string>? Models, string? OwnedBy, IReadOnlyDictionary<string, double> SizesGb) ParseList(string json,
+        bool ollamaTags)
     {
+        var sizes = new Dictionary<string, double>(StringComparer.Ordinal);
         try
         {
             using var document = JsonDocument.Parse(json);
             var (list, field) = ollamaTags ? ("models", "name") : ("data", "id");
             if (document.RootElement.ValueKind != JsonValueKind.Object ||
                 !document.RootElement.TryGetProperty(list, out var items) || items.ValueKind != JsonValueKind.Array)
-                return (null, null);
+                return (null, null, sizes);
             string? ownedBy = null;
             var names = new List<string>();
             foreach (var item in items.EnumerateArray())
@@ -313,13 +322,18 @@ public static class LocalModelServers
                 if (item.ValueKind != JsonValueKind.Object) continue;
                 if (item.TryGetProperty(field, out var name) && name.ValueKind == JsonValueKind.String && name.GetString() is { Length: > 0 } value &&
                     names.Count < 200 && !names.Contains(value, StringComparer.Ordinal))
+                {
                     names.Add(value);
+                    if (ollamaTags && item.TryGetProperty("size", out var size) && size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out var bytes) &&
+                        bytes > 0)
+                        sizes[value] = Math.Round(bytes / 1e9, 2);
+                }
                 if (ownedBy is null && item.TryGetProperty("owned_by", out var owner) && owner.ValueKind == JsonValueKind.String)
                     ownedBy = owner.GetString();
             }
-            return (names, ownedBy);
+            return (names, ownedBy, sizes);
         }
-        catch (JsonException) { return (null, null); }
+        catch (JsonException) { return (null, null, sizes); }
     }
 
     /// <summary>Checks that <paramref name="model"/> answers in the app at <paramref name="baseUrl"/> (this computer only) the way

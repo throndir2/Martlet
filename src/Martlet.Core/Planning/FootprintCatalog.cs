@@ -28,7 +28,18 @@ public sealed partial class FootprintCatalog
 
     public IReadOnlyList<ComponentOption> For(PlanComponent component) => options.Where(o => o.Component == component).ToArray();
 
-    public ComponentOption? Find(string id) => options.FirstOrDefault(o => string.Equals(o.Id, id, StringComparison.Ordinal));
+    /// <summary>The option with <paramref name="id"/>; a served model's id ("served:llama3.3:70b") the catalog doesn't list
+    /// gives that model without a known size (<see cref="ServedModels.Option(string)"/>).</summary>
+    public ComponentOption? Find(string id) => options.FirstOrDefault(o => string.Equals(o.Id, id, StringComparison.Ordinal))
+        ?? (ServedModels.ModelOf(id) is { } model ? ServedModels.Option(model) : null);
+
+    /// <summary>This catalog plus a Thinking option for each model in <paramref name="served"/> that Martlet's own options
+    /// don't already run (<see cref="ServedModels.Usable"/>).</summary>
+    public FootprintCatalog WithServed(IEnumerable<ServedModel>? served)
+    {
+        var added = ServedModels.Usable(served, this).Select(ServedModels.Option).ToList();
+        return added.Count == 0 ? this : new(options.Concat(added));
+    }
 
     /// <summary>The option for <paramref name="component"/> that runs <paramref name="modelId"/> (a model or engine id), or null.</summary>
     public ComponentOption? FindModel(PlanComponent component, string modelId) =>

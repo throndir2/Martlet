@@ -14,7 +14,7 @@ namespace Martlet.Mcp;
 /// settings.json, work-sharing.json, thinking-pool.json, speaking-engine.txt) or from the built-in fixture network, runs the
 /// production recommender (<see cref="NetworkRecommender"/>) and lists the computers, today's jobs, the recommended changes
 /// and whether a companion PC in use would ask (SetupAskRule, with this data directory's declined setups). Read-only: it
-/// contacts nothing, and it reads no keys. A data directory has no live host checks: a host the presence report
+/// contacts nothing (lookOnThisPc only asks the model apps on this PC at 127.0.0.1), and it reads no keys. A data directory has no live host checks: a host the presence report
 /// (node-presence.json, written by the desktop) last saw not answering counts as offline, as the desktop plans it; every
 /// other host counts as online, and its roles are the shared plan's record. This PC's own hardware is its host service's
 /// report (the desktop reads it live).</summary>
@@ -22,11 +22,15 @@ internal static class RecommendedSetupStatus
 {
     internal const string FixtureName = "network";
     internal const string OfflineFixtureName = "offline";
+    internal const string ServedFixtureName = "served";
 
-    internal static async Task<object> RunAsync(string? dataDirectory, string? fixture, CancellationToken cancellation)
+    /// <summary><paramref name="lookOnThisPc"/>: with a data directory whose Use models your apps already run is on, Martlet
+    /// asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.</summary>
+    internal static async Task<object> RunAsync(string? dataDirectory, string? fixture, CancellationToken cancellation, bool lookOnThisPc = false)
     {
         SetupSources sources;
         string source;
+        var looked = false;
         if (fixture is not null)
         {
             if (fixture == FixtureName)
@@ -42,13 +46,27 @@ internal static class RecommendedSetupStatus
                 source = "fixture offline (NOT real computers): this PC (a companion PC without a graphics card) and two hosts, MIKU and " +
                     "IMOUTO, that haven't answered for 155 minutes; MIKU ran Thinking, Speaking and Lip-sync, IMOUTO ran Listening; no API key is saved";
             }
-            else throw new ArgumentException($"fixture must be \"{FixtureName}\" or \"{OfflineFixtureName}\".");
+            else if (fixture == ServedFixtureName)
+            {
+                sources = RecommendedSetupInputs.ServedFixture(DateTimeOffset.UtcNow);
+                source = "fixture served (NOT real computers or apps): this PC alone (a companion PC with an RTX 5090, 32 GB) that thinks with " +
+                    "Gemma 4 E2B in Martlet's Ollama; LM Studio on it serves qwen3-32b and an embedding model, and Ollama serves llama3.3:70b";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\" or \"{ServedFixtureName}\".");
         }
         else
         {
             ArgumentNullException.ThrowIfNull(dataDirectory);
             sources = await FromDataDirectoryAsync(dataDirectory, cancellation);
             source = "data directory";
+            if (lookOnThisPc && RecommendedSetupMemory.Load(dataDirectory).UseServedModels)
+            {
+                sources = sources with
+                {
+                    ServedModels = RecommendedSetupInputs.Served(await Martlet.Providers.LocalModelServers.DetectAsync(cancellationToken: cancellation))
+                };
+                looked = true;
+            }
         }
         var build = RecommendedSetupInputs.Request(sources);
         var recommendation = NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default);
@@ -69,6 +87,20 @@ internal static class RecommendedSetupStatus
                 roles = build.Request.Machines.FirstOrDefault(m => m.Specs.Id == c.Id)?.Roles.Select(r => r.Model is null ? r.Kind : $"{r.Kind}={r.Model}") ?? []
             }),
             notes = build.Notes,
+            servedModels = new
+            {
+                use = memory.UseServedModels,
+                looked = looked || fixture == ServedFixtureName,
+                found = build.Request.ServedModels.Select(m => new
+                {
+                    model = m.ModelId, app = m.AppName, address = m.BaseUrl, computer = Name(m.MachineId), chat = ServedModels.Chats(m.ModelId),
+                    downloadGb = m.SizeGb, estimatedGb = ServedModels.Gb(m), option = ServedModels.OptionId(m.ModelId)
+                }),
+                note = fixture == ServedFixtureName ? "FIXTURE: these apps and models are made up."
+                    : looked ? "Martlet asked the model apps on this PC (127.0.0.1 only)."
+                    : !memory.UseServedModels ? "Use models your apps already run is off in this data directory."
+                    : "Not looked: a data directory contacts nothing. Pass lookOnThisPc to ask the model apps on this PC."
+            },
             today = new
             {
                 jobs = build.Request.CurrentJobs.Select(j => new { job = j.Job, host = j.HostId, off = j.Off, option = j.OptionId, pool = j.Pool }),

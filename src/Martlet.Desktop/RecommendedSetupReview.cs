@@ -40,13 +40,19 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     /// <summary>Every part of Martlet in priority order: where it runs, or that it is off.</summary>
     public IReadOnlyList<ReviewPart> Parts { get; init; } = [];
 
+    /// <summary>Use models your apps already run is on: the review lists <see cref="Served"/>, the chat models found.</summary>
+    public bool UseServed { get; init; } = true;
+
+    /// <summary>The chat models the model apps on this PC serve: "qwen3:32b in LM Studio (about 21 GB)".</summary>
+    public IReadOnlyList<string> Served { get; init; } = [];
+
     /// <summary>The review of <paramref name="recommendation"/> for the computers in <paramref name="build"/>. Pure.</summary>
     internal static RecommendedSetupReview From(NetworkRecommendation recommendation, SetupRequestBuild build, FootprintCatalog? catalog = null)
     {
         ArgumentNullException.ThrowIfNull(recommendation);
         ArgumentNullException.ThrowIfNull(build);
-        catalog ??= FootprintCatalog.Default;
         var request = build.Request;
+        catalog = (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels);
         string Name(string? id) => id is null or "" ? "your companion PCs" : build.Names.GetValueOrDefault(id)
             ?? request.Machines.FirstOrDefault(m => m.Specs.Id == id)?.Specs.Name ?? id;
 
@@ -127,9 +133,17 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()))
         {
             Parts = [.. recommendation.Components.Select(c => new ReviewPart(c.Component, c.Rank, c.Name, c.CanBeOff ? "Optional" : "Needed",
-                c.On, c.Where, c.Why, c.CanBeOff, c.OwnerOff))]
+                c.On, c.Where, c.Why, c.CanBeOff, c.OwnerOff))],
+            Served = ServedLines(request.ServedModels)
         };
     }
+
+    /// <summary>One line per chat model the owner's model apps serve, biggest first: "qwen3:32b in LM Studio (about 21 GB)".</summary>
+    internal static IReadOnlyList<string> ServedLines(IEnumerable<ServedModel> served) =>
+        [.. served.Where(m => ServedModels.Chats(m.ModelId)).DistinctBy(m => (m.ModelId, m.AppId))
+            .OrderByDescending(m => ServedModels.Gb(m) ?? 0).ThenBy(m => m.ModelId, StringComparer.OrdinalIgnoreCase)
+            .Select(m => $"{m.ModelId} in {(m.AppName.Length > 0 ? m.AppName : "your model app")}" +
+                (ServedModels.Gb(m) is { } gb ? $" (about {gb.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} GB)" : ""))];
 
     /// <summary>A computer's host roles and, on a companion PC, the jobs it does itself (Thinking in Ollama, Parakeet in Martlet):
     /// "Chatterbox Turbo; on the PC itself: Thinking (Gemma 4 E2B in Ollama), Listening (Parakeet on the processor)".</summary>
@@ -138,7 +152,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         var itself = jobs.Where(j => j.HostId is null && !j.Off && ClusterJobs.All.Contains(j.Job))
             .Select(j => (Job: j.Job, Option: j.OptionId is { } id ? catalog.Find(id) : null))
             .Where(j => j.Option is { IsLocal: true })
-            .Select(j => $"{ClusterSync.Title(j.Job)} ({j.Option!.DisplayName}{(j.Job == ClusterJobs.Thinking && !j.Option.RunsInApp ? " in Ollama" : "")})")
+            .Select(j => $"{ClusterSync.Title(j.Job)} ({j.Option!.DisplayName}{(j.Job == ClusterJobs.Thinking && !j.Option.RunsInApp ? $" in {j.Option.ServedBy ?? "Ollama"}" : "")})")
             .ToList();
         var hostRoles = Roles(roles, machine);
         if (itself.Count == 0) return hostRoles;
@@ -193,7 +207,8 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         job.Off ? "nobody (the character moves its mouth with the voice's loudness)"
         : job.HostId is { } host ? name(host)
         : job.OptionId is { } option && catalog.Find(option) is { } found
-            ? found.IsLocal ? $"each companion PC itself ({found.DisplayName})" : found.DisplayName
+            ? found.ServedOn is { } on ? $"{name(on)} itself ({found.DisplayName} in {found.ServedBy})"
+            : found.IsLocal ? $"each companion PC itself ({found.DisplayName}{(found.ServedBy is { } app ? $" in {app}" : "")})" : found.DisplayName
         : "each companion PC itself";
 
     /// <summary>The Devices page's bars for a machine's planned use: graphics memory, memory and processor.</summary>
