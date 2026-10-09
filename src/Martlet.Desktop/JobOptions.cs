@@ -188,10 +188,10 @@ internal static class JobOptions
             };
             var summary = key switch
             {
-                "openai" => $"OpenAI's own models; recommended: {model}. Each request costs money.",
-                "nvidia-build" => $"Free keys from NVIDIA; recommended: {model}. NVIDIA retires models often.",
+                "openai" => $"OpenAI's own models; recommended: {model}.",
+                "nvidia-build" => $"Free keys from NVIDIA; recommended: {model}.",
                 "openrouter" => $"Hundreds of models behind one key, some free; recommended: {model}.",
-                "google-gemini" => $"Free on Google's free tier; recommended: {model}. It sees your screen and can hear you.",
+                "google-gemini" => $"Free on Google's free tier; recommended: {model}.",
                 "ollama" => $"A model in Ollama on this PC, such as {model}. Nothing leaves this PC.",
                 "custom" => "Any OpenAI-compatible server, by its HTTPS address and the exact model ID.",
                 _ => $"Recommended: {model}."

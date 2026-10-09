@@ -127,6 +127,28 @@ public sealed class JobOptionsTests
     }
 
     [Fact]
+    public void APickerLeadsWithTheOneInUseTheRecommendedOneAndTheShownOneAndListsWhatCantRunLast()
+    {
+        PickerOption[] options =
+        [
+            new("a", "A", "") { Unavailable = "no card" },
+            new("b", "B", ""),
+            new("c", "C", "") { Badge = "recommended" },
+            new("d", "D", ""),
+            new("e", "E", "") { InUse = true, Badge = "in use" },
+            new("f", "F", "")
+        ];
+
+        var (ordered, pinned) = MainWindow.PickerOrder(options, "f");
+        Assert.Equal(["e", "c", "f", "b", "d", "a"], ordered.Select(o => o.Key));
+        Assert.Equal(3, pinned);
+
+        var (same, one) = MainWindow.PickerOrder(options, "e");
+        Assert.Equal(["e", "c", "b", "d", "f", "a"], same.Select(o => o.Key));
+        Assert.Equal(2, one);
+    }
+
+    [Fact]
     public void LipSyncWaysRecommendLoudnessWithoutASuitableCardAndBlockAudio2FaceOnArm()
     {
         var options = JobOptions.LipSyncWays(false, false, loudnessInUse: true, false, fits: false, cannot: null, "127.0.0.1:52000");

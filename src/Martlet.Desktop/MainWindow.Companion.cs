@@ -502,7 +502,7 @@ public partial class MainWindow
         page.Children.Add(WhereItRunsCard(section, section.ToString(), "Where it runs", null, route is null ? null : current, place,
             (JobPlace.ThisPc, "This PC (recommended)", role switch
             {
-                SetupRole.Llm => "Ollama or a model app you use, on this PC's graphics card. Private, with no per-request cost.",
+                SetupRole.Llm => "Ollama or your own model app, on this PC's graphics card. Private and free.",
                 SetupRole.Tts => "A voice engine on this PC's NVIDIA graphics card, or Chatterbox Nano on the processor. Audio stays here.",
                 _ => "Parakeet on the processor (no setup) or Whisper on the graphics card. Your voice stays here."
             }),
@@ -510,8 +510,7 @@ public partial class MainWindow
                 $"A paired computer does {job.Job} with its own graphics card, so this PC stays free."),
             (JobPlace.Cloud, "A cloud provider", role switch
             {
-                SetupRole.Llm => "NVIDIA Build (free key), OpenAI, OpenRouter and others. No graphics card needed, but your messages " +
-                    "leave this PC and some charge per request.",
+                SetupRole.Llm => "NVIDIA Build (free key), OpenAI, OpenRouter and others. Your messages leave this PC; some charge.",
                 SetupRole.Tts => "OpenAI's voices, or ElevenLabs with your cloned voice. No graphics card needed, but reply text leaves " +
                     "this PC and requests cost money.",
                 _ => "OpenAI with your API key. Your recordings leave this PC and requests cost money."
@@ -1232,7 +1231,7 @@ public partial class MainWindow
         };
         keySavedMark.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         var keyField = new Grid { Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Children = { key, keySavedMark } };
-        var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
+        var consent = new CheckBox { Margin = new Thickness(0, 8, 0, 6) };
         AutomationProperties.SetAutomationId(consent, "SetupCloudConsent-" + section);
 
         string? ChatUrl() => p.Chat ? p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim() : null;
@@ -1271,18 +1270,21 @@ public partial class MainWindow
         RefreshKeyMark();
         var keyStatus = Note(SetAside() ? $"Your {p.Name} key from before is still saved. Leave this empty to use it again, or paste a new key."
                 : keySaved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
+                : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
+                    ? $"Paste your {p.Name} API key (it starts with nvapi-). Martlet saves it in Windows Credential Manager."
                 : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
                 : "Add a key only if your server needs one.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
         var retired = SameAsSaved() && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
-        var hint = Note((retired is null ? "" : $"{retired.Name} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
-            (p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
-            : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? $"Recommended: {p.DefaultModel}. Any exact OpenRouter model ID works."
-            : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? $"Recommended: {p.DefaultModel}. Keys start with nvapi-."
+        // The recommended model is in the provider's summary above and prefilled; the hint adds only what it doesn't say.
+        var hint = Note(((retired is null ? "" : $"{retired.Name} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
+            (p == OpenAiCloud || p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? ""
+            : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? "Any exact OpenRouter model ID works."
             : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
             : "Use the server's HTTPS base URL and enter the exact model ID. For a model app on this PC (LM Studio, llama.cpp and " +
-                "others), choose This PC › Model app."), new Thickness(0, 4, 0, 0));
+                "others), choose This PC › Model app.")).Trim(), new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
+        if (hint.Text.Length == 0) hint.Visibility = Visibility.Collapsed;
         consent.Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
             Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there" +
                 (FreeKeyPrompt.IsFree(p.BaseUrl) ? ". " : ", and requests may cost money. ") + OpenAiSetup.Boundary(role) };
@@ -1296,19 +1298,19 @@ public partial class MainWindow
         if (role == SetupRole.Tts) yield return AbilitiesLine("openai", VoiceAbilities.OpenAiVoice, []);
         if (p == CustomCloud)
         {
-            yield return new Label { Content = "API _base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) };
+            yield return new Label { Content = "API _base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 6, 0, 3) };
             yield return baseUrl;
         }
         Control modelControl = p.Chat ? modelText : model;
-        yield return new Label { Content = "_Model", Target = modelControl, Padding = new Thickness(0, 8, 0, 4) };
+        yield return new Label { Content = "_Model", Target = modelControl, Padding = new Thickness(0, 6, 0, 3) };
         yield return modelControl;
         yield return hint;
         if (role == SetupRole.Tts)
         {
-            yield return new Label { Content = "_Voice", Target = voice, Padding = new Thickness(0, 8, 0, 4) };
+            yield return new Label { Content = "_Voice", Target = voice, Padding = new Thickness(0, 6, 0, 3) };
             yield return voice;
         }
-        yield return new Label { Target = key, Padding = new Thickness(0, 8, 0, 4),
+        yield return new Label { Target = key, Padding = new Thickness(0, 6, 0, 3),
             Content = p == CustomCloud ? "API _key (only if the server needs one)" : $"Your {p.Name} _key" };
         yield return keyField;
         yield return keyStatus;

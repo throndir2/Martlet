@@ -44,8 +44,10 @@ public partial class MainWindow
         var savedProvider = saved is null ? null : FallbackProviders.FirstOrDefault(p => p.BaseUrl == saved.Origin) ?? CustomCloud;
         // Add your key (FreeKeyPrompt) for If Thinking fails: NVIDIA Build's free keys, ready for the one the owner pastes.
         if (freeKeyFocus && freeKeyPreset == FreeKeyUse.Fallback && saved is null) pickerShown["Fallback"] = ChatCompletionsEndpointCatalog.NvidiaBuildId;
+        // A fallback that is off runs nothing extra anyway (Thinking does), so its Off needs no facts.
         var off = PickerOption.Off("If Thinking fails, Martlet says so and you try again", saved is null,
-            saved is null ? null : () => PageButton("Turn off", () => SaveFallbackAsync(null, "", "", new PasswordBox(), true).Forget(), id: "FallbackOff"));
+            saved is null ? null : () => PageButton("Turn off", () => SaveFallbackAsync(null, "", "", new PasswordBox(), true).Forget(), id: "FallbackOff"))
+            with { Facts = [] };
         var options = JobOptions.Providers(FallbackProviders, Martlet.Core.Planning.PlanComponent.Thinking,
                 savedProvider is null ? null : JobOptions.ProviderKey(savedProvider),
                 "your messages, recent conversation and any screen or camera picture of a reply Thinking couldn't give",
@@ -56,9 +58,8 @@ public partial class MainWindow
 
         return Card(
             Heading("If Thinking fails"),
-            Note("When Thinking returns an error, is limiting requests or doesn't answer within 15 seconds, and hasn't said anything " +
-                "yet, Martlet asks this provider instead. Screen and camera glances use it too, so choose a model that can see images.",
-                new Thickness(0, 0, 0, 8)),
+            Note("If Thinking fails before it says anything (an error, a rate limit or no answer in 15 seconds), Martlet asks this " +
+                "one instead. Screen and camera glances use it too, so choose a model that sees images.", new Thickness(0, 0, 0, 8)),
             now,
             // Off and the recommended provider; Show N more lists the others.
             OptionPickerBody("Fallback", options, rows: 2));
