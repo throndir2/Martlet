@@ -107,13 +107,15 @@ public partial class MainWindow
         (CheckInOutcome.Note, "Reminds Martlet in its next reply"),
         (CheckInOutcome.Say, "Martlet brings it up"),
         (CheckInOutcome.EmotesOff, "Turns off the emotes it names"),
-        (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual")
+        (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual"),
+        (CheckInOutcome.Tools, "Its tools act")
     ];
 
     private const string CheckInOutcomeHelp = "Martlet adds the answer format to the prompt. A reminder: a REMIND: line goes in " +
         "the notes of your next message, so Martlet's next reply follows it. Brings it up: a SAY: line, which Martlet says on its " +
         "own as soon as it's free. Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
-        "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing.";
+        "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing. Its tools act: the tools it " +
+        "calls (tick at least one set under It may use these tools) are what it does, and its answer only says what it did.";
 
     private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {conversation}, " +
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound} and " +
@@ -218,43 +220,88 @@ public partial class MainWindow
         string result;
         bool acted = false, kept = false;
         string? member = null, gathered = null;
+        // The tools of its chosen sets that this PC runs, for every member the pool tries during this run.
+        var tools = checkIn.ToolSets.Count > 0
+            ? new CheckInToolHost(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, homeSettings?.Companion?.ActivePersonaId.ToString(),
+                DateTimeOffset.Now), CheckInToolHandlers())
+            : null;
         try
         {
             var (withInputs, missing, took) = await GatherForCheckInAsync(checkIn, focused, lifetime.Token);
             gathered = took;
             if (missing is not null) result = missing;
-            else if (CheckIns.Prepare(checkIn, withInputs, prompts) is not { } job) result = "its prompt is empty";
+            else if (CheckIns.Prepare(checkIn, withInputs, prompts, tools) is not { } job) result = "its prompt is empty";
             else
             {
                 var done = CheckInFixture() is { } fixture
                     ? File.Exists(fixture)
-                        ? new ThinkingJobResult(ThinkingJobOutcome.Succeeded, await File.ReadAllTextAsync(fixture, lifetime.Token), "fixture",
-                            "FIXTURE - NOT AI", null, 1)
+                        ? new ThinkingJobResult(ThinkingJobOutcome.Succeeded, await CheckInFixtureAnswerAsync(fixture, job.ToolHost as CheckInToolHost,
+                            lifetime.Token), "fixture", "FIXTURE - NOT AI", null, 1)
                         : new ThinkingJobResult(ThinkingJobOutcome.Failed, null, null, null, $"{CheckInFixtureVariable} names no file", 0)
                     : await conversation!.ThinkingPool.RunAsync(job, lifetime.Token);
                 member = done.Member is { } name ? done.Model is { } model ? $"{name} ({model})" : name : null;
-                if (!done.Succeeded)
+                var used = tools?.Uses ?? [];
+                // Its tool calls were the action: they count even when the model failed to write its last line.
+                if (checkIn.Outcome == CheckInOutcome.Tools && (done.Succeeded || used.Count > 0))
+                {
+                    acted = used.Any(u => !u.Failed);
+                    kept = done.Succeeded && used.Count == 0;
+                    result = used.Count == 0 ? "no tool needed calling"
+                        : $"called {used.Count} tool{(used.Count == 1 ? "" : "s")}{(acted ? "" : ", and none of them worked")}";
+                }
+                else if (!done.Succeeded)
                     result = done.Outcome == ThinkingJobOutcome.NoMember ? CheckInNoMember(checkIn, ran: true)
                         : $"the Thinking pool didn't answer ({done.Problem ?? done.Outcome.ToString()})";
                 else
                 {
                     var verdict = CheckIns.Read(checkIn, done.Text, withInputs);
-                    kept = verdict is { Readable: true, Act: false };
+                    kept = verdict is { Readable: true, Act: false } && used.Count == 0;
                     (result, acted) = await ActOnCheckInAsync(checkIn, verdict, prompts);
+                }
+                if (checkIn.Outcome != CheckInOutcome.Tools && used.Count > 0)
+                {
+                    result += $"; it called {used.Count} tool{(used.Count == 1 ? "" : "s")}";
+                    acted |= used.Any(u => !u.Failed);
                 }
             }
         }
         catch (OperationCanceledException) { return; }
         finally { checkInRunning = null; }
         var elapsed = Stopwatch.GetElapsedTime(began);
-        var run = new CheckInRun(DateTimeOffset.Now, state.Exchanged, result, acted) { Member = member, Took = elapsed, Kept = kept, Gathered = gathered };
+        var uses = tools?.Uses ?? [];
+        var run = new CheckInRun(DateTimeOffset.Now, state.Exchanged, result, acted)
+        {
+            Member = member, Took = elapsed, Kept = kept, Gathered = gathered, Tools = uses
+        };
         checkInRuns[checkIn.Id] = run;
         checkInLast = (checkIn.Name, run);
         var counts = checkInCounts.GetValueOrDefault(checkIn.Id);
         checkInCounts[checkIn.Id] = (counts.Runs + 1, counts.Acted + (acted ? 1 : 0));
         checkInWaits[checkIn.Id] = "";
         ErrorLog.Info($"Check-ins: {checkIn.Name}{(member is null ? "" : " ran on " + member)} in {elapsed.TotalSeconds:0.0} s" +
-            $"{(gathered is null ? "" : " with " + gathered)}: {result}.");
+            $"{(gathered is null ? "" : " with " + gathered)}: {result}{(uses.Count == 0 ? "" : " (" + CheckIns.ToolsText(uses) + ")")}.");
+    }
+
+    /// <summary>The check-ins fixture's answer (<see cref="CheckInFixtureVariable"/>, never AI): its lines, except that each line
+    /// "TOOL name {json}" calls that tool of the check-in's sets first, as a model would.</summary>
+    private static async Task<string> CheckInFixtureAnswerAsync(string path, CheckInToolHost? tools, CancellationToken token)
+    {
+        var answer = new List<string>();
+        var calls = 0;
+        foreach (var raw in (await File.ReadAllTextAsync(path, token)).Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (tools is null || !line.StartsWith("TOOL ", StringComparison.Ordinal))
+            {
+                answer.Add(line);
+                continue;
+            }
+            var rest = line[5..].Trim();
+            var space = rest.IndexOf(' ');
+            var (name, arguments) = space < 0 ? (rest, "{}") : (rest[..space], rest[(space + 1)..].Trim());
+            if (name.Length > 0) await tools.CallAsync(new TextToolCall($"fixture-{++calls}", name, arguments), token);
+        }
+        return string.Join("\n", answer);
     }
 
     /// <summary>What a check-in takes with this run: its script's output (Windows PowerShell, hidden, in the
@@ -337,37 +384,21 @@ public partial class MainWindow
                 CheckInOutcome.EmotesOff => "every emote still fits",
                 CheckInOutcome.GazeUsual => "the gaze still fits",
                 CheckInOutcome.Say => "nothing to bring up",
+                CheckInOutcome.Tools => "its tools acted",
                 _ => "nothing to remind Martlet of"
             }, false);
         switch (checkIn.Outcome)
         {
             case CheckInOutcome.EmotesOff:
             {
-                var catalog = characterActions.For(avatar.InspectedProfile?.ModelPath);
-                var off = new List<string>();
-                foreach (var held in avatar.Held.Current.Where(h => h.ByReply))
-                {
-                    var tag = catalog?.Entries.FirstOrDefault(e => e.Source.Id == held.Source.Id).Action?.Tag;
-                    if (tag is null || !verdict.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase)) continue;
-                    try
-                    {
-                        if (await avatar.StopActionAsync(held.Source, "a check-in", lifetime.Token)) off.Add("{" + tag + "}");
-                    }
-                    catch (Exception error) when (RendererFailures.Is(error, lifetime.Token))
-                    {
-                        RendererFailures.Log($"A check-in couldn't turn off {{{tag}}}", error);
-                    }
-                }
+                var off = await TurnOffReplyEmotesAsync(tag => verdict.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase));
                 return off.Count == 0 ? ("the emotes it named were already off", false) : ("turned off " + string.Join(" and ", off), true);
             }
             case CheckInOutcome.GazeUsual:
                 return avatar.Gaze.BackToUsual("A check-in") ? ("took the eyes back to their usual gaze", true) : ("the eyes already did their usual", false);
             case CheckInOutcome.Note:
             {
-                if (CheckIns.Note(prompts, verdict.Text!) is not { } note)
-                    return ("the Check-in: reminder for the next reply prompt is empty, so nothing went to the conversation", false);
-                try { contextBoard.Post(CheckIns.Source(checkIn.Id), note, DateTimeOffset.Now, CheckIns.NoteAge, consume: true); }
-                catch (InvalidOperationException) { return ("the context board is full, so nothing went to the conversation", false); }
+                if (PostCheckInNote(checkIn.Id, verdict.Text!, prompts) is { } problem) return (problem, false);
                 return ($"a reminder waits for the next reply ({verdict.Text!.Length} characters)", true);
             }
             default:
@@ -457,7 +488,8 @@ public partial class MainWindow
                 "it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, where the eyes look, " +
                 "and the reminders and work Martlet started. Martlet then acts on the answer. It turns off an emote, takes the " +
                 "eyes back to their usual gaze, or puts a short reminder in the notes of your next message, so its next reply " +
-                "follows it.", new Thickness(0, 0, 0, 0)),
+                "follows it. A check-in can also call tools from the sets you tick on its card, and with Its tools act, those " +
+                "calls are what it does. Its card shows each tool it called and what came of it.", new Thickness(0, 0, 0, 0)),
             Note("Check-ins run only on Thinking pool members, never on the conversation's own Thinking model, so replies never " +
                 "wait for them. They wait while you talk and while nobody uses this PC, and they stay on this PC. The built-in " +
                 "check-ins work like your own: change their prompt, facts, conditions and answer on their card, and Use built-in " +
@@ -556,6 +588,7 @@ public partial class MainWindow
         if (checkInRuns.GetValueOrDefault(id) is not { } last) return now + " It hasn't run since Martlet started.";
         var counts = checkInCounts.GetValueOrDefault(id);
         return $"{now} Last at {last.At.ToLocalTime():t}{(last.Member is { } member ? " on " + member : "")}: {last.Result}. " +
+            (last.Tools.Count > 0 ? $"Tools it called: {CheckIns.ToolsText(last.Tools)}. " : "") +
             $"{counts.Runs} run{(counts.Runs == 1 ? "" : "s")} since Martlet started, {counts.Acted} acted on.";
     }
 
@@ -576,7 +609,7 @@ public partial class MainWindow
         lines.Add(() => status.Text = CheckInLine(id));
         var (outcome, choices, read) = CheckInEditor(id, checkIn.Name, new CheckInEdit(checkIn.Facts, checkIn.Conditions, checkIn.Outcome,
             checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text, checkIn.Screenshot, checkIn.Recording, checkIn.RecordingSeconds,
-            checkIn.Script ?? ""), autoSave);
+            checkIn.Script ?? "", checkIn.ToolSets), autoSave);
         // Only what differs from Martlet's own is kept, so a later Martlet can improve the rest.
         builtIns.Add((id, () =>
         {
@@ -590,7 +623,8 @@ public partial class MainWindow
                 Screenshot = edit.Screenshot == standard.Screenshot ? null : edit.Screenshot,
                 Recording = edit.Recording == standard.Recording ? null : edit.Recording,
                 RecordingSeconds = edit.RecordingSeconds == standard.RecordingSeconds ? null : edit.RecordingSeconds,
-                Script = edit.Script == (standard.Script ?? "") ? null : edit.Script
+                Script = edit.Script == (standard.Script ?? "") ? null : edit.Script,
+                ToolSets = edit.ToolSets.SequenceEqual(standard.ToolSets) ? null : edit.ToolSets
             };
         }));
         on.Checked += (_, _) => autoSave.SaveNowAsync().Forget();
@@ -639,7 +673,7 @@ public partial class MainWindow
         var copy = PageButton("Copy as your own", () => CopyCheckInAsync(id, saveAll).Forget(), id: "CheckInCopy-" + id);
         AutomationProperties.SetHelpText(copy, $"Makes a check-in of your own with this one's prompt and choices, off until you turn it on.");
         var reset = PageButton("Use built-in settings", () => ResetAsync().Forget(), link: true, id: "CheckInReset-" + id);
-        AutomationProperties.SetHelpText(reset, $"Puts Martlet's own prompt, facts, conditions, answer and inputs for {checkIn.Name} " +
+        AutomationProperties.SetHelpText(reset, $"Puts Martlet's own prompt, facts, conditions, answer, inputs and tools for {checkIn.Name} " +
             "back. On and Every stay as they are.");
         children.Add(Row(PageButton("Check now", () => SaveThenCheckAsync().Forget(), id: "CheckInRun-" + id), copy, reset));
         return Card([.. children]);
@@ -668,7 +702,7 @@ public partial class MainWindow
     /// <summary>What a check-in's shared controls hold: what it gets to know, when it waits, its answer, what its model must
     /// handle (as chosen; a screenshot and a recording add theirs on their own), what it takes with each run and its script.</summary>
     private sealed record CheckInEdit(CheckInFacts Facts, CheckInConditions Conditions, CheckInOutcome Outcome, ThinkingCapability Needs,
-        bool Screenshot, CheckInRecording Recording, int RecordingSeconds, string Script);
+        bool Screenshot, CheckInRecording Recording, int RecordingSeconds, string Script, IReadOnlyList<string> ToolSets);
 
     /// <summary>The controls every check-in card shares, built-in or your own: Its answer, then what it gets to know, when it
     /// waits, what it takes with each run, a script and what its model must handle. A switch or a choice saves at once, and
@@ -711,6 +745,16 @@ public partial class MainWindow
             var box = Choice(label, start.Conditions.HasFlag(condition), help, $"CheckInWhen-{id}-{condition}");
             conditionBoxes.Add((condition, box));
             conditions.Children.Add(box);
+        }
+        // The tool sets it may call; a set it chose that this Martlet doesn't know is dropped on the next save.
+        var toolSets = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var toolBoxes = new List<(string Set, CheckBox Box)>();
+        foreach (var set in CheckInToolSets.All)
+        {
+            var box = Choice(set.Name, start.ToolSets.Contains(set.Id), $"{set.Does} Its tools: {string.Join(", ", set.Tools.Select(t => t.Name))}.",
+                $"CheckInTools-{id}-{set.Id}");
+            toolBoxes.Add((set.Id, box));
+            toolSets.Children.Add(box);
         }
         // The model it needs: text always; pictures and recordings by choice, and always for a screenshot or a recording.
         var ownVision = start.Needs.HasFlag(ThinkingCapability.Vision);
@@ -827,6 +871,14 @@ public partial class MainWindow
         view.Children.Add(Note("For example, the busiest programs: Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 " +
             $"Name, CPU. It runs hidden in your home folder, as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.",
             new Thickness(0, 2, 0, 0)));
+        view.Children.Add(new TextBlock
+        {
+            Text = "It may use these tools (point at each one to see what it does)", Margin = new Thickness(0, 8, 0, 0),
+            ToolTip = $"The model can call these tools while it answers, at most {CheckIns.MaximumToolCalls} calls in " +
+                $"{CheckIns.MaximumToolRounds} rounds. Only Thinking pool members on an endpoint, whose model calls tools, take a " +
+                "check-in with tools. With Its tools act, the tools are what it does."
+        });
+        view.Children.Add(toolSets);
         view.Children.Add(new TextBlock { Text = "The model must handle", Margin = new Thickness(0, 8, 0, 0) });
         view.Children.Add(needs);
         view.Children.Add(Note("Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model " +
@@ -840,7 +892,8 @@ public partial class MainWindow
             ThinkingCapability.Text | (ownVision ? ThinkingCapability.Vision : ThinkingCapability.None) |
                 (ownAudio ? ThinkingCapability.Audio : ThinkingCapability.None),
             screenshot.IsChecked == true, (CheckInRecording)Math.Max(0, recording.SelectedIndex),
-            CheckIns.RecordingChoices[Math.Max(0, seconds.SelectedIndex)], script.Text.Replace("\r\n", "\n", StringComparison.Ordinal)));
+            CheckIns.RecordingChoices[Math.Max(0, seconds.SelectedIndex)], script.Text.Replace("\r\n", "\n", StringComparison.Ordinal),
+            [.. toolBoxes.Where(b => b.Box.IsChecked == true).Select(b => b.Set)]));
     }
 
     /// <summary>Copy as your own: a check-in of your own with <paramref name="id"/>'s prompt (as it is now, built-in or edited) and
@@ -865,7 +918,7 @@ public partial class MainWindow
             Facts = current.Facts, Conditions = current.Conditions, Outcome = current.Outcome,
             Needs = current.Custom ? checkInSettings.Custom.First(c => c.Id == id).Needs : checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text,
             Screenshot = current.Screenshot, Recording = current.Recording, RecordingSeconds = current.RecordingSeconds,
-            Script = current.Script ?? ""
+            Script = current.Script ?? "", ToolSets = current.ToolSets
         };
         if (SaveCheckIns(checkInSettings.With(copy), $"Copied {current.Name} as {copy.Name}, a check-in of your own. It's off until you turn it on."))
             RenderTab();
@@ -932,9 +985,9 @@ public partial class MainWindow
             Note("Write what the Thinking pool should check, such as \"If the user has been at it for hours, suggest a short break\" or " +
                 "\"If it's late at night, remind Martlet to talk more softly\". Choose what it gets to know (it always gets the day " +
                 "and time), when it waits, how often it runs and what happens with its answer: a reminder in Martlet's next reply, " +
-                "Martlet brings it up on its own as soon as it's free, it turns off lingering emotes, or it takes the eyes back to " +
-                "their usual. A check-in can also take a screenshot, the last seconds of the microphone or of what this PC plays, " +
-                "and what a script of yours prints, and you choose what its model must handle. Copy as your own on a built-in " +
+                "Martlet brings it up on its own as soon as it's free, it turns off lingering emotes, it takes the eyes back to " +
+                "their usual, or its tools act. A check-in can also take a screenshot, the last seconds of the microphone or of what this PC plays, " +
+                "and what a script of yours prints, and you choose the tool sets it may call and what its model must handle. Copy as your own on a built-in " +
                 "check-in starts from that one. A new check-in starts off.", new Thickness(0, 0, 0, 4))
         };
         foreach (var custom in checkInSettings.Custom) stack.Add(OwnCheckInRow(custom, lines, rows, autoSave, saveAll));
@@ -972,7 +1025,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(every, "CheckInEvery-" + id);
         AutomationProperties.SetName(every, "How often it runs");
         var (outcome, choices, read) = CheckInEditor(id, custom.Name, new CheckInEdit(custom.Facts, custom.Conditions, custom.Outcome,
-            custom.Needs, custom.Screenshot, custom.Recording, custom.RecordingSeconds, custom.Script), autoSave);
+            custom.Needs, custom.Screenshot, custom.Recording, custom.RecordingSeconds, custom.Script, custom.ToolSets), autoSave);
         var task = new TextBox
         {
             Text = custom.Task, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxLength = CheckIns.MaximumTaskCharacters,
@@ -993,7 +1046,7 @@ public partial class MainWindow
                 EveryMinutes = CheckIns.EveryChoices[Math.Max(0, every.SelectedIndex)],
                 Task = task.Text.Replace("\r\n", "\n", StringComparison.Ordinal), Facts = edit.Facts, Conditions = edit.Conditions,
                 Outcome = edit.Outcome, Needs = edit.Needs, Screenshot = edit.Screenshot, Recording = edit.Recording,
-                RecordingSeconds = edit.RecordingSeconds, Script = edit.Script
+                RecordingSeconds = edit.RecordingSeconds, Script = edit.Script, ToolSets = edit.ToolSets
             };
         });
         void Typed()
@@ -1115,13 +1168,16 @@ public partial class MainWindow
                     needs = c.Needs.ToString(), canRun = member is not null && conversation!.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs),
                     screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds, script = c.RunsScript,
+                    toolSets = c.ToolSets,
                     waiting = checkInWaits.GetValueOrDefault(c.Id) is { Length: > 0 } wait ? wait : null,
                     nextAt = last is null ? (DateTimeOffset?)null : last.At + CheckIns.Pace(c, last, checkInExchanged),
                     runs = counts.Runs, acted = counts.Acted,
                     last = last is null ? null : new
                     {
                         at = last.At, result = last.Result, acted = last.Acted, member = last.Member, gathered = last.Gathered,
-                        ms = last.Took is { } took ? (long?)took.TotalMilliseconds : null
+                        ms = last.Took is { } took ? (long?)took.TotalMilliseconds : null,
+                        // Each tool call: its set, the tool, the first line of what it answered and whether it failed.
+                        tools = last.Tools.Select(t => new { set = t.Set, tool = t.Tool, result = t.Result, failed = t.Failed }).ToArray()
                     }
                 };
             }).ToArray(),

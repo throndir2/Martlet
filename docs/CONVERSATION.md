@@ -1346,10 +1346,11 @@ has the same editor:
 - *Its answer*: what Martlet does with the answer.
 - *It takes*: a screenshot, a recording or a script's output, and the model
   it needs.
+- *It may use these tools*: the [tool sets](#check-in-tool-sets) it may call.
 
 Change a built-in check-in on its card, and only what you changed is saved
 (`CheckInChoice`, null for each default). *Use built-in settings* puts its
-prompt, facts, conditions and answer back; On and Every stay. *Copy as your
+prompt, facts, conditions, answer, inputs and tools back; On and Every stay. *Copy as your
 own* adds an own check-in (off) with the same prompt and choices, so every
 built-in check-in can be recreated, and changed, as your own.
 
@@ -1453,6 +1454,9 @@ What happens with its answer:
   emotes, as Lingering emotes does (tick *Emotes and gaze*).
 - *Takes the eyes back to their usual*: `USUAL`, as Where the character looks
   does.
+- *Its tools act*: the check-in's [tool calls](#check-in-tool-sets) are the
+  action. Its answer is only one short line that says what it did and why (or
+  `OK`), for the status; Martlet reads nothing else from it.
 
 Every check-in's prompt goes through Companion › Prompts › *Check-ins: each
 check* (`{task}`, `{facts}`, `{time}`, `{answer}`), which adds the facts, the
@@ -1491,7 +1495,11 @@ also take:
 member that can handle what it needs (`CheckIns.Needs`): text always, plus
 *Sees pictures* (vision) and *Hears recordings* (audio) when you tick them. A
 screenshot ticks *Sees pictures* and a recording ticks *Hears recordings* on
-their own, and they can't be unticked then. The job's `Needs` go to the
+their own, and they can't be unticked then. A check-in with tool sets also needs
+a member that calls tools (`ThinkingCapability.Tools`): an OpenAI-compatible
+endpoint (Chat Completions function calling), the same rule as the
+conversation's own tools; a paired computer's Ollama gateway calls none. The
+job's `Needs` go to the
 [job board](#job-board), which gives it only to a member whose abilities
 include them. With no such member, the check-in waits.
 
@@ -1499,6 +1507,57 @@ What a check-in takes goes only to the member that takes it, which can be a
 cloud service. The page says so. Nothing taken is saved or logged: the log
 and the status say only what was taken (*a screenshot (1280x720), 10 s of the
 microphone, a script (exit code 0, 0.4 s, 312 characters)*).
+
+### Check-in tool sets
+
+A check-in can do more than answer: it can call tools. Tools come in named
+**tool sets**, and each check-in, built-in or your own, ticks the sets it may
+use under *It may use these tools* on its card. Point at a set to see what it
+does and its tools. Martlet offers:
+
+| Tool set (`id`) | Tools | What they do |
+| --- | --- | --- |
+| Emotes and gaze (`character`) | `turn_off_emote`, `look_usual` | Turn off one lingering emote a reply turned on (never a try or a touch's), or take the eyes back to their usual gaze. |
+| Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
+| Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
+
+**How a run calls tools.** The job offers the tools of the chosen sets that
+this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls
+them in a bounded loop: at most 4 rounds (`CheckIns.MaximumToolRounds`) and 8
+calls in all (`CheckIns.MaximumToolCalls`), over every member the pool tries.
+After the eighth call, each call gets an error that says to answer without
+tools. An unknown tool and a tool that fails are errors the model reads; they
+never stop the run. With the answer *Its tools act*, the calls are the action
+and the run counts as acted on when at least one call worked. With any other
+answer, the message says *You may call your tools first if they help*, and
+Martlet still reads the answer as before. The calls run at once on this PC:
+the tool calls of a run that the pool later drops or stops still happened.
+
+**What you see.** The card's status line and `check-ins-status.json` say which
+tools the last run called and what came of each (`CheckInRun.Tools`: the set,
+the tool, the first line of its answer, at most 120 characters, and whether it
+failed), for example *Tools it called: remind_next_reply: Reminded the next
+reply.* The log says the same. A handler's first line never holds what was
+said or reminded.
+
+**Add a tool set** (`Martlet.Conversation.CheckInToolSets`):
+
+1. Make a `CheckInToolSet(Id, Name, Does, Tools)`: a lowercase kebab-case ID
+   that check-ins.json keeps, a name and plain words for the card, and its
+   `TextToolDefinition`s. Tool names are unique across every set.
+2. Add it to `CheckInToolSets.All` (after the static sets it lists, so they
+   exist when the list is made).
+3. Register its handler in `MainWindow.CheckInToolHandlers()`
+   (`MainWindow.CheckInTools.cs`): a `CheckInToolHandler` gets the call and a
+   `CheckInToolContext` (the check-in's ID and name, the active personality's
+   ID and when the run began, the same for every call of one run). It runs on a
+   pool thread, so it does UI work through the dispatcher, and returns a
+   `ConversationToolResult` (an error, not an exception, for a declined call).
+4. To have a built-in check-in use it, give its `CheckIns.BuiltIn` entry
+   `ToolSets = [<id>]`, usually with `Outcome = CheckInOutcome.Tools`.
+
+The card, the settings check (an unknown set or the same set twice is refused),
+the status and MCP pick up the new set by themselves.
 
 **Answers.** Martlet reads the last decisive line, so thinking written before
 the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
@@ -1550,14 +1609,16 @@ just before the run. To add a built-in check-in:
 Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
 wording beside a due reminder, settings, the model a check-in needs, what it
 takes, a script's run, each built-in check-in recreated as your own with the
-same message, waits and answers, and a built-in check-in's changes saved and
-read back), `SoundDigestTests` (the kept microphone and the
+same message, waits and answers, a built-in check-in's changes saved and
+read back, and tool sets: the tools a job offers, the call limit, unknown and
+failing tools, and the sets saved and read back), `SoundDigestTests` (the kept microphone and the
 sound kept for a check-in), the Desktop tests for an emote a reply
 turned on against a try, a check-in taking the eyes back to their usual gaze and
 the real talk window bringing up a check-in's `SAY:` through a fixture Thinking
 endpoint, MCP's `check_ins_check` and `check_ins_status`, and the page on a
 disposable data folder through `-Desktop`. A real model answering a check-in,
-and a real screenshot or recording sent to a pool member, are **NOT RUN**.
+a real model calling a check-in's tools, and a real screenshot or recording
+sent to a pool member, are **NOT RUN**.
 
 ## Singing in conversation
 

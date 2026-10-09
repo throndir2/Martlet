@@ -918,12 +918,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the owner's own, its On box and Every choice ("CheckInOn-emotes", "CheckInEvery-emotes"), its Its answer choice
         // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), the
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
-        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
+        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), its tool set boxes ("CheckInTools-c1-next-reply", whose help says
+        // what the set does and its tools), and for a built-in one its prompt's state
         // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact and condition box, the answer and the
         // length choice carry what they mean as "help". Changing any of them saves check-ins.json, so it needs
         // --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTools-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
         // button's name ("DeepThinkingAddRole-diva" reads "Add the Thinking pool role on diva"; clicking it installs the role, so it

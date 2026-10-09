@@ -655,14 +655,16 @@ runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
 `Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`), the model it
 needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
 when an input forces it) and what each run takes (`CheckInScreenshot-<id>`,
-`CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact and condition
+`CheckInRecording-<id>` and `CheckInSeconds-<id>`), and the tool sets it may
+call (`CheckInTools-<id>-<setId>`, such as `CheckInTools-c1-next-reply`; its
+`help` says what the set does and names its tools). Each fact and condition
 box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
 the choice does (the same text as its tooltip), and which models hear a whole
 minute of recording. A built-in check-in's card has its prompt box
 (`CheckInPrompt-<id>`), its state (`CheckInPromptState-<id>`, such as *Edited.
 About 180 tokens.*, with *Saving...* until it is saved) and *Use built-in
-settings* (`CheckInReset-<id>`: Martlet's own prompt, facts, conditions and
-answer back; On and Every stay). Each check-in has *Copy as your own*
+settings* (`CheckInReset-<id>`: Martlet's own prompt, facts, conditions,
+answer, inputs and tools back; On and Every stay). Each check-in has *Copy as your own*
 (`CheckInCopy-<id>`), which adds an own check-in (off) with the same prompt and
 choices. The script and prompt boxes
 (`CheckInScript-<id>`, `CheckInPrompt-<id>`) have automation IDs, but
@@ -4451,27 +4453,32 @@ credentials.
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
-*GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task`, the
+*GazeUsual*, *Note*, *Say* or *Tools*, built-in `prompt`, the owner's `task`, the
 `facts` and `conditions` (such as *Said, Replies* or *CharacterShows,
 EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
 Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
-*Text, Vision, Audio*), the `screenshot`, the `recording` (*None*,
+*Text, Vision, Audio, Tools*), the `screenshot`, the `recording` (*None*,
 *Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
-whether it runs a `script` and `scriptCharacters`, never the script itself), `desktop` from `check-ins-status.json` (written by
+whether it runs a `script` and `scriptCharacters`, never the script itself, and its `toolSets` (set IDs such as
+*next-reply*)), `desktop` from `check-ins-status.json` (written by
 the desktop on a companion PC: `role`, the check-in `running`, `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
-`recording`, `recordingSeconds`, `script`, `waiting`, `nextAt`, `runs`, `acted`
+`recording`, `recordingSeconds`, `script`, `toolSets`, `waiting`, `nextAt`, `runs`, `acted`
 and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
 took in a few words, such as *a screenshot (1280x720), 10 s of the
-microphone*) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
+microphone*), `ms` and `tools` (each call the run made: its `set`, the `tool`,
+the `result`, the first line of the tool's answer at most 120 characters, and
+`failed`); `sound` with `microphoneKept`, `microphoneHeard`,
 `pcKept` and `pcHeard`; never what was said, answered, reminded, taken or
 printed) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `saidLatelyMinutes` for Saying the same things, `recordingChoices`,
 `maximumScriptCharacters`, `maximumScriptOutputCharacters` and
-`scriptTimeoutSeconds` for the owner's inputs, the job kind
+`scriptTimeoutSeconds` for the owner's inputs, `maximumToolRounds` (4),
+`maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
+(each set's `id`, `name`, `does` and `tools`), the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
 Read-only.
 
@@ -4506,7 +4513,16 @@ wanted), `own: waits for the sound it records`, `own: the message carries what
 it took` (a real FIXTURE script, `Write-Output ('FIXTURE ' + (6 * 7))`, run by
 the production `TerminalRunner`, a FIXTURE picture and recording) and
 `own: only a capable member takes it` (a text-only member never gets it; a
-member with vision and audio gets the picture and the sound). `passed` and
+member with vision and audio gets the picture and the sound). Three `tools:`
+steps check [tool sets](CONVERSATION.md#check-in-tool-sets): `tools: sets saved
+and read back` (an own check-in's and a built-in choice's sets kept; an unknown
+set and the same set twice refused), `tools: the job offers them` (the job
+needs a member that calls tools, offers the chosen sets' tools for 4 rounds and
+asks for the *Its tools act* answer; with no sets it waits) and `tools: only a
+member that calls tools runs them` (a text-only member never gets it; on a
+member that calls tools, FIXTURE calls are kept with their first line only, an
+unknown tool and a failing handler are errors, and every call after the eighth
+is refused). `passed` and
 each step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
