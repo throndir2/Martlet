@@ -102,8 +102,12 @@ public sealed class OptionalExtrasTests
         var choices = OptionalExtras.ReadingChoices(ReadingPlace.ThisPc, windowsReads: true);
         Assert.Equal(new[] { "Off", "ThisPc", "Host" }, choices.Select(o => o.Key));
         Assert.True(choices[1].InUse);
-        Assert.Equal("Processor (Windows) · No download · 0.015 s a read", Row(choices[1]));
-        Assert.Equal("Processor (Docker) · 4 threads · 0.5-1 s a read", Row(choices[2]));
+        // The catalog's numbers come first (its short facts make the row), then what only OCR has.
+        Assert.Equal(OptionFacts.Short(FootprintCatalog.Default.Find(OptionalExtras.ReadingWindowsOcr)!), Row(choices[1]));
+        Assert.Equal(OptionFacts.Short(FootprintCatalog.Default.Find(OptionalExtras.ReadingRapidOcr)!), Row(choices[2]));
+        Assert.Equal("none: it is built into Windows", Fact(choices[1], "download"));
+        Assert.Contains("0.9 s", Fact(choices[2], "speed"));
+        Assert.Contains("game fonts", choices[2].Summary);
         Assert.Contains("Chinese and English", Fact(choices[2], "languages"));
         Assert.Contains("nothing leaves this PC", Fact(choices[1], "data"));
         Assert.Null(choices[1].Unavailable);
@@ -148,7 +152,12 @@ public sealed class OptionalExtrasTests
         Assert.Equal("With Thinking · No extra model · sees", Row(on[1]));
         Assert.Equal("with Thinking's request, to Ollama on this PC", Fact(on[1], "data"));
         Assert.Equal("nowhere: they stay on this PC", Fact(on[3], "data"));
-        Assert.Equal("May cost money", on[4].Facts.Single(f => f.Key == "cost").Short);
+        // The cloud's cost names the catalog's providers (NVIDIA Build has a free tier) and the others.
+        Assert.Equal("Free or paid", on[4].Facts.Single(f => f.Key == "cost").Short);
+        Assert.Contains("NVIDIA Build (free endpoint): a free tier", Fact(on[4], "cost"));
+        // Ollama on this PC: a second model's graphics memory, from the catalog's image models.
+        var local = FootprintCatalog.Default.For(PlanComponent.Vision).Where(o => o.IsLocal && !o.UsesThinking).ToArray();
+        Assert.Contains(local.Max(o => o.GpuGb).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB", Fact(on[3], "vram"));
 
         var off = OptionalExtras.SenseChoices(SenseKind.Image, new(), thinking, null, on: false, "Ollama on this PC", "Vision is off.");
         Assert.True(off[0].InUse);
@@ -176,6 +185,18 @@ public sealed class OptionalExtrasTests
         Assert.Equal("recommended", choices[1].Badge);
         Assert.Equal("Recordings go", choices[4].Facts.Single(f => f.Key == "data").Label);
         Assert.Equal(OptionalExtras.OffMeans(CompanionTab.Hearing) + ".", choices[0].Summary);
+        Assert.Equal("Martlet gets only the words you say, not how you say them", OptionalExtras.OffMeans(CompanionTab.Hearing));
+    }
+
+    [Fact]
+    public void Hearing_now_says_why_it_is_off()
+    {
+        var none = new Martlet.Conversation.SenseRoute(SenseKind.Audio, Martlet.Conversation.SensePath.None, null, "");
+        Assert.Equal("Off. Martlet gets only the words you say, not how you say them. Set up Thinking first.",
+            MainWindow.HearingNow(false, null, null, none));
+        Assert.EndsWith("so it waits for your tick below.", MainWindow.HearingNow(false, null, Thinking("gemma4:e2b"), none));
+        Assert.Equal("Off. Martlet gets only the words you say, not how you say them.", MainWindow.HearingNow(false, false, Thinking("gemma4:e2b"), none));
+        Assert.Equal("On. Thinking (gemma4:e2b) hears your recording itself.", MainWindow.HearingNow(true, null, Thinking("gemma4:e2b"), none));
     }
 
     [Fact]

@@ -59,8 +59,9 @@ public partial class MainWindow
 
     /// <summary>Companion › Hearing's Now line (HearingNow).</summary>
     internal static string HearingNow(bool on, bool? choice, SetupRoute? thinking, SenseRoute audio) =>
-        !on ? $"Off. {OptionalExtras.OffMeans(CompanionTab.Hearing)}." +
-              (choice is null ? " Your recording would leave this PC, so it waits for your tick below." : "")
+        !on ? $"Off. {OptionalExtras.OffMeans(CompanionTab.Hearing)}." + (choice is not null ? ""
+            : thinking is null && audio.Model is null ? " Set up Thinking first."
+            : " Your recording would leave this PC, so it waits for your tick below.")
         : audio.Model is { } own ? $"On. The audio model, {own.Describe()}, hears how you say things and describes it for Thinking."
         : thinking is null ? "On, but Thinking isn't set up yet."
         : $"On. Thinking ({thinking.ModelId}) hears your recording itself.";

@@ -115,6 +115,8 @@ internal static class OptionalExtras
     // ---------- Pictures ----------
 
     internal const string PicturesRole = "pictures-comfyui";
+    internal const string PicturesOpenRouter = "hosted:openrouter-pictures";
+    internal const string PicturesNvidiaBuild = "hosted:nvidia-build-pictures";
 
     /// <summary>Companion › Pictures' main choice, keyed by <see cref="Martlet.Core.Pictures.PicturePlace"/>: Off, Martlet's Pictures
     /// role, your own ComfyUI, OpenRouter or NVIDIA Build.</summary>
@@ -148,23 +150,19 @@ internal static class OptionalExtras
                     new("data", "Your data", "descriptions go to your ComfyUI's address (it has no password: only on your own network)", null)
                 ]),
             Place(Martlet.Core.Pictures.PicturePlace.OpenRouter, "OpenRouter", "Many image models in the cloud. Each picture costs money.",
-                [
-                    new("runs-on", "Runs on", "online: nothing runs on your computers", "Online"),
+                Facts(PicturesOpenRouter, [new("runs-on", "Runs on", "online: nothing runs on your computers", "Online")],
                     new("picture", "Per picture", "seconds, by the model", null),
                     new("size", "Picture size", "about 1K, in the shape Martlet picks", null),
                     new("cost", "Cost", "paid: each picture costs money (an OpenRouter key)", "Paid"),
                     new("data", "Your data", "descriptions go to OpenRouter and the model's provider", null),
-                    new("models", "Models", "any OpenRouter model that draws (default google/gemini-3.1-flash-image)", null)
-                ]),
+                    new("models", "Models", "any OpenRouter model that draws (default google/gemini-3.1-flash-image)", null))),
             Place(Martlet.Core.Pictures.PicturePlace.NvidiaBuild, "NVIDIA Build", "FLUX models in NVIDIA's cloud with your NVIDIA API key.",
-                [
-                    new("runs-on", "Runs on", "online: nothing runs on your computers", "Online"),
+                Facts(PicturesNvidiaBuild, [new("runs-on", "Runs on", "online: nothing runs on your computers", "Online")],
                     new("picture", "Per picture", "seconds (FLUX.1 schnell is fast)", null),
                     new("size", "Picture size", "about 1 megapixel, in the shape Martlet picks", null),
                     new("cost", "Cost", "your nvapi- key; each picture may cost money", "API key"),
                     new("data", "Your data", "descriptions go to NVIDIA", null),
-                    new("models", "Models", "NVIDIA's FLUX models (default black-forest-labs/flux.1-schnell)", null)
-                ])
+                    new("models", "Models", "NVIDIA's FLUX models (default black-forest-labs/flux.1-schnell)", null)))
         ];
     }
 
@@ -192,6 +190,7 @@ internal static class OptionalExtras
                     new("speed", "Read time", "about 15 ms for a 1024 x 576 screenshot", "0.015 s a read",
                         "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
                 ],
+                new("download", "Download", "none: it is built into Windows", "No download"),
                 new("languages", "Languages", "your Windows languages that include text recognition", null),
                 new("game-fonts", "Game fonts", "fair: the Reading role is often better with stylized fonts", null),
                 new("cost", "Cost", "free", "Free"),
@@ -313,6 +312,17 @@ internal static class OptionalExtras
             };
         }
         var place = thinkingPlace ?? (thinking is null ? "not set up yet" : thinking.ModelId);
+        // The catalog's models of this kind: the second models Ollama on this PC can run, and the cloud providers it knows.
+        var part = image ? PlanComponent.Vision : PlanComponent.Hearing;
+        var local = FootprintCatalog.Default.For(part).Where(o => o.IsLocal && !o.UsesThinking).OrderBy(o => o.GpuGb).ToArray();
+        var hosted = FootprintCatalog.Default.For(part).Where(o => !o.IsLocal).ToArray();
+        var vram = local.Length == 0 ? "a second model's graphics memory"
+            : $"a second model: about {Gb(local[0].GpuGb)} GB ({local[0].DisplayName}) to {Gb(local[^1].GpuGb)} GB ({local[^1].DisplayName})";
+        var vramShort = local.Length == 0 ? null : $"{Gb(local[0].GpuGb)}-{Gb(local[^1].GpuGb)} GB VRAM";
+        var download = local.Length == 0 ? "the model you pick"
+            : $"the model you pick, about {Gb(local.Min(o => o.Peak.DiskGb))} to {Gb(local.Max(o => o.Peak.DiskGb))} GB";
+        var cloudCost = string.Join("; ", hosted.Select(o => $"{o.DisplayName}: {(o.FreeTier ? "a free tier" : "paid")}")
+            .Append("other providers may charge for each request (a key)"));
         var thinkingTakes = thinking is null ? "Thinking isn't set up yet"
             : takes switch
             {
@@ -346,9 +356,8 @@ internal static class OptionalExtras
                 "fit on the graphics card.",
                 [
                     new("runs-on", "Runs on", "this PC's graphics card, beside Thinking's model", "This PC's GPU"),
-                    new("vram", "Graphics memory", image ? "a second model: about 4 GB (Qwen3.5 4B) to 7 GB (Gemma 4 E4B); it works only while both fit"
-                        : "a second model: about 5 GB (Gemma 4 E2B) to 7 GB (Gemma 4 E4B); it works only while both fit", image ? "4-7 GB VRAM" : "5-7 GB VRAM"),
-                    new("download", "Download", "the model you pick, about 3 to 10 GB", null),
+                    new("vram", "Graphics memory", $"{vram}; it works only while both fit", vramShort),
+                    new("download", "Download", download, null),
                     new("delay", "Reply delay", "none: it describes in the background, and a reply never waits", null),
                     new("cost", "Cost", "free", "Free"),
                     new("data", image ? "Pictures go" : "Recordings go", "nowhere: they stay on this PC", null)
@@ -359,7 +368,7 @@ internal static class OptionalExtras
                 [
                     new("runs-on", "Runs on", "online, or a model app or server you choose", "Online"),
                     new("delay", "Reply delay", "none: it describes in the background, and a reply never waits", null),
-                    new("cost", "Cost", "a cloud provider may charge for each request (a key)", "May cost money"),
+                    new("cost", "Cost", cloudCost, hosted.Any(o => o.FreeTier) ? "Free or paid" : "May cost money"),
                     new("data", image ? "Pictures go" : "Recordings go", "to the provider or server you choose", null)
                 ])
         };
