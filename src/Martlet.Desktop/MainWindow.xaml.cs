@@ -155,6 +155,7 @@ public partial class MainWindow : ThemedWindow
         }
         WireCharacterActions();
         WireCharacterTouchZones();
+        WireVoiceSounds();
         WireCharacterPhysical();
         WireCharacterThemes();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;

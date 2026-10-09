@@ -2061,6 +2061,8 @@ public partial class LiveConversationWindow : ThemedWindow
     internal bool ListeningStarted => !listenPaused;
     /// <summary>Always listening is hearing you, or what you just said is still being transcribed or taken.</summary>
     internal bool HearingYou => MicBusy;
+    /// <summary>Always listening hears your voice right now (a touch's voice sound waits for you).</summary>
+    internal bool UserTalking => listener is { Hearing: true };
 
     /// <summary>Home's listening indicator: what listening is doing now, and whether that is a problem.</summary>
     internal (string Text, bool Problem) ListeningStatus

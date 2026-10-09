@@ -992,6 +992,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (history?.Active(next?.Memory) == true) history.Warm();
         // Quick sounds follow the voice: kept ones are read, missing ones made when the voice is free to use.
         FollowQuickSounds();
+        // So do the touch zones' voice sounds.
+        FollowVoiceSounds();
     }
 
     internal void SetControls(bool pause, bool mute, bool sessionLocked)
@@ -5227,6 +5229,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         DisposeThinkRuntimeAsync().Forget();
         DisposeCaptureRuntimeAsync().Forget();
         DisposeQuickSoundsAsync().Forget();
+        DisposeVoiceSoundsAsync().Forget();
         singing?.DisposeAsync().AsTask().Forget();
         songHandler?.Dispose();
         pictureHandler?.Dispose();
