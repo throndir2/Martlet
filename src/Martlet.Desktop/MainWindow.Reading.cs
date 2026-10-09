@@ -11,29 +11,27 @@ using Martlet.Core.Reading;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Companion › Reading (docs/READING.md): where Martlet reads the text on your screen while it watches (reading.json, this PC's
-/// own choice): Windows OCR on this PC (the default and recommended: on the processor, nothing leaves the PC), Martlet's
-/// <c>ocr</c> host role (RapidOCR on the processor in Docker, set up on this PC or another of your computers with the same
-/// martlet-host flow as every role, reached through its gateway) or off. Read my screen now reads the whole screen once with
-/// the saved choice. Automation IDs: <c>ReadingNow</c>, <c>ReadingLast</c>, <c>ReadingPlace-&lt;place&gt;</c>,
-/// <c>ReadingWindowsState</c>, <c>ReadingUseThisPc</c>, <c>ReadingHost-&lt;host&gt;</c>, <c>ReadingEngine</c>,
-/// <c>ReadingFeatures</c>, <c>ReadingHostState</c>, <c>ReadingSetUp</c>, <c>ReadingUseHost</c>, <c>ReadingTurnOff</c>,
-/// <c>ReadingTest</c>, <c>ReadingTestState</c> and <c>ReadingTestText</c>.
+/// Companion › Reading (docs/READING.md, an optional extra): where Martlet reads the text on your screen while it watches
+/// (reading.json, this PC's own choice). In the standard order: Now (what it reads with, the newest read and Read my screen now,
+/// which reads the whole screen once with the saved choice), then the main choice as an option picker: Off, Windows OCR on this
+/// PC (the default and recommended: on the processor, nothing leaves the PC) or Martlet's <c>ocr</c> host role (RapidOCR on the
+/// processor in Docker, set up on this PC or another of your computers with the same martlet-host flow as every role, reached
+/// through its gateway). Each option's details hold where it stands and the button that uses it. Automation IDs:
+/// <c>ReadingNow</c>, <c>ReadingLast</c>, <c>Picker-Reading-&lt;Off|ThisPc|Host&gt;</c>, <c>ReadingWindowsState</c>,
+/// <c>ReadingUseThisPc</c>, <c>ReadingHost-&lt;host&gt;</c>, <c>ReadingHostState</c>, <c>ReadingSetUp</c>, <c>ReadingUseHost</c>,
+/// <c>ReadingTurnOff</c>, <c>ReadingTest</c>, <c>ReadingTestState</c> and <c>ReadingTestText</c>.
 /// </summary>
 public partial class MainWindow
 {
     internal const string ReadingThisPc = "this-pc";
     internal const string ReadingModel = "rapidocr-ppocrv4";
 
-    internal static readonly IReadOnlyList<string> ReadingFeatures =
-        ["Processor only", "Docker", "RapidOCR, Apache-2.0", "Good with game fonts", "About 0.5-1 s a screenshot"];
 
     private const string ReadingTerms =
         "It builds a container from python:3.12 with hash-pinned RapidOCR 1.4.4 (Apache-2.0) and its PaddleOCR PP-OCRv4 models " +
         "(Apache-2.0, about 15 MB, inside the package), ONNX Runtime (MIT) and OpenCV (Apache-2.0). While Martlet watches your " +
         "screen, this PC sends screenshots to that computer. They are read in memory there and are not kept.";
 
-    private ReadingPlace? readingShown;
     private string? readingHost;
     private string? readingPending;
     private string? readingFailure;
@@ -46,7 +44,6 @@ public partial class MainWindow
     private void RenderReadingTab(Panel page)
     {
         var saved = ReadingSettings.Load(store?.DataDirectory);
-        var place = readingShown ?? saved.Place;
         if (readingWindows is null && !readingWindowsBusy) CheckWindowsReadingAsync().Forget();
 
         var now = new TextBlock { Text = ReadingNow(saved), FontSize = 15, TextWrapping = TextWrapping.Wrap };
@@ -72,44 +69,25 @@ public partial class MainWindow
                 "text it read. What you type or say never waits for it. The text is never kept in the conversation.",
                 new Thickness(0, 4, 0, 0)), last, test, text, Row(readNow)));
 
-        var where = new StackPanel();
-        where.Children.Add(Heading("Where it reads"));
-        where.Children.Add(Note("This choice stays on this PC.", new Thickness(0, 0, 0, 10)));
-        foreach (var (value, label, detail) in new (ReadingPlace, string, string)[]
+        // The main choice: Off, Windows OCR on this PC or Martlet's Reading role. Each option's details hold its button.
+        var options = OptionalExtras.ReadingChoices(saved.Place, readingWindows).Select(option => Enum.Parse<ReadingPlace>(option.Key) switch
         {
-            (ReadingPlace.ThisPc, "Windows OCR on this PC (recommended)",
-                "Built into Windows. Runs on this PC's processor in a fraction of a second. Nothing leaves this PC, and it's free."),
-            (ReadingPlace.Host, "Martlet's Reading role",
-                "RapidOCR in Docker, on this PC or another of your computers. Often better with game fonts. It runs on that " +
-                "computer's processor (no graphics card needed). Screenshots go to that computer and are not kept."),
-            (ReadingPlace.Off, "Off", "Martlet only looks at the pictures; it doesn't read the text on them separately.")
-        })
-        {
-            var option = Choice("ReadingPlace", label + (value == saved.Place ? "  \u00b7  in use" : ""), detail, value == place, "ReadingPlace-" + value);
-            option.Checked += (_, _) =>
+            ReadingPlace.ThisPc => option with { Details = () => ReadingThisPcPanel(saved) },
+            ReadingPlace.Host => option with { Details = () => ReadingHostPanel(saved) },
+            _ => option with
             {
-                readingShown = value;
-                RenderTab();
-            };
-            where.Children.Add(option);
-        }
-        page.Children.Add(Card(where));
-
-        page.Children.Add(place switch
-        {
-            ReadingPlace.ThisPc => ReadingThisPcCard(saved),
-            ReadingPlace.Host => ReadingHostCard(saved),
-            _ => Card(Heading("Off"), Note("Martlet still sees your screen while it watches, but it doesn't read the text on it separately.",
-                    new Thickness(0, 0, 0, 0)),
-                Row(saved.Place == ReadingPlace.Off ? null
-                    : PageButton("Turn reading off", () => SaveReading(new ReadingSettings { Place = ReadingPlace.Off, ChosenAt = DateTimeOffset.Now },
-                        "Reading is off."), primary: true, id: "ReadingTurnOff")))
-        });
+                Details = () => [Note("Martlet still sees your screen while it watches, but it doesn't read the text on it separately.",
+                    new Thickness(0, 0, 0, 0))],
+                Action = saved.Place == ReadingPlace.Off ? null
+                    : () => PageButton("Turn reading off", () => SaveReading(new ReadingSettings { Place = ReadingPlace.Off, ChosenAt = DateTimeOffset.Now },
+                        "Reading is off."), primary: true, id: "ReadingTurnOff")
+            }
+        }).ToList();
+        page.Children.Add(OptionPicker("Reading", "Where it reads", "This choice stays on this PC.", options));
     }
-
     private static string ReadingNow(ReadingSettings saved) => saved.On
         ? $"Martlet reads the text on your screen with {saved.Describe()} while it watches."
-        : "Off. Martlet doesn't read the text on your screen separately.";
+        : $"Off. {OptionalExtras.OffMeans(CompanionTab.Reading)}.";
 
     /// <summary>Saves this PC's choice; watching picks it up at its next screenshot.</summary>
     private bool SaveReading(ReadingSettings next, string done)
@@ -124,7 +102,7 @@ public partial class MainWindow
             ActionText.Text = error.Message;
             return false;
         }
-        readingShown = null;
+        ForgetPicker("Reading");
         readingTestState = null;
         readingTestText = null;
         ErrorLog.Info($"Reading: now {next.Describe()}.");
@@ -143,7 +121,8 @@ public partial class MainWindow
 
     // ---------- Windows OCR on this PC ----------
 
-    private Border ReadingThisPcCard(ReadingSettings saved)
+    /// <summary>Windows OCR's details: whether Windows can read text here, and Read on this PC.</summary>
+    private List<UIElement> ReadingThisPcPanel(ReadingSettings saved)
     {
         var inUse = saved.Place == ReadingPlace.ThisPc;
         var state = Note(readingWindows switch
@@ -154,23 +133,20 @@ public partial class MainWindow
         }, new Thickness(0, 4, 0, 0));
         if (readingWindows == false) state.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(state, "ReadingWindowsState");
-        return Card(Heading("Windows OCR on this PC"),
-            Note("Windows' own text recognition, in your Windows languages. It needs no download and no graphics card, and it reads " +
-                "a screenshot in tens of milliseconds on the processor.", new Thickness(0, 0, 0, 4)),
-            state,
-            Row(inUse ? null : PageButton("Read on this PC", () => SaveReading(new ReadingSettings { Place = ReadingPlace.ThisPc, ChosenAt = DateTimeOffset.Now },
-                "Martlet now reads the text on your screen with Windows OCR on this PC."), primary: true, id: "ReadingUseThisPc")));
+        return [state, Row(inUse ? null : PageButton("Read on this PC", () => SaveReading(new ReadingSettings { Place = ReadingPlace.ThisPc, ChosenAt = DateTimeOffset.Now },
+            "Martlet now reads the text on your screen with Windows OCR on this PC."), primary: true, id: "ReadingUseThisPc"))];
     }
 
     // ---------- Martlet's Reading role ----------
 
-    private Border ReadingHostCard(ReadingSettings saved)
+    /// <summary>The Reading role's details: the computer pills (with other computers paired, or shared by a friend), where it
+    /// stands on the shown computer, Set up there, and Read there once it is ready.</summary>
+    private List<UIElement> ReadingHostPanel(ReadingSettings saved)
     {
         var stack = new List<UIElement>
         {
-            Heading("Martlet's Reading role"),
-            Note("RapidOCR with its PaddleOCR models (Apache-2.0), set up by Martlet in Docker like its other roles. It runs on the " +
-                "processor, so it never takes the graphics card from the voice or thinking.", new Thickness(0, 0, 0, 4))
+            Note("Set up by Martlet in Docker like its other roles. It runs on the processor, so it never takes the graphics card from " +
+                "the voice or thinking.", new Thickness(0, 0, 0, 4))
         };
         var thisPc = ThisPcHost();
         // Hosts friends share with this PC read for this PC too, when their owner set Reading up there.
@@ -210,44 +186,27 @@ public partial class MainWindow
         var state = ready ? $"Ready on {where}." + (inUse ? " Martlet reads there." : "")
             : pending ? $"Setting up on {where}..."
             : cannot ?? (readingFailure is { } failed ? $"Setup failed on {where}: {failed}" : $"Not set up on {where} yet.");
-        var title = OptionTitle("Reading", ready ? "ready" : null, 15);
-        AutomationProperties.SetAutomationId(title, "ReadingEngine");
-        var chips = Chips("reading", ReadingFeatures, feature => feature switch
-        {
-            "Processor only" => "No graphics card needed: it never competes with the voice or thinking for the card.",
-            "About 0.5-1 s a screenshot" => "Measured on a 24-thread desktop processor with a 1024 x 576 screenshot. It reads only " +
-                "screenshots that changed, off to the side, so replies never wait for it.",
-            _ => null
-        });
-        AutomationProperties.SetAutomationId(chips, "ReadingFeatures");
         var stateLine = Note(state, new Thickness(0, 4, 0, 0));
         if (cannot is not null || readingFailure is not null && !pending && !ready) stateLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(stateLine, "ReadingHostState");
-        var setUp = PageButton(ready ? "Ready" : pending ? "Setting up..." : "Set up", () => SetUpReadingAsync(onThisPc ? null : target).Forget(),
-            primary: !ready, id: "ReadingSetUp");
-        setUp.IsEnabled = !ready && !pending && cannot is null && readingPending is null;
+        stack.Add(stateLine);
+        if (ready)
+        {
+            if (!inUse) stack.Add(Row(PageButton($"Read on {where}", () => UseReadingHost(target!.HostId, where), primary: true, id: "ReadingUseHost")));
+            return stack;
+        }
+        var setUp = PageButton(pending ? "Setting up..." : "Set up", () => SetUpReadingAsync(onThisPc ? null : target).Forget(),
+            primary: true, id: "ReadingSetUp");
+        setUp.IsEnabled = !pending && cannot is null && readingPending is null;
         if (cannot is not null)
         {
             setUp.ToolTip = cannot;
             ToolTipService.SetShowOnDisabled(setUp, true);
             AutomationProperties.SetHelpText(setUp, cannot);
         }
-        var details = new StackPanel { Children = { title, chips, stateLine } };
-        setUp.VerticalAlignment = VerticalAlignment.Top;
-        setUp.Margin = new Thickness(12, 0, 0, 0);
-        var row = new DockPanel();
-        DockPanel.SetDock(setUp, Dock.Right);
-        row.Children.Add(setUp);
-        row.Children.Add(details);
-        var option = new Border { Child = row, BorderThickness = new Thickness(ready ? 2 : 1), CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(0, 8, 0, 0) };
-        option.SetResourceReference(Border.BorderBrushProperty, ready ? "AccentBrush" : "BorderBrush");
-        stack.Add(option);
-        if (ready && !inUse)
-            stack.Add(Row(PageButton($"Read on {where}", () => UseReadingHost(target!.HostId, where), primary: true, id: "ReadingUseHost")));
-        return Card([.. stack]);
+        stack.Add(Row(setUp));
+        return stack;
     }
-
     private void UseReadingHost(string hostId, string where) =>
         SaveReading(new ReadingSettings { Place = ReadingPlace.Host, HostId = hostId, ChosenAt = DateTimeOffset.Now },
             $"Martlet now reads the text on your screen on {where}.");

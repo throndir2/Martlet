@@ -110,7 +110,7 @@ public sealed class SenseModelCardsTests
     {
         var omni = Thinking(GenerationSupport.LocalOllamaChatBaseUrl, "gemma4:e2b");
         Assert.Equal("Thinking is the text model: it writes every reply. Pictures go to Thinking itself (Companion › Vision), and recordings " +
-            "go to Thinking itself (Companion › Listening).", MainWindow.TextModelText(new(), omni, null));
+            "go to Thinking itself (Companion › Hearing).", MainWindow.TextModelText(new(), omni, null));
         var senses = new SenseModels { Image = Own(Endpoint(GenerationSupport.LocalOllamaChatBaseUrl, "qwen2.5vl:7b")) };
         Assert.Contains("Pictures go to the image model, Ollama on this PC (qwen2.5vl:7b)", MainWindow.TextModelText(senses, omni, null));
         // A model of its own that is exactly Thinking's reads as the text model.
@@ -119,7 +119,7 @@ public sealed class SenseModelCardsTests
         // A text-only Thinking with no image or audio model: nothing takes them.
         var text = Thinking(GenerationSupport.LocalOllamaChatBaseUrl, "qwen3:8b");
         Assert.Equal("Thinking is the text model: it writes every reply. Pictures go to no model, so Martlet can't see (Companion › Vision), " +
-            "and recordings go to no model, so Thinking gets the transcript only (Companion › Listening).", MainWindow.TextModelText(new(), text, null));
+            "and recordings go to no model, so Thinking gets the transcript only (Companion › Hearing).", MainWindow.TextModelText(new(), text, null));
         // Recordings to the same model as a paired computer's image model go nowhere: its gateway takes no recordings.
         var host = new SenseModels { Image = Own(Diva), Audio = new() { Source = SenseSource.OtherSense } };
         Assert.Contains("recordings go to no model, so Thinking gets the transcript only", MainWindow.TextModelText(host, text, null));
