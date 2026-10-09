@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Hover a resource bar on Devices to see what each job takes, what's free, what's kept for the system and what's in use now. Hover one part of the bar to see that job in bold. ([#653](https://github.com/throndir2/Martlet/pull/653))
+
 ## [0.61.0] - 2026-10-08
 
 ### Added
