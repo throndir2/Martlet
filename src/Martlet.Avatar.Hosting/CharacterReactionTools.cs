@@ -115,8 +115,8 @@ public static class CharacterReactionTools
                 text.Append("- ").Append(source.Id).Append(" - ").Append(source.Name).Append(", ").Append(source.Kind.ToString().ToLowerInvariant()).Append('\n');
             if (playable.Count > MaximumListed) text.Append("(and ").Append(playable.Count - MaximumListed).Append(" more)\n");
         }
-        text.Append("A zone can also play a voice sound: ").Append(CharacterReactionChanges.SoundPrefix).Append("<sound>, such as ")
-            .Append(CharacterReactionChanges.SoundPrefix).Append("laugh.\n");
+        text.Append("A zone can also play a voice sound: ").Append(CharacterReactionChanges.SoundPrefix).Append("<sound>, one of: ")
+            .Append(string.Join(", ", SoundCues)).Append(".\n");
         text.Append("\nReaction words, for change_touch_feeling: ").Append(string.Join(", ", CharacterTouchTemperaments.Vocabulary))
             .Append(", or none for no reaction.\n");
         text.Append("\nYour changes in effect (id: what, until when; why):\n");
@@ -263,8 +263,13 @@ public static class CharacterReactionTools
         return Saved(context, saved, change, longer + note);
     }
 
-    /// <summary>A zone's reaction list entry for what the model wrote: a voice sound ("sound:laugh"), or an emote, motion or
-    /// gesture of the model that is turned on, by its ID, its tag or its name; null when the model has nothing of that name.</summary>
+    /// <summary>The voice sounds a zone can play (the cues of the sound tags Martlet's voices make: laugh, sigh...).</summary>
+    public static IReadOnlyList<string> SoundCues { get; } =
+        [.. Martlet.Core.Settings.VoiceTags.Known.Where(t => t.Kind == Martlet.Core.Settings.VoiceTagKind.Sound).Select(t => t.Cue).Distinct(StringComparer.Ordinal)];
+
+    /// <summary>A zone's reaction list entry for what the model wrote: a voice sound ("sound:laugh", one of
+    /// <see cref="SoundCues"/>), or an emote, motion or gesture of the model that is turned on, by its ID, its tag or its name;
+    /// null when there is nothing of that name.</summary>
     public static string? Entry(string? text, CharacterActionCatalog? catalog)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
@@ -272,7 +277,7 @@ public static class CharacterReactionTools
         if (text.StartsWith(CharacterReactionChanges.SoundPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var cue = text[CharacterReactionChanges.SoundPrefix.Length..].Trim().ToLowerInvariant().Replace(' ', '_');
-            return cue.Length is > 0 and <= 32 && cue.All(c => char.IsAsciiLetterOrDigit(c) || c == '_') ? CharacterReactionChanges.SoundPrefix + cue : null;
+            return SoundCues.Contains(cue) ? CharacterReactionChanges.SoundPrefix + cue : null;
         }
         var playable = catalog?.Entries.Where(e => e.Action.Enabled).ToArray() ?? [];
         var bare = text.Trim('{', '}');

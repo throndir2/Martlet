@@ -135,6 +135,8 @@ public sealed class CharacterReactionChangeTests
         Assert.Equal(change.Reactions, CharacterReactionChanges.Zone(Hand, null, CharacterReactionChanges.Active(saved, Persona, Now), context.Catalog).Reaction.Actions);
 
         Assert.Equal(["sound:laugh"], Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"sound:laugh\"],\"why\":\"Ha.\"}", [], context).Saved.Single().Reactions);
+        Assert.Contains("laugh", CharacterReactionTools.SoundCues);
+        Assert.True(Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"sound:moo\"],\"why\":\"x\"}", [], context).Answer.Failed);
         var unknown = Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"dance\"],\"why\":\"x\"}", [], context).Answer;
         Assert.True(unknown.Failed);
         Assert.Contains("can't play: dance", unknown.Result);
