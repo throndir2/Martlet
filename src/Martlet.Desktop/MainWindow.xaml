@@ -682,8 +682,8 @@
                         <StackPanel>
                             <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"
                                        Text="Every request that ended since Martlet started, by type. Wait is the time in line; run is the time on a computer."/>
-                            <Grid x:Name="ThinkingRequestsTiming" AutomationProperties.AutomationId="ThinkingRequestsTiming"
-                                  AutomationProperties.Name="Timing by type"/>
+                            <TextBlock x:Name="ThinkingRequestsTiming" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
+                                       AutomationProperties.AutomationId="ThinkingRequestsTiming"/>
                         </StackPanel>
                     </Border>
                 </Expander>

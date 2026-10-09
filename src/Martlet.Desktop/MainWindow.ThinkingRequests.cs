@@ -136,41 +136,23 @@ public partial class MainWindow
 
     private void RenderTiming(IReadOnlyDictionary<ThinkingJobKind, ThinkingRequestTotals> totals)
     {
-        var grid = ThinkingRequestsTiming;
-        grid.Children.Clear();
-        grid.RowDefinitions.Clear();
-        grid.ColumnDefinitions.Clear();
-        string[] heads = ["Type", "Ended", "Done", "Problems", "Retries", "Average wait", "Longest wait", "Average run", "Longest run"];
-        foreach (var _ in heads) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        void Cell(int row, int column, string text, bool head = false)
-        {
-            var cell = new TextBlock { Text = text, Margin = new Thickness(0, 2, 18, 2), FontWeight = head ? FontWeights.SemiBold : FontWeights.Normal };
-            Grid.SetRow(cell, row);
-            Grid.SetColumn(cell, column);
-            grid.Children.Add(cell);
-        }
-        grid.RowDefinitions.Add(new RowDefinition());
-        for (var c = 0; c < heads.Length; c++) Cell(0, c, heads[c], head: true);
-        var row = 1;
+        var text = TimingTable(totals);
+        if (ThinkingRequestsTiming.Text != text) ThinkingRequestsTiming.Text = text;
+    }
+
+    /// <summary>Timing by type as a fixed-width table, one line for each type, the most requested first.</summary>
+    internal static string TimingTable(IReadOnlyDictionary<ThinkingJobKind, ThinkingRequestTotals> totals)
+    {
+        if (totals.Count == 0) return "No request ended yet.";
+        string[] heads = ["Type", "Ended", "Done", "Problems", "Retries", "Avg wait", "Max wait", "Avg run", "Max run"];
+        List<string[]> rows = [heads];
         foreach (var (kind, total) in totals.OrderByDescending(t => t.Value.Count))
-        {
-            grid.RowDefinitions.Add(new RowDefinition());
-            string[] cells = [ThinkingRequestWords.Kind(kind), total.Count.ToString(CultureInfo.CurrentCulture),
+            rows.Add([ThinkingRequestWords.Kind(kind), total.Count.ToString(CultureInfo.CurrentCulture),
                 total.Succeeded.ToString(CultureInfo.CurrentCulture), total.Problems.ToString(CultureInfo.CurrentCulture),
                 total.Retries.ToString(CultureInfo.CurrentCulture), ThinkingRequestWords.Time(total.AverageWait),
-                ThinkingRequestWords.Time(total.MaxWaited), ThinkingRequestWords.Time(total.AverageRun), ThinkingRequestWords.Time(total.MaxRan)];
-            for (var c = 0; c < cells.Length; c++) Cell(row, c, cells[c]);
-            row++;
-        }
-        if (row == 1)
-        {
-            grid.RowDefinitions.Add(new RowDefinition());
-            var none = new TextBlock { Text = "No request ended yet." };
-            none.SetResourceReference(StyleProperty, "Muted");
-            Grid.SetRow(none, 1);
-            Grid.SetColumnSpan(none, heads.Length);
-            grid.Children.Add(none);
-        }
+                ThinkingRequestWords.Time(total.MaxWaited), ThinkingRequestWords.Time(total.AverageRun), ThinkingRequestWords.Time(total.MaxRan)]);
+        var widths = heads.Select((_, c) => rows.Max(r => r[c].Length) + 2).ToArray();
+        return string.Join(Environment.NewLine, rows.Select(r => string.Concat(r.Select((cell, c) => cell.PadRight(widths[c])))).Select(l => l.TrimEnd()));
     }
 
     private void RenderRequestDetail()
