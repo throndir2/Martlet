@@ -249,11 +249,12 @@ internal sealed partial class LiveConversationController
             if (!fit.Fits) return ThinkingAnswer.Failed(fit.Why.TrimEnd('.'));
         }
         var input = new BoundedTextInput(job.Text, string.IsNullOrWhiteSpace(job.Instructions) ? null : job.Instructions,
-            image: job.Image, audio: job.Audio);
+            image: job.Image, tools: job.Tools, audio: job.Audio);
         var target = DeepThinkTarget.For(member, ThinkEffort.Medium, thinking, ModelLimits.Load(dataDirectory));
         if (input.Utf8Bytes > target.Input.MaxInputBytes || input.InputTokenReservation > target.Input.MaxInputTokens)
             return ThinkingAnswer.Failed($"the job is too long for {place.Name}");
-        var request = target.OneShot(input, job.MaxOutputTokens, job.Reasoning, job.Timeout);
+        var toolRounds = job.Tools.Count > 0 ? job.MaxToolRounds : 0;
+        var request = target.OneShot(input, job.MaxOutputTokens, job.Reasoning, job.Timeout, job.Tools.Count > 0 ? job.ToolHost : null, toolRounds);
         var slots = poolSlots.GetOrAdd(place.Id, _ => []);
         if (!slots.TryTake(out var slot))
         {
@@ -264,7 +265,7 @@ internal sealed partial class LiveConversationController
         try
         {
             var own = new DeepThinkAuthorization(target, request, configured?.Profile ?? Guid.Empty, thinking, vault, clock,
-                clock.GetUtcNow() + job.Timeout + TimeSpan.FromSeconds(5), media: true);
+                clock.GetUtcNow() + job.Timeout + TimeSpan.FromSeconds(5), media: true, toolRounds: toolRounds);
             Volatile.Write(ref slot.Authorization, own);
             var began = System.Diagnostics.Stopwatch.GetTimestamp();
             var started = ThinkRuntime(slot).Start(request, own, token);
@@ -346,6 +347,8 @@ internal sealed partial class LiveConversationController
                 id = m.Id, name = m.Name, model = members.FirstOrDefault(p => p.Id == m.Id)?.Model,
                 slots = m.Slots, used = m.Used, rank = m.Rank,
                 vision = m.Can.HasFlag(ThinkingCapability.Vision), audio = m.Can.HasFlag(ThinkingCapability.Audio),
+                // Whether it may take jobs that call tools (check-ins with tool sets): endpoint members only.
+                tools = m.Can.HasFlag(ThinkingCapability.Tools),
                 // Whether its computer answers now (HostPresence), and since when it doesn't.
                 online = m.Online, offlineSince = HostOf(m.Id) is { } host ? HostPresence.OfflineSince(host) : null,
                 // The owner's Quick jobs and Long jobs boxes on Companion › Thinking pool.

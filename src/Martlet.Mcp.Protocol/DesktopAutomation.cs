@@ -493,15 +493,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
         // the owner added, which Detect again looks for too, or "special to this character" for one Detect zones found as special to
         // it, and how the persona's temperament feels about it), and each entry of its reaction list, in play order
-        // (TouchZoneReactionItem-<n>-<k>: "Blush  ·  emote", "laugh  ·  sound", "F05  ·  not on this model"; TouchZoneReactionNone-<n>
-        // reads "nothing" for an empty list).
+        // (TouchZoneReactionItem-<n>-<k>: "Blush  ·  emote", "Laugh  ·  sound" for a voice sound the voice makes, "laugh  ·  sound,
+        // not with this voice", "F05  ·  not on this model"; TouchZoneReactionNone-<n> reads "nothing" for an empty list).
+        // TouchZonesVoiceSounds says which voice makes the voice sounds and which, or why none plays, what is being made, the last
+        // problem and what the last sound did (played or not, and why). ▶ on a sound (TouchZoneReactionHear-<n>-<k>) plays it,
+        // so it needs --allow-ui-effects.
         // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
         // Detect zones looks for, and that it also looks for anything special to the character (fixed text). TouchZonesZoom says how
         // far the zone map is zoomed in ("Zoom 2x").
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
-        "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom",
+        "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom", "TouchZonesVoiceSounds",
         // Touch zones › Start over: the level chosen to reset (TouchZonesResetLevel: Zone reactions, Zones, Touch temperament or
         // Everything), what that level clears (fixed text), what the last reset did or why it couldn't, and the confirmation's
         // question (what the owner loses: zone names, counts, the persona's and custom temperaments' names, a date). Choosing a
@@ -757,10 +760,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // one's computer, how many were busy and how long it waited. Job names and host IDs only.
         "WorkSharingStatus",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
-        // status line (Martlet is running, listening, paused or watching). StayAwakeStatus (shown only when this PC runs its own
+        // status line (Martlet is running, listening, paused or watching), and the menu's items, which read as their fixed labels
+        // (Talk to Martlet or Show the talk window, Start listening or Stop listening, Pause Martlet or Resume Martlet...).
+        // StayAwakeStatus (shown only when this PC runs its own
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
+        "TrayOpen", "TrayTalk", "TrayStartListening", "TrayStopListening", "TrayStartWatching", "TrayStopWatching", "TrayPause",
+        "TrayResume", "TrayEndTalk", "TrayCharacter", "TrayCharacterClickThrough", "TrayCharacterProfiles", "TrayCloseToTray",
+        "TrayStartWithWindows", "TrayExit",
         // Settings › Appearance: the palette (Pink light, Rose dark, Character light, Character dark or Custom; menus and every window
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
@@ -933,13 +941,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), what
         // starts it at once ("CheckInTrigger-c1-TouchesEnded"), the
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
-        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
+        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), its tool set boxes ("CheckInTools-c1-next-reply", whose help says
+        // what the set does and its tools), and for a built-in one its prompt's state
         // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact, condition and trigger box, the answer and the
         // length choice carry what they mean as "help". The hours and cap choices ("CheckInFrom-welcome" reads "8 AM",
         // "CheckInUntil-welcome" "10 PM", "CheckInMostPerHour-c1" "Once an hour") carry theirs too. Changing any of them saves
         // check-ins.json, so it needs --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTrigger-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTools-",
+        "CheckInTrigger-",
         "CheckInFrom-", "CheckInUntil-", "CheckInMostPerHour-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add

@@ -1,4 +1,5 @@
 using Martlet.Audio;
+using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Providers;
@@ -14,6 +15,10 @@ public sealed class ConversationRuntime : IAsyncDisposable
     internal IElevenLabsSpeechClient? ElevenLabs { get; private init; }
     internal OpenAiSpeechSynthesisAdapter? Speech { get; }
     internal PcmPlaybackSink? Sink { get; }
+    // Voice sounds (PlayClipAsync) play on a sink of their own, so they never hold the reply's: a reply's own voice stops one.
+    private readonly PcmPlaybackSink? clipSink;
+    private PlaybackRun? clipRun;
+    private long clipEpoch;
     internal PlaybackOptions PlaybackOptions { get; }
     internal TimeProvider Clock { get; }
     internal GeneratedSpeechObserver? GeneratedSpeech { get; private init; }
@@ -36,18 +41,23 @@ public sealed class ConversationRuntime : IAsyncDisposable
     public double VoiceVolume
     {
         get => Sink?.Volume ?? PcmGain.Full;
-        set { if (Sink is not null) Sink.Volume = value; }
+        set
+        {
+            if (Sink is not null) Sink.Volume = value;
+            if (clipSink is not null) clipSink.Volume = value;
+        }
     }
 
     private ConversationRuntime(OpenAiTextGenerationAdapter text, OpenAiSpeechSynthesisAdapter? speech,
         PcmPlaybackSink? sink, PlaybackOptions options, TimeProvider clock,
-        Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chatFactory)
+        Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chatFactory, PcmPlaybackSink? clips = null)
     {
         Text = text;
         Speech = speech;
         PlaybackOptions = options;
         Clock = clock;
         Sink = sink;
+        clipSink = clips;
         this.chatFactory = chatFactory;
     }
 
@@ -63,9 +73,10 @@ public sealed class ConversationRuntime : IAsyncDisposable
         var time = clock ?? TimeProvider.System;
         var options = playbackOptions ?? new();
         var sink = devices is null ? null : new PcmPlaybackSink(devices, options, time);
+        var clips = devices is null ? null : new PcmPlaybackSink(devices, options, time);
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
             devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time,
-            target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time))
+            target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time), clips)
             { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText,
                 CharacterCues = characterCues, ElevenLabs = elevenLabs ?? new ElevenLabsDialogueClient(credentials, clock: time) };
     }
@@ -77,7 +88,8 @@ public sealed class ConversationRuntime : IAsyncDisposable
         IHostSpeechClient? hostSpeech = null, SpokenTextFeed? spokenText = null,
         CharacterCueFeed? characterCues = null, IElevenLabsSpeechClient? elevenLabs = null)
     {
-        return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat)
+        return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat,
+            devices is null ? null : new(devices, options, clock))
             { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech,
                 SpokenText = spokenText, CharacterCues = characterCues, ElevenLabs = elevenLabs };
     }
@@ -271,8 +283,79 @@ public sealed class ConversationRuntime : IAsyncDisposable
         {
             turn.CheckActive();
             ContractRules.Require(playbackEpoch < int.MaxValue, "The playback epoch range is exhausted.");
+            // A reply's own voice (or its quick sound) cuts a voice sound still playing; it never waits for it.
+            if (clipRun is { } clip) _ = clip.StopAsync(replaced: true);
             return Sink!.Start(new(ids, ++playbackEpoch, OpenAiSpeechSynthesisCatalog.PcmFormat, output, deadline)
                 { ObserveDeviceClock = GeneratedSpeech?.IsEnabled == true }, token);
+        }
+    }
+
+    /// <summary>Whether a voice sound (<see cref="PlayClipAsync"/>) is playing now.</summary>
+    public bool ClipPlaying { get { lock (Sync) return clipRun is not null; } }
+
+    /// <summary>Plays <paramref name="pcm"/> (24 kHz mono 16-bit PCM, at most 90 seconds) through <paramref name="output"/>
+    /// outside any reply, at the voice volume and with the character's lip sync, the way a reply's voice plays: a touch zone's
+    /// voice sound. It has a playback of its own, so it never holds up a reply: a reply's own voice stops it the moment that
+    /// starts. Returns false, playing nothing, when this runtime has no speakers or another clip still plays; and false when it
+    /// was stopped or failed before its end.</summary>
+    public async Task<bool> PlayClipAsync(ReadOnlyMemory<byte> pcm, OutputSelection output, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        var format = OpenAiSpeechSynthesisCatalog.PcmFormat;
+        if (clipSink is null || pcm.Length == 0 || pcm.Length % format.BlockAlignment != 0) return false;
+        var ids = new CorrelationIds { SessionId = SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+        var length = TimeSpan.FromSeconds(pcm.Length / (double)format.BlockAlignment / format.SampleRate);
+        PlaybackRun run;
+        GeneratedSpeechObservation? observation;
+        long epoch;
+        lock (Sync)
+        {
+            if (disposed || clipRun is not null) return false;
+            epoch = ++clipEpoch;
+            try
+            {
+                run = clipSink.Start(new(ids, epoch, format, output, Clock.GetUtcNow() + length + TimeSpan.FromSeconds(10))
+                    { ObserveDeviceClock = GeneratedSpeech?.IsEnabled == true }, cancellationToken);
+            }
+            catch (InvalidOperationException) { return false; }
+            clipRun = run;
+            observation = GeneratedSpeech?.Begin(run, format);
+        }
+        try
+        {
+            var frameBytes = format.SampleRate / 50 * format.BlockAlignment;
+            long samples = 0, sequence = 0;
+            for (var offset = 0; offset < pcm.Length; offset += frameBytes)
+            {
+                var frame = new PcmFrame(ids, epoch, sequence++, samples, format, pcm.Span.Slice(offset, Math.Min(frameBytes, pcm.Length - offset)));
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (run.Completion.IsCompleted) return false;
+                    var snapshot = run.Snapshot;
+                    var capacity = (long)(format.SampleRate * PlaybackOptions.Capacity.TotalSeconds);
+                    if (snapshot.AcceptedSamples - snapshot.DeviceConsumedSamples + frame.SamplesPerChannel <= capacity &&
+                        snapshot.QueuedFrames < PlaybackOptions.MaximumQueuedFrames)
+                        break;
+                    await Task.Delay(TimeSpan.FromMilliseconds(10), Clock, cancellationToken).ConfigureAwait(false);
+                }
+                if (run.Submit(frame) != FrameAcceptance.Accepted) return false;
+                observation?.Submit(frame);
+                samples += frame.SamplesPerChannel;
+            }
+            if (!run.CompleteInput(samples)) return false;
+            observation?.CompleteInput(samples);
+            var final = await run.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return final.State == PlaybackState.Completed;
+        }
+        catch (Exception error) when (error is OperationCanceledException or ContractException) { return false; }
+        finally
+        {
+            observation?.Stop();
+            // Never release a native device concurrently with its own run.
+            await run.StopAsync().ConfigureAwait(false);
+            await run.DeviceRelease.ConfigureAwait(false);
+            lock (Sync) if (clipRun == run) clipRun = null;
         }
     }
 
@@ -304,6 +387,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
         foreach (var adapter in chat) adapter.Dispose();
         Speech?.Dispose();
         if (Sink is not null) await Sink.DisposeAsync().ConfigureAwait(false);
+        if (clipSink is not null) await clipSink.DisposeAsync().ConfigureAwait(false);
     }
 
     private void ValidateSpeechPrebuffer()

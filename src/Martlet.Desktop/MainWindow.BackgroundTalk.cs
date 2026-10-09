@@ -214,7 +214,7 @@ public partial class MainWindow
 
         ListenButton.Visibility = ListeningIndicator.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         ListenButton.IsEnabled = enabled;
-        ListenButton.Content = started ? "Stop _listening" : "Start _listening";
+        ListenButton.Content = started ? "Stop listening" : "Start listening";
         AutomationProperties.SetName(ListenButton, started ? "Stop listening" : "Start listening");
         if (stageReady && show && !started) ListenButton.SetResourceReference(StyleProperty, "PrimaryButton");
         else ListenButton.ClearValue(StyleProperty);
@@ -238,7 +238,7 @@ public partial class MainWindow
         // Watching (Companion › Vision) has its own button beside listening: either runs without the other.
         WatchButton.Visibility = WatchingIndicator.Visibility = showWatch ? Visibility.Visible : Visibility.Collapsed;
         WatchButton.IsEnabled = watchEnabled;
-        WatchButton.Content = watchStarted ? "Stop _watching" : "Start _watching";
+        WatchButton.Content = watchStarted ? "Stop watching" : "Start watching";
         AutomationProperties.SetName(WatchButton, watchStarted ? "Stop watching" : "Start watching");
         WatchingStatusText.Text = watchText;
         var watchingNow = talk is { IsWatching: true };

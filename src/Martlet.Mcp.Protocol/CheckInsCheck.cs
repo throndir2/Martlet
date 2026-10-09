@@ -16,7 +16,9 @@ namespace Martlet.Mcp;
 /// sends, its run on a production ThinkingJobBoard with a fixture member, reading the answers (OFF tags, KEEP, USUAL, REMIND:,
 /// SAY:, OK, a &lt;think&gt; block, an answer that can't be read), and what Martlet then does: a reply's lingering emotes off on a
 /// production HeldEmotes (never the owner's try), a reminder on a production ContextBoard that goes with exactly one request,
-/// and something to bring up worded through BackgroundJobs beside a due reminder. No model, network or credential is used.</summary>
+/// and something to bring up worded through BackgroundJobs beside a due reminder. Then the owner's inputs (screenshot, sound,
+/// script) and tool sets: a check-in's tools called in a bounded loop only on a member whose model can call tools, with each call
+/// kept for the run record. No model, network or credential is used.</summary>
 internal static class CheckInsCheck
 {
     internal const string StatusFile = "check-ins-status.json";
@@ -51,7 +53,7 @@ internal static class CheckInsCheck
                     // Whether it runs a script and how long it is; never the script (the owner's own words).
                     script = c.RunsScript, scriptCharacters = c.Script?.Length ?? 0, triggers = c.Triggers.ToString(),
                     hours = c.Conditions.HasFlag(CheckInConditions.Between) ? $"{CheckIns.Clock(c.FromHour)}-{CheckIns.Clock(c.UntilHour)}" : null,
-                    mostPerHour = c.MostPerHour == 0 ? (int?)null : c.MostPerHour
+                    mostPerHour = c.MostPerHour == 0 ? (int?)null : c.MostPerHour, toolSets = c.ToolSets
                 }).ToArray()
             },
             desktop,
@@ -76,7 +78,10 @@ internal static class CheckInsCheck
         oftenTouches = TouchLedger.OftenTouches, oftenWindowMinutes = TouchLedger.OftenWindow.TotalMinutes,
         signalWindowMinutes = CheckIns.SignalWindow.TotalMinutes, unansweredAfterMinutes = CheckIns.UnansweredAfter.TotalMinutes,
         unansweredWithinMinutes = CheckIns.UnansweredWithin.TotalMinutes, peopleWindowMinutes = CheckIns.PeopleWindow.TotalMinutes,
-        mostPerHourChoices = CheckIns.MostPerHourChoices
+        mostPerHourChoices = CheckIns.MostPerHourChoices,
+        maximumToolRounds = CheckIns.MaximumToolRounds, maximumToolCalls = CheckIns.MaximumToolCalls,
+        maximumToolResultCharacters = CheckIns.MaximumToolResultCharacters,
+        toolSets = CheckInToolSets.All.Select(s => new { id = s.Id, name = s.Name, does = s.Does, tools = s.Tools.Select(t => t.Name).ToArray() }).ToArray()
     };
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
@@ -353,6 +358,7 @@ internal static class CheckInsCheck
         await ContextAsync(Step, now, facts, cancellation);
         await DescribeTouchesAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
+        await ToolsAsync(Step, facts, cancellation);
         return new { passed = ok, steps };
     }
 
@@ -629,6 +635,113 @@ internal static class CheckInsCheck
             try { Directory.Delete(folder, recursive: true); }
             catch (IOException) { }
         }
+    }
+
+    /// <summary>11. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools
+    /// (FIXTURE handlers and calls; NOT AI).</summary>
+    private static async Task ToolsAsync(Action<string, bool, object?> step, CheckInState facts, CancellationToken cancellation)
+    {
+        // Saved and read back with its tool sets; a set Martlet doesn't offer and the same set twice are refused.
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns." + Guid.NewGuid().ToString("N"));
+        var custom = new CustomCheckIn
+        {
+            Id = "c4", Name = "FIXTURE tools", On = true, EveryMinutes = 30, Task = "If the user seems upset, remind Martlet to be gentle. " + Marker("c4"),
+            Facts = CheckInFacts.Conversation, Outcome = CheckInOutcome.Tools, ToolSets = [CheckInToolSets.NextReplyId, CheckInToolSets.CharacterId]
+        };
+        try
+        {
+            var wrote = new CheckInSettings().With(custom).With(CheckIns.Promises, new CheckInChoice(true, 30) { ToolSets = [CheckInToolSets.RemindersId] })
+                .Save(folder);
+            var (read, state) = CheckInSettings.Read(folder);
+            var back = read.Custom.SingleOrDefault();
+            var promises = CheckIns.All(read).Single(c => c.Id == CheckIns.Promises);
+            bool Refused(IReadOnlyList<string> sets)
+            {
+                try { new CheckInSettings().With(custom with { ToolSets = sets }).Validate(); }
+                catch (Martlet.Core.Contracts.ContractException) { return true; }
+                return false;
+            }
+            var refusedUnknown = Refused(["delete-everything"]);
+            var refusedTwice = Refused([CheckInToolSets.NextReplyId, CheckInToolSets.NextReplyId]);
+            step("tools: sets saved and read back", wrote && state == "loaded" && back == custom &&
+                back.ToolSets.SequenceEqual([CheckInToolSets.NextReplyId, CheckInToolSets.CharacterId]) &&
+                promises.ToolSets.SequenceEqual([CheckInToolSets.RemindersId]) && promises.Needs.HasFlag(ThinkingCapability.Tools) &&
+                refusedUnknown && refusedTwice,
+                new
+                {
+                    state, sets = back?.ToolSets, promisesSets = promises.ToolSets, promisesNeeds = promises.Needs.ToString(), refusedUnknown, refusedTwice,
+                    offered = CheckInToolSets.All.Select(s => new { s.Id, s.Name, tools = s.Tools.Select(t => t.Name) })
+                });
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); }
+            catch (IOException) { }
+        }
+
+        // The job offers the tools of its sets that have a handler on this PC, for a bounded number of rounds.
+        var checkIn = CheckIns.Of(custom);
+        var reminded = new List<string>();
+        var handlers = new Dictionary<string, CheckInToolHandler>
+        {
+            [CheckInToolSets.NextReplyId] = (call, _, _) =>
+            {
+                if (call.Name != CheckInToolSets.RemindNextReply) return ValueTask.FromResult(new ConversationToolResult("FIXTURE: only reminders here.", true));
+                lock (reminded) reminded.Add(CheckInToolSets.Argument(call, "text") ?? "");
+                return ValueTask.FromResult(new ConversationToolResult("Reminded the next reply.\nFIXTURE private detail on line two"));
+            },
+            [CheckInToolSets.CharacterId] = (_, _, _) => throw new InvalidOperationException("FIXTURE handler failure")
+        };
+        var host = new CheckInToolHost(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, null, facts.Now), handlers);
+        var job = CheckIns.Prepare(checkIn, CheckIns.Focus(checkIn, facts), null, host);
+        var message = job?.Text ?? "";
+        step("tools: the job offers them", checkIn.Needs.HasFlag(ThinkingCapability.Tools) && CheckIns.Describe(checkIn.Needs).Contains("tool calls", StringComparison.Ordinal) &&
+            job is { ToolHost: not null, MaxToolRounds: CheckIns.MaximumToolRounds } && job.Tools.Select(t => t.Name).SequenceEqual(
+                [CheckInToolSets.RemindNextReply, CheckInToolSets.BringUp, CheckInToolSets.TurnOffEmote, CheckInToolSets.LookUsual]) &&
+            job.Required.HasFlag(ThinkingCapability.Tools) && message.Contains("Use your tools for what needs doing", StringComparison.Ordinal) &&
+            CheckIns.Wait(CheckIns.Of(custom with { ToolSets = [] }), facts, null) == "it has no tools to use",
+            new { needs = checkIn.Needs.ToString(), described = CheckIns.Describe(checkIn.Needs), tools = job?.Tools.Select(t => t.Name), job?.MaxToolRounds });
+
+        // Only a member whose model can call tools takes it; the run's calls are kept, an unknown tool and a failing handler are
+        // errors the model reads, and after the most calls a run may make every call is refused.
+        var places = new BackgroundPlaces();
+        BackgroundPlace textMember = new("endpoint:text", "FIXTURE text member") { Slots = 1, Model = "fixture-text" };
+        BackgroundPlace toolMember = new("endpoint:tools", "FIXTURE member that calls tools")
+        {
+            Slots = 1, Model = "fixture-tools", Can = ThinkingCapability.Text | ThinkingCapability.Tools
+        };
+        var members = new List<BackgroundPlace> { textMember };
+        var answers = new List<ConversationToolResult>();
+        var board = new ThinkingJobBoard(places, () => [.. members], async (_, asked, token) =>
+        {
+            async Task Call(string name, string arguments) =>
+                answers.Add(await asked.ToolHost!.CallAsync(new TextToolCall("call-" + answers.Count, name, arguments), token));
+            await Call(CheckInToolSets.RemindNextReply, """{"text":"FIXTURE: be gentle, they seem upset."}""");
+            await Call("delete_files", "{}");
+            await Call(CheckInToolSets.LookUsual, "{}");
+            for (var i = 0; i < CheckIns.MaximumToolCalls; i++) await Call(CheckInToolSets.RemindNextReply, """{"text":"FIXTURE again"}""");
+            return ThinkingAnswer.Done("Reminded Martlet to be gentle because the user seems upset.");
+        });
+        var none = job is null ? null : await board.RunAsync(job, cancellation);
+        var canNone = board.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs);
+        members.Add(toolMember);
+        var done = job is null ? null : await board.RunAsync(job, cancellation);
+        var uses = host.Uses;
+        var verdict = CheckIns.Read(checkIn, done?.Text, facts);
+        step("tools: only a member that calls tools runs them", none?.Outcome == ThinkingJobOutcome.NoMember && !canNone &&
+            board.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs) && done is { Succeeded: true } && done.Member == toolMember.Name &&
+            uses.Count == 3 + CheckIns.MaximumToolCalls && uses[0] is { Set: CheckInToolSets.NextReplyId, Tool: CheckInToolSets.RemindNextReply, Failed: false } &&
+            uses[0].Result == "Reminded the next reply." && uses[1] is { Set: "", Tool: "delete_files", Failed: true } &&
+            uses[2] is { Set: CheckInToolSets.CharacterId, Failed: true, Result: "The tool failed." } &&
+            uses.Skip(3).Take(CheckIns.MaximumToolCalls - 3).All(u => !u.Failed) &&
+            uses.Skip(CheckIns.MaximumToolCalls).All(u => u.Failed && u.Result.StartsWith("This check-in already made", StringComparison.Ordinal)) &&
+            reminded.Count == CheckIns.MaximumToolCalls - 2 && reminded[0] == "FIXTURE: be gentle, they seem upset." &&
+            !uses.Any(u => u.Result.Contains("private", StringComparison.Ordinal)) && verdict == CheckInVerdict.Nothing,
+            new
+            {
+                textOnlyPool = none?.Outcome.ToString(), withOneThatCallsTools = done?.Member, calls = uses.Count, made = CheckIns.ToolsText(uses),
+                answer = done?.Text
+            });
     }
 
     /// <summary>7. The Touches fact ({touches}): FIXTURE touches on a production <see cref="TouchLedger"/>, some taken by replies
