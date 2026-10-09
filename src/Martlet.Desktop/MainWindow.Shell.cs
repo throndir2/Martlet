@@ -149,6 +149,8 @@ public partial class MainWindow
         if (closing) return;
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        // Reading's model pills turn off the NVIDIA-only model once this PC's graphics cards are known.
+        if (openTab == CompanionTab.Reading && !tabEdited) RenderTab();
         if (HostsHere) CheckThisPcHostAsync().Forget();
     }
 

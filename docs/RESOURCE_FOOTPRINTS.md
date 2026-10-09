@@ -272,6 +272,8 @@ holds its own copy.
 | `vision:qwen2.5vl:7b` | any | 7 / 7.5 E | 1-1.5 E | 1-2 E | 6.0 S | not measured | E |
 | `reading:windows-ocr` | CPU (in Martlet, Windows) | 0 | 0.05-0.1 E | 1 E while it reads | 0 (built in) | ~140 ms per full-size 1920 x 1080 screenshot ([Reading](READING.md)) | E |
 | `reading:rapidocr` | CPU (`ocr` role) | 0 | 0.4-0.6 E | 4 S ([OCR host](OCR_HOST.md)) | 0.5 E (15 MB models + image) | **0.9 s** M on a 24-thread processor | E |
+| `reading:ppocrv5` | CPU (`ocr` role, PP-OCRv5 mobile) | 0 | **0.45** M / 0.8 E | 4 S | **0.7** M (image with both models) | **1.8 s** M for 1920 x 1080, 3.6-4.2 s for 4K | M |
+| `reading:ppocrv5-cuda` | NVIDIA GPU (`ocr` role, PP-OCRv5 server) | 1.5 / 2 E | 1-1.5 E | 1 E | **3.1** M (CUDA image) | ~0.5 s E on a card; 65 s M on a processor | E |
 | `smart-home:home-assistant` | CPU (`home-assistant` role, Linux Docker Engine) | 0 | 0.5-1 E | 0.2 / 1 E | 2 E (image) | | E |
 
 - **Image and audio models** run in Ollama (on this PC, or a paired
@@ -283,7 +285,11 @@ holds its own copy.
   times are not measured, so the catalog has none.
 - **Reading:** Windows OCR is built into Windows; the time is from
   [Reading](READING.md). The Reading role's read time was measured there; its
-  memory and image are estimates.
+  memory and image are estimates. PP-OCRv5 mobile was measured on a
+  24-thread processor under Docker Desktop: 453 MiB in the container, a 685 MB
+  image and the read times above. The PP-OCRv5 server model's graphics
+  memory and card read time are estimates (no NVIDIA card was available); on
+  the processor it took 65 s for 1920 x 1080 and 737 MiB of memory.
 - **Home Assistant** asks for 2 GB of memory for a whole Home Assistant OS;
   the container alone with a few integrations takes less. Not measured.
 

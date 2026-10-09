@@ -101,6 +101,18 @@ public sealed class OcrRelayTests
     }
 
     [Fact]
+    public async Task Each_ppocrv5_model_gets_its_own_pinned_route_and_an_unknown_model_is_refused()
+    {
+        await using var mobile = new OcrRelayWorker(new Uri("http://127.0.0.1:50087/"), "ppocrv5-mobile");
+        Assert.Equal("ppocrv5-mobile", mobile.Route.ModelId);
+        Assert.Equal("rapidocr-3.10.0", mobile.Route.ModelRevision);
+        await using var server = new OcrRelayWorker(new Uri("http://127.0.0.1:50087/"), "ppocrv5-server");
+        Assert.Equal("ppocrv5-server", server.Route.ModelId);
+        Assert.NotEqual(mobile.Route.ModelSha256, server.Route.ModelSha256);
+        Assert.Throws<ArgumentException>(() => new OcrRelayWorker(new Uri("http://127.0.0.1:50087/"), "ppocrv6-mobile"));
+    }
+
+    [Fact]
     public async Task Worker_errors_are_mapped_to_gateway_failures()
     {
         await using var invalidWorker = new OcrRelayWorker(new Uri("http://127.0.0.1:50087/"),

@@ -70,6 +70,8 @@ public sealed class ReadingTests
     {
         Assert.Equal("ocr", Martlet.Core.Platforms.PlatformCatalog.EngineForHostRole("ocr"));
         Assert.NotNull(Martlet.Core.Platforms.PlatformCatalog.Engine("windows-ocr"));
-        Assert.Contains("ocr", Martlet.Core.Installation.SharedGpu.ProcessorOnlyRoles);
+        Assert.True(Martlet.Core.Installation.SharedGpu.ProcessorOnly("ocr", "rapidocr-ppocrv4"));
+        Assert.True(Martlet.Core.Installation.SharedGpu.ProcessorOnly("ocr", null));
+        Assert.False(Martlet.Core.Installation.SharedGpu.ProcessorOnly("ocr", "ppocrv5-server"));
     }
 }

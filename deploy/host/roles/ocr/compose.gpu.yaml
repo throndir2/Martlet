@@ -1,0 +1,16 @@
+# Added by martlet-host when Reading runs PP-OCRv5 on this host's NVIDIA GPU (needs Docker's NVIDIA support and an NVIDIA
+# driver for CUDA 13, 580 or newer): the same image built with ONNX Runtime's CUDA 13 build and NVIDIA's CUDA and cuDNN
+# libraries from PyPI. No environment key here: martlet-host adds CUDA_VISIBLE_DEVICES when the role is pinned to a card.
+services:
+  ppocrv5:
+    build:
+      args:
+        ACCELERATOR: gpu
+    image: martlet-ocr-ppocrv5-cuda:1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]

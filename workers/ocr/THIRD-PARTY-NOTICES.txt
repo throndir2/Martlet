@@ -1,4 +1,4 @@
-Third-party components used by the Martlet OCR worker image. They are installed at build time from PyPI. None are stored in this repository.
+Third-party components used by the Martlet OCR worker images (host/Dockerfile for the rapidocr engine, host/Dockerfile.ppocrv5 for the ppocrv5 engine). They are installed at build time from PyPI, and the PP-OCRv5 models are downloaded at build time. None are stored in this repository.
 
 RapidOCR 1.4.4 and rapidocr_onnxruntime 1.4.4
   https://github.com/RapidAI/RapidOCR
@@ -6,8 +6,45 @@ RapidOCR 1.4.4 and rapidocr_onnxruntime 1.4.4
   Includes PaddleOCR PP-OCRv4 ONNX models.
   PaddleOCR and PP-OCRv4 license: Apache-2.0
 
-ONNX Runtime 1.30.0
+RapidOCR 3.10.0 (ppocrv5 engine)
+  https://github.com/RapidAI/RapidOCR
+  License: Apache-2.0
+
+PaddleOCR PP-OCRv5 mobile and server ONNX models (ppocrv5 engine)
+  https://github.com/PaddlePaddle/PaddleOCR
+  Downloaded from RapidOCR's ModelScope release v3.10.0 (https://www.modelscope.cn/models/RapidAI/RapidOCR) or an identical Hugging Face copy, each SHA-256 checked.
+  License: Apache-2.0
+
+ONNX Runtime 1.30.0 (rapidocr engine) and 1.31.0 (ppocrv5 engine; onnxruntime-gpu 1.31.0 with the gpu accelerator)
   https://onnxruntime.ai
+  License: MIT
+  The images set ORT_DISABLE_TELEMETRY=1.
+
+NVIDIA CUDA runtime, NVRTC, cuBLAS, cuFFT, cuRAND, nvJitLink 13 and cuDNN 9 (ppocrv5 engine with the gpu accelerator only)
+  https://pypi.org/project/nvidia-cudnn-cu13/ and https://pypi.org/project/nvidia-cuda-runtime/
+  License: NVIDIA Software License Agreement and the NVIDIA cuDNN Software License Agreement
+
+omegaconf 2.3.1 (ppocrv5 engine)
+  https://github.com/omry/omegaconf
+  License: BSD-3-Clause
+
+antlr4-python3-runtime 4.9.3 (ppocrv5 engine)
+  https://github.com/antlr/antlr4
+  License: BSD-3-Clause
+
+colorlog 6.12.0 (ppocrv5 engine)
+  https://github.com/borntyping/python-colorlog
+  License: MIT
+
+requests 2.34.2, certifi 2026.7.22, charset-normalizer 3.5.2, idna 3.20 and urllib3 2.8.0 (ppocrv5 engine)
+  https://requests.readthedocs.io
+  Licenses: Apache-2.0 (requests), MPL-2.0 (certifi), MIT (charset-normalizer, urllib3), BSD-3-Clause (idna)
+
+flatbuffers 25.12.19, packaging 26.3 and protobuf 7.36.2 (ppocrv5 engine)
+  Licenses: Apache-2.0 (flatbuffers), Apache-2.0 or BSD-2-Clause (packaging), BSD-3-Clause (protobuf)
+
+setuptools 84.0.0 (ppocrv5 engine, to build antlr4-python3-runtime)
+  https://github.com/pypa/setuptools
   License: MIT
 
 OpenCV Python headless 5.0.0.93
@@ -22,7 +59,7 @@ pyclipper 1.4.0
   https://github.com/fonttools/pyclipper
   License: MIT
 
-Shapely 2.1.2
+Shapely 2.1.2 (rapidocr engine) and 2.2.0 (ppocrv5 engine)
   https://shapely.readthedocs.io
   License: BSD-3-Clause
 

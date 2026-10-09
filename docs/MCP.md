@@ -564,21 +564,44 @@ OCR reads it at full size, as Martlet reads the screen, and at the 1024 x 576
 of a vision look. For each size, `desktop` gives the lines found, the drawn lines
 read right (`linesRead`) and the milliseconds; `ok` is true when the full-size
 read gets at least 90% of the lines. On the test machine, the full-size read got
-102 of 108 lines in 138 ms, and the 1024 x 576 read got none. With `endpoint`, a
-Reading worker on loopback such as `http://127.0.0.1:50087/`, it also calls the
-worker's `GET /status` and `POST /read` with the same picture as a PNG. It never
-captures the real screen.
+102 of 108 lines in 138 ms, and the 1024 x 576 read got none. Its
+`desktop.fourK` part draws a 3840 x 2160 desktop with 192 lines of 18 px text
+and reads it the same way. With `endpoint`, a Reading worker on loopback such
+as `http://127.0.0.1:50087/`, it also calls the worker's `GET /status` (its
+engine, model and accelerator) and `POST /read` with the same picture as a PNG
+(`worker.read`). Then the worker reads both drawn desktops as PNGs
+(`worker.fullHd` and `worker.fourK`: lines found, `linesRead`, the PNG size and
+the milliseconds). It never captures the real screen.
+
+On the test machine (a 24-thread processor, Docker Desktop), the workers read
+the drawn desktops as follows:
+
+| Engine | 1920 x 1080, 12 px (108 lines) | 3840 x 2160, 18 px (192 lines) |
+| --- | --- | --- |
+| Windows OCR | 102 lines, 123-188 ms | 145 lines, 282-310 ms |
+| RapidOCR (PP-OCRv4), processor | 101 lines, 1.7-2.9 s | 112 lines, 2.3-3.4 s |
+| PP-OCRv5 mobile, processor | 103 lines, 1.7-1.9 s | 192 lines, 3.6-4.2 s |
+| PP-OCRv5 server, processor | 108 lines, 65 s | 192 lines, 131 s |
+
+The server model is for an NVIDIA graphics card only: on a processor, one read
+takes longer than the gateway's 15 s limit.
 
 Desktop automation: Companion › Reading's main choice is an option picker:
 `Picker-Reading-Off`, `Picker-Reading-ThisPc` and `Picker-Reading-Host` only show
 that option's details (with its facts, such as `PickerFacts-Reading-ThisPc`:
-*Processor (in Martlet) · 0.1 GB RAM · 0.14 s to read the screen*), and the
-`ReadingHost-<host>` pills in the role's details are passive clicks too.
-`ReadingNow`, `ReadingLast`, `ReadingTestState`, `ReadingWindowsState`,
-`ReadingHostState` and the labels of `ReadingSetUp`, `ReadingUseHost`,
-`ReadingUseThisPc`, `ReadingTurnOff` and `ReadingTest` are safe values. Read my
-screen now (`ReadingTest`) captures the screen, so it needs
-`--allow-ui-effects`. `ReadingTestState` gives the size of the full-size
+*Processor (in Martlet) · 0.1 GB RAM · 0.14 s to read the screen*). The
+`ReadingHost-<host>` pills and the `ReadingModel-<model>` pills
+(`ReadingModel-ppocrv5-mobile`, `ReadingModel-ppocrv5-server` and
+`ReadingModel-rapidocr-ppocrv4`) in the role's details are passive clicks too:
+they only show that computer or model. The server pill is disabled on a computer
+without an NVIDIA graphics card. `ReadingNow`, `ReadingLast`, `ReadingTestState`,
+`ReadingWindowsState`, `ReadingHostState` (where the role stands and with which
+model), `ReadingModelNote` (where the chosen model runs, how accurate it is and
+its download) and the labels of `ReadingSetUp`, `ReadingSwitch`,
+`ReadingUseHost`, `ReadingUseThisPc`, `ReadingTurnOff` and `ReadingTest` are
+safe values. Set up and Switch (`ReadingSwitch`, which changes a computer's
+Reading role to the chosen model) need `--allow-ui-effects`. Read my screen now
+(`ReadingTest`) captures the screen, so it needs `--allow-ui-effects` too. `ReadingTestState` gives the size of the full-size
 screenshot it read, for example *(1920 x 1080 screenshot)*. The text it read
 (`ReadingTestText`) is never returned.
 

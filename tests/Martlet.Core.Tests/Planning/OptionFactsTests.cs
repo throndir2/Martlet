@@ -172,6 +172,13 @@ public sealed class OptionFactsTests
         Assert.Equal("4 threads", rapid["cpu"].Short);
         Assert.Equal("0.9 s to read the screen", rapid["speed"].Short);
 
+        var ppocr = OptionFacts.Of(Option("reading:ppocrv5")).ToDictionary(f => f.Key);
+        Assert.Equal("Processor", ppocr["runs-on"].Short);
+        Assert.Contains("Docker", ppocr["needs"].Value, StringComparison.Ordinal);
+        Assert.Equal("4 threads", ppocr["cpu"].Short);
+        Assert.Equal("1.8 s to read the screen", ppocr["speed"].Short);
+        Assert.StartsWith("NVIDIA GPU", OptionFacts.Short(Option("reading:ppocrv5-cuda")), StringComparison.Ordinal);
+
         var home = OptionFacts.Of(Option("smart-home:home-assistant")).ToDictionary(f => f.Key);
         Assert.Equal("Linux", home["needs"].Short);
         Assert.StartsWith("Processor \u00b7 Linux", OptionFacts.Short(Option("smart-home:home-assistant")), StringComparison.Ordinal);

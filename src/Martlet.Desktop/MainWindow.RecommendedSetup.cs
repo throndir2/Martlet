@@ -108,8 +108,13 @@ public partial class MainWindow
 
     /// <summary>This PC's choices for the parts it sets on their Companion pages (Vision, Reading, Hearing, Smart home), read
     /// from the data folder: what the review says about them.</summary>
-    private IReadOnlyList<PartChoice> RecommendedSetupChoices(string? directory) => RecommendedSetupInputs.Choices(Talk.Watch, Talk.HearVoice,
-        SenseModels.Load(directory), Martlet.Core.Reading.ReadingSettings.Load(directory), HomePreferences.Load(directory).Address);
+    private IReadOnlyList<PartChoice> RecommendedSetupChoices(string? directory)
+    {
+        var reading = Martlet.Core.Reading.ReadingSettings.Load(directory);
+        var model = reading.HostId is { } host ? hostChecks.GetValueOrDefault(host)?.Offers?.GetValueOrDefault(HostRoles.Ocr) : null;
+        return RecommendedSetupInputs.Choices(Talk.Watch, Talk.HearVoice, SenseModels.Load(directory), reading,
+            HomePreferences.Load(directory).Address, model);
+    }
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
     {

@@ -409,7 +409,7 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "pictures need an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "pictures need an NVIDIA GPU; phones and tablets have none")
         ]),
-        new("ocr", Feature, "Reading: RapidOCR reads the text on your screen (on the processor)",
+        new("ocr", Feature, "Reading: RapidOCR or PP-OCRv5 reads the text on your screen (on the processor, or PP-OCRv5 server on an NVIDIA card)",
         [
             Works(Linux, Host, "on the CPU (x86_64 or ARM64); no graphics card needed"),
             Works(Win, Host, "through Docker Desktop (This PC's host service)"),

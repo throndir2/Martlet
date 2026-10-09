@@ -155,10 +155,10 @@ internal static class HostRoles
         new(Pictures, "Draws", "Pictures", "an NVIDIA GPU with at least 8 GB",
             Audio2FaceHostConnection.PictureRouteId, "pictures",
             "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle."),
-        new(Ocr, "Reads", "Reading", "Docker; it runs on the processor (no graphics card needed)",
+        new(Ocr, "Reads", "Reading", "Docker; RapidOCR runs on the processor, PP-OCRv5 on the processor or an NVIDIA GPU",
             Audio2FaceHostConnection.OcrRouteId, "reading",
-            "Reads the text on your screen with RapidOCR on that host while Martlet watches it. Screenshots go there, are read in " +
-            "memory and are not kept.")
+            "Reads the text on your screen on that host while Martlet watches it, with RapidOCR or the more accurate PP-OCRv5. " +
+            "Screenshots go there, are read in memory and are not kept.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??
