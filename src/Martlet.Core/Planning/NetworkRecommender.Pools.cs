@@ -174,11 +174,13 @@ public static partial class NetworkRecommender
         }
 
         /// <summary>A card on <paramref name="node"/> for a new Deep thinking role: one no live job uses first, then the one
-        /// with the most room, never the voice's Windows card or a card with a language model; the biggest model that fits.</summary>
+        /// with the most room, never the voice's Windows card or a card with a language model; the biggest model that fits
+        /// (a model the host keeps downloaded first when the owner prefers models their hosts already have).</summary>
         private Slot? DeepSlot(Node node)
         {
             var options = catalog.For(PlanComponent.DeepThinking).Where(o => o.IsLocal && o.UsesGpu && o.HostRoleKind == DeepThinkingRole)
-                .OrderByDescending(o => o.QualityTier).ThenBy(o => o.GpuGb).ThenBy(o => o.Id, StringComparer.Ordinal).ToArray();
+                .OrderByDescending(o => request.PreferHostModels && KeptOnDisk(node, DeepThinkingRole, o))
+                .ThenByDescending(o => o.QualityTier).ThenBy(o => o.GpuGb).ThenBy(o => o.Id, StringComparer.Ordinal).ToArray();
             var query = new Query(DeepThinkingRole) { Optional = true, StrictWindows = true, Only = node.Id, Companions = singlePc };
             var cards = (node.Pinnable ? node.Nvidia : node.MainCard is { } main ? [main] : [])
                 .OrderBy(c => LiveOn(node, c) ? 1 : 0).ThenByDescending(node.Free).ThenBy(c => c);

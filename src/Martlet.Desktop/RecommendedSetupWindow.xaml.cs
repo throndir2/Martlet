@@ -46,6 +46,10 @@ public partial class RecommendedSetupWindow : ThemedWindow
     /// plans again.</summary>
     internal event Action<bool>? ServedChanged;
 
+    /// <summary>The owner ticked or cleared Prefer models your hosts already have. The review closes; Martlet saves the choice
+    /// and plans again.</summary>
+    internal event Action<bool>? HostModelsChanged;
+
     /// <summary>Reconfigure started (it carries on in Background tasks), in words.</summary>
     internal string? Outcome { get; private set; }
 
@@ -70,10 +74,14 @@ public partial class RecommendedSetupWindow : ThemedWindow
         OfflineText.Visibility = review.Offline is null ? Visibility.Collapsed : Visibility.Visible;
         rendering = true;
         UseServedBox.IsChecked = review.UseServed;
+        PreferHostModelsBox.IsChecked = review.PreferHostModels;
         rendering = false;
         ServedText.Text = !review.UseServed ? "Off: Martlet plans only with its own models and your keys."
             : review.Served.Count == 0 ? "No model app on this PC serves a chat model now."
             : "Found: " + string.Join(", ", review.Served) + ".";
+        HostModelsText.Text = !review.PreferHostModels ? "Off: Martlet picks the best model for each host, even when it needs a download."
+            : review.HostModels.Count == 0 ? "Your hosts keep no chat models now."
+            : "Found: " + string.Join(", ", review.HostModels) + ".";
         RenderBanner();
         PartsSection.Visibility = review.Parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         PartsPanel.Children.Clear();
@@ -225,6 +233,19 @@ public partial class RecommendedSetupWindow : ThemedWindow
             return;
         }
         ServedChanged?.Invoke(now);
+        Close();
+    }
+
+    private void PreferHostModels_Changed(object sender, RoutedEventArgs e)
+    {
+        var now = PreferHostModelsBox.IsChecked == true;
+        if (rendering || now == review.PreferHostModels) return;
+        if (applying)
+        {
+            PreferHostModelsBox.IsChecked = review.PreferHostModels;
+            return;
+        }
+        HostModelsChanged?.Invoke(now);
         Close();
     }
 

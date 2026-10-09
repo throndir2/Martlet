@@ -57,6 +57,8 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     /// <summary>The chat models the owner's model apps on this PC serve (empty when "Use models your apps already run" is off);
     /// the request puts them on this PC.</summary>
     public IReadOnlyList<ServedModel> ServedModels { get; init; } = [];
+    /// <summary>Prefer models your hosts already have (RecommendedSetupMemory.PreferHostModels).</summary>
+    public bool PreferHostModels { get; init; }
     /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="RecommendedSetupInputs.Choices"/>).</summary>
     public IReadOnlyList<PartChoice> Choices { get; init; } = [];
 }
@@ -137,7 +139,8 @@ internal static class RecommendedSetupInputs
             Off = [.. sources.Off.Where(c => ComponentRanking.CanBeOff(c) && !ComponentRanking.SetOnPage(c)).Distinct()],
             Choices = [.. sources.Choices.Where(c => c is not null && ComponentRanking.SetOnPage(c.Component)).DistinctBy(c => c.Component)],
             CompanionPcs = sources.Computers.DistinctBy(c => c.Id).Count(c => c.Kind == NetworkMachineKind.Companion),
-            ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc })]
+            ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc })],
+            PreferHostModels = sources.PreferHostModels
         };
         return new(request, notes, names);
     }
@@ -329,6 +332,29 @@ internal static class RecommendedSetupInputs
             new("", "ollama", "Ollama", "http://127.0.0.1:11434/v1", "llama3.3:70b") { SizeGb = 42.5 }
         ]
     };
+
+    /// <summary>FIXTURE, NOT real computers (recommended_setup_status's fixture "hostmodels", and the desktop's
+    /// MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK=hostmodels): this PC, a companion PC without a graphics card, and gpu-box, a
+    /// Linux host with an RTX 4090 (24 GB) that thinks with Gemma 4 E4B and keeps qwen2.5:14b downloaded from before.</summary>
+    internal static SetupSources HostModelsFixture(DateTimeOffset now)
+    {
+        var report = new HostHardware("gpu-box", "https://gpu-box.lan:8443", now, now, "docker", "Ubuntu 24.04", "6.8.0", "Fixture processor",
+            32, 64, "docker", "yes", [new HostGpu("NVIDIA GeForce RTX 4090", "nvidia", 24 * 1024, "570")]) { Platform = "linux" };
+        var plan = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "gpu-box", false, true, null, "fixture-desk", now);
+        return new SetupSources(
+        [
+            new("desk", "This PC", NetworkMachineKind.Companion) { Specs = MachineSpecs.ThisPc([], 16, 8, diskFreeGb: 200), ThisPc = true },
+            new("gpu-box", "gpu-box", NetworkMachineKind.Host)
+            {
+                Hardware = report, HasHostService = true, Reachable = true,
+                Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:e4b" },
+                Downloads = [new HostDownload("ollama", "gemma4:e4b"), new HostDownload("ollama", "qwen2.5:14b")]
+            }
+        ])
+        {
+            Plan = plan, Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind, PreferHostModels = true
+        };
+    }
 
     /// <summary>The chat models the model apps found on this PC serve (<see cref="Martlet.Providers.LocalModelServers.DetectAsync"/>),
     /// as the recommender takes them; an app that asks for a key first lists none. The request puts them on this PC.</summary>

@@ -73,6 +73,7 @@ public partial class MainWindow
         if (closing) return null;
         var sources = RecommendedSetupSources();
         if (!SimulatedRecommendedSetup.Active) sources = sources with { ServedModels = await FindServedModelsAsync() };
+        sources = sources with { PreferHostModels = RecommendedSetupMemory.Load(store?.DataDirectory).PreferHostModels };
         if (closing) return null;
         var build = RecommendedSetupInputs.Request(sources);
         try
@@ -118,6 +119,7 @@ public partial class MainWindow
         window.Declined += DeclineRecommendedSetup;
         window.PartOff += TurnRecommendedPartOff;
         window.ServedChanged += UseServedChanged;
+        window.HostModelsChanged += PreferHostModelsChanged;
         window.OpenThinking += use => OpenFreeKey(use, fromReview: true);
         window.Closed += (_, _) =>
         {

@@ -11,6 +11,7 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Already run a chat model in Ollama, LM Studio, llama.cpp or vLLM on your PC? Recommended setup and **Set it all up for me** now find it and think with it when it fits beside the voice, so nothing downloads. Untick **Use models your apps already run** to keep Martlet's own fast model. ([#665](https://github.com/throndir2/Martlet/pull/665))
+- Recommended setup has a new **Prefer models your hosts already have** choice. Tick it, and Martlet thinks with the best model your hosts already run or keep downloaded instead of downloading a new one. ([#666](https://github.com/throndir2/Martlet/pull/666))
 
 ### Changed
 

@@ -598,6 +598,25 @@ all up for me*'s question. Martlet saves your choice on this PC
 - **On a network.** When a host does Thinking for all your companion PCs, a
   served model on one PC only adds a note.
 
+### Models your hosts already have
+
+Your host services can also keep chat models: the model that Thinking runs
+now, and models from roles that you turned off before. **Prefer models your
+hosts already have** is a checkbox in the review window. It is off by default,
+because a bigger model can make the first word come later. Martlet saves your
+choice on this PC (`recommended-setup.json`, `PreferHostModels`).
+
+- **What Martlet counts.** It counts the Thinking (Ollama) chat models that
+  each host that answers runs or keeps downloaded. It skips embedding, speech
+  and picture models. The review lists them: *qwen2.5:14b on gpu-box*.
+- **When Martlet uses one.** It ranks the models by quality tier, then by
+  size. It picks the best one that fits a graphics card beside the other jobs,
+  and that is better than today's Thinking model. Thinking can move to the host
+  that has the model. A new Deep thinking role also prefers a kept model.
+- **What changes.** Nothing downloads. The review says which host has the
+  model and if its first word may come later.
+- **When none fits.** Martlet says so in a note and plans as usual.
+
 ### Keeping model choices current
 
 Today the model choices are a bundled list that ships with each release. The

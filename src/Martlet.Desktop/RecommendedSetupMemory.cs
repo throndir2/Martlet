@@ -33,6 +33,13 @@ internal sealed record RecommendedSetupMemory
 
     internal RecommendedSetupMemory WithServed(bool use) => this with { UseServedModels = use };
 
+    /// <summary>Prefer models your hosts already have: Thinking (and a new Deep thinking role) uses a better model a host
+    /// service already runs or keeps downloaded before one it must download, also when its first word comes later. Off unless
+    /// the owner turns it on.</summary>
+    public bool PreferHostModels { get; init; }
+
+    internal RecommendedSetupMemory WithHostModels(bool prefer) => this with { PreferHostModels = prefer };
+
     /// <summary>The parts turned off, as the planner takes them (a part this PC sets on its Companion page is turned off there,
     /// not here: <see cref="ComponentRanking.SetOnPage"/>).</summary>
     internal IReadOnlyCollection<PlanComponent> OffParts =>

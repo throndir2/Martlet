@@ -194,6 +194,7 @@ public static partial class NetworkRecommender
                     notes.Add($"You keep everything on your computers, but none of them can run a Thinking model with a first word as soon as {now.DisplayName}'s, so Thinking stays with it.");
                 return;
             }
+            if (HostModelThinking(now, host)) return;
             if (host is { Presence: Presence.Here })
             {
                 if (Settle(job, ThinkingRole, now, host, SameModel(now, ThinkingRole)) is { } forced) ChooseThinking(forced, now);
@@ -263,6 +264,60 @@ public static partial class NetworkRecommender
             Decide(job, null, slot.Option.Id, why, benefit);
             return true;
         }
+
+        /// <summary>Prefer models your hosts already have (<see cref="NetworkSetupRequest.PreferHostModels"/>): Thinking uses the
+        /// best Thinking model (ollama role) a host service runs or keeps downloaded, so nothing downloads. Today's local model
+        /// stays unless a kept model is of a higher quality tier; with no Thinking, or its host gone, any kept model goes before a
+        /// download. The biggest model that fits comes first, also when its first word comes later.</summary>
+        private bool HostModelThinking(ComponentOption? now, Node? host)
+        {
+            const string job = ClusterJobs.Thinking;
+            if (!request.PreferHostModels) return false;
+            var floor = now is { IsLocal: true } && host is not { Presence: Presence.Gone } ? TierOf(now) : 0;
+            var kept = new List<(Node Node, ComponentOption Option)>();
+            foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.CanHost && (!n.Companion || singlePc)))
+                foreach (var model in HostModels(node, ThinkingRole))
+                {
+                    if (OptionFor(ThinkingRole, model, node) is not { UsesGpu: true } option ||
+                        !(Names(option, model) || option.Id.EndsWith("~" + model, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    if (Known(option) is null) option = option with { QualityTier = ServedModels.Tier(model) };
+                    if (option.QualityTier > floor) kept.Add((node, option));
+                }
+            if (kept.Count == 0) return false;
+            var order = kept.OrderByDescending(k => k.Option.QualityTier).ThenByDescending(k => k.Option.GpuGb)
+                .ThenBy(k => k.Option.FirstWordMs ?? int.MaxValue).ThenBy(k => k.Node.Id, StringComparer.Ordinal)
+                .ThenBy(k => k.Option.Id, StringComparer.Ordinal).ToList();
+            foreach (var strict in new[] { !singlePc, false }.Distinct())
+                foreach (var (node, option) in order)
+                {
+                    if (FindSlot([option], new Query(ThinkingRole) { Only = node.Id, StrictWindows = strict }) is not { } slot) continue;
+                    var benefit = now is null ? SetupChangeBenefit.Required : SetupChangeBenefit.Improvement;
+                    var why = $"{node.Name} already has {Plain(option)}, and you prefer models your hosts already have, so {CardText(slot)} " +
+                        $"thinks with it{(now is null ? "." : $" instead of {Plain(now)}.")}" +
+                        (now is not null && !NotSlower(option, now) ? " Its first word may come later." : "");
+                    Place(slot, ThinkingRole, job, benefit, why);
+                    if (host is { Presence: Presence.Here } && host != node &&
+                        host.Pending.FirstOrDefault(r => !r.Native && r.Kind == ThinkingRole) is { } old)
+                        old.Moved = (benefit, $"{node.Name} thinks with {Plain(option)} now, a model it already has.");
+                    Decide(job, node.Id, Known(option)?.Id, why, benefit);
+                    return true;
+                }
+            notes.Add($"Your hosts already have {List([.. order.Take(3).Select(k => $"{Plain(k.Option)} on {k.Node.Name}")])}, " +
+                "but no graphics card there has room for them beside the other jobs, so Thinking doesn't use them.");
+            return false;
+        }
+
+        /// <summary>The models of <paramref name="kind"/> that <paramref name="node"/>'s host service runs, then the ones it keeps
+        /// downloaded, one each (an Ollama tag's ':' and a route's '-' are the same model).</summary>
+        private static IEnumerable<string> HostModels(Node node, string kind) =>
+            (node.Machine.Roles ?? []).Concat(node.Machine.Downloaded ?? [])
+                .Where(r => r?.Kind == kind && r.Model is { Length: > 0 } model && ServedModels.Chats(model))
+                .Select(r => r.Model!).DistinctBy(m => m.Replace(':', '-'), StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>An option's quality tier; a model the catalog doesn't know gets it from its size.</summary>
+        private int TierOf(ComponentOption option) =>
+            Known(option) is null && option.ServedBy is null && option.ModelId is { Length: > 0 } model ? ServedModels.Tier(model) : option.QualityTier;
 
         /// <summary>Thinking in each companion PC's own Ollama today: a host takes it when it can run the same model as soon.</summary>
         private void NativeThinking(ComponentOption now)
