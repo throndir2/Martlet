@@ -44,13 +44,13 @@ public enum CheckInFacts
 /// seconds of what this PC plays.</summary>
 public enum CheckInRecording { None, Microphone, PcSound }
 
-/// <summary>One check-in as Martlet runs it: a built-in one (its prompt is on Companion › Prompts) or one of the owner's own
-/// (<see cref="Custom"/>: its <see cref="Task"/>, the <see cref="Facts"/> it gets and what it gathers for each run), whether it
-/// is on and how often it runs.</summary>
+/// <summary>One check-in as Martlet runs it: a built-in one (its prompt is edited on its card on Companion › Check-ins) or one of
+/// the owner's own (<see cref="Custom"/>: its <see cref="Task"/>, the <see cref="Facts"/> it gets and what it gathers for each
+/// run), whether it is on and how often it runs.</summary>
 public sealed record CheckIn(string Id, string Name, string Does, CheckInOutcome Outcome, bool On, int EveryMinutes)
 {
     public bool Custom { get; init; }
-    /// <summary>A built-in check-in's prompt (Companion › Prompts).</summary>
+    /// <summary>A built-in check-in's prompt (on its card on Companion › Check-ins, and on Companion › Prompts).</summary>
     public string? PromptId { get; init; }
     /// <summary>What the owner wrote for their own check-in.</summary>
     public string? Task { get; init; }
@@ -189,10 +189,12 @@ public static partial class CheckIns
     /// <summary>How long a check-in may wait for a free member and run, after which it is dropped.</summary>
     public static TimeSpan Timeout => TimeSpan.FromMinutes(2);
     public const int MaximumOutputTokens = 600;
-    /// <summary>How often a check-in may run: every 2 minutes to every 2 hours.</summary>
-    public static IReadOnlyList<int> EveryChoices { get; } = [2, 5, 10, 15, 30, 60, 120];
-    /// <summary>How long a check-in's recording may be, in seconds.</summary>
-    public static IReadOnlyList<int> RecordingChoices { get; } = [5, 10, 15, 30];
+    /// <summary>How often a check-in may run: every minute to every 2 hours.</summary>
+    public static IReadOnlyList<int> EveryChoices { get; } = [1, 2, 5, 10, 15, 30, 60, 120];
+    /// <summary>How long a check-in's recording may be, in seconds (at most a minute: the PC sound buffers keep no more).</summary>
+    public static IReadOnlyList<int> RecordingChoices { get; } = [5, 10, 15, 30, 60];
+    /// <summary>The words for <see cref="EveryChoices"/>: "1, 2, 5, 10, 15, 30, 60 or 120".</summary>
+    internal static string EveryChoicesText => $"{string.Join(", ", EveryChoices.SkipLast(1))} or {EveryChoices[^1]}";
     public const int MaximumScriptCharacters = 4_000, MaximumScriptOutputCharacters = 4_000;
     /// <summary>How long the owner's script may run before Martlet stops it.</summary>
     public static TimeSpan ScriptTimeout => TimeSpan.FromSeconds(20);

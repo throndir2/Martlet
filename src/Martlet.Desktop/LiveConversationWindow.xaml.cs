@@ -1552,7 +1552,7 @@ public partial class LiveConversationWindow : ThemedWindow
         var recordings = batch.Select(entry => entry.Recording).ToArray();
         var hearing = HearsVoice;
         var joined = hearing.On && batch.Count > 0 && recordings.All(r => r is not null)
-            ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap, TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds))
+            ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap, TimeSpan.FromSeconds(BoundedTextInput.MessageAudioSeconds))
             : null;
         // Straight to Thinking only when everything said went that way and nothing the PC played goes with it; otherwise what went
         // straight waits for its words and goes as words (transcribed first), like the rest.
@@ -1587,7 +1587,7 @@ public partial class LiveConversationWindow : ThemedWindow
             var recording = straight ? joined
                 : hearing.On && playing.Count == 0 && batch.Count > 0 && batch.All(entry => entry.Recording is not null)
                     ? BoundedWaveAudio.Join(batch.Select(entry => entry.Recording!).ToArray(), HeardGap,
-                        TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
+                        TimeSpan.FromSeconds(BoundedTextInput.MessageAudioSeconds)) : null;
             // The reply's wait counts from when you last stopped talking (a copy, so a restarted reply counts from there again).
             var timeline = batch.Count > 0 ? batch[^1].Timeline?.Copy() : null;
             // The audio model's words about how you sounded, when an audio model of its own hears you (never waited for).

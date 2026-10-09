@@ -643,12 +643,18 @@ and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>`,
 `CheckInFact-<id>-<fact>`, the model it needs (`CheckInNeeds-<id>-Text`,
 `-Vision` and `-Audio`: checked, and disabled when an input forces it) and what
 each run takes (`CheckInScreenshot-<id>`, `CheckInRecording-<id>` and
-`CheckInSeconds-<id>`). The script box (`CheckInScript-<id>`) has an automation
-ID, but `ui_value` never reads it: the owner's script stays on the page.
-`CheckInsOpenPool`, `CheckInsOpenPrompts` and
-`CheckInPrompt-<id>` only open a page. The boxes and choices, the name, task
-and script boxes, *Add a check-in* (`CheckInAdd`) and *Remove* (`CheckInRemove-<id>`) save
-`check-ins.json`, and *Check now* (`CheckInRun-<id>`) sends the check to a
+`CheckInSeconds-<id>`). Each fact box and `CheckInSeconds-<id>` also return
+`help`: what the fact gives the check-in (the same text as its tooltip), and
+which models hear a whole minute of recording. A built-in check-in's card has
+its prompt box (`CheckInPrompt-<id>`), its state (`CheckInPromptState-<id>`,
+such as *Edited. About 180 tokens.*, with *Saving...* until it is saved) and
+*Use built-in text* (`CheckInPromptReset-<id>`). The script and prompt boxes
+(`CheckInScript-<id>`, `CheckInPrompt-<id>`) have automation IDs, but
+`ui_value` never reads them: the owner's words stay on the page.
+`CheckInsOpenPool` only opens a page. The boxes and choices, the name, task,
+prompt and script boxes, *Use built-in text*, *Add a check-in* (`CheckInAdd`)
+and *Remove* (`CheckInRemove-<id>`) save `check-ins.json` or the prompts, and
+*Check now* (`CheckInRun-<id>`) sends the check to a
 Thinking pool member, which may be a paid provider, so they need
 `--allow-ui-effects`. *Check now* on a check-in with a script runs that script,
 takes a screenshot or sends a recording, so use it only on a disposable data

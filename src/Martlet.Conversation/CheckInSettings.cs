@@ -92,7 +92,7 @@ public sealed record CheckInSettings
         {
             ContractRules.Require(CheckIns.BuiltIn.Any(c => c.Id == id), $"Martlet has no check-in \"{id}\".");
             ContractRules.Require(choice is not null && CheckIns.EveryChoices.Contains(choice.EveryMinutes),
-                "A check-in runs every 2, 5, 10, 15, 30, 60 or 120 minutes.");
+                $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
         }
         ContractRules.Require(Custom.Count <= CheckIns.MaximumCustom, $"You can have at most {CheckIns.MaximumCustom} check-ins of your own.");
         ContractRules.Require(Custom.Select(c => c?.Id).Distinct(StringComparer.Ordinal).Count() == Custom.Count, "Two of your check-ins have the same ID.");
@@ -105,7 +105,7 @@ public sealed record CheckInSettings
             ContractRules.Require(checkIn.Task is { Length: <= CheckIns.MaximumTaskCharacters } task &&
                 !task.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t'),
                 $"What a check-in checks is at most {CheckIns.MaximumTaskCharacters} characters.");
-            ContractRules.Require(CheckIns.EveryChoices.Contains(checkIn.EveryMinutes), "A check-in runs every 2, 5, 10, 15, 30, 60 or 120 minutes.");
+            ContractRules.Require(CheckIns.EveryChoices.Contains(checkIn.EveryMinutes), $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
             ContractRules.Require(checkIn.Outcome is CheckInOutcome.Note or CheckInOutcome.Say,
                 "A check-in of your own reminds Martlet in its next reply or has Martlet bring it up.");
             ContractRules.Require(((int)checkIn.Facts & ~127) == 0, "A check-in of your own gets only the facts Martlet offers.");
