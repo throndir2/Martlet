@@ -1,4 +1,5 @@
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Conversation;
 
@@ -42,6 +43,10 @@ public sealed record BackgroundPlace(string Id, string Name, int Rank = 0)
     /// <summary>Whether it takes long jobs: every other kind (thinking longer, research, a song's lyrics, touch zones, remembering,
     /// naming and check-ins). The owner's Long jobs box on Companion › Thinking pool; on unless unticked.</summary>
     public bool LongJobs { get; init; } = true;
+
+    /// <summary>How smart a Thinking pool member's model is (the owner's choice on Companion › Thinking pool, else Martlet's guess
+    /// from the model name); Standard when not known. A job's Runs on (<see cref="ThinkingRunsOn"/>) uses it.</summary>
+    public ThinkingSmarts Smarts { get; init; } = ThinkingSmarts.Standard;
 
     /// <summary>Whether it takes a job of <paramref name="kind"/>: a quick kind where <see cref="QuickJobs"/>, any other where
     /// <see cref="LongJobs"/>.</summary>
@@ -450,6 +455,8 @@ public sealed class BackgroundPlaces
                 (whole is null || LeavesFastSlot(whole, c.place))).ToArray();
         var free = candidates.Where(c => c.used < Room(c.place))
             .OrderBy(c => current?.Avoid(c.place) == true ? 1 : 0)
+            // Runs on: Prefer smart takes the smartest free place first.
+            .ThenByDescending(c => demand is { SmartFirst: true } ? (int)c.place.Smarts : 0)
             .ThenBy(c => c.place.Standing).ThenBy(c => c.used).ThenBy(c => c.order).Select(c => c.place).FirstOrDefault();
         if (free is not null || !share) return free;
         return candidates.OrderBy(c => leases.Any(l => l.Whole && l.Place.Id == c.place.Id))

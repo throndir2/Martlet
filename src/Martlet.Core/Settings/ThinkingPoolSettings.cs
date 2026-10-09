@@ -127,6 +127,67 @@ public sealed record ThinkingPoolSettings
         return this with { MediaAllowed = [.. MediaAllowed.Where(k => k != key), .. allow ? new[] { key } : []] };
     }
 
+    /// <summary>The owner's smarts level for members (by <see cref="DeepThinkingSettings.Key"/>), where it differs from Martlet's
+    /// guess from the model name (<see cref="ThinkingSmartsGuess"/>). A file saved before this existed reads as no change.</summary>
+    public IReadOnlyDictionary<string, ThinkingSmarts> Smarts
+    {
+        get => smarts;
+        init => smarts = value ?? new Dictionary<string, ThinkingSmarts>(StringComparer.Ordinal);
+    }
+    private readonly IReadOnlyDictionary<string, ThinkingSmarts> smarts = new Dictionary<string, ThinkingSmarts>(StringComparer.Ordinal);
+
+    /// <summary>How smart the member with <paramref name="key"/> running <paramref name="model"/> is: the owner's choice, else
+    /// Martlet's guess from the model name.</summary>
+    public ThinkingSmarts SmartsOf(string key, string? model) =>
+        Smarts.TryGetValue(key, out var chosen) ? chosen : ThinkingSmartsGuess.From(model);
+
+    /// <summary>The smarts level of <paramref name="member"/> (<see cref="SmartsOf(string, string?)"/>).</summary>
+    public ThinkingSmarts SmartsOf(DeepThinkingSettings member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return SmartsOf(member.Key, member.ModelId);
+    }
+
+    /// <summary>The pool with the owner's smarts level for the member with <paramref name="key"/>; null: Martlet's guess again.</summary>
+    public ThinkingPoolSettings WithSmarts(string key, ThinkingSmarts? level)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        var next = new Dictionary<string, ThinkingSmarts>(Smarts, StringComparer.Ordinal);
+        if (level is { } chosen) next[key] = chosen;
+        else next.Remove(key);
+        return this with { Smarts = next };
+    }
+
+    /// <summary>The Thinking pool job kinds by the names status files use (as ThinkingJobKinds.Name gives them): the keys of
+    /// <see cref="RunsOnByKind"/>.</summary>
+    public static IReadOnlyList<string> JobKinds { get; } =
+        ["barge-in-judge", "end-of-turn-judge", "digest", "think-longer", "touch-zones", "memory", "naming", "research", "check-in"];
+
+    /// <summary>Where each kind of job runs (Runs on, by kind name from <see cref="JobKinds"/>), where the owner changed it from
+    /// Any member. A check-in's own Runs on (on its card) comes before the check-in kind's. A file saved before this existed
+    /// reads as Any member for every kind; a kind this Martlet doesn't know is kept and not used.</summary>
+    public IReadOnlyDictionary<string, ThinkingRunsOn> RunsOnByKind
+    {
+        get => runsOn;
+        init => runsOn = value ?? new Dictionary<string, ThinkingRunsOn>(StringComparer.Ordinal);
+    }
+    private readonly IReadOnlyDictionary<string, ThinkingRunsOn> runsOn = new Dictionary<string, ThinkingRunsOn>(StringComparer.Ordinal);
+
+    /// <summary>Where jobs of the kind named <paramref name="kind"/> run.</summary>
+    public ThinkingRunsOn RunsOn(string kind) => RunsOnByKind.GetValueOrDefault(kind) ?? ThinkingRunsOn.Any;
+
+    /// <summary>The pool with jobs of the kind named <paramref name="kind"/> running on <paramref name="where"/> (Any member is
+    /// not stored).</summary>
+    public ThinkingPoolSettings WithRunsOn(string kind, ThinkingRunsOn where)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(kind);
+        ArgumentNullException.ThrowIfNull(where);
+        var next = new Dictionary<string, ThinkingRunsOn>(RunsOnByKind, StringComparer.Ordinal);
+        if (where.Mode == ThinkingRunsOnMode.Any) next.Remove(kind);
+        else next[kind] = where;
+        return this with { RunsOnByKind = next };
+    }
+
     /// <summary>The pool as long jobs see it (thinking longer, research and a song's lyrics): only the members that take long
     /// jobs. When none does, those jobs act as with an empty pool: the conversation model, when that is allowed.</summary>
     public ThinkingPoolSettings ForLongJobs() =>
@@ -186,7 +247,11 @@ public sealed record ThinkingPoolSettings
     {
         Members = [.. Members.Where(m => m.Key != key)], AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)],
         NoQuickJobs = [.. NoQuickJobs.Where(k => k != key)], NoLongJobs = [.. NoLongJobs.Where(k => k != key)],
-        MediaAllowed = [.. MediaAllowed.Where(k => k != key)]
+        MediaAllowed = [.. MediaAllowed.Where(k => k != key)],
+        Smarts = Smarts.Where(s => s.Key != key).ToDictionary(s => s.Key, s => s.Value, StringComparer.Ordinal),
+        // A kind that ran only on chosen members keeps the others; with none left it gets "no member" until the owner chooses again.
+        RunsOnByKind = RunsOnByKind.ToDictionary(r => r.Key, r => r.Value.Members.Contains(key, StringComparer.Ordinal)
+            ? r.Value with { Members = [.. r.Value.Members.Where(k => k != key)] } : r.Value, StringComparer.Ordinal)
     };
 
     /// <summary>Every place the planner considers: the members, or the conversation model while the pool is empty and that is
@@ -224,6 +289,12 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(new[] { NoQuickJobs, NoLongJobs }.All(keys => keys.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
             keys.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl))),
             "The members kept from quick or long jobs are a short list of member keys.");
+        ContractRules.Require(Smarts.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
+            Smarts.All(s => s.Key is { Length: > 0 and <= 4096 } && !s.Key.Any(char.IsControl) && Enum.IsDefined(s.Value)),
+            "The members' smarts levels are Fast, Standard or Smart for a short list of member keys.");
+        ContractRules.Require(RunsOnByKind.Count <= 32 && RunsOnByKind.All(r => r.Key is { Length: > 0 and <= 64 } && !r.Key.Any(char.IsControl) &&
+            r.Value is not null), "Runs on is set for a short list of job kinds.");
+        foreach (var where in RunsOnByKind.Values) where.Validate();
         ContractRules.Require(RaisePriorityAfterStops is >= MinRaiseAfterStops and <= MaxRaiseAfterStops,
             $"A stopped request's priority goes up after {MinRaiseAfterStops}-{MaxRaiseAfterStops} stops.");
         ContractRules.Require(RetriesOnFailure is >= 0 and <= MaxRetries, $"A failed request is tried again 0-{MaxRetries} times.");

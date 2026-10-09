@@ -325,6 +325,36 @@ public sealed partial class CheckInsTests
     }
 
     [Fact]
+    public void RunsOnOnTheCardIsSavedAndGoesWithTheJob()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckInsTests." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new CheckInSettings()
+                .With(CheckIns.Emotes, new CheckInChoice(true, 5) { RunsOn = ThinkingRunsOn.SmartOnly })
+                .With(new CustomCheckIn { Id = "c1", Name = "Breaks", Task = "Check.", RunsOn = ThinkingRunsOn.Only(["endpoint:a"]) })
+                .With(new CustomCheckIn { Id = "c2", Name = "Plain", Task = "Check." });
+            Assert.True(settings.Save(folder));
+            var text = File.ReadAllText(Path.Combine(folder, CheckInSettings.FileName));
+            Assert.Contains("\"SmartOnly\"", text);
+            var read = CheckInSettings.Read(folder).Settings;
+            var all = CheckIns.All(read);
+            Assert.Equal(ThinkingRunsOn.SmartOnly, all.Single(c => c.Id == CheckIns.Emotes).RunsOn);
+            Assert.Equal(ThinkingRunsOn.Only(["endpoint:a"]), all.Single(c => c.Id == "c1").RunsOn);
+            Assert.Null(all.Single(c => c.Id == "c2").RunsOn);
+            Assert.Null(all.Single(c => c.Id == CheckIns.Gaze).RunsOn);
+            var job = CheckIns.Prepare(all.Single(c => c.Id == "c1"), State(), null)!;
+            Assert.Equal(ThinkingRunsOn.Only(["endpoint:a"]), job.RunsOn);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+        Assert.Throws<ContractException>(() => new CheckInSettings()
+            .With(new CustomCheckIn { Id = "c1", Name = "Bad", RunsOn = ThinkingRunsOn.SmartOnly with { Members = ["x"] } }).Validate());
+    }
+
+    [Fact]
     public void SettingsSaveReadBackAndRefuseWhatMartletCantRun()
     {
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckInsTests." + Guid.NewGuid().ToString("N"));

@@ -1013,6 +1013,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads "Use diva for pictures"; clicking it checks diva and saves sense-models.json, so it needs --allow-ui-effects).
         "ImageModelHost-", "ImageModelUseHost-",
         "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-", "ThinkingPoolMedia-",
+        // Companion › Thinking pool: each machine's Smarts choice ("ThinkingPoolSmarts-0" reads "Guessed: Smart", "Fast",
+        // "Standard" or "Smart"), the Runs on card's choice for each kind of job ("ThinkingPoolRunsOn-check-in" reads "Prefer
+        // smart") with its machine boxes for These members ("ThinkingPoolRunsOnMember-check-in-0" reads "Check-ins: runs on
+        // diva's Thinking pool (qwen3:8b) (Standard)" and whether it is ticked), and each check-in card's own Runs on
+        // ("CheckInRunsOn-c1" reads "Like other check-ins", "CheckInRunsOnMember-c1-0" as above). Changing any of them saves
+        // thinking-pool.json or check-ins.json, so it needs --allow-ui-effects.
+        "ThinkingPoolSmarts-", "ThinkingPoolRunsOn-", "ThinkingPoolRunsOnMember-", "CheckInRunsOn-", "CheckInRunsOnMember-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",

@@ -54,9 +54,18 @@ internal sealed partial class LiveConversationController
         }
         var pool = Placing(DeepPool(configured), live);
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
-        var start = jobs.Start(WebResearch.Kind, label, (job, token) =>
+        var runsOn = LongRunsOn(ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool)),
+            ThinkingJobKind.Research);
+        if (runsOn.Why is { } none)
+        {
+            tools?.Record(server, WebResearch.Name, "not started: unavailable", label, false);
+            ErrorLog.Info($"Web research: a new job wasn't started ({none})");
+            return new(checkIn is null ? WebResearch.Unavailable(none)
+                : BackgroundWorkTools.NotStarted("Deep thinking can't run right now") + "\n" + none, true);
+        }
+        var start = jobs.Start(WebResearch.Kind with { SmartFirst = runsOn.SmartFirst }, label, (job, token) =>
             ResearchAsync(job, arguments, configured, pool, sent, reply, thinkingModel, token),
-            ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool)));
+            runsOn.Places);
         if (start.Job is not { } started)
         {
             tools?.Record(server, WebResearch.Name, "not started: " + start.Refusal, label, false);

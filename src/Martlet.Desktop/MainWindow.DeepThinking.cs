@@ -78,6 +78,7 @@ public partial class MainWindow
             options));
 
         page.Children.Add(MachinesCard(poolSettings, poolPlan, longJobs, plan, routes, route, hosts, on));
+        page.Children.Add(RunsOnCard(poolSettings));
         page.Children.Add(ThinkLongerCard(homeSettings?.Generation?.ThinkLonger, route, plan, on));
         page.Children.Add(WebResearchCard(ThinkLongerSettings.Of(homeSettings?.Generation), route, plan));
         page.Children.Add(BackupThinkingCard(poolSettings));
@@ -281,6 +282,26 @@ public partial class MainWindow
                     ? $"{name} may now receive pictures and recordings."
                     : $"{name} no longer receives pictures and recordings: jobs with them go to other machines or use their simple rules.").Forget()));
         text.Children.Add(rules);
+        // How smart its model is, for Runs on (below): Martlet's guess from the model name, or the owner's choice.
+        var guess = ThinkingSmartsGuess.From(member.ModelId);
+        var smarts = new ComboBox
+        {
+            Width = 190, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
+            ItemsSource = new[] { $"Guessed: {guess}", "Fast", "Standard", "Smart" },
+            SelectedIndex = pool.Smarts.TryGetValue(key, out var chosenSmarts) ? 1 + (int)chosenSmarts : 0,
+            ToolTip = "How smart this machine's model is. Martlet guesses it from the model name: small models (about 4B or less) are " +
+                "Fast, large ones (about 26B or more, and big cloud models) are Smart. Runs on (below) uses it: Prefer smart and " +
+                "Smart only send jobs to the smartest machines."
+        };
+        AutomationProperties.SetAutomationId(smarts, $"ThinkingPoolSmarts-{i}");
+        AutomationProperties.SetName(smarts, $"{name}: smarts");
+        smarts.SelectionChanged += (_, _) =>
+        {
+            ThinkingSmarts? level = smarts.SelectedIndex <= 0 ? null : (ThinkingSmarts)(smarts.SelectedIndex - 1);
+            SavePoolAsync(p => p.WithSmarts(key, level), level is { } set ? $"{name} is {set} now."
+                : $"{name} uses Martlet's guess again: {guess}.").Forget();
+        };
+        text.Children.Add(TerminalRow("Smarts", smarts));
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         if (member.OnHostRole && hostId is not null)
@@ -449,6 +470,104 @@ public partial class MainWindow
             "version for jobs over a minute.", new Thickness(0, 8, 0, 0)));
         return stack;
     }
+    /// <summary>The kinds of pool job on the Runs on card, by kind name, in plain words.</summary>
+    private static readonly (string Kind, string Label)[] RunsOnKinds =
+    [
+        ("think-longer", "Thinking longer and a song's lyrics"), ("research", "Web research"), ("check-in", "Check-ins"),
+        ("memory", "Remembering"), ("naming", "Naming"), ("touch-zones", "Touch zones"), ("digest", "Screen and sound summaries"),
+        ("end-of-turn-judge", "Are you done talking (judge)"), ("barge-in-judge", "Did you interrupt (judge)")
+    ];
+
+    /// <summary>Runs on: for each kind of job, which machines in the pool may take it (Any member, Prefer smart, Smart only or
+    /// These members). Each check-in can choose its own on its card.</summary>
+    private Border RunsOnCard(ThinkingPoolSettings pool)
+    {
+        var stack = new List<UIElement>
+        {
+            Heading("Runs on"),
+            Note("Choose which machines do each kind of job. Prefer smart sends it to the smartest free machine; when none of the " +
+                "smartest comes free within a short wait (30 seconds at most), a less smart one takes it. Thinking longer, research " +
+                "and lyrics take the smartest free machine at once. Smart only waits for a Smart machine; without one, the job uses " +
+                "its simple fallback. These members uses only the machines you tick. Each machine's Smarts is above. Your " +
+                "conversation's own replies never change.", new Thickness(0, 0, 0, 8))
+        };
+        foreach (var (kind, label) in RunsOnKinds)
+        {
+            var heading = new TextBlock { Text = label, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 2) };
+            stack.Add(heading);
+            Func<ThinkingRunsOn?>? read = null;
+            var (view, current) = RunsOnPicker("ThinkingPoolRunsOn-" + kind, "ThinkingPoolRunsOnMember-" + kind, label, pool.RunsOn(kind),
+                inherit: false, pool, () =>
+                {
+                    var where = read?.Invoke() ?? ThinkingRunsOn.Any;
+                    SavePoolAsync(p => p.WithRunsOn(kind, where), $"{label}: runs on {where.Describe()}.").Forget();
+                });
+            read = current;
+            stack.Add(view);
+        }
+        return Card([.. stack]);
+    }
+
+    /// <summary>A Runs on choice: a list (<paramref name="id"/>) with Any member, Prefer smart, Smart only and These members
+    /// (and, with <paramref name="inherit"/>, Like other check-ins first, which reads as null), and a box for each machine in the
+    /// pool with its smarts (<paramref name="memberId"/>-0, -1...), shown with These members. A change calls
+    /// <paramref name="save"/>; the returned function reads the choice.</summary>
+    private (UIElement View, Func<ThinkingRunsOn?> Read) RunsOnPicker(string id, string memberId, string name, ThinkingRunsOn? start,
+        bool inherit, ThinkingPoolSettings pool, Action save)
+    {
+        string[] modes = ["Any member", "Prefer smart", "Smart only", "These members"];
+        var offset = inherit ? 1 : 0;
+        const string help = "Any member: the free machine that shares least with the conversation. Prefer smart: the smartest free " +
+            "machine, else a less smart one after a short wait. Smart only: only Smart machines. These members: only the machines you tick.";
+        var list = new ComboBox
+        {
+            Width = 220, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = help,
+            ItemsSource = inherit ? ["Like other check-ins", .. modes] : modes,
+            SelectedIndex = start is null ? 0 : offset + (int)start.Mode
+        };
+        AutomationProperties.SetAutomationId(list, id);
+        AutomationProperties.SetName(list, name + ": runs on");
+        AutomationProperties.SetHelpText(list, help);
+        var boxes = new List<(string Key, CheckBox Box)>();
+        var chosen = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        for (var i = 0; i < pool.Members.Count; i++)
+        {
+            var member = pool.Members[i];
+            var label = $"{member.Describe()} ({pool.SmartsOf(member)})";
+            var box = new CheckBox { Content = label, IsChecked = start?.Members.Contains(member.Key, StringComparer.Ordinal) == true,
+                Margin = new Thickness(0, 0, 16, 6) };
+            AutomationProperties.SetAutomationId(box, $"{memberId}-{i}");
+            AutomationProperties.SetName(box, $"{name}: runs on {label}");
+            box.Checked += (_, _) => save();
+            box.Unchecked += (_, _) => save();
+            boxes.Add((member.Key, box));
+            chosen.Children.Add(box);
+        }
+        if (pool.Members.Count == 0) chosen.Children.Add(Note("No machine in the pool yet.", new Thickness(0, 0, 0, 0)));
+        void Show() => chosen.Visibility = list.SelectedIndex == offset + (int)ThinkingRunsOnMode.Members ? Visibility.Visible : Visibility.Collapsed;
+        Show();
+        list.SelectionChanged += (_, _) =>
+        {
+            Show();
+            save();
+        };
+        var view = new StackPanel();
+        view.Children.Add(TerminalRow(inherit ? "Runs on (Thinking pool)" : "Runs on", list));
+        view.Children.Add(chosen);
+        return (view, () =>
+        {
+            var index = list.SelectedIndex - offset;
+            if (index < 0) return null;
+            return (ThinkingRunsOnMode)index switch
+            {
+                ThinkingRunsOnMode.PreferSmart => ThinkingRunsOn.PreferSmart,
+                ThinkingRunsOnMode.SmartOnly => ThinkingRunsOn.SmartOnly,
+                ThinkingRunsOnMode.Members => ThinkingRunsOn.Only(boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Key)),
+                _ => ThinkingRunsOn.Any
+            };
+        });
+    }
+
     /// <summary>Backup for slow replies (Backup Thinking, off by default): when a reply's Thinking model has no words after a short wait, the same request
     /// also goes to a member that may answer for the conversation, and the first to start gives the reply.</summary>
     private Border BackupThinkingCard(ThinkingPoolSettings pool)

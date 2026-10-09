@@ -332,4 +332,82 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
         Assert.False(live.Plan.Offline);
         Assert.Contains("also does Thinking", live.Plan.Why, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("gemma4:e2b", ThinkingSmarts.Fast)]
+    [InlineData("gemma4:e4b", ThinkingSmarts.Fast)]
+    [InlineData("qwen3:4b", ThinkingSmarts.Fast)]
+    [InlineData("smollm2:360m", ThinkingSmarts.Fast)]
+    [InlineData("qwen3:8b", ThinkingSmarts.Standard)]
+    [InlineData("qwen2.5vl:7b", ThinkingSmarts.Standard)]
+    [InlineData("gemma4:latest", ThinkingSmarts.Standard)]
+    [InlineData("gemma4:27b", ThinkingSmarts.Smart)]
+    [InlineData("gemma4:26b", ThinkingSmarts.Smart)]
+    [InlineData("llama3.3:70b", ThinkingSmarts.Smart)]
+    [InlineData("qwen3-30b-a3b", ThinkingSmarts.Smart)]
+    [InlineData("mixtral:8x7b", ThinkingSmarts.Smart)]
+    [InlineData("nvidia/llama-3.3-nemotron-super-49b-v1", ThinkingSmarts.Smart)]
+    [InlineData("nvidia/nemotron-mini-4b-instruct", ThinkingSmarts.Fast)]
+    [InlineData("nvidia/nemotron-ultra", ThinkingSmarts.Smart)]
+    [InlineData("x-ai/grok-4.3", ThinkingSmarts.Smart)]
+    [InlineData("gpt-5", ThinkingSmarts.Smart)]
+    [InlineData("anthropic/claude-sonnet-4", ThinkingSmarts.Smart)]
+    [InlineData("google/gemini-2.5-pro", ThinkingSmarts.Smart)]
+    [InlineData("phi4", ThinkingSmarts.Standard)]
+    [InlineData(null, ThinkingSmarts.Standard)]
+    public void Smarts_are_guessed_from_the_model_name(string? model, ThinkingSmarts expected) =>
+        Assert.Equal(expected, ThinkingSmartsGuess.From(model));
+
+    [Fact]
+    public void Smarts_and_runs_on_are_saved_and_cleared_with_the_member()
+    {
+        var gemma = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = Ollama, ModelId = "gemma4:e2b" };
+        var nemotron = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = OpenRouter, ModelId = "nvidia/nemotron-ultra" };
+        var pool = new ThinkingPoolSettings().Add(gemma).Add(nemotron)
+            .WithSmarts(gemma.Key, ThinkingSmarts.Standard)
+            .WithRunsOn("check-in", ThinkingRunsOn.Only([gemma.Key, nemotron.Key]))
+            .WithRunsOn("think-longer", ThinkingRunsOn.PreferSmart)
+            .WithRunsOn("digest", ThinkingRunsOn.Any);
+        Assert.Equal(ThinkingSmarts.Standard, pool.SmartsOf(gemma));
+        Assert.Equal(ThinkingSmarts.Smart, pool.SmartsOf(nemotron));
+        Assert.False(pool.RunsOnByKind.ContainsKey("digest"));
+        Assert.True(pool.Save(directory));
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Equal(ThinkingSmarts.Standard, loaded.SmartsOf(gemma));
+        Assert.Equal(ThinkingRunsOn.PreferSmart, loaded.RunsOn("think-longer"));
+        Assert.Equal(ThinkingRunsOn.Only([gemma.Key, nemotron.Key]), loaded.RunsOn("check-in"));
+        Assert.Equal(ThinkingRunsOn.Any, loaded.RunsOn("research"));
+        Assert.Contains("\"PreferSmart\"", File.ReadAllText(Path.Combine(directory, ThinkingPoolSettings.FileName)));
+
+        var left = loaded.Remove(gemma.Key);
+        Assert.Empty(left.Smarts);
+        Assert.Equal([nemotron.Key], left.RunsOn("check-in").Members);
+        Assert.Equal(ThinkingSmarts.Fast, loaded.WithSmarts(gemma.Key, null).SmartsOf(gemma));
+    }
+
+    [Fact]
+    public void An_older_pool_file_reads_as_any_member_and_guessed_smarts()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName),
+            $$"""{"SchemaVersion":1,"Members":[{"Place":1,"Origin":"{{Ollama}}","ModelId":"gemma4:e2b"}]}""");
+        var (pool, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Empty(pool.Smarts);
+        Assert.Empty(pool.RunsOnByKind);
+        Assert.Equal(ThinkingSmarts.Fast, pool.SmartsOf(pool.Members[0]));
+        Assert.All(ThinkingPoolSettings.JobKinds, kind => Assert.Equal(ThinkingRunsOn.Any, pool.RunsOn(kind)));
+    }
+
+    [Fact]
+    public void Runs_on_keeps_member_keys_only_for_these_members()
+    {
+        Assert.Throws<ContractException>(() => (ThinkingRunsOn.SmartOnly with { Members = ["endpoint:x"] }).Validate());
+        ThinkingRunsOn.Only([]).Validate();
+        Assert.True(ThinkingRunsOn.SmartOnly.Allows("a", ThinkingSmarts.Smart));
+        Assert.False(ThinkingRunsOn.SmartOnly.Allows("a", ThinkingSmarts.Standard));
+        Assert.True(ThinkingRunsOn.PreferSmart.Allows("a", ThinkingSmarts.Fast));
+        Assert.False(ThinkingRunsOn.Only(["b"]).Allows("a", ThinkingSmarts.Smart));
+    }
 }

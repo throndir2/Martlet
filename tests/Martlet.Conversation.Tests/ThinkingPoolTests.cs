@@ -677,4 +677,140 @@ public sealed class ThinkingPoolTests
         Assert.Equal((ThinkingJobOutcome.Failed, "NVIDIA kept limiting requests", ThinkingJobBoard.MaxLimitedAnswers),
             (result.Outcome, result.Problem, result.Attempts));
     }
+
+    private static readonly BackgroundPlace Small = new("endpoint:small", "small") { Smarts = ThinkingSmarts.Fast },
+        Big = new("endpoint:big", "big") { Smarts = ThinkingSmarts.Smart };
+
+    [Fact]
+    public async Task Runs_on_any_member_keeps_todays_choice_and_prefer_smart_takes_the_smartest_free_member()
+    {
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [Small, Big], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        var any = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal("small", any.Member);
+        Assert.Equal("any", any.RunsOn);
+        board.RunsOn = kind => kind == ThinkingJobKind.Memory ? ThinkingRunsOn.PreferSmart : ThinkingRunsOn.Any;
+        var smart = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal("big", smart.Member);
+        Assert.Equal("prefer-smart", smart.RunsOn);
+        Assert.StartsWith("Prefer smart: big (Smart)", smart.Placed);
+        Assert.Equal("big", board.Find(ThinkingJobKind.Memory)?.Name);
+        Assert.Equal("small", board.Find(ThinkingJobKind.Naming)?.Name);
+        var status = board.Status();
+        Assert.Equal("prefer-smart", status.RunsOn["memory"]);
+        Assert.Equal("any", status.RunsOn["check-in"]);
+        Assert.Equal(ThinkingSmarts.Smart, status.Members.Single(m => m.Name == "big").Smarts);
+        Assert.Equal(["big", "small"], status.Placements.Select(p => p.Member));
+    }
+
+    [Fact]
+    public async Task Prefer_smart_waits_a_short_time_for_a_busy_smart_member_then_takes_a_less_smart_one()
+    {
+        var places = new BackgroundPlaces();
+        var board = new ThinkingJobBoard(places, () => [Small, Big], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)))
+        {
+            RunsOn = _ => ThinkingRunsOn.PreferSmart
+        };
+        Assert.Equal(TimeSpan.FromMilliseconds(100), ThinkingRunsOnRules.PreferWait(TimeSpan.FromMilliseconds(400)));
+        Assert.Equal(ThinkingRunsOnRules.MaxPreferWait, ThinkingRunsOnRules.PreferWait(TimeSpan.FromMinutes(5)));
+
+        // The smart member comes free within the wait: the job waits for it.
+        var held = places.TryAcquire([Big], "busy")!;
+        var waits = board.RunAsync(Job(ThinkingJobKind.Memory, timeout: TimeSpan.FromSeconds(8)), CancellationToken.None);
+        await Task.Delay(50);
+        Assert.False(waits.IsCompleted);
+        held.Dispose();
+        Assert.Equal("big", (await waits).Member);
+
+        // It doesn't come free in time: a less smart member takes the job, and the result says why.
+        held = places.TryAcquire([Big], "busy")!;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        // A quick job: a long one would leave the only free slot to quick jobs.
+        var result = await board.RunAsync(Job(ThinkingJobKind.Digest, timeout: TimeSpan.FromMilliseconds(400)), CancellationToken.None);
+        held.Dispose();
+        Assert.Equal("small", result.Member);
+        Assert.True(watch.ElapsedMilliseconds >= 90, $"{watch.ElapsedMilliseconds} ms");
+        Assert.Equal("Prefer smart: no Smart member came free within 100 ms, so a Fast one", result.Placed);
+    }
+
+    [Fact]
+    public async Task Smart_only_and_these_members_keep_the_other_members_out()
+    {
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [Small, Big], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)))
+        {
+            RunsOn = kind => kind switch
+            {
+                ThinkingJobKind.CheckIn => ThinkingRunsOn.SmartOnly,
+                ThinkingJobKind.Naming => ThinkingRunsOn.Only([Small.Id]),
+                ThinkingJobKind.Memory => ThinkingRunsOn.Only([]),
+                _ => ThinkingRunsOn.Any
+            }
+        };
+        Assert.Equal("big", (await board.RunAsync(Job(ThinkingJobKind.CheckIn), CancellationToken.None)).Member);
+        Assert.Equal("small", (await board.RunAsync(Job(ThinkingJobKind.Naming), CancellationToken.None)).Member);
+        var nobody = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal(ThinkingJobOutcome.NoMember, nobody.Outcome);
+        Assert.Equal("Runs on is These members, and no member is chosen", nobody.Problem);
+        Assert.False(board.CanRun(ThinkingJobKind.Memory));
+        // A job's own Runs on (a check-in's card) comes before its kind's.
+        Assert.Equal("small", (await board.RunAsync(Job(ThinkingJobKind.CheckIn) with { RunsOn = ThinkingRunsOn.Only([Small.Id]) }, CancellationToken.None)).Member);
+        Assert.True(board.CanRun(ThinkingJobKind.CheckIn, where: ThinkingRunsOn.Only([Small.Id])));
+
+        var smallOnly = new ThinkingJobBoard(new BackgroundPlaces(), () => [Small], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)))
+        {
+            RunsOn = _ => ThinkingRunsOn.SmartOnly
+        };
+        Assert.False(smallOnly.CanRun(ThinkingJobKind.Digest));
+        Assert.False(smallOnly.MayStartNow(ThinkingJobKind.Digest));
+        Assert.Null(smallOnly.Find(ThinkingJobKind.Digest));
+        var none = await smallOnly.RunAsync(Job(ThinkingJobKind.Digest), CancellationToken.None);
+        Assert.Equal(ThinkingJobOutcome.NoMember, none.Outcome);
+        Assert.Equal("Runs on is Smart only, and no Smart member can do text", none.Problem);
+    }
+
+    [Fact]
+    public void Long_jobs_runs_on_filters_members_and_keeps_the_conversation_model()
+    {
+        BackgroundPlace conversation = new("thinking", "this PC");
+        Assert.Equal([Big], ThinkLonger.RunsOn([Small, Big], ThinkingRunsOn.SmartOnly));
+        Assert.Empty(ThinkLonger.RunsOn([Small], ThinkingRunsOn.SmartOnly));
+        Assert.Equal([Small, Big], ThinkLonger.RunsOn([Small, Big], ThinkingRunsOn.PreferSmart));
+        Assert.Equal([conversation], ThinkLonger.RunsOn([conversation], ThinkingRunsOn.SmartOnly));
+
+        // Prefer smart: the broker takes the smartest free place first.
+        var places = new BackgroundPlaces();
+        var demand = ThinkingDemand.For(ThinkingJobKind.ThinkLonger, [Small, Big]) with { SmartFirst = true, KeepLastFree = false };
+        using var lease = places.TryAcquire([Small, Big], "think", demand: demand);
+        Assert.Equal("big", lease?.Place.Name);
+    }
+
+    [Fact]
+    public void Members_get_smarts_from_the_owner_or_their_model_name()
+    {
+        var gemma = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = GenerationSupport.LocalOllamaChatBaseUrl, ModelId = "gemma4:e2b" };
+        var big = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = GenerationSupport.LocalOllamaChatBaseUrl, ModelId = "gemma4:27b" };
+        var pool = new ThinkingPoolSettings().Add(gemma).Add(big).WithSmarts(big.Key, ThinkingSmarts.Standard);
+        var places = ThinkLonger.Places(pool.Plan([]), choices: pool);
+        Assert.Equal(ThinkingSmarts.Fast, places.Single(p => p.Id == gemma.Key).Smarts);
+        Assert.Equal(ThinkingSmarts.Standard, places.Single(p => p.Id == big.Key).Smarts);
+    }
+
+    [Fact]
+    public void The_core_kind_names_match_the_job_kinds() =>
+        Assert.Equal(ThinkingJobKinds.All.Select(ThinkingJobKinds.Name).Order(), ThinkingPoolSettings.JobKinds.Order());
+
+    [Fact]
+    public async Task Prefer_smart_passes_over_a_smart_member_whose_provider_asks_martlet_to_wait()
+    {
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [Small, Big], (m, _, _) => Task.FromResult(m.Id == Big.Id
+            ? ThinkingAnswer.Limited("big is limiting requests", TimeSpan.FromMinutes(1)) : ThinkingAnswer.Done(m.Name)))
+        {
+            RunsOn = _ => ThinkingRunsOn.PreferSmart
+        };
+        var first = await board.RunAsync(Job(ThinkingJobKind.Digest), CancellationToken.None);
+        Assert.Equal("small", first.Member);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var next = await board.RunAsync(Job(ThinkingJobKind.Digest), CancellationToken.None);
+        Assert.Equal("small", next.Member);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1), $"{watch.ElapsedMilliseconds} ms");
+    }
 }

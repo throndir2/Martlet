@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Conversation;
 
@@ -24,6 +25,8 @@ public sealed record CheckInChoice(bool On, int EveryMinutes)
     /// <summary>The tool sets it may call (<see cref="CheckInToolSets"/> IDs); null: the built-in default. Compared by value.</summary>
     public IReadOnlyList<string>? ToolSets { get => toolSets; init => toolSets = value is null ? null : new(value); }
     private readonly CheckInToolSetIds? toolSets;
+    /// <summary>Where it runs in the Thinking pool (Runs on); null: as the check-in kind runs (Companion › Thinking pool).</summary>
+    public ThinkingRunsOn? RunsOn { get; init; }
 }
 
 /// <summary>One of the owner's own check-ins (Companion › Check-ins › Your own check-ins): its name, what to check
@@ -65,6 +68,8 @@ public sealed record CustomCheckIn
     /// <summary>The tool sets it may call (<see cref="CheckInToolSets"/> IDs); empty: none. Compared by value.</summary>
     public IReadOnlyList<string> ToolSets { get => toolSets; init => toolSets = value is null ? CheckInToolSetIds.Empty : new(value); }
     private readonly CheckInToolSetIds toolSets = CheckInToolSetIds.Empty;
+    /// <summary>Where it runs in the Thinking pool (Runs on); null: as the check-in kind runs (Companion › Thinking pool).</summary>
+    public ThinkingRunsOn? RunsOn { get; init; }
 }
 
 /// <summary>Companion › Check-ins on this PC (check-ins.json in the data folder; never shared, because each PC shows its own
@@ -132,6 +137,7 @@ public sealed record CheckInSettings
                 choice.Script ?? "", choice.ToolSets ?? []);
             CheckIns.CheckTriggers(choice.Triggers ?? CheckInTriggers.None);
             CheckIns.CheckSignals(choice.FromHour ?? CheckIns.DefaultFromHour, choice.UntilHour ?? CheckIns.DefaultUntilHour, choice.MostPerHour ?? 0);
+            choice.RunsOn?.Validate();
         }
         ContractRules.Require(Custom.Count <= CheckIns.MaximumCustom, $"You can have at most {CheckIns.MaximumCustom} check-ins of your own.");
         ContractRules.Require(Custom.Select(c => c?.Id).Distinct(StringComparer.Ordinal).Count() == Custom.Count, "Two of your check-ins have the same ID.");
@@ -149,6 +155,7 @@ public sealed record CheckInSettings
                 checkIn.ToolSets);
             CheckIns.CheckTriggers(checkIn.Triggers);
             CheckIns.CheckSignals(checkIn.FromHour, checkIn.UntilHour, checkIn.MostPerHour);
+            checkIn.RunsOn?.Validate();
         }
     }
 

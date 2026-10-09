@@ -17,12 +17,15 @@ internal sealed class ThinkingPool
 
     internal ThinkingPool(ThinkingJobBoard board) => this.board = board;
 
-    /// <summary>Whether a member can take a job of <paramref name="kind"/> needing <paramref name="needs"/> (no slot taken).</summary>
-    internal bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text) => board.CanRun(kind, needs);
+    /// <summary>Whether a member can take a job of <paramref name="kind"/> needing <paramref name="needs"/> (no slot taken), on
+    /// <paramref name="where"/> (null: the kind's Runs on).</summary>
+    internal bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text, ThinkingRunsOn? where = null) =>
+        board.CanRun(kind, needs, where);
 
     /// <summary>The member such a job would go to first (its <see cref="BackgroundPlace.Name"/> and <see cref="BackgroundPlace.Model"/>),
     /// or null when no member can run it. Never the conversation's own route.</summary>
-    internal BackgroundPlace? Find(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text) => board.Find(kind, needs);
+    internal BackgroundPlace? Find(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text, ThinkingRunsOn? where = null) =>
+        board.Find(kind, needs, where);
 
     /// <summary>Runs <paramref name="job"/> on a free capable member; <see cref="ThinkingJobOutcome.NoMember"/> at once when none.</summary>
     internal Task<ThinkingJobResult> RunAsync(ThinkingJob job, CancellationToken token) => board.RunAsync(job, token);
@@ -57,7 +60,9 @@ internal sealed partial class LiveConversationController
         var board = new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock)
         {
             // Companion › Thinking pool's priority and retry choices, read on each job and each try.
-            Policy = () => ThinkingPoolPolicy.From(Volatile.Read(ref thinkingPool))
+            Policy = () => ThinkingPoolPolicy.From(Volatile.Read(ref thinkingPool)),
+            // Runs on, by kind (Companion › Thinking pool), read on each job.
+            RunsOn = kind => Volatile.Read(ref thinkingPool).RunsOn(ThinkingJobKinds.Name(kind))
         };
         board.Rested += PoolMemberRested;
         board.Limited += PoolMemberLimited;
@@ -102,6 +107,17 @@ internal sealed partial class LiveConversationController
         Volatile.Write(ref thinkingPool, ThinkingPoolSettings.Load(dataDirectory));
         Volatile.Write(ref poolAbilities, dataDirectory is null ? null : ModelAbilities.Load(dataDirectory));
         WritePoolStatus();
+    }
+
+    /// <summary>What a think, a research job or a song's lyrics may run on, as Runs on for <paramref name="kind"/> says
+    /// (Companion › Thinking pool): the places it may use, whether its work takes the smartest free one first (Prefer smart) and,
+    /// when no member may take it, why.</summary>
+    private (IReadOnlyList<BackgroundPlace> Places, bool SmartFirst, string? Why) LongRunsOn(IReadOnlyList<BackgroundPlace> places, ThinkingJobKind kind)
+    {
+        var where = Volatile.Read(ref thinkingPool).RunsOn(ThinkingJobKinds.Name(kind));
+        var allowed = ThinkLonger.RunsOn(places, where);
+        return (allowed, where.Mode == ThinkingRunsOnMode.PreferSmart,
+            allowed.Count == 0 ? ThinkingRunsOnRules.NoMember(where, ThinkingCapability.Text) + "." : null);
     }
 
     /// <summary>What a member can do: pictures and recordings as its model is known to take them. A paired computer's Ollama
@@ -390,7 +406,18 @@ internal sealed partial class LiveConversationController
                 // The owner's Quick jobs and Long jobs boxes on Companion › Thinking pool.
                 quickJobs = settings.TakesQuickJobs(m.Id), longJobs = settings.TakesLongJobs(m.Id),
                 // Whether it may receive pictures and recordings (an external member only when the owner ticked it).
-                mayReceiveMedia = m.Media
+                mayReceiveMedia = m.Media,
+                // How smart its model is (the owner's choice, else Martlet's guess from the model name), and whether it was guessed.
+                smarts = m.Smarts.ToString(), smartsGuessed = !settings.Smarts.ContainsKey(m.Id)
+            }),
+            // Runs on for each kind of job (any, prefer-smart, smart-only, members) and the chosen members of each that has them.
+            runsOn = ThinkingJobKinds.All.ToDictionary(ThinkingJobKinds.Name, kind => settings.RunsOn(ThinkingJobKinds.Name(kind)) is var where
+                ? new { mode = where.Name, members = where.Members } : null),
+            // The latest jobs: which member each went to and why (never a job's text).
+            placements = status.Placements.Select(p => new
+            {
+                at = p.At, kind = p.Kind, runsOn = p.RunsOn, member = p.Member, memberId = p.MemberId, smarts = p.Smarts?.ToString(),
+                outcome = p.Outcome, why = p.Why
             }),
             // The slots of the members that answer now, and of every member (when all answer).
             slots = status.Slots, free = status.Free, configuredSlots = status.ConfiguredSlots, keepsFastSlot = status.KeepsFastSlot,
