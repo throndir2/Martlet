@@ -48,7 +48,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Check-ins: Open Thinking pool only opens that page. Each check-in's On box, Every and Its answer choices,
-        // the fact and condition boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>), the name and task boxes, a
+        // the fact, condition and trigger boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>,
+        // CheckInTrigger-<id>-<trigger>), the name and task boxes, a
         // built-in check-in's prompt box (CheckInPrompt-<id>) and its Use built-in settings (CheckInReset-<id>), Copy as your
         // own (CheckInCopy-<id>), Add a check-in and Remove save check-ins.json or the prompts, and Check now
         // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
@@ -934,15 +935,16 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), and for every check-in, built-in or
         // the owner's own, its On box and Every choice ("CheckInOn-emotes", "CheckInEvery-emotes"), its Its answer choice
-        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), the
+        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), what
+        // starts it at once ("CheckInTrigger-c1-TouchesEnded"), the
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
         // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
-        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact and condition box, the answer and the
+        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact, condition and trigger box, the answer and the
         // length choice carry what they mean as "help". The hours and cap choices ("CheckInFrom-welcome" reads "8 AM",
         // "CheckInUntil-welcome" "10 PM", "CheckInMostPerHour-c1" "Once an hour") carry theirs too. Changing any of them saves
         // check-ins.json, so it needs --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTrigger-",
         "CheckInFrom-", "CheckInUntil-", "CheckInMostPerHour-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add

@@ -657,14 +657,16 @@ gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
 `GazeChosen`, `Talked`, `SomethingNew`, `Persona`, `Replies`, `NewReplies`,
 `Sayings`, `SlowWhenKept`, `CameBack`, `NotOnCall`, `ActivityChanged`,
 `Between`, `Unanswered`, `Attention`, `SongEnded`, `ScriptChanged`,
-`SomeoneElse`), its hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
+`SomeoneElse`), `CheckInTrigger-<id>-<trigger>` (what starts it at once:
+`TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`), its
+hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
 as *8 AM* and *10 PM*, used with `Between`) and its cap
 (`CheckInMostPerHour-<id>`: *No limit*, *Once an hour* or *2*, *3*, *4*, *6* or
 *12 times an hour*), the model it
 needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
 when an input forces it) and what each run takes (`CheckInScreenshot-<id>`,
-`CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact and condition
-box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
+`CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact, condition and
+trigger box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
 the choice does (the same text as its tooltip), and which models hear a whole
 minute of recording. A built-in check-in's card has its prompt box
 (`CheckInPrompt-<id>`), its state (`CheckInPromptState-<id>`, such as *Edited.
@@ -694,6 +696,17 @@ NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
 the owner's own check-ins that use a line, so *Check now* shows the whole flow
 on a disposable data directory: a reminder waiting for the next reply,
 something Martlet brings up, or background for the next reply.
+
+[Check-in triggers](CONVERSATION.md#check-in-triggers) are driven live with
+`character_touch` and `character_stroke` (both need `--allow-ui-effects` and
+the character showing with touch zones): about 1.2 seconds after the last
+touch, `check_ins_status`'s `desktop.touches.lastFired` names the triggers
+that fired, and a check-in that starts on one shows its run with
+`last.trigger`, or keeps it as `pending` while its pace runs. Check one on a
+disposable data directory: write a `check-ins.json` with an own check-in that
+has `"Triggers": "TouchesEnded"`, launch with `MARTLET_CHECK_INS_FIXTURE`, show
+the character (`ToggleCharacter`), open `CompanionTab-Touch` so Martlet places
+its first zones, then tap it.
 
 ## Local MCP control (Windows)
 
@@ -4520,14 +4533,19 @@ Every changed on its card), and what it `does`; for every check-in the `needs` (
 *Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
 whether it runs a `script` and `scriptCharacters`, never the script itself;
 `hours` such as *8 AM-10 PM* with `Between`, else null; `mostPerHour`, null
-without a cap), `desktop` from `check-ins-status.json` (written by
-the desktop on a companion PC: `role`, the check-in `running`, `pool` with
+without a cap; and its `triggers`, such as *None* or *TouchesEnded,
+IntimateTouch*), `desktop` from `check-ins-status.json` (written by
+the desktop on a companion PC: `role`, the check-in `running` and the
+triggered one `runningTriggered`, `touches` with `settling` (touches wait to
+settle), `settleMs` and `lastFired` (`triggers`, `at` and `what` in counts
+only, such as *3 touches, an intimate one*), `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
-`recording`, `recordingSeconds`, `script`, `waiting`, `hours`, `mostPerHour`,
+`recording`, `recordingSeconds`, `script`, `triggers`, `pending` (the trigger
+it keeps: `triggers`, `at`, `what` and `expiresAt`), `waiting`, `hours`, `mostPerHour`,
 `lastHour` (its runs in the last hour), `nextAt`, `runs`, `acted` and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
 took in a few words, such as *a screenshot (1280x720), 10 s of the
-microphone*) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
+microphone*), `trigger` (what started it, or null) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
 `pcKept` and `pcHeard`; `signals` with `attentionWatched` (Martlet watches
 for flashing taskbar buttons and notifications because a check-in that is on
 waits for them), `activityKnown`, `cameBackMinutesAgo` and `voicesLately` (a
@@ -4540,7 +4558,9 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `scriptTimeoutSeconds` for the owner's inputs, `signalWindowMinutes`,
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, the job kind
-`check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
+`check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
+and for triggers the `triggers` offered, `triggerAgeSeconds`,
+`touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
 Read-only.
 
 `check_ins_check` rehearses check-ins with the production code (`CheckIns`,
@@ -4584,6 +4604,17 @@ the same, that the history outlives a reply's `Drain`, that the fact goes
 after the prompt when it is ticked but not placed, and that facts past
 `Touches` are refused. Its `detail` gives counts (`runs`, `things`,
 `intimate`, `often`), `filled` and the FIXTURE message. Three
+`triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
+with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
+check-in's triggers, an unknown trigger refused, none by default),
+`triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
+and a stroke from the tail over the buttocks to the groin, after 5 earlier
+touches there, fire all four triggers once they settle; the ledger still holds
+every touch; a pat alone fires only `TouchesEnded`; a zoom fires nothing) and
+`triggers: when a triggered check-in waits` (only on its own triggers, not
+after 2 minutes, at most once per its pace, never held by a busy
+conversation, still off, still waiting while nobody is at the PC, *Check now*
+with no trigger, and a paced check-in still waiting for a busy conversation). Three
 `context:` steps check *Adds to what Martlet knows*: `context: asked and read`
 (an own check-in's message asks for a `KNOW:` line or `OK`, and a fixture
 member's `KNOW:` bullet after a `<think>` block is read on a production job
