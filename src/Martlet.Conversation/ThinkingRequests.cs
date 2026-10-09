@@ -180,7 +180,11 @@ public sealed class ThinkingRequests
 
     internal void Ended(ThinkingRequestInfo info)
     {
-        lock (gate) totals[info.Kind] = totals.GetValueOrDefault(info.Kind, ThinkingRequestTotals.Empty).Add(info);
+        lock (gate)
+        {
+            totals[info.Kind] = totals.GetValueOrDefault(info.Kind, ThinkingRequestTotals.Empty).Add(info);
+            Trim();
+        }
     }
 
     internal void Notify()
