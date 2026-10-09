@@ -72,12 +72,12 @@ Already finished and on the way in the next release:
 - 🚦 **A fair, busy pool**: important requests can go first when the pool is full, and failed ones are tried again.
 - 💬 **Conversations get their own page** in the side menu, to read, search, edit and delete every conversation.
 - 🔐 **Pictures stay closer to home**: cloud and other outside pool models get screenshots and recordings only after you allow it.
+- 🧊 **Pools that keep their cool**: a cloud model that limits requests (such as NVIDIA Build's free tier) cools down and tries again instead of failing the job.
 - ❔ **Tidier pages**: long explanations wait behind a small **?**, and check-ins fold their extra settings away.
 
 And still being worked on:
 
 - 🗣️ **Act on what was said**: a check-in right after each exchange does what you asked, so the reply itself carries fewer tools.
-- 🧊 **Pools that keep their cool**: a cloud model that limits requests (such as NVIDIA Build's free tier) cools down and tries again instead of failing the job.
 - 🧭 **Smarter pool routing**: each job goes to the pool model that is best at it and has room.
 
 See [Unreleased](CHANGELOG.md#unreleased) in the changelog for the details.
