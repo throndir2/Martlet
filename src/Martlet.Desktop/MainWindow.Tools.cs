@@ -19,6 +19,7 @@ public partial class MainWindow
         service.EnsureLoaded();
         var statuses = service.Started ? service.Hub.Status.ToDictionary(s => s.Name, StringComparer.Ordinal) : new Dictionary<string, McpServerStatus>(StringComparer.Ordinal);
 
+        page.Children.Add(ToolsNowCard(service));
         page.Children.Add(TerminalCard(service));
 
         var servers = new List<UIElement> { Heading("MCP servers") };
@@ -88,11 +89,10 @@ public partial class MainWindow
             Note("Let Martlet run commands on this PC when you ask: check on something, start a program or run your scripts, " +
                 "and hear back what happened. It's off until you turn it on.", new Thickness(0, 0, 0, 8))
         };
-        var on = new CheckBox { Content = "Let Martlet run terminal commands", IsChecked = saved.Enabled, Margin = new Thickness(0, 0, 0, 4) };
-        AutomationProperties.SetAutomationId(on, "ToolsTerminalOn");
-        on.Checked += (_, _) => { if (!service.Terminal.Enabled) SaveTerminal(service, service.Terminal with { Enabled = true }); };
-        on.Unchecked += (_, _) => { if (service.Terminal.Enabled) SaveTerminal(service, service.Terminal with { Enabled = false }); };
-        children.Add(on);
+        children.AddRange(OnOffChoices("ToolsTerminalOn", "ToolsTerminalOff", "Let Martlet run terminal commands",
+            "Martlet runs the commands you ask for on this PC, as you and never as administrator.",
+            "Martlet can't run commands on this PC.", saved.Enabled, null,
+            on => { if (service.Terminal.Enabled != on) SaveTerminal(service, service.Terminal with { Enabled = on }); }));
         var (state, problem) = TerminalStatus(service, saved);
         var status = problem ? Warning(state) : Note(state, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "ToolsTerminalStatus");

@@ -27,6 +27,8 @@ public partial class MainWindow
         {
             var text = new TextBlock { Text = bar.Text, TextWrapping = TextWrapping.Wrap };
             AutomationProperties.SetAutomationId(text, "DeviceResource-" + DeviceCapacity.Key(bar.Resource));
+            AutomationProperties.SetHelpText(text, DeviceCapacity.BreakdownText(bar));
+            Tip(text, BreakdownTip(bar));
             panel.Children.Add(text);
             panel.Children.Add(BarVisual(bar));
         }
@@ -63,11 +65,14 @@ public partial class MainWindow
 
     /// <summary>A bar split into one segment per job (its share of the total): solid for what the job usually holds, lighter
     /// for what it grows by while it works hardest. The rest is free, and a thin mark shows what the device reports in use now.
-    /// A bar the jobs overfill turns the warning color; on a tight bar only the growth does.</summary>
+    /// A bar the jobs overfill turns the warning color; on a tight bar only the growth does. Hovering the bar shows its
+    /// breakdown, with the job under the mouse in bold.</summary>
     internal static FrameworkElement BarVisual(CapacityBar bar)
     {
-        var track = new Grid { Height = 10, Margin = new Thickness(0, 4, 0, 10), ToolTip = bar.Text };
+        var track = new Grid { Height = 10, Margin = new Thickness(0, 4, 0, 10) };
+        Tip(track, BreakdownTip(bar));
         AutomationProperties.SetName(track, bar.Text);
+        AutomationProperties.SetHelpText(track, DeviceCapacity.BreakdownText(bar));
         var background = new Border { CornerRadius = new CornerRadius(5) };
         background.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
         track.Children.Add(background);
@@ -76,17 +81,13 @@ public partial class MainWindow
         var shares = bar.Shares.Select(s => Math.Max(0, s.Percent)).ToList();
         var used = shares.Sum();
         var scale = used > 100 ? 100 / used : 1;
-        double[] opacities = [1, 0.7, 0.5, 0.85, 0.6, 0.4];
         for (var i = 0; i < shares.Count; i++)
         {
             segments.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(shares[i] * scale, 0.5), GridUnitType.Star) });
             var usual = Math.Clamp(bar.Shares[i].UsualPercent, 0, shares[i]);
             var grows = shares[i] > usual;
-            var segment = new Grid
-            {
-                Opacity = opacities[i % opacities.Length], Margin = new Thickness(0, 0, 1, 0),
-                ToolTip = $"{bar.Shares[i].Component.Name}: {(grows ? $"{usual:0}-" : "")}{shares[i]:0}%"
-            };
+            var segment = new Grid { Opacity = SegmentOpacity(i), Margin = new Thickness(0, 0, 1, 0) };
+            Tip(segment, BreakdownTip(bar, i));
             segment.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(grows ? usual : 1, GridUnitType.Star) });
             var held = new Border { CornerRadius = new CornerRadius(i == 0 ? 5 : 0, 0, 0, i == 0 ? 5 : 0) };
             held.SetResourceReference(Border.BackgroundProperty, bar.Over ? "WarningBrush" : "AccentBrush");
@@ -117,6 +118,70 @@ public partial class MainWindow
             track.Children.Add(marker);
         }
         return track;
+    }
+
+    private static readonly double[] SegmentOpacities = [1, 0.7, 0.5, 0.85, 0.6, 0.4];
+
+    /// <summary>The shade of the bar's <paramref name="index"/>th job segment (neighbors differ, so each job stands apart).</summary>
+    private static double SegmentOpacity(int index) => SegmentOpacities[index % SegmentOpacities.Length];
+
+    /// <summary>Shows <paramref name="tip"/> soon after the mouse rests on <paramref name="element"/>, long enough to read.</summary>
+    private static void Tip(FrameworkElement element, object tip)
+    {
+        element.ToolTip = tip;
+        ToolTipService.SetInitialShowDelay(element, 150);
+        ToolTipService.SetShowDuration(element, 60_000);
+    }
+
+    /// <summary>A bar's hover breakdown: its total, then a row per job with a swatch in its segment's shade, what is free (or
+    /// how much more the jobs need), kept for the system and in use now. The job under the mouse (<paramref name="highlight"/>)
+    /// is in bold.</summary>
+    internal static FrameworkElement BreakdownTip(CapacityBar bar, int highlight = -1)
+    {
+        var panel = new StackPanel { MaxWidth = 460 };
+        panel.Children.Add(new TextBlock { Text = DeviceCapacity.BreakdownTitle(bar), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+        var rows = bar.Breakdown;
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var swatch = new Border
+            {
+                Width = 10, Height = 10, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            switch (row.Kind)
+            {
+                case CapacityRowKind.Job:
+                    swatch.SetResourceReference(Border.BackgroundProperty, bar.Over ? "WarningBrush" : "AccentBrush");
+                    swatch.Opacity = SegmentOpacity(i);
+                    break;
+                case CapacityRowKind.Short:
+                    swatch.SetResourceReference(Border.BackgroundProperty, "WarningBrush");
+                    break;
+                case CapacityRowKind.Free:
+                    swatch.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
+                    swatch.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+                    swatch.BorderThickness = new Thickness(1);
+                    break;
+                case CapacityRowKind.Kept:
+                    swatch.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+                    swatch.BorderThickness = new Thickness(1);
+                    break;
+                case CapacityRowKind.Live:
+                    var mark = new Rectangle { Width = 3, Height = 12 };
+                    mark.SetResourceReference(Shape.FillProperty, "TextBrush");
+                    swatch.Child = mark;
+                    break;
+            }
+            var label = new TextBlock { Text = row.ToString(), TextWrapping = TextWrapping.Wrap };
+            if (i == highlight) label.FontWeight = FontWeights.SemiBold;
+            var line = new DockPanel { Margin = new Thickness(0, 1, 0, 1) };
+            DockPanel.SetDock(swatch, Dock.Left);
+            line.Children.Add(swatch);
+            line.Children.Add(label);
+            panel.Children.Add(line);
+        }
+        return panel;
     }
 
     /// <summary>Fills the network-wide capacity card under the selected device.</summary>

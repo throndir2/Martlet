@@ -257,7 +257,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // setup ("Configuring your computers: 1 of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4).", or how it
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
         "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
-        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
+        // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
+        // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed
+        // wording; never a token or what was said.
+        "SpeechBubblesNow", "SpeechBubblesNowProblem", "EmotesNow", "EmotesNowProblem", "EyesNow", "EyesNowProblem", "TouchNow",
+        "TouchNowProblem", "ToolsNow", "ToolsNowProblem", "SmartHomeNow", "SmartHomeNowProblem", "DiscordNow", "DiscordNowProblem",
+        "MessagingNow", "MessagingNowProblem",
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
@@ -879,7 +886,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
         // free for Martlet."; a range such as "11-14 of 32 GB planned (34-44%)" when jobs grow while they work, with ", tight: ..."
-        // when only the usual amounts fit; keys vram, ram, cpu, disk), each job's share ("DeviceShare-deep-thinking-gemma4-12b" reads
+        // when only the usual amounts fit; keys vram, ram, cpu, disk; its help text is the bar's hover breakdown, a line per job,
+        // then free, kept for the system and in use now), each job's share ("DeviceShare-deep-thinking-gemma4-12b" reads
         // "Deep thinking (Gemma 4 12B): 25% graphics memory, 3% memory, 6% processor.") and what else fits there
         // ("DeviceAlsoFits-0" reads "Room for another Deep thinking model (Gemma 4 12B) here.").
         "DeviceResource-", "DeviceShare-", "DeviceAlsoFits-",

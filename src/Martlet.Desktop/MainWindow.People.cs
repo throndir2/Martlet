@@ -117,11 +117,14 @@ public partial class MainWindow
     private void RenderPeopleTab(Panel page)
     {
         peopleStale = false;
+        page.Children.Add(PeopleNowCard());
         page.Children.Add(RecognitionCard());
         page.Children.Add(SharingCard());
         page.Children.Add(VoiceListCard());
     }
 
+    /// <summary>People's main choice: whether Martlet recognizes voices (with an explicit Off), then whether it keeps clips of
+    /// voices you haven't named.</summary>
     private Border RecognitionCard()
     {
         var children = new List<UIElement> { Heading("Recognize voices") };
@@ -130,28 +133,11 @@ public partial class MainWindow
             children.Add(Warning("Voice recognition needs Martlet's data folder, which isn't available."));
             return Card([.. children]);
         }
-        var status = new TextBlock
-        {
-            Text = localVoices.Active ? "On. Martlet learns voices and names during conversations."
-                : !localVoices.Included ? "Off. Voice recognition files are missing from this Martlet installation."
-                : "Off. Martlet isn't checking who is talking.",
-            FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
-        };
-        AutomationProperties.SetAutomationId(status, "PeopleStatus");
-        children.Add(status);
-        children.Add(Note("Martlet learns people's voices and names as you talk. Voice matching happens on this PC.",
-            new Thickness(0, 0, 0, 8)));
-        if (localVoices.LoadError is { } error) children.Add(Warning(error));
-        if (!localVoices.Included) children.Add(Warning("Reinstall Martlet to recognize voices."));
-        var toggle = new CheckBox
-        {
-            Content = "Recognize voices in conversations", IsChecked = localVoices.Enabled, IsEnabled = localVoices.Included,
-            Margin = new Thickness(0, 4, 0, 0)
-        };
-        AutomationProperties.SetAutomationId(toggle, "PeopleRecognize");
-        toggle.Checked += (_, _) => SetRecognition(true);
-        toggle.Unchecked += (_, _) => SetRecognition(false);
-        children.Add(toggle);
+        children.AddRange(OnOffChoices("PeopleRecognize", "PeopleRecognizeOff", "Recognize voices in conversations",
+            "Martlet learns people's voices and names as you talk. Voice matching happens on this PC.",
+            "Martlet doesn't check who is talking. Saved voices are kept.", localVoices.Enabled,
+            localVoices.Included ? null : "Reinstall Martlet to recognize voices: its voice recognition files are missing.",
+            on => { if (on != localVoices.Enabled) SetRecognition(on); }));
         var clips = new CheckBox
         {
             Content = $"Keep the last {VoiceClips.MaximumClips} clips of voices you haven't named, so you can hear who they are",
