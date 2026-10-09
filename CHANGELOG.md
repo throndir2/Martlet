@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-10-09
+
 ### Added
 
 - Your character can now change how it reacts to your touches for a while, as itself. When it gets angry with you or warms up to you, the new **How I react** check-in can make every touch less (or more) liked, change how it feels about one part of its body, or choose exactly what a zone plays, for a few hours at most. Companion › Touch › **Changes the character made** shows each change, until when and why, with **Undo**, and **Start over** can undo them all. ([#686](https://github.com/throndir2/Martlet/pull/686))

@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.63.0
+## 🆕 What's new in 0.64.0
 
-- 👋 **Check-ins that notice what happens**: Martlet can welcome you back, follow up on a question you didn't answer, keep quiet during a call and stay discreet when someone else is around. Your own check-ins can wait for these moments too.
-- 🧠 **Smarter guidance between replies**: a check-in can add a short description of what is happening, or how you touched the character, for Martlet's next reply to draw on, and every built-in check-in can now be changed like your own.
-- ✋ **It gives way when you talk**: talking over a remark Martlet makes on its own stops it, and stale check-ins are dropped instead of said late.
-- ✂️ **It remembers only what you heard**: when you stop Martlet mid-reply, it keeps just what it said aloud and can pick up the rest later.
-- 🖐️ **Your own touch reactions**: each touch zone has its own list of emotes, gestures and motions, and **Start over** resets touch when you want a fresh start.
+- 😤 **A character with moods of its own**: when it gets angry with you or warms up to you, the new **How I react** check-in can change how it takes your touches for a few hours, and you can see and undo every change.
+- 🖐️ **Touches it can put into words**: right after your touches end, Martlet describes what you have been doing, true to the character, and its next reply can draw on it.
+- 😆 **Sounds in Martlet's own voice**: touch zones can laugh, gasp, sigh or giggle with the voices that can make those sounds.
+- 🧰 **Check-ins that act**: a check-in can now use tools such as emotes and gaze, Martlet's next words or reminders, and it can start when you touch the character instead of every few minutes.
+- ⌨️ **No more stray key presses**: a letter key no longer starts listening or watching by itself.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
