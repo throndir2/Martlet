@@ -65,11 +65,11 @@ public partial class MainWindow
         if (saved.WhatsApp.Connected) page.Children.Add(ChatsCard(MessagingApp.WhatsApp, saved.WhatsApp));
         page.Children.Add(Card(
             Heading("How it works"),
-            Note("Messages travel through Telegram's or WhatsApp's servers to Martlet on this PC, which asks the Thinking model you chose and " +
+            HelpTip.Explain("Messages travel through Telegram's or WhatsApp's servers to Martlet on this PC, which asks the Thinking model you chose and " +
                 "sends the reply back. Martlet answers only the chats you paired here, never groups or strangers, and only while it runs on this " +
                 "PC (also while Windows is locked). Replies are text and join the same conversation as the talk window, so Martlet remembers what " +
                 "you said in either. Use each bot or number on one PC. Martlet reads text messages only for now; a tool or smart-home action " +
-                "that asks first waits for you at this PC.", new Thickness(0, 0, 0, 0))));
+                "that asks first waits for you at this PC.", new Thickness(0, 0, 0, 0), "Messaging", "messaging")));
     }
 
     private Border TelegramCard(TelegramPreferences saved, MessagingStatus status, bool connected)

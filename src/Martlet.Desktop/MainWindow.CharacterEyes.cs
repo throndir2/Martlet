@@ -154,11 +154,11 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Where the eyes are"),
-            Note("Some emotes are drawn over the eyes (heart eyes, star eyes, dizzy swirls). They cover only the iris when Martlet " +
+            HelpTip.Explain("Some emotes are drawn over the eyes (heart eyes, star eyes, dizzy swirls). They cover only the iris when Martlet " +
                 "knows where the eyes are: from the model's own data when it has it, otherwise measured once by your Thinking model in a " +
                 "close-up of the face, drawn off screen in the rest pose (so it works while the character is hidden). When the eyes are " +
                 "only estimated and a model that can see is set up, Martlet measures them on its own, in the background and never " +
-                "while it replies.", new Thickness(0, 0, 0, 4))
+                "while it replies.", new Thickness(0, 0, 0, 4), "CharacterEyes", "emotes over the eyes")
         };
         eyesStatus = Note(EyesStatusText(), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(eyesStatus, "CharacterEyesStatus");

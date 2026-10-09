@@ -23,13 +23,13 @@ public partial class MainWindow
         page.Children.Add(Card(Heading("Now"), now, total));
 
         page.Children.Add(Card(Heading("How prompts work"),
-            Note("Martlet builds each request from these prompts plus your persona, matching lore, remembered facts and the recent " +
+            HelpTip.Explain("Martlet builds each request from these prompts plus your persona, matching lore, remembered facts and the recent " +
                 "conversation. Words in braces, such as {name}, are filled in by Martlet when the prompt is sent; keep them where you " +
                 "want that text. Empty a prompt to send nothing for it. Martlet reads the answers to Remembering and Learning names, so " +
-                "keep their line formats. Edits save as you type; reload an open conversation to use them.", new Thickness(0, 0, 0, 0)),
-            Note("Token counts are Martlet's own estimate, about one token for every three bytes of text: the same rule it uses to " +
+                "keep their line formats. Edits save as you type; reload an open conversation to use them.", new Thickness(0, 0, 0, 0), "Prompts", "prompts"),
+            HelpTip.Explain("Token counts are Martlet's own estimate, about one token for every three bytes of text: the same rule it uses to " +
                 "keep requests within the model's limit, so the model itself may count somewhat fewer. They count each prompt as " +
-                "written; the text filled in for words in braces adds to it when sent.", new Thickness(0, 6, 0, 0))));
+                "written; the text filled in for words in braces adds to it when sent.", new Thickness(0, 6, 0, 0), "PromptTokens", "token counts")));
 
         var boxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);
         var states = new List<Action>();

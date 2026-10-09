@@ -133,7 +133,7 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Emotes and motions"),
-            Note("Martlet's replies can make the character show its emotes and play its motions, and nod or shake its head. Link one " +
+            HelpTip.Explain("Martlet's replies can make the character show its emotes and play its motions, and nod or shake its head. Link one " +
                 "to a voice cue and it plays whenever the voice makes that sound or tone (Chatterbox Turbo's [laugh], Dia's (laughs)); " +
                 "the others are offered to the Thinking model as tags such as {blush}, and it is asked to use them freely and " +
                 "vary them. Each tag's When to use is the hint the Thinking model reads with it; leave it empty for " +
@@ -141,7 +141,7 @@ public partial class MainWindow
                 "Thinking model can write them; names stay as the model's creator wrote them, in any language. A tag written " +
                 "another way still plays ([blush] or *blushes* for {blush}), and the talk window notes under each reply what it " +
                 "set off. Changes save as you type, for this model.",
-                new Thickness(0, 0, 0, 8))
+                new Thickness(0, 0, 0, 8), "CharacterActions", "emotes and motions")
         };
         var catalog = characterActions.Current;
         renderedActionsModel = catalog?.Inventory.ModelId;

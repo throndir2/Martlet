@@ -86,11 +86,11 @@ public partial class MainWindow
         }
 
         return Card(Heading("Chatterbox Original style"),
-            Note("Martlet says each sentence in the General style, and a sentence the reply starts with [expressive] in the " +
+            HelpTip.Explain("Martlet says each sentence in the General style, and a sentence the reply starts with [expressive] in the " +
                 "Expressive style, so the conversation decides when to sound animated. Exaggeration is how much emotion (0.5 is " +
                 "neutral; very high values can be unstable). CFG weight is how closely it follows your voice sample; lower is " +
                 "slower and more deliberate. Resemble AI suggests 0.5 and 0.5 for everyday speech, and about 0.7 and 0.3 for " +
-                "expressive or dramatic speech. If your voice sample speaks fast, try a CFG weight of about 0.3.", new Thickness(0, 0, 0, 0)),
+                "expressive or dramatic speech. If your voice sample speaks fast, try a CFG weight of about 0.3.", new Thickness(0, 0, 0, 0), "ChatterboxStyle", "speaking styles"),
             Group("General: most sentences"),
             Setting("GeneralExaggeration", "General exaggeration: how much emotion in most sentences", style.GeneralExaggeration, true,
                 (s, v) => s with { GeneralExaggeration = v }),

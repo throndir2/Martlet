@@ -159,10 +159,10 @@ public partial class MainWindow
         children.Add(ask);
         children.Add(Note("The talk window shows each command with Allow once and Deny; no answer within 60 seconds means Deny.",
             new Thickness(0, 0, 0, 8)));
-        children.Add(Note("Commands run hidden, one at a time, as you and never as administrator. Martlet closes their input, so " +
+        children.Add(HelpTip.Explain("Commands run hidden, one at a time, as you and never as administrator. Martlet closes their input, so " +
             "a command that waits for typing ends at once, and one that runs past the time limit is stopped. Each command and what " +
             "it prints go to your Thinking model. This setting stays on this PC; your other computers keep their own.",
-            new Thickness(0, 0, 0, 0)));
+            new Thickness(0, 0, 0, 0), "Commands", "commands"));
         return Card([.. children]);
     }
 

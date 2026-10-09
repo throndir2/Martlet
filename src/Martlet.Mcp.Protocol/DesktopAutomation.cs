@@ -231,7 +231,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Thinking requests: a request's row ("ThinkingRequest-tr-3") only selects it and shows it in full (ThinkingRequestDetail).
         "ThinkingRequest-",
         // Settings › Appearance › Custom: choosing a part ("CustomThemeRole-Accent") only shows its color in the editor.
-        "CustomThemeRole-"];
+        "CustomThemeRole-",
+        // A "?" ("Help-CheckInsAbout", HelpTip.cs) only shows its explanation, and a section you open and close
+        // ("Fold-CheckInMore-emotes", Fold.cs) only shows or hides its settings; neither saves anything.
+        "Help-", "Fold-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -918,6 +921,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
     private static readonly string[] SafeValuePrefixes = [
+        // A "?" (HelpTip.cs, "Help-CheckInsAbout") reads as "About <topic>", and its "help" is the explanation it shows; never
+        // anything typed or secret.
+        "Help-",
         // An option picker (MainWindow.OptionPicker.cs): each option's short facts ("PickerFacts-VoiceEngine-chatterbox": "NVIDIA GPU ·
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
@@ -1152,8 +1158,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 // (Companion › Check-ins' fact boxes).
                 if (value is not null && element.Current.HelpText is { Length: > 0 } help &&
                     (element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.CheckBox ||
-                        element.Current.ControlType == ControlType.ComboBox))
+                        element.Current.ControlType == ControlType.ComboBox || id.StartsWith("Help-", StringComparison.Ordinal)))
                     entry["help"] = help;
+                // A section you open and close (an expander such as "Fold-CheckInMore-emotes"): whether it is open now.
+                if (element.Current.ControlType != ControlType.ComboBox &&
+                    element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var section))
+                    entry["expanded"] = ((ExpandCollapsePattern)section).Current.ExpandCollapseState != ExpandCollapseState.Collapsed;
                 // A control ui_move can move (the character overlay's MoveAvatar), and whether it can move now: false while the
                 // character's position is locked.
                 if (element.TryGetCurrentPattern(TransformPattern.Pattern, out var transform))

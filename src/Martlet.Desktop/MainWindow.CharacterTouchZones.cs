@@ -326,14 +326,14 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Touch zones"),
-            Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
+            HelpTip.Explain("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
                 "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts. " +
                 "Each zone plays its own list of emotes, gestures and motions, in order, on its own when you touch it: what the list " +
                 "shows is exactly what plays. Add, remove and reorder them; a new zone's list starts from the persona's touch " +
                 "temperament or the built-in reactions. Martlet notices adds up your touches on a zone and tells your Thinking model, " +
                 "with what you say next or in a short reply of its own. The first time this page shows a model, Martlet places a first " +
                 "guess at its zones with no AI and nothing sent; Detect zones has your Thinking model find them in pictures of the " +
-                "character (never its files). Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
+                "character (never its files). Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8), "TouchZones", "touch zones")
         };
         var status = Note(catalog is null ? "Reading the character..." : TouchZonesStatusText(settings), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "TouchZonesStatus");
@@ -557,10 +557,10 @@ public partial class MainWindow
 
         // Add a zone Detect zones doesn't look for (or missed): it starts in the middle of the picture, or of the part the zoomed-in
         // map shows; move it into place, or press Detect again and the Thinking model places it too.
-        var addNote = Note($"Detect zones looks for the {TouchZoneDetection.DefaultParts}, and for anything special to this character, such as " +
+        var addNote = HelpTip.Explain($"Detect zones looks for the {TouchZoneDetection.DefaultParts}, and for anything special to this character, such as " +
             $"{TouchZoneDetection.SpecialExamples}. Add any other zone here: it starts in the middle " +
             "of the picture (zoomed in, of the part you see). Move it into place, or press Detect again and your Thinking model places it too.",
-            new Thickness(0, 16, 0, 0));
+            new Thickness(0, 16, 0, 0), "TouchZoneDetect", "detecting zones");
         AutomationProperties.SetAutomationId(addNote, "TouchZonesAddNote");
         AddRow(list, addNote);
         var missing = CharacterTouchZones.Kinds.Where(k => settings?.Zones.Any(z => z.Id == k.Id) != true).ToArray();
@@ -633,7 +633,7 @@ public partial class MainWindow
         buttons.Children.Add(level);
         var row = new StackPanel();
         row.Children.Add(buttons);
-        row.Children.Add(Note(TouchZonesZoomHelp, new Thickness(0)));
+        row.Children.Add(HelpTip.Explain(TouchZonesZoomHelp, new Thickness(0), "TouchZonesZoom", "zooming"));
         return row;
     }
 
