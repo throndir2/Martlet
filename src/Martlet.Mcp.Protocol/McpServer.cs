@@ -1245,7 +1245,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "latency line saying it paused and resumed (with characterTags, also no cue acted while paused: a cue that falls in " +
             "the pause waits for it); stopped has the user stop the reply (Stop, or talking over it) as the failAt-th piece starts " +
             "playing, and ok then needs the reply canceled and no cue acted after the stop (character.stoppedAtMs; the cues still " +
-            "waiting are dropped); text-only sends the reply with no voice at all (Speak " +
+            "waiting are dropped) and cutOff right: what the conversation keeps (kept: only saidAloud, ending with the cut-off " +
+            "marker) and the rest it hadn't said (unsaid, with the note that goes once in the next request's notes, Companion > " +
+            "Prompts > Cut off: what you hadn't said), which together are the reply's words; text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +

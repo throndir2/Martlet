@@ -387,6 +387,12 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal AttentionSignal? Attention { get; init; }
     /// <summary>The glance ended in silence: the model answered [pass].</summary>
     internal bool Passed { get; set; }
+    /// <summary>Keeps this reply's exchange when the user stops it while Martlet says it (<see cref="LiveConversationController.Stop"/>
+    /// with the context kept): the message and only what was said aloud. Set once the reply's turn starts; run under the
+    /// controller's gate.</summary>
+    [JsonIgnore] internal Action? KeepCutOff { get; set; }
+    /// <summary>What the conversation kept of this reply when the user stopped it while Martlet said it, or null.</summary>
+    [JsonIgnore] internal CutOffKept? CutOff { get; set; }
     /// <summary>The glance offered the Thinking model the look tags that turn the character's eyes (Martlet decides where the
     /// character looks).</summary>
     internal bool LookOffered { get; set; }
@@ -467,6 +473,10 @@ internal sealed class LiveConversationOperation
     }
     public override string ToString() => nameof(LiveConversationOperation);
 }
+
+/// <summary>What the conversation kept of a reply the user stopped while Martlet said it: how many characters were said aloud
+/// and kept, how many it hadn't said, and whether those went to the next request's notes.</summary>
+internal sealed record CutOffKept(int SaidCharacters, int UnsaidCharacters, bool Noted);
 
 // App-lifetime owner; setup, fixture and live work all reserve the SAME reviewed operation runner.
 internal sealed partial class LiveConversationController : IAsyncDisposable
@@ -1652,6 +1662,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         pictures?.Forget();
         // The audio model's late words were about messages the conversation no longer keeps.
         Board.Clear(VoiceNotes.BoardSource);
+        // And the rest of a reply cut off belongs to a reply it no longer keeps.
+        Board.Clear(CutOffReply.BoardSource);
     }
 
     /// <summary>The user's Refresh context: forget the kept exchanges and what Martlet said lately; nothing else stops.</summary>
@@ -1927,6 +1939,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (!ReferenceEquals(operation, active)) return;
             memory?.Invalidate();
             if (!keepContext) ClearContextLocked();
+            // Stopped while Martlet said it: the conversation keeps what was said aloud before the next reply is built.
+            else operation.KeepCutOff?.Invoke();
             if (operation.OwnershipReleased || operation.ExecutionFinished) return;
             RevokeLocked();
         }
@@ -2404,6 +2418,27 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (early is null && QuickCheck(operation)) CheckWordsBesideAsync(operation, turn).Forget();
             }
             else if (operation.VoiceSent) ErrorLog.Info("Voice path: transcribe first (your recording with the transcript).");
+            // A message that came with a picture keeps where it was from and what the reply saw in it (its [seen: ...] words), on
+            // a line after the message; the picture itself is never kept. In place of the picture, the image model's description:
+            // its first line is what Martlet saw. The touches that came with a message stay noted after it too ("(touch: top of
+            // head pat x3)"), so later replies know; a touch-only reply's message is that line itself.
+            string? SawLine(ConversationSnapshot snapshot)
+            {
+                var line = operation.ScreenSent && !snapshot.ImageRejected && operation.Seen is { } pictured
+                    ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true)
+                    : operation.Described is { } words && operation.Seen is { } shown
+                    ? (shown with { Title = words.Shot.Title, App = words.Shot.App, FullScreen = words.Shot.FullScreen }).HistoryLine(words.Summary, message: true)
+                    : null;
+                if (!operation.Touch && operation.Touches?.HistoryLine is { Length: > 0 } touchLine)
+                    line = line is null ? touchLine : line + "\n" + touchLine;
+                return line;
+            }
+            // The user may stop the reply while Martlet says it (talking over it, Stop, Esc, a touch): Stop runs this under the
+            // gate, before the next reply's request is built, so the conversation has the message and what was said aloud.
+            if (!operation.OnItsOwn && turn.Spoken)
+                operation.KeepCutOff = () => KeepCutOffLocked(operation, configured, conversation, turn, straight, sawLine: SawLine(turn.Snapshot),
+                    said: straight ? null : operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText,
+                    recorded: straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText);
             var terminal = await turn.Completion.ConfigureAwait(false);
             // Touches a reply took but never answered (it was stopped or failed) wait for the next reply.
             if (terminal.State != ConversationState.Completed && operation.Touches is { } unanswered) touches.Restore(unanswered);
@@ -2463,22 +2498,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             {
                 lock (gate)
                 {
-                    if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
+                    if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled && operation.CutOff is null)
                     {
                         var earlier = context.Snapshot();
                         var kept = passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text;
-                        // A message that came with a picture keeps where it was from and what the reply saw in it (its [seen: ...]
-                        // words), on a line after the message; the picture itself is never kept.
-                        var sawLine = operation.ScreenSent && !terminal.ImageRejected && operation.Seen is { } pictured
-                            ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true)
-                            // In place of the picture, the image model's description: its first line is what Martlet saw.
-                            : operation.Described is { } words && operation.Seen is { } shown
-                            ? (shown with { Title = words.Shot.Title, App = words.Shot.App, FullScreen = words.Shot.FullScreen }).HistoryLine(words.Summary, message: true)
-                            : null;
-                        // The touches that came with a message stay noted after it too ("(touch: top of head pat x3)"), so later
-                        // replies know; a touch-only reply's message is that line itself.
-                        if (!operation.Touch && operation.Touches?.HistoryLine is { Length: > 0 } touchLine)
-                            sawLine = sawLine is null ? touchLine : sawLine + "\n" + touchLine;
+                        var sawLine = SawLine(terminal);
                         string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
                         string? said = null;
                         if (straight)
@@ -2685,9 +2709,58 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         LiveConversationConfiguration.WithoutMarked(history.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text) ?? "";
 
     private sealed record StraightExchange(LiveConversationOperation Operation, LiveConversationConfiguration Configured, Guid Conversation,
-        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Reply, bool Passed, string? SawLine = null)
+        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Reply, bool Passed, string? SawLine = null, bool Cut = false)
     {
         public override string ToString() => nameof(StraightExchange);
+    }
+
+    // The user stopped the reply while Martlet said it (under the gate, from Stop): the conversation keeps the message and only
+    // what was said aloud, cut off (CutOffReply), so the next reply never thinks they heard the rest. The rest goes once in the
+    // notes of the next request, which may pick it up or drop it. A reply that finished, said nothing aloud or is no longer the
+    // active one keeps nothing here. said: the message as the conversation keeps it (null when it went straight to Thinking).
+    private void KeepCutOffLocked(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation,
+        ConversationTurn turn, bool straight, string? sawLine, string? said, string? recorded)
+    {
+        if (operation.CutOff is not null || !ReferenceEquals(active, operation) || operation.Authorization.IsCanceled ||
+            turn.Completion.IsCompleted) return;
+        var aloud = turn.SaidAloud;
+        if (CutOffReply.Kept(aloud) is not { } kept) return;
+        var reply = turn.Content.Text;
+        var unsaid = CutOffReply.Unsaid(reply, aloud);
+        string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
+        var hostless = configured.HostTarget() is null;
+        if (straight)
+        {
+            // Its words replace what stands in for them once speech-to-text has them, as for any reply.
+            var earlier = context.Snapshot();
+            var exchange = context.Add(Saw(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText)!,
+                kept, hostless ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+            ConversationContextBuffer.Pending(exchange,
+                KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, kept, Passed: false, sawLine, Cut: true)));
+        }
+        else
+        {
+            context.Add(Saw(said)!, kept, hostless ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+            // The record of conversations keeps the user's own words (never what the PC played) and what was said aloud.
+            if (history is { } historyRecord && historyRecord.Active(configured.Memory) &&
+                recorded is { } recordedWords)
+                historyRecord.Record(conversation, operation.Spoken || operation.Authorization.Microphone ? HistoryInputKind.Spoken : HistoryInputKind.Typed,
+                    recordedWords, kept, operation.OriginSpeaker ?? (operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null),
+                    operation.Origin);
+        }
+        saidLately.Add(clock.GetLocalNow(), kept);
+        var noted = false;
+        if (CutOffReply.Note(configured.Prompts, unsaid) is { } note)
+        {
+            try { noted = Board.Post(CutOffReply.BoardSource, note, clock.GetLocalNow(), CutOffReply.NoteAge, consume: true) is not null; }
+            catch (InvalidOperationException) { }
+        }
+        else Board.Clear(CutOffReply.BoardSource);
+        operation.CutOff = new(aloud.Trim().Length, unsaid?.Length ?? 0, noted);
+        // Sizes only, never the words.
+        ErrorLog.Info($"Cut off: you stopped Martlet while it talked; the conversation keeps what it said aloud ({operation.CutOff.SaidCharacters} " +
+            $"of {reply.Length} characters, marked as cut off)" + (noted ? $" and the {operation.CutOff.UnsaidCharacters} characters it hadn't said go once with the next request."
+                : unsaid is null ? "; nothing was left unsaid." : "; the Cut off prompt is empty, so the rest is dropped."));
     }
 
     /// <summary>Once speech-to-text beside the reply has the words of what went straight to Thinking: they replace what stood in
@@ -2716,7 +2789,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null);
                 recorded = true;
             }
-            if (!keep.Passed && real && current)
+            // A reply the user stopped while Martlet said it isn't remembered from.
+            if (!keep.Passed && !keep.Cut && real && current)
             {
                 var remember = operation.MemoryRequested;
                 var heard = operation.Heard is { Known.Count: > 0 } known && voices is { Active: true } &&
