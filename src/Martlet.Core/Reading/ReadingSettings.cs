@@ -5,7 +5,7 @@ using Martlet.Core.Contracts;
 namespace Martlet.Core.Reading;
 
 /// <summary>Where Martlet reads the text on your screen while it watches: Windows' own OCR on this PC (<see cref="ThisPc"/>, the
-/// default: on the processor, nothing leaves the PC), Martlet's <c>ocr</c> host role (RapidOCR) on this PC or another of your
+/// default: on the processor, nothing leaves the PC), Martlet's <c>ocr</c> host role (RapidOCR or PP-OCRv5) on this PC or another of your
 /// computers (<see cref="Host"/>), or not at all (<see cref="Off"/>).</summary>
 public enum ReadingPlace { ThisPc, Host, Off }
 

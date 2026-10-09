@@ -170,10 +170,88 @@ internal static class OptionalExtras
 
     internal const string ReadingWindowsOcr = "reading:windows-ocr";
     internal const string ReadingRapidOcr = "reading:rapidocr";
+    internal const string ReadingPpOcrV5 = "reading:ppocrv5";
+    internal const string ReadingPpOcrV5Cuda = "reading:ppocrv5-cuda";
+
+    /// <summary>One model of Martlet's Reading role (deploy/host/roles/ocr/role.conf): its OCR_MODEL, the OCR_ENGINE that runs
+    /// it, where it runs (martlet-host's accelerator; null for RapidOCR, which runs only on the processor), its name, its catalog
+    /// option and its download.</summary>
+    internal sealed record ReadingRoleModel(string Model, string Engine, string? Accelerator, string Name, string CatalogId, string Download)
+    {
+        /// <summary>It runs only on an NVIDIA graphics card.</summary>
+        public bool NeedsNvidia => Accelerator == "gpu";
+
+        /// <summary>martlet-host's answers that add (or change) the Reading role to run this model, with no questions.</summary>
+        public IReadOnlyDictionary<string, string> Answers()
+        {
+            var answers = new Dictionary<string, string>(StringComparer.Ordinal) { ["choice.OCR_ENGINE"] = Engine, ["choice.OCR_MODEL"] = Model };
+            if (Accelerator is not null) answers["choice.accelerator"] = Accelerator;
+            return answers;
+        }
+    }
+
+    /// <summary>The Reading role's models, the recommended first: PP-OCRv5 mobile on the processor (the most accurate that is fast
+    /// there, and it leaves the graphics card to the voice and thinking), PP-OCRv5 server on an NVIDIA graphics card, and RapidOCR
+    /// with PP-OCRv4 (the first Reading role, the smallest).</summary>
+    internal static IReadOnlyList<ReadingRoleModel> ReadingModels { get; } =
+    [
+        new("ppocrv5-mobile", "ppocrv5", "cpu", "PP-OCRv5 mobile", ReadingPpOcrV5, "about 700 MB"),
+        new("ppocrv5-server", "ppocrv5", "gpu", "PP-OCRv5 server", ReadingPpOcrV5Cuda, "about 3.1 GB"),
+        new("rapidocr-ppocrv4", "rapidocr", null, "RapidOCR", ReadingRapidOcr, "about 200 MB")
+    ];
+
+    /// <summary>The Reading role's model named <paramref name="model"/> (a host's offer), or null when it isn't one.</summary>
+    internal static ReadingRoleModel? ReadingModelOf(string? model) => ReadingModels.FirstOrDefault(m => m.Model == model);
+
+    /// <summary>The facts of the Reading role running <paramref name="model"/>: the catalog's numbers first, then what only OCR has.</summary>
+    private static IReadOnlyList<OptionFact> ReadingRoleFacts(ReadingRoleModel model) => model.Model switch
+    {
+        "ppocrv5-mobile" => Facts(model.CatalogId,
+            [
+                new("runs-on", "Runs on", "the processor of this PC or another of your computers, in Docker: no graphics card needed",
+                    "Processor (Docker)"),
+                new("speed", "Read time", "about 2 s for a 1920 x 1080 screenshot and 4 s for a 4K one (measured on a 24-thread processor)",
+                    "2-4 s a read", "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
+            ],
+            new("download", "Download", "about 700 MB of packages and models", null),
+            new("languages", "Languages", "Chinese, English and Japanese letters, digits and symbols (PaddleOCR PP-OCRv5)", null),
+            new("accuracy", "Accuracy", "the best measured: all 192 small lines of a 4K screen (Windows OCR 145, RapidOCR 112)", null),
+            new("game-fonts", "Game fonts", "good: often better than Windows OCR", null),
+            new("cost", "Cost", "free", "free"),
+            new("data", "Your data", "screenshots go to that computer; it reads them in memory and doesn't keep them", null),
+            new("license", "License", "RapidOCR and PaddleOCR models Apache-2.0", null)),
+        "ppocrv5-server" => Facts(model.CatalogId,
+            [
+                new("runs-on", "Runs on", "an NVIDIA graphics card of this PC or another of your computers, in Docker", "NVIDIA GPU (Docker)")
+            ],
+            new("download", "Download", "about 3.1 GB of packages and models, with NVIDIA's CUDA 13 and cuDNN libraries", null),
+            new("driver", "Driver", "NVIDIA driver 580 or newer (CUDA 13); on a processor it takes about a minute a screenshot", null),
+            new("languages", "Languages", "Chinese, English and Japanese letters, digits and symbols (PaddleOCR PP-OCRv5)", null),
+            new("accuracy", "Accuracy", "the most accurate PP-OCRv5 model", null),
+            new("game-fonts", "Game fonts", "good: often better than Windows OCR", null),
+            new("cost", "Cost", "free", "free"),
+            new("data", "Your data", "screenshots go to that computer; it reads them in memory and doesn't keep them", null),
+            new("license", "License", "RapidOCR and PaddleOCR models Apache-2.0; CUDA and cuDNN NVIDIA's license", null)),
+        _ => Facts(model.CatalogId,
+            [
+                new("runs-on", "Runs on", "the processor of this PC or another of your computers, in Docker: no graphics card needed",
+                    "Processor (Docker)"),
+                new("cpu", "Processor", "4 threads while it reads", "4 threads"),
+                new("download", "Download", "about 200 MB of packages and models", null),
+                new("speed", "Read time", "about 0.5 to 1 s a screenshot (0.9 s measured on a 24-thread processor)", "0.5-1 s a read",
+                    "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
+            ],
+            new("languages", "Languages", "Chinese and English letters, digits and symbols (PaddleOCR PP-OCRv4)", null),
+            new("game-fonts", "Game fonts", "good: often better than Windows OCR", null),
+            new("cost", "Cost", "free", "free"),
+            new("data", "Your data", "screenshots go to that computer; it reads them in memory and doesn't keep them", null),
+            new("license", "License", "RapidOCR and PaddleOCR models Apache-2.0", null))
+    };
 
     /// <summary>Companion › Reading's main choice, keyed by <see cref="Martlet.Core.Reading.ReadingPlace"/>: Off, Windows OCR on this
-    /// PC or Martlet's Reading role. <paramref name="windowsReads"/>: whether Windows can read text here (null: not known yet).</summary>
-    internal static IReadOnlyList<PickerOption> ReadingChoices(Martlet.Core.Reading.ReadingPlace saved, bool? windowsReads) =>
+    /// PC or Martlet's Reading role. <paramref name="windowsReads"/>: whether Windows can read text here (null: not known yet).
+    /// <paramref name="hostModel"/>: the Reading role's model the page shows (null: the recommended one); its facts are the role's.</summary>
+    internal static IReadOnlyList<PickerOption> ReadingChoices(Martlet.Core.Reading.ReadingPlace saved, bool? windowsReads, string? hostModel = null) =>
     [
         Off(CompanionTab.Reading, saved == Martlet.Core.Reading.ReadingPlace.Off),
         new(nameof(Martlet.Core.Reading.ReadingPlace.ThisPc), "Windows OCR on this PC",
@@ -197,24 +275,12 @@ internal static class OptionalExtras
                 new("data", "Your data", "nothing leaves this PC", null))
         },
         new(nameof(Martlet.Core.Reading.ReadingPlace.Host), "Martlet's Reading role",
-            "RapidOCR in Docker, on this PC or another of your computers. Often better with game fonts.")
+            "PP-OCRv5 or RapidOCR in Docker, on this PC or another of your computers. The most accurate, also with game fonts and " +
+            "small text on 4K screens.")
         {
             InUse = saved == Martlet.Core.Reading.ReadingPlace.Host,
             Badge = saved == Martlet.Core.Reading.ReadingPlace.Host ? "in use" : null,
-            Facts = Facts(ReadingRapidOcr,
-                [
-                    new("runs-on", "Runs on", "the processor of this PC or another of your computers, in Docker: no graphics card needed",
-                        "Processor (Docker)"),
-                    new("cpu", "Processor", "4 threads while it reads", "4 threads"),
-                    new("download", "Download", "about 200 MB of packages and models", null),
-                    new("speed", "Read time", "about 0.5 to 1 s a screenshot (0.9 s measured on a 24-thread processor)", "0.5-1 s a read",
-                        "How long one screenshot takes to read. Reads run off to the side, so replies never wait for them.")
-                ],
-                new("languages", "Languages", "Chinese and English letters, digits and symbols (PaddleOCR PP-OCRv4)", null),
-                new("game-fonts", "Game fonts", "good: often better than Windows OCR", null),
-                new("cost", "Cost", "free", "free"),
-                new("data", "Your data", "screenshots go to that computer; it reads them in memory and doesn't keep them", null),
-                new("license", "License", "RapidOCR and PaddleOCR models Apache-2.0", null))
+            Facts = ReadingRoleFacts(ReadingModelOf(hostModel) ?? ReadingModels[0])
         }
     ];
 

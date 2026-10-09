@@ -40,7 +40,8 @@ internal sealed class NativeHostPlatform : IHostPlatform
     }
 
     // One relay worker per installed host role; each kind maps to exactly one gateway route, placed on the role's graphics
-    // cards (host.json "gpus"; Reading always runs on the processor; unknown counts as the whole host).
+    // cards (host.json "gpus"; Reading with RapidOCR always runs on the processor, PP-OCRv5 may use a card; unknown counts as the
+    // whole host).
     internal static IGatewayInferenceWorker RoleWorker(HostRole role)
     {
         try
@@ -62,7 +63,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 _ => throw new HostInputException()
             };
             IReadOnlyList<string> gpus = role.Gpus ??
-                (Martlet.Core.Installation.SharedGpu.ProcessorOnlyRoles.Contains(role.Kind) ? [GatewayGpus.Cpu] : []);
+                (Martlet.Core.Installation.SharedGpu.ProcessorOnly(role.Kind, role.Model) ? [GatewayGpus.Cpu] : []);
             if (gpus.Count > 0) worker.Route.PlaceOn(gpus);
             return worker;
         }

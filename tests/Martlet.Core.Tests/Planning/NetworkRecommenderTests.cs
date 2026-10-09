@@ -559,7 +559,10 @@ public sealed class NetworkRecommenderTests
     }
 
     private static NetworkSetupRequest Extended(PartChoice reading, PartChoice home, params NetworkMachine[] companions) =>
-        Network([.. companions, Host("cpu-box") with { Roles = [Role("ocr", "rapidocr-ppocrv4"), Role("home-assistant")] }, Host("gpu-box", Nvidia(16))]) with
+        ExtendedReading("rapidocr-ppocrv4", reading, home, companions);
+
+    private static NetworkSetupRequest ExtendedReading(string ocrModel, PartChoice reading, PartChoice home, params NetworkMachine[] companions) =>
+        Network([.. companions, Host("cpu-box") with { Roles = [Role("ocr", ocrModel), Role("home-assistant")] }, Host("gpu-box", Nvidia(16))]) with
         {
             Choices =
             [
@@ -594,6 +597,23 @@ public sealed class NetworkRecommenderTests
         Assert.Contains(RolesOf(recommendation, "cpu-box"), r => r.Kind == "ocr");
         Assert.Contains(RolesOf(recommendation, "cpu-box"), r => r.Kind == "home-assistant");
         Assert.DoesNotContain(recommendation.Changes, c => c.RoleKind is "ocr" or "home-assistant");
+    }
+
+    [Fact]
+    public void ReadingNamesPpOcrV5AndWhetherItReadsOnTheProcessorOrTheGraphicsCard()
+    {
+        var mobile = NetworkRecommender.Recommend(ExtendedReading("ppocrv5-mobile",
+            new PartChoice(PlanComponent.Reading, true) { OptionId = "reading:ppocrv5", HostId = "cpu-box" },
+            new PartChoice(PlanComponent.SmartHome, true), Companion("c1")));
+        Assert.Equal("Martlet's Reading role (PP-OCRv5) on cpu-box's processor",
+            mobile.Components.Single(c => c.Component == PlanComponent.Reading).Where);
+        Assert.DoesNotContain(mobile.Changes, c => c.RoleKind == "ocr");
+
+        var server = NetworkRecommender.Recommend(ExtendedReading("ppocrv5-server",
+            new PartChoice(PlanComponent.Reading, true) { OptionId = "reading:ppocrv5-cuda", HostId = "cpu-box" },
+            new PartChoice(PlanComponent.SmartHome, true), Companion("c1")));
+        Assert.Equal("Martlet's Reading role (PP-OCRv5) on cpu-box's graphics card",
+            server.Components.Single(c => c.Component == PlanComponent.Reading).Where);
     }
 
     [Fact]

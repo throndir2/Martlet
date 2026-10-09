@@ -506,6 +506,13 @@ public sealed class RecommendedSetupTests
         Assert.Equal("omni-1, online (api.example.com)", choices[PlanComponent.Hearing].Where);
         Assert.Equal("reading:rapidocr", choices[PlanComponent.Reading].OptionId);
         Assert.Equal("cpu-box", choices[PlanComponent.Reading].HostId);
+        // The model the host's Reading role runs picks its option.
+        Assert.Equal("reading:ppocrv5-cuda", RecommendedSetupInputs.Choices(watch: true, hearVoice: null, new SenseModels(),
+            new Martlet.Core.Reading.ReadingSettings { Place = Martlet.Core.Reading.ReadingPlace.Host, HostId = "gpu-box" }, "", "ppocrv5-server")
+            .Single(c => c.Component == PlanComponent.Reading).OptionId);
+        Assert.Equal("reading:ppocrv5", RecommendedSetupInputs.Choices(watch: true, hearVoice: null, new SenseModels(),
+            new Martlet.Core.Reading.ReadingSettings { Place = Martlet.Core.Reading.ReadingPlace.Host, HostId = "cpu-box" }, "", "ppocrv5-mobile")
+            .Single(c => c.Component == PlanComponent.Reading).OptionId);
         Assert.Equal("Your own Home Assistant at homeassistant.local", choices[PlanComponent.SmartHome].Where);
 
         var defaults = RecommendedSetupInputs.Choices(watch: false, hearVoice: false, new SenseModels(), new Martlet.Core.Reading.ReadingSettings(), "")

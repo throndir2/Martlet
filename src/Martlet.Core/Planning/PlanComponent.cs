@@ -30,7 +30,7 @@ public static class ComponentRanking
         new(PlanComponent.Vision, 6, ComponentNecessity.Optional, "Vision",
             "Looks at your screen or a camera while you watch together. Thinking's own model sees by default, so it often needs nothing more; an image model of its own needs a graphics card or an online provider."),
         new(PlanComponent.Reading, 7, ComponentNecessity.Optional, "Reading",
-            "Reads the small text on your screen exactly while Martlet watches. It runs on a processor: Windows OCR inside Martlet, or the Reading role."),
+            "Reads the small text on your screen exactly while Martlet watches: Windows OCR inside Martlet, or the Reading role (RapidOCR or PP-OCRv5)."),
         new(PlanComponent.Hearing, 8, ComponentNecessity.Optional, "Hearing",
             "Hears how you say things: tone, laughs and sighs. Thinking's own model hears by default; an audio model of its own needs a graphics card or an online provider."),
         new(PlanComponent.DeepThinking, 9, ComponentNecessity.Optional, "Deep thinking",
@@ -67,7 +67,7 @@ public static class ComponentRanking
     /// <summary>The parts that may use a companion PC's graphics card: Thinking, then the voice. A companion PC often runs
     /// games, so everything else runs there on the processor, or is off. Vision and Hearing use a companion PC's card only
     /// as Thinking itself (an image or audio option that <see cref="ComponentOption.UsesThinking"/>, which takes nothing more);
-    /// Reading and Smart home run on a processor.</summary>
+    /// Reading and Smart home run on a processor (Reading with PP-OCRv5 server on a graphics card only when the owner chooses it).</summary>
     public static bool UsesCompanionCard(PlanComponent component) => component is PlanComponent.Thinking or PlanComponent.Voice;
 
     /// <summary>The parts this PC chooses on their own Companion page and that the network review doesn't place or turn off:

@@ -348,9 +348,8 @@ public sealed class HostRolesTests
         var offers = new Dictionary<string, string> { ["chatterbox"] = "chatterbox-turbo", ["audio2face"] = "claire", ["stt"] = "large-v3-turbo" };
         var warning = Martlet.Core.Installation.SharedGpu.Warning("diva-host", true, "Chatterbox Turbo", ["Lip-sync", "Listening"]);
 
-        // Every role is either a voice engine, one of the other roles that use the card (under the same name as here) or a role
-        // that runs only on the processor.
-        Assert.All(HostRoles.All.Where(r => !HostRoles.Speaks(r.Kind) && !Martlet.Core.Installation.SharedGpu.ProcessorOnlyRoles.Contains(r.Kind)), role =>
+        // Every role is either a voice engine or one of the other roles that can use the card (under the same name as here).
+        Assert.All(HostRoles.All.Where(r => !HostRoles.Speaks(r.Kind)), role =>
             Assert.Contains((role.Kind, role.Name), Martlet.Core.Installation.SharedGpu.OtherGpuRoles));
 
         // The Devices map shows it on a Windows host that runs a voice engine beside other roles, not on a Linux one.

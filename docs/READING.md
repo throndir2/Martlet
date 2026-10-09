@@ -14,27 +14,39 @@ read and **Read my screen now**), then *Where it reads* as an option picker:
 shows its key facts, and **Compare them** shows them side by side: where it
 runs, the download, the read time, the processor threads, the languages, how
 it reads game fonts, the cost and where screenshots go. Choosing a row shows its
-details and the button that uses it (for the Reading role, the computer and
-**Set up**).
+details and the button that uses it. For the Reading role, the details show the
+computer, the model and **Set up**. When the role already runs another model on
+that computer, **Switch to** changes it.
 
 ## Where Martlet reads
 
 | Choice | What it uses | Where it runs | Data |
 | --- | --- | --- | --- |
 | **Windows OCR on this PC** (default, recommended) | Windows' own text recognition (`Windows.Media.Ocr`) in your Windows languages | This PC's processor, about 140 ms for a full-size 1920 x 1080 screenshot | Nothing leaves this PC |
-| **Martlet's Reading role** | RapidOCR 1.4.4 with its PaddleOCR PP-OCRv4 models, in Docker | The processor of this PC or of another of your computers. No graphics card is needed | Screenshots go to that computer. It reads them in memory and does not keep them |
+| **Martlet's Reading role** | PaddleOCR's PP-OCRv5 models with RapidOCR 3.10.0, or RapidOCR 1.4.4 with its PP-OCRv4 models, in Docker | This PC or another of your computers: the processor, or an NVIDIA graphics card for PP-OCRv5 server | Screenshots go to that computer. It reads them in memory and does not keep them |
 | **Off** | Nothing | | |
 
 Windows OCR is fast and free. It needs a Windows language that has text
 recognition. Most languages include it. If Windows has none, the page tells you
 what to add in Windows Settings › Time & language › Language & region.
 
-The Reading role is often better with game fonts. It takes about 0.5 to 1 s for
-one screenshot on a desktop processor (measured: 0.9 s on a 24-thread processor).
-The time grows with the size of the screenshot.
-Set it up from **Companion › Reading › Martlet's Reading role › Set up**. That
-uses the same `martlet-host add ocr` flow as every other role. The role is
-described in [Reading host role](OCR_HOST.md).
+The Reading role is often better with game fonts. It has three models:
+
+| Model | Where it runs | Download | Read time (24-thread processor) | Accuracy on a drawn 4K desktop |
+| --- | --- | --- | --- | --- |
+| **PP-OCRv5 mobile** (recommended) | The processor | About 700 MB | About 2 s for 1920 x 1080, 4 s for 4K | All 192 lines |
+| **PP-OCRv5 server** | An NVIDIA graphics card (driver 580 or newer) | About 3.1 GB | Not measured on a card; about a minute on a processor | The most accurate |
+| **RapidOCR** (PP-OCRv4) | The processor | About 200 MB | About 1 to 3 s | 112 of 192 lines |
+
+Windows OCR read 145 of the same 192 lines. PP-OCRv5 reads Chinese, English
+and Japanese. RapidOCR reads Chinese and English.
+The server model is for an NVIDIA graphics card only. On a processor, it is too
+slow for the gateway's 15 s limit, so the page disables it on a computer without
+one.
+Set it up from **Companion › Reading › Martlet's Reading role**. Choose the
+computer and the model, then **Set up**. That uses the same `martlet-host add
+ocr` flow as every other role. The role is described in
+[Reading host role](OCR_HOST.md).
 
 ## What Martlet does with the text
 
@@ -75,7 +87,8 @@ before a read, as for every look, and a private window in front stops the read.
 
 **Companion › Reading › Read my screen now** takes one full-size picture of the
 whole screen and reads it with the saved choice. It shows the number of lines,
-the engine, the time, the size of the screenshot and the text. With the Reading
+the engine (with the Reading role's model), the time, the size of the
+screenshot and the text. With the Reading
 role, the picture goes to that computer as a JPEG. A large screenshot is sent at
 a lower JPEG quality when it would be more than the role's 4 MiB limit. The
 talk window's vision tooltip also shows the newest read while you watch.
@@ -85,5 +98,5 @@ talk window's vision tooltip also shows the newest read while you watch.
 The MCP tool `reading_check` reads `reading.json` and reads a drawn test picture
 with known text through Windows OCR. It also reads a drawn 1920 x 1080 desktop
 of small text at full size and at 1024 x 576, to show why Martlet reads at full
-size. With `endpoint` it also sends the same picture to a Reading worker on
-loopback. See [MCP](MCP.md#reading).
+size, and a drawn 4K desktop. With `endpoint` it also sends the same pictures to
+a Reading worker on loopback. See [MCP](MCP.md#reading).

@@ -27,6 +27,10 @@ public sealed class SharedGpuTests
         Assert.Equal(["Lip-sync", "Listening"], SharedGpu.Neighbours(roles, thinkingInOllamaHere: false));
         Assert.Equal(["Thinking in Ollama"], SharedGpu.Neighbours(["f5"], thinkingInOllamaHere: true));
         Assert.Empty(SharedGpu.Neighbours(null, false));
+        // Reading uses the card only with PP-OCRv5; RapidOCR (or an unknown model) runs on the processor.
+        Assert.Equal(["Listening"], SharedGpu.Neighbours(["stt", "ocr"], false));
+        Assert.Equal(["Listening"], SharedGpu.Neighbours(["stt", "ocr"], false, new Dictionary<string, string> { ["ocr"] = "rapidocr-ppocrv4" }));
+        Assert.Equal(["Listening", "Reading"], SharedGpu.Neighbours(["stt", "ocr"], false, new Dictionary<string, string> { ["ocr"] = "ppocrv5-mobile" }));
 
         Assert.Equal("diva-host runs on Windows, so Chatterbox Turbo shares its graphics card with Lip-sync and Listening. When the " +
             "card's memory runs short, Windows quietly moves part of it into main memory instead of failing, and the voice can then " +

@@ -206,8 +206,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
         // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
-        // details, only show where it stands on that computer; their own buttons commit.
-        "PicturesHost-", "ReadingHost-",
+        // details, only show where it stands on that computer; their own buttons commit. Reading's model pills
+        // ("ReadingModel-ppocrv5-mobile", "ReadingModel-ppocrv5-server", "ReadingModel-rapidocr-ppocrv4") only show that model's
+        // details and the button that sets it up or switches to it (Set up and Switch need --allow-ui-effects).
+        "PicturesHost-", "ReadingHost-", "ReadingModel-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -457,10 +459,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Reading: where Martlet reads the text on the screen (ReadingNow), the newest read while watching and the
         // Read my screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds, the full-size
         // screenshot's width x height and when, or why it couldn't), whether Windows can read text here, the Reading role on the
-        // shown computer (where it stands) and the
-        // buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
-        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingHostState",
-        "ReadingSetUp", "ReadingUseHost", "ReadingUseThisPc", "ReadingTurnOff", "ReadingTest",
+        // shown computer (where it stands and with which model), the chosen model's note (where it runs, how accurate and its
+        // download) and the buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
+        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingHostState", "ReadingModelNote",
+        "ReadingSetUp", "ReadingSwitch", "ReadingUseHost", "ReadingUseThisPc", "ReadingTurnOff", "ReadingTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character

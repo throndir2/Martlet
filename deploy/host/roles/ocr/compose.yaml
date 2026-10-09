@@ -1,9 +1,18 @@
-# Martlet OCR host service (Reading), loopback-only behind the Martlet gateway. The image is built on this host from
-# workers/ocr (RapidOCR 1.4.4 and hash-pinned packages). It listens only on 127.0.0.1:50087 in the gateway's network
-# namespace; the Martlet gateway is the single LAN entry point. Screenshots are read in memory and are not stored.
+# Martlet OCR host service (Reading), loopback-only behind the Martlet gateway. role.conf's OCR_ENGINE choice picks one
+# Compose profile; both engines answer the same HTTP service on 127.0.0.1:50087 in the gateway's network namespace, and the
+# Martlet gateway is the single LAN entry point. Screenshots are read in memory and are not stored. ORT_DISABLE_TELEMETRY turns
+# off ONNX Runtime's usage telemetry to Microsoft.
+#
+# rapidocr: RapidOCR 1.4.4 with its PP-OCRv4 models on the CPU, built on this host from workers/ocr (host/Dockerfile:
+#   hash-pinned packages).
+#
+# ppocrv5: RapidOCR 3.10.0 with PaddleOCR's PP-OCRv5 mobile and server models, built on this host from workers/ocr
+#   (host/Dockerfile.ppocrv5: hash-pinned packages; both models baked in and SHA-256 checked, so changing the model only
+#   restarts the service). This CPU build; compose.gpu.yaml switches to the CUDA build for an NVIDIA GPU.
 
 services:
   ocr:
+    profiles: [ rapidocr ]
     build:
       context: ${MARTLET_SOURCE:?set by martlet-host}/workers/ocr
       dockerfile: host/Dockerfile
@@ -11,5 +20,24 @@ services:
     pull_policy: build
     restart: unless-stopped
     environment:
+      MARTLET_OCR_PORT: "50087"
+      ORT_DISABLE_TELEMETRY: "1"
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+  ppocrv5:
+    profiles: [ ppocrv5 ]
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/ocr
+      dockerfile: host/Dockerfile.ppocrv5
+      args:
+        ACCELERATOR: cpu
+    image: martlet-ocr-ppocrv5:1
+    pull_policy: build
+    restart: unless-stopped
+    init: true
+    environment:
+      MARTLET_OCR_ENGINE: ppocrv5
+      OCR_MODEL: ${OCR_MODEL:?set by martlet-host}
+      MARTLET_OCR_ACCELERATOR: ${MARTLET_ACCELERATOR:-cpu}
       MARTLET_OCR_PORT: "50087"
     network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}

@@ -155,7 +155,7 @@ public static partial class NetworkRecommender
         }
 
         /// <summary>Reading: this PC's choice on its page (reading.json): Windows OCR inside Martlet by default, or Martlet's
-        /// Reading role (RapidOCR) on a computer's processor.</summary>
+        /// Reading role on a computer: RapidOCR or PP-OCRv5 mobile on its processor, or PP-OCRv5 server on its graphics card.</summary>
         private (bool On, string Where, string Why) ReadingStatus()
         {
             const PlanComponent part = PlanComponent.Reading;
@@ -177,8 +177,15 @@ public static partial class NetworkRecommender
                     return (false, OffWhere(part), $"Martlet's Reading role runs on {node.Name}, which isn't answering.");
                 if (!node.Roles.Any(r => r.Kind == ReadingRole))
                     return (false, OffWhere(part), $"{node.Name} doesn't run Martlet's Reading role. Set it up in {page}.");
-                return (true, $"Martlet's Reading role (RapidOCR) on {node.Name}'s processor",
-                    "It is often better with game fonts, and takes about a second for one screenshot.");
+                var role = node.Roles.First(r => r.Kind == ReadingRole);
+                if (role.Model?.StartsWith("ppocrv5", StringComparison.Ordinal) != true)
+                    return (true, $"Martlet's Reading role (RapidOCR) on {node.Name}'s processor",
+                        "It is often better with game fonts, and takes about a second for one screenshot.");
+                return role.Model == "ppocrv5-server" || role.Card is not null
+                    ? (true, $"Martlet's Reading role (PP-OCRv5) on {node.Name}'s graphics card",
+                        "It is the most accurate reader, also with game fonts and small text on 4K screens.")
+                    : (true, $"Martlet's Reading role (PP-OCRv5) on {node.Name}'s processor",
+                        "It is the most accurate reader, also with game fonts and small text on 4K screens, and takes a few seconds for one screenshot.");
             }
             var inApp = chosen ?? catalog.For(part).FirstOrDefault(o => o.IsLocal && o.RunsInApp);
             return (true, $"{(inApp is null ? "Windows OCR" : Plain(inApp))} inside Martlet on this PC's processor",

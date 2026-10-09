@@ -879,12 +879,22 @@ role_place() {
   return 0
 }
 
-# Whether role $1 can use a graphics card at all: role.conf offers a GPU overlay or requires a GPU (Reading and Home Assistant
-# never do).
+# Whether role $1 can use a graphics card at all: role.conf requires a GPU or offers a GPU overlay for what it runs now. An
+# overlay inside a variant counts only while that variant runs (Reading's ppocrv5 engine, not rapidocr; stt's whisper, not
+# parakeet); Home Assistant never does.
 role_uses_gpu() {
-  local conf="${ROLES_DIR}/$1/role.conf"
+  local conf="${ROLES_DIR}/$1/role.conf" file="${PROJECTS}/$1/.env" condition line from legacy when
   [[ -f "${conf}" ]] || return 0
-  [[ -n "$(conf_any_value "${conf}" gpu)" || " $(conf_value "${conf}" requires) " == *" gpu "* ]]
+  [[ " $(conf_value "${conf}" requires) " == *" gpu "* ]] && return 0
+  from="$(conf_value "${conf}" profile_from)"; legacy="$(conf_value "${conf}" profile_legacy)"
+  while IFS=$'\t' read -r condition line; do
+    [[ "${line%%=*}" == gpu ]] || continue
+    [[ "${condition}" == "*" || ! -f "${file}" ]] && return 0
+    when="$(conf_value "${file}" "${condition%%=*}")"
+    if [[ -z "${when}" && "${condition%%=*}" == "${from}" ]]; then when="${legacy}"; fi
+    [[ "${when}" == "${condition#*=}" ]] && return 0
+  done < <(conf_lines "${conf}")
+  return 1
 }
 
 # For martlet-host status: the gateway gives live turns first claim on a graphics card and stops Deep thinking's work on a card

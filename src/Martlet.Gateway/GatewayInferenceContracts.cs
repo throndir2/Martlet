@@ -609,7 +609,7 @@ public sealed partial class GatewayInferenceRoute
     public const int PictureMaximumEventImageBytes = 180_000;
 
     /// <summary>
-    /// The OCR host role's RapidOCR relay (<c>workers/ocr</c>): one request reads text from one bounded PNG or JPEG.
+    /// The OCR host role's relay (<c>workers/ocr</c>, RapidOCR or PP-OCRv5): one request reads text from one bounded PNG or JPEG.
     /// The relay returns a single JSON text event with the status or reading result.
     /// </summary>
     public static GatewayInferenceRoute Ocr(
@@ -1021,7 +1021,7 @@ public enum GatewayOcrOperation
     Read
 }
 
-/// <summary>One bounded operation against the host's RapidOCR relay.</summary>
+/// <summary>One bounded operation against the host's OCR relay (RapidOCR or PP-OCRv5).</summary>
 public sealed class GatewayOcrPayload : GatewayInferencePayload
 {
     private readonly byte[] image;
