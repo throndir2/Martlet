@@ -324,7 +324,134 @@ internal static class CheckInsCheck
             sayJob.Delivery == BackgroundDeliveryState.Delivered, new { message, notes });
 
         await OwnInputsAsync(Step, now, facts, cancellation);
+        TouchesFact(Step, now, facts);
+        await ContextAsync(Step, now, facts, cancellation);
         return new { passed = ok, steps };
+    }
+
+    /// <summary>7. The Touches fact ({touches}): FIXTURE touches on a production <see cref="TouchLedger"/>, some taken by replies
+    /// and some still waiting, read without taking them and filled into one of the owner's check-ins (NOT AI).</summary>
+    private static void TouchesFact(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
+    {
+        var ledger = new TouchLedger();
+        var clock = TimeSpan.FromMinutes(30);
+        TimeSpan Ago(double seconds) => clock - TimeSpan.FromSeconds(seconds);
+        PhysicalEvent Stroke(TimeSpan at) => new(PhysicalKind.Stroke, at, "down from your tail over your buttocks to your groin",
+            "tail → buttocks → groin", "slowly", Zones: ["your tail", "your buttocks", "your groin"], Intimate: true,
+            Feeling: "FIXTURE: you love being touched there");
+        // Earlier touches, each taken by a reply as the desktop's ledger does; then strokes that wait for the next reply.
+        for (var i = 0; i < 3; i++) ledger.Record(new(PhysicalKind.Pat, Ago(480 - i), "the top of your head", "top of head", Zones: ["the top of your head"]));
+        ledger.Drain(Ago(470));
+        for (var i = 0; i < 2; i++) ledger.Record(Stroke(Ago(300)));
+        ledger.Drain(Ago(290));
+        ledger.Record(new(PhysicalKind.Moved, Ago(180), Detail: "to their other monitor"));
+        ledger.Record(new(PhysicalKind.Tap, Ago(60), "your groin", "groin", Zones: ["your groin"], Intimate: true));
+        ledger.Drain(Ago(50));
+        for (var i = 0; i < 3; i++) ledger.Record(Stroke(Ago(10)));
+        var waitingBefore = ledger.Peek(clock)?.Line;
+        var history = ledger.History(clock);
+        var waitingAfter = ledger.Peek(clock)?.Line;
+        var taken = ledger.Drain(clock);
+        var kept = ledger.History(clock);
+        var state = facts with { Touches = history };
+        var placed = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c7", Name = "FIXTURE touches", Task = "How the user touched {name} lately:\n{touches}\nDescribe it.", Facts = CheckInFacts.Touches
+        }), state, null) ?? "";
+        var ticked = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c7", Name = "FIXTURE touches", Task = "Describe how the user touched the character.", Facts = CheckInFacts.Touches
+        }), state, null) ?? "";
+        var none = CheckIns.Touches(facts with { Touches = null });
+        var refused = false;
+        try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = (CheckInFacts)1024 }).Validate(); }
+        catch (Martlet.Core.Contracts.ContractException) { refused = true; }
+        var accepted = true;
+        try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = CheckInFacts.Touches }).Validate(); }
+        catch (Martlet.Core.Contracts.ContractException) { accepted = false; }
+        const string header = "What the user did to Mira's character on the desktop in the last 10 minutes, oldest first";
+        step("touches fact", history is { Count: 10, Intimate: 6, Entries.Count: 5 } && history.Often is [{ Place: "your groin", Count: 6 }, ..] &&
+            waitingBefore is not null && waitingBefore == waitingAfter && taken is { Count: 3 } && kept?.Entries.Count == 5 &&
+            CheckIns.Placed("{touches}") == CheckInFacts.Touches &&
+            placed.StartsWith("How the user touched Mira lately:\n" + header, StringComparison.Ordinal) &&
+            placed.Contains("- 10:09 PM (8 min ago): They patted the top of your head 3 times over 2 seconds.", StringComparison.Ordinal) &&
+            placed.Contains("- 10:12 PM (5 min ago, intimate): They slowly stroked down from your tail over your buttocks to your groin twice " +
+                "(FIXTURE: you love being touched there).", StringComparison.Ordinal) &&
+            placed.Contains("- 10:14 PM (3 min ago): They moved you to their other monitor.", StringComparison.Ordinal) &&
+            placed.Contains("They keep coming back to your groin (6 times)", StringComparison.Ordinal) &&
+            placed.IndexOf(header, StringComparison.Ordinal) == placed.LastIndexOf(header, StringComparison.Ordinal) &&
+            ticked.Contains(header, StringComparison.Ordinal) && none == "The user didn't touch Mira's character on the desktop in the last 10 minutes." &&
+            refused && accepted,
+            new
+            {
+                runs = history?.Entries.Count, things = history?.Count, intimate = history?.Intimate, often = history?.Often?.Count,
+                readingLeftTheNextReply = waitingBefore is not null && waitingBefore == waitingAfter, replyTook = taken?.Count,
+                keptAfterTheReply = kept?.Entries.Count, filled = placed.Contains(header, StringComparison.Ordinal) && !placed.Contains("{touches}", StringComparison.Ordinal),
+                unknownFactRefused = refused, touchesFactAccepted = accepted, fixtureMessage = placed, nothingTouched = none
+            });
+    }
+
+    /// <summary>8. A check-in that adds to what Martlet knows (FIXTURE answers, NOT AI): its message asks for a KNOW: line, the answer
+    /// is read on a production job board, and the description goes on a production context board as a consume note that goes with
+    /// exactly one request, only while fresh. "KNOW: nothing to add" and OK change nothing.</summary>
+    private static async Task ContextAsync(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts,
+        CancellationToken cancellation)
+    {
+        var describes = CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c7", Name = "FIXTURE describes the moment", On = true, EveryMinutes = 1,
+            Task = "Describe briefly and vividly what has been happening between the user and {name}.", Facts = CheckInFacts.Conversation,
+            Outcome = CheckInOutcome.Context
+        });
+        const string answer = "<think>The user beat a boss, then went back to a bug.</think>\n" +
+            "- KNOW: FIXTURE: Still glowing from the boss win, the user is now hunched over a stubborn bug while Mira cheers them on.";
+        var job = CheckIns.Prepare(describes, CheckIns.Focus(describes, facts), null);
+        BackgroundPlace member = new("endpoint:fixture-context", "FIXTURE member") { Slots = 1, Model = "fixture-model" };
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done(answer)));
+        var result = job is null ? null : await board.RunAsync(job, cancellation);
+        var verdict = CheckIns.Read(describes, result?.Text, facts);
+        step("context: asked and read", job is { Kind: ThinkingJobKind.CheckIn } && job.Text.Contains("starts with KNOW:", StringComparison.Ordinal) &&
+            job.Text.Contains("write only: OK", StringComparison.Ordinal) && !job.Text.Contains("REMIND:", StringComparison.Ordinal) &&
+            result is { Succeeded: true } && verdict is { Act: true, Readable: true, Text: { } text } && text.StartsWith("FIXTURE: Still glowing", StringComparison.Ordinal),
+            new { does = describes.Does, message = job?.Text, verdict.Act, verdict.Readable, verdict.Text });
+
+        var contextBoard = new ContextBoard();
+        var note = CheckIns.Context(null, verdict.Text ?? "")!;
+        contextBoard.Post(CheckIns.Source(describes.Id), note, now, CheckIns.ContextAge, consume: true);
+        var first = contextBoard.Snapshot(now.AddMinutes(1));
+        contextBoard.MarkSent(first);
+        var second = contextBoard.Snapshot(now.AddMinutes(1.5));
+        contextBoard.Post(CheckIns.Source(describes.Id), note, now, CheckIns.ContextAge, consume: true);
+        var stale = contextBoard.Snapshot(now + CheckIns.ContextAge + TimeSpan.FromSeconds(1));
+        var emptied = CheckIns.Context(new Martlet.Core.Settings.PromptSettings
+        {
+            Overrides = new Dictionary<string, string> { [Martlet.Core.Settings.PromptCatalog.CheckInContext] = "" }
+        }, "x");
+        step("context: goes with one request", first.Sources.Contains("check-in-c7") &&
+            first.Text!.Contains("What is happening now, from your own check-in", StringComparison.Ordinal) &&
+            first.Text.Contains("not a reminder to follow", StringComparison.Ordinal) && first.Text.Contains("hunched over a stubborn bug", StringComparison.Ordinal) &&
+            !second.Sources.Contains("check-in-c7") && !stale.Sources.Contains("check-in-c7") && emptied is null &&
+            CheckIns.ContextAge < CheckIns.NoteAge,
+            new
+            {
+                firstNotes = first.Text, secondSources = second.Sources, staleSources = stale.Sources,
+                contextAgeMinutes = CheckIns.ContextAge.TotalMinutes, emptiedPromptPosts = emptied is not null
+            });
+
+        var nothing = new Dictionary<string, CheckInVerdict>
+        {
+            ["KNOW: nothing to add."] = CheckIns.Read(describes, "KNOW: nothing to add.", facts),
+            ["OK"] = CheckIns.Read(describes, "OK", facts),
+            ["REMIND: a reminder instead"] = CheckIns.Read(describes, "REMIND: Be gentle.", facts),
+            ["chatter"] = CheckIns.Read(describes, "Things look calm to me.", facts)
+        };
+        var untouched = new ContextBoard();
+        foreach (var read in nothing.Values.Where(v => v.Act))
+            untouched.Post(CheckIns.Source(describes.Id), CheckIns.Context(null, read.Text!), now, CheckIns.ContextAge, consume: true);
+        step("context: nothing changes nothing", nothing["KNOW: nothing to add."] is { Act: false, Readable: true } &&
+            nothing["OK"] is { Act: false, Readable: true } && nothing["REMIND: a reminder instead"] is { Act: false } &&
+            nothing["chatter"] is { Act: false, Readable: false } && untouched.Snapshot(now).Notes.Count == 0,
+            nothing.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable }));
     }
 
     /// <summary>6. One of the owner's check-ins with a model requirement and inputs (FIXTURE picture, sound and script; NOT AI).</summary>

@@ -10,17 +10,13 @@ public static partial class CharacterTouchZones
     /// <summary>Whether <paramref name="zone"/> already does what a fresh zone does (<paramref name="fresh"/>): the same reaction
     /// list (a zone not filled yet, with no list, gets the fresh one), Martlet notices, own words and rest.</summary>
     public static bool IsFresh(CharacterTouchZone zone, CharacterTouchReaction fresh) =>
-        FreshActions(zone, fresh) && FreshAutoplay(zone, fresh) && zone.Reaction.Notices == fresh.Notices && !OwnWords(zone) &&
+        FreshActions(zone, fresh) && zone.Reaction.Notices == fresh.Notices && !OwnWords(zone) &&
         zone.Reaction.CooldownSeconds.Equals(fresh.CooldownSeconds);
 
-    /// <summary>Whether the zone autoplays what a fresh zone does (nothing, unless <paramref name="fresh"/> says otherwise).</summary>
-    public static bool FreshAutoplay(CharacterTouchZone zone, CharacterTouchReaction fresh) =>
-        (zone.Reaction.Autoplay ?? []).SequenceEqual(fresh.Autoplay ?? [], StringComparer.Ordinal) &&
-        (zone.Reaction.Autoplay is not { Count: > 0 } || zone.Reaction.AutoplaySeconds.Equals(fresh.AutoplaySeconds));
-
-    /// <summary>Whether the zone's reaction list is the fresh one (or not filled yet).</summary>
-    public static bool FreshActions(CharacterTouchZone zone, CharacterTouchReaction fresh) =>
-        zone.Reaction.Actions is not { } own || fresh.Actions is { } seed && own.SequenceEqual(seed, StringComparer.Ordinal);
+    /// <summary>Whether the zone's reaction list is the fresh one, or not filled yet (it then gets the fresh one). Entries of the
+    /// old second list that wait to join the list make it not fresh.</summary>
+    public static bool FreshActions(CharacterTouchZone zone, CharacterTouchReaction fresh) => zone.Reaction.Later is null &&
+        (zone.Reaction.Actions is not { } own || fresh.Actions is { } seed && own.SequenceEqual(seed, StringComparer.Ordinal));
 
     /// <summary>Whether the owner wrote their own words for the zone (not empty and not the zone's built-in line).</summary>
     public static bool OwnWords(CharacterTouchZone zone) => zone.Reaction.Narration is { Length: > 0 } words && words != Kind(zone.Id)?.Narration;

@@ -15,11 +15,18 @@ public partial class MainWindow
     private string? touchResetState;
     private bool resettingTouch;
 
-    private TouchResetTarget TouchResetTargetNow() => new(characterTouchZones, characterTemperaments, homeSettings?.Companion?.ActivePersona,
-        _ => new CharacterTouchReaction(),
-        persona => characterTemperaments.PersonalitySaved(persona, () => conversation?.Replying == true || openConversation?.HearingYou == true,
-            AskThinkingForTemperamentAsync, lifetime.Token,
-            news: $"{persona.Name}'s touch temperament was reset; Martlet decides it again from the personality in a moment."));
+    private TouchResetTarget TouchResetTargetNow()
+    {
+        // A fresh zone's reaction list comes from the model's emotes and the persona's temperament; without the model's emotes it
+        // is left to be filled (null) when they are known, never emptied.
+        var catalog = characterActions.Current is { } shown && shown.Inventory.ModelId == characterTouchZones.ModelId ? shown : null;
+        var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
+        return new(characterTouchZones, characterTemperaments, homeSettings?.Companion?.ActivePersona,
+            zone => catalog is null ? new CharacterTouchReaction() : CharacterTouchZones.FreshReaction(zone, catalog, temperament),
+            persona => characterTemperaments.PersonalitySaved(persona, () => conversation?.Replying == true || openConversation?.HearingYou == true,
+                AskThinkingForTemperamentAsync, lifetime.Token,
+                news: $"{persona.Name}'s touch temperament was reset; Martlet decides it again from the personality in a moment."));
+    }
 
     /// <summary>The Start over section at the end of the Touch zones card: the level list (TouchZonesResetLevel), what the level
     /// clears (TouchZonesResetNote), Reset (TouchZonesReset) and what the last reset did (TouchZonesResetState).

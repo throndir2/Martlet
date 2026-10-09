@@ -56,7 +56,7 @@ public sealed class CharacterTouchResetTests : IDisposable
         await CharacterTouchZones.SaveAsync(directory, Model("model-1",
             Zone("hair", new() { Actions = ["gesture:blush"], Narration = "my favorite spot" }),
             Zone("cheek_left", new() { Notices = false, CooldownSeconds = 30 }),
-            Zone("tail", new() { Autoplay = ["gesture:blush", "gesture:smile"] }),
+            Zone("tail"),
             Zone("chest", new() { Actions = [] })), DateTimeOffset.Now);
         var (zones, _, _, target) = Target("model-1", Mira);
         var level = CharacterTouchReset.Level(CharacterTouchReset.ReactionsId);
@@ -64,7 +64,6 @@ public sealed class CharacterTouchResetTests : IDisposable
         var loses = level.Loses(target);
         Assert.Equal([
             "the reactions you chose for 2 zones: Hair and Chest",
-            "the autoplay list for 1 zone: Tail",
             "Martlet notices turned off for 1 zone: Left cheek",
             "your own words for 1 zone: Hair",
             "the rest you changed for 1 zone: Left cheek"], loses);
@@ -77,6 +76,26 @@ public sealed class CharacterTouchResetTests : IDisposable
         Assert.Equal(["hair", "cheek_left", "tail", "chest"], reset.Zones.Select(z => z.Id));
         Assert.All(reset.Zones, z => Assert.True(CharacterTouchZones.IsFresh(z, new())));
         Assert.False(reset.Zones.Single(z => z.Id == "tail").Enabled);
+        Assert.Empty(level.Loses(target));
+    }
+
+    [Fact]
+    public async Task ReactionsGetTheFreshListAndAListLikeItIsNothingToLose()
+    {
+        await CharacterTouchZones.SaveAsync(directory, Model("model-1",
+            Zone("hair", new() { Actions = ["gesture:nod", "gesture:blush"] }),
+            Zone("tail", new() { Actions = ["gesture:blush"] })), DateTimeOffset.Now);
+        var zones = new CharacterTouchZoneService(directory);
+        zones.Follow("model-1");
+        IReadOnlyList<string> Seed(CharacterTouchZone zone) => zone.Id == "hair" ? ["gesture:nod", "gesture:blush"] : ["sound:laugh"];
+        var target = new TouchResetTarget(zones, new CharacterTemperamentService(directory), Mira, z => new() { Actions = Seed(z) }, _ => { });
+        var level = CharacterTouchReset.Level(CharacterTouchReset.ReactionsId);
+
+        Assert.Equal(["the reactions you chose for 1 zone: Tail"], level.Loses(target));
+        Assert.Null(await level.Run(target, CancellationToken.None));
+        var reset = CharacterTouchZones.Load(directory, "model-1")!;
+        Assert.Equal(["gesture:nod", "gesture:blush"], reset.Zones[0].Reaction.Actions);
+        Assert.Equal(["sound:laugh"], reset.Zones[1].Reaction.Actions);
         Assert.Empty(level.Loses(target));
     }
 

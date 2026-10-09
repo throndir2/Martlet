@@ -72,6 +72,18 @@ public sealed record TouchBurst(IReadOnlyList<TouchEntry> Entries, IReadOnlyList
     public bool StartsTurn => Entries.Any(e => PhysicalKinds.StartsTurn(e.Kind));
 }
 
+/// <summary>What the user did to the character over the last <see cref="TouchLedger.OftenWindow"/>, read without taking it
+/// (<see cref="TouchLedger.History"/>; a check-in's Touches fact): its runs, oldest first, each with its first and last time on
+/// the ledger's clock; the places the user keeps coming back to (<see cref="TouchLedger.OftenTouches"/> or more touches there);
+/// and <see cref="Now"/> on that clock, so each run's age can be told.</summary>
+public sealed record TouchHistory(IReadOnlyList<TouchEntry> Entries, IReadOnlyList<TouchHabit>? Often, TimeSpan Now)
+{
+    /// <summary>How many things the user did (each tap counts).</summary>
+    public int Count => Entries.Sum(e => e.Count);
+    /// <summary>How many of them touched an intimate zone.</summary>
+    public int Intimate => Entries.Where(e => e.Intimate).Sum(e => e.Count);
+}
+
 /// <summary>What each kind of thing does in the conversation and how it is said.</summary>
 public static class PhysicalKinds
 {
@@ -195,16 +207,19 @@ public static class TouchWording
 /// <see cref="MaximumAge"/> is let go. Each place a touch reached also counts for <see cref="OftenWindow"/>, across replies, so
 /// a burst names the places the user keeps coming back to (<see cref="OftenTouches"/> or more touches there, more than this
 /// burst alone has); and when a touch stopped Martlet talking (<see cref="CutIn"/>) the next burst carries what it was saying.
-/// Thread-safe.</summary>
+/// What the user did over <see cref="OftenWindow"/> is also kept in runs across replies (at most <see cref="MaximumHistory"/>),
+/// which <see cref="History"/> reads without taking anything. Thread-safe.</summary>
 public sealed class TouchLedger
 {
-    public const int MaximumEntries = 8, OftenTouches = 5, MaximumRecent = 400;
+    public const int MaximumEntries = 8, OftenTouches = 5, MaximumRecent = 400, MaximumHistory = 24;
     public static readonly TimeSpan MaximumAge = TimeSpan.FromMinutes(2), OftenWindow = TimeSpan.FromMinutes(10);
 
     private readonly object gate = new();
     private readonly List<TouchEntry> entries = [];
     // Every place a touch reached over the last OftenWindow, kept across replies (Drain leaves it).
     private readonly List<(string Place, TimeSpan At)> recent = [];
+    // What the user did over the last OftenWindow, in runs, kept across replies (Drain leaves it) for History.
+    private readonly List<TouchEntry> history = [];
     private TouchCut? cut;
 
     /// <summary>Raised (on the caller's thread) when something was recorded, taken or put back.</summary>
@@ -234,8 +249,29 @@ public sealed class TouchLedger
             foreach (var place in places ?? []) recent.Add((place, physical.At));
             recent.RemoveAll(r => physical.At - r.At > OftenWindow);
             if (recent.Count > MaximumRecent) recent.RemoveRange(0, recent.Count - MaximumRecent);
+            Remember(physical, zone, places);
         }
         Changed?.Invoke();
+    }
+
+    // Adds the thing done to the history (under the gate): to the newest run when it is the same thing, in the same place,
+    // within MaximumAge of it; else as a new run. Runs older than OftenWindow go, and the oldest past MaximumHistory.
+    private void Remember(PhysicalEvent physical, string? zone, IReadOnlyList<string>? places)
+    {
+        if (history.Count > 0 && history[^1] is var run && run.Kind == physical.Kind && run.Zone == zone && run.Label == physical.Label &&
+            run.Detail == physical.Detail && physical.At - run.Last <= MaximumAge)
+            history[^1] = run with
+            {
+                Count = Math.Min(run.Count + 1, 999), Last = physical.At, Hint = physical.Hint ?? run.Hint,
+                Feeling = physical.Feeling ?? run.Feeling, Intimate = physical.Intimate || run.Intimate
+            };
+        else
+        {
+            history.Add(new(physical.Kind, zone, physical.Label, physical.Detail, physical.Hint, 1, physical.At, physical.At, places,
+                physical.Feeling, physical.Intimate));
+            if (history.Count > MaximumHistory) history.RemoveAt(0);
+        }
+        history.RemoveAll(h => physical.At - h.Last > OftenWindow);
     }
 
     /// <summary>A touch stopped Martlet while it talked (<see cref="TouchCut"/>): the next burst carries it, so its reply knows
@@ -278,6 +314,22 @@ public sealed class TouchLedger
         lock (gate) return Burst(now);
     }
 
+    /// <summary>What the user did over the last <see cref="OftenWindow"/> (at most <see cref="MaximumHistory"/> runs, oldest
+    /// first) and the places they keep coming back to, read without taking or changing anything: a reply's
+    /// <see cref="Drain"/> leaves it, and reading it changes nothing a reply gets. Null when they did nothing.</summary>
+    public TouchHistory? History(TimeSpan now)
+    {
+        lock (gate)
+        {
+            var runs = history.Where(h => now - h.Last <= OftenWindow).ToArray();
+            if (runs.Length == 0) return null;
+            var often = recent.Where(r => now - r.At <= OftenWindow).GroupBy(r => r.Place, StringComparer.Ordinal)
+                .Select(g => (Place: g.Key, Count: g.Count(), First: g.Min(r => r.At))).Where(g => g.Count >= OftenTouches)
+                .OrderByDescending(g => g.Count).Take(2).Select(g => new TouchHabit(g.Place, g.Count, now - g.First)).ToArray();
+            return new(runs, often.Length == 0 ? null : often, now);
+        }
+    }
+
     /// <summary>Takes what waits (for a reply's request), or null.</summary>
     public TouchBurst? Drain(TimeSpan now)
     {
@@ -310,6 +362,7 @@ public sealed class TouchLedger
         {
             entries.Clear();
             recent.Clear();
+            history.Clear();
             cut = null;
         }
         Changed?.Invoke();

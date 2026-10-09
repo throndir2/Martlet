@@ -83,6 +83,10 @@
                          (never what you said). -->
                     <TextBlock x:Name="BargeInText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveBargeIn"/>
+                    <!-- What Martlet meant to say on its own but dropped (too old, the conversation moved on, talked over): counts
+                         and why, never what it would have said. -->
+                    <TextBlock x:Name="UnpromptedText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveUnprompted"/>
                     <!-- How many recent exchanges the next reply sees as context (kept across settings changes); its tooltip has
                          the tokens. Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
                     <WrapPanel x:Name="ContextRow" Margin="0,2,0,0" Visibility="Collapsed">

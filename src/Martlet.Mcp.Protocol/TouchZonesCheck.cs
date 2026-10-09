@@ -129,11 +129,21 @@ internal static class TouchZonesCheck
         if (detected is not null && includeIntimate is { } intimate) detected = detected with { IncludeIntimate = intimate };
         // Add zone alone saves the zones with the ones added, as the desktop does.
         var adds = adding.Length > 0 && detected is null ? saved! with { IncludeIntimate = includeIntimate ?? saved!.IncludeIntimate } : null;
+        // The persona's touch temperament: a simulated Thinking answer, else the one personaId uses in the data directory's
+        // character-temperaments.json (its own, the built-in reactions or the custom one it uses).
+        var persona = Guid.TryParse(personaId, out var parsedPersona) ? parsedPersona : Guid.Empty;
+        var temperaments = CharacterTouchTemperaments.LoadSet(dataDirectory);
+        var temperament = temperamentAnswer is not null
+            ? CharacterTouchTemperaments.Parse(temperamentAnswer, persona == Guid.Empty ? Guid.NewGuid() : persona,
+                personality is null ? null : CharacterTouchTemperaments.Digest(personality), CharacterTouchTemperament.ByThinking, DateTimeOffset.Now)
+            : persona == Guid.Empty ? null : temperaments.For(persona);
         string? wrote = null;
         if (save)
         {
             if (!explicitDirectory) throw new ArgumentException("save needs an explicit (disposable) dataDirectory.");
             if ((detected ?? adds) is not { } writing) throw new ArgumentException(detect || estimate ? "save found no zones to save." : "save needs an answer the parser can read, or add.");
+            // As the desktop saves them: each zone with no reaction list yet gets the one a new zone gets, from the model's emotes.
+            if (catalog is not null) writing = CharacterTouchZones.Filled(writing, catalog, temperament);
             saved = await CharacterTouchZones.SaveAsync(dataDirectory, writing, DateTimeOffset.Now, cancellation);
             if (snapshotPath is not null)
             {
@@ -151,14 +161,6 @@ internal static class TouchZonesCheck
                 (sent is null ? "" : " and the pictures the detection sent") + (snapshotPath is null ? "" : ".");
         }
         var settings = saved ?? detected;
-        // The persona's touch temperament: a simulated Thinking answer, else the one personaId uses in the data directory's
-        // character-temperaments.json (its own, the built-in reactions or the custom one it uses).
-        var persona = Guid.TryParse(personaId, out var parsedPersona) ? parsedPersona : Guid.Empty;
-        var temperaments = CharacterTouchTemperaments.LoadSet(dataDirectory);
-        var temperament = temperamentAnswer is not null
-            ? CharacterTouchTemperaments.Parse(temperamentAnswer, persona == Guid.Empty ? Guid.NewGuid() : persona,
-                personality is null ? null : CharacterTouchTemperaments.Digest(personality), CharacterTouchTemperament.ByThinking, DateTimeOffset.Now)
-            : persona == Guid.Empty ? null : temperaments.For(persona);
         var touches = Math.Max(1, repeats ?? 1);
         object? match = null;
         if (touch is not null)
@@ -178,8 +180,6 @@ internal static class TouchZonesCheck
                     touched = touched.Select(z => z.Id).ToArray(), coarse = given.CoarseZone,
                     area = found.Area, areas = found.Zone.AllAreas.Count, follows = found.Zone.Follows,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
-                    autoplays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Autoplay?.Select(s => $"{s.Kind}: {s.Name}").ToArray() ?? [],
-                    autoplaySeconds = found.Zone.Reaction.AutoplaySeconds,
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
                     notices = found.Zone.Reaction.Notices, noticing = touched.Where(z => z.Reaction.Notices).Select(z => z.Id).ToArray(),
                     noticed = Noticed(touched, given, temperament), rests = found.Zone.Reaction.CooldownSeconds
@@ -254,6 +254,10 @@ internal static class TouchZonesCheck
                     drawables = z.Drawables.Count, z.Bones, areas = z.AllAreas.Count, z.Follows,
                     plays = CharacterTouchZones.React(z, catalog, temperament, 1) is var r && r.From == TouchReactionPlan.FromOwner
                         ? string.Join(" + ", r.Actions.Select(s => s.Name)) : r.From + ": " + string.Join(" + ", r.Actions.Select(s => s.Name)),
+                    // The zone's reaction list as saved (null: not filled yet), every entry kept (voice sounds, ones the model
+                    // lacks), and the list a new zone gets (Defaults).
+                    reactions = z.Reaction.Actions, seed = CharacterTouchZones.DefaultReactions(z, catalog, temperament),
+                    sounds = CharacterTouchZones.React(z, catalog, temperament, 1).Sounds,
                     notices = z.Reaction.Notices, hint = CharacterTouchZones.Narration(z)
                 }).ToArray()
             },
@@ -371,7 +375,7 @@ internal static class TouchZonesCheck
         };
 
     private static object Reaction(TouchReactionPlan plan) =>
-        new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds, look = plan.LookSeconds };
+        new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds, look = plan.LookSeconds, sounds = plan.Sounds };
 
     // What the Thinking model hears about this one touch on the zones it landed in that Martlet notices (the ledger's line, as the
     // desktop records it), or null.

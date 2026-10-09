@@ -187,7 +187,10 @@ and Ollama's own context length on this PC); oldest pairs are omitted until the
 whole request fits. Failed/refused/suppressed turns are excluded, and Refresh
 context, pause, lock, configuration load/change or closing the talk window
 clears the buffer; Stop keeps it, so the conversation continues after an
-interruption. The talk window's context line says how many exchanges are kept
+interruption. A reply you stop while Martlet says it (talking over it, Stop,
+Esc or a touch) keeps your message and only what Martlet said aloud, ending
+with a cut-off mark (see [Cut off](#voice-latency-streaming-overlap-and-barge-in)).
+The talk window's context line says how many exchanges are kept
 and about how many tokens of the context they take.
 
 **Context size.** Companion › Replies › Context size bounds every route:
@@ -1417,6 +1420,19 @@ with `consume`, so it goes with exactly one request, in the notes after your
 words. It is never kept in the conversation, so the start of every request
 stays the same. It waits at most 30 minutes for a message.
 
+**What a check-in adds to what Martlet knows.** A `KNOW:` answer is
+descriptive context, not an instruction: a short, vivid description of what is
+happening, which the next reply may draw on. It goes on the context board as
+source `check-in-<id>`, filled into Companion › Prompts › *Check-in: adds to
+what Martlet knows*: *What is happening now, from your own check-in, for you
+only: ... This is background you may draw on in this reply where it fits, not
+a reminder to follow. Never repeat it word for word and don't mention it.* It
+is posted with `consume`, so it goes with exactly one request, in the notes
+after your words, and never in the conversation or its instructions. It
+describes the moment, so it waits at most 3 minutes (`CheckIns.ContextAge`).
+`OK` or `KNOW: nothing to add` changes nothing. No reply waits for it, so the
+time to first words and the start of every request stay the same.
+
 **Your own check-ins.** *Add a check-in* adds one (off, at most 8), and *Copy
 as your own* adds a copy of any check-in. Each has a name, what it checks (your
 words, up to 8,192 characters), how often it runs, what it gets to know, when
@@ -1434,9 +1450,20 @@ Point at a fact or a condition on the page to see what it does:
 | What changed on screen | Martlet's newest words about what changed on the screen, while it watches. Not a screenshot. | `{screen}` |
 | What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. | `{sound}` |
 | Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. | `{presence}` |
+| How you touched the character | What you did to the character on the desktop in the last 10 minutes (pokes, pats, holds, strokes with their path and direction, moves), oldest first, each with when; which touches were intimate, how the personality feels about them and the places you keep coming back to. | `{touches}` |
 
 A placeholder puts that fact where you write it in the prompt; `{name}` and
 `{time}` work too. The facts you tick that the prompt doesn't name go after it.
+
+*How you touched the character* (`CheckInFacts.Touches`) uses the same words
+as the touch reaction's own request (`TouchWording`, with each stroke's path
+and the personality's feeling), so "you" is the character. The desktop reads
+it from the conversation's touch ledger with `TouchLedger.History`: a bounded
+log of the last 10 minutes (`OftenWindow`, at most 24 runs) that a reply's
+`Drain` leaves. Reading it never takes or changes the touches the next reply
+gets, and nothing is added to a reply's request. Like the other facts, it goes
+only to the pool member with the check, never to the log, the status file or
+MCP output.
 
 What happens with its answer:
 
@@ -1449,6 +1476,8 @@ What happens with its answer:
   message*). Where no conversation runs, Martlet starts one without the talk
   window, as for a reminder. A notice kind's own prompts are its
   `BackgroundJobKind.Wording`; due reminders keep theirs and come first.
+- *Adds to what Martlet knows*: a `KNOW:` line, a short description of what is
+  happening, goes on the context board for the next reply, as above.
 - *Turns off the emotes it names*: `OFF` lines with the tags of lingering
   emotes, as Lingering emotes does (tick *Emotes and gaze*).
 - *Takes the eyes back to their usual*: `USUAL`, as Where the character looks
@@ -1502,8 +1531,8 @@ microphone, a script (exit code 0, 0.4 s, 312 characters)*).
 
 **Answers.** Martlet reads the last decisive line, so thinking written before
 the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
-`<think>` block are skipped (`CheckIns.Read`). `OK`, `KEEP` and `REMIND:
-nothing` change nothing, and so does an answer Martlet can't read (the status
+`<think>` block are skipped (`CheckIns.Read`). `OK`, `KEEP`, `REMIND:
+nothing` and `KNOW: nothing to add` change nothing, and so does an answer Martlet can't read (the status
 says so).
 
 **Prompts.** Each built-in check-in's card on Companion › Check-ins has its
@@ -1514,7 +1543,7 @@ prompts you typed there, into the newest saved settings, so edits to other
 prompts stay. Companion › Prompts › *Check-ins* also lists every check-in
 prompt: the instructions every check-in gets, one for each built-in check-in,
 *Check-ins: each check* (the wrapper of every check), the reminder for the next
-reply and the two prompts
+reply, what adds to what Martlet knows and the two prompts
 for what is brought up. Empty a built-in check-in's prompt and it doesn't run.
 
 **What you see.** Companion › Check-ins shows how many are on and the member
@@ -1873,7 +1902,8 @@ voice pipeline never waits for a whole reply:
   *Let me interrupt Martlet by talking* in Companion › Listening also lets you
   stop a reply by talking over it. Talking over a reply with real words
   stops it: the Thinking request is canceled, the queued audio is dropped and
-  what you said is answered next, with the reply so far kept in context. (A
+  what you said is answered next, with the reply so far kept in context (only
+  what was said aloud; see *Cut off* below). (A
   touch on the desktop character can stop a reply too, under its own setting:
   *Touching Martlet while it talks* in [Touch zones](AVATARS.md#touch-zones).)
   Of your voice, only the microphone can do this, and only with words
@@ -1971,6 +2001,71 @@ voice pipeline never waits for a whole reply:
   words stop the reply at once. MCP `barge_in_check` returns the verdicts, the
   deadline fallback and what a pause does; `spoken_reply_check` `paused`
   rehearses a pause and resume through the production runtime.
+- **What Martlet says on its own yields to you.** Martlet speaks without being
+  asked in four ways (`UnpromptedSpeech`, `LiveConversationOperation.Unprompted`):
+  a due reminder, finished background work, a check-in's notice (`checkin-N`)
+  and a screen or camera remark. A reply to you, to what this PC played or to a
+  touch is never one of them, and nothing here runs before a reply to you.
+  With *Pause and decide*, real words over one of them work as over a reply,
+  with these changes. A screen or camera remark is not paused for the judge: it
+  stops at once (*dropped*), because it would not play on after you talked over
+  it in any case, and no judge job runs. For the others, *interrupt* stops them
+  as before. When the words were not for Martlet, a reminder plays on (you
+  asked for it), and finished work or a check-in plays on only after a pause of
+  at most 1.5 s (`UnpromptedSpeech.ResumeWithin`); after a longer pause the rest
+  is dropped. A dropped report gives its finished work and notices back, so they
+  go in the notes of the reply to what you said next. The code knew a report
+  (`Report`) and a glance (`Commentary`) before, but a pause treated them as a
+  reply; this keeps one rule per kind, so a low-value remark is never played on
+  after a long pause. The desktop log says *Barge-in: Martlet paused its remark
+  (a check-in) ...*, then *... resumed its remark ...* or *Barge-in: Martlet
+  dropped its remark (a check-in) after a N ms pause: what you said wasn't for
+  it (...), but it plays on only after a pause of at most 1500 ms)*; the
+  `LiveBargeIn` line ends *then dropped*.
+- **Waiting things to say are checked again just before they are said.** A
+  notice or finished work waits for Martlet to be free, or for your next
+  message. Just before a report starts, and just before a reply takes what
+  waits into its notes, `UnpromptedSpeech.Recheck` looks at each one again
+  (local rules only: no request and no wait). A check-in's notice is dropped
+  when it waited more than 10 minutes (`CheckInMaxWait`), or when the
+  conversation moved on: an exchange with you was kept after the notice became
+  due, so the check-in decided on an older conversation. A due reminder and
+  finished work are what you asked for, so they are never dropped. A report
+  still waits while you talk (mid-utterance, or something you said is about to
+  be answered) and now also while the [live floor](#the-live-floor-the-live-turn-comes-first) is Live.
+  Each drop goes to the desktop log as *Said on its own: Martlet dropped
+  checkin-3 (a check-in) before saying it: too old: it waited 12 minutes, and a
+  check-in waits at most 10 minutes.* (the ID, kind and why, never the text).
+  The talk window's `LiveUnprompted` line counts the drops: *Dropped on its
+  own: 2 (1 too old, 1 the conversation moved on, 0 talked over). Last: ...*.
+  MCP `barge_in_check` `unprompted` rehearses both rules.
+- **Cut off.** When you stop a reply while Martlet says it (you talk over it
+  and it stops, you press Stop or Esc, or a touch stops it), the conversation
+  keeps your message and only what Martlet said aloud
+  (`ConversationTurn.SaidAloud`: each sentence that started playing, so the
+  sentence it was saying counts as said), ending with ` —`
+  (`CutOffReply.Kept`). The next replies never believe you heard the rest.
+  `Stop` (`LiveConversationController.Stop`) keeps it at once, before the
+  next reply's request is built, and adds no work
+  before the first audio. The words Martlet hadn't said yet
+  (`CutOffReply.Unsaid`, their start, at most 400 characters) go once in the
+  notes of the next request: a `consume` note on the [context
+  board](#context-board) (source `cut-off`, fresh for 2 minutes), from
+  Companion › Prompts › *Cut off: what you hadn't said* (`{unsaid}`; empty it
+  to send nothing). That reply may pick the rest up ("as I was saying") if it
+  still fits, or drop it. The note sits after your words, so the start of the
+  request stays the same for prompt caches. What Martlet said lately keeps the
+  same cut-off text, and the record of conversations keeps it as the reply.
+  A reply cut off is never remembered from (memory and learning names), and
+  finished background work it carried waits for the next reply. Before this,
+  a reply stopped while spoken was dropped from the conversation altogether,
+  your message too. The desktop log says *Cut off: you stopped Martlet while
+  it talked; the conversation keeps what it said aloud (N of M characters,
+  marked as cut off) and the N characters it hadn't said go once with the
+  next request* (sizes only). Martlet's own remarks, reports and touch
+  reactions are not changed by this. MCP `spoken_reply_check` with
+  `voiceFailure` `stopped` returns `cutOff`: what is kept, the rest and the
+  note.
 - **What is said aloud decides what stops it.** Each reply carries a playback
   mode (`PlaybackMode`: `Reply`, or `Song` for singing). A song keeps going
   while you talk and stops only when asked to: a stop word with Martlet's name

@@ -213,6 +213,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
         // There is no Play, Show or Activate; its Rename and Delete change it on every computer, so they need --allow-ui-effects.
         "Creation-",
+        // Companion › Touch › Touch zones: a zone's More ("TouchZoneMore-3", Less while open) only shows or hides its box and
+        // Delete; it saves nothing.
+        "TouchZoneMore-",
         // Background tasks: a task's Show or Show output ("TaskShow-3") only shows its run window again, or a finished task's
         // kept output.
         "TaskShow-",
@@ -488,7 +491,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
         // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
         // the owner added, which Detect again looks for too, or "special to this character" for one Detect zones found as special to
-        // it, and its default reaction).
+        // it, and how the persona's temperament feels about it), and each entry of its reaction list, in play order
+        // (TouchZoneReactionItem-<n>-<k>: "Blush  ·  emote", "laugh  ·  sound", "F05  ·  not on this model"; TouchZoneReactionNone-<n>
+        // reads "nothing" for an empty list).
         // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
         // Detect zones looks for, and that it also looks for anything special to the character (fixed text). TouchZonesZoom says how
         // far the zone map is zoomed in ("Zoom 2x").
@@ -564,8 +569,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
         // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
         // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what
-        // decided it and how long the judge and the pause took (never what was said).
-        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn",
+        // decided it and how long the judge and the pause took (never what was said). LiveUnprompted: how many things Martlet
+        // meant to say on its own were dropped (too old, the conversation moved on, talked over) and the newest drop's ID, kind
+        // and why (never its text).
+        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn", "LiveUnprompted",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard. Describe PC sounds (TalkDescribePcSounds saves the choice, so it needs
@@ -878,7 +885,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
         "PickerFacts-", "PickerDetail-", "PickerFact-", "PickerState-", "PickerCell-", "PickerSummary-",
-        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchZoneAutoplayList-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default

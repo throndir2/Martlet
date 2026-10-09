@@ -87,7 +87,6 @@ internal static class CharacterTouchReset
             if (zones.Length > 0) lines.Add($"{what} for {Zones(zones)}");
         }
         Add((zone, fresh) => !CharacterTouchZones.FreshActions(zone, fresh), "the reactions you chose");
-        Add((zone, fresh) => !CharacterTouchZones.FreshAutoplay(zone, fresh), "the autoplay list");
         Add((zone, fresh) => zone.Reaction.Notices != fresh.Notices && !zone.Reaction.Notices, "Martlet notices turned off");
         Add((zone, fresh) => zone.Reaction.Notices != fresh.Notices && zone.Reaction.Notices, "Martlet notices turned on");
         Add((zone, _) => CharacterTouchZones.OwnWords(zone), "your own words");

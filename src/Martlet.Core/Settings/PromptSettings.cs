@@ -81,6 +81,7 @@ public static class PromptCatalog
     public const string Touched = "touched";
     public const string TouchedNotes = "touched_notes";
     public const string TouchedCutIn = "touched_cut_in";
+    public const string CutOff = "cut_off";
     public const string AdultContent = "adult_content";
     public const string Singing = "singing";
     public const string WhileSinging = "while_singing";
@@ -95,6 +96,7 @@ public static class PromptCatalog
     public const string CheckInRepeats = "check_in_repeats";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
+    public const string CheckInContext = "check_in_context";
     public const string CheckInDue = "check_in_due";
     public const string CheckInDueNotes = "check_in_due_notes";
 
@@ -215,6 +217,10 @@ public static class PromptCatalog
     public const string DefaultCheckInNoteInstructions =
         "A reminder from your own check-in, for you only: {reminder} Follow it in this reply where it fits, without mentioning it.";
 
+    public const string DefaultCheckInContextInstructions =
+        "What is happening now, from your own check-in, for you only: {context} This is background you may draw on in this reply " +
+        "where it fits, not a reminder to follow. Never repeat it word for word and don't mention it.";
+
     public const string DefaultCheckInDueInstructions =
         "(Martlet's note, not said by the user: your own check-in came up with something to bring up.)\n{items}\n\n" +
         "Bring it up now, on your own, in character, briefly and naturally, as if it just came to you, without mentioning notes, " +
@@ -240,6 +246,11 @@ public static class PromptCatalog
     public const string DefaultTouchedCutInInstructions =
         "They did it while you were talking, so you stopped mid-sentence.{said}{answering} Decide for yourself how to go on: " +
         "react to it first, then pick up where you left off, change course, or leave the rest unsaid, as you would.";
+
+    public const string DefaultCutOffInstructions =
+        "They stopped you while you were talking, so they heard your last reply only up to where it ends with \"—\". Don't " +
+        "repeat what you said. If the rest still fits what they say now, you may pick it up (\"as I was saying...\"); " +
+        "otherwise drop it. What you hadn't said yet: \"{unsaid}\"";
 
     public const string DefaultAdultContentInstructions =
         "Adult content is on: the user is an adult and chose to allow sexual and explicit content with you. If you are an adult, " +
@@ -538,6 +549,12 @@ public static class PromptCatalog
             "Touch › Touch zones › When you touch Martlet while it talks). {said} is a sentence with what Martlet had said " +
             "aloud before it stopped and {answering} one with your message it was answering; each is empty when there is none.",
             DefaultTouchedCutInInstructions, ["said", "answering"]),
+        new(CutOff, ConversationGroup, "Cut off: what you hadn't said",
+            "Goes in the notes of the next request only (never kept in the conversation) after you stopped Martlet while it was " +
+            "talking: you talked over it, pressed Stop or Esc, or a touch stopped it. The conversation keeps only what Martlet " +
+            "said aloud, ending with \"—\". {unsaid} is the rest of the reply that it hadn't said (its start, at most " +
+            "400 characters). Empty it to send nothing.",
+            DefaultCutOffInstructions, ["unsaid"]),
         new(AdultContent, ConversationGroup, "Adult content",
             "Added to the instructions of every reply and screen remark while Companion › Replies › Adult content is on (off by " +
             "default; never in a Discord call, where others can hear), right after the One moment prompt. It allows sexual and " +
@@ -879,12 +896,18 @@ public static class PromptCatalog
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
             "or KEEP (move the eyes), a REMIND: line or OK (a reminder for the next reply), a SAY: line or OK (Martlet brings it " +
-            "up). Emptied, each check sends only its prompt and facts, so the prompt must then ask for the answer format itself.",
+            "up), a KNOW: line or OK (adds to what Martlet knows). Emptied, each check sends only its prompt and facts, so the " +
+            "prompt must then ask for the answer format itself.",
             DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),
         new(CheckInNote, CheckInGroup, "Check-in: reminder for the next reply",
             "Goes in the notes of the next message when a check-in answers with a REMIND: line, once, never in the instructions, " +
             "so prompt caches keep working. {reminder} is that line's text.",
             DefaultCheckInNoteInstructions, ["reminder"]),
+        new(CheckInContext, CheckInGroup, "Check-in: adds to what Martlet knows",
+            "Goes in the notes of the next message when a check-in that adds to what Martlet knows answers with a KNOW: line, once " +
+            "and only within a few minutes, never in the conversation or its instructions, so prompt caches keep working. " +
+            "{context} is that line's text: a short description of what is happening, which the reply may draw on.",
+            DefaultCheckInContextInstructions, ["context"]),
         new(CheckInDue, CheckInGroup, "Check-in: brought up on its own",
             "The message of the reply Martlet starts on its own as soon as it is free, when one of your own check-ins that brings " +
             "things up answers with a SAY: line. {items} is what it said to bring up.",
