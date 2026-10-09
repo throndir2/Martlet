@@ -470,6 +470,33 @@ window ends it unless Martlet is listening or watching, which only hides it.
   its own consent or data destination, or its own list to edit; anything else
   is a card on an existing page.
 
+  **Every page has the same order** (the standard Companion page layout):
+
+  1. **Now**: what the page uses now, and any problem stopping it. Every page
+     starts with it, also pages that aren't jobs.
+  2. **The main choice**: the place, technology or model the page is about
+     (where it runs, the engine, the model, the provider). An optional page
+     (*Optional extras*, and Lip-sync's advanced lip-sync) always has an
+     explicit **Off** choice here, and it says what Off means.
+  3. **Configuration**: the cards that only apply to the chosen option, then
+     the page's other settings.
+
+  **Lists of choices use the option picker** (`MainWindow.OptionPicker.cs`),
+  so a list that keeps growing stays short. Each option is one compact row:
+  its name, a badge (*in use*, *recommended*) and its key facts in one line,
+  for example *NVIDIA GPU · 4.2 GB VRAM · 0.45 s to first audio*. Choosing a
+  row shows that option's details under the list: what it is good at, every
+  fact, where it stands on the shown computer, its own lines (abilities,
+  license) and its button. **Compare them** opens a table of the facts that
+  differ between the options. Options that can't run here are listed last, with
+  why. The facts come from the footprint catalog (`OptionFacts` in
+  `Martlet.Core.Planning`), so every page describes an option in the same
+  words: where it runs (graphics card, processor, inside Martlet or online),
+  graphics memory, memory, processor threads, download size, how soon its
+  first word comes (first sentence, first audio or transcript), quality,
+  whether a Thinking model hears or sees, cost online and whether the numbers
+  were measured.
+
   Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: Voices (the F5 voice
   list) shows wherever F5 can speak (this PC or another of your computers),
