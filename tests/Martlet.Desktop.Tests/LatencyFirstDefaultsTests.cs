@@ -30,12 +30,10 @@ public sealed class LatencyFirstDefaultsTests
         Assert.All(MainWindow.LocalChatModels.Where(m => !m.Hears), m =>
             Assert.NotEqual(Martlet.Providers.HearingSupport.Supported, Martlet.Providers.HearingModelCatalog.Classify(m.Id)));
         var qwen = MainWindow.LocalChatModels.Single(m => m.Id == "qwen3.5:4b");
-        var fastest = MainWindow.RecommendedLocalModel(12);
-        var smartest = MainWindow.LargestLocalModel(11.6);
-        Assert.Equal("qwen3.5:4b  (3.4 GB, fits a graphics card with 12 GB or more, gets the transcript)",
-            MainWindow.LocalModelPick(qwen, fastest, smartest));
-        Assert.Equal("gemma4:e2b  (4.6 GB, fits any PC, hears your voice, fastest, recommended)",
-            MainWindow.LocalModelPick(fastest, fastest, smartest));
-        Assert.EndsWith("hears your voice, smartest that fits here)", MainWindow.LocalModelPick(smartest, fastest, smartest));
+        var options = JobOptions.OllamaModels(MainWindow.LocalChatModels, null, null, 11.6).ToDictionary(o => o.Key);
+        Assert.Contains("gets the transcript", options[qwen.Id].Summary, StringComparison.Ordinal);
+        Assert.StartsWith("Fastest", options["gemma4:e2b"].Summary, StringComparison.Ordinal);
+        Assert.Equal("recommended", options["gemma4:e2b"].Badge);
+        Assert.Equal("smartest that fits", options[MainWindow.LargestLocalModel(11.6).Id].Badge);
     }
 }

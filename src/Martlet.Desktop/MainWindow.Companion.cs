@@ -49,7 +49,7 @@ public partial class MainWindow
     /// <summary>Where a job runs. Lip-sync has no cloud provider; its voice-loudness way is one of this PC's.</summary>
     private enum JobPlace { ThisPc, Computer, Cloud }
 
-    private sealed record CloudProvider(string Name, string? BaseUrl, bool Chat, string? DefaultModel, bool NeedsKey)
+    internal sealed record CloudProvider(string Name, string? BaseUrl, bool Chat, string? DefaultModel, bool NeedsKey)
     {
         public override string ToString() => Name;
     }
@@ -73,7 +73,7 @@ public partial class MainWindow
 
     private static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
     private static readonly CloudProvider CustomCloud = new("Custom OpenAI-compatible server", "", true, null, false);
-    private static readonly IReadOnlyList<CloudProvider> ThinkingProviders =
+    internal static readonly IReadOnlyList<CloudProvider> ThinkingProviders =
     [
         OpenAiCloud,
         .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, e.DefaultModelId, true)),
@@ -239,12 +239,6 @@ public partial class MainWindow
     /// its first sentence on an RTX 4070, against 100-200 ms more for E4B and 12B; docs/VOICE_LATENCY.md) and hears recordings
     /// itself. A larger model the card fits is smarter but slower (<see cref="LargestLocalModel"/>).</summary>
     internal static LocalChatModel RecommendedLocalModel(double? vramGb) => LocalChatModels[0];
-
-    /// <summary>How a suggested local model reads in Companion › Thinking's list: its size, the card it fits, whether it hears
-    /// your recording (or gets the transcript) and whether it is the fastest or the smartest that fits here.</summary>
-    internal static string LocalModelPick(LocalChatModel model, LocalChatModel recommended, LocalChatModel smartest) =>
-        $"{model.Id}  ({model.Size}, fits {model.Fits}, {(model.Hears ? "hears your voice" : "gets the transcript")}" +
-        $"{(model == recommended ? ", fastest, recommended" : model == smartest ? ", smartest that fits here" : "")})";
 
     /// <summary>The largest suggested model this PC's graphics card fits (a "12 GB" card reports a little less): the smartest
     /// local choice, offered beside the fastest.</summary>
@@ -489,20 +483,19 @@ public partial class MainWindow
         page.Children.Add(WhereItRunsCard(section, section.ToString(), "Where it runs", null, route is null ? null : current, place,
             (JobPlace.ThisPc, "This PC (recommended)", role switch
             {
-                SetupRole.Llm => "Run a local model here with Ollama or a model app you already use, such as LM Studio or llama.cpp. " +
-                    "Conversations stay on this PC, with no per-request cost.",
-                SetupRole.Tts => "Run a voice engine here: a graphics card makes it fastest, and Chatterbox Nano also runs on the " +
-                    "processor. Audio stays on this PC.",
-                _ => "Turn your speech into text on this PC. Your voice stays here."
+                SetupRole.Llm => "Ollama or a model app you use, on this PC's graphics card. Private, with no per-request cost.",
+                SetupRole.Tts => "A voice engine on this PC's NVIDIA graphics card, or Chatterbox Nano on the processor. Audio stays here.",
+                _ => "Parakeet on the processor (no setup) or Whisper on the graphics card. Your voice stays here."
             }),
             (JobPlace.Computer, "Another of your computers",
-                $"Use another paired computer on your network for {job.Job}."),
+                $"A paired computer does {job.Job} with its own graphics card, so this PC stays free."),
             (JobPlace.Cloud, "A cloud provider", role switch
             {
-                SetupRole.Llm => "Use NVIDIA Build with a free key, or OpenAI, OpenRouter or another compatible provider. " +
-                    "Some of them charge for requests.",
-                SetupRole.Tts => "Use OpenAI's voices, or ElevenLabs with a voice cloned from yours and tones. Requests cost money.",
-                _ => "Use OpenAI with your API key. Requests may cost money."
+                SetupRole.Llm => "NVIDIA Build (free key), OpenAI, OpenRouter and others. No graphics card needed, but your messages " +
+                    "leave this PC and some charge per request.",
+                SetupRole.Tts => "OpenAI's voices, or ElevenLabs with your cloned voice. No graphics card needed, but reply text leaves " +
+                    "this PC and requests cost money.",
+                _ => "OpenAI with your API key. Your recordings leave this PC and requests cost money."
             })));
 
         if (place == JobPlace.ThisPc && role == SetupRole.Llm)
@@ -523,8 +516,6 @@ public partial class MainWindow
                 _ => CloudCard(section, job, route)
             });
 
-        // Speaking in the cloud can also be ElevenLabs: a voice cloned from one of yours, with tones.
-        if (section == CompanionTab.Voice && place == JobPlace.Cloud) page.Children.Add(ElevenLabsCard(route));
 
         // Chatterbox Original's General and Expressive style, while it speaks or is the chosen engine.
         if (section == CompanionTab.Voice && place != JobPlace.Cloud &&
@@ -684,6 +675,13 @@ public partial class MainWindow
 
     // ---------- this PC: Ollama for thinking ----------
 
+    /// <summary>The model typed under Another Ollama model, kept while the page draws again.</summary>
+    private string? ollamaTyped;
+
+    /// <summary>Thinking › This PC › Ollama: Ollama's state, then its models as an option picker (<c>Picker-OllamaModel-&lt;model&gt;</c>):
+    /// the suggestions with their facts (fit on this PC's card, graphics memory, how soon they answer, whether they hear),
+    /// the models Ollama already has, and Another Ollama model for typing any name (<c>SetupLocalModel</c>). The shown
+    /// model's details hold Download model, Check Ollama, Test model and Use Ollama on this PC, and the last test.</summary>
     private Border LocalThinkingCard(SetupRoute? route)
     {
         var installed = !Prerequisites.IsMissing(Prerequisites.Ollama);
@@ -693,31 +691,55 @@ public partial class MainWindow
             ollamaAutoChecked = true;
             CheckOllamaAsync(quiet: true).Forget();
         }
-        var recommended = RecommendedLocalModel(machine.BestGpu?.MemoryGb);
-        var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
-            Text = IsLocalOllama(route) ? route!.ModelId : recommended.Id };
-        AutomationProperties.SetName(model, "Local model");
-        AutomationProperties.SetAutomationId(model, "SetupLocalModel");
-        model.TextChanged += (_, _) => tabEdited = true;
-        var picks = new ComboBox { Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
-            ItemsSource = LocalChatModels.Select(m => LocalModelPick(m, recommended, LargestLocalModel(machine.BestGpu?.MemoryGb)))
-                .Concat((ollamaModels ?? []).Where(id => LocalChatModels.All(m => m.Id != id)).Select(id => $"{id}  (downloaded)")).ToArray() };
-        AutomationProperties.SetName(picks, "Suggested local models");
-        AutomationProperties.SetAutomationId(picks, "SetupLocalModelPicks");
-        picks.SelectionChanged += (_, _) => { if (picks.SelectedItem is string pick) model.Text = pick.Split(' ')[0]; };
+        var inUse = IsLocalOllama(route) ? route!.ModelId : null;
+        var options = JobOptions.OllamaModels(LocalChatModels, ollamaModels, inUse, machine.BestGpu?.MemoryGb)
+            .Select(option => option with { Details = () => OllamaModelControls(option.Key == JobOptions.OtherOllamaModel ? null : option.Key, installed) })
+            .ToList();
 
-        var gpu = machine.BestGpu is { } best ? $"This PC has {best.Describe()}." : "No dedicated graphics card was found; small models still run on the processor.";
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
             Text = (!installed ? "Ollama isn't installed on this PC yet."
                 : ollamaModels is null ? "Ollama is installed. Check it to see which models are downloaded."
                 : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet."
                 : $"Ollama is running with: {string.Join(", ", ollamaModels)}.") +
-                (IsLocalOllama(route) ? $" Thinking uses {route!.ModelId}." : "") };
+                (inUse is not null ? $" Thinking uses {inUse}." : "") };
         AutomationProperties.SetAutomationId(status, "SetupOllamaStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
-        string ModelId() => (model.Text ?? "").Trim();
-        var tested = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
+        var recommended = RecommendedLocalModel(machine.BestGpu?.MemoryGb);
+        var smartest = LargestLocalModel(machine.BestGpu?.MemoryGb);
+        var suggestion = Note((machine.BestGpu is { } best ? $"This PC has {best.Describe()}. " : "No dedicated graphics card was found; small models still run on the processor. ") +
+            $"Recommended: {recommended.Id}, the fastest. " +
+            (smartest.Id != recommended.Id ? $"Bigger models are smarter but slower; this card fits up to {smartest.Id}. " : "Bigger models are smarter but slower. ") +
+            "Each leaves room on the graphics card for a game and Martlet's character.", new Thickness(0, 0, 0, 8));
+        AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
+
+        return Card(Heading("Ollama on this PC"),
+            Note("Ollama runs a local conversation model. Your messages stay on this PC, with no API key or per-request cost.", new Thickness(0, 0, 0, 8)),
+            status,
+            suggestion,
+            OptionPickerBody("OllamaModel", options));
+    }
+
+    /// <summary>The shown Ollama model's controls: for Another Ollama model (<paramref name="fixedModel"/> null) the name box,
+    /// then Ollama's buttons for that model and the last test of it.</summary>
+    private IEnumerable<UIElement> OllamaModelControls(string? fixedModel, bool installed)
+    {
+        TextBox? model = null;
+        if (fixedModel is null)
+        {
+            model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = ollamaTyped ?? "" };
+            AutomationProperties.SetName(model, "Local model");
+            AutomationProperties.SetAutomationId(model, "SetupLocalModel");
+            model.TextChanged += (_, _) => { tabEdited = true; ollamaTyped = model.Text; };
+            yield return new Label { Content = "Ollama _model", Target = model, Padding = new Thickness(0, 4, 0, 4) };
+            yield return model;
+            var own = Note("Download model gets it; models already downloaded are listed above.", new Thickness(0, 4, 0, 0));
+            AutomationProperties.SetAutomationId(own, "SetupLocalOwnModels");
+            yield return own;
+        }
+
+        string ModelId() => fixedModel ?? (model!.Text ?? "").Trim();
+        var tested = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
         AutomationProperties.SetAutomationId(tested, "SetupLocalModelTest");
         AutomationProperties.SetLiveSetting(tested, AutomationLiveSetting.Polite);
         void ShowTest()
@@ -729,7 +751,7 @@ public partial class MainWindow
         }
         ShowTest();
         showLocalTest = ShowTest;
-        model.TextChanged += (_, _) => ShowTest();
+        if (model is not null) model.TextChanged += (_, _) => ShowTest();
         var test = PageButton("Test model", () => TestLocalModelAsync(ModelId()).Forget(), id: "SetupTestLocalModel");
         // Until Ollama is installed, installing it (with the chosen model, then switching to it) is the only step that does anything.
         var buttons = installed
@@ -742,34 +764,10 @@ public partial class MainWindow
                 PageButton("Install Ollama and use it", () => InstallOllamaAsync(ModelId()).Forget(), primary: true, id: "SetupInstallOllama"),
                 test,
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
-
-        var smartest = LargestLocalModel(machine.BestGpu?.MemoryGb);
-        var suggestion = Note($"Recommended: {recommended.Id} ({recommended.Size}), the fastest: replies start soonest, and it hears your voice. " +
-            (smartest.Id != recommended.Id
-                ? $"Bigger models are smarter but slower; this PC's graphics card fits up to {smartest.Id} ({smartest.Size}). "
-                : "Bigger models are smarter but slower. ") +
-            "Each leaves room on the graphics card for a game and Martlet's character.", new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
-
-        var own = Note("Any Ollama model works: type a name from ollama.com/library, a Hugging Face GGUF as hf.co/<user>/<repo>:<quant>, " +
-            "or a model you made with ollama create. Download model gets it; models already downloaded are in the suggestions.",
-            new Thickness(0, 4, 0, 0));
-        AutomationProperties.SetAutomationId(own, "SetupLocalOwnModels");
-
-        return Card(Heading("Ollama on this PC"),
-            Note("Ollama runs a local conversation model. Your messages stay on this PC, with no API key or per-request cost.", new Thickness(0, 0, 0, 8)),
-            status,
-            new Label { Content = "Ollama _model", Target = model, Padding = new Thickness(0, 4, 0, 4) },
-            model,
-            own,
-            new Label { Content = "_Suggestions", Target = picks, Padding = new Thickness(0, 8, 0, 4) },
-            picks,
-            suggestion,
-            Note(gpu, new Thickness(0, 8, 0, 10)),
-            buttons,
-            tested);
+        buttons.Margin = new Thickness(0, 8, 0, 0);
+        yield return buttons;
+        yield return tested;
     }
-
     /// <summary>The last model test on this PC's Ollama: which model, what it found, and whether it worked.</summary>
     private sealed record LocalModelTestOutcome(string Model, string Text, bool Passed, bool Warning);
 
@@ -1142,27 +1140,51 @@ public partial class MainWindow
 
     // ---------- cloud provider ----------
 
+    /// <summary>A cloud provider for a job, as an option picker (<c>Picker-Cloud&lt;page&gt;-&lt;provider&gt;</c>: "openai",
+    /// "nvidia-build", "openrouter", "google-gemini", "custom"): each row says what it costs and how soon it answers; the
+    /// shown provider's details hold its model, key, consent and Use button. Voice's list is the cloud voices: OpenAI's voice
+    /// and ElevenLabs with a voice cloned from yours. A job with one provider (Listening) shows only its details.</summary>
     private Border CloudCard(CompanionTab section, HostJob job, SetupRoute? route)
     {
         var role = job.Role;
         var cloudRoute = route is not null && (route.RouteType is null or SetupRouteType.OpenAi ||
             route.RouteType == SetupRouteType.ChatCompletions && !IsLocalOllama(route) && !IsLocalServer(route)) ? route : null;
+        var id = "Cloud" + section;
         IReadOnlyList<CloudProvider> providers = role == SetupRole.Llm ? ThinkingProviders : [OpenAiCloud];
-        var provider = new ComboBox { ItemsSource = providers, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(provider, "Provider");
-        AutomationProperties.SetAutomationId(provider, "SetupCloudProvider-" + section);
-        provider.SelectedItem = cloudRoute?.RouteType == SetupRouteType.ChatCompletions
-            ? providers.FirstOrDefault(p => p.BaseUrl == cloudRoute.Origin) ?? CustomCloud
-            // Add your key (FreeKeyPrompt): NVIDIA Build's free keys, ready for the one the owner pastes.
-            : cloudRoute is null && freeKeyPreset == FreeKeyUse.Thinking &&
-              providers.FirstOrDefault(p => p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl) is { } free
-                ? free
+        var saved = cloudRoute is null ? null
+            : cloudRoute.RouteType == SetupRouteType.ChatCompletions ? providers.FirstOrDefault(p => p.BaseUrl == cloudRoute.Origin) ?? CustomCloud
             : OpenAiCloud;
+        // Add your key (FreeKeyPrompt): NVIDIA Build's free keys, ready for the one the owner pastes.
+        if (freeKeyFocus && freeKeyPreset == FreeKeyUse.Thinking && role == SetupRole.Llm && cloudRoute is null)
+            pickerShown[id] = ChatCompletionsEndpointCatalog.NvidiaBuildId;
 
+        if (role == SetupRole.Tts)
+        {
+            var voices = JobOptions.CloudVoices(saved is not null, route?.RouteType == SetupRouteType.ElevenLabs)
+                .Select(option => option with
+                {
+                    Details = option.Key == SpeechEngines.ElevenLabs.Key ? () => ElevenLabsFields(route) : () => CloudFields(section, job, cloudRoute, OpenAiCloud)
+                }).ToList();
+            return OptionPicker(id, "Cloud voice", null, voices);
+        }
+        var options = JobOptions.Providers(providers, role == SetupRole.Llm ? Martlet.Core.Planning.PlanComponent.Thinking : Martlet.Core.Planning.PlanComponent.Listening,
+                saved is null ? null : JobOptions.ProviderKey(saved), Lowered(job.Sent), role == SetupRole.Llm ? ChatCompletionsEndpointCatalog.NvidiaBuildId : null)
+            .Select(option => option with { Details = () => CloudFields(section, job, cloudRoute, providers.First(p => JobOptions.ProviderKey(p) == option.Key)) })
+            .ToList();
+        return OptionPicker(id, "Cloud provider", null, options);
+    }
+
+    private static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
+
+    /// <summary>The fields of cloud provider <paramref name="p"/> for a job: its address (a custom server), model (and voice),
+    /// key, the consent box and its Use button. The automation IDs are the page's (<c>SetupCloudModel-&lt;page&gt;</c>,
+    /// <c>SetupCloudKey-&lt;page&gt;</c>, <c>SetupCloudConsent-&lt;page&gt;</c>, <c>SetupCloudSave-&lt;page&gt;</c>...).</summary>
+    private IEnumerable<UIElement> CloudFields(CompanionTab section, HostJob job, SetupRoute? cloudRoute, CloudProvider p)
+    {
+        var role = job.Role;
         var baseUrl = new TextBox { MaxLength = 2048, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
             Text = cloudRoute?.RouteType == SetupRouteType.ChatCompletions ? cloudRoute.Origin : "" };
         AutomationProperties.SetAutomationId(baseUrl, "SetupCloudBaseUrl");
-        var baseUrlPanel = new StackPanel { Children = { new Label { Content = "API _base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) }, baseUrl } };
 
         var model = new ComboBox { MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(model, "Model");
@@ -1190,134 +1212,101 @@ public partial class MainWindow
         };
         keySavedMark.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         var keyField = new Grid { Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Children = { key, keySavedMark } };
-        var keySaved = false;
-        void RefreshKeyMark()
-        {
-            using var entered = key.SecurePassword;
-            keySavedMark.Visibility = keySaved && entered.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        }
-        var keyStatus = Note("", new Thickness(0, 4, 0, 0));
-        AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
-        var keyLabel = new Label { Target = key, Padding = new Thickness(0, 8, 0, 4) };
-        var getKey = PageButton(FreeKeyPrompt.GetLabel, () => OpenKeyPageFrom(keyStatus), link: true, id: "SetupCloudGetKey-" + section);
-        getKey.HorizontalAlignment = HorizontalAlignment.Left;
-        var hint = Note("", new Thickness(0, 4, 0, 0));
-        AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
         AutomationProperties.SetAutomationId(consent, "SetupCloudConsent-" + section);
-        var consentText = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        consent.Content = consentText;
 
-        CloudProvider Selected() => provider.SelectedItem as CloudProvider ?? OpenAiCloud;
-        string? ChatUrl(CloudProvider p) => p.Chat ? p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim() : null;
-        bool SameAsSaved(CloudProvider p) => cloudRoute is not null && (p.Chat
-            ? cloudRoute.RouteType == SetupRouteType.ChatCompletions && cloudRoute.Origin == ChatUrl(p)
+        string? ChatUrl() => p.Chat ? p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim() : null;
+        bool SameAsSaved() => cloudRoute is not null && (p.Chat
+            ? cloudRoute.RouteType == SetupRouteType.ChatCompletions && cloudRoute.Origin == ChatUrl()
             : cloudRoute.RouteType is null or SetupRouteType.OpenAi);
         // A key this job used with the provider before, set aside when it switched away, is used again.
-        bool SetAside(CloudProvider p) => !(SameAsSaved(p) && cloudRoute!.CredentialId is not null) &&
-            SetupSettings.SetAsideCredentials(homeSettings, role, ChatUrl(p)).Count > 0;
-        bool HasKey(CloudProvider p) => SameAsSaved(p) && cloudRoute!.CredentialId is not null || SetAside(p);
-        string? Default(CloudProvider p) => p.Chat ? p.DefaultModel : role switch
+        bool SetAside() => !(SameAsSaved() && cloudRoute!.CredentialId is not null) &&
+            SetupSettings.SetAsideCredentials(homeSettings, role, ChatUrl()).Count > 0;
+        bool HasKey() => SameAsSaved() && cloudRoute!.CredentialId is not null || SetAside();
+        var defaultModel = p.Chat ? p.DefaultModel : role switch
         {
             SetupRole.Llm => OpenAiTextGenerationCatalog.DefaultModelId,
             SetupRole.Stt => OpenAiTranscriptionCatalog.DefaultModelId,
             _ => OpenAiSpeechSynthesisCatalog.DefaultModelId
         };
-        IReadOnlyList<string> Catalog(CloudProvider p) => p.Chat ? (p.DefaultModel is { } d ? [d] : []) : role switch
+        IReadOnlyList<string> catalog = p.Chat ? (p.DefaultModel is { } d ? [d] : []) : role switch
         {
             SetupRole.Llm => OpenAiTextGenerationCatalog.SupportedModelIds,
             SetupRole.Stt => OpenAiTranscriptionCatalog.SupportedModelIds,
             _ => OpenAiSpeechSynthesisCatalog.SupportedModelIds
         };
-
-        void Refresh(bool keepModel)
+        var value = SameAsSaved() ? cloudRoute!.ModelId : defaultModel ?? "";
+        if (p.Chat) modelText.Text = value;
+        else
         {
-            var p = Selected();
-            baseUrlPanel.Visibility = p == CustomCloud ? Visibility.Visible : Visibility.Collapsed;
-            model.ItemsSource = Catalog(p);
-            model.Visibility = p.Chat ? Visibility.Collapsed : Visibility.Visible;
-            modelText.Visibility = p.Chat ? Visibility.Visible : Visibility.Collapsed;
-            if (!keepModel)
-            {
-                var value = SameAsSaved(p) ? cloudRoute!.ModelId : Default(p) ?? "";
-                if (p.Chat) modelText.Text = value;
-                else model.SelectedItem = Catalog(p).Contains(value, StringComparer.Ordinal) ? value : Default(p);
-            }
-            var saved = HasKey(p);
-            keySaved = saved;
-            RefreshKeyMark();
-            keyStatus.Text = SetAside(p) ? $"Your {p.Name} key from before is still saved. Leave this empty to use it again, or paste a new key."
-                : saved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
-                : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
-                : "Add a key only if your server needs one.";
-            getKey.Visibility = p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl && !saved ? Visibility.Visible : Visibility.Collapsed;
-            var retired = SameAsSaved(p) && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
-            hint.Text = (retired is null ? "" : $"{retired.Name} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
-                (p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
-                : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? $"Recommended: {p.DefaultModel}. Any exact OpenRouter model ID works."
-                : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? $"Recommended: {p.DefaultModel}. Keys start with nvapi-."
-                : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
-                : "Use the server's HTTPS base URL and enter the exact model ID. For a model app on this PC (LM Studio, llama.cpp and " +
-                    "others), choose This PC › A model app you already use.");
-            consentText.Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there" +
-                (FreeKeyPrompt.IsFree(p.BaseUrl) ? ". " : ", and requests may cost money. ") + OpenAiSetup.Boundary(role);
-            keyLabel.Content = p == CustomCloud ? "API _key (only if the server needs one)" : $"Your {p.Name} _key";
-            consent.IsChecked = SameAsSaved(p) && cloudRoute!.Consent is not null && keepModel;
+            model.ItemsSource = catalog;
+            model.SelectedItem = catalog.Contains(value, StringComparer.Ordinal) ? value : defaultModel;
         }
-        Refresh(keepModel: false);
-        consent.IsChecked = cloudRoute?.Consent is not null;
-        provider.SelectionChanged += (_, _) => { tabEdited = true; Refresh(keepModel: false); };
+        var keySaved = HasKey();
+        void RefreshKeyMark()
+        {
+            using var entered = key.SecurePassword;
+            keySavedMark.Visibility = keySaved && entered.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        RefreshKeyMark();
+        var keyStatus = Note(SetAside() ? $"Your {p.Name} key from before is still saved. Leave this empty to use it again, or paste a new key."
+                : keySaved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
+                : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
+                : "Add a key only if your server needs one.", new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
+        var retired = SameAsSaved() && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
+        var hint = Note((retired is null ? "" : $"{retired.Name} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
+            (p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
+            : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? $"Recommended: {p.DefaultModel}. Any exact OpenRouter model ID works."
+            : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? $"Recommended: {p.DefaultModel}. Keys start with nvapi-."
+            : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
+            : "Use the server's HTTPS base URL and enter the exact model ID. For a model app on this PC (LM Studio, llama.cpp and " +
+                "others), choose This PC › Model app."), new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
+        consent.Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
+            Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there" +
+                (FreeKeyPrompt.IsFree(p.BaseUrl) ? ". " : ", and requests may cost money. ") + OpenAiSetup.Boundary(role) };
+        consent.IsChecked = SameAsSaved() && cloudRoute!.Consent is not null;
         modelText.TextChanged += (_, _) => { if (!modelText.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         model.SelectionChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
-        baseUrl.TextChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
+        baseUrl.TextChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; keySaved = HasKey(); RefreshKeyMark(); };
         voice.SelectionChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
         key.PasswordChanged += (_, _) => { tabEdited = true; RefreshKeyMark(); };
-        baseUrl.TextChanged += (_, _) => { keySaved = HasKey(Selected()); RefreshKeyMark(); };
 
+        if (role == SetupRole.Tts) yield return AbilitiesLine("openai", VoiceAbilities.OpenAiVoice, []);
+        if (p == CustomCloud)
+        {
+            yield return new Label { Content = "API _base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) };
+            yield return baseUrl;
+        }
+        Control modelControl = p.Chat ? modelText : model;
+        yield return new Label { Content = "_Model", Target = modelControl, Padding = new Thickness(0, 8, 0, 4) };
+        yield return modelControl;
+        yield return hint;
+        if (role == SetupRole.Tts)
+        {
+            yield return new Label { Content = "_Voice", Target = voice, Padding = new Thickness(0, 8, 0, 4) };
+            yield return voice;
+        }
+        yield return new Label { Target = key, Padding = new Thickness(0, 8, 0, 4),
+            Content = p == CustomCloud ? "API _key (only if the server needs one)" : $"Your {p.Name} _key" };
+        yield return keyField;
+        yield return keyStatus;
+        if (p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl && !keySaved)
+        {
+            var getKey = PageButton(FreeKeyPrompt.GetLabel, () => OpenKeyPageFrom(keyStatus), link: true, id: "SetupCloudGetKey-" + section);
+            getKey.HorizontalAlignment = HorizontalAlignment.Left;
+            yield return getKey;
+        }
+        yield return Note(OpenAiSetup.Disclosure, new Thickness(0, 10, 0, 0));
+        yield return consent;
         // A cloud provider is a commitment (a key, data sent elsewhere, possible costs), so it stays an explicit action named for
         // what it does rather than an automatic save.
-        string UseLabel() => Selected() == CustomCloud ? "Use this server" : $"Use {Selected().Name}";
-        var save = PageButton(UseLabel(), () => SaveCloudAsync(job, Selected(), baseUrl.Text.Trim(), Selected().Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
-            role == SetupRole.Tts ? voice.SelectedItem as string : null, key, consent.IsChecked == true).Forget(), primary: true, id: "SetupCloudSave-" + section);
-        provider.SelectionChanged += (_, _) => save.Content = UseLabel();
-
-        var stack = new List<UIElement> { Heading("Cloud provider") };
-        // A drop-down with a single entry chooses nothing; name the provider instead.
-        if (providers.Count > 1)
-        {
-            stack.Add(new Label { Content = "_Provider", Target = provider, Padding = new Thickness(0, 0, 0, 4) });
-            stack.Add(provider);
-        }
-        else stack.Add(new TextBlock { Text = providers[0].Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        // Speaking: the same rundown as the voice engines (VoiceEngineAbilities-openai, VoiceEngineRunsOn-openai).
-        if (role == SetupRole.Tts)
-        {
-            stack.Add(AbilitiesLine("openai", VoiceAbilities.OpenAiVoice, []));
-            stack.Add(RunsOnLine("openai", RunsOnText(Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId)));
-        }
-        stack.AddRange(
-        [
-            baseUrlPanel,
-            new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 8, 0, 4) },
-            model,
-            modelText,
-            hint
-        ]);
-        if (role == SetupRole.Tts)
-        {
-            stack.Add(new Label { Content = "_Voice", Target = voice, Padding = new Thickness(0, 8, 0, 4) });
-            stack.Add(voice);
-        }
-        stack.Add(keyLabel);
-        stack.Add(keyField);
-        stack.Add(keyStatus);
-        stack.Add(getKey);
-        stack.Add(Note(OpenAiSetup.Disclosure, new Thickness(0, 10, 0, 0)));
-        stack.Add(consent);
-        stack.Add(Row(save));
-        return Card([.. stack]);
+        yield return Row(PageButton(p == CustomCloud ? "Use this server" : $"Use {p.Name}",
+            () => SaveCloudAsync(job, p, baseUrl.Text.Trim(), p.Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
+                role == SetupRole.Tts ? voice.SelectedItem as string : null, key, consent.IsChecked == true).Forget(),
+            primary: true, id: "SetupCloudSave-" + section));
     }
-
     private async Task SaveCloudAsync(HostJob job, CloudProvider provider, string baseUrl, string model, string? voice, PasswordBox keyBox, bool consent)
     {
         if (!consent)
@@ -1805,9 +1794,9 @@ public partial class MainWindow
 
         page.Children.Add(WhereItRunsCard(CompanionTab.LipSync, "LipSync", "Where it runs", null, current, place,
             (JobPlace.ThisPc, Label(JobPlace.ThisPc, "This PC"),
-                "Use NVIDIA Audio2Face in Docker for natural mouth movement, or follow the voice's loudness with no setup. Voice audio stays on this PC."),
+                "Audio2Face on this PC's NVIDIA graphics card, or voice loudness with no setup. Voice audio stays here."),
             (JobPlace.Computer, Label(JobPlace.Computer, "Another of your computers"),
-                "Use Audio2Face on a paired computer on your network.")));
+                "Audio2Face on a paired computer's NVIDIA graphics card, so this PC stays free.")));
 
         page.Children.Add(place == JobPlace.Computer
             ? ComputersCard(ClusterJobs.LipSync, "Audio2Face", HostRoles.Audio2Face, owner,
@@ -1819,10 +1808,10 @@ public partial class MainWindow
             : LocalLipSyncCard(thisPc, handler, owner, fits));
     }
 
-    /// <summary>Lip-sync on this PC: two ways, like its voice. Audio2Face in Martlet's host service here (one click sets the host
-    /// service up and pairs it, installs Audio2Face and hands lip-sync to it), or the voice's loudness, which needs no setup.
-    /// The one in use, otherwise the one this PC's graphics card suits, comes first. An Audio2Face service you run yourself is
-    /// an advanced extra below them, shown as a full option only while it is the setting in effect and answering.</summary>
+    /// <summary>Lip-sync on this PC, as an option picker (<c>Picker-LipSync-&lt;key&gt;</c>): Audio2Face in Martlet's host
+    /// service here (one click sets the host service up and pairs it, installs Audio2Face and hands lip-sync to it), voice
+    /// loudness (no setup; advanced lip-sync off), and an Audio2Face service you run yourself, which Martlet's default looks for
+    /// before each sentence. Each row says where it runs and what it takes; the shown way's details hold its state and buttons.</summary>
     private Border LocalLipSyncCard(PairedHost? thisPc, LipSyncHandler handler, string? owner, bool fits)
     {
         var gpu = machine.BestGpu;
@@ -1835,104 +1824,82 @@ public partial class MainWindow
         var audio2FaceOnly = homeAvatar?.LipSync == AvatarLipSync.Audio2Face;
         var ownInUse = ownSetting && (audio2FaceOnly || ownLipSyncAnswers == true);
         var loudnessInUse = handler == LipSyncHandler.Loudness || ownSetting && !ownInUse;
+        var endpoint = OwnLipSyncEndpoint().Authority;
+        var arm = machine.ArmRefusal("audio2face");
 
-        var dockerTitle = OptionTitle("Audio2Face, with Docker",
-            notInstalled ? "chosen, not installed yet" : dockerInUse ? "in use" : fits ? "recommended for this PC" : null);
-        AutomationProperties.SetAutomationId(dockerTitle, "LipSyncDockerTitle");
-        var dockerAbout = Note("NVIDIA Audio2Face moves the mouth naturally with Martlet's voice. It runs in Docker on this PC with NVIDIA's " +
-            "open-source Audio2Face, so no NVIDIA account or key is needed (NVIDIA's NIM, which needs an NGC key, is the other engine " +
-            "offered). Until it is ready, voice loudness is used.", new Thickness(0, 2, 0, 6));
-        AutomationProperties.SetAutomationId(dockerAbout, "LipSyncDockerAbout");
-        var docker = new List<UIElement>
+        IEnumerable<UIElement> DockerDetails()
         {
-            dockerTitle,
-            dockerAbout,
-            Note(machine.ArmRefusal("audio2face") is { } arm ? arm + " Voice loudness or another computer suits this PC better."
-                : gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
+            var about = Note(gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
                 : $"This PC has {gpu.Describe()}." + (fits ? "" : " Audio2Face needs an NVIDIA graphics card with 4 GB or more, so voice " +
-                    "loudness or another computer suits this PC better."), new Thickness(0, 0, 0, 6))
-        };
-        if (thisPc is null)
-        {
-            docker.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
-                    : machine.DockerInstalled ? "Docker Desktop is installed. Martlet can start it when needed. "
-                    : "Docker Desktop isn't installed yet. Martlet installs it first. ") +
-                "Setting this up installs the local lip-sync service and Audio2Face, then uses it for lip-sync.", new Thickness(0, 0, 0, 8)));
-            docker.Add(Row(PageButton("Set up Audio2Face with Docker", () => SetUpThisPcHostAsync(AssignLipSyncAsync).Forget(),
-                primary: fits, id: "SetupLipSyncHostThisPc")));
-        }
-        else
-        {
+                    "loudness or another computer suits this PC better."), new Thickness(0, 4, 0, 0));
+            if (!fits) about.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            AutomationProperties.SetAutomationId(about, "LipSyncDockerAbout");
+            yield return about;
+            if (thisPc is null)
+            {
+                yield return Note((machine.DockerRunning ? "Docker Desktop is running. "
+                        : machine.DockerInstalled ? "Docker Desktop is installed. Martlet can start it when needed. "
+                        : "Docker Desktop isn't installed yet. Martlet installs it first. ") +
+                    "Setting this up installs the local lip-sync service and Audio2Face, then uses it for lip-sync. Until it is ready, " +
+                    "voice loudness is used.", new Thickness(0, 4, 0, 0));
+                var setUp = Row(PageButton("Set up Audio2Face with Docker", () => SetUpThisPcHostAsync(AssignLipSyncAsync).Forget(),
+                    primary: fits, id: "SetupLipSyncHostThisPc"));
+                setUp.Margin = new Thickness(0, 8, 0, 0);
+                yield return setUp;
+                yield break;
+            }
             var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(HostRoles.Audio2Face);
-            docker.Add(Note(notInstalled
+            yield return Note(notInstalled
                     ? "Audio2Face is selected but not installed yet. Install it to finish."
                 : dockerInUse ? $"In use: Audio2Face on this PC{(model is null ? "" : $", model {model}")}."
                 : model is not null ? "Audio2Face is ready on this PC."
-                : "Audio2Face isn't ready on this PC yet. Martlet installs it when you choose Use.",
-                new Thickness(0, 0, 0, 8)));
-            docker.Add(Row(
-                PageButton(notInstalled ? "Install Audio2Face" : dockerInUse ? "Set up Audio2Face again" : "Use Audio2Face on this PC",
-                    () => AssignLipSyncAsync("host:" + thisPc.HostId).Forget(), primary: notInstalled || fits && !dockerInUse, id: "SetupLipSyncUseLocal"),
-                PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupLipSyncCheckLocal")));
+                : "Audio2Face isn't ready on this PC yet. Martlet installs it when you choose Use.", new Thickness(0, 4, 0, 0));
+            var use = PageButton(notInstalled ? "Install Audio2Face" : dockerInUse ? "Set up Audio2Face again" : "Use Audio2Face on this PC",
+                () => AssignLipSyncAsync("host:" + thisPc.HostId).Forget(), primary: notInstalled || fits && !dockerInUse, id: "SetupLipSyncUseLocal");
+            use.IsEnabled = arm is null;
+            var buttons = Row(use, PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupLipSyncCheckLocal"));
+            buttons.Margin = new Thickness(0, 8, 0, 0);
+            yield return buttons;
         }
 
-        var loudnessTitle = OptionTitle("Voice loudness, no setup", loudnessInUse ? "in use" : !fits ? "recommended for this PC" : null);
-        AutomationProperties.SetAutomationId(loudnessTitle, "LipSyncLoudnessTitle");
-        var loudness = new List<UIElement>
+        IEnumerable<UIElement> OwnDetails()
         {
-            loudnessTitle,
-            Note("The mouth opens and closes with Martlet's voice. It works with any character and graphics card, needs nothing installed, " +
-                "and nothing leaves this PC. It looks simpler than Audio2Face.", new Thickness(0, 2, 0, 6))
-        };
-        if (!loudnessInUse)
-            loudness.Add(Row(PageButton("Use voice loudness", () => AssignLipSyncAsync("off").Forget(),
-                primary: !fits && !dockerInUse && !ownInUse, id: "SetupLipSyncLoudness")));
-
-        var endpoint = OwnLipSyncEndpoint().Authority;
-        var ownTitle = OptionTitle("Your own Audio2Face service", !ownSetting ? null
-            : ownInUse ? "in use" : ownLipSyncAnswers == false ? "not running" : "checking", ownInUse ? 16 : 14);
-        AutomationProperties.SetAutomationId(ownTitle, "LipSyncOwnTitle");
-        var own = new List<UIElement> { ownTitle };
-        if (ownSetting)
-        {
-            var state = Note(audio2FaceOnly
-                ? $"In use at {endpoint}, with Audio2Face-only lip-sync in the character settings."
+            var state = Note(!ownSetting
+                    ? $"Already run NVIDIA's Audio2Face service yourself? Martlet can use it at {endpoint}, with voice loudness whenever it doesn't answer."
+                : audio2FaceOnly ? $"In use at {endpoint}, with Audio2Face-only lip-sync in the character settings."
                 : ownLipSyncAnswers switch
                 {
                     true => $"In use: an Audio2Face service you run yourself is answering at {endpoint}.",
-                    false => $"Advanced. Martlet looks for an Audio2Face service you run yourself at {endpoint} before each sentence. " +
+                    false => $"Martlet looks for an Audio2Face service you run yourself at {endpoint} before each sentence. " +
                         "Nothing answers there, so the mouth follows voice loudness.",
-                    _ => $"Advanced. Martlet looks for an Audio2Face service you run yourself at {endpoint} before each sentence, " +
+                    _ => $"Martlet looks for an Audio2Face service you run yourself at {endpoint} before each sentence, " +
                         "and uses voice loudness when nothing answers."
-                }, new Thickness(0, 2, 0, 4));
+                }, new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(state, "LipSyncOwnState");
-            own.Add(state);
-        }
-        else
-        {
-            own.Add(Note($"Advanced. Already run NVIDIA's Audio2Face service yourself? Martlet can use it at {endpoint}, " +
-                "with voice loudness whenever it doesn't answer.", new Thickness(0, 2, 0, 0)));
-            own.Add(Row(PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(), link: true, id: "SetupLipSyncOwnService")));
+            yield return state;
         }
 
-        var dockerFirst = dockerInUse || !loudnessInUse && fits;
-        var options = new List<UIElement>
-        {
-            Heading("Lip-sync on this PC"),
-            Note("Choose how the mouth moves. Until Audio2Face is ready, the mouth follows voice loudness.", new Thickness(0, 0, 0, 4))
-        };
-        if (ownInUse) options.Add(Option(own, inUse: true));
-        options.Add(Option(dockerFirst ? docker : loudness, dockerFirst ? dockerInUse : loudnessInUse));
-        options.Add(Option(dockerFirst ? loudness : docker, dockerFirst ? loudnessInUse : dockerInUse));
-        if (!ownInUse)
-        {
-            var advanced = new StackPanel { Margin = new Thickness(4, 14, 4, 0) };
-            foreach (var child in own) advanced.Children.Add(child);
-            options.Add(advanced);
-        }
-        return Card(options.ToArray());
+        var options = JobOptions.LipSyncWays(dockerInUse, notInstalled, loudnessInUse, ownInUse, fits, arm, endpoint)
+            .Select(option => option.Key switch
+            {
+                JobOptions.Audio2Face => option with { Details = DockerDetails },
+                JobOptions.Loudness => option with
+                {
+                    Action = loudnessInUse ? null : () => PageButton("Use voice loudness", () => AssignLipSyncAsync("off").Forget(),
+                        primary: true, id: "SetupLipSyncLoudness")
+                },
+                _ => option with
+                {
+                    Details = OwnDetails,
+                    Badge = ownInUse ? JobOptions.InUse : ownSetting ? ownLipSyncAnswers == false ? "not running" : "checking" : null,
+                    Action = ownSetting ? null : () => PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(),
+                        id: "SetupLipSyncOwnService")
+                }
+            }).ToList();
+        return Card(Heading("Lip-sync on this PC"),
+            Note("Choose how the mouth moves. Until Audio2Face is ready, the mouth follows voice loudness.", new Thickness(0, 0, 0, 6)),
+            OptionPickerBody("LipSync", options));
     }
-
     // ---------- memory ----------
 
     private void RenderMemoryTab(Panel page)

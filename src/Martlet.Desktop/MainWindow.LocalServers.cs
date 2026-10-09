@@ -94,41 +94,32 @@ public partial class MainWindow
         if (!closing && openTab == CompanionTab.Thinking && !(quiet && tabEdited)) RenderTab();
     }
 
-    /// <summary>Which app runs the model on this PC: Ollama, or a model app the owner already uses.</summary>
-    private Border LocalAppCard(SetupRoute? route, LocalApp chosen)
+    /// <summary>The model app found on this PC that the Model app picker shows for <see cref="LocalApp.Other"/>: the one picked,
+    /// else the one Thinking uses, else the first found; null for an app typed by its address.</summary>
+    private LocalModelServer? PickedLocalServer(SetupRoute? route)
     {
-        var inUse = IsLocalOllama(route) ? LocalApp.Ollama : IsLocalServer(route) ? LocalApp.Other : (LocalApp?)null;
-        var others = OtherLocalServers();
-        var found = lookingForLocalServers && localServers is null ? " Looking for them on this PC..."
-            : others.Count > 0 ? $" Found here: {string.Join(", ", others.Select(s => s.Name).Distinct())}." : "";
-        var where = new StackPanel();
-        where.Children.Add(Heading("Model app"));
-        foreach (var (value, label, detail) in new[]
-        {
-            (LocalApp.Ollama, "Ollama (recommended)",
-                "Martlet installs Ollama, downloads a model that fits this PC and keeps it ready. Any Ollama model works, including your own."),
-            (LocalApp.Other, "A model app you already use",
-                "LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner or any app with an OpenAI-compatible " +
-                "server on this PC." + found)
-        })
-        {
-            var text = new StackPanel();
-            text.Children.Add(new TextBlock { Text = label + (value == inUse ? "  \u00b7  in use" : ""),
-                FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
-            var option = new RadioButton { Content = text, GroupName = "LocalApp", IsChecked = value == chosen, Margin = new Thickness(0, 0, 0, 10) };
-            AutomationProperties.SetName(option, $"{label}: {detail}");
-            AutomationProperties.SetAutomationId(option, "LocalApp-" + value);
-            option.Checked += (_, _) =>
-            {
-                localApp = value;
-                RenderTab();
-            };
-            where.Children.Add(option);
-        }
-        return Card(where);
+        var found = OtherLocalServers();
+        var wanted = localServerPicked ?? (IsLocalServer(route) ? route!.Origin : null);
+        if (wanted == AnotherAddress) return null;
+        return found.FirstOrDefault(s => s.ChatCompletionsBaseUrl == wanted) ?? (wanted is null ? found.FirstOrDefault() : null);
     }
 
+    /// <summary>Which app runs the model on this PC, as an option picker (<c>Picker-LocalApp-&lt;key&gt;</c>): Ollama, each other
+    /// model app found here, and an app typed by its address. Choosing one shows its card below.</summary>
+    private Border LocalAppCard(SetupRoute? route, LocalApp chosen)
+    {
+        var others = OtherLocalServers();
+        var options = JobOptions.LocalApps(others, lookingForLocalServers && localServers is null, !Prerequisites.IsMissing(Prerequisites.Ollama),
+            IsLocalOllama(route), IsLocalServer(route) ? route!.Origin : null);
+        var shown = chosen == LocalApp.Ollama ? JobOptions.OllamaApp
+            : PickedLocalServer(route) is { } server ? JobOptions.AppKey(server) : JobOptions.AddressApp;
+        return OptionPicker("LocalApp", "Model app", null, options, shown, key =>
+        {
+            localApp = key == JobOptions.OllamaApp ? LocalApp.Ollama : LocalApp.Other;
+            if (key == JobOptions.AddressApp) localServerPicked = AnotherAddress;
+            else if (others.FirstOrDefault(s => JobOptions.AppKey(s) == key) is { } picked) localServerPicked = picked.ChatCompletionsBaseUrl;
+        });
+    }
     /// <summary>A model app the owner already runs on this PC: pick a found one (or type its address), pick its model, test it,
     /// use it. Only a key the app asks for is entered, and it is kept in Windows Credential Manager like any route's key.</summary>
     private Border LocalServerCard(SetupRoute? route)
@@ -142,16 +133,9 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(status, "LocalServersStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
-        var pick = new ComboBox { MinHeight = 30, MaxWidth = 520, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left,
-            ItemsSource = found.Select(LocalServerItem).Append(AnotherAddress).ToArray() };
-        AutomationProperties.SetName(pick, "Model app");
-        AutomationProperties.SetAutomationId(pick, "LocalServerPick");
-        var wanted = localServerPicked ?? current?.Origin;
-        var index = found.ToList().FindIndex(s => s.ChatCompletionsBaseUrl == wanted);
-        pick.SelectedIndex = index >= 0 ? index : wanted is not null || found.Count == 0 ? found.Count : 0;
-
+        var picked = PickedLocalServer(route);
         var address = new TextBox { MaxLength = 256, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
-            Text = localServerAddress ?? (index < 0 ? current?.Origin : null) ?? "" };
+            Text = localServerAddress ?? (current is not null && found.All(s => s.ChatCompletionsBaseUrl != current.Origin) ? current.Origin : null) ?? "" };
         AutomationProperties.SetName(address, "Address on this PC");
         AutomationProperties.SetAutomationId(address, "LocalServerAddress");
         var addressPanel = new StackPanel { Children =
@@ -175,7 +159,7 @@ public partial class MainWindow
         var hint = Note("", new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(hint, "LocalServerHint");
 
-        LocalModelServer? Picked() => pick.SelectedIndex >= 0 && pick.SelectedIndex < found.Count ? found[pick.SelectedIndex] : null;
+        LocalModelServer? Picked() => picked;
         string? BaseUrl(out string problem)
         {
             problem = "";
@@ -240,12 +224,6 @@ public partial class MainWindow
             ShowTest();
         }
         Refresh(keepModel: false);
-        pick.SelectionChanged += (_, _) =>
-        {
-            tabEdited = true;
-            localServerPicked = Picked()?.ChatCompletionsBaseUrl ?? AnotherAddress;
-            Refresh(keepModel: false);
-        };
         address.TextChanged += (_, _) =>
         {
             tabEdited = true;
@@ -260,8 +238,6 @@ public partial class MainWindow
             Note("Martlet thinks with a model your app serves on this PC, with no per-request cost. Start the app's local server, " +
                 "then choose it here.", new Thickness(0, 0, 0, 8)),
             status,
-            new Label { Content = "_Model app", Target = pick, Padding = new Thickness(0, 4, 0, 4) },
-            pick,
             addressPanel,
             new Label { Content = "M_odel", Target = model, Padding = new Thickness(0, 8, 0, 4) },
             model,

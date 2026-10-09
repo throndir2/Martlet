@@ -75,10 +75,18 @@ public partial class MainWindow
         return Card([.. stack]);
     }
 
-    /// <summary>The picker without its card: rows, Compare, the table when open and the shown option's details.</summary>
+    /// <summary>The picker without its card: rows, Compare, the table when open and the shown option's details. A list of one
+    /// option has nothing to choose, so it shows only that option's details.</summary>
     private StackPanel OptionPickerBody(string id, IReadOnlyList<PickerOption> options, string? shown = null, Action<string>? chosen = null)
     {
         var body = new StackPanel();
+        if (options.Count == 1)
+        {
+            var only = PickerDetails(id, options[0]);
+            only.Margin = new Thickness(0, 2, 0, 0);
+            body.Children.Add(only);
+            return body;
+        }
         var key = PickerShown(id, options, shown);
         var ordered = options.Where(o => o.Unavailable is null).Concat(options.Where(o => o.Unavailable is not null)).ToList();
         var rows = new StackPanel();

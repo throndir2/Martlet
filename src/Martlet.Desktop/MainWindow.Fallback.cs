@@ -16,7 +16,7 @@ public partial class MainWindow
 {
     private const string OpenAiChatBaseUrl = "https://api.openai.com/v1";
 
-    private static readonly IReadOnlyList<CloudProvider> FallbackProviders =
+    internal static readonly IReadOnlyList<CloudProvider> FallbackProviders =
     [
         .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, e.DefaultModelId, true)),
         new("OpenAI", OpenAiChatBaseUrl, true, OpenAiTextGenerationCatalog.DefaultModelId, true),
@@ -32,27 +32,47 @@ public partial class MainWindow
             (fallback.CredentialId is not null ? " (its own key saved)"
                 : fallback.UsesThinkingKey(thinking) ? " (uses Thinking's key)" : " (no key)");
 
+    /// <summary>If Thinking fails: what it is now (<c>FallbackNow</c>), then an option picker (<c>Picker-Fallback-&lt;key&gt;</c>)
+    /// with Off first and every provider, each with what it costs and what leaves this PC; the shown provider's details hold
+    /// its fields and Use as fallback, Off's details hold Turn off.</summary>
     private Border FallbackCard()
     {
         var saved = homeSettings?.ThinkingFallback;
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var now = Note(FallbackStatus(saved, thinking), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(now, "FallbackNow");
+        var savedProvider = saved is null ? null : FallbackProviders.FirstOrDefault(p => p.BaseUrl == saved.Origin) ?? CustomCloud;
+        // Add your key (FreeKeyPrompt) for If Thinking fails: NVIDIA Build's free keys, ready for the one the owner pastes.
+        if (freeKeyFocus && freeKeyPreset == FreeKeyUse.Fallback && saved is null) pickerShown["Fallback"] = ChatCompletionsEndpointCatalog.NvidiaBuildId;
+        var off = PickerOption.Off("If Thinking fails, Martlet says so and you try again", saved is null,
+            saved is null ? null : () => PageButton("Turn off", () => SaveFallbackAsync(null, "", "", new PasswordBox(), true).Forget(), id: "FallbackOff"));
+        var options = JobOptions.Providers(FallbackProviders, Martlet.Core.Planning.PlanComponent.Thinking,
+                savedProvider is null ? null : JobOptions.ProviderKey(savedProvider),
+                "your messages, recent conversation and any screen or camera picture of a reply Thinking couldn't give",
+                ChatCompletionsEndpointCatalog.NvidiaBuildId)
+            .Select(option => option with { Details = () => FallbackFields(FallbackProviders.First(p => JobOptions.ProviderKey(p) == option.Key), saved, thinking) })
+            .Prepend(off)
+            .ToList();
 
-        var provider = new ComboBox { ItemsSource = FallbackProviders, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(provider, "Fallback provider");
-        AutomationProperties.SetAutomationId(provider, "FallbackProvider");
-        provider.SelectedItem = saved is null
-            // Add your key (FreeKeyPrompt) for If Thinking fails: NVIDIA Build's free keys, ready for the one the owner pastes.
-            ? freeKeyPreset == FreeKeyUse.Fallback &&
-              FallbackProviders.FirstOrDefault(p => p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl) is { } free
-                ? free : FallbackProviders[0]
-            : FallbackProviders.FirstOrDefault(p => p.BaseUrl == saved.Origin) ?? CustomCloud;
+        return Card(
+            Heading("If Thinking fails"),
+            Note("When Thinking returns an error, is limiting requests or doesn't answer within 15 seconds, and hasn't said anything " +
+                "yet, Martlet asks this provider instead. Screen and camera glances use it too, so choose a model that can see images.",
+                new Thickness(0, 0, 0, 8)),
+            now,
+            OptionPickerBody("Fallback", options));
+    }
+
+    /// <summary>The fields of fallback provider <paramref name="p"/>: its address (a custom server), model, key, the consent box
+    /// and Use as fallback.</summary>
+    private IEnumerable<UIElement> FallbackFields(CloudProvider p, ThinkingFallbackSettings? saved, SetupRoute? thinking)
+    {
         var baseUrl = new TextBox { MaxLength = 2048, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = saved?.Origin ?? "" };
         AutomationProperties.SetName(baseUrl, "Fallback API base URL");
         AutomationProperties.SetAutomationId(baseUrl, "FallbackBaseUrl");
-        var baseUrlPanel = new StackPanel { Children = { new Label { Content = "API base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) }, baseUrl } };
-        var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
+        string Url() => p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim();
+        var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
+            Text = saved is not null && saved.Origin == Url() ? saved.ModelId : p.DefaultModel ?? "" };
         AutomationProperties.SetName(model, "Fallback model ID");
         AutomationProperties.SetAutomationId(model, "FallbackModel");
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
@@ -63,60 +83,38 @@ public partial class MainWindow
             freeKeyFocus = false;
             FocusWhenShown(key);
         }
-        var keyStatus = Note("", new Thickness(0, 4, 0, 0));
+        var url = Url();
+        var keyStatus = Note(saved?.CredentialId is not null && saved.Origin == url
+                ? $"Its {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
+            : thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin == url
+                ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
+            : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
+            : "Add a key only if your server needs one.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "FallbackKeyStatus");
-        var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
+        var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8), IsChecked = saved is not null && saved.Origin == url,
+            Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
+                Text = $"I choose {p.Name} as the fallback for Thinking. When Thinking fails, your messages, recent " +
+                    "conversation and any screen or camera image of that reply are sent there instead, and requests may cost money." } };
         AutomationProperties.SetAutomationId(consent, "FallbackConsent");
-        var consentText = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        consent.Content = consentText;
-
-        CloudProvider Selected() => provider.SelectedItem as CloudProvider ?? CustomCloud;
-        string Url() => Selected().BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim();
-        void Refresh(bool keepModel)
-        {
-            var p = Selected();
-            baseUrlPanel.Visibility = p == CustomCloud ? Visibility.Visible : Visibility.Collapsed;
-            if (!keepModel) model.Text = saved is not null && saved.Origin == Url() ? saved.ModelId : p.DefaultModel ?? "";
-            var url = Url();
-            keyStatus.Text = saved?.CredentialId is not null && saved.Origin == url
-                    ? $"Its {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
-                : thinking is { RouteType: SetupRouteType.ChatCompletions, CredentialId: not null } && thinking.Origin == url
-                    ? "Leave this empty to use Thinking's key for the same provider, or paste another key."
-                : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
-                : "Add a key only if your server needs one.";
-            consentText.Text = $"I choose {p.Name} as the fallback for Thinking. When Thinking fails, your messages, recent " +
-                "conversation and any screen or camera image of that reply are sent there instead, and requests may cost money.";
-            consent.IsChecked = saved is not null && saved.Origin == url && keepModel;
-        }
-        Refresh(keepModel: saved is not null);
-        provider.SelectionChanged += (_, _) => { tabEdited = true; Refresh(keepModel: false); };
         baseUrl.TextChanged += (_, _) => { if (!baseUrl.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         model.TextChanged += (_, _) => { if (!model.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         key.PasswordChanged += (_, _) => tabEdited = true;
 
+        if (p == CustomCloud)
+        {
+            yield return new Label { Content = "API base URL (without /chat/completions)", Target = baseUrl, Padding = new Thickness(0, 8, 0, 4) };
+            yield return baseUrl;
+        }
+        yield return new Label { Content = "Fallback _model ID", Target = model, Padding = new Thickness(0, 8, 0, 4) };
+        yield return model;
+        yield return new Label { Content = "Fallback API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) };
+        yield return key;
+        yield return keyStatus;
+        yield return consent;
         // Like a cloud provider for Thinking, a fallback is an explicit commitment (data sent elsewhere, possible costs).
-        var save = PageButton("Use as fallback", () => SaveFallbackAsync(Selected(), Url(), model.Text.Trim(), key, consent.IsChecked == true).Forget(),
-            primary: true, id: "FallbackSave");
-        var off = saved is null ? null : PageButton("Turn off", () => SaveFallbackAsync(null, "", "", key, true).Forget(), id: "FallbackOff");
-
-        return Card(
-            Heading("If Thinking fails"),
-            Note("When Thinking returns an error, is limiting requests or doesn't answer within 15 seconds, and hasn't said anything " +
-                "yet, Martlet asks this provider instead. Screen and camera glances use it too, so choose a model that can see images.",
-                new Thickness(0, 0, 0, 8)),
-            now,
-            new Label { Content = "Fallback _provider", Target = provider, Padding = new Thickness(0, 0, 0, 4) },
-            provider,
-            baseUrlPanel,
-            new Label { Content = "Fallback _model ID", Target = model, Padding = new Thickness(0, 8, 0, 4) },
-            model,
-            new Label { Content = "Fallback API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) },
-            key,
-            keyStatus,
-            consent,
-            Row(save, off));
+        yield return Row(PageButton("Use as fallback", () => SaveFallbackAsync(p, Url(), model.Text.Trim(), key, consent.IsChecked == true).Forget(),
+            primary: true, id: "FallbackSave"));
     }
-
     /// <summary>Saves the fallback (or turns it off when <paramref name="provider"/> is null). A new key is written to Windows
     /// Credential Manager first and removed again if the settings can't be saved; the key it replaces is removed after the save.</summary>
     private async Task SaveFallbackAsync(CloudProvider? provider, string url, string model, PasswordBox keyBox, bool consent)
