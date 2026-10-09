@@ -41,6 +41,7 @@ internal static class PicturesCheck
                 name = PictureTools.Definition.Name, description = PictureTools.Definition.Description,
                 parameters = JsonNode.Parse(PictureTools.Definition.ParametersJson)
             },
+            afterReply = SongsCheck.CreationsAfterReply(singing: false),
             creations = new
             {
                 count = pictures.Length,
