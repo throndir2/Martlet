@@ -79,8 +79,22 @@ public static class ThinkLonger
             QuickJobs = choices?.TakesQuickJobs(spot.Key) ?? true,
             LongJobs = choices?.TakesLongJobs(spot.Key) ?? true,
             // Without the pool's settings an external member gets no pictures or recordings, as with its box unticked.
-            Media = (choices ?? new()).MayReceiveMedia(spot.Settings)
+            Media = (choices ?? new()).MayReceiveMedia(spot.Settings),
+            Smarts = !spot.Settings.Separate ? ThinkingSmarts.Standard
+                : choices?.SmartsOf(spot.Key, spot.Settings.ModelId) ?? ThinkingSmartsGuess.From(spot.Settings.ModelId)
         })];
+    }
+
+    /// <summary>The places a long job (thinking longer, research, a song's lyrics) may run on, as <paramref name="where"/> says:
+    /// Smart only and These members keep only those members (<see cref="ThinkingRunsOnRules.Allows"/>). Prefer smart keeps every
+    /// member; its kind takes the smartest free one first (<see cref="BackgroundJobKind.SmartFirst"/>). The conversation model,
+    /// in the pool's place while no member can run, is not a member and stays. Empty when no member may take it.</summary>
+    public static IReadOnlyList<BackgroundPlace> RunsOn(IReadOnlyList<BackgroundPlace> places, ThinkingRunsOn where)
+    {
+        ArgumentNullException.ThrowIfNull(places);
+        ArgumentNullException.ThrowIfNull(where);
+        if (places.All(place => place.Id == "thinking")) return places;
+        return [.. places.Where(place => place.Id != "thinking" && ThinkingRunsOnRules.Allows(place, where))];
     }
 
     /// <summary>Whether a think on <paramref name="place"/> can go on in place after the live floor stopped it: its server

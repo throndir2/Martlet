@@ -63,7 +63,20 @@ internal static class ThinkingPoolCheck
                     // The Quick jobs and Long jobs boxes: the judges and summaries, and every other kind.
                     quickJobs = pool.TakesQuickJobs(m.Key), longJobs = pool.TakesLongJobs(m.Key),
                     // May receive pictures and recordings: an external member (an endpoint not on this PC) only when ticked.
-                    external = ThinkingPoolSettings.IsExternal(m), mayReceiveMedia = pool.MayReceiveMedia(m)
+                    external = ThinkingPoolSettings.IsExternal(m), mayReceiveMedia = pool.MayReceiveMedia(m),
+                    // How smart its model is (Runs on uses it): the owner's choice, else Martlet's guess from the model name.
+                    smarts = pool.SmartsOf(m).ToString(), smartsGuess = ThinkingSmartsGuess.From(m.ModelId).ToString(),
+                    smartsChosen = pool.Smarts.ContainsKey(m.Key)
+                };
+            }),
+            // Runs on for each kind of job, and the members each kind may use now (by name).
+            runsOn = ThinkingJobKinds.All.ToDictionary(ThinkingJobKinds.Name, kind =>
+            {
+                var where = pool.RunsOn(ThinkingJobKinds.Name(kind));
+                return new
+                {
+                    mode = where.Name, members = where.Members,
+                    may = places.Where(p => p.Takes(kind) && ThinkingRunsOnRules.Allows(p, where)).Select(p => p.Name).ToArray()
                 };
             }),
             // Backup Thinking: its choices and who it would ask now for a plain reply that is taken (the production choice, on
@@ -839,6 +852,57 @@ internal static class ThinkingPoolCheck
             Check("rate limits: while a member cools down, its jobs go to another member and it gets none",
                 moved.Succeeded && moved.Member == "diva" && cooling is [{ Until: not null }] && other.Find(ThinkingJobKind.Memory)?.Name == "diva",
                 $"{moved.Outcome} on {moved.Member}; {string.Join("; ", cooling.Select(c => c.Describe(DateTimeOffset.UtcNow)))}");
+        }
+
+        // 18. Smarts and Runs on (Companion › Thinking pool, and each check-in card): Martlet guesses each member's smarts from its
+        // model name; Prefer smart takes the smartest free member, and a less smart one after its short wait; Smart only gets no
+        // member without a Smart one; These members uses only the chosen ones; Any member keeps today's choice.
+        {
+            BackgroundPlace small = new("endpoint:small", "small") { Slots = 1, Smarts = ThinkingSmarts.Fast, Model = "gemma4:e2b" },
+                big = new("endpoint:big", "big") { Slots = 1, Smarts = ThinkingSmarts.Smart, Model = "nvidia/llama-3.3-nemotron-super-49b-v1" };
+            var places = new BackgroundPlaces();
+            var board = new ThinkingJobBoard(places, () => [small, big], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+            var any = await board.RunAsync(Job(ThinkingJobKind.Memory), cancellation);
+            var prefer = await board.RunAsync(Job(ThinkingJobKind.Memory) with { RunsOn = ThinkingRunsOn.PreferSmart }, cancellation);
+            var chosen = await board.RunAsync(Job(ThinkingJobKind.Memory) with { RunsOn = ThinkingRunsOn.Only(["endpoint:small"]) }, cancellation);
+            var smallOnly = new ThinkingJobBoard(new BackgroundPlaces(), () => [small], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)))
+            {
+                RunsOn = _ => ThinkingRunsOn.SmartOnly
+            };
+            var none = await smallOnly.RunAsync(Job(ThinkingJobKind.CheckIn), cancellation);
+            Check("runs on: prefer smart, smart only and these members choose the members",
+                any.Member == "small" && prefer.Member == "big" && chosen.Member == "small" && none.Outcome == ThinkingJobOutcome.NoMember &&
+                !smallOnly.CanRun(ThinkingJobKind.CheckIn) && board.Find(ThinkingJobKind.Memory, where: ThinkingRunsOn.PreferSmart)?.Name == "big" &&
+                prefer.Placed?.StartsWith("Prefer smart", StringComparison.Ordinal) == true,
+                $"any on {any.Member}; prefer smart on {prefer.Member} ({prefer.Placed}); these members on {chosen.Member}; smart only " +
+                $"without a Smart member: {none.Outcome} ({none.Problem})");
+
+            // The Smart member is busy: Prefer smart waits a quarter of the job's time (here 100 ms), then takes the less smart one.
+            var held = places.TryAcquire([big], "busy");
+            var timer = Stopwatch.StartNew();
+            var fallback = await board.RunAsync(Job(ThinkingJobKind.Digest, timeout: TimeSpan.FromMilliseconds(400)) with { RunsOn = ThinkingRunsOn.PreferSmart },
+                cancellation);
+            held?.Dispose();
+            var placements = board.Status().Placements;
+            Check("runs on: prefer smart takes a less smart member after its short wait",
+                held is not null && fallback.Member == "small" && timer.ElapsedMilliseconds >= 90 &&
+                fallback.Placed?.Contains("no Smart member came free", StringComparison.Ordinal) == true &&
+                placements.Count >= 4 && placements[0].Member == "small" && placements[0].RunsOn == "prefer-smart",
+                $"{fallback.Member} after {timer.ElapsedMilliseconds} ms: {fallback.Placed}; {placements.Count} placements kept");
+
+            var guesses = new[] { "gemma4:e2b", "qwen3:8b", "gemma4:27b", "nvidia/llama-3.3-nemotron-super-49b-v1", "llama3.3:70b" }
+                .Select(model => $"{model} {ThinkingSmartsGuess.From(model)}").ToArray();
+            var endpoint = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "https://integrate.api.nvidia.com", ModelId = "qwen3:8b" };
+            var settings = new ThinkingPoolSettings().Add(endpoint).WithSmarts(endpoint.Key, ThinkingSmarts.Smart)
+                .WithRunsOn("check-in", ThinkingRunsOn.Only([endpoint.Key]));
+            var left = settings.Remove(endpoint.Key);
+            Check("runs on: smarts are guessed from the model name, and the owner's choice is kept until the member leaves",
+                ThinkingSmartsGuess.From("gemma4:e2b") == ThinkingSmarts.Fast && ThinkingSmartsGuess.From("qwen3:8b") == ThinkingSmarts.Standard &&
+                ThinkingSmartsGuess.From("nvidia/llama-3.3-nemotron-super-49b-v1") == ThinkingSmarts.Smart &&
+                settings.SmartsOf(endpoint) == ThinkingSmarts.Smart && settings.RunsOn("check-in").Members.Count == 1 &&
+                left.Smarts.Count == 0 && left.RunsOn("check-in").Members.Count == 0,
+                $"{string.Join("; ", guesses)}; chosen {settings.SmartsOf(endpoint)}; after leaving: {left.Smarts.Count} chosen, " +
+                $"check-ins on {left.RunsOn("check-in").Describe()}");
         }
 
         return new

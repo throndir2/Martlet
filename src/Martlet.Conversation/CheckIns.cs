@@ -155,6 +155,8 @@ public sealed partial record CheckIn(string Id, string Name, string Does, CheckI
     /// <summary>What starts it at once (<see cref="CheckInTriggers"/>). With one or more, it runs only when one fires, at most
     /// once per <see cref="Every"/>; with none, it runs on its pace.</summary>
     public CheckInTriggers Triggers { get; init; }
+    /// <summary>Where it runs in the Thinking pool (Runs on, on its card); null: as the check-in kind runs.</summary>
+    public ThinkingRunsOn? RunsOn { get; init; }
 }
 
 /// <summary>One reply tool a check-in takes over (<see cref="CheckIns.HandOffs"/>): the tool, the check-in that does it after
@@ -486,7 +488,8 @@ public static partial class CheckIns
             RecordingSeconds = choice.RecordingSeconds ?? checkIn.RecordingSeconds, Script = choice.Script ?? checkIn.Script,
             Triggers = choice.Triggers ?? checkIn.Triggers,
             FromHour = choice.FromHour ?? checkIn.FromHour, UntilHour = choice.UntilHour ?? checkIn.UntilHour,
-            MostPerHour = choice.MostPerHour ?? checkIn.MostPerHour, ToolSets = choice.ToolSets ?? checkIn.ToolSets
+            MostPerHour = choice.MostPerHour ?? checkIn.MostPerHour, ToolSets = choice.ToolSets ?? checkIn.ToolSets,
+            RunsOn = choice.RunsOn ?? checkIn.RunsOn
         };
         return changed with { Needs = Needs(choice.Needs ?? checkIn.Needs, changed.Screenshot, changed.Recording) };
     }
@@ -506,7 +509,8 @@ public static partial class CheckIns
             Custom = true, Task = custom.Task, Facts = custom.Facts, Conditions = custom.Conditions, Needs = Needs(custom),
             Screenshot = custom.Screenshot, Recording = custom.Recording, RecordingSeconds = custom.RecordingSeconds, Script = custom.Script,
             Triggers = custom.Triggers,
-            FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour, ToolSets = custom.ToolSets
+            FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour, ToolSets = custom.ToolSets,
+            RunsOn = custom.RunsOn
         };
 
     /// <summary>What a Thinking pool member must handle to take <paramref name="custom"/>: text, what the owner chose, pictures
@@ -616,7 +620,8 @@ public static partial class CheckIns
             Image = checkIn.Screenshot ? state.Screenshot : null,
             Audio = checkIn.Recording != CheckInRecording.None ? state.Recording : null,
             Timeout = Timeout, DropWhenStale = true, MaxOutputTokens = MaximumOutputTokens, Reasoning = false,
-            Tools = offered, ToolHost = offered.Count > 0 ? tools : null, MaxToolRounds = offered.Count > 0 ? MaximumToolRounds : 0
+            Tools = offered, ToolHost = offered.Count > 0 ? tools : null, MaxToolRounds = offered.Count > 0 ? MaximumToolRounds : 0,
+            RunsOn = checkIn.RunsOn
         };
     }
 

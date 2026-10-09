@@ -1128,6 +1128,25 @@ internal static class CheckInsCheck
             !canNone && board.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs) && done is { Succeeded: true } && done.Member == allMember.Name &&
             board.CanRun(ThinkingJobKind.CheckIn, textOnly.Needs),
             new { textOnlyPool = none?.Outcome.ToString(), withOneThatSeesAndHears = done?.Member, tookPicture = taken?.Image is not null, tookSound = taken?.Audio is not null });
+
+        // Runs on: a check-in's own choice (on its card) goes with its job and comes before the check-in kind's. The kind runs on
+        // Smart only here; the check-in chose These members, so the less smart member takes it.
+        BackgroundPlace smart = new("endpoint:smart", "FIXTURE smart member") { Slots = 1, Model = "fixture-70b", Smarts = ThinkingSmarts.Smart };
+        BackgroundPlace fast = new("endpoint:fast", "FIXTURE fast member") { Slots = 1, Model = "fixture-2b", Smarts = ThinkingSmarts.Fast };
+        var runsOnBoard = new ThinkingJobBoard(new BackgroundPlaces(), () => [fast, smart], (place, _, _) => Task.FromResult(ThinkingAnswer.Done("OK")))
+        {
+            RunsOn = _ => ThinkingRunsOn.SmartOnly
+        };
+        var own = custom with { Id = "c2", RunsOn = ThinkingRunsOn.Only([fast.Id]), Screenshot = false, Recording = CheckInRecording.None, Needs = ThinkingCapability.Text };
+        var saved = new CheckInSettings().With(own);
+        var reread = saved.Custom[0];
+        var ownJob = CheckIns.Prepare(CheckIns.Of(reread), gathered, null);
+        var byKind = ownJob is null ? null : await runsOnBoard.RunAsync(ownJob with { RunsOn = null }, cancellation);
+        var byCard = ownJob is null ? null : await runsOnBoard.RunAsync(ownJob, cancellation);
+        step("own: Runs on on its card comes before the check-in kind's",
+            reread.RunsOn == own.RunsOn && ownJob?.RunsOn == own.RunsOn && byKind?.Member == smart.Name && byCard?.Member == fast.Name &&
+            byCard?.RunsOn == "members",
+            new { kind = "smart-only", byKind = byKind?.Member, card = own.RunsOn?.Name, byCard = byCard?.Member, why = byCard?.Placed });
     }
 
     private static string Marker(string id) => $"[FIXTURE check-in {id}]";

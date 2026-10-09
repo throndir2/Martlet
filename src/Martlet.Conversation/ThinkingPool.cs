@@ -71,6 +71,8 @@ public sealed record ThinkingDemand(ThinkingJobKind Kind, int Priority, bool Kee
     public bool PreemptsLower { get; init; }
     /// <summary>Waits at the front of the line for its priority (a job that was stopped for higher-priority work).</summary>
     public bool Front { get; init; }
+    /// <summary>Takes the smartest free place first (<see cref="BackgroundPlace.Smarts"/>; Runs on: Prefer smart).</summary>
+    public bool SmartFirst { get; init; }
 
     public static ThinkingDemand For(ThinkingJobKind kind, IReadOnlyList<BackgroundPlace>? pool = null, ThinkingPriority? priority = null) =>
         new(kind, (int)(priority ?? ThinkingJobKinds.Priority(kind)), !ThinkingJobKinds.IsFast(kind), pool);
@@ -130,6 +132,8 @@ public sealed record ThinkingJob
     public string? Label { get; init; }
     /// <summary>The companion the job is for (its name); null: the one the board's requests name (<see cref="ThinkingRequests.Origin"/>).</summary>
     public string? Origin { get; init; }
+    /// <summary>Where it runs (a check-in's own Runs on); null: the kind's (<see cref="ThinkingJobBoard.RunsOn"/>).</summary>
+    public ThinkingRunsOn? RunsOn { get; init; }
 
     public ThinkingCapability Required => (Needs ?? ThinkingCapability.Text |
         (Image is null ? ThinkingCapability.None : ThinkingCapability.Vision) |
@@ -144,6 +148,7 @@ public sealed record ThinkingJob
         ContractRules.Require(MaxOutputTokens is >= 1 and <= 65_536, "A Thinking pool job writes 1-65536 tokens.");
         ContractRules.Require(Tools is not null && (Tools.Count == 0 || ToolHost is not null) &&
             MaxToolRounds is >= 0 and <= BoundedTextInput.HardMaxToolRounds, "A Thinking pool job with tools needs a tool host and 0-8 rounds.");
+        RunsOn?.Validate();
     }
 
     public override string ToString() => $"{nameof(ThinkingJob)} {ThinkingJobKinds.Name(Kind)} (content omitted)";
@@ -193,6 +198,11 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     public int Retries { get; init; }
     /// <summary>The priority it had when it ended: its first priority, plus one for each raise after stops.</summary>
     public int Priority { get; init; }
+    /// <summary>Where it was allowed to run (<see cref="ThinkingRunsOn.Name"/>: any, prefer-smart, smart-only, members).</summary>
+    public string? RunsOn { get; init; }
+    /// <summary>Why it went to its member (or to none), in a few plain words: "Prefer smart: no Smart member came free within
+    /// 30 s, so a Standard one".</summary>
+    public string? Placed { get; init; }
     public static ThinkingJobResult NoMember(ThinkingCapability needs) =>
         new(ThinkingJobOutcome.NoMember, null, null, null, $"the Thinking pool has no member that can do {Describe(needs)}", 0);
 
@@ -230,6 +240,8 @@ public sealed record ThinkingPoolMemberStatus(string Id, string Name, int Slots,
     /// wait (until <see cref="CoolsUntil"/>), fewer than <see cref="Slots"/> for a while after it limited requests.</summary>
     public int SlotsNow { get; init; }
     public DateTimeOffset? CoolsUntil { get; init; }
+    /// <summary>How smart its model is (<see cref="BackgroundPlace.Smarts"/>).</summary>
+    public ThinkingSmarts Smarts { get; init; } = ThinkingSmarts.Standard;
 }
 
 /// <summary>Pictures and recordings in Thinking pool jobs: an external member gets them only when the owner allows it.</summary>
@@ -243,6 +255,39 @@ public static class ThinkingPoolMedia
         var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
         return distinct.Length <= 1 ? distinct.FirstOrDefault() ?? "" : $"{string.Join(", ", distinct[..^1])} and {distinct[^1]}";
     }
+}
+
+/// <summary>Where one job went and why (thinking-pool-status.json's recent placements; never the job's text): its kind, its Runs
+/// on, the member (null: none) with its smarts level, how it ended and why it went there.</summary>
+public sealed record ThinkingPoolPlacement(DateTimeOffset At, string Kind, string RunsOn, string? MemberId, string? Member, ThinkingSmarts? Smarts,
+    string Outcome, string Why);
+
+/// <summary>The rules of a job's Runs on (<see cref="ThinkingRunsOn"/>) on the board's members. They are one step of their own,
+/// after what the member takes and can do: Smart only and These members keep members out; Prefer smart only orders them.</summary>
+public static class ThinkingRunsOnRules
+{
+    /// <summary>The longest a Prefer smart job waits for one of the smartest members before a less smart one may take it.</summary>
+    public static TimeSpan MaxPreferWait { get; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a Prefer smart job with <paramref name="timeout"/> waits for one of the smartest members: a quarter of its
+    /// timeout, at most <see cref="MaxPreferWait"/>.</summary>
+    public static TimeSpan PreferWait(TimeSpan timeout) => timeout / 4 < MaxPreferWait ? timeout / 4 : MaxPreferWait;
+
+    /// <summary>Whether <paramref name="member"/> may take a job that runs on <paramref name="where"/>.</summary>
+    public static bool Allows(BackgroundPlace member, ThinkingRunsOn where)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return where?.Allows(member.Id, member.Smarts) ?? true;
+    }
+
+    /// <summary>Why no member may take a job that runs on <paramref name="where"/> and needs <paramref name="needs"/>, though
+    /// other members could.</summary>
+    public static string NoMember(ThinkingRunsOn where, ThinkingCapability needs) => where.Mode switch
+    {
+        ThinkingRunsOnMode.SmartOnly => $"Runs on is Smart only, and no Smart member can do {ThinkingJobResult.Describe(needs)}",
+        ThinkingRunsOnMode.Members when where.Members.Count == 0 => "Runs on is These members, and no member is chosen",
+        _ => $"Runs on is These members, and none of them can do {ThinkingJobResult.Describe(needs)}"
+    };
 }
 
 /// <summary>A member the board passes over until <paramref name="Until"/> for jobs that need at least <paramref name="Needs"/>,
@@ -276,6 +321,10 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
     public int Retried { get; init; }
     /// <summary>The members whose providers limited requests: they wait, or run fewer jobs at once, for a while.</summary>
     public IReadOnlyList<ThinkingPoolCooling> Cooling { get; init; } = [];
+    /// <summary>Where each kind runs now (<see cref="ThinkingJobBoard.RunsOn"/>), by kind name: any, prefer-smart, smart-only, members.</summary>
+    public IReadOnlyDictionary<string, string> RunsOn { get; init; } = new Dictionary<string, string>();
+    /// <summary>The latest jobs: where each went and why, newest first.</summary>
+    public IReadOnlyList<ThinkingPoolPlacement> Placements { get; init; } = [];
 }
 
 /// <summary>The Thinking pool's job board: one in-process board for every Thinking pool job. Members are places
@@ -336,12 +385,19 @@ public sealed class ThinkingJobBoard
     /// <summary>The line's rules (read on each job and each try, so a settings change takes effect at once).</summary>
     public Func<ThinkingPoolPolicy> Policy { get; set; } = () => ThinkingPoolPolicy.Off;
 
+    /// <summary>Where each kind of job runs (Companion › Thinking pool, Runs on; read on each job, so a settings change takes effect
+    /// at once). A job's own <see cref="ThinkingJob.RunsOn"/> comes first. Default: any member.</summary>
+    public Func<ThinkingJobKind, ThinkingRunsOn> RunsOn { get; set; } = _ => ThinkingRunsOn.Any;
+
     private int stoppedForPriority, raised, retried;
     /// <summary>The members whose providers limited requests: their waits and live slot limits (the broker obeys them).</summary>
     public ThinkingPoolLimits Limits { get; }
 
     /// <summary>Raised on the job's thread when a member's provider limited a request, after the board recorded it.</summary>
     public event Action<ThinkingPoolCooling>? Limited;
+
+    private const int MaxPlacements = 16;
+    private readonly Queue<ThinkingPoolPlacement> placements = new();
 
     /// <summary>Every member, whether its computer answers now or not.</summary>
     public IReadOnlyList<BackgroundPlace> Members => members();
@@ -353,34 +409,44 @@ public sealed class ThinkingJobBoard
     public event Action<ThinkingPoolRest>? Rested;
 
     /// <summary>Whether a member that answers now can take a job of <paramref name="kind"/> that needs <paramref name="needs"/>,
-    /// without posting it (no waiting and no slot taken): callers choose their fallback when it is false.</summary>
-    public bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text) =>
-        Online.Any(member => Takes(member, kind, needs));
+    /// without posting it (no waiting and no slot taken): callers choose their fallback when it is false. <paramref name="where"/>
+    /// is the job's own Runs on (null: the kind's).</summary>
+    public bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text, ThinkingRunsOn? where = null)
+    {
+        var runsOn = where ?? RunsOn(kind);
+        return Online.Any(member => Takes(member, kind, needs) && ThinkingRunsOnRules.Allows(member, runsOn));
+    }
 
     /// <summary>Whether a member that can take such a job may start it now (it answers, and the live floor's rules allow it; no
     /// slot taken), so a caller doesn't prepare work no member would take before it is stale.</summary>
-    public bool MayStartNow(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
+    public bool MayStartNow(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text, ThinkingRunsOn? where = null)
     {
         var rules = Places.Rules;
-        return Online.Any(member => Takes(member, kind, needs) && Limits.SlotsNow(member) > 0 && (rules?.MayStart(member, kind) ?? true));
+        var runsOn = where ?? RunsOn(kind);
+        return Online.Any(member => Takes(member, kind, needs) && ThinkingRunsOnRules.Allows(member, runsOn) && Limits.SlotsNow(member) > 0 &&
+            (rules?.MayStart(member, kind) ?? true));
     }
 
     /// <summary>Whether a member that answers and can take such a job shares no hardware with the live conversation (no slot taken).</summary>
-    public bool CanRunBeside(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
+    public bool CanRunBeside(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text, ThinkingRunsOn? where = null)
     {
         var rules = Places.Rules;
-        return Online.Any(member => Takes(member, kind, needs) && rules?.Shares(member) != true);
+        var runsOn = where ?? RunsOn(kind);
+        return Online.Any(member => Takes(member, kind, needs) && ThinkingRunsOnRules.Allows(member, runsOn) && rules?.Shares(member) != true);
     }
 
     /// <summary>The member a job of <paramref name="kind"/> needing <paramref name="needs"/> would go to first when every slot is
-    /// free (the one sharing least with the conversation, one the live conversation doesn't use first while it isn't idle), with
-    /// its name and model; null when none that answers now can (no slot taken).</summary>
-    public BackgroundPlace? Find(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
+    /// free (the one sharing least with the conversation, one the live conversation doesn't use first while it isn't idle; with
+    /// Prefer smart, the smartest of those), with its name and model; null when none that answers now can (no slot taken).</summary>
+    public BackgroundPlace? Find(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text, ThinkingRunsOn? where = null)
     {
         var rules = Places.Rules;
-        return Online.Where(member => Takes(member, kind, needs))
+        var runsOn = where ?? RunsOn(kind);
+        var smartFirst = runsOn.Mode == ThinkingRunsOnMode.PreferSmart;
+        return Online.Where(member => Takes(member, kind, needs) && ThinkingRunsOnRules.Allows(member, runsOn))
             .OrderBy(member => Limits.Cooling(member) ? 1 : 0)
-            .ThenBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
+            .ThenBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenByDescending(member => smartFirst ? (int)member.Smarts : 0)
+            .ThenBy(member => member.Standing).FirstOrDefault();
     }
 
     // A member takes a job when the owner lets it take the job's kind (Quick jobs, Long jobs), it can do what the job needs, the
@@ -447,25 +513,37 @@ public sealed class ThinkingJobBoard
     {
         var needs = job.Required;
         var pool = Members;
+        var where = job.RunsOn ?? RunsOn(job.Kind);
         var capable = pool.Where(member => member.Takes(job.Kind) && (member.Can & needs) == needs).ToArray();
-        if (capable.Length == 0) return ThinkingJobResult.NoMember(needs);
+        if (capable.Length == 0) return Note(job, where, ThinkingJobResult.NoMember(needs));
         // The members that could do it are all external and may not receive pictures or recordings: the caller's fallback runs.
-        if (!capable.Any(member => member.MayReceive(needs))) return ThinkingJobResult.NoConsent(needs, capable);
+        if (!capable.Any(member => member.MayReceive(needs))) return Note(job, where, ThinkingJobResult.NoConsent(needs, capable));
         capable = [.. capable.Where(member => member.MayReceive(needs))];
+        // Runs on: Smart only and These members keep the other members out (a step of its own, after what members take, can do
+        // and may receive).
+        var allowed = capable.Where(member => ThinkingRunsOnRules.Allows(member, where)).ToArray();
+        if (allowed.Length == 0)
+            return Note(job, where, new(ThinkingJobOutcome.NoMember, null, null, null, ThinkingRunsOnRules.NoMember(where, needs), 0));
+        capable = allowed;
         // A computer that refused such a request as invalid gets no more of them until its rest ends; the caller's fallback runs.
         if (capable.All(member => Rests(member, needs)))
-            return new(ThinkingJobOutcome.NoMember, null, null, null,
-                $"{string.Join(", ", capable.Select(member => member.Name))} refused such a request as invalid a short time ago", 0);
+            return Note(job, where, new(ThinkingJobOutcome.NoMember, null, null, null,
+                $"{string.Join(", ", capable.Select(member => member.Name))} refused such a request as invalid a short time ago", 0));
         capable = [.. capable.Where(member => !Rests(member, needs))];
-        if (!capable.Any(Places.Answers)) return ThinkingJobResult.Offline(needs);
+        if (!capable.Any(Places.Answers)) return Note(job, where, ThinkingJobResult.Offline(needs));
         // A job dropped when stale doesn't wait for members whose providers ask Martlet to wait longer than it may: the caller's
         // fallback runs at once.
         if (job.DropWhenStale && Limits.Now(capable).Where(c => c.Until is not null).ToArray() is { Length: > 0 } cooling &&
             capable.Where(Places.Answers).All(member => cooling.Any(c => c.Id == member.Id && c.Until > clock.GetUtcNow() + job.Timeout)))
-            return new(ThinkingJobOutcome.NoMember, null, null, null, string.Join("; ", cooling.Select(c => c.Describe(clock.GetUtcNow()))), 0);
-        var demand = ThinkingDemand.For(job.Kind, pool, job.Priority);
+            return Note(job, where, new(ThinkingJobOutcome.NoMember, null, null, null, string.Join("; ", cooling.Select(c => c.Describe(clock.GetUtcNow()))), 0));
+        var demand = ThinkingDemand.For(job.Kind, pool, job.Priority) with { SmartFirst = where.Mode == ThinkingRunsOnMode.PreferSmart };
         var priority = demand.Priority;
         var front = false;
+        // Prefer smart: until this time the job waits only for the smartest members that answer; then any member it may use.
+        var preferWait = ThinkingRunsOnRules.PreferWait(job.Timeout);
+        DateTimeOffset? preferUntil = where.Mode == ThinkingRunsOnMode.PreferSmart ? clock.GetUtcNow() + preferWait : null;
+        ThinkingSmarts? waitedFor = null;
+        string? placed = null;
         using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
         HashSet<string> tried = new(StringComparer.Ordinal);
@@ -473,8 +551,8 @@ public sealed class ThinkingJobBoard
         ThinkingPoolCooling? cooled = null;
         string? problem = null;
         int attempts = 0, preemptions = 0, priorityStops = 0, retries = 0, conversationStops = 0;
-        ThinkingJobResult Ended(ThinkingJobResult result) =>
-            result with { Preemptions = preemptions, PriorityStops = priorityStops, Retries = retries, Priority = priority };
+        ThinkingJobResult Ended(ThinkingJobResult result) => Note(job, where,
+            result with { Preemptions = preemptions, PriorityStops = priorityStops, Retries = retries, Priority = priority, Placed = placed });
         ThinkingJobResult Stale()
         {
             // Every capable member was held for the live conversation (or it was stopped for it): say so.
@@ -509,8 +587,31 @@ public sealed class ThinkingJobBoard
                 return Ended(new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "every member that could do it is offline", attempts));
             BackgroundPlaceLease lease;
             var asked = demand with { Priority = priority, PreemptsLower = policy.PreemptLowerPriority, Front = front };
-            try { lease = await Places.AcquireAsync(left, holder, waiting.Token, asked, preemptible: true).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested) { return Stale(); }
+            // Prefer smart: while its short wait lasts, only the smartest members that answer may take it. A member whose provider
+            // asks Martlet to wait (no slot now) is passed over, as a busy one is after the wait.
+            var choose = left;
+            ThinkingSmarts? top = null;
+            if (preferUntil is { } until && clock.GetUtcNow() < until &&
+                left.Where(member => Places.Answers(member) && Limits.SlotsNow(member) > 0).ToArray() is { Length: > 0 } ready)
+            {
+                top = ready.Max(member => member.Smarts);
+                if (left.Any(member => member.Smarts < top)) choose = [.. left.Where(member => member.Smarts >= top)];
+                else top = null;
+            }
+            using (var prefer = top is null ? null : new CancellationTokenSource(preferUntil!.Value - clock.GetUtcNow(), clock))
+            using (var asking = prefer is null ? null : CancellationTokenSource.CreateLinkedTokenSource(waiting.Token, prefer.Token))
+            {
+                try { lease = await Places.AcquireAsync(choose, holder, asking?.Token ?? waiting.Token, asked, preemptible: true).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (prefer?.IsCancellationRequested == true && !waiting.IsCancellationRequested)
+                {
+                    // None of the smartest came free in time: a less smart member may take it now.
+                    waitedFor = top;
+                    preferUntil = null;
+                    continue;
+                }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { return Stale(); }
+            }
+            placed = Why(where, lease.Place, waitedFor, preferWait);
             front = false;
             var pause = false;
             using (lease)
@@ -610,6 +711,31 @@ public sealed class ThinkingJobBoard
 
     private static string Wait(TimeSpan time) => time < TimeSpan.FromSeconds(1) ? $"{time.TotalMilliseconds:0} ms" : BackgroundJobs.Duration(time);
 
+    // Why a job went to member, as its Runs on says.
+    private static string Why(ThinkingRunsOn where, BackgroundPlace member, ThinkingSmarts? waitedFor, TimeSpan preferWait) => where.Mode switch
+    {
+        ThinkingRunsOnMode.SmartOnly => $"Smart only: {member.Name} is Smart",
+        ThinkingRunsOnMode.Members => $"These members: {member.Name} is one of them",
+        ThinkingRunsOnMode.PreferSmart when waitedFor is { } wanted && member.Smarts < wanted =>
+            $"Prefer smart: no {wanted} member came free within {Wait(preferWait)}, so a {member.Smarts} one",
+        ThinkingRunsOnMode.PreferSmart => $"Prefer smart: {member.Name} ({member.Smarts}) is the smartest member that came free",
+        _ => "Any member: the free member that shares least with the conversation"
+    };
+
+    // Keeps where a job went and why (the latest few, for the status file), and gives back its result with its Runs on.
+    private ThinkingJobResult Note(ThinkingJob job, ThinkingRunsOn where, ThinkingJobResult result)
+    {
+        var noted = result with { RunsOn = where.Name };
+        var smarts = noted.MemberId is { } id ? Members.FirstOrDefault(member => member.Id == id)?.Smarts : null;
+        lock (placements)
+        {
+            placements.Enqueue(new(clock.GetUtcNow(), ThinkingJobKinds.Name(job.Kind), where.Name, noted.MemberId, noted.Member, smarts,
+                noted.Outcome.ToString(), noted.Placed ?? noted.Problem ?? ""));
+            while (placements.Count > MaxPlacements) placements.Dequeue();
+        }
+        return noted;
+    }
+
     /// <summary>What the pool does now, with guidance in plain words.</summary>
     public ThinkingPoolStatus Status()
     {
@@ -620,12 +746,20 @@ public sealed class ThinkingJobBoard
         return status with
         {
             Policy = Policy(),
+            RunsOn = ThinkingJobKinds.All.ToDictionary(ThinkingJobKinds.Name, kind => RunsOn(kind).Name),
+            Placements = Placed(),
             StoppedForPriority = Volatile.Read(ref stoppedForPriority), Raised = Volatile.Read(ref raised), Retried = Volatile.Read(ref retried),
             Resting = [.. rests.Values.Where(rest => rest.Until > now && pool.Any(member => member.Id == rest.Id)).OrderBy(rest => rest.Id, StringComparer.Ordinal)],
             Members = [.. status.Members.Select(m => cooling.FirstOrDefault(c => c.Id == m.Id) is { } c ? m with { CoolsUntil = c.Until } : m)],
             Cooling = cooling,
             Guidance = [.. status.Guidance, .. cooling.Select(c => c.Describe(now) + ".")]
         };
+    }
+
+    /// <summary>The latest jobs: where each went and why, newest first (no job text).</summary>
+    public IReadOnlyList<ThinkingPoolPlacement> Placed()
+    {
+        lock (placements) return [.. placements.Reverse()];
     }
 
     /// <summary>The status of <paramref name="pool"/> on <paramref name="places"/>.</summary>
@@ -637,7 +771,7 @@ public sealed class ThinkingJobBoard
         var members = pool.Select(member => new ThinkingPoolMemberStatus(member.Id, member.Name, member.Slots,
             Math.Min(member.Slots, leases.Where(l => l.Place.Id == member.Id).Sum(l => l.Whole ? member.Slots : 1)), member.Can, member.Rank)
         {
-            Online = places.Answers(member), Media = member.Media, SlotsNow = places.Room(member)
+            Online = places.Answers(member), Media = member.Media, SlotsNow = places.Room(member), Smarts = member.Smarts
         }).ToArray();
         var online = members.Where(m => m.Online).ToArray();
         var slots = online.Sum(m => m.Slots);

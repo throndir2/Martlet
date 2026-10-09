@@ -269,7 +269,7 @@ public partial class MainWindow
         {
             var wait = CheckIns.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now, homeSettings?.Prompts,
                 checkInFired.GetValueOrDefault(checkIn.Id));
-            if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs))
+            if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs, checkIn.RunsOn))
                 wait = CheckInNoMember(checkIn);
             checkInWaits[checkIn.Id] = wait ?? "";
             if (wait is null && next is null && (now is null ? (checkIn.Triggers != CheckInTriggers.None) == triggered : checkIn.Id == now) &&
@@ -281,7 +281,8 @@ public partial class MainWindow
 
     private static string CheckInNoMember(CheckIn checkIn, bool ran = false) =>
         $"no Thinking pool member {(ran ? "could" : "can")} take it" +
-        (checkIn.Needs == ThinkingCapability.Text ? "" : $" (it needs a model for {CheckIns.Describe(checkIn.Needs)})");
+        (checkIn.Needs == ThinkingCapability.Text ? "" : $" (it needs a model for {CheckIns.Describe(checkIn.Needs)})") +
+        (checkIn.RunsOn is { Mode: not ThinkingRunsOnMode.Any } where ? $" on its Runs on ({where.Describe()})" : "");
 
     /// <summary>The microphone and what this PC plays keep their last seconds only while a check-in that is on asks for them, on
     /// a companion PC.</summary>
@@ -783,7 +784,7 @@ public partial class MainWindow
         if (CheckInFixture() is not null) return $"{count}. FIXTURE - NOT AI: {CheckInFixtureVariable} answers them, not the Thinking pool.";
         if (conversation.ThinkingPool.Find(ThinkingJobKind.CheckIn) is not { } member)
             return $"{count}, but they wait: the Thinking pool has no member that can take them. Add one on Thinking pool.";
-        var unable = CheckIns.All(checkInSettings).Where(c => c.On && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs)).ToArray();
+        var unable = CheckIns.All(checkInSettings).Where(c => c.On && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs, c.RunsOn)).ToArray();
         return $"{count}. They run on the Thinking pool ({member.Name}{(member.Model is { } model ? ", " + model : "")} first), never on the " +
             "conversation's own Thinking model." + (unable.Length == 0 ? ""
                 : $" {string.Join(", ", unable.Select(c => c.Name))} {(unable.Length == 1 ? "waits" : "wait")} for a member that can take " +
@@ -829,7 +830,8 @@ public partial class MainWindow
             checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text, checkIn.Screenshot, checkIn.Recording, checkIn.RecordingSeconds,
             checkIn.Script ?? "", checkIn.ToolSets)
             {
-                Triggers = checkIn.Triggers, FromHour = checkIn.FromHour, UntilHour = checkIn.UntilHour, MostPerHour = checkIn.MostPerHour
+                Triggers = checkIn.Triggers, FromHour = checkIn.FromHour, UntilHour = checkIn.UntilHour, MostPerHour = checkIn.MostPerHour,
+                RunsOn = checkIn.RunsOn
             }, autoSave);
         // Only what differs from Martlet's own is kept, so a later Martlet can improve the rest.
         builtIns.Add((id, () =>
@@ -849,7 +851,8 @@ public partial class MainWindow
                 FromHour = edit.FromHour == standard.FromHour ? null : edit.FromHour,
                 UntilHour = edit.UntilHour == standard.UntilHour ? null : edit.UntilHour,
                 MostPerHour = edit.MostPerHour == standard.MostPerHour ? null : edit.MostPerHour,
-                ToolSets = edit.ToolSets.SequenceEqual(standard.ToolSets) ? null : edit.ToolSets
+                ToolSets = edit.ToolSets.SequenceEqual(standard.ToolSets) ? null : edit.ToolSets,
+                RunsOn = edit.RunsOn
             };
         }));
         on.Checked += (_, _) => autoSave.SaveNowAsync().Forget();
@@ -934,6 +937,8 @@ public partial class MainWindow
         public int FromHour { get; init; } = CheckIns.DefaultFromHour;
         public int UntilHour { get; init; } = CheckIns.DefaultUntilHour;
         public int MostPerHour { get; init; }
+        /// <summary>Where it runs in the Thinking pool; null: like other check-ins (the check-in kind's Runs on).</summary>
+        public ThinkingRunsOn? RunsOn { get; init; }
     }
 
     /// <summary>The controls every check-in card shares, built-in or your own: Its answer, then what it gets to know, when it
@@ -1150,6 +1155,10 @@ public partial class MainWindow
             "cloud service. The microphone and what this PC plays are kept in memory, only while a check-in that is on asks for " +
             "them and Martlet hears them. " + CheckInLengthHelp, "CheckInNeeds-" + id));
         view.Children.Add(needs);
+        // Where it runs in the Thinking pool: like other check-ins, or its own choice.
+        var (runsOnView, readRunsOn) = RunsOnPicker("CheckInRunsOn-" + id, "CheckInRunsOnMember-" + id, name, start.RunsOn, inherit: true,
+            ThinkingPoolSettings.Load(store?.DataDirectory), SaveNow);
+        view.Children.Add(runsOnView);
         return (outcome, view, () => new CheckInEdit(
             factBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInFacts.None, (all, b) => all | b.Fact),
             conditionBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInConditions.None, (all, b) => all | b.Condition),
@@ -1162,7 +1171,8 @@ public partial class MainWindow
         {
             Triggers = triggerBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInTriggers.None, (all, b) => all | b.Trigger),
             FromHour = Math.Max(0, fromHour.SelectedIndex), UntilHour = Math.Max(0, untilHour.SelectedIndex),
-            MostPerHour = CheckIns.MostPerHourChoices[Math.Max(0, mostPerHour.SelectedIndex)]
+            MostPerHour = CheckIns.MostPerHourChoices[Math.Max(0, mostPerHour.SelectedIndex)],
+            RunsOn = readRunsOn()
         });
     }
 
@@ -1189,7 +1199,7 @@ public partial class MainWindow
             Needs = current.Custom ? checkInSettings.Custom.First(c => c.Id == id).Needs : checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text,
             Screenshot = current.Screenshot, Recording = current.Recording, RecordingSeconds = current.RecordingSeconds,
             Script = current.Script ?? "", Triggers = current.Triggers, FromHour = current.FromHour, UntilHour = current.UntilHour,
-            MostPerHour = current.MostPerHour, ToolSets = current.ToolSets
+            MostPerHour = current.MostPerHour, ToolSets = current.ToolSets, RunsOn = current.RunsOn
         };
         if (SaveCheckIns(checkInSettings.With(copy), $"Copied {current.Name} as {copy.Name}, a check-in of your own. It's off until you turn it on."))
             RenderTab();
@@ -1298,7 +1308,8 @@ public partial class MainWindow
         var (outcome, choices, read) = CheckInEditor(id, custom.Name, new CheckInEdit(custom.Facts, custom.Conditions, custom.Outcome,
             custom.Needs, custom.Screenshot, custom.Recording, custom.RecordingSeconds, custom.Script, custom.ToolSets)
             {
-                Triggers = custom.Triggers, FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour
+                Triggers = custom.Triggers, FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour,
+                RunsOn = custom.RunsOn
             }, autoSave);
         var task = new TextBox
         {
@@ -1321,7 +1332,7 @@ public partial class MainWindow
                 Task = task.Text.Replace("\r\n", "\n", StringComparison.Ordinal), Facts = edit.Facts, Conditions = edit.Conditions,
                 Outcome = edit.Outcome, Needs = edit.Needs, Screenshot = edit.Screenshot, Recording = edit.Recording,
                 RecordingSeconds = edit.RecordingSeconds, Script = edit.Script, Triggers = edit.Triggers, FromHour = edit.FromHour, UntilHour = edit.UntilHour,
-                MostPerHour = edit.MostPerHour, ToolSets = edit.ToolSets
+                MostPerHour = edit.MostPerHour, ToolSets = edit.ToolSets, RunsOn = edit.RunsOn
             };
         });
         void Typed()
@@ -1469,7 +1480,10 @@ public partial class MainWindow
                     id = c.Id, name = c.Name, custom = c.Custom, on = c.On, everyMinutes = c.EveryMinutes, outcome = c.Outcome.ToString(),
                     facts = c.Facts.ToString(), conditions = c.Conditions.ToString(), prompt = c.PromptId,
                     changed = !c.Custom && checkInSettings.Choice(c.Id) is { } choice && choice != new CheckInChoice(choice.On, choice.EveryMinutes),
-                    needs = c.Needs.ToString(), canRun = member is not null && conversation!.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs),
+                    needs = c.Needs.ToString(), canRun = member is not null && conversation!.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs, c.RunsOn),
+                    // Its own Runs on (null: the check-in kind's, on Companion › Thinking pool) and the member it would go to first.
+                    runsOn = c.RunsOn is { } where ? new { mode = where.Name, members = where.Members } : null,
+                    firstMember = member is null ? null : conversation!.ThinkingPool.Find(ThinkingJobKind.CheckIn, c.Needs, c.RunsOn)?.Name,
                     screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds, script = c.RunsScript,
                     toolSets = c.ToolSets,

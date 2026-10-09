@@ -312,7 +312,27 @@ conversation model when no member takes long jobs), the members' boxes,
 (*In the pool*: unticking keeps the computer out, ticking adds it again) save
 `thinking-pool.json`, so they need `--allow-ui-effects`.
 
-The pool follows which computers answer
+Each member also has `ThinkingPoolSmarts-<n>`, its *Smarts* (`Guessed: Smart`
+first, then `Fast`, `Standard`, `Smart`). Martlet guesses it from the model
+name: about 4B or less is Fast, about 26B or more and big cloud models such as
+Nemotron are Smart, others are Standard. The *Runs on* card has
+`ThinkingPoolRunsOn-<kind>` for each kind (`think-longer`, `research`,
+`check-in`, `memory`, `naming`, `touch-zones`, `digest`, `end-of-turn-judge`,
+`barge-in-judge`) with *Any member* (the default), *Prefer smart*, *Smart only*
+and *These members*, and `ThinkingPoolRunsOnMember-<kind>-<n>` for each member
+under *These members*. Each check-in card has `CheckInRunsOn-<id>` (first
+*Like other check-ins*) and `CheckInRunsOnMember-<id>-<n>` under *More
+settings*. All of them save `thinking-pool.json` or `check-ins.json`, so they
+need `--allow-ui-effects`. `thinking_pool_status` gives each member `smarts`,
+`smartsGuess` and `smartsChosen`, and `runsOn` for each kind (`mode`, `members`
+and `may`, the members the kind may use). `thinking-pool-status.json` gives each
+member `smarts` and `smartsGuessed`, `runsOn` for each kind, and `placements`:
+the latest jobs with the member each went to, its smarts, the outcome and `why`
+(for example *Prefer smart: no Smart member came free within 30 s, so a
+Standard one*). `check-ins-status.json` gives each check-in its own `runsOn`
+(null: the kind's) and `firstMember`. The `thinking_pool_check` steps *runs on*
+and the `check_ins_check` step *Runs on on its card* check these rules with
+the production board.
 ([Computers that go offline](CONVERSATION.md#computers-that-go-offline)).
 `thinking-pool-status.json` gives each member `online` (whether its computer
 answers now) and `offlineSince`, and the pool `slots` and `free` (members that

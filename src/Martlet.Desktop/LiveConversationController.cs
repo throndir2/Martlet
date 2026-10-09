@@ -3230,8 +3230,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // soon as it answers again.
         var pool = Placing(DeepPool(configured), live);
         var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool));
+        var runsOn = LongRunsOn(places, ThinkingJobKind.ThinkLonger);
+        if (runsOn.Why is { } none)
+        {
+            tools?.Record(server, ThinkLonger.Name, "not started: unavailable", ThinkLonger.Label(task!), false);
+            ErrorLog.Info($"Background thinking: a new think wasn't started ({none})");
+            return new(checkIn is null ? ThinkLonger.Unavailable(none) : BackgroundWorkTools.NotStarted("Deep thinking can't run right now") + "\n" + none, true);
+        }
+        places = runsOn.Places;
         var thinkingRoute = configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
-        var start = jobs.Start(ThinkLonger.Kind(settings, ThinkLonger.Slots(places)), ThinkLonger.Label(task!), async (job, token) =>
+        var start = jobs.Start(ThinkLonger.Kind(settings, ThinkLonger.Slots(places)) with { SmartFirst = runsOn.SmartFirst }, ThinkLonger.Label(task!), async (job, token) =>
         {
             // The place the broker picked for it: a free slot on the place sharing least with the conversation and kept free
             // for no other work, waiting in line for the first that frees up when every one is busy.
@@ -3413,15 +3421,24 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // Members that are offline now stay in the list: the broker passes over them until they answer again.
             var pool = Placing(DeepPool(configured), live);
             var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, choices: Volatile.Read(ref thinkingPool));
+            // A song's lyrics are a think: they run where thinking longer's Runs on says.
+            var runsOn = LongRunsOn(places, ThinkingJobKind.ThinkLonger);
+            if (runsOn.Why is { } none)
+            {
+                tools?.Record(server, SongTools.SingName, "not started: lyrics needed", label, false);
+                return new(SongTools.WriteLyricsYourself(none), true);
+            }
+            places = runsOn.Places;
             where = places.Count == 1
-                ? pool.Usable[0].Settings is { Separate: true } only ? only.Describe() : thinkingModel
+                ? pool.Find(places[0].Id)?.Settings is { Separate: true } only ? only.Describe() : thinkingModel
                 : $"whichever of {places.Count} Thinking pool members is free";
             var task = SongTools.WritingTask(configured.Prompts, arguments);
             writer = async (holder, wait) =>
             {
                 var runtime = SongRuntime();
                 // The broker's choice, as for a think: waits in line while every place is busy.
-                var lease = await jobs.Places.AcquireAsync(places, holder, wait, ThinkingDemand.For(ThinkingJobKind.ThinkLonger, places)).ConfigureAwait(false);
+                var lease = await jobs.Places.AcquireAsync(places, holder, wait,
+                    ThinkingDemand.For(ThinkingJobKind.ThinkLonger, places) with { SmartFirst = runsOn.SmartFirst }).ConfigureAwait(false);
                 var spot = pool.Find(lease.Place.Id)!;
                 var place = spot.Settings;
                 var at = place.Separate ? place.Describe() : thinkingModel;

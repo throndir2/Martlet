@@ -531,6 +531,42 @@ always may receive them and show no box. Ticking the box saves the key in
 `MediaAllowed` in `thinking-pool.json` (a file without this list reads as
 empty); removing the member clears it.
 
+#### Smarts and Runs on
+
+Each member has a *Smarts* level (`ThinkingPoolSmarts-<n>`): Fast, Standard or
+Smart (`ThinkingSmarts`). Martlet guesses it from the model name
+(`ThinkingSmartsGuess`): a size of about 4B or less (`gemma4:e2b`, `qwen3:4b`)
+is Fast, about 26B or more (`gemma4:27b`, `llama3.3:70b`, the 30B in
+`qwen3-30b-a3b`) is Smart, and a name without a size is Smart for big cloud
+families (Nemotron, GPT-4/5, Claude, Gemini, DeepSeek and others), else
+Standard. The owner can change it; the choice is saved by member key in
+`Smarts` in `thinking-pool.json`.
+
+The *Runs on* card sets where each kind of job runs (`RunsOnByKind`, by kind
+name; a missing kind is *Any member*). A check-in card can set its own Runs on
+(`CheckInChoice.RunsOn`, `CustomCheckIn.RunsOn`; null is *Like other
+check-ins*), which goes with its job (`ThinkingJob.RunsOn`) and comes before the
+kind's. The job board applies it as its own step, after Quick jobs, Long jobs,
+what a member can do and May receive pictures and recordings:
+
+- *Any member*: as before.
+- *Prefer smart*: the job waits only for the smartest members that answer for a
+  short time (`ThinkingRunsOnRules.PreferWait`: a quarter of its timeout, at
+  most 30 s). Then any member it may use takes it. Thinking longer, research
+  and a song's lyrics take the smartest free member at once
+  (`ThinkingDemand.SmartFirst`), and wait in line for any member when all are
+  busy.
+- *Smart only*: only Smart members. Without one that can do the job, the job
+  gets *no member* and its caller uses its fallback (a judge its simple rules,
+  `think_longer` its unavailable message).
+- *These members*: only the chosen members (by key). With none chosen, the job
+  gets *no member*.
+
+Runs on never changes the live conversation's own Thinking model or the start
+of its requests: the `think_longer` and research tool definitions stay the same.
+`thinking-pool-status.json` gives the latest jobs in `placements`, each with the
+member it went to and why.
+
 Quick jobs and Long jobs are on for every member. Unticking one saves the key
 in `NoQuickJobs` or `NoLongJobs` in `thinking-pool.json` (a file without these
 lists reads as every member taking every job). Removing a member clears its

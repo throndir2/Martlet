@@ -43,7 +43,11 @@ public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHo
     /// <summary>A <see cref="Notice"/> kind's own prompts (a check-in's): null uses a due reminder's.</summary>
     public NoticeWording? Wording { get; init; }
 
-    internal ThinkingDemand? Demand(IReadOnlyList<BackgroundPlace> pool) => PoolKind is { } kind ? ThinkingDemand.For(kind, pool) : null;
+    /// <summary>Its work takes the smartest free place first (Runs on: Prefer smart, <see cref="ThinkingDemand.SmartFirst"/>).</summary>
+    public bool SmartFirst { get; init; }
+
+    internal ThinkingDemand? Demand(IReadOnlyList<BackgroundPlace> pool) =>
+        PoolKind is { } kind ? ThinkingDemand.For(kind, pool) with { SmartFirst = SmartFirst } : null;
 }
 
 /// <summary>How the conversation is told about a notice kind's jobs: the prompt of the reply Martlet starts on its own
