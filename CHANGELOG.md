@@ -16,6 +16,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Thinking, Voice, Listening and Lip-sync now list their models, voice engines, apps and providers as short rows you can compare at a glance: each row says what it runs on, how much graphics memory it takes and how fast it is. Pick one to see everything about it (such as whether a voice can laugh, which languages it speaks, its license, what a provider costs and what leaves your PC), or press **Compare them** for a side-by-side table. *If Thinking fails* now has a clear **Off**. ([#660](https://github.com/throndir2/Martlet/pull/660))
 - Every Companion page now starts with **Now**: one line that says what the page uses and what stops it, such as "Tools: 3 MCP servers on, the terminal off." Speech bubbles, People, Tools, Smart home, Discord and Messaging then show their main choice with a clear **Off**, and the settings follow. ([#654](https://github.com/throndir2/Martlet/pull/654))
 
 ## [0.61.0] - 2026-10-08
