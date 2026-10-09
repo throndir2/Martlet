@@ -406,6 +406,8 @@ public partial class MainWindow
                 homeSettings?.Companion?.Personas.Select(p => p.Text)));
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
+            // Touch zones saved before reaction lists get the list they play now (the active persona's temperament is known now).
+            characterTouchZones.FillLists();
             // The talk window stays open while you change things in Companion: it picks up a saved change once Martlet is free.
             if (openConversation is { IsReady: true } talking && loaded.Revision is { } revision &&
                 (conversation?.Configuration is { } current ? revision != current.Revision : LiveConversationConfiguration.From(loaded) is not null))
