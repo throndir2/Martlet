@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Your own check-ins can now know how you touched the character: pokes, pats, holds, strokes with their path, and moves from the last 10 minutes, each with when, which were intimate, how the personality feels about them and the places you keep coming back to. Tick **How you touched the character** or put `{touches}` in the prompt. It runs only on your Thinking pool, so replies don't wait for it and still get your touches. ([#674](https://github.com/throndir2/Martlet/pull/674))
 - Each touch zone can now have an **Autoplays** list of emotes and gestures that play by themselves, one after another, after the zone's reaction. Pick the emotes and how many seconds each one shows. Zone rows are simpler (rest and box moved under **Details**), and new **Reset reactions** and **Reset all zones** buttons ask first, then put zones back as for a fresh character. ([#672](https://github.com/throndir2/Martlet/pull/672))
 
 - When Ollama on your PC keeps stopping, Home and Companion › Thinking now show Ollama's own error instead of "Ollama isn't running". If the cause is a models folder that was moved to another drive and linked back (Ollama 0.40.1 and later refuse that link), Martlet points Ollama at the real folder by itself, backs up Ollama's settings first and tells you what it changed. ([#669](https://github.com/throndir2/Martlet/pull/669))
