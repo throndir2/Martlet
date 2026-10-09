@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Every Companion page now starts with **Now**: one line that says what the page uses and what stops it, such as "Tools: 3 MCP servers on, the terminal off." Speech bubbles, People, Tools, Smart home, Discord and Messaging then show their main choice with a clear **Off**, and the settings follow. ([#654](https://github.com/throndir2/Martlet/pull/654))
+
 ## [0.61.0] - 2026-10-08
 
 ### Added
