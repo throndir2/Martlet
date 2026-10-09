@@ -94,6 +94,10 @@ public static class PromptCatalog
     public const string CheckInPromises = "check_in_promises";
     public const string CheckInCharacter = "check_in_character";
     public const string CheckInRepeats = "check_in_repeats";
+    public const string CheckInWelcome = "check_in_welcome";
+    public const string CheckInUnanswered = "check_in_unanswered";
+    public const string CheckInCall = "check_in_call";
+    public const string CheckInOthers = "check_in_others";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInContext = "check_in_context";
@@ -211,6 +215,29 @@ public static class PromptCatalog
         "tell {name} what it keeps repeating and what to do instead, like: You said the boss fight looked intense three times " +
         "in 10 minutes; don't bring it up again unless something changes, and talk about something new. If it doesn't, nothing " +
         "needs doing.";
+
+    public const string DefaultCheckInWelcomeInstructions =
+        "The user just came back to their PC, where {name}, their desktop companion, lives.\n{away}\n\n{activity}\n\n" +
+        "Decide whether {name} should welcome them back now, in one short, warm line in character, and mention what happened " +
+        "while they were away only when it matters to them (a finished task, a missed reminder). If they are busy (in a call, " +
+        "a game in full screen) or they were away only briefly and nothing happened, nothing needs saying.";
+
+    public const string DefaultCheckInUnansweredInstructions =
+        "{name}, the user's desktop companion, asked the user something a few minutes ago and got no answer, though the user " +
+        "is at the PC.\n\n{conversation}\n\nWhat {name} said lately, oldest first, each with when:\n{said}\n\n{activity}\n\n" +
+        "Decide whether {name} should follow up once, softly and briefly (a gentle nudge, never repeating the question word for " +
+        "word), or let it go because the user is busy or the question didn't matter. Nothing needs saying when it should let it go.";
+
+    public const string DefaultCheckInCallInstructions =
+        "What the user does on their PC just changed.\n{activity}\n\nIf a call or voice chat just started, tell {name}, " +
+        "their desktop companion, to keep quiet while it lasts: don't speak up on its own, and keep any reply very short. If a " +
+        "call or voice chat just ended, tell {name} it may talk as usual again. If neither happened, nothing needs doing.";
+
+    public const string DefaultCheckInOthersInstructions =
+        "{name} is the user's desktop companion. It heard these voices lately:\n{people}\n\nIf someone other than the user " +
+        "seems to be here, tell {name} not to share private things it knows about the user (memories, plans, health, " +
+        "relationships, anything personal) in front of others, and to be a little more reserved until they are alone. If only " +
+        "the user is here, nothing needs doing.";
 
     public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. {answer}";
 
@@ -891,7 +918,23 @@ public static class PromptCatalog
             "first), each with when it said it (\"10:05 PM (12 min ago)\"). Check-ins: each check adds the answer format (a " +
             "REMIND: line or OK).",
             DefaultCheckInRepeatsInstructions, ["name", "said"]),
-        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
+        new(CheckInWelcome, CheckInGroup, "Check-in: welcome back",
+            "What Welcome back checks, when the user comes back to the PC after 10 minutes or more away. {away} says how long " +
+            "they were away and what happened meanwhile (what Martlet said, background work that finished, reminders that came " +
+            "due), and {activity} what they seem to be doing now. Check-ins: each check adds the answer format (a SAY: line or OK).",
+            DefaultCheckInWelcomeInstructions, ["name", "away", "activity"]),
+        new(CheckInUnanswered, CheckInGroup, "Check-in: unanswered question",
+            "What Unanswered question checks, when Martlet's last remark asked something and the user, at the PC, didn't answer " +
+            "for a few minutes. Check-ins: each check adds the answer format (a SAY: line or OK).",
+            DefaultCheckInUnansweredInstructions, ["name", "conversation", "said", "activity"]),
+        new(CheckInCall, CheckInGroup, "Check-in: on a call",
+            "What On a call checks, when a game, a call or a full-screen app starts or ends. {activity} is what the user seems to " +
+            "be doing now and before. Check-ins: each check adds the answer format (a REMIND: line or OK).",
+            DefaultCheckInCallInstructions, ["name", "activity"]),
+        new(CheckInOthers, CheckInGroup, "Check-in: someone else is here",
+            "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
+            "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
+            DefaultCheckInOthersInstructions, ["name", "people"]),        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
             "Wraps the prompt of every check-in, built-in or your own. {task} is the check-in's prompt with its placeholders " +
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
