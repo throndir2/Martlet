@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- A new **Thinking requests** page in the side menu shows everything your companions ask the Thinking pool to do: what each request is for, which companion asked, its type and priority, where it runs, its retries, and how long it waited and ran. **Timing by type** sums up wait and run times since Martlet started. ([#690](https://github.com/throndir2/Martlet/pull/690))
 - Thinking pool machines outside this PC and your paired computers (a cloud provider or another computer's endpoint) now get check-ins and summaries with a screenshot or a recording only after you tick **May receive pictures and recordings** for them on Companion › Thinking pool. Text-only jobs still go to them. ([#698](https://github.com/throndir2/Martlet/pull/698))
 - Check-ins have a new tool set, **Discord calls and camera**: after a reply, the Thinking pool can call the Discord friend you asked for or change Martlet's webcam background in your Discord call, so the reply itself doesn't stop to do it. ([#696](https://github.com/throndir2/Martlet/pull/696))
 - Check-ins can now change Martlet's memory with the new **Memory** tool set: they find, remember, correct, give to someone else and forget facts after a reply, so Martlet can hand that work off and answer sooner. Martlet can still look up what it remembers while it replies. ([#697](https://github.com/throndir2/Martlet/pull/697))
