@@ -638,7 +638,8 @@ lingering emotes still fit, does the gaze a reply chose still fit, did the
 character keep its promises, did it stay in character, does it keep saying the
 same things, and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
-instructions. A reminder for the next reply goes in the notes of that one
+instructions. A reminder for the next reply, or what a check-in adds to what
+Martlet knows, goes in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
 each run with words and counts only (`Check-ins:`).
 
@@ -682,9 +683,10 @@ makes every check-in read its answer from that file instead of asking the
 Thinking pool (FIXTURE - NOT AI; read again before each run, and check-ins run
 then without a pool member). `CheckInsNow` and each run's member say *FIXTURE -
 NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
-`REMIND:` line and a `SAY:` line answers both kinds of the owner's own
-check-ins, so *Check now* shows the whole flow on a disposable data directory:
-a reminder waiting for the next reply, or something Martlet brings up.
+`REMIND:` line, a `SAY:` line and a `KNOW:` line answers all three kinds of
+the owner's own check-ins that use a line, so *Check now* shows the whole flow
+on a disposable data directory: a reminder waiting for the next reply,
+something Martlet brings up, or background for the next reply.
 
 ## Local MCP control (Windows)
 
@@ -4506,7 +4508,16 @@ wanted), `own: waits for the sound it records`, `own: the message carries what
 it took` (a real FIXTURE script, `Write-Output ('FIXTURE ' + (6 * 7))`, run by
 the production `TerminalRunner`, a FIXTURE picture and recording) and
 `own: only a capable member takes it` (a text-only member never gets it; a
-member with vision and audio gets the picture and the sound). `passed` and
+member with vision and audio gets the picture and the sound). Three
+`context:` steps check *Adds to what Martlet knows*: `context: asked and read`
+(an own check-in's message asks for a `KNOW:` line or `OK`, and a fixture
+member's `KNOW:` bullet after a `<think>` block is read on a production job
+board), `context: goes with one request` (the description, wrapped in
+*Check-in: adds to what Martlet knows*, goes on a production context board as
+`check-in-c7` with one request only, is dropped after
+`CheckIns.ContextAge` (3 minutes) and is not posted when that prompt is
+emptied) and `context: nothing changes nothing` (`KNOW: nothing to add`, `OK`,
+a `REMIND:` line and chatter post nothing). `passed` and
 each step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
