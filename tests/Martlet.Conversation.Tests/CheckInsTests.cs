@@ -454,4 +454,27 @@ public sealed class CheckInsTests
         Refused(Inputs() with { Script = null! });
         new CheckInSettings().With(Inputs() with { Needs = ThinkingCapability.None }).Validate();
     }
+
+    [Fact]
+    public void ACheckInCanRunEveryMinuteAndRecordAWholeMinute()
+    {
+        Assert.Equal(1, CheckIns.EveryChoices[0]);
+        Assert.Equal(60, CheckIns.RecordingChoices[^1]);
+        new CheckInSettings().With(CheckIns.Emotes, true, 1).Validate();
+        new CheckInSettings().With(Inputs() with { EveryMinutes = 1, RecordingSeconds = 60 }).Validate();
+        var slow = Assert.Throws<ContractException>(() => new CheckInSettings().With(Inputs() with { EveryMinutes = 3 }).Validate());
+        Assert.Contains("every 1, 2, 5, 10, 15, 30, 60 or 120 minutes", slow.Message);
+        var longer = Assert.Throws<ContractException>(() => new CheckInSettings().With(Inputs() with { RecordingSeconds = 90 }).Validate());
+        Assert.Contains("5, 10, 15, 30 or 60 seconds", longer.Message);
+
+        // A minute of the microphone fits a request; a conversation message still carries at most 30 seconds.
+        var format = new Martlet.Core.Audio.PcmFormat { SampleRate = 16_000, Channels = 1, Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian };
+        var minute = BoundedWaveAudio.FromPcm(format, new byte[16_000 * 2 * 60]);
+        var job = CheckIns.Prepare(CheckIns.Of(Inputs() with { RecordingSeconds = 60 }), State() with { Recording = minute }, null)!;
+        Assert.Contains("A recording of the last 60 seconds of the user's microphone is attached.", job.Text);
+        Assert.Same(minute, new BoundedTextInput(job.Text, job.Instructions, audio: job.Audio).Audio);
+        Assert.Throws<ContractException>(() =>
+            new BoundedTextInput("x", audio: BoundedWaveAudio.FromPcm(format, new byte[16_000 * 2 * 61])));
+        Assert.Equal(30, BoundedTextInput.MessageAudioSeconds);
+    }
 }

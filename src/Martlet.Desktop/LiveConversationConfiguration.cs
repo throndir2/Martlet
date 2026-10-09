@@ -812,14 +812,14 @@ internal sealed class LiveConversationConfiguration
     /// an audio model of its own (<paramref name="audio"/> has one), the recording goes to it, never to Thinking.</summary>
     internal static string HearingDisclosure(SetupRoute? route, SenseRoute? audio = null) => audio is { Model: not null } own
         ? "When this is on and the audio model can hear, the recording of what you say (up to " +
-          $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) goes to {own.Name}, the audio model, with the last lines of the " +
+          $"{BoundedTextInput.MessageAudioSeconds:0} seconds a message) goes to {own.Name}, the audio model, with the last lines of the " +
           "conversation. It describes how you sound (tone, laughter, sighs, other voices, background sounds) in words for Thinking, " +
           "which gets the transcript and those words, never the recording. With the audio model in Ollama on this PC (not a cloud " +
           "model) it is on unless you turn it off, since the recording never leaves this PC; anywhere else (another server here " +
           "included) it stays off until you tick it. Speech-to-text still runs for every message. Recordings are never saved, added " +
           "to Memory or sent to Thinking. Audio may use more quota or cost more than text."
         : "When this is on and the Thinking model can hear, the recording of what you say (up to " +
-        $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}, " +
+        $"{BoundedTextInput.MessageAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}, " +
         "straight away on its own or with the transcript (When Thinking can hear you), so it hears your tone as well as your " +
         "words. With Thinking in Ollama on this PC (not a cloud model) it is on unless you turn it off, " +
         "since the recording never leaves this PC; anywhere else (another server here included) it stays off until you tick it. " +
