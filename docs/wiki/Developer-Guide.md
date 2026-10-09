@@ -57,4 +57,14 @@ Doctor status is read-only and does not open devices or provider connections.
 
 Use disposable data. `-AllowUiEffects` never authorizes spending, real provider requests, credential handling, audio capture/playback or data disclosure.
 
-More detail: [Contributing](https://github.com/throndir2/Martlet/blob/main/CONTRIBUTING.md), [Validation](https://github.com/throndir2/Martlet/blob/main/docs/VALIDATION.md), [Diagnostics](https://github.com/throndir2/Martlet/blob/main/docs/DIAGNOSTICS.md), [MCP](https://github.com/throndir2/Martlet/blob/main/docs/MCP.md).
+## Cleaning up
+
+```powershell
+.\scripts\Clean-Martlet.ps1 -WhatIf   # show the build output and old temporary folders it removes
+.\scripts\Clean-Martlet.ps1           # remove them from this checkout
+.\scripts\Clean-Martlet.ps1 -Git      # developer only: prune worktrees, delete merged branches, git gc
+```
+
+Each worktree can grow to several GB of `bin\`, `obj\` and `node_modules\`. The script removes only ignored, generated folders and never tracked files or uncommitted work.
+
+More detail: [Contributing](https://github.com/throndir2/Martlet/blob/main/CONTRIBUTING.md), [Validation](https://github.com/throndir2/Martlet/blob/main/docs/VALIDATION.md), [Cleanup](https://github.com/throndir2/Martlet/blob/main/docs/CLEANUP.md), [Diagnostics](https://github.com/throndir2/Martlet/blob/main/docs/DIAGNOSTICS.md), [MCP](https://github.com/throndir2/Martlet/blob/main/docs/MCP.md).

@@ -40,6 +40,9 @@ Docker on your PC or a Linux box over key-based SSH. See
    you could not run (**NOT RUN** with the reason).
 5. Merge once validation is green. Coding agents merge their own validated pull
    requests.
+6. Free the disk space your builds used: `.\scripts\Clean-Martlet.ps1 -WhatIf`,
+   then `.\scripts\Clean-Martlet.ps1`. See
+   [Cleaning up disk space](docs/CLEANUP.md).
 
 ## Ground rules
 

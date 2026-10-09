@@ -202,6 +202,24 @@ Verify the PR is merged and its result is present on freshly fetched
 `origin/main`; a successful push or pending auto-merge is not completion.
 Report integrated delivery versus local/open/blocked work accurately.
 
+## Clean up before you finish
+
+Martlet builds make much output that Git ignores: each worktree grew to
+2.7-4.5 GB, mostly `bin\`, `obj\` and `node_modules\`. Many worktrees made
+checkouts and session archiving very slow. [Cleaning up disk space](docs/CLEANUP.md)
+tells what Martlet makes, where, its size and how to remove it.
+
+1. Before you finish a session, stop the processes you started from your
+   checkout (Desktop, MCP server, worker hosts).
+2. Make sure `artifacts\validation\summary.md` is in the PR description.
+3. Run `.\scripts\Clean-Martlet.ps1` to remove your checkout's build output and
+   old disposable `%TEMP%` folders. Use `-WhatIf` first to see what it removes.
+4. Clean only your own checkout. Use `-AllWorktrees` or `-Git` (shared Git
+   housekeeping) only when the developer asks.
+5. Never delete tracked files, uncommitted work, unmerged branches or another
+   session's worktree. Never use `git clean -x`, `git gc --prune=now` or
+   `git worktree remove --force` for cleanup.
+
 ## Authorization boundaries
 
 Autonomous delivery does not authorize spending, sensitive-data disclosure,
