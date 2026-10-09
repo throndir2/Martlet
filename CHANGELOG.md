@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Thinking, Voice, Listening and Lip-sync now list their models, voice engines, apps and providers as short rows you can compare at a glance: each row says what it runs on, how much graphics memory it takes and how fast it is. A long list shows the main choices first, and **Show more** lists the rest. Pick one to see everything about it (such as whether a voice can laugh, which languages it speaks, its license, what a provider costs and where your data goes), or press **Compare them** for a side-by-side table. *If Thinking fails* now has a clear **Off**, and the Optional extras' lists show at most four rows too. ([#660](https://github.com/throndir2/Martlet/pull/660))
+
 ## [0.62.0] - 2026-10-08
 
 ### Added
@@ -20,7 +24,6 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
-- Thinking, Voice, Listening and Lip-sync now list their models, voice engines, apps and providers as short rows you can compare at a glance: each row says what it runs on, how much graphics memory it takes and how fast it is. Pick one to see everything about it (such as whether a voice can laugh, which languages it speaks, its license, what a provider costs and what leaves your PC), or press **Compare them** for a side-by-side table. *If Thinking fails* now has a clear **Off**. ([#660](https://github.com/throndir2/Martlet/pull/660))
 - The Optional extras (Vision, Reading, Hearing, Thinking pool, Smart home, Singing and Pictures) now look alike: **Now** first, then the main choice with a clear **Off**, then their settings. Each choice is one short row with its key facts, such as graphics memory, download size, speed, cost, where your data goes and its license, and **Compare them** puts them side by side. How Martlet hears your tone has its own **Hearing** page, and Singing can now be turned off without removing it. ([#659](https://github.com/throndir2/Martlet/pull/659))
 - Companion › Thinking pool is now one simple list of your machines. Each one shows what it reads and writes, its slots, and badges such as *Waits while you talk*, *Costs money* and *Offline*. Tick *Quick jobs*, *Long jobs* or *Backup for slow replies* on each machine, and *In the pool* on each paired computer. A paired computer's slots are set on that computer with **Change model**. Martlet still keeps your replies first by itself. ([#658](https://github.com/throndir2/Martlet/pull/658))
 - Every Companion page now starts with **Now**: one line that says what the page uses and what stops it, such as "Tools: 3 MCP servers on, the terminal off." Speech bubbles, People, Tools, Smart home, Discord and Messaging then show their main choice with a clear **Off**, and the settings follow. ([#654](https://github.com/throndir2/Martlet/pull/654))
