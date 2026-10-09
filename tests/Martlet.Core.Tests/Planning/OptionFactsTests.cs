@@ -119,14 +119,17 @@ public sealed class OptionFactsTests
         Assert.Equal(["runs-on", "cost", "speed"], nvidia.Take(3).Select(f => f.Key));
         var facts = nvidia.ToDictionary(f => f.Key);
         Assert.Equal("free tier", facts["cost"].Short);
-        Assert.StartsWith("needed", facts["key"].Value, StringComparison.Ordinal);
-        Assert.Equal("leaves this PC: NVIDIA Build gets your messages", facts["data"].Value);
+        Assert.Equal("your own key", facts["key"].Value);
+        Assert.Equal("sent to NVIDIA Build", facts["data"].Value);
+        Assert.StartsWith("NVIDIA Build gets your messages", facts["data"].Help, StringComparison.Ordinal);
         Assert.Contains("reliability", facts.Keys);
 
         var custom = OptionFacts.Hosted("the server", null, null, keyNeeded: false, "your messages").ToDictionary(f => f.Key);
         Assert.Equal("depends on the server", custom["cost"].Value);
+        Assert.Equal("only if the server asks", custom["key"].Value);
         Assert.Null(custom["cost"].Short);
         Assert.DoesNotContain("evidence", custom.Keys);
+        Assert.DoesNotContain("evidence", facts.Keys);
         var gemini = OptionFacts.Hosted("Google Gemini", null, true, true, "your messages", hears: true, sees: true).ToDictionary(f => f.Key);
         Assert.Equal("hears", gemini["hears"].Short);
     }

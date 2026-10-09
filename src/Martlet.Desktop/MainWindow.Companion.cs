@@ -1170,7 +1170,7 @@ public partial class MainWindow
                 saved is null ? null : JobOptions.ProviderKey(saved), Lowered(job.Sent), role == SetupRole.Llm ? ChatCompletionsEndpointCatalog.NvidiaBuildId : null)
             .Select(option => option with { Details = () => CloudFields(section, job, cloudRoute, providers.First(p => JobOptions.ProviderKey(p) == option.Key)) })
             .ToList();
-        return OptionPicker(id, "Cloud provider", null, options);
+        return OptionPicker(id, "Cloud provider", null, options, rows: 3);
     }
 
     private static string Lowered(string text) => text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
@@ -1297,7 +1297,8 @@ public partial class MainWindow
             getKey.HorizontalAlignment = HorizontalAlignment.Left;
             yield return getKey;
         }
-        yield return Note(OpenAiSetup.Disclosure, new Thickness(0, 10, 0, 0));
+        // What leaves this PC and what it costs are in the facts above (their help adds OpenAiSetup.Disclosure) and in the box.
+        consent.ToolTip = OpenAiSetup.Disclosure;
         yield return consent;
         // A cloud provider is a commitment (a key, data sent elsewhere, possible costs), so it stays an explicit action named for
         // what it does rather than an automatic save.

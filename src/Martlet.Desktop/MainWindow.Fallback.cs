@@ -60,7 +60,8 @@ public partial class MainWindow
                 "yet, Martlet asks this provider instead. Screen and camera glances use it too, so choose a model that can see images.",
                 new Thickness(0, 0, 0, 8)),
             now,
-            OptionPickerBody("Fallback", options));
+            // Off and the recommended provider; Show N more lists the others.
+            OptionPickerBody("Fallback", options, rows: 2));
     }
 
     /// <summary>The fields of fallback provider <paramref name="p"/>: its address (a custom server), model, key, the consent box

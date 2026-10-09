@@ -94,7 +94,7 @@ public sealed class JobOptionsTests
         Assert.Equal("recommended", thinking["nvidia-build"].Badge);
         Assert.Equal("free tier", thinking["nvidia-build"].Facts.Single(f => f.Key == "cost").Short);
         Assert.Equal("paid", thinking["openai"].Facts.Single(f => f.Key == "cost").Short);
-        Assert.Equal("leaves this PC: OpenAI gets your messages", thinking["openai"].Facts.Single(f => f.Key == "data").Value);
+        Assert.Equal("sent to OpenAI", thinking["openai"].Facts.Single(f => f.Key == "data").Value);
         Assert.Equal("hears", thinking["google-gemini"].Facts.Single(f => f.Key == "hears").Short);
 
         var fallback = JobOptions.Providers(MainWindow.FallbackProviders, Martlet.Core.Planning.PlanComponent.Thinking, null, "your messages")

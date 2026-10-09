@@ -90,14 +90,21 @@ public static class OptionFacts
         ArgumentNullException.ThrowIfNull(option);
         // A model that doesn't hear says so in a compact row too: its replies wait for the transcript.
         // Ollama runs natively on this PC, so the host service's Docker need is left out.
+        // Short values, so most facts sit two to a line in the details.
         var facts = Of(option).Where(f => f.Key is not ("evidence" or "needs"))
-            .Select(f => f.Key == "hears" && f.Short is null ? f with { Short = "transcript" } : f).ToList();
+            .Select(f => f.Key switch
+            {
+                "hears" => f with { Value = option.HearsAudio ? "yes, your recording itself" : "no, the transcript", Short = f.Short ?? "transcript" },
+                "runs-on" when option.Gpu == GpuRequirement.AnyGpu => f with { Value = "a graphics card of any brand" },
+                _ => f
+            }).ToList();
         if (callsTools is { } tools)
-            facts.Add(new("tools", "Calls tools", tools ? "yes: it can use Martlet's tools while you talk" : "no",
-                null, "Whether it can call tools (smart home, MCP servers) while it answers."));
+            facts.Add(new("tools", "Calls tools", tools ? "yes" : "no", null,
+                "Whether it can call tools (smart home, MCP servers) while it answers."));
         if (option.IsLocal)
-            facts.Add(new("context", "Context", "8,192 tokens in the graphics memory above; Test model shows what Ollama gives it",
-                null, "How much of the conversation it reads at once. A longer context takes more graphics memory."));
+            facts.Add(new("context", "Context", "8,192 tokens, as measured", null,
+                "How much of the conversation it reads at once; the graphics memory above is for this much. A longer context takes " +
+                "more graphics memory. Test model shows what Ollama gives it."));
         if (option.IsLocal && option.UsesGpu) facts.Add(Fits(option, cardGb, comfortableGb));
         facts.Add(Of(option).Single(f => f.Key == "evidence"));
         return Lead(facts, "fits", "vram", "speed", "hears");
@@ -111,15 +118,16 @@ public static class OptionFacts
         ArgumentNullException.ThrowIfNull(option);
         const string help = "Whether this PC's graphics card holds it with room left for a game and Martlet's character.";
         if (cardGb is not { } card)
-            return new("fits", "Fits this PC", "no graphics card found here, so it runs on the processor, much slower", "no card here", help);
+            return new("fits", "Fits this PC", "no card: the processor, slowly", "no card here",
+                help + " Without a graphics card it runs on the processor, much slower.");
         // A "12 GB" card reports a little less.
         if (comfortableGb <= card + 0.5)
-            return new("fits", "Fits this PC", $"yes: your {Gb(card)} GB card has room for it, a game and Martlet's character", null, help);
+            return new("fits", "Fits this PC", $"yes, with room to spare", null, help + $" This PC's card has {Gb(card)} GB.");
         return option.GpuGb <= card
-            ? new("fits", "Fits this PC", $"only just: it fits your {Gb(card)} GB card, with little room left for a game or the character",
-                "tight here", help)
-            : new("fits", "Fits this PC", $"no: it takes about {Gb(option.GpuGb)} GB and your card has {Gb(card)} GB, so part of it " +
-                "runs on the processor, much slower", "too big here", help);
+            ? new("fits", "Fits this PC", "only just: little room left", "tight here",
+                help + $" It fits this PC's {Gb(card)} GB card, with little room left for a game or the character.")
+            : new("fits", "Fits this PC", $"no: it takes {Gb(option.GpuGb)} GB", "too big here",
+                help + $" This PC's card has {Gb(card)} GB, so part of it runs on the processor, much slower.");
     }
 
     /// <summary>A voice's facts: <see cref="Of"/> its footprint (null: a cloud voice, <paramref name="cloud"/> names its
@@ -187,8 +195,9 @@ public static class OptionFacts
         return Lead(facts, "runs-on", "speed", "languages");
     }
 
-    /// <summary>A cloud provider's or server's facts: where it runs, what it costs, whether it needs a key, what leaves this
-    /// PC (<paramref name="sent"/>, which <paramref name="name"/> gets: "your messages and recent conversation"), and from <paramref name="option"/> (null when
+    /// <summary>A cloud provider's or server's facts, in values short enough to sit two to a line: where it runs, what it costs,
+    /// whether it needs a key, that your data goes to it (<paramref name="sent"/>, what <paramref name="name"/> gets, is in the
+    /// fact's help: "your messages and recent conversation"), and from <paramref name="option"/> (null when
     /// Martlet has no numbers for it) how soon it answers, its quality, hearing and seeing and how reliable it is.
     /// <paramref name="hears"/> and <paramref name="sees"/> fill in for a provider without an option. Online, its cost and
     /// its speed lead.</summary>
@@ -196,26 +205,33 @@ public static class OptionFacts
         bool? hears = null, bool? sees = null)
     {
         ArgumentNullException.ThrowIfNull(name);
+        // Short values, so most facts sit two to a line in the details.
         List<OptionFact> facts = option is null
-            ? [new("runs-on", "Runs on", "online: nothing runs on your computers", "Online")]
-            : [.. Of(option).Where(f => f.Key is not ("cost" or "evidence"))];
+            ? [new("runs-on", "Runs on", "online, not on your computers", "Online")]
+            : [.. Of(option).Where(f => f.Key is not ("cost" or "evidence"))
+                .Select(f => f.Key switch
+                {
+                    "runs-on" => f with { Value = "online, not on your computers" },
+                    "hears" => f with { Value = option.HearsAudio ? "yes, your recording itself" : "no, the transcript" },
+                    _ => f
+                })];
         if (option is null && hears is { } hearing)
-            facts.Add(new("hears", "Hears your voice", hearing ? "yes: it takes your recording itself" : "no: it gets the transcript",
-                hearing ? "hears" : null));
+            facts.Add(new("hears", "Hears your voice", hearing ? "yes, your recording itself" : "no, the transcript", hearing ? "hears" : null,
+                "A model that hears needs no speech-to-text before it answers."));
         if (option is null && sees is { } seeing) facts.Add(new("sees", "Sees pictures", seeing ? "yes" : "no", seeing ? "sees" : null));
         facts.Add(new("cost", "Cost", free switch
         {
-            true => "free tier: free within its limits",
-            false => "paid: each request costs money",
+            true => "free within its limits",
+            false => "paid per request",
             _ => "depends on the server"
         }, free switch { true => "free tier", false => "paid", _ => null }, "What it costs to use."));
-        facts.Add(new("key", "API key", keyNeeded ? $"needed: your own {name} key, saved in Windows Credential Manager" : "only if the server asks for one",
-            null, "What you need before it works."));
-        facts.Add(new("data", "Your data", $"leaves this PC: {name} gets {sent}", null, "What is sent where."));
+        facts.Add(new("key", "API key", keyNeeded ? "your own key" : "only if the server asks", null,
+            "What you need before it works. Martlet keeps a key in Windows Credential Manager."));
         if (option is { Reliability: not OptionReliability.High })
-            facts.Add(new("reliability", "Reliability", "free endpoints limit requests, go down and retire models now and then", null,
-                "How dependable it is."));
-        if (option is not null) facts.Add(Of(option).Single(f => f.Key == "evidence"));
+            facts.Add(new("reliability", "Reliability", "may limit or retire models", null,
+                "Free endpoints limit requests, go down and retire models now and then."));
+        facts.Add(new("data", "Your data", $"sent to {name}", null,
+            $"{name} gets {sent}, only when you talk or start something; saving settings sends nothing."));
         return Lead(facts, "runs-on", "cost", "speed");
     }
 

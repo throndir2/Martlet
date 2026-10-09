@@ -186,9 +186,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "SingingHost-", "HealthCheck-", "HealthOpen-",
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // An option picker's choice ("Picker-VoiceEngine-chatterbox", "Picker-Pictures-Off") only shows that option's details
-        // below the list, and its Compare ("PickerCompare-VoiceEngine") only shows or hides the table; the details' own button
-        // commits (and needs --allow-ui-effects). MainWindow.OptionPicker.cs.
-        "Picker-", "PickerCompare-",
+        // below the list, its Compare ("PickerCompare-VoiceEngine") only shows or hides the table, and its Show N more
+        // ("PickerMore-VoiceEngine") only shows or hides the rows past the first four; the details' own button commits (and needs
+        // --allow-ui-effects). MainWindow.OptionPicker.cs.
+        "Picker-", "PickerCompare-", "PickerMore-",
         // Devices' list filters ("DeviceFilter-attention") only filter the cards shown.
         "DeviceFilter-",
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
