@@ -49,6 +49,14 @@ public partial class MainWindow
     private static TimeSpan CheckInKept => TimeSpan.FromSeconds(CheckIns.RecordingChoices[^1]);
     // A buffer that kept nothing new for this long doesn't hear now (the capture stopped).
     private static TimeSpan CheckInFresh => TimeSpan.FromSeconds(2);
+    // Check-in triggers: the touches of a burst until they settle (TouchDebounce.Quiet after the last one), the trigger each
+    // check-in keeps until it runs or it is too old (a newer one replaces it), the last one fired, and the triggered check-in that
+    // runs now, beside a paced one, so a triggered check-in never waits behind a paced one.
+    private readonly TouchTriggers checkInTouches = new();
+    private readonly DispatcherTimer checkInTouchesSettle = new() { Interval = TouchDebounce.Quiet };
+    private readonly Dictionary<string, CheckInTrigger> checkInFired = new(StringComparer.Ordinal);
+    private CheckInTrigger? checkInFiredLast;
+    private string? checkInTriggeredRunning;
 
     private static readonly (CheckInFacts Fact, string Label, string Help)[] CheckInFactChoices =
     [
@@ -138,6 +146,26 @@ public partial class MainWindow
             "(Voice ID), since it last ran.")
     ];
 
+    // What can start a check-in at once, in the order of its It starts when boxes.
+    private static readonly (CheckInTriggers Trigger, string Label, string Help)[] CheckInTriggerChoices =
+    [
+        (CheckInTriggers.TouchesEnded, "Your touches end",
+            $"It runs about {TouchDebounce.Quiet.TotalSeconds:0.#} seconds after you stop touching the character (taps, pats, holds " +
+            "and strokes on zones Martlet notices)."),
+        (CheckInTriggers.IntimateTouch, "An intimate touch",
+            $"It runs after your touches stop, when they touched an intimate part ({CharacterTouchZones.IntimateParts})."),
+        (CheckInTriggers.StrokeAcrossZones, $"A stroke across {CheckIns.StrokeZones} zones",
+            $"It runs after your touches stop, when a stroke crossed {CheckIns.StrokeZones} or more zones Martlet notices."),
+        (CheckInTriggers.KeepsComingBack, "You keep coming back to one place",
+            $"It runs after your touches stop, when they touched a place you touched {TouchLedger.OftenTouches} times or more in the " +
+            $"last {TouchLedger.OftenWindow.TotalMinutes:0} minutes.")
+    ];
+
+    private const string CheckInTriggersHelp = "With one ticked, it runs only when one of them happens, a moment after your " +
+        "touches stop, and at most once per Every (Every is then the time it waits before it can run again). It runs on the " +
+        "Thinking pool, so a reply never waits for it. It still waits while it's off, while nobody uses this PC, for its " +
+        "conditions and for a pool member. With none ticked, it runs every few minutes.";
+
     // The answers a check-in can give, in the order of its Its answer list.
     private static readonly (CheckInOutcome Outcome, string Label)[] CheckInOutcomeChoices =
     [
@@ -167,6 +195,12 @@ public partial class MainWindow
         checkInSettings = settings;
         if (state == "unreadable") ErrorLog.Warn($"Check-ins: {CheckInSettings.FileName} couldn't be read, so the check-ins use their defaults.");
         checkInTimer.Tick += (_, _) => FollowCheckInsAsync().Forget();
+        // A trigger kept while its check-in waits (its pace, nobody at the PC...) runs at the next look once it may.
+        checkInTimer.Tick += (_, _) =>
+        {
+            if (checkInFired.Count > 0) FollowCheckInsAsync(triggered: true).Forget();
+        };
+        checkInTouchesSettle.Tick += (_, _) => CheckInTouchesSettled();
     }
 
     private void StartCheckIns()
@@ -182,8 +216,9 @@ public partial class MainWindow
     }
 
     /// <summary>Notes why each check-in waits now and returns the first one that may run (or the one the owner asked for
-    /// <paramref name="now"/>) with the facts it would get. Nothing runs.</summary>
-    private (CheckIn? Next, CheckInState? State) LookAtCheckIns(string? now = null)
+    /// <paramref name="now"/>) with the facts it would get: with <paramref name="triggered"/> only a check-in that starts on a
+    /// trigger (<see cref="CheckIn.Triggers"/>), otherwise only one that runs on its pace. Nothing runs.</summary>
+    private (CheckIn? Next, CheckInState? State) LookAtCheckIns(string? now = null, bool triggered = false)
     {
         var all = CheckIns.All(checkInSettings);
         KeepCheckInSound(all);
@@ -197,15 +232,20 @@ public partial class MainWindow
         conversation!.ReadThinkingPoolOnce();
         var state = CheckInStateNow();
         checkInExchanged = state.Exchanged;
+        foreach (var (id, old) in checkInFired.ToArray())
+            if (state.Now - old.At > CheckIns.TriggerAge) checkInFired.Remove(id);
         var fixture = CheckInFixture() is not null;
         CheckIn? next = null;
         foreach (var checkIn in all)
         {
-            var wait = CheckIns.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now, homeSettings?.Prompts);
+            var wait = CheckIns.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now, homeSettings?.Prompts,
+                checkInFired.GetValueOrDefault(checkIn.Id));
             if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs))
                 wait = CheckInNoMember(checkIn);
             checkInWaits[checkIn.Id] = wait ?? "";
-            if (wait is null && next is null && (now is null || checkIn.Id == now)) next = checkIn;
+            if (wait is null && next is null && (now is null ? (checkIn.Triggers != CheckInTriggers.None) == triggered : checkIn.Id == now) &&
+                checkIn.Id != checkInRunning && checkIn.Id != checkInTriggeredRunning)
+                next = checkIn;
         }
         return (next, state);
     }
@@ -223,15 +263,61 @@ public partial class MainWindow
         checkInPcSound.Wanted = companion && all.Any(c => c is { On: true, Recording: CheckInRecording.PcSound });
     }
 
-    /// <summary>One look at the check-ins: each says why it waits, and the first one that may run (or the one the owner asked
-    /// for <paramref name="now"/>) runs on the Thinking pool. Nothing while one runs.</summary>
-    private async Task FollowCheckInsAsync(string? now = null)
+    /// <summary>A touch Martlet noticed on the desktop character (<see cref="NoticePhysical"/>): while a check-in that is on starts
+    /// on touches, it counts toward the triggers of this burst, which fire once the touches settle
+    /// (<see cref="TouchDebounce.Quiet"/> after the last one). It reads the touch ledger and never takes from it.</summary>
+    private void CheckInTouched(PhysicalEvent physical)
     {
-        if (checkInRunning is not null || closing) return;
+        if (closing || conversation is null || !PhysicalKinds.IsTouch(physical.Kind)) return;
+        if (!CheckIns.All(checkInSettings).Any(c => c.On && c.Triggers != CheckInTriggers.None)) return;
+        checkInTouches.Touched(physical, conversation.Touches.Peek(conversation.TouchNow)?.Often);
+        checkInTouchesSettle.Stop();
+        checkInTouchesSettle.Start();
+        WriteCheckInStatus();
+    }
+
+    // The touches settled: they fire their triggers.
+    private void CheckInTouchesSettled()
+    {
+        checkInTouchesSettle.Stop();
+        if (closing || checkInTouches.Settle(DateTimeOffset.Now) is not { } fired) return;
+        FireCheckIns(fired);
+    }
+
+    /// <summary>Something that starts check-ins happened (<paramref name="fired"/>): each check-in that is on and starts on it
+    /// keeps it until it runs or it is older than <see cref="CheckIns.TriggerAge"/> (a newer one replaces it), and the triggered
+    /// check-ins are looked at at once, not at the next 15-second look. A new kind of trigger calls this with its flag.</summary>
+    internal void FireCheckIns(CheckInTrigger fired)
+    {
+        if (closing) return;
+        checkInFiredLast = fired;
+        var started = CheckIns.All(checkInSettings).Where(c => c.On && (c.Triggers & fired.Fired) != 0).ToArray();
+        foreach (var checkIn in started) checkInFired[checkIn.Id] = fired;
+        ErrorLog.Info($"Check-ins: {fired.Fired} fired ({fired.What}); " +
+            (started.Length == 0 ? "no check-in that is on starts on it." : $"it starts {string.Join(", ", started.Select(c => c.Name))}."));
+        if (started.Length > 0) FollowCheckInsAsync(triggered: true).Forget();
+        else
+        {
+            ShowCheckInsNow();
+            WriteCheckInStatus();
+        }
+    }
+
+    /// <summary>One look at the check-ins: each says why it waits, and the first one that may run (or the one the owner asked
+    /// for <paramref name="now"/>) runs on the Thinking pool. Nothing while one runs. With <paramref name="triggered"/>, the look
+    /// is for check-ins that start on a trigger: they run one at a time beside the paced ones, never behind them.</summary>
+    private async Task FollowCheckInsAsync(string? now = null, bool triggered = false)
+    {
+        if ((triggered ? checkInTriggeredRunning : checkInRunning) is not null || closing) return;
+        var ran = false;
         try
         {
-            var (next, state) = LookAtCheckIns(now);
-            if (next is not null) await RunCheckInAsync(next, state!, next.Id == now);
+            var (next, state) = LookAtCheckIns(now, triggered);
+            if (next is not null)
+            {
+                await RunCheckInAsync(next, state!, next.Id == now, triggered);
+                ran = triggered;
+            }
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or ContractException)
         {
@@ -242,11 +328,14 @@ public partial class MainWindow
             ShowCheckInsNow();
             WriteCheckInStatus();
         }
+        // Another check-in the same trigger started runs right after this one, not at the next look.
+        if (ran && checkInFired.Count > 0 && !closing) _ = Dispatcher.InvokeAsync(() => FollowCheckInsAsync(triggered: true).Forget());
     }
 
     /// <summary>Runs <paramref name="checkIn"/> on the Thinking pool and acts on its answer; its run is kept for the page, the
-    /// status file and when it is due next.</summary>
-    private async Task RunCheckInAsync(CheckIn checkIn, CheckInState state, bool now)
+    /// status file and when it is due next. With <paramref name="triggered"/> it runs in the triggered check-ins' place and uses
+    /// up the trigger it kept.</summary>
+    private async Task RunCheckInAsync(CheckIn checkIn, CheckInState state, bool now, bool triggered = false)
     {
         var focused = CheckIns.Focus(checkIn, state, now);
         var prompts = homeSettings?.Prompts;
@@ -255,7 +344,9 @@ public partial class MainWindow
             checkInWaits[checkIn.Id] = "its prompt is empty";
             return;
         }
-        checkInRunning = checkIn.Id;
+        if (triggered) checkInTriggeredRunning = checkIn.Id;
+        else checkInRunning = checkIn.Id;
+        var fired = triggered && checkInFired.Remove(checkIn.Id, out var trigger) ? trigger : null;
         ShowCheckInsNow();
         var began = Stopwatch.GetTimestamp();
         string result;
@@ -314,21 +405,26 @@ public partial class MainWindow
             }
         }
         catch (OperationCanceledException) { return; }
-        finally { checkInRunning = null; }
+        finally
+        {
+            if (triggered) checkInTriggeredRunning = null;
+            else checkInRunning = null;
+        }
         var elapsed = Stopwatch.GetElapsedTime(began);
         var uses = tools?.Uses ?? [];
         var at = DateTimeOffset.Now;
         var run = new CheckInRun(at, state.Exchanged, result, acted)
         {
             Member = member, Took = elapsed, Kept = kept, Gathered = gathered, ScriptHash = scriptHash ?? previous?.ScriptHash,
-            Recent = CheckIns.Recent(previous, at), Tools = uses
+            Recent = CheckIns.Recent(previous, at), Tools = uses, Trigger = fired?.What
         };
         checkInRuns[checkIn.Id] = run;
         checkInLast = (checkIn.Name, run);
         var counts = checkInCounts.GetValueOrDefault(checkIn.Id);
         checkInCounts[checkIn.Id] = (counts.Runs + 1, counts.Acted + (acted ? 1 : 0));
         checkInWaits[checkIn.Id] = "";
-        ErrorLog.Info($"Check-ins: {checkIn.Name}{(member is null ? "" : " ran on " + member)} in {elapsed.TotalSeconds:0.0} s" +
+        ErrorLog.Info($"Check-ins: {checkIn.Name}{(fired is null ? "" : $" (started by {fired.What})")}" +
+            $"{(member is null ? "" : " ran on " + member)} in {elapsed.TotalSeconds:0.0} s" +
             $"{(gathered is null ? "" : " with " + gathered)}: {result}{(uses.Count == 0 ? "" : " (" + CheckIns.ToolsText(uses) + ")")}.");
     }
 
@@ -521,7 +617,7 @@ public partial class MainWindow
     private async Task CheckInNowAsync(string id)
     {
         if (CheckIns.All(checkInSettings).FirstOrDefault(c => c.Id == id) is not { } checkIn) return;
-        if (checkInRunning is not null)
+        if (checkInRunning is not null || checkInTriggeredRunning == id)
         {
             ActionText.Text = "Another check-in runs now. Try again in a moment.";
             return;
@@ -644,13 +740,16 @@ public partial class MainWindow
     private string CheckInLine(string id)
     {
         if (CheckIns.All(checkInSettings).FirstOrDefault(c => c.Id == id) is not { } checkIn) return "";
-        var now = checkInRunning == id ? "Checking now."
+        var now = checkInRunning == id || checkInTriggeredRunning == id ? "Checking now."
             : !checkIn.On ? "Off."
             : checkInWaits.GetValueOrDefault(id) is { Length: > 0 } wait ? $"Waits: {wait}."
             : "Runs at the next chance.";
+        if (checkInFired.GetValueOrDefault(id) is { } fired && checkInTriggeredRunning != id)
+            now += $" A trigger fired at {fired.At.ToLocalTime():t} ({fired.What}).";
         if (checkInRuns.GetValueOrDefault(id) is not { } last) return now + " It hasn't run since Martlet started.";
         var counts = checkInCounts.GetValueOrDefault(id);
-        return $"{now} Last at {last.At.ToLocalTime():t}{(last.Member is { } member ? " on " + member : "")}: {last.Result}. " +
+        return $"{now} Last at {last.At.ToLocalTime():t}{(last.Member is { } member ? " on " + member : "")}" +
+            $"{(last.Trigger is { } trigger ? $" (started by {trigger})" : "")}: {last.Result}. " +
             (last.Tools.Count > 0 ? $"Tools it called: {CheckIns.ToolsText(last.Tools)}. " : "") +
             $"{counts.Runs} run{(counts.Runs == 1 ? "" : "s")} since Martlet started, {counts.Acted} acted on.";
     }
@@ -672,8 +771,10 @@ public partial class MainWindow
         lines.Add(() => status.Text = CheckInLine(id));
         var (outcome, choices, read) = CheckInEditor(id, checkIn.Name, new CheckInEdit(checkIn.Facts, checkIn.Conditions, checkIn.Outcome,
             checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text, checkIn.Screenshot, checkIn.Recording, checkIn.RecordingSeconds,
-            checkIn.Script ?? "", checkIn.ToolSets) { FromHour = checkIn.FromHour, UntilHour = checkIn.UntilHour, MostPerHour = checkIn.MostPerHour },
-            autoSave);
+            checkIn.Script ?? "", checkIn.ToolSets)
+            {
+                Triggers = checkIn.Triggers, FromHour = checkIn.FromHour, UntilHour = checkIn.UntilHour, MostPerHour = checkIn.MostPerHour
+            }, autoSave);
         // Only what differs from Martlet's own is kept, so a later Martlet can improve the rest.
         builtIns.Add((id, () =>
         {
@@ -688,6 +789,7 @@ public partial class MainWindow
                 Recording = edit.Recording == standard.Recording ? null : edit.Recording,
                 RecordingSeconds = edit.RecordingSeconds == standard.RecordingSeconds ? null : edit.RecordingSeconds,
                 Script = edit.Script == (standard.Script ?? "") ? null : edit.Script,
+                Triggers = edit.Triggers == standard.Triggers ? null : edit.Triggers,
                 FromHour = edit.FromHour == standard.FromHour ? null : edit.FromHour,
                 UntilHour = edit.UntilHour == standard.UntilHour ? null : edit.UntilHour,
                 MostPerHour = edit.MostPerHour == standard.MostPerHour ? null : edit.MostPerHour,
@@ -771,6 +873,7 @@ public partial class MainWindow
     private sealed record CheckInEdit(CheckInFacts Facts, CheckInConditions Conditions, CheckInOutcome Outcome, ThinkingCapability Needs,
         bool Screenshot, CheckInRecording Recording, int RecordingSeconds, string Script, IReadOnlyList<string> ToolSets)
     {
+        public CheckInTriggers Triggers { get; init; }
         public int FromHour { get; init; } = CheckIns.DefaultFromHour;
         public int UntilHour { get; init; } = CheckIns.DefaultUntilHour;
         public int MostPerHour { get; init; }
@@ -827,6 +930,14 @@ public partial class MainWindow
                 $"CheckInTools-{id}-{set.Id}");
             toolBoxes.Add((set.Id, box));
             toolSets.Children.Add(box);
+        }
+        var triggers = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var triggerBoxes = new List<(CheckInTriggers Trigger, CheckBox Box)>();
+        foreach (var (trigger, label, help) in CheckInTriggerChoices)
+        {
+            var box = Choice(label, start.Triggers.HasFlag(trigger), help, $"CheckInTrigger-{id}-{trigger}");
+            triggerBoxes.Add((trigger, box));
+            triggers.Children.Add(box);
         }
         // Only between these hours, and at most this many runs an hour.
         var hours = Enumerable.Range(0, 24).Select(CheckIns.Clock).ToArray();
@@ -958,6 +1069,12 @@ public partial class MainWindow
                 "waits for time and something new, but not the others."
         });
         view.Children.Add(conditions);
+        view.Children.Add(new TextBlock
+        {
+            Text = "It starts when (instead of every few minutes; point at each one to see when)", Margin = new Thickness(0, 4, 0, 0),
+            ToolTip = CheckInTriggersHelp
+        });
+        view.Children.Add(triggers);
         view.Children.Add(limits);
         view.Children.Add(new TextBlock { Text = "With each run it takes", Margin = new Thickness(0, 4, 0, 0) });
         var inputs = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
@@ -998,6 +1115,7 @@ public partial class MainWindow
             CheckIns.RecordingChoices[Math.Max(0, seconds.SelectedIndex)], script.Text.Replace("\r\n", "\n", StringComparison.Ordinal),
             [.. toolBoxes.Where(b => b.Box.IsChecked == true).Select(b => b.Set)])
         {
+            Triggers = triggerBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInTriggers.None, (all, b) => all | b.Trigger),
             FromHour = Math.Max(0, fromHour.SelectedIndex), UntilHour = Math.Max(0, untilHour.SelectedIndex),
             MostPerHour = CheckIns.MostPerHourChoices[Math.Max(0, mostPerHour.SelectedIndex)]
         });
@@ -1025,8 +1143,8 @@ public partial class MainWindow
             Facts = current.Facts, Conditions = current.Conditions, Outcome = current.Outcome,
             Needs = current.Custom ? checkInSettings.Custom.First(c => c.Id == id).Needs : checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text,
             Screenshot = current.Screenshot, Recording = current.Recording, RecordingSeconds = current.RecordingSeconds,
-            Script = current.Script ?? "", FromHour = current.FromHour, UntilHour = current.UntilHour, MostPerHour = current.MostPerHour,
-            ToolSets = current.ToolSets
+            Script = current.Script ?? "", Triggers = current.Triggers, FromHour = current.FromHour, UntilHour = current.UntilHour,
+            MostPerHour = current.MostPerHour, ToolSets = current.ToolSets
         };
         if (SaveCheckIns(checkInSettings.With(copy), $"Copied {current.Name} as {copy.Name}, a check-in of your own. It's off until you turn it on."))
             RenderTab();
@@ -1135,7 +1253,7 @@ public partial class MainWindow
         var (outcome, choices, read) = CheckInEditor(id, custom.Name, new CheckInEdit(custom.Facts, custom.Conditions, custom.Outcome,
             custom.Needs, custom.Screenshot, custom.Recording, custom.RecordingSeconds, custom.Script, custom.ToolSets)
             {
-                FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour
+                Triggers = custom.Triggers, FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour
             }, autoSave);
         var task = new TextBox
         {
@@ -1157,7 +1275,7 @@ public partial class MainWindow
                 EveryMinutes = CheckIns.EveryChoices[Math.Max(0, every.SelectedIndex)],
                 Task = task.Text.Replace("\r\n", "\n", StringComparison.Ordinal), Facts = edit.Facts, Conditions = edit.Conditions,
                 Outcome = edit.Outcome, Needs = edit.Needs, Screenshot = edit.Screenshot, Recording = edit.Recording,
-                RecordingSeconds = edit.RecordingSeconds, Script = edit.Script, FromHour = edit.FromHour, UntilHour = edit.UntilHour,
+                RecordingSeconds = edit.RecordingSeconds, Script = edit.Script, Triggers = edit.Triggers, FromHour = edit.FromHour, UntilHour = edit.UntilHour,
                 MostPerHour = edit.MostPerHour, ToolSets = edit.ToolSets
             };
         });
@@ -1198,6 +1316,7 @@ public partial class MainWindow
                 checkInRuns.Remove(id);
                 checkInCounts.Remove(id);
                 checkInWaits.Remove(id);
+                checkInFired.Remove(id);
                 RenderTab();
             }, id: "CheckInRemove-" + id)));
         return view;
@@ -1267,6 +1386,12 @@ public partial class MainWindow
             schemaVersion = 1,
             role = Role.ToString(),
             running = checkInRunning,
+            runningTriggered = checkInTriggeredRunning,
+            touches = new
+            {
+                settling = checkInTouches.Waiting, settleMs = (long)TouchDebounce.Quiet.TotalMilliseconds,
+                lastFired = checkInFiredLast is { } lastFired ? new { triggers = lastFired.Fired.ToString(), at = lastFired.At, what = lastFired.What } : null
+            },
             pool = new { canRun = member is not null, member = member?.Name, model = member?.Model, fixture = CheckInFixture() is not null },
             checkIns = CheckIns.All(checkInSettings).Select(c =>
             {
@@ -1281,6 +1406,10 @@ public partial class MainWindow
                     screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds, script = c.RunsScript,
                     toolSets = c.ToolSets,
+                    triggers = c.Triggers.ToString(),
+                    pending = checkInFired.GetValueOrDefault(c.Id) is { } fired
+                        ? new { triggers = fired.Fired.ToString(), at = fired.At, what = fired.What, expiresAt = fired.At + CheckIns.TriggerAge }
+                        : null,
                     waiting = checkInWaits.GetValueOrDefault(c.Id) is { Length: > 0 } wait ? wait : null,
                     hours = c.Conditions.HasFlag(CheckInConditions.Between) ? $"{CheckIns.Clock(c.FromHour)}-{CheckIns.Clock(c.UntilHour)}" : null,
                     mostPerHour = c.MostPerHour == 0 ? (int?)null : c.MostPerHour,
@@ -1290,6 +1419,7 @@ public partial class MainWindow
                     last = last is null ? null : new
                     {
                         at = last.At, result = last.Result, acted = last.Acted, member = last.Member, gathered = last.Gathered,
+                        trigger = last.Trigger,
                         ms = last.Took is { } took ? (long?)took.TotalMilliseconds : null,
                         // Each tool call: its set, the tool, the first line of what it answered and whether it failed.
                         tools = last.Tools.Select(t => new { set = t.Set, tool = t.Tool, result = t.Result, failed = t.Failed }).ToArray()

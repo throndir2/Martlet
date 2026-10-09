@@ -50,7 +50,7 @@ internal static class CheckInsCheck
                     needs = c.Needs.ToString(), screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds,
                     // Whether it runs a script and how long it is; never the script (the owner's own words).
-                    script = c.RunsScript, scriptCharacters = c.Script?.Length ?? 0,
+                    script = c.RunsScript, scriptCharacters = c.Script?.Length ?? 0, triggers = c.Triggers.ToString(),
                     hours = c.Conditions.HasFlag(CheckInConditions.Between) ? $"{CheckIns.Clock(c.FromHour)}-{CheckIns.Clock(c.UntilHour)}" : null,
                     mostPerHour = c.MostPerHour == 0 ? (int?)null : c.MostPerHour, toolSets = c.ToolSets
                 }).ToArray()
@@ -72,6 +72,9 @@ internal static class CheckInsCheck
         maximumScriptOutputCharacters = CheckIns.MaximumScriptOutputCharacters, scriptTimeoutSeconds = CheckIns.ScriptTimeout.TotalSeconds,
         jobKind = ThinkingJobKinds.Name(ThinkingJobKind.CheckIn), priority = ThinkingJobKinds.Priority(ThinkingJobKind.CheckIn).ToString(),
         fast = ThinkingJobKinds.IsFast(ThinkingJobKind.CheckIn), stoppedWhenLive = LiveFloorRules.Stops(ThinkingJobKind.CheckIn),
+        triggers = CheckIns.AllTriggers.ToString(), triggerAgeSeconds = CheckIns.TriggerAge.TotalSeconds,
+        touchesSettleMs = TouchDebounce.Quiet.TotalMilliseconds, strokeZones = CheckIns.StrokeZones,
+        oftenTouches = TouchLedger.OftenTouches, oftenWindowMinutes = TouchLedger.OftenWindow.TotalMinutes,
         signalWindowMinutes = CheckIns.SignalWindow.TotalMinutes, unansweredAfterMinutes = CheckIns.UnansweredAfter.TotalMinutes,
         unansweredWithinMinutes = CheckIns.UnansweredWithin.TotalMinutes, peopleWindowMinutes = CheckIns.PeopleWindow.TotalMinutes,
         mostPerHourChoices = CheckIns.MostPerHourChoices,
@@ -339,10 +342,107 @@ internal static class CheckInsCheck
 
         await OwnInputsAsync(Step, now, facts, cancellation);
         TouchesFact(Step, now, facts);
+        Triggers(Step, now, facts);
         await ContextAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
         await ToolsAsync(Step, facts, cancellation);
         return new { passed = ok, steps };
+    }
+
+    /// <summary>10. Check-in triggers with FIXTURE touches (NOT AI): saved and read back, what a burst of touches fires once it
+    /// settles (never taking a touch from the production TouchLedger), and when a check-in that starts on a trigger waits or runs.</summary>
+    private static void Triggers(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns." + Guid.NewGuid().ToString("N"));
+        var custom = new CustomCheckIn
+        {
+            Id = "c4", Name = "FIXTURE touches", On = true, EveryMinutes = 5, Task = "Describe the user's touches.",
+            Facts = CheckInFacts.Conversation, Outcome = CheckInOutcome.Note, Triggers = CheckInTriggers.IntimateTouch | CheckInTriggers.StrokeAcrossZones
+        };
+        try
+        {
+            var saved = new CheckInSettings().With(custom).With(CheckIns.Gaze, new CheckInChoice(true, 5) { Triggers = CheckInTriggers.TouchesEnded });
+            var wrote = saved.Save(folder);
+            var (read, state) = CheckInSettings.Read(folder);
+            var all = CheckIns.All(read);
+            var refused = false;
+            try { new CheckInSettings().With(custom with { Triggers = (CheckInTriggers)16 }).Validate(); }
+            catch (Martlet.Core.Contracts.ContractException) { refused = true; }
+            step("triggers: saved and read back", wrote && state == "loaded" && all.Single(c => c.Id == "c4").Triggers == custom.Triggers &&
+                all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
+                CheckIns.All(null).All(c => c.Triggers == CheckInTriggers.None) && refused,
+                new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); }
+            catch (IOException) { }
+        }
+
+        // FIXTURE touches through the production ledger: the groin was touched 5 times before (a reply took them), then a poke on
+        // the chest and a stroke from the tail over the buttocks to the groin.
+        var ledger = new TouchLedger();
+        var watch = new TouchTriggers();
+        var at = TimeSpan.FromMinutes(30);
+        for (var i = 0; i < 5; i++)
+            ledger.Record(new(PhysicalKind.Tap, at + TimeSpan.FromSeconds(i * 20), "FIXTURE your groin", "groin", Zones: ["FIXTURE your groin"], Intimate: true));
+        ledger.Drain(at + TimeSpan.FromSeconds(100));
+        PhysicalEvent[] burst =
+        [
+            new(PhysicalKind.Tap, at + TimeSpan.FromSeconds(110), "FIXTURE your chest", "chest", Zones: ["FIXTURE your chest"]),
+            new(PhysicalKind.Moved, at + TimeSpan.FromSeconds(111), Detail: "to another monitor"),
+            new(PhysicalKind.Stroke, at + TimeSpan.FromSeconds(112), Zones: ["FIXTURE your tail", "FIXTURE your buttocks", "FIXTURE your groin"],
+                Label: "tail, buttocks and groin", Detail: "slowly", Intimate: true)
+        ];
+        foreach (var physical in burst)
+        {
+            ledger.Record(physical);
+            watch.Touched(physical, ledger.Peek(physical.At)?.Often);
+        }
+        var waiting = watch.Waiting;
+        var fired = watch.Settle(now);
+        var kept = ledger.Peek(at + TimeSpan.FromSeconds(113));
+        watch.Touched(new(PhysicalKind.Pat, at + TimeSpan.FromSeconds(200), "FIXTURE the top of your head", "top of head", Zones: ["FIXTURE the top of your head"]));
+        var plain = watch.Settle(now);
+        watch.Touched(new(PhysicalKind.Zoomed, at + TimeSpan.FromSeconds(210), Detail: "in"));
+        var none = watch.Settle(now);
+        step("triggers: fixture touches fire them", waiting && fired is { } all4 &&
+            all4.Fired == (CheckInTriggers.TouchesEnded | CheckInTriggers.IntimateTouch | CheckInTriggers.StrokeAcrossZones | CheckInTriggers.KeepsComingBack) &&
+            all4.What.StartsWith("2 touches, an intimate one, a stroke across 3 zones, one place touched 6 times", StringComparison.Ordinal) &&
+            !all4.What.Contains("FIXTURE", StringComparison.Ordinal) && kept is { Touches: 3 } && plain?.Fired == CheckInTriggers.TouchesEnded &&
+            none is null && !watch.Waiting,
+            new
+            {
+                fired = fired?.Fired.ToString(), what = fired?.What, ledgerStillHolds = kept?.HistoryLine, plainPat = plain?.Fired.ToString(),
+                zoomOnly = none?.Fired.ToString() ?? "nothing"
+            });
+
+        // When a check-in that starts on a trigger waits or runs: only on one of its own triggers, not older than TriggerAge, at
+        // most once per its pace, and never held by the conversation being busy (the touch reply); its other waits still apply.
+        var checkIn = CheckIns.Of(custom);
+        var paced = CheckIns.Of(custom with { Triggers = CheckInTriggers.None });
+        var busy = facts with { Quiet = TimeSpan.Zero };
+        var trigger = fired! with { At = now.AddSeconds(-2) };
+        var waits = new Dictionary<string, string?>
+        {
+            ["no trigger"] = CheckIns.Wait(checkIn, facts, null),
+            ["only touches ended"] = CheckIns.Wait(checkIn, facts, null, fired: plain! with { At = now }),
+            ["fired, while the conversation is busy"] = CheckIns.Wait(checkIn, busy, null, fired: trigger),
+            ["fired, ran 2 min ago"] = CheckIns.Wait(checkIn, facts, new(now.AddMinutes(-2), 4, "nothing to remind Martlet of", false), fired: trigger),
+            ["fired 3 min ago"] = CheckIns.Wait(checkIn, facts, null, fired: trigger with { At = now.AddMinutes(-3) }),
+            ["fired, nobody here"] = CheckIns.Wait(checkIn, facts with { Away = TimeSpan.FromMinutes(25) }, null, fired: trigger),
+            ["fired, but off"] = CheckIns.Wait(checkIn with { On = false }, facts, null, fired: trigger),
+            ["Check now, no trigger"] = CheckIns.Wait(checkIn, busy, null, now: true),
+            ["paced, while the conversation is busy"] = CheckIns.Wait(paced, busy, null, fired: trigger)
+        };
+        var job = CheckIns.Prepare(checkIn, facts, null);
+        step("triggers: when a triggered check-in waits", waits["no trigger"] == "it waits for an intimate touch or a stroke across 3 zones" &&
+            waits["only touches ended"] == waits["no trigger"] && waits["fired, while the conversation is busy"] is null &&
+            waits["fired, ran 2 min ago"] == "next in 3 min" && waits["fired 3 min ago"] == waits["no trigger"] &&
+            waits["fired, nobody here"]?.StartsWith("nobody used this PC", StringComparison.Ordinal) == true && waits["fired, but off"] == "it's off" &&
+            waits["Check now, no trigger"] is null && waits["paced, while the conversation is busy"] == "the conversation is busy" &&
+            job?.Kind == ThinkingJobKind.CheckIn && LiveFloorRules.Stops(ThinkingJobKind.CheckIn),
+            new { waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), jobKind = job is null ? null : ThinkingJobKinds.Name(job.Kind) });
     }
 
     // The built-in check-ins that wait for a signal: off until the owner turns them on.
@@ -467,7 +567,7 @@ internal static class CheckInsCheck
         }
     }
 
-    /// <summary>10. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools
+    /// <summary>11. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools
     /// (FIXTURE handlers and calls; NOT AI).</summary>
     private static async Task ToolsAsync(Action<string, bool, object?> step, CheckInState facts, CancellationToken cancellation)
     {

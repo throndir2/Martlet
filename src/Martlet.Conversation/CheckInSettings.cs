@@ -17,6 +17,7 @@ public sealed record CheckInChoice(bool On, int EveryMinutes)
     public CheckInRecording? Recording { get; init; }
     public int? RecordingSeconds { get; init; }
     public string? Script { get; init; }
+    public CheckInTriggers? Triggers { get; init; }
     public int? FromHour { get; init; }
     public int? UntilHour { get; init; }
     public int? MostPerHour { get; init; }
@@ -54,6 +55,8 @@ public sealed record CustomCheckIn
     /// <summary>A Windows PowerShell script Martlet runs on this PC before each run (empty: none); its output goes with the
     /// check. Only the owner writes it, on the Check-ins page.</summary>
     public string Script { get; init; } = "";
+    /// <summary>What starts it at once (<see cref="CheckInTriggers"/>); none: it runs on its pace.</summary>
+    public CheckInTriggers Triggers { get; init; }
     /// <summary>With <see cref="CheckInConditions.Between"/>: the hours it runs, from <see cref="FromHour"/> up to <see cref="UntilHour"/>.</summary>
     public int FromHour { get; init; } = CheckIns.DefaultFromHour;
     public int UntilHour { get; init; } = CheckIns.DefaultUntilHour;
@@ -127,6 +130,7 @@ public sealed record CheckInSettings
             Check(choice!.Facts ?? CheckInFacts.None, choice.Conditions ?? CheckInConditions.None, choice.Outcome ?? CheckInOutcome.Note,
                 choice.Needs ?? ThinkingCapability.Text, choice.Recording ?? CheckInRecording.None, choice.RecordingSeconds ?? 10,
                 choice.Script ?? "", choice.ToolSets ?? []);
+            CheckIns.CheckTriggers(choice.Triggers ?? CheckInTriggers.None);
             CheckIns.CheckSignals(choice.FromHour ?? CheckIns.DefaultFromHour, choice.UntilHour ?? CheckIns.DefaultUntilHour, choice.MostPerHour ?? 0);
         }
         ContractRules.Require(Custom.Count <= CheckIns.MaximumCustom, $"You can have at most {CheckIns.MaximumCustom} check-ins of your own.");
@@ -143,6 +147,7 @@ public sealed record CheckInSettings
             ContractRules.Require(CheckIns.EveryChoices.Contains(checkIn.EveryMinutes), $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
             Check(checkIn.Facts, checkIn.Conditions, checkIn.Outcome, checkIn.Needs, checkIn.Recording, checkIn.RecordingSeconds, checkIn.Script,
                 checkIn.ToolSets);
+            CheckIns.CheckTriggers(checkIn.Triggers);
             CheckIns.CheckSignals(checkIn.FromHour, checkIn.UntilHour, checkIn.MostPerHour);
         }
     }
