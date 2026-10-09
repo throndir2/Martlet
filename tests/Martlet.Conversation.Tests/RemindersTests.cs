@@ -162,4 +162,29 @@ public sealed class RemindersTests
         Assert.NotNull(JsonNode.Parse(Reminders.ParametersJson));
         Assert.True(Reminders.Description.Length < 400);
     }
+
+    [Fact]
+    public void TheRemindersCheckInTakesTheToolOverAndTheReplyOnlyLists()
+    {
+        Assert.Equal([Reminders.ToolName], CheckInToolSets.ReminderSet.Replaces);
+        Assert.Contains(CheckInToolSets.ReminderSet.Tools, t => t.Name == Reminders.ToolName);
+        // The read-only tool has its own name, no set offers it, and its text never changes (request starts stay the same).
+        Assert.NotEqual(Reminders.ToolName, Reminders.ListDefinition.Name);
+        Assert.DoesNotContain(CheckInToolSets.All.SelectMany(s => s.Tools), t => t.Name == Reminders.ListToolName);
+        Assert.Same(Reminders.ListDefinition, Reminders.ListDefinition);
+        Assert.NotNull(JsonNode.Parse(Reminders.ListDefinition.ParametersJson));
+        Assert.True(Reminders.ListDescription.Length < 400);
+        Assert.True(Reminders.AfterReply.Length < 300);
+
+        // list_reminders runs the list action alone: it lists and never changes this computer's entry.
+        var now = new DateTimeOffset(2026, 3, 2, 12, 0, 0, TimeSpan.Zero);
+        var own = Reminders.Run("""{"action":"set","text":"do the dishes","in_minutes":60}""", ReminderBoard.Empty, "desktop-a",
+            ReminderEntry.Empty, now, TimeZoneInfo.Utc, () => "r-1").Own!;
+        var board = new ReminderBoard(new Dictionary<string, ReminderEntry> { ["desktop-a"] = own });
+        var listed = Reminders.Run(Reminders.ListArgumentsJson, board, "desktop-a", own, now, TimeZoneInfo.Utc);
+        Assert.Null(listed.Own);
+        Assert.False(listed.Result.IsError);
+        Assert.Contains("do the dishes", listed.Result.Output);
+        Assert.Equal("listed 1", listed.Outcome);
+    }
 }

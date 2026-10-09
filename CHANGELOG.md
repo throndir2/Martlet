@@ -11,12 +11,16 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Check-ins have a new tool set, **Songs, pictures and creations**: after a reply, the Thinking pool can start the song or picture you asked for, sing a finished song or show something Martlet made, so the reply itself doesn't stop to do it. If it can't start, Martlet tells you why on its own. ([#699](https://github.com/throndir2/Martlet/pull/699))
-
+- A new **Thinking requests** page in the side menu shows everything your companions ask the Thinking pool to do: what each request is for, which companion asked, its type and priority, where it runs, its retries, and how long it waited and ran. **Timing by type** sums up wait and run times since Martlet started. ([#690](https://github.com/throndir2/Martlet/pull/690))
 - Thinking pool machines outside this PC and your paired computers (a cloud provider or another computer's endpoint) now get check-ins and summaries with a screenshot or a recording only after you tick **May receive pictures and recordings** for them on Companion › Thinking pool. Text-only jobs still go to them. ([#698](https://github.com/throndir2/Martlet/pull/698))
 - Check-ins have a new tool set, **Discord calls and camera**: after a reply, the Thinking pool can call the Discord friend you asked for or change Martlet's webcam background in your Discord call, so the reply itself doesn't stop to do it. ([#696](https://github.com/throndir2/Martlet/pull/696))
 - Check-ins can now change Martlet's memory with the new **Memory** tool set: they find, remember, correct, give to someone else and forget facts after a reply, so Martlet can hand that work off and answer sooner. Martlet can still look up what it remembers while it replies. ([#697](https://github.com/throndir2/Martlet/pull/697))
 - Companion › Thinking pool has a new **Busy pool** card: choose whether more important requests may stop less important ones when the pool is full, after how many stops a stopped request becomes more important, and how many times a failed request is tried again. ([#695](https://github.com/throndir2/Martlet/pull/695))
 - Conversations now has its own page in the side menu, right after Companion, so you can read, search, edit and delete every conversation without opening a separate window. Companion › Memory › **Open conversations** takes you there too. ([#689](https://github.com/throndir2/Martlet/pull/689))
+
+### Changed
+
+- When an after-each-exchange check-in has the **Reminders** tools, Martlet sets and cancels your reminders on the Thinking pool right after it answers, so its reply starts sooner. It can still tell you which reminders are waiting. ([#700](https://github.com/throndir2/Martlet/pull/700))
 
 ## [0.64.0] - 2026-10-09
 

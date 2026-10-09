@@ -30,6 +30,7 @@ internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobP
         var result = await pool().RunAsync(new ThinkingJob
         {
             Kind = Kind(job.Kind),
+            Label = job.Purpose,
             Priority = Priority(job.Kind),
             Instructions = job.Input.Personality ?? "",
             Text = job.Input.UserText,

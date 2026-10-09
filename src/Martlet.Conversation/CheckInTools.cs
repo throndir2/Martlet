@@ -63,9 +63,13 @@ public static class CheckInToolSets
             """{"type":"object","properties":{"text":{"type":"string","description":"What to bring up with the user now, one short line."}},"required":["text"],"additionalProperties":false}""")
     ]);
 
-    /// <summary>Reminders: the conversation's own reminders tool (set, list, cancel).</summary>
+    /// <summary>Reminders: the conversation's own reminders tool (set, list, cancel). It takes the reply's reminders tool over;
+    /// the reply then only lists them (<see cref="Reminders.ListDefinition"/>).</summary>
     public static CheckInToolSet ReminderSet { get; } = new(RemindersId, "Reminders",
-        "Sets, lists and cancels your reminders, as Martlet does when you ask it in a conversation.", [Reminders.Definition]);
+        "Sets, lists and cancels your reminders, as Martlet does when you ask it in a conversation.", [Reminders.Definition])
+    {
+        Replaces = [Reminders.ToolName]
+    };
 
     /// <summary>Every set, in the order the card shows them. The static sets above come first, so they exist when this list is made.</summary>
     public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set, DiscordCheckInTools.Set, MemoryToolSet.Set, CreationsCheckIn.Set];
