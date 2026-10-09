@@ -174,6 +174,7 @@ public sealed class RemindersTests
         Assert.Same(Reminders.ListDefinition, Reminders.ListDefinition);
         Assert.NotNull(JsonNode.Parse(Reminders.ListDefinition.ParametersJson));
         Assert.True(Reminders.ListDescription.Length < 400);
+        Assert.True(Reminders.AfterReply.Length < 300);
 
         // list_reminders runs the list action alone: it lists and never changes this computer's entry.
         var now = new DateTimeOffset(2026, 3, 2, 12, 0, 0, TimeSpan.Zero);

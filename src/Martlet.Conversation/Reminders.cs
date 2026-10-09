@@ -185,8 +185,12 @@ public static class Reminders
     public const string ListToolName = "list_reminders";
 
     public const string ListDescription =
-        "Lists the user's reminders that are waiting, with their ids and when each is due. Martlet sets and cancels reminders " +
-        "right after your reply when the user asks, so agree briefly in your own words and don't promise an exact time.";
+        "Lists the user's reminders that are waiting, with their ids and when each is due.";
+
+    /// <summary>The reply's guidance while the reminders tool is handed off: it agrees, and the check-in does it after the reply.</summary>
+    public const string AfterReply =
+        "When the user asks you to set or cancel a reminder, agree briefly in your own words; Martlet does it right after your " +
+        "reply, so don't promise an exact time.";
 
     /// <summary>The reminders call <see cref="ListDefinition"/> makes, whatever arguments the model passes.</summary>
     public const string ListArgumentsJson = """{"action":"list"}""";

@@ -2909,9 +2909,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
         // While an After each exchange check-in takes it over, the reply only lists them (list_reminders) in the same place.
         if (configured.SupportsTools && RemindersTool is not null)
-            own.Add(HandedOffReplyTools(configured).Contains(Reminders.ToolName)
-                ? (Reminders.ListDefinition, (call, token) => ListRemindersAsync(token))
-                : (Reminders.Definition, (call, token) => ReplyRemindAsync(call, token)));
+        {
+            if (HandedOffReplyTools(configured).Contains(Reminders.ToolName))
+            {
+                own.Add((Reminders.ListDefinition, (call, token) => ListRemindersAsync(token)));
+                guidance = Join(guidance, Reminders.AfterReply);
+            }
+            else own.Add((Reminders.Definition, (call, token) => ReplyRemindAsync(call, token)));
+        }
         // call_on_discord after them while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the
         // connection). While the After each exchange check-in takes it over, the reply only says it will call.
         var handedOff = configured.SupportsTools ? HandedOffReplyTools(configured) : null;
@@ -2997,9 +3002,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>Runs one reminders call (set, list, cancel) on this PC's reminders, which travel with the shared settings; set by
     /// the main window. Null where reminders can't be kept (no data folder).</summary>
     internal Func<string, CancellationToken, Task<Reminders.ToolOutcome>>? RemindersTool { get; set; }
-
-    // TODO(after-exchange actions foundation): stub until main has the real HandedOffReplyTools; keep main's version.
-    internal IReadOnlySet<string> HandedOffReplyTools(LiveConversationConfiguration configured) => new HashSet<string>(StringComparer.Ordinal);
 
     private async ValueTask<ConversationToolResult> ReplyRemindAsync(TextToolCall call, CancellationToken token) =>
         (await RemindAsync(Reminders.ToolName, call.ArgumentsJson, null, token).ConfigureAwait(false)).Result;

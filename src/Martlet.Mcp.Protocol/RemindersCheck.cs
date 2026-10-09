@@ -54,7 +54,8 @@ internal static class RemindersCheck
         {
             name = Reminders.ListToolName, description = Reminders.ListDescription,
             parameters = JsonNode.Parse(Reminders.ListDefinition.ParametersJson)
-        }
+        },
+        guidance = Reminders.AfterReply
     };
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)

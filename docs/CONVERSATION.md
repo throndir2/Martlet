@@ -1283,7 +1283,7 @@ over (`CheckInToolSet.Replaces`) when an [After each exchange](#check-in-tool-se
 check-in that is on ticks it and the Thinking pool has a member that calls
 tools. Then the reply gets the read-only `list_reminders` in its place (same
 place, always the same text), so it can still answer *what reminders do I
-have?*, and it agrees briefly in its own words. The check-in sets or cancels
+have?*, and one guidance line tells it to agree briefly in its own words. The check-in sets or cancels
 the reminder on the Thinking pool after the reply, with the same code, on this
 PC's own reminders entry. Companion › Tools › *Recent tool use* shows it as
 *Check-in <name> › reminders* with the outcome only, and the desktop log says
