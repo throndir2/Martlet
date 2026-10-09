@@ -1,0 +1,6 @@
+# The PP-OCRv5 engine of the ocr role (host/Dockerfile.ppocrv5, CPU build). Regenerate the lock with:
+#   uv pip compile workers/ocr/host/requirements-ppocrv5.in --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 -o workers/ocr/host/requirements-ppocrv5.lock
+# setuptools builds omegaconf's antlr4-python3-runtime 4.9.3, which PyPI has only as source.
+rapidocr==3.10.0
+onnxruntime==1.31.0
+setuptools

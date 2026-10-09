@@ -64,7 +64,7 @@ public static partial class NetworkRecommender
     public const string ThinkingRole = "ollama", DeepThinkingRole = "deep-thinking", ListeningRole = "stt", LipSyncRole = "audio2face";
 
     /// <summary>The host role kinds of the optional extras, which get only the room the needed jobs leave: singing, pictures
-    /// and Reading (RapidOCR on a processor).</summary>
+    /// and Reading (RapidOCR or PP-OCRv5, on a processor unless the owner chose PP-OCRv5 server on a graphics card).</summary>
     private const string SingingRole = "singing", PicturesRole = "pictures", ReadingRole = "ocr";
 
     /// <summary>Home Assistant (Smart home): the recommender counts it where it runs and never moves or removes it, because it

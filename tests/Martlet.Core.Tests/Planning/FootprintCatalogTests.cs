@@ -59,7 +59,8 @@ public sealed class FootprintCatalogTests
         Assert.NotEmpty(roles);
         foreach (var role in roles)
             Assert.True(Options.Any(o => o.IsLocal && o.HostRoleKind == role), $"No catalog option runs the {role} host role.");
-        Assert.Equal(PlanComponent.Reading, Options.Single(o => o.HostRoleKind == "ocr").Component);
+        Assert.All(Options.Where(o => o.HostRoleKind == "ocr"), o => Assert.Equal(PlanComponent.Reading, o.Component));
+        Assert.Equal(["ppocrv5-mobile", "ppocrv5-server", "rapidocr-ppocrv4"], Options.Where(o => o.HostRoleKind == "ocr").Select(o => o.ModelId).Order());
         Assert.Equal(PlanComponent.SmartHome, Options.Single(o => o.HostRoleKind == "home-assistant").Component);
     }
 

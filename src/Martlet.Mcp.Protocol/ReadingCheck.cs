@@ -14,8 +14,10 @@ namespace Martlet.Mcp;
 /// line). Windows OCR on this PC reads it through the same reader the desktop uses; with endpoint (a Reading role's worker on
 /// loopback, such as http://127.0.0.1:50087/) that worker reads the same picture as a PNG through its POST /read contract.
 /// Both go through Martlet's reading order and text join (<see cref="ScreenText"/>). A drawn 1080p desktop of small text is
-/// also read at full size (how the desktop reads the screen) and at a vision look's 1024 x 576, to show the difference. The
-/// real screen is never captured, and no text from a real screen is returned.</summary>
+/// also read at full size (how the desktop reads the screen) and at a vision look's 1024 x 576, to show the difference, and a
+/// drawn 4K desktop (18 px text, as at 150 % scaling) at full size; the worker reads both desktops too, so its engine and model
+/// (RapidOCR or PP-OCRv5) compare with Windows OCR. The real screen is never captured, and no text from a real screen is
+/// returned.</summary>
 internal static class ReadingCheck
 {
     /// <summary>The words drawn on the test picture, and the ones a read must find.</summary>
@@ -47,11 +49,13 @@ internal static class ReadingCheck
     {
         if (!await Task.Run(() => WindowsCallTextReader.Available, cancellation).ConfigureAwait(false))
             return new { ok = false, problem = "Windows has no text recognition (OCR) language." };
-        var (pixels, width, height, drawn) = await RenderDesktopAsync().ConfigureAwait(false);
+        var (pixels, width, height, drawn) = await RenderDesktopAsync(1920, 1080, 12).ConfigureAwait(false);
         var reader = new WindowsCallTextReader(maximumLines: ScreenText.MaximumLines * 4);
         var full = await ReadDesktopAsync(reader, pixels, width, height, drawn, cancellation).ConfigureAwait(false);
         var (small, smallWidth, smallHeight) = await Task.Run(() => Shrink(pixels, width, height, 1024), cancellation).ConfigureAwait(false);
         var shrunk = await ReadDesktopAsync(reader, small, smallWidth, smallHeight, drawn, cancellation).ConfigureAwait(false);
+        var (big, bigWidth, bigHeight, bigDrawn) = await RenderDesktopAsync(3840, 2160, 18).ConfigureAwait(false);
+        var four = await ReadDesktopAsync(reader, big, bigWidth, bigHeight, bigDrawn, cancellation).ConfigureAwait(false);
         return new
         {
             ok = full.LinesRead >= drawn.Count * 9 / 10, width, height, textPixels = 12, linesDrawn = drawn.Count,
@@ -59,6 +63,11 @@ internal static class ReadingCheck
             downscaled = new
             {
                 width = smallWidth, height = smallHeight, lines = shrunk.Lines, linesRead = shrunk.LinesRead, milliseconds = shrunk.Milliseconds
+            },
+            fourK = new
+            {
+                width = bigWidth, height = bigHeight, textPixels = 18, linesDrawn = bigDrawn.Count, lines = four.Lines, linesRead = four.LinesRead,
+                milliseconds = four.Milliseconds
             }
         };
     }
@@ -69,8 +78,14 @@ internal static class ReadingCheck
         var watch = Stopwatch.StartNew();
         var lines = await reader.ReadAsync(pixels, width, height, cancellation).ConfigureAwait(false);
         var milliseconds = Math.Round(watch.Elapsed.TotalMilliseconds);
-        var read = lines.Select(line => Squash(line.Text)).ToList();
-        return (lines.Count, drawn.Count(line => read.Any(text => text.Contains(Squash(line), StringComparison.Ordinal))), milliseconds);
+        return (lines.Count, LinesRead(drawn, lines.Select(line => line.Text)), milliseconds);
+    }
+
+    // How many drawn lines a read found, ignoring spaces, punctuation and case.
+    private static int LinesRead(IReadOnlyList<string> drawn, IEnumerable<string> lines)
+    {
+        var read = lines.Select(Squash).ToList();
+        return drawn.Count(line => read.Any(text => text.Contains(Squash(line), StringComparison.Ordinal)));
 
         static string Squash(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
     }
@@ -83,21 +98,24 @@ internal static class ReadingCheck
         "service", "contract", "delivery", "payment", "question", "answer", "minutes"
     ];
 
-    // Three panels (dark, light, blue-grey) of 36 lines each, like windows side by side on a 1080p desktop.
-    private static Task<(byte[] Pixels, int Width, int Height, IReadOnlyList<string> Drawn)> RenderDesktopAsync() => Task.Run(() =>
+    // Panels (dark, light, blue-grey in turn) like windows side by side: on a 1080p desktop with 12 px text, three panels of 36
+    // lines; on a 4K desktop with 18 px text (150 % scaling), four panels of 48 lines.
+    private static Task<(byte[] Pixels, int Width, int Height, IReadOnlyList<string> Drawn)> RenderDesktopAsync(int width, int height,
+        int textPixels) => Task.Run(() =>
     {
-        using var picture = new DiscordCallCheck.FixturePicture(1920, 1080);
+        using var picture = new DiscordCallCheck.FixturePicture(width, height);
         (byte, byte, byte)[] backgrounds = [(32, 32, 32), (250, 250, 250), (44, 48, 64)];
         (byte, byte, byte)[] colors = [(220, 220, 220), (30, 30, 30), (210, 215, 230)];
+        int panelWidth = 640 * textPixels / 12, step = 26 * textPixels / 12, rows = height * 36 / 1080 * 12 / textPixels;
         var drawn = new List<string>();
-        for (var panel = 0; panel < 3; panel++)
+        for (var panel = 0; panel < width / panelWidth; panel++)
         {
-            picture.Fill(panel * 640, 0, 640, 1080, backgrounds[panel]);
-            for (var row = 0; row < 36; row++)
+            picture.Fill(panel * panelWidth, 0, panelWidth, height, backgrounds[panel % 3]);
+            for (var row = 0; row < rows; row++)
             {
-                var n = panel * 36 + row;
+                var n = panel * rows + row;
                 var text = string.Join(' ', Enumerable.Range(0, 5).Select(k => DesktopWords[(n * 7 + k * 11) % DesktopWords.Length])) + $" {n + 1}";
-                picture.Text(panel * 640 + 32, 48 + row * 26, text, 12, colors[panel]);
+                picture.Text(panel * panelWidth + 32 * textPixels / 12, 48 * textPixels / 12 + row * step, text, textPixels, colors[panel % 3]);
                 drawn.Add(text);
             }
         }
@@ -172,17 +190,47 @@ internal static class ReadingCheck
                 var box = line.GetProperty("box").EnumerateArray().Select(v => (int)Math.Round(v.GetDouble())).ToArray();
                 return new ReadLine(line.GetProperty("text").GetString() ?? "", box[0], box[1], box[2], box[3]);
             }).ToList();
-            return Result(lines, new
+            var result = Result(lines, new
             {
                 status = statusJson, roundTripMilliseconds = milliseconds,
                 workerMilliseconds = body.TryGetProperty("milliseconds", out var took) ? took.GetDouble() : (double?)null
             });
+            return new
+            {
+                read = result,
+                fullHd = await WorkerDesktopAsync(http, endpoint, 1920, 1080, 12, cancellation).ConfigureAwait(false),
+                fourK = await WorkerDesktopAsync(http, endpoint, 3840, 2160, 18, cancellation).ConfigureAwait(false)
+            };
         }
         catch (Exception error) when (error is HttpRequestException or JsonException or KeyNotFoundException or InvalidOperationException ||
             error is TaskCanceledException && !cancellation.IsCancellationRequested)
         {
             return new { ok = false, problem = error.Message };
         }
+    }
+
+    /// <summary>The worker reads a drawn desktop as a PNG: how many of its lines it found, and how long it took.</summary>
+    private static async Task<object> WorkerDesktopAsync(HttpClient http, Uri endpoint, int width, int height, int textPixels,
+        CancellationToken cancellation)
+    {
+        var (pixels, _, _, drawn) = await RenderDesktopAsync(width, height, textPixels).ConfigureAwait(false);
+        var png = await Task.Run(() => Png(pixels, width, height), cancellation).ConfigureAwait(false);
+        using var content = new ByteArrayContent(png);
+        content.Headers.ContentType = new("image/png");
+        var watch = Stopwatch.StartNew();
+        using var response = await http.PostAsync(new Uri(endpoint, "read"), content, cancellation).ConfigureAwait(false);
+        var milliseconds = Math.Round(watch.Elapsed.TotalMilliseconds);
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation).ConfigureAwait(false)).RootElement;
+        if (!response.IsSuccessStatusCode || !body.TryGetProperty("lines", out var found) || found.ValueKind != JsonValueKind.Array)
+            return new { ok = false, width, height, pngBytes = png.Length, httpStatus = (int)response.StatusCode, answer = body.Clone() };
+        var texts = found.EnumerateArray().Select(line => line.GetProperty("text").GetString() ?? "").ToList();
+        var linesRead = LinesRead(drawn, texts);
+        return new
+        {
+            ok = linesRead >= drawn.Count * 9 / 10, width, height, textPixels, pngBytes = png.Length, linesDrawn = drawn.Count, lines = texts.Count,
+            linesRead, roundTripMilliseconds = milliseconds,
+            workerMilliseconds = body.TryGetProperty("milliseconds", out var took) ? took.GetDouble() : (double?)null
+        };
     }
 
     private static object Result(IEnumerable<ReadLine> lines, object timing)

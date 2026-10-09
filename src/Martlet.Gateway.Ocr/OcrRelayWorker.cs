@@ -8,8 +8,8 @@ using System.Text.Json;
 namespace Martlet.Gateway.Ocr;
 
 /// <summary>
-/// Gateway relay from a paired client to this host's loopback RapidOCR service (the <c>ocr</c> host role).
-/// It accepts only bounded JPEG or PNG images and returns one JSON text event.
+/// Gateway relay from a paired client to this host's loopback OCR service (the <c>ocr</c> host role: RapidOCR with PP-OCRv4,
+/// or RapidOCR 3 with PP-OCRv5 mobile or server). It accepts only bounded JPEG or PNG images and returns one JSON text event.
 /// </summary>
 public sealed class OcrRelayWorker : IOcrGatewayInferenceWorker, IAsyncDisposable
 {
@@ -21,7 +21,10 @@ public sealed class OcrRelayWorker : IOcrGatewayInferenceWorker, IAsyncDisposabl
         new Dictionary<string, (string, string)>(StringComparer.Ordinal)
         {
             [DefaultModel] = ("rapidocr_onnxruntime-1.4.4",
-                "971d7d5f223a7a808662229df1ef69893809d8457d834e6373d3854bc1782cbf")
+                "971d7d5f223a7a808662229df1ef69893809d8457d834e6373d3854bc1782cbf"),
+            // PP-OCRv5's recognition model as RapidOCR 3.10.0 publishes it (workers/ocr/host/martlet_ocr_host.py MODELS).
+            ["ppocrv5-mobile"] = ("rapidocr-3.10.0", "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5"),
+            ["ppocrv5-server"] = ("rapidocr-3.10.0", "e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a")
         };
 
     private static readonly JsonSerializerOptions Relaxed = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };

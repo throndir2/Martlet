@@ -63,14 +63,15 @@ internal sealed class WindowsScreenTextReader : IScreenTextReader
     public void Dispose() { }
 }
 
-/// <summary>A paired computer's Reading role (RapidOCR on its processor) through its gateway (route
+/// <summary>A paired computer's Reading role (RapidOCR or PP-OCRv5) through its gateway (route
 /// <c>martlet.gateway.ocr.v1</c>). The screenshot goes there as a JPEG, is read in memory and is not kept. The computer named in
 /// Companion › Reading reads; without one, the first paired computer that offers the route.</summary>
 internal sealed class HostScreenTextReader(string dataDirectory, string? hostId) : IScreenTextReader
 {
     private (PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)? open;
 
-    public string Engine => open is { } found ? $"{found.Host.HostId}'s Reading role"
+    public string Engine => open is { } found
+        ? $"{found.Host.HostId}'s Reading role" + (OptionalExtras.ReadingModelOf(found.Route.ModelId) is { } model ? $" ({model.Name})" : "")
         : hostId is null ? "Martlet's Reading role" : $"{hostId}'s Reading role";
 
     public async Task<IReadOnlyList<ReadLine>> ReadAsync(byte[] bgra, int width, int height, CancellationToken token)

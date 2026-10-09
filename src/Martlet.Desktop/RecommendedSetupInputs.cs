@@ -149,8 +149,10 @@ internal static class RecommendedSetupInputs
     /// their lines in the review. Vision: <paramref name="watch"/> (vision is on) and the image model in
     /// <paramref name="senses"/>. Hearing: <paramref name="hearVoice"/> (Let ... hear my voice; null: never chosen, which counts as
     /// on) and the audio model. Reading: <paramref name="reading"/>. Smart home: <paramref name="homeAddress"/>, the Home
-    /// Assistant this PC connects to (empty: none). Pure.</summary>
-    internal static IReadOnlyList<PartChoice> Choices(bool watch, bool? hearVoice, SenseModels senses, ReadingSettings reading, string? homeAddress)
+    /// Assistant this PC connects to (empty: none). <paramref name="readingModel"/>: the model the Reading role runs on that
+    /// computer, when known (null: RapidOCR, the first Reading role). Pure.</summary>
+    internal static IReadOnlyList<PartChoice> Choices(bool watch, bool? hearVoice, SenseModels senses, ReadingSettings reading, string? homeAddress,
+        string? readingModel = null)
     {
         ArgumentNullException.ThrowIfNull(senses);
         ArgumentNullException.ThrowIfNull(reading);
@@ -160,7 +162,10 @@ internal static class RecommendedSetupInputs
             Sense(PlanComponent.Vision, watch, senses.Place(SenseKind.Image)),
             new PartChoice(PlanComponent.Reading, reading.On)
             {
-                OptionId = reading.Place == ReadingPlace.Host ? "reading:rapidocr" : "reading:windows-ocr",
+                OptionId = reading.Place == ReadingPlace.Host
+                    ? FootprintCatalog.Default.For(PlanComponent.Reading).FirstOrDefault(o => o.HostRoleKind == "ocr" && o.ModelId == readingModel)?.Id
+                        ?? "reading:rapidocr"
+                    : "reading:windows-ocr",
                 HostId = reading.Place == ReadingPlace.Host ? reading.HostId : null
             },
             Sense(PlanComponent.Hearing, hearVoice != false, senses.Place(SenseKind.Audio)),

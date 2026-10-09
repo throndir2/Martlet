@@ -11,16 +11,19 @@ namespace Martlet.Core.Installation;
 public static class SharedGpu
 {
     /// <summary>The host roles other than voice engines, by kind and name; each uses the host's graphics card when it has an
-    /// NVIDIA one, which a voice engine needs (Thinking, Deep thinking and Listening run on the processor without one).</summary>
+    /// NVIDIA one, which a voice engine needs (Thinking, Deep thinking and Listening run on the processor without one; Reading
+    /// only with PP-OCRv5, see <see cref="ProcessorOnly"/>).</summary>
     public static readonly IReadOnlyList<(string Kind, string Name)> OtherGpuRoles =
     [
         ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Thinking pool"), ("stt", "Listening"),
-        ("singing", "Singing"), ("pictures", "Pictures")
+        ("singing", "Singing"), ("pictures", "Pictures"), ("ocr", "Reading")
     ];
 
-    /// <summary>The host roles that never use the graphics card (Reading runs RapidOCR on the processor), so they never share
-    /// it with a voice engine.</summary>
-    public static readonly IReadOnlyList<string> ProcessorOnlyRoles = ["ocr"];
+    /// <summary>Whether host role <paramref name="kind"/> running <paramref name="model"/> never uses the graphics card, so it
+    /// never shares it with a voice engine: Reading with RapidOCR (its PP-OCRv4 models run on the processor). Reading with
+    /// PP-OCRv5 ("ppocrv5-mobile" or "ppocrv5-server") can run on an NVIDIA card.</summary>
+    public static bool ProcessorOnly(string kind, string? model) =>
+        kind == "ocr" && model?.StartsWith("ppocrv5-", StringComparison.Ordinal) != true;
 
     /// <summary>Whether a host runs its roles on Windows: this PC's host service (Docker Desktop), or a host whose report says
     /// Windows or a WSL 2 kernel ("5.15.167.4-microsoft-standard-WSL2").</summary>
@@ -33,12 +36,16 @@ public static class SharedGpu
         roleKinds?.Select(SpeechEngines.ForRoleKind).FirstOrDefault(engine => engine is not null)?.Name;
 
     /// <summary>What else uses the card beside the voice engine, in words: the other GPU roles among
-    /// <paramref name="roleKinds"/> (other voice engines have their own warning) and Thinking in Ollama when the host is this
-    /// PC and Thinking runs there.</summary>
-    public static IReadOnlyList<string> Neighbours(IEnumerable<string>? roleKinds, bool thinkingInOllamaHere)
+    /// <paramref name="roleKinds"/> (other voice engines have their own warning; a role that runs only on the processor with
+    /// the model <paramref name="models"/> names for it is left out) and Thinking in Ollama when the host is this PC and
+    /// Thinking runs there.</summary>
+    public static IReadOnlyList<string> Neighbours(IEnumerable<string>? roleKinds, bool thinkingInOllamaHere,
+        IReadOnlyDictionary<string, string>? models = null)
     {
         var kinds = new HashSet<string>(roleKinds ?? [], StringComparer.Ordinal);
-        var names = OtherGpuRoles.Where(role => kinds.Contains(role.Kind)).Select(role => role.Name).ToList();
+        var names = OtherGpuRoles
+            .Where(role => kinds.Contains(role.Kind) && !ProcessorOnly(role.Kind, models?.GetValueOrDefault(role.Kind)))
+            .Select(role => role.Name).ToList();
         if (thinkingInOllamaHere) names.Add("Thinking in Ollama");
         return names;
     }

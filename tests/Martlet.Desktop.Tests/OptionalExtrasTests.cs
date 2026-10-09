@@ -104,15 +104,47 @@ public sealed class OptionalExtrasTests
         Assert.True(choices[1].InUse);
         // The catalog's numbers come first (its short facts make the row), then what only OCR has.
         Assert.Equal(OptionFacts.Short(FootprintCatalog.Default.Find(OptionalExtras.ReadingWindowsOcr)!), Row(choices[1]));
-        Assert.Equal(OptionFacts.Short(FootprintCatalog.Default.Find(OptionalExtras.ReadingRapidOcr)!), Row(choices[2]));
+        // Before the role is set up, it shows its recommended model, PP-OCRv5 mobile.
+        Assert.Equal(OptionFacts.Short(FootprintCatalog.Default.Find(OptionalExtras.ReadingPpOcrV5)!), Row(choices[2]));
         Assert.Equal("none: it is built into Windows", Fact(choices[1], "download"));
-        Assert.Contains("0.9 s", Fact(choices[2], "speed"));
+        Assert.Contains("1.8 s", Fact(choices[2], "speed"));
         Assert.Contains("game fonts", choices[2].Summary);
-        Assert.Contains("Chinese and English", Fact(choices[2], "languages"));
+        Assert.Contains("4K", choices[2].Summary);
+        Assert.Contains("Chinese, English and Japanese", Fact(choices[2], "languages"));
+        Assert.Contains("192", Fact(choices[2], "accuracy"));
         Assert.Contains("nothing leaves this PC", Fact(choices[1], "data"));
+        // A host that runs another model shows that model's facts.
+        var rapid = OptionalExtras.ReadingChoices(ReadingPlace.Host, windowsReads: true, "rapidocr-ppocrv4")[2];
+        Assert.True(rapid.InUse);
+        Assert.Equal(OptionFacts.Short(FootprintCatalog.Default.Find(OptionalExtras.ReadingRapidOcr)!), Row(rapid));
+        Assert.Contains("0.9 s", Fact(rapid, "speed"));
+        Assert.Contains("Chinese and English", Fact(rapid, "languages"));
+        var server = OptionalExtras.ReadingChoices(ReadingPlace.Host, windowsReads: true, "ppocrv5-server")[2];
+        Assert.Equal(OptionFacts.Short(FootprintCatalog.Default.Find(OptionalExtras.ReadingPpOcrV5Cuda)!), Row(server));
+        Assert.Contains("580", Fact(server, "driver"));
         Assert.Null(choices[1].Unavailable);
         Assert.NotNull(OptionalExtras.ReadingChoices(ReadingPlace.Off, windowsReads: false)[1].Unavailable);
         Assert.True(OptionalExtras.ReadingChoices(ReadingPlace.Off, windowsReads: null)[0].InUse);
+    }
+
+    [Fact]
+    public void Each_reading_model_has_its_catalog_option_and_martlet_host_answers()
+    {
+        Assert.Equal(new[] { "ppocrv5-mobile", "ppocrv5-server", "rapidocr-ppocrv4" }, OptionalExtras.ReadingModels.Select(m => m.Model));
+        Assert.All(OptionalExtras.ReadingModels, m => Assert.Equal(m.Model, FootprintCatalog.Default.Find(m.CatalogId)!.ModelId));
+        Assert.Equal(new Dictionary<string, string>
+            {
+                ["choice.OCR_ENGINE"] = "ppocrv5", ["choice.OCR_MODEL"] = "ppocrv5-mobile", ["choice.accelerator"] = "cpu"
+            },
+            OptionalExtras.ReadingModels[0].Answers());
+        Assert.Equal("gpu", OptionalExtras.ReadingModelOf("ppocrv5-server")!.Answers()["choice.accelerator"]);
+        Assert.True(OptionalExtras.ReadingModelOf("ppocrv5-server")!.NeedsNvidia);
+        Assert.False(OptionalExtras.ReadingModelOf("ppocrv5-mobile")!.NeedsNvidia);
+        // RapidOCR runs only on the processor, so martlet-host doesn't ask where.
+        Assert.Equal(new Dictionary<string, string> { ["choice.OCR_ENGINE"] = "rapidocr", ["choice.OCR_MODEL"] = "rapidocr-ppocrv4" },
+            OptionalExtras.ReadingModelOf("rapidocr-ppocrv4")!.Answers());
+        Assert.Null(OptionalExtras.ReadingModelOf("tesseract"));
+        Assert.Null(OptionalExtras.ReadingModelOf(null));
     }
 
     [Fact]

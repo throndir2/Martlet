@@ -297,7 +297,8 @@ public sealed partial class FootprintCatalog
             ProviderId = "openai", QualityTier = 5, SeesImages = true, NeedsSignup = true, Source = "Hosted: uses no local resources; pictures go to OpenAI"
         },
 
-        // Reading: the text on the screen while Martlet watches (Companion › Reading, docs/READING.md). Both run on a processor.
+        // Reading: the text on the screen while Martlet watches (Companion › Reading, docs/READING.md). Windows OCR, RapidOCR and
+        // PP-OCRv5 mobile run on a processor; PP-OCRv5 server needs an NVIDIA graphics card.
         new()
         {
             Id = "reading:windows-ocr", Component = PlanComponent.Reading, DisplayName = "Windows OCR", RunsInApp = true, Platforms = ["windows"],
@@ -311,6 +312,23 @@ public sealed partial class FootprintCatalog
             FirstWordMs = 900,
             Source = $"Read time measured: 0.9 s for one screenshot on a 24-thread processor (docs/READING.md); 4 threads (docs/OCR_HOST.md); " +
                 $"models 15 MB; memory and image estimate ({Doc})"
+        },
+        new()
+        {
+            Id = "reading:ppocrv5", Component = PlanComponent.Reading, DisplayName = "Martlet's Reading role (PP-OCRv5)", ModelId = "ppocrv5-mobile",
+            HostRoleKind = "ocr", Platforms = DockerNvidia, Steady = new(0, 0.5, 4, 0.7), Peak = new(0, 0.8, 4, 0.7), QualityTier = 5,
+            FirstWordMs = 1800, Evidence = FootprintEvidence.Measured,
+            Source = "Measured with MCP reading_check on a 24-thread processor: 1.7-1.9 s for a drawn 1920 x 1080 desktop of 108 lines " +
+                "(RapidOCR 1.7-2.9 s), 3.6-4.2 s for a 4K one with all 192 lines read (RapidOCR 112, Windows OCR 145); 450 MB of memory " +
+                $"after reads; image 685 MB (docs/OCR_HOST.md) ({Doc})"
+        },
+        new()
+        {
+            Id = "reading:ppocrv5-cuda", Component = PlanComponent.Reading, DisplayName = "Martlet's Reading role (PP-OCRv5 server on the graphics card)",
+            ModelId = "ppocrv5-server", HostRoleKind = "ocr", Gpu = GpuRequirement.Nvidia, MinGpuGb = 2, Platforms = DockerNvidia,
+            Steady = new(1.5, 1, 1, 3.1), Peak = new(2, 1.5, 1, 3.1), QualityTier = 5, FirstWordMs = 500,
+            Source = "Estimate: not yet measured on an NVIDIA card (on a 24-thread processor it took 65 s for 1080p, so it needs the card); " +
+                $"models 165 MB; image with CUDA 13 and cuDNN 3.1 GB measured (docs/OCR_HOST.md) ({Doc})"
         },
 
         // Hearing: the audio model (Companion › Hearing). Thinking's own model by default; a model of its own describes how you

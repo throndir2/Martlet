@@ -658,7 +658,7 @@ internal static class NetworkMap
             if (check?.Offers?.Keys.FirstOrDefault(HostRoles.Speaks) is { } voiceKind &&
                 SharedGpu.Warning(local ? "This PC" : id, SharedGpu.OnWindows(local, hardware), SpeechEngines.ForRoleKind(voiceKind)?.Name,
                     SharedGpu.Neighbours(check.Offers.Keys, local && MainWindow.IsLocalOllama(
-                        inputs.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))) is { } sharedGpu)
+                        inputs.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)), check.Offers)) is { } sharedGpu)
                 target.SharedGpu = sharedGpu;
             // Home Assistant runs on the host's own network (no gateway route); the host reports it in its machine report.
             if (HomeAssistantHosts.Runs(hardware))
