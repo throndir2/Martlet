@@ -178,6 +178,8 @@ internal static class TouchZonesCheck
                     touched = touched.Select(z => z.Id).ToArray(), coarse = given.CoarseZone,
                     area = found.Area, areas = found.Zone.AllAreas.Count, follows = found.Zone.Follows,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
+                    autoplays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Autoplay?.Select(s => $"{s.Kind}: {s.Name}").ToArray() ?? [],
+                    autoplaySeconds = found.Zone.Reaction.AutoplaySeconds,
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
                     notices = found.Zone.Reaction.Notices, noticing = touched.Where(z => z.Reaction.Notices).Select(z => z.Id).ToArray(),
                     noticed = Noticed(touched, given, temperament), rests = found.Zone.Reaction.CooldownSeconds
