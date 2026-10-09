@@ -109,6 +109,7 @@ public partial class MainWindow : ThemedWindow
         characterTouchZones = new(store?.DataDirectory);
         characterEyes = new(store?.DataDirectory);
         characterTemperaments = new(store?.DataDirectory);
+        characterReactionChanges = new(store?.DataDirectory);
         // The character's usual gaze: your choice, else what the active persona's temperament decided.
         avatar.Gaze.Personality = () => characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)?.Gaze;
         avatar.Gaze.Configure(Talk.GazeUsual, Talk.GazeFree);
@@ -156,6 +157,7 @@ public partial class MainWindow : ThemedWindow
         WireCharacterActions();
         WireCharacterTouchZones();
         WireVoiceSounds();
+        WireCharacterReactionChanges();
         WireCharacterPhysical();
         WireCharacterThemes();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
