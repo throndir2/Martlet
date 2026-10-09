@@ -10,6 +10,11 @@ namespace Martlet.Conversation;
 /// unique across every set. The desktop runs each set's calls with one <see cref="CheckInToolHandler"/>.</summary>
 public sealed record CheckInToolSet(string Id, string Name, string Does, IReadOnlyList<TextToolDefinition> Tools)
 {
+    /// <summary>The reply tools (Martlet's own tools on the live reply, by name) this set takes over when an After each exchange
+    /// check-in that is on ticks it and the configured Thinking pool has a member that calls tools: the reply is then offered
+    /// none of them, and the check-in does that work after the reply instead. Empty: the reply keeps all its tools.</summary>
+    public IReadOnlyList<string> Replaces { get; init; } = [];
+
     public override string ToString() => $"{nameof(CheckInToolSet)} {Id}";
 }
 
