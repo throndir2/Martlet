@@ -3177,13 +3177,15 @@ and warns) and an app that asks for a key (`keyed`: `NeedsKey` without the key,
 its models with it), plus an address off this PC (`offComputer`, refused).
 `fixture.ok` needs all of them. Loopback only; never a key; saves nothing.
 
-On the Thinking page, `LocalApp-Ollama` and `LocalApp-Other` (*Model app*:
-*Ollama (recommended)* and *A model app you already use*) only show that
-app's card. `LocalServersStatus` reads what looking found (*Found on this PC:
+On the Thinking page, *Model app* is an option picker without a details panel:
+`Picker-LocalApp-Ollama`, one row per app found on this PC
+(`Picker-LocalApp-lm-studio-1234`: the app's id and port) and
+`Picker-LocalApp-Address` (an app typed by its address). Each row's
+`PickerFacts-LocalApp-<key>` reads its short facts (*GPU · Martlet sets it up ·
+installed*, *2 models · you set it up*); choosing one only shows that app's
+card. `LocalServersStatus` reads what looking found (*Found on this PC:
 LM Studio at http://127.0.0.1:1234/v1 (3 models).*, or *No other model app
-answers on this PC...*) and the model Thinking uses there. `LocalServerPick`
-reads the app picked (*LM Studio · http://127.0.0.1:1234/v1 · 3 models* or
-*Another address on this PC*), `LocalServerModel` the model,
+answers on this PC...*) and the model Thinking uses there. `LocalServerModel` the model,
 `LocalServerModels` what the app lists, `LocalServerKeyStatus` what the key box
 will do (never the key), `LocalServerHint` how to start an app typed by address
 and where messages go, and `LocalServerTestResult` the last Test model result.
@@ -3191,8 +3193,15 @@ and where messages go, and `LocalServerTestResult` the last Test model result.
 typed address) only ask this PC's loopback, so they are safe clicks.
 `LocalServerTest` (a real request to the model) and `LocalServerUse` (switches
 Thinking; a model the app doesn't list first asks `LocalServerModelQuestion`)
-need `--allow-ui-effects`. `SetupLocalOwnModels` (This PC › Ollama) says that
-any Ollama model works. When the app Thinking uses stops answering, Home shows
+need `--allow-ui-effects`. Ollama's models are an option picker too
+(`Picker-OllamaModel-gemma4:e2b` and the other suggestions, each model Ollama
+already has, and `Picker-OllamaModel-Other`). A row's facts lead with whether it
+fits this PC's graphics card (*tight here*, *too big here*), then its graphics
+memory, how soon it answers and whether it hears (*3.3 GB VRAM · 0.15 s to
+first sentence · hears*); the shown model's details add whether it calls tools,
+its context, *On this PC* (downloaded or not) and Ollama's buttons for that
+model. Under *Another Ollama model*, `SetupLocalModel` is the model typed and
+`SetupLocalOwnModels` says that any Ollama model works. When the app Thinking uses stops answering, Home shows
 *<app> isn't ready on this PC* (`HealthIssue-local-model-app`, and `StageText`
 when it is the top problem). On
 Martlet.Companion, `LocalModelsFound` reads what *Find model apps*
@@ -3566,13 +3575,15 @@ RUN, because there is no ElevenLabs account or key.
   {"name":"elevenlabs_check","arguments":{"scenario":"bad-key"}}]'
 ```
 
-On Companion › Voice › *A cloud provider*, the ElevenLabs card's status is
-readable: `ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
+On Companion › Voice › *A cloud provider*, *Cloud voice* is an option picker:
+`Picker-CloudVoice-openai` (OpenAI's voices) and `Picker-CloudVoice-elevenlabs`.
+ElevenLabs' details are readable: its facts (`PickerFact-CloudVoice-<fact>`:
+voice cloning, laughs and sighs, emotions, streaming, languages, cost),
+`ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
 your cloned voice. Key saved.*, and whether ElevenLabs asked to verify the
 voice; never the voice's name), `ElevenLabsKeyStatus` (what the key field will
-do; never the key) and `ElevenLabsModel` (the chosen model). The card's
-abilities and where it runs read through `VoiceEngineAbilities-elevenlabs` and
-`VoiceEngineRunsOn-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
+do; never the key) and `ElevenLabsModel` (the chosen model). Its abilities read
+through `VoiceEngineAbilities-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
 so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs.
 `ElevenLabsSave` uploads a recording and saves the route, so it needs
 `--allow-ui-effects`. Never press it in a check: it would contact ElevenLabs.
@@ -4870,14 +4881,16 @@ start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
 paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
 passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
-Status fields include `VisionNow` (Companion › Vision's *Now* line: *On. Martlet looks at your whole screen occasionally. Comments: Normal.* by default, or *Off. ...* once turned off; a saved `talk-preferences.json` keeps its choices, and nothing is captured until Start watching), `VisionToggle` (*Turn vision off* while vision is on, *Turn vision on* otherwise; clicking it saves `talk-preferences.json`, so it needs `--allow-ui-effects`; the `VisionSource-ActiveWindow`, `-ActiveScreen`, `-Camera` and `-Url` choices report `selected`, `-ActiveScreen` by default), `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Glances at your screen: the character's usual gaze, such as *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` (*Keep its usual gaze*) and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice as `saved`), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus`'s `help` as *Last look 10:17 PM: the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupJobNetwork-Thinking`, `-Voice` and `-Listening` (shown when a host does the job for your Martlet network: *Your Martlet network does thinking on diva-host, as chosen on desktop-diva. This PC switches to it as soon as it can: pair diva-host with this PC first.*, or *Your other computers use this PC for thinking, through diva-host.*; a computer that hasn't chosen yet then selects `Place-Thinking-Computer` and its *Now* line reads *Not set up on this PC yet.*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupOldKey-Thinking-<n>`, `-Voice-<n>` and `-Listening-<n>` (the page's *Keys from before*, shown only while the job has a key Martlet set aside when it stopped using it, newest first: *Your OpenRouter key* or *The pairing key for diva-host*; never the key; each `SetupOldKeyRemove-<page>-<n>` button reads *Remove your OpenRouter key* and first asks `OldKeyRemoveQuestion`, *Remove your OpenRouter key from this PC? You can't undo this.*, where `ConfirmationYes` deletes the key from Windows Credential Manager, so it needs `--allow-ui-effects`; `Invoke-MartletMcp.ps1 -LabCredentials` keeps such keys in the disposable data directory instead), `SetupLocalRecommendation` (the local Ollama model recommended for this PC: the fastest, Gemma 4 E2B, on every graphics card, and the largest that fits this card as the smarter, slower choice, each leaving about 5 GB for a game and Martlet's character), `SetupLocalModelPicks` (the suggestion picked from the list: its size, the card it fits, whether it *hears your voice* or *gets the transcript*, and *fastest, recommended* or *smartest that fits here*; choosing one with `ui_select` only fills `SetupLocalModel`, the model name, and saves nothing, but needs `--allow-ui-effects`), `AdvisorStep`, `AdvisorSummary` and `AdvisorChoice-<n>` (the setup advisor that Home's `OpenSetupAdvisor` opens: which step it shows, its plan's summary and each role's pick and status, such as *Speech-to-text: Parakeet speech recognition (Available)*; `GoalFastest` and the other goals, `AdvisorNext`, `AdvisorBack` and `AdvisorClose` only change what it shows), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `OwnHostUpdateStatus` (Settings › App updates, only on a PC running its own host service: where keeping it on this app's version stands), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunHide` (*Hide*, also Esc and the window's close button) only hides a running run, which keeps going in Background tasks, and closes the window once the run has finished; `HostRunHideHint` says so while it runs. `HostRunCancel` (*Cancel task...*) asks first (`CancelTaskQuestion`; `ConfirmationYes` cancels, `ConfirmationNo` keeps it running), so it needs `--allow-ui-effects`. A fresh data directory needs no saved settings first: pairing, setting up this PC's host service and a voice engine's setup all work before Setup. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionNow` (Companion › Vision's *Now* line: *On. Martlet looks at your whole screen occasionally. Comments: Normal.* by default, or *Off. ...* once turned off; a saved `talk-preferences.json` keeps its choices, and nothing is captured until Start watching), `VisionToggle` (*Turn vision off* while vision is on, *Turn vision on* otherwise; clicking it saves `talk-preferences.json`, so it needs `--allow-ui-effects`; the `VisionSource-ActiveWindow`, `-ActiveScreen`, `-Camera` and `-Url` choices report `selected`, `-ActiveScreen` by default), `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Glances at your screen: the character's usual gaze, such as *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` (*Keep its usual gaze*) and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice as `saved`), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its choices are an option picker, `Picker-Fallback-Off` first, then `Picker-Fallback-<provider>` (`openrouter`, `nvidia-build`, `google-gemini`, `openai`, `ollama`, `custom`; clicking one only shows its details: what it costs, its key and what leaves this PC); the shown provider's fields `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave` button, and Off's `FallbackOff`, write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus`'s `help` as *Last look 10:17 PM: the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupJobNetwork-Thinking`, `-Voice` and `-Listening` (shown when a host does the job for your Martlet network: *Your Martlet network does thinking on diva-host, as chosen on desktop-diva. This PC switches to it as soon as it can: pair diva-host with this PC first.*, or *Your other computers use this PC for thinking, through diva-host.*; a computer that hasn't chosen yet then selects `Place-Thinking-Computer` and its *Now* line reads *Not set up on this PC yet.*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupOldKey-Thinking-<n>`, `-Voice-<n>` and `-Listening-<n>` (the page's *Keys from before*, shown only while the job has a key Martlet set aside when it stopped using it, newest first: *Your OpenRouter key* or *The pairing key for diva-host*; never the key; each `SetupOldKeyRemove-<page>-<n>` button reads *Remove your OpenRouter key* and first asks `OldKeyRemoveQuestion`, *Remove your OpenRouter key from this PC? You can't undo this.*, where `ConfirmationYes` deletes the key from Windows Credential Manager, so it needs `--allow-ui-effects`; `Invoke-MartletMcp.ps1 -LabCredentials` keeps such keys in the disposable data directory instead), `SetupLocalRecommendation` (the local Ollama model recommended for this PC: the fastest, Gemma 4 E2B, on every graphics card, and the largest that fits this card as the smarter, slower choice, each leaving about 5 GB for a game and Martlet's character), `Picker-OllamaModel-<model>` (an Ollama model in the list: clicking it only shows its details, with *recommended*, *smartest that fits* or *in use*; `PickerFacts-OllamaModel-<model>` reads whether it fits this card, its graphics memory, how soon it answers and whether it hears or gets the transcript), `AdvisorStep`, `AdvisorSummary` and `AdvisorChoice-<n>` (the setup advisor that Home's `OpenSetupAdvisor` opens: which step it shows, its plan's summary and each role's pick and status, such as *Speech-to-text: Parakeet speech recognition (Available)*; `GoalFastest` and the other goals, `AdvisorNext`, `AdvisorBack` and `AdvisorClose` only change what it shows), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `OwnHostUpdateStatus` (Settings › App updates, only on a PC running its own host service: where keeping it on this app's version stands), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunHide` (*Hide*, also Esc and the window's close button) only hides a running run, which keeps going in Background tasks, and closes the window once the run has finished; `HostRunHideHint` says so while it runs. `HostRunCancel` (*Cancel task...*) asks first (`CancelTaskQuestion`; `ConfirmationYes` cancels, `ConfirmationNo` keeps it running), so it needs `--allow-ui-effects`. A fresh data directory needs no saved settings first: pairing, setting up this PC's host service and a voice engine's setup all work before Setup. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. `ui_click` with `"focus": true` gives the
 control the keyboard focus first, as a mouse click does (its window comes to
 the front when Windows lets it): use it to check a page that updates while a
 button it just started still has the focus, such as *Detect zones*. `ui_scroll`
 reads or scrolls a control that scrolls, through UI Automation's Scroll
-pattern: a page, or Companion › Touch's zone map (`TouchZonesMap`) when it is
+pattern: a page, such as the open Companion page (`CompanionScroll`: its
+`bounds` height divided by the part that `shows`, `bottom` less `top`, gives the
+page's length), or Companion › Touch's zone map (`TouchZonesMap`) when it is
 zoomed in. `horizontal` and `vertical` (0 to 100, each optional) say how far
 along to scroll it; without them it only reads. It returns how far along it is
 each way (-1 when it can't scroll that way) and which part of its content shows
@@ -4928,13 +4941,17 @@ for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleNow` (its Now line: *Voice recognition on: 3 voices known, 2 with a name.*,
 *Off: Martlet doesn't check who is talking.*) and `PeopleNowProblem` (the
 installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus` and
-`PeopleVoiceCount`, and Listening shows `ListenParakeetStatus` (*Parakeet in
-Martlet* with *in use*, *downloading* or *no Docker*) and, for each Parakeet
-model, `ListenParakeetModel-<model ID>` (what it is for, with *recommended*
-or *in use*: "Fastest in English  ·  recommended") and
-`ListenParakeetModelState-<model ID>` (its name, languages, what it is good
-at, its memory and *Downloaded.*, *Downloads once: 477 MB.* or, while it
-downloads, *Downloading: 46% of 477 MB...*); snapshots return
+`PeopleVoiceCount`, and Listening › This PC shows its speech recognizers as an
+option picker: `Picker-Listening-<model ID>` for each Parakeet model (inside
+Martlet, no Docker), `Picker-Listening-whisper-gpu` and
+`Picker-Listening-whisper-cpu`. Each row's `PickerFacts-Listening-<key>` reads
+where it runs, how soon the transcript comes and its languages
+(*Processor (in Martlet) · 0.09 s to transcript · English*); the shown one's
+details read every fact (`PickerFact-Listening-<fact>`: languages, accuracy,
+streaming, memory, processor threads, download, *On this PC*),
+`PickerState-Listening` (*Downloaded.* or *Downloads once: 477 MB.*) and, while
+a Parakeet model downloads, `ListenParakeetModelState-<model ID>`
+(*Downloading: 46% of 477 MB...*); snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice: its name chips
 `PeopleNameShow-3-<i>` (make name *i* the one shown; the first is the one
 shown) and `PeopleNameRemove-3-<i>`, the box `PeopleAddName-3` with
@@ -6380,29 +6397,29 @@ Passive navigation writes nothing: the list is shown as it would start until a
 voice is first used, added or removed. `f5_voices` reads the same list headlessly
 and `voice_recording_check` runs the same conversion on a file.
 
-Above the voices, the Voice engine card lists every way Martlet can speak on the
-shown computer as one row each, keyed by engine (`chatterbox`,
-`chatterbox-original`, `chatterbox-nano`, `f5`, `xtts`,
-`gpt-sovits` and `dia`; when none can run on the shown computer, `VoiceEngineNone`
-says so):
-`VoiceEngine-<key>` reads its name and badge ("Chatterbox Turbo · recommended",
-"Chatterbox Nano · in use"), `VoiceEngineAbilities-<key>` the rundown of what it
-can do ("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.";
-shown as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in
-`f5_voices`), `VoiceEngineRunsOn-<key>` where it runs and how much graphics
-memory it takes ("Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to
-4.2 GB (6 GB+ card).", "Runs on an NVIDIA GPU: about 2.6 GB of graphics memory, up to 3.1 GB (4 GB+
-card); without one, on the CPU." for Chatterbox Nano; `runsOn.text` in `f5_voices`; the cloud provider card shows
-`VoiceEngineAbilities-openai` and `VoiceEngineRunsOn-openai`, "Runs online:
-nothing runs on your computers.", when Speaking uses OpenAI),
+Above the voices, the Voice engine card is an option picker of every way Martlet
+can speak on the shown computer, one compact row each, keyed by engine
+(`Picker-VoiceEngine-chatterbox`, `-chatterbox-original`, `-chatterbox-nano`,
+`-f5`, `-xtts`, `-gpt-sovits` and `-dia`; engines that can't run there are
+listed last; when none can, `VoiceEngineNone` says so).
+`PickerFacts-VoiceEngine-<key>` reads a row's facts ("NVIDIA GPU · 4.2 GB VRAM ·
+0.45 s to first audio"). Clicking a row only shows that engine's details:
+`PickerDetail-VoiceEngine` its name and badge ("Chatterbox Turbo ·
+recommended", "Chatterbox Nano · in use"), `PickerSummary-VoiceEngine` its
+strength, `PickerFact-VoiceEngine-<fact>` every fact (runs on, graphics memory,
+memory, processor, download, first audio, quality, voice cloning, laughs and
+sighs, emotions, streaming, languages, your recordings, license and whether it
+allows commercial use, numbers), `PickerState-VoiceEngine` where it stands
+("Speaking on this PC.", "Ready on gpu-pc.", "Setting up on gpu-pc...", or why
+it can't run there), `VoiceEngineAbilities-<key>` the rundown of what it can do
+("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only."; shown
+as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in `f5_voices`),
 `VoiceEngineFeatures-<key>` its other needs as chips ("Docker, 5 s+ samples,
-English" for Chatterbox Turbo;
-the same list as `features` in `f5_voices`), `VoiceEngineState-<key>` (shown only
-when the button doesn't already say it) where it stands ("Speaking on this PC.",
-"Ready on gpu-pc.", "Setting up on gpu-pc...", or why it can't run there), and
+English" for Chatterbox Turbo; the same list as `features` in `f5_voices`), and
 `VoiceEngineUse-<key>` its one button ("Set up and use Dia", "Use XTTS-v2", "In
 use Chatterbox Nano"; disabled with the reason as help text when the computer can't
-run it). Under *Another of your computers*, the computer pills
+run it). `PickerCompare-VoiceEngine` opens a table of the facts that differ
+(`PickerCell-VoiceEngine-<key>-<fact>`). Under *Another of your computers*, the computer pills
 `SpeakingHost-<host ID>` ("gpu-pc · speaking", "laptop · not reachable") only
 choose which computer the rows set up, so clicking one is passive;
 `SpeakingHostStatus` says when the shown one isn't reachable and
@@ -6825,15 +6842,15 @@ conversation's next reply and think use it.
 Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
-*Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
-with Docker*) and `LipSyncLoudnessTitle` (*Voice loudness, no setup*) read each
-way's title with *in use*, *recommended for this PC* or *chosen, not installed
-yet*; `LipSyncDockerAbout` says what Audio2Face with Docker needs (NVIDIA's
-open-source engine, no NVIDIA account or key; the NIM engine needs an NGC key);
-and `LipSyncOwnTitle` the advanced *Your own Audio2Face service* (with
-*in use*, *not running* or *checking* while it is the setting in effect,
-Martlet's default) with `LipSyncOwnState` (what it does now). Voice loudness
-reads *in use* while the default's own service doesn't answer.
+*Another of your computers*; under *This PC*, the ways are an option picker:
+`Picker-LipSync-Audio2Face` (Audio2Face on this PC, with *in use*,
+*recommended* or *chosen, not installed yet*), `Picker-LipSync-Loudness`
+(voice loudness: advanced lip-sync off) and `Picker-LipSync-Own` (your own
+Audio2Face service, with *in use*, *not running* or *checking* while it is the
+setting in effect, Martlet's default). In the shown way's details,
+`LipSyncDockerAbout` says what this PC's graphics card means for Audio2Face and
+`LipSyncOwnState` what your own service does now. Voice loudness reads *in use*
+while the default's own service doesn't answer.
 `SetupLipSyncLoudness`, `SetupLipSyncOwnService` and the Audio2Face buttons
 change lip-sync and need `--allow-ui-effects`.
 When Thinking runs in Ollama on this PC, the talk window has Ollama load the
