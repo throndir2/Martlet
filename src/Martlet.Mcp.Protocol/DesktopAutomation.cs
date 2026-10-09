@@ -743,10 +743,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // one's computer, how many were busy and how long it waited. Job names and host IDs only.
         "WorkSharingStatus",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
-        // status line (Martlet is running, listening, paused or watching). StayAwakeStatus (shown only when this PC runs its own
+        // status line (Martlet is running, listening, paused or watching), and the menu's items, which read as their fixed labels
+        // (Talk to Martlet or Show the talk window, Start listening or Stop listening, Pause Martlet or Resume Martlet...).
+        // StayAwakeStatus (shown only when this PC runs its own
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
+        "TrayOpen", "TrayTalk", "TrayStartListening", "TrayStopListening", "TrayStartWatching", "TrayStopWatching", "TrayPause",
+        "TrayResume", "TrayEndTalk", "TrayCharacter", "TrayCharacterClickThrough", "TrayCharacterProfiles", "TrayCloseToTray",
+        "TrayStartWithWindows", "TrayExit",
         // Settings › Appearance: the palette (Pink light, Rose dark, Character light, Character dark or Custom; menus and every window
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.

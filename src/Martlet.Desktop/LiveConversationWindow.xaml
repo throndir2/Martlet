@@ -48,7 +48,7 @@
                             <TextBlock x:Name="VisionText" FontSize="13" TextWrapping="NoWrap" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="StopButton" Content="S_top (Esc)" Click="Stop_Click" IsEnabled="False" Padding="14,6" MinHeight="34"
+                    <Button x:Name="StopButton" Content="Stop (Esc)" Click="Stop_Click" IsEnabled="False" Padding="14,6" MinHeight="34"
                             AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
                             AutomationProperties.HelpText="Stops the reply, recording and watching. Listening stays on." />
                 </StackPanel>
@@ -163,7 +163,7 @@
                              AutomationProperties.Name="Microphone level while listening" AutomationProperties.AutomationId="LiveLevel" />
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Bottom">
-                        <Button x:Name="PttButton" Content="Hold to _talk" Click="Ptt_Click" Visibility="Collapsed" Padding="14,10" Margin="8,0,0,0"
+                        <Button x:Name="PttButton" Content="Hold to talk" Click="Ptt_Click" Visibility="Collapsed" Padding="14,10" Margin="8,0,0,0"
                                 PreviewMouseLeftButtonDown="Ptt_Down" PreviewMouseLeftButtonUp="Ptt_Up" LostMouseCapture="Ptt_LostCapture"
                                 PreviewKeyDown="Ptt_KeyDown" PreviewKeyUp="Ptt_KeyUp" LostKeyboardFocus="Ptt_LostFocus"
                                 AutomationProperties.AutomationId="LivePtt" AutomationProperties.Name="Hold to talk (Space), release to send"
