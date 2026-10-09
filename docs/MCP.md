@@ -3406,6 +3406,15 @@ the whole reply. With `muted`, `ok` needs the voice muted at that piece
 text and captions that show all of it (every line unsaid for `text-only`).
 With `stopped`, `ok` needs the reply `Canceled` instead of completed, no voice
 failure and the `failAt`-th piece made; the text and the captions stop there.
+It also returns `cutOff`, what the conversation does with a reply the user
+stopped while Martlet said it (`CutOffReply`, as the talk window does):
+`saidAloud` (the turn's `SaidAloud`), `kept` (what the conversation keeps:
+only that, ending with the cut-off marker ` —`), `unsaid` (the rest of the
+reply's text so far) and `note` (the one-request note with the rest, from
+Companion › Prompts › *Cut off: what you hadn't said*, `prompt`), with
+`boardSource` and `noteAgeSeconds`. `cutOff.ok` (part of `ok`) needs `kept`
+to end with the marker, `saidAloud` to be the start of the reply's words and
+`saidAloud` and `unsaid` together to be all of them.
 Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
 spoken piece. With `reply` (up to 1,024 characters of one-line text) that text

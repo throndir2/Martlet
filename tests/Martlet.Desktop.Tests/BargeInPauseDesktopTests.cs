@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using Martlet.Conversation;
+using Martlet.Core.Settings;
 using Martlet.Mcp;
 
 namespace Martlet.Desktop.Tests;
@@ -137,5 +138,25 @@ public sealed class BargeInPauseDesktopTests
             // The pause began just after the sentence started, before the wink's moment: the wink came after the reply played on.
             Assert.True(wink.GetProperty("actedMs").GetInt64() >=
                 result.GetProperty("voice").GetProperty("hold").GetProperty("ResumedAtMs").GetInt64(), result.ToString());
+    }
+
+    [Fact]
+    public async Task A_reply_stopped_while_spoken_keeps_only_what_was_said_aloud_and_notes_the_rest()
+    {
+        // Production conversation runtime with fixture text and voice (NOT AI): the user stops the reply as its first piece plays.
+        var result = JsonSerializer.SerializeToElement(await SpokenReplyCheck.RunAsync("stopped", 1, CancellationToken.None));
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var cut = result.GetProperty("cutOff");
+        Assert.True(cut.GetProperty("ok").GetBoolean(), result.ToString());
+        Assert.Equal("Hey, you made it back.", cut.GetProperty("saidAloud").GetString());
+        Assert.Equal("Hey, you made it back." + CutOffReply.Marker, cut.GetProperty("kept").GetString());
+        Assert.Equal(PromptCatalog.CutOff, cut.GetProperty("prompt").GetString());
+        // Whatever of the reply had arrived past the first sentence is the rest, and only that goes in the note.
+        if (cut.GetProperty("unsaid").GetString() is { } unsaid)
+        {
+            Assert.DoesNotContain("made it back", unsaid);
+            Assert.Contains(unsaid, cut.GetProperty("note").GetString());
+        }
+        else Assert.Equal(JsonValueKind.Null, cut.GetProperty("note").ValueKind);
     }
 }
