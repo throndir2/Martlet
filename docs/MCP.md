@@ -194,6 +194,11 @@ provider, chosen on each PC), and brought up when it's done
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
 started think-1`); the desktop log notes each start, fit check and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
+A check-in with the **Background work** tool set (`background-work`) can start
+the same think or research after the exchange. `check-ins-status.json` and the
+check-in's card show its calls (`think_longer: Started think-1.`), and the log
+line ends with `(started by the check-in <name>)`. `check_ins_check` checks
+the set ([Check-ins](#check-ins)).
 
 ### Thinking pool
 
@@ -4747,7 +4752,10 @@ asks for the *Its tools act* answer; with no sets it waits) and `tools: only a
 member that calls tools runs them` (a text-only member never gets it; on a
 member that calls tools, FIXTURE calls are kept with their first line only, an
 unknown tool and a failing handler are errors, and every call after the eighth
-is refused). `how I react: the built-in check-in changes how the character
+is refused). `tools: background work takes over the reply's think_longer and
+research` checks the `background-work` set: its two tools take the reply's
+arguments, it replaces `think_longer` and `research` (never `cancel_thinking`),
+and a refusal's first line is `Not started: ...`. `how I react: the built-in check-in changes how the character
 reacts, bounded` runs [How I react](CONVERSATION.md#how-i-react): it is on,
 starts only on touches (it waits without a trigger and runs with a fresh one),
 offers the five Touch reactions tools and asks with `{touches}`; on a FIXTURE

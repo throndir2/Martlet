@@ -1658,6 +1658,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         context.Clear();
         saidLately.Clear();
+        lastKept = null;
         lastCache = null;
         conversationId = Guid.NewGuid();
         // The image model's descriptions belong to this conversation too.
@@ -2548,6 +2549,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         if (!operation.OnItsOwn) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
                         // The conversation moved on: a check-in made before this exchange is out of date (UnpromptedSpeech).
                         if (!operation.Report) Interlocked.Exchange(ref lastExchangeTicks, clock.GetUtcNow().UtcTicks);
+                        // What a check-in's background work continues after this exchange: its request and the reply as kept.
+                        lastKept = new(operation.Sent, kept);
                         // The note about the last song is in the conversation now.
                         if (songNote is not null) singing?.NoteDelivered(songNote);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
@@ -2854,22 +2857,37 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on, then reminders, call_on_discord and set_camera_background
     /// while they apply. Null when there are none.</summary>
+    /// <summary>The reply tool names the actions check-in takes over now (from saved settings only). Stub until the
+    /// after-exchange actions foundation lands.</summary>
+    internal IReadOnlySet<string> HandedOffReplyTools(LiveConversationConfiguration configured) => new HashSet<string>(StringComparer.Ordinal);
+
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
         string? guidance = null;
+        // think_longer and research handed off to the actions check-in: the reply keeps cancel_thinking and only says it'll get
+        // back to the user; the check-in starts the work after the reply.
+        var handedOff = HandedOffReplyTools(configured);
         if (ReplyThinkTools(configured) is { Count: > 0 } thinkTools)
         {
             var settings = configured.ThinkLonger;
-            own.Add((thinkTools[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
+            if (handedOff.Contains(ThinkLonger.Name)) guidance = BackgroundWorkTools.ReplyGuidance;
+            else
+            {
+                own.Add((thinkTools[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
+                guidance = ThinkLonger.Instructions(settings, configured.Prompts);
+            }
             own.Add((thinkTools[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
-            guidance = ThinkLonger.Instructions(settings, configured.Prompts);
         }
         // research while Web research is on (Companion › Deep thinking, off by default) and Deep thinking can think.
         if (OffersResearch(configured))
         {
-            own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
-            guidance = Join(guidance, WebResearch.Instructions(configured.Prompts));
+            if (!handedOff.Contains(WebResearch.Name))
+            {
+                own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
+                guidance = Join(guidance, WebResearch.Instructions(configured.Prompts));
+            }
+            else if (!handedOff.Contains(ThinkLonger.Name)) guidance = Join(guidance, BackgroundWorkTools.ReplyGuidance);
         }
         // sing_song, play_song and stop_singing while singing is set up (with the Singing prompt).
         if (singing is { Offered: true } && configured.SupportsTools)
@@ -3063,17 +3081,25 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>think_longer: starts the background think and returns at once (never waits for it), telling the model to tell
     /// the user now unless it already did. The think continues this reply's request (what was said before the call included).</summary>
     private ValueTask<ConversationToolResult> ThinkLongerAsync(LiveConversationOperation operation, LiveConversationConfiguration configured,
-        TextToolCall call)
+        TextToolCall call) =>
+        ValueTask.FromResult(StartThink(configured, operation.Sent, () => operation.Turn?.Content.Text,
+            !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text), call, checkIn: null));
+
+    /// <summary>Starts a background think that continues <paramref name="sent"/> (the request of the reply that asked for it) and
+    /// what that reply said (<paramref name="reply"/>). <paramref name="checkIn"/>: the check-in that started it after the
+    /// exchange (null: the reply's think_longer), which gets its own words back.</summary>
+    private ConversationToolResult StartThink(LiveConversationConfiguration configured, BoundedTextInput? sent, Func<string?> reply,
+        bool toldUser, TextToolCall call, string? checkIn)
     {
         const string server = "Martlet";
         var (task, reason, problem) = ThinkLonger.Parse(call.ArgumentsJson);
         if (problem is not null)
         {
             tools?.Record(server, ThinkLonger.Name, "invalid arguments", "", true);
-            return ValueTask.FromResult(new ConversationToolResult(problem, true));
+            return new(checkIn is null ? problem : BackgroundWorkTools.NotStarted("invalid arguments") + "\n" + problem, true);
         }
         var settings = configured.ThinkLonger;
-        if (!settings.On) return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.TurnedOff, true));
+        if (!settings.On) return new(checkIn is null ? ThinkLonger.TurnedOff : BackgroundWorkTools.NotStarted("Thinking longer is off"), true);
         // Where it thinks (Companion › Thinking pool, this PC's choice): every member that can run a think (a model of its own; a
         // second model in Ollama on this PC only while both fit on the graphics card) and whose computer answers now; the
         // conversation model stands in while none answers, when that is allowed.
@@ -3083,10 +3109,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             tools?.Record(server, ThinkLonger.Name, "not started: unavailable", ThinkLonger.Label(task!), false);
             ErrorLog.Info($"Background thinking: a new think wasn't started ({plan.Why})");
-            return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Unavailable(plan.Why), true));
+            return new(checkIn is null ? ThinkLonger.Unavailable(plan.Why) : BackgroundWorkTools.NotStarted("Deep thinking can't run right now") + "\n" + plan.Why, true);
         }
-        var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
-        var sent = operation.Sent;
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
         // Members that are offline now stay in the list: the broker passes over them, and a think waiting in line goes to one as
         // soon as it answers again.
@@ -3107,7 +3131,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var where = here.Settings.Separate ? here.Settings.Describe() : thinkingModel;
                 var slot = ThinkSlotFor(here.Key);
                 var think = new BackgroundThink(ThinkRuntime(slot),
-                    left => PrepareThink(configured, here.Settings, sent, () => operation.Turn?.Content.Text, task!, reason, left,
+                    left => PrepareThink(configured, here.Settings, sent, reply, task!, reason, left,
                         own => Volatile.Write(ref slot.Authorization, own), resume), clock)
                 {
                     AttemptFinished = terminal =>
@@ -3176,8 +3200,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             tools?.Record(server, ThinkLonger.Name, "not started: " + start.Refusal, ThinkLonger.Label(task!), false);
             ErrorLog.Info($"Background thinking: a new think wasn't started ({start.Refusal}: {start.Message})");
-            return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Refused(start), true));
+            return new(checkIn is null ? ThinkLonger.Refused(start) : BackgroundWorkTools.NotStarted(start.Refusal ?? "unavailable") +
+                (start.Message is { } refusal ? "\n" + refusal : ""), true);
         }
+        var by = checkIn is null ? (toldUser ? "." : " The reply hadn't told you yet, so it was asked to.") : $" (started by the check-in {checkIn}).";
         var slots = ThinkLonger.Slots(places);
         var busy = jobs.Places.Leases.Count(lease => places.Any(p => p.Id == lease.Place.Id));
         var terms = $"thinking steps on, {settings.HowHard} effort, no time limit, " +
@@ -3187,18 +3213,17 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             tools?.Record(server, ThinkLonger.Name, "queued " + started.Id, ThinkLonger.Label(task!), false);
             ErrorLog.Info($"Background thinking: {started.Id} waits in line ({jobs.Places.Position(started.Id)} in line) for one of " +
                 $"{places.Count} place{(places.Count == 1 ? "" : "s")} ({ThinkLonger.AtOnce(places)} at once; " +
-                (start.ForConversation ? "the live floor keeps them free for the conversation" : $"busy: {start.Queued}") + $"; {terms})" +
-                (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
-            return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser, start.Queued, start.ForConversation)));
+                (start.ForConversation ? "the live floor keeps them free for the conversation" : $"busy: {start.Queued}") + $"; {terms})" + by);
+            return new(checkIn is null ? ThinkLonger.Started(started, toldUser, start.Queued, start.ForConversation)
+                : BackgroundWorkTools.Started(started, start.Queued, start.ForConversation));
         }
         tools?.Record(server, ThinkLonger.Name, "started " + started.Id, ThinkLonger.Label(task!), false);
         var chosen = pool.Find(seat.Id)!;
         ErrorLog.Info($"Background thinking: started {started.Id} on {(chosen.Settings.Separate ? chosen.Settings.Describe() : thinkingModel)} " +
             $"(placed on {chosen.Computer}{(seat.Duties.Count > 0 ? $", also kept for {string.Join(" and ", seat.Duties)}" : "")}, " +
             $"{busy} of {slots} slot{(slots == 1 ? "" : "s")} on {places.Count} place{(places.Count == 1 ? "" : "s")} busy; {terms}; " +
-            $"in parallel with the conversation: {chosen.Plan.Why})" +
-            (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
-        return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser)));
+            $"in parallel with the conversation: {chosen.Plan.Why})" + by);
+        return new(checkIn is null ? ThinkLonger.Started(started, toldUser) : BackgroundWorkTools.Started(started));
     }
 
     /// <summary>cancel_thinking: stops the running think; nothing about it is brought up later (Martlet knows).</summary>

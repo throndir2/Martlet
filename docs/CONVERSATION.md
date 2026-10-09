@@ -908,6 +908,21 @@ is already being spoken, and if it said nothing the result tells it to say so
 now (a reply may end with nothing more after its tool calls). The tool never
 holds up the reply. `cancel_thinking` (optional `id`) stops a think.
 
+**After the exchange instead.** A check-in can start the same think and web
+research after the reply, on the Thinking pool, with the **Background work**
+tool set (`background-work`, `BackgroundWorkTools`). Its `think_longer` and
+`research` take the same arguments and keep the same limits, gates and job
+kinds as the reply's. The work continues the last exchange's request and what
+the reply said, and Martlet brings the result up the same way. The check-in
+gets `Started think-1.` (or `think-1 waits in line.`) on the first line, never
+the task. The set takes over the reply's `think_longer` and `research`
+(`Replaces`): while the after-exchange `actions` check-in uses it, the reply
+gets neither tool and no *Thinking longer* or *Web research* prompt. It gets a
+short line that says to tell you it'll think it over or look into it, because
+that work starts after the reply. `cancel_thinking` stays on the reply. The
+set is offered only while Thinking longer is on and Deep thinking can think;
+`research` also needs Web research on.
+
 **The background request** runs on its own runtime with Thinking steps **On**
 at the chosen effort (*Medium* or *High*: `reasoning_effort` medium/high for
 Ollama on this PC, OpenAI and Gemini, OpenRouter's `reasoning.effort`, the chat
@@ -1697,6 +1712,7 @@ does and its tools. Martlet offers:
 | Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
 | Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
+| Background work (`background-work`) | `think_longer`, `research` | Start a background think or web research on the last exchange, which Martlet brings up when done. Takes over the reply's `think_longer` and `research` ([Thinking longer](#thinking-longer-and-background-work)). Offered only while Thinking longer is on and Deep thinking can think. |
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls

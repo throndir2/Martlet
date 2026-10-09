@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Check-ins can start Martlet's long thinking and web research with the new **Background work** tool set. When the after-reply check-in uses it, replies no longer decide that themselves: Martlet just tells you it'll think it over, and your Thinking pool starts the work right after the reply, so replies stay quick. The result still comes back the same way. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - Conversations now has its own page in the side menu, right after Companion, so you can read, search, edit and delete every conversation without opening a separate window. Companion › Memory › **Open conversations** takes you there too. ([#689](https://github.com/throndir2/Martlet/pull/689))
 
 ## [0.64.0] - 2026-10-09

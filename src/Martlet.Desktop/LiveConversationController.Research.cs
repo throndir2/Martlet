@@ -21,17 +21,26 @@ internal sealed partial class LiveConversationController
 
     /// <summary>research: starts the research job on a free Deep thinking place and returns at once, telling the model to tell
     /// the user now unless it did.</summary>
-    private ConversationToolResult Research(LiveConversationOperation operation, LiveConversationConfiguration configured, TextToolCall call)
+    private ConversationToolResult Research(LiveConversationOperation operation, LiveConversationConfiguration configured, TextToolCall call) =>
+        StartResearch(configured, operation.Sent, () => operation.Turn?.Content.Text, !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text),
+            call, checkIn: null);
+
+    /// <summary>Starts a research job whose steps continue <paramref name="sent"/> and what the reply said (<paramref name="reply"/>).
+    /// <paramref name="checkIn"/>: the check-in that started it after the exchange (null: the reply's research), which gets its
+    /// own words back.</summary>
+    private ConversationToolResult StartResearch(LiveConversationConfiguration configured, BoundedTextInput? sent, Func<string?> reply,
+        bool toldUser, TextToolCall call, string? checkIn)
     {
         const string server = "Martlet";
         var (arguments, problem) = WebResearch.Parse(call.ArgumentsJson);
         if (arguments is null)
         {
             tools?.Record(server, WebResearch.Name, "invalid arguments", "", true);
-            return new(problem!, true);
+            return new(checkIn is null ? problem! : BackgroundWorkTools.NotStarted("invalid arguments") + "\n" + problem, true);
         }
         var label = WebResearch.Label(arguments.Topic);
-        if (!configured.ThinkLonger.Researches) return new(WebResearch.TurnedOff, true);
+        if (!configured.ThinkLonger.Researches)
+            return new(checkIn is null ? WebResearch.TurnedOff : BackgroundWorkTools.NotStarted("Web research is off"), true);
         // Members whose computers are offline now can't start it; they stay in the list, so the broker places it on one once it
         // answers again.
         var live = LivePool(configured);
@@ -40,36 +49,37 @@ internal sealed partial class LiveConversationController
         {
             tools?.Record(server, WebResearch.Name, "not started: unavailable", label, false);
             ErrorLog.Info($"Web research: a new job wasn't started ({plan.Why})");
-            return new(WebResearch.Unavailable(plan.Why), true);
+            return new(checkIn is null ? WebResearch.Unavailable(plan.Why)
+                : BackgroundWorkTools.NotStarted("Deep thinking can't run right now") + "\n" + plan.Why, true);
         }
         var pool = Placing(DeepPool(configured), live);
-        var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
-        var sent = operation.Sent;
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
         var start = jobs.Start(WebResearch.Kind, label, (job, token) =>
-            ResearchAsync(job, arguments, configured, pool, sent, () => operation.Turn?.Content.Text, thinkingModel, token),
+            ResearchAsync(job, arguments, configured, pool, sent, reply, thinkingModel, token),
             ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool)));
         if (start.Job is not { } started)
         {
             tools?.Record(server, WebResearch.Name, "not started: " + start.Refusal, label, false);
             ErrorLog.Info($"Web research: a new job wasn't started ({start.Refusal}: {start.Message})");
-            return new(WebResearch.Refused(start), true);
+            return new(checkIn is null ? WebResearch.Refused(start) : BackgroundWorkTools.NotStarted(start.Refusal ?? "unavailable") +
+                (start.Message is { } refusal ? "\n" + refusal : ""), true);
         }
+        var by = checkIn is null ? (toldUser ? "." : " The reply hadn't told you yet, so it was asked to.") : $" (started by the check-in {checkIn}).";
         tools?.Record(server, WebResearch.Name, "started " + started.Id, label, false);
         if (started.Place is not { } seat)
         {
             // Every place it can run on is kept free for the conversation: it starts once the conversation pauses.
             ErrorLog.Info($"Web research: {started.Id} waits for the conversation (the live floor keeps its places free while you " +
                 $"talk; {BackgroundJobs.Duration(WebResearch.TimeLimit)} limit once it starts)" +
-                (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
-            return new(WebResearch.Started(started, toldUser));
+                by);
+            return new(checkIn is null ? WebResearch.Started(started, toldUser) : BackgroundWorkTools.Started(started, "", forConversation: true));
         }
         var chosen = pool.Find(seat.Id)!;
         ErrorLog.Info($"Web research: started {started.Id}, thinking on {(chosen.Settings.Separate ? chosen.Settings.Describe() : thinkingModel)} " +
             $"(placed on {chosen.Computer}; {BackgroundJobs.Duration(WebResearch.TimeLimit)} limit, " +
             $"{jobs.StartedWithinHour(WebResearch.KindName)} of {WebResearch.Kind.MaxPerHour} this hour)" +
-            (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
-        return new(WebResearch.Started(started, toldUser));
+            by);
+        return new(checkIn is null ? WebResearch.Started(started, toldUser) : BackgroundWorkTools.Started(started));
     }
 
     // The research job: checks a second model in Ollama on this PC fits beside Thinking's (as a think does), runs the loop with
