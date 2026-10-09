@@ -1953,7 +1953,9 @@ zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 (*When you touch Martlet while it talks*: radio buttons whose `selected` state
 reads in `ui_snapshot`; choosing one saves `talk-preferences.json`, so it
 needs `--allow-ui-effects`),
-`TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
+`TouchZonesSaveState` and each zone's `TouchZoneAutoplayList-<n>` (the emotes
+the zone autoplays, as *A → B*, or *nothing*; the touch-zone check also lists
+`autoplays`), and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows, for a zone with several areas how many, for a zone that follows the
 model's own part *follows the model's own 尾巴 wherever it moves: 21 parts in 6
 areas*, *added by you* for a zone the owner added, which *Detect again*
