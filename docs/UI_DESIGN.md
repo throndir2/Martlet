@@ -430,48 +430,80 @@ window ends it unless Martlet is listening or watching, which only hides it.
     3. *Voice*: where the voice runs and the voice itself, then the speakers,
        then *Speak Martlet's replies aloud* (on by default).
     4. *Lip-sync*: who moves the character's mouth, and where it runs.
-  - **Optional extras** (jobs Martlet works without; each page's intro starts
-    with "Optional."): *Thinking pool* (background thinking on your other
-    models), *Singing* (the Singing card, see [Singing](SINGING.md)),
-    *Pictures*, *Reading* and:
-    5. *Vision*: whether Martlet may look at your screen or a camera when you
-       press *Start watching* (on by default, looking at your whole screen):
-       what it looks at (whole screen, active
-       window, a camera found with *Find cameras*, a phone or
+  - **Optional extras** (parts Martlet works without). The side list shows
+    them in the priority list's order (`ComponentRanking`; a part it doesn't
+    rank yet keeps its place in `OptionalExtras.FallbackOrder`). Each page's
+    intro starts with "Optional.", says what the part does and ends with
+    *Off:* and what Off means, in the priority list's words
+    (`OptionalExtras.OffMeans`). Each page has the standard order: **Now**,
+    then the main choice as an option picker whose first option is **Off**,
+    then configuration:
+    5. *Vision*: Now (on or off, what Martlet looks at, whether it can see,
+       the image model's lines and *Test vision*), then **How Martlet sees**:
+       Off, Thinking's own model, the audio model, Ollama on this PC, a cloud
+       provider or server, or one of your computers. Off's details have
+       *Turn vision off*; the chosen model's details, while vision is off,
+       have *Turn vision on* (which only allows it; *Start watching* starts
+       looking). Saving a model turns vision on. Then what it looks at (whole
+       screen, active window, a camera found with *Find cameras*, a phone or
        network camera address, or a Home Assistant camera once Smart home is
-       connected), how chatty it is, what is captured and where it is sent,
-       and *Turn vision off* / *Turn vision on* (which only allows it; *Start
-       watching* starts looking).
+       connected), how chatty it is, its glances, the screen summary and
+       *What Martlet sends* (what is captured and where it goes).
+    6. *Reading*: Now (what it reads with, the newest read, *Read my screen
+       now*), then **Where it reads**: Off, Windows OCR on this PC or
+       Martlet's Reading role (its details choose the computer and set it
+       up).
+    7. *Hearing*: Now (what hears your voice, whether it can, the audio
+       model's lines), then **How Martlet hears your tone**: Off (Thinking
+       gets only the transcript), Thinking's own model, the image model,
+       Ollama on this PC or a cloud provider or server. Then *Hear how you say
+       it*: the consent check box (on while the recording stays on this PC,
+       else off until you tick it), the voice path and *Test hearing*.
+       Listening links here.
+    8. *Thinking pool*: Now, then **Where it thinks**: Off, one of your
+       computers, Ollama on this PC or a cloud provider (each option's
+       details add members there), then the pool's members, Backup Thinking,
+       Thinking longer and Web research.
+    9. *Smart home*: Now, then Home Assistant or Off in an option picker,
+       then connecting and installing Home Assistant, then what Martlet may
+       do, the devices and sharing.
+    10. *Singing*: Now, then **How Martlet sings**: Off (the role stays set
+        up) or Martlet's Singing role (its details choose the computer, set
+        it up and sing there), then the song choices: quality, and the voice
+        match (SoulX-Singer or VevoSing) as a second option picker. See
+        [Singing](SINGING.md).
+    11. *Pictures*: Now (with *Check* and *Draw a test picture*), then
+        **Where it draws**: Off, Martlet's Pictures role, your own ComfyUI,
+        OpenRouter or NVIDIA Build; each option's details hold its computer,
+        address and workflow, or model and key, and the button that uses it.
   - **Who it is**:
-    6. *Personality*: the active persona, *Edit
-       personality*, and *Import a character card*. The Personality window
-       makes the persona chosen in its list the one Martlet uses and saves
-       every edit on its own (no *Apply*, *Save* or *Reload*).
-    7. *Lorebook*: how many lorebooks are on for the active persona, each
-       lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
-       (see [Lorebooks](LOREBOOKS.md)).
-    8. *Memory*: whether memory is on, and *Manage memory* for its facts.
+    12. *Personality*: the active persona, *Edit
+        personality*, and *Import a character card*. The Personality window
+        makes the persona chosen in its list the one Martlet uses and saves
+        every edit on its own (no *Apply*, *Save* or *Reload*).
+    13. *Lorebook*: how many lorebooks are on for the active persona, each
+        lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
+        (see [Lorebooks](LOREBOOKS.md)).
+    14. *Memory*: whether memory is on, and *Manage memory* for its facts.
   - **How it looks** (the desktop character, split into small pages so each
     opens at once):
-    9. *Character*: what it looks like now, then the character model (show,
-       hide, choose and customize, reset, lock, click-through), its zoom and
-       your characters. The character window has one
-       *Show character*/*Hide character (Esc)* button at the top and saves
-       each choice on its own; a showing character switches at once.
-    10. *Speech bubbles*: Now, then where Martlet's words show (speech
+    15. *Character*: what it looks like now, then the character model (show,
+        hide, choose and customize, reset, lock, click-through), its zoom and
+        your characters. The character window has one
+        *Show character*/*Hide character (Esc)* button at the top and saves
+        each choice on its own; a showing character switches at once.
+    16. *Speech bubbles*: Now, then where Martlet's words show (speech
         bubbles, subtitles, both or Off), then where the bubble goes.
-    11. *Emotes and motions*: Now (how many emotes, motions and combos are
+    17. *Emotes and motions*: Now (how many emotes, motions and combos are
         on), then what replies can play on the character, and combos of them.
-    12. *Eyes*: Now, then where the character looks (the main choice), and
+    18. *Eyes*: Now, then where the character looks (the main choice), and
         where its eyes are.
-    13. *Touch*: Now, then touch zones and the touch temperament.
+    19. *Touch*: Now, then touch zones and the touch temperament.
   - **What it does**: how it answers and acts: *Replies* (generation
     settings, and *Thinking steps*: whether a reasoning model thinks before it
     answers, Off by default), *Tools* (Now, then the terminal, on or Off, then
     the MCP servers Martlet may call while you talk, whether
-    each runs without asking, and recent tool use), *Smart home* (Now, then
-    Home Assistant or Off in an option picker, then connecting and installing
-    Home Assistant, then what Martlet may do, the devices and sharing),
+    each runs without asking, and recent tool use),
     *Discord* (Now, then connecting the bot or Off, then its setup) and
     *Messaging* (Now, then On or Off for each app, then each app's setup).
     *People* (in *Who it is*) has Now, then recognizing voices or Off, then
@@ -495,7 +527,11 @@ window ends it unless Martlet is listening or watching, which only hides it.
      recognizing voices, the terminal, Discord and each messaging app): the
      feature's choice first, then *Off*.
   3. **Configuration**: the cards that only apply to the chosen option, then
-     the page's other settings.
+     the page's other settings. What an option needs before it can be used
+     (a computer, an address, a model ID, a key and its consent) is in that
+     option's details in the picker, next to the button that uses it; what
+     you can change after you choose it (quality, what Martlet looks at, the
+     pool's members) is in the cards below.
 
   **Lists of choices use the option picker** (`MainWindow.OptionPicker.cs`),
   so a list that keeps growing stays short. Each option is one compact row:
@@ -511,7 +547,11 @@ window ends it unless Martlet is listening or watching, which only hides it.
   graphics memory, memory, processor threads, download size, how soon its
   first word comes (first sentence, first audio or transcript), quality,
   whether a Thinking model hears or sees, cost online and whether the numbers
-  were measured.
+  were measured. An option the catalog doesn't have yet, and the facts of
+  its own kind, come from `OptionalExtras` (`Martlet.Desktop`): cost and where
+  your data goes for every option, the license (VevoSing is non-commercial
+  only), how long a song or picture takes and its size, the languages and
+  game fonts OCR reads, and whether an image or audio model sees or hears.
 
   Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: Voices (the F5 voice
