@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- A check-in's answer can now **Add to what Martlet knows**: a short, vivid description of what is happening that Martlet's next reply can draw on, without any reply waiting for it. Change how Martlet reads it in Companion › Prompts › **Check-in: adds to what Martlet knows**. ([#PR_NUMBER](https://github.com/throndir2/Martlet/pull/PR_NUMBER))
+- A check-in's answer can now **Add to what Martlet knows**: a short, vivid description of what is happening that Martlet's next reply can draw on, without any reply waiting for it. Change how Martlet reads it in Companion › Prompts › **Check-in: adds to what Martlet knows**. ([#673](https://github.com/throndir2/Martlet/pull/673))
 - Each touch zone can now have an **Autoplays** list of emotes and gestures that play by themselves, one after another, after the zone's reaction. Pick the emotes and how many seconds each one shows. Zone rows are simpler (rest and box moved under **Details**), and new **Reset reactions** and **Reset all zones** buttons ask first, then put zones back as for a fresh character. ([#672](https://github.com/throndir2/Martlet/pull/672))
 
 - When Ollama on your PC keeps stopping, Home and Companion › Thinking now show Ollama's own error instead of "Ollama isn't running". If the cause is a models folder that was moved to another drive and linked back (Ollama 0.40.1 and later refuse that link), Martlet points Ollama at the real folder by itself, backs up Ollama's settings first and tells you what it changed. ([#669](https://github.com/throndir2/Martlet/pull/669))
