@@ -550,6 +550,128 @@ public sealed class CharacterTouchZoneTests
     }
 
     [Fact]
+    public async Task AZonesReactionListIsWhatPlaysAndKeepsVoiceSoundsAndEntriesTheModelLacks()
+    {
+        var blush = new CharacterActionSource("expression:Blush", CharacterActionKind.Expression, "Blush", "cheeks");
+        var catalog = Catalog(blush);
+        var zone = new CharacterTouchZone
+        {
+            Id = "nose", Box = new(0.4, 0.2, 0.1, 0.1),
+            Reaction = new() { Actions = ["sound:laugh", "expression:Gone", "gesture:nod", "expression:Blush", "sound:"] }
+        };
+
+        // In list order, the ones the model has; the voice sounds go to the voice.
+        var plan = CharacterTouchZones.React(zone, catalog, null, 1);
+        Assert.Equal(["nod", "Blush"], plan.Actions.Select(s => s.Name));
+        Assert.Equal(["laugh"], plan.Sounds);
+        Assert.Equal(TouchReactionPlan.FromOwner, plan.From);
+        Assert.True(CharacterTouchReaction.IsSound("sound:laugh"));
+        Assert.True(CharacterTouchZones.Resolves("sound:gasp", catalog));
+        Assert.False(CharacterTouchZones.Resolves("sound:", catalog));
+        Assert.True(CharacterTouchZones.Resolves("expression:Blush", catalog));
+        Assert.False(CharacterTouchZones.Resolves("expression:Gone", catalog));
+        Assert.Empty(CharacterTouchZones.React(zone with { Reaction = new() { Actions = [] } }, catalog, null, 1).Actions);
+
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            // Every entry is kept as it is through saving and loading.
+            var settings = new CharacterTouchZoneSettings { ModelId = "model-1", Zones = [zone with { Reaction = zone.Reaction with { Actions = zone.Reaction.Actions!.Take(4).ToArray() } }] };
+            Assert.Null(CharacterTouchZones.Problem(settings));
+            await CharacterTouchZones.SaveAsync(directory, settings, DateTimeOffset.Now);
+            Assert.Equal(["sound:laugh", "expression:Gone", "gesture:nod", "expression:Blush"], CharacterTouchZones.Load(directory, "model-1")!.Zones[0].Reaction.Actions);
+        }
+        finally { Directory.Delete(directory, true); }
+
+        // A sane maximum, and no empty entries.
+        Assert.Equal(8, CharacterTouchZones.MaximumActions);
+        var tooMany = new CharacterTouchZoneSettings
+        {
+            ModelId = "m", Zones = [zone with { Reaction = new() { Actions = [.. Enumerable.Range(0, 9).Select(i => $"gesture:g{i}")] } }]
+        };
+        Assert.NotNull(CharacterTouchZones.Problem(tooMany));
+        Assert.NotNull(CharacterTouchZones.Problem(tooMany with { Zones = [zone with { Reaction = new() { Actions = [" "] } }] }));
+    }
+
+    [Fact]
+    public void ZonesWithNoListYetAreFilledWithWhatTheyPlayNowAndTheTemperamentSeedsNewOnes()
+    {
+        var blush = new CharacterActionSource("expression:Blush", CharacterActionKind.Expression, "Blush", "cheeks");
+        var tap = new CharacterActionSource("motion:TapHead", CharacterActionKind.Motion, "TapHead", "a tap on the head");
+        var catalog = Catalog(blush, tap);
+        var settings = new CharacterTouchZoneSettings
+        {
+            ModelId = "model-1",
+            Zones =
+            [
+                new() { Id = "top_of_head", Box = new(0.4, 0, 0.2, 0.1) },
+                new() { Id = "nose", Box = new(0.45, 0.2, 0.1, 0.05), Reaction = new() { Actions = ["gesture:nod"], CooldownSeconds = 9 } },
+                new() { Id = "groin", Box = new(0.45, 0.55, 0.1, 0.05), Reaction = new() { Notices = false } }
+            ]
+        };
+
+        // Before: a zone with no list plays its built-in reaction (the model's own tap motion for the head first).
+        Assert.Equal(["TapHead", "tilt", "smile"], CharacterTouchZones.React(settings.Zones[0], catalog, null, 1).Actions.Select(s => s.Name));
+        Assert.Equal(TouchReactionPlan.FromDefault, CharacterTouchZones.React(settings.Zones[0], catalog, null, 1).From);
+        var filled = CharacterTouchZones.Filled(settings, catalog, null);
+        Assert.Equal(["motion:TapHead", "gesture:tilt", "gesture:smile"], filled.Zones[0].Reaction.Actions);
+        // After: the list shows exactly that, and the same plays; the owner's lists and the rest of each reaction stay.
+        Assert.Equal(["TapHead", "tilt", "smile"], CharacterTouchZones.React(filled.Zones[0], catalog, null, 1).Actions.Select(s => s.Name));
+        Assert.Equal(["gesture:nod"], filled.Zones[1].Reaction.Actions);
+        Assert.Equal(9, filled.Zones[1].Reaction.CooldownSeconds);
+        Assert.Equal(["expression:Blush", "gesture:surprise"], filled.Zones[2].Reaction.Actions);
+        Assert.False(filled.Zones[2].Reaction.Notices);
+        Assert.Same(filled, CharacterTouchZones.Filled(filled, catalog, null));
+        // Another model's emotes fill nothing.
+        var otherModel = settings with { ModelId = "model-2" };
+        Assert.Same(otherModel, CharacterTouchZones.Filled(otherModel, catalog, null));
+
+        // With a touch temperament that covers the zone, a new zone's list starts from its reactions.
+        var temperament = CharacterTouchTemperaments.Parse("{\"groups\":{\"head\":{\"attitude\":1,\"reactions\":[\"blush\",\"nod\"]}}}", Guid.NewGuid(), null,
+            CharacterTouchTemperament.ByThinking, DateTimeOffset.Now)!;
+        Assert.Equal(["expression:Blush", "gesture:nod"], CharacterTouchZones.DefaultReactions(settings.Zones[0], catalog, temperament));
+        Assert.Equal(TouchReactionPlan.FromTemperament, CharacterTouchZones.React(settings.Zones[0], catalog, temperament, 1).From);
+        var fresh = CharacterTouchZones.FreshReaction(settings.Zones[0], catalog, temperament);
+        Assert.Equal((true, (string?)null, CharacterTouchReaction.DefaultCooldown), (fresh.Notices, fresh.Narration, fresh.CooldownSeconds));
+        Assert.Equal(["expression:Blush", "gesture:nod"], fresh.Actions);
+        // Without the model's emotes there is nothing to fill a list with.
+        Assert.Empty(CharacterTouchZones.DefaultReactions(settings.Zones[0], null, temperament));
+    }
+
+    [Fact]
+    public async Task ZonesSavedWithTheOldSecondListJoinItToTheEndOfTheirReactionList()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            File.WriteAllText(CharacterTouchZones.Path(directory), """
+                { "version": 2, "models": [
+                  { "model_id": "model-1", "updated_at": "2026-01-01T00:00:00+00:00", "zones": [
+                    { "id": "nose", "box": { "x": 0.4, "y": 0.2, "width": 0.1, "height": 0.1 },
+                      "reaction": { "actions": ["gesture:nod"], "autoplay": ["gesture:smile", "gesture:nod"], "autoplay_seconds": 6 } },
+                    { "id": "top_of_head", "box": { "x": 0.4, "y": 0, "width": 0.2, "height": 0.1 },
+                      "reaction": { "autoplay": ["gesture:blush"] } } ] } ] }
+                """);
+            var loaded = CharacterTouchZones.Load(directory, "model-1")!;
+            var catalog = Catalog();
+            // It plays at once with the list, as one list.
+            Assert.Equal(["nod", "smile"], CharacterTouchZones.React(loaded.Zones[0], catalog, null, 1).Actions.Select(s => s.Name));
+            // Saved before the model's emotes are known, it is kept.
+            await CharacterTouchZones.SaveAsync(directory, loaded, DateTimeOffset.Now);
+            Assert.Contains("autoplay", File.ReadAllText(CharacterTouchZones.Path(directory)), StringComparison.Ordinal);
+
+            var filled = CharacterTouchZones.Filled(CharacterTouchZones.Load(directory, "model-1")!, catalog, null);
+            Assert.Equal(["gesture:nod", "gesture:smile"], filled.Zones[0].Reaction.Actions);
+            Assert.Equal(["gesture:tilt", "gesture:smile", "gesture:blush"], filled.Zones[1].Reaction.Actions);
+            Assert.Same(filled, CharacterTouchZones.Filled(filled, catalog, null));
+            await CharacterTouchZones.SaveAsync(directory, filled, DateTimeOffset.Now);
+            Assert.DoesNotContain("autoplay", File.ReadAllText(CharacterTouchZones.Path(directory)), StringComparison.Ordinal);
+            Assert.Equal(["gesture:nod", "gesture:smile"], CharacterTouchZones.Load(directory, "model-1")!.Zones[0].Reaction.Actions);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task MartletNoticesEveryZoneByDefaultAndOlderZonesNobodyTurnedItOnForGetItOnce()
     {
         // A new zone, a found zone and the rough zone used before any were found: all noticed.
@@ -625,7 +747,7 @@ public sealed class CharacterTouchZoneTests
             var edited = first with
             {
                 IncludeIntimate = true,
-                Zones = [first.Zones[0] with { Label = "Crown", Enabled = false, Reaction = new() { Notices = true, CooldownSeconds = 9, Autoplay = ["emote:a", "emote:b"], AutoplaySeconds = 6 } }]
+                Zones = [first.Zones[0] with { Label = "Crown", Enabled = false, Reaction = new() { Notices = true, CooldownSeconds = 9 } }]
             };
             await CharacterTouchZones.SaveAsync(directory, edited, DateTimeOffset.Now);
             await CharacterTouchZones.SaveAsync(directory, new() { ModelId = "model-2" }, DateTimeOffset.Now);
@@ -641,9 +763,6 @@ public sealed class CharacterTouchZoneTests
             Assert.Equal(0.3, again.Zones[0].Box.X);
             Assert.False(again.Zones[0].Enabled);
             Assert.Equal(9, again.Zones[0].Reaction.CooldownSeconds);
-            Assert.Equal(["emote:a", "emote:b"], again.Zones[0].Reaction.Autoplay);
-            Assert.Equal(6, again.Zones[0].Reaction.AutoplaySeconds);
-            Assert.NotNull(CharacterTouchZones.Problem(again with { Zones = [again.Zones[0] with { Reaction = new() { AutoplaySeconds = 0 } }] }));
             Assert.True(again.Zones[0].Reaction.Notices);
             Assert.DoesNotContain("\"tell\"", File.ReadAllText(CharacterTouchZones.Path(directory)), StringComparison.Ordinal);
             Assert.Equal(["leftHand"], again.Zones[1].Bones);

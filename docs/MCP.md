@@ -1793,7 +1793,12 @@ is kept and its `snapshotProbe` (how many `chains` and `springs` the probe kept
 beside it has; the desktop binds the zones again with it when the owner moves
 one), what the last detection `sent` (its plain `line`, `requests`,
 `pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
-each zone's parts, its number of `areas`, what it `follows`, `plays`, whether
+each zone's parts, its number of `areas`, what it `follows`, `plays`, its
+`reactions` (the reaction list as saved, in play order: emote, gesture and
+motion IDs and `sound:<cue>` voice sounds, every entry kept, also one the model
+doesn't have; null for a zone not filled yet), its `seed` (the list a new zone
+gets, which *Defaults* fills in), its `sounds` (the cues of its voice sounds),
+whether
 Martlet `notices` it, whether the owner `added` it, whether it is `special` to
 the character (found as special, not added) and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
@@ -1885,16 +1890,20 @@ The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
 writes the parsed zones (with `detect`, the detected ones and every picture the
 detection sent, as *Detect zones* would) with `snapshotPath` (a PNG)
-as their picture and `includeIntimate` setting the switch, so the section can
+as their picture and `includeIntimate` setting the switch, each zone with no
+reaction list yet given the one a new zone gets (as the desktop saves them),
+so the section can
 be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
 for [Touch temperament](AVATARS.md#touch-temperament), such as
 `{"groups":{"head":{"attitude":2,"reactions":["hearts","blush"]}}}`) or
 `personaId` (the temperament that persona uses in the `dataDirectory`'s
 `character-temperaments.json`: its own, the built-in reactions or a custom
-one), `match` plays what the temperament decides
-when the zone has no pick of its own, and its `reaction` tells `from`
-(`owner`, `temperament` or `default`), the `attitude` word, whether it
-`escalated` (with `repeats`, the touches in a row) and how long it `linger`s.
+one), `match` plays the zone's reaction list (a zone not filled yet: what the
+temperament gives a new zone), and its `reaction` tells `from`
+(`owner` for the zone's own list; `temperament` or `default` for a zone not
+filled yet), the `attitude` word, whether it
+`escalated` (with `repeats`, the touches in a row), how long it `linger`s and
+the cues of its voice `sounds`.
 `temperament` in the result shows the request Thinking gets (with
 `personality`, its text), the `vocabulary` and `attitudes` allowed, the six
 `categories` (each `Id`, `Label` and the zone kinds it covers, `parts`; every
@@ -1955,15 +1964,17 @@ zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 (*When you touch Martlet while it talks*: radio buttons whose `selected` state
 reads in `ui_snapshot`; choosing one saves `talk-preferences.json`, so it
 needs `--allow-ui-effects`),
-`TouchZonesSaveState` and each zone's `TouchZoneAutoplayList-<n>` (the emotes
-the zone autoplays, as *A → B*, or *nothing*; the touch-zone check also lists
-`autoplays`), and each zone's `TouchZoneState-<n>` (its ID, the parts
+`TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows, for a zone with several areas how many, for a zone that follows the
 model's own part *follows the model's own 尾巴 wherever it moves: 21 parts in 6
 areas*, *added by you* for a zone the owner added, which *Detect again*
 looks for too and keeps where it is when it can't find it, or *special to this
-character* for a zone *Detect zones* found as special to the character, and its
-default reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
+character* for a zone *Detect zones* found as special to the character, and how
+the persona's touch temperament feels about it, such as *loves it*), each entry
+of its reaction list in play order (`TouchZoneReactionItem-<n>-<k>`: *Blush ·
+emote*, *nod · gesture*, *TapHead · motion*, *laugh · sound*, or *F05 · not on
+this model* for an entry the model doesn't have, which stays; or
+`TouchZoneReactionNone-<n>`: *nothing* for an empty list), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
 *Detect zones looks for the hair, eyes, ears, nose, mouth, neck, breasts, upper
 arms, forearms, stomach, hips, groin, thighs, calves and feet, and for anything
 special to this character, such as animal ears, a tail, wings, a hat or a bow.
@@ -1992,9 +2003,16 @@ Explorer, `TouchZoneTry-<n>` plays on the character, and
 the breasts and the groin too), `TouchZonesAdd`/`TouchZonesAddKind` (its value
 is the zone chosen to add; it offers every zone the model doesn't have yet, and
 the zone it adds is marked *added by you*) and each zone's
-`TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
+`TouchZoneOn-`, `TouchZoneName-`, the reaction list's
+`TouchZoneReactionAdd-` (*Add a reaction...*: choosing an emote, gesture or
+motion with `ui_select` adds it at the end, up to 8; it is off while the list
+is full), `TouchZoneReactionEarlier-<n>-<k>` (*‹*: plays entry k one place
+earlier), `TouchZoneReactionRemove-<n>-<k>` (*×*) and
+`TouchZoneReactionDefaults-` (*Defaults*: fills the list again with what a new
+zone gets),
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`
-(its value is each area's box, left, top, width and height in percent, the areas
+(under *More*: `TouchZoneMore-<n>` is a passive click that shows or hides the
+zone's box and Delete, and reads *Less* while they show; its value is each area's box, left, top, width and height in percent, the areas
 separated by `|`; for a zone that follows the model's own part, setting a
 different box places the zone there as one box again),
 `TouchZoneAddArea-` (*Add area*: a box beside the zone's last one; shown while
@@ -2003,7 +2021,7 @@ the zone has fewer than 8 areas and doesn't follow the model's own part),
 zone has more than one),
 `TouchZoneDelete-` and its areas on the picture (`TouchZoneRect-<n>` for the
 first, `TouchZoneRect-<n>-<k>` for area k from 2, inside
-`TouchZonesPicture`) save, so they all (except Stop) need `--allow-ui-effects`.
+`TouchZonesPicture`) save, so they all (except Stop and More) need `--allow-ui-effects`.
 Saving binds the zones to the model again with the probe kept beside the
 picture, so a box moved onto a tail gets that tail's areas, and the page then
 shows them. `TouchZonesShowOnCharacter` (*Show the zones on the character*, a
@@ -2148,8 +2166,9 @@ it offers every zone). A line shows only the controls that apply: a category at
 *(built-in)* shows only its attitude, `TouchTemperamentReaction2-` shows after
 a chosen first reaction and `TouchTemperamentLinger-` not after *(nothing)*,
 so the others are not in `ui_snapshot` until then.
-`TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
-reaction came from the temperament and how long it looks at your mouse.
+`TouchZonesLast` names the attitude, where the reaction came from (*its
+reaction list*, or for a zone not filled yet the temperament) and how long it
+looks at your mouse; `TouchZoneState-<n>` names the attitude (*loves it*).
 `TouchTemperamentDecide` (*Decide from personality* before anything is
 decided, then *Re-decide from personality*) sends the personality to Thinking
 (and the persona then uses its own decided temperament),
