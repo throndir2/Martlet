@@ -432,8 +432,8 @@ public partial class MainWindow
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Profiles: RenderProfilesTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
-            case CompanionTab.SpeechBubbles: body.Children.Add(SpeechDisplayCard()); break;
-            case CompanionTab.Emotes: body.Children.Add(CharacterActionsCard()); break;
+            case CompanionTab.SpeechBubbles: RenderSpeechBubblesTab(body); break;
+            case CompanionTab.Emotes: RenderEmotesTab(body); break;
             case CompanionTab.Eyes: RenderEyesTab(body); break;
             case CompanionTab.Touch: RenderTouchTab(body); break;
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
@@ -1554,48 +1554,37 @@ public partial class MainWindow
         page.Children.Add(ProfilesLinkCard());
     }
 
-    /// <summary>Companion › Eyes: where the character looks, then where its eyes are (for the emotes drawn over them).</summary>
+    /// <summary>Companion › Eyes: Now, where the character looks, then where its eyes are (for the emotes drawn over them).</summary>
     private void RenderEyesTab(Panel page)
     {
         FollowCharacterActions();
         page.Children.Add(CharacterGazeCard());
         page.Children.Add(CharacterEyesCard());
+        page.Children.Insert(0, EyesNowCard());
     }
 
-    /// <summary>Companion › Touch: the shown model's touch zones, then the active persona's touch temperament (which joins with the
-    /// zones' last rows on a page just opened).</summary>
+    /// <summary>Companion › Touch: Now, the shown model's touch zones, then the active persona's touch temperament (which joins
+    /// with the zones' last rows on a page just opened).</summary>
     private void RenderTouchTab(Panel page)
     {
         FollowCharacterActions();
         page.Children.Add(CharacterTouchZonesCard());
+        page.Children.Insert(0, TouchNowCard());
         AddRow(page, CharacterTemperamentCard());
     }
 
-    private CheckBox? speechBubbleChoice, subtitleChoice;
     private ComboBox? bubblePlacementChoice;
     private TextBox? bubbleOffsetX, bubbleOffsetY;
     private TextBlock? speechDisplayText;
     private Button? speechPreviewButton;
 
-    /// <summary>Companion › Speech bubbles (on by default, shown while the character is) and subtitles: the same
-    /// saved choices as the character settings window, applied from Martlet's next sentence. Also where the bubble goes:
-    /// following the character's head (default) or staying in one place, nudged by horizontal and vertical offsets.</summary>
+    /// <summary>Companion › Speech bubbles' configuration: where the bubble goes, following the character's head (default) or
+    /// staying in one place, nudged by horizontal and vertical offsets; the same saved choices as the character settings window,
+    /// applied from Martlet's next sentence. Whether bubbles and subtitles show at all is the page's main choice
+    /// (<see cref="SpeechDisplayChoiceCard"/>).</summary>
     private Border SpeechDisplayCard()
     {
         var prefs = captions.Preferences;
-        speechBubbleChoice = new CheckBox { Content = "Speech bubbles", IsChecked = prefs.SpeechBubbles };
-        subtitleChoice = new CheckBox
-        {
-            Content = "Subtitles", IsChecked = prefs.Subtitles,
-            Margin = new Thickness(0, 6, 0, 0)
-        };
-        AutomationProperties.SetAutomationId(speechBubbleChoice, "SetupCharacterSpeechBubbles");
-        AutomationProperties.SetAutomationId(subtitleChoice, "SetupCharacterSubtitles");
-        speechBubbleChoice.Checked += (_, _) => SaveSpeechDisplay();
-        speechBubbleChoice.Unchecked += (_, _) => SaveSpeechDisplay();
-        subtitleChoice.Checked += (_, _) => SaveSpeechDisplay();
-        subtitleChoice.Unchecked += (_, _) => SaveSpeechDisplay();
-
         bubblePlacementChoice = new ComboBox
         {
             ItemsSource = new[] { BubbleFollows, BubbleStays }, MinHeight = 30, MinWidth = 260, MaxWidth = 420,
@@ -1628,9 +1617,9 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(speechDisplayText, "SetupCharacterSpeechDisplay");
         speechPreviewButton = PageButton("Preview a speech bubble", () => PreviewSpeechBubbleAsync().Forget(), id: "SetupCharacterPreviewBubble");
         ShowSpeechDisplay();
-        return Card(Heading("Speech bubbles and subtitles"), speechBubbleChoice, subtitleChoice,
-            Note("Show Martlet's spoken words beside the character or at the bottom of the active screen. Subtitles are hidden from screen capture.",
-                new Thickness(0, 6, 0, 0)),
+        return Card(Heading("Where the bubble goes"),
+            Note("Speech bubbles show Martlet's spoken words beside the character; subtitles show them at the bottom of the active screen.",
+                new Thickness(0, 0, 0, 0)),
             new Label { Content = "Bubble _position", Target = bubblePlacementChoice, Padding = new Thickness(0, 12, 0, 4) },
             bubblePlacementChoice, offsets,
             Note("Following the character, the bubble sits beside its head on whichever side has room, and keeps up as you move or zoom; " +
@@ -1643,12 +1632,8 @@ public partial class MainWindow
 
     private void SaveSpeechDisplay()
     {
-        if (showingSpeechDisplay || speechBubbleChoice is null || subtitleChoice is null) return;
-        var prefs = captions.Preferences with
-        {
-            SpeechBubbles = speechBubbleChoice.IsChecked == true, Subtitles = subtitleChoice.IsChecked == true
-        };
-        if (bubblePlacementChoice is not null) prefs = prefs with { StaticBubble = ReferenceEquals(bubblePlacementChoice.SelectedItem, BubbleStays) };
+        if (showingSpeechDisplay || bubblePlacementChoice is null) return;
+        var prefs = captions.Preferences with { StaticBubble = ReferenceEquals(bubblePlacementChoice.SelectedItem, BubbleStays) };
         static double? Read(TextBox? box) =>
             box is null ? null
             : double.TryParse(box.Text.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out var value) &&
@@ -1678,8 +1663,7 @@ public partial class MainWindow
         showingSpeechDisplay = true;
         try
         {
-            if (speechBubbleChoice is not null) speechBubbleChoice.IsChecked = prefs.SpeechBubbles;
-            if (subtitleChoice is not null) subtitleChoice.IsChecked = prefs.Subtitles;
+            ShowSpeechDisplayChoice(prefs);
             if (bubblePlacementChoice is not null) bubblePlacementChoice.SelectedItem = prefs.StaticBubble ? BubbleStays : BubbleFollows;
             // Only rewrite an offset box when its number differs, so typing in it isn't interrupted.
             foreach (var (box, value) in new[] { (bubbleOffsetX, prefs.BubbleOffsetX), (bubbleOffsetY, prefs.BubbleOffsetY) })

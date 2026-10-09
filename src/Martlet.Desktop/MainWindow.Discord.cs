@@ -38,8 +38,9 @@ public partial class MainWindow
         }
         var saved = discord.Preferences;
         var status = discord.Status;
-        page.Children.Add(DiscordSetupCard(saved, status));
+        page.Children.Add(DiscordNowCard(saved, status));
         page.Children.Add(DiscordConnectionCard(saved, status));
+        page.Children.Add(DiscordSetupCard(saved, status));
         page.Children.Add(DiscordInviteCard(saved));
         page.Children.Add(DiscordChatCard(saved, status));
         page.Children.Add(DiscordPeopleCard(saved, status));
@@ -159,23 +160,24 @@ public partial class MainWindow
 
     // ---------- connection ----------
 
+    /// <summary>Discord's main choice: whether Martlet connects its bot to Discord whenever it runs (with an explicit Off), then
+    /// the connection's live state.</summary>
     private Border DiscordConnectionCard(DiscordPreferences saved, DiscordBotStatus status)
     {
-        var enabled = new CheckBox
-        {
-            IsChecked = saved.Enabled, IsEnabled = saved.Configured && !discordBusy, Margin = new Thickness(0, 4, 0, 6),
-            Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Connect Martlet to Discord whenever Martlet runs" }
-        };
-        AutomationProperties.SetAutomationId(enabled, "DiscordEnabled");
-        enabled.Checked += (_, _) => SetDiscordEnabledAsync(true).Forget();
-        enabled.Unchecked += (_, _) => SetDiscordEnabledAsync(false).Forget();
+        var choices = OnOffChoices("DiscordEnabled", "DiscordEnabledOff", "Connect Martlet to Discord whenever Martlet runs",
+            "Martlet's bot joins your servers and DMs and chats as the chat modes below say.",
+            "Martlet doesn't connect to Discord. Your bot token, chat modes and people are kept.", saved.Enabled && saved.Configured,
+            !saved.Configured ? "Set up Martlet's bot below first." : discordBusy ? "Wait for the last change to finish." : null,
+            on => { if (on != discord.Preferences.Enabled) SetDiscordEnabledAsync(on).Forget(); });
+        choices[1].IsEnabled = !discordBusy;
         var reconnect = PageButton("Reconnect", () => SetDiscordEnabledAsync(true).Forget(), id: "DiscordReconnect");
         reconnect.IsEnabled = saved.Configured && saved.Enabled && !discordBusy;
 
         var children = new List<UIElement>
         {
             Heading("Connection"),
-            enabled,
+            choices[0],
+            choices[1],
             Status(DiscordSetup.StatusLine(status), "DiscordState", 15),
             Status(!saved.Configured ? "Off: no bot token saved."
                 : saved.Enabled ? "On: Martlet connects to Discord whenever it runs." : "Off: Martlet doesn't connect to Discord.", "DiscordEnabledStatus"),
