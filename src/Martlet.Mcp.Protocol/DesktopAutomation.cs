@@ -152,6 +152,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
         // so they need --allow-ui-effects.
         "NavTasks", "HostRunHide", "TasksClear",
+        // Thinking requests (NavThinkingRequests): All, Waiting or running and With problems only filter the list, Timing by
+        // type only expands, and the type box only opens (choosing a type is ui_select and only filters). Clear finished
+        // (ThinkingRequestsClear) forgets requests and Copy (ThinkingRequestsCopy) writes the clipboard, so they need
+        // --allow-ui-effects.
+        "NavThinkingRequests", "ThinkingRequestsFilter-all", "ThinkingRequestsFilter-active", "ThinkingRequestsFilter-problems",
+        "ThinkingRequestsTimingExpander", "ThinkingRequestsKind",
         // Companion › Discord › Friends and calls: What Discord allows only expands. Approve, Decline, Call, Remove, Add, the
         // may-call boxes and Update picture now change things or contact Discord, so they need --allow-ui-effects.
         "DiscordFriendsAbout",
@@ -222,8 +228,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Background tasks: a task's Show or Show output ("TaskShow-3") only shows its run window again, or a finished task's
         // kept output.
         "TaskShow-",
+        // Thinking requests: a request's row ("ThinkingRequest-tr-3") only selects it and shows it in full (ThinkingRequestDetail).
+        "ThinkingRequest-",
         // Settings › Appearance › Custom: choosing a part ("CustomThemeRole-Accent") only shows its color in the editor.
-        "CustomThemeRole-"];
+        "CustomThemeRole-",
+        // A "?" ("Help-CheckInsAbout", HelpTip.cs) only shows its explanation, and a section you open and close
+        // ("Fold-CheckInMore-emotes", Fold.cs) only shows or hides its settings; neither saves anything.
+        "Help-", "Fold-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -850,7 +861,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Background tasks: how many run now and how many finished (TasksSummary), its empty state, the navigation rail's count
         // of running tasks (NavTasksCount, shown only while some run), a run window's line on Hide (HostRunHideHint) and the
         // question Cancel task asks first (the task's title, which is a run window's title).
-        "TasksSummary", "TasksEmpty", "NavTasksCount", "HostRunHideHint", "CancelTaskQuestion"
+        "TasksSummary", "TasksEmpty", "NavTasksCount", "HostRunHideHint", "CancelTaskQuestion",
+        // Thinking requests: how many run and wait and the averages (ThinkingRequestsSummary), the pool's slots now
+        // (ThinkingRequestsPool), the empty state, the navigation rail's count of waiting and running requests, Timing by type
+        // and the selected request in full (type, task, companion, member, tries and timings; never its text or answer).
+        // ThinkingRequestTopic is what the conversation asked for (private): it is never returned.
+        "ThinkingRequestsSummary", "ThinkingRequestsPool", "ThinkingRequestsEmpty", "NavThinkingRequestsCount", "ThinkingRequestDetail",
+        "ThinkingRequestsTiming"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -904,6 +921,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
     private static readonly string[] SafeValuePrefixes = [
+        // A "?" (HelpTip.cs, "Help-CheckInsAbout") reads as "About <topic>", and its "help" is the explanation it shows; never
+        // anything typed or secret.
+        "Help-",
         // An option picker (MainWindow.OptionPicker.cs): each option's short facts ("PickerFacts-VoiceEngine-chatterbox": "NVIDIA GPU ·
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
@@ -981,7 +1001,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // you talk · Costs money · Offline", only those that apply), its slot choice (ThinkingPoolSlots-0, not for a paired
         // computer's role) and its Remove button (ThinkingPoolRemove-0, not for a paired computer). Its Quick jobs, Long jobs and
         // Backup for slow replies boxes ("ThinkingPoolQuick-0", "ThinkingPoolLong-0", "ThinkingPoolAnswers-0" read "diva's Thinking
-        // pool (qwen3-8b): Quick jobs" and whether each is ticked). The slot choice, Remove and every box save thinking-pool.json,
+        // pool (qwen3-8b): Quick jobs" and whether each is ticked). An external member (an endpoint not on this PC) also has
+        // May receive pictures and recordings ("ThinkingPoolMedia-0", off by default; this PC and paired computers have no such
+        // box because they always may). The slot choice, Remove and every box save thinking-pool.json,
         // so they need --allow-ui-effects.
         // Each paired computer's shared-card warning, when the Thinking pool role there shares one graphics card with its Thinking
         // model ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
@@ -990,7 +1012,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Thinking pool role runs qwen2.5vl:7b: it sees pictures.") and its Use for pictures button's name ("ImageModelUseHost-diva"
         // reads "Use diva for pictures"; clicking it checks diva and saves sense-models.json, so it needs --allow-ui-effects).
         "ImageModelHost-", "ImageModelUseHost-",
-        "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-",
+        "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-", "ThinkingPoolMedia-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
@@ -1136,8 +1158,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 // (Companion › Check-ins' fact boxes).
                 if (value is not null && element.Current.HelpText is { Length: > 0 } help &&
                     (element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.CheckBox ||
-                        element.Current.ControlType == ControlType.ComboBox))
+                        element.Current.ControlType == ControlType.ComboBox || id.StartsWith("Help-", StringComparison.Ordinal)))
                     entry["help"] = help;
+                // A section you open and close (an expander such as "Fold-CheckInMore-emotes"): whether it is open now.
+                if (element.Current.ControlType != ControlType.ComboBox &&
+                    element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var section))
+                    entry["expanded"] = ((ExpandCollapsePattern)section).Current.ExpandCollapseState != ExpandCollapseState.Collapsed;
                 // A control ui_move can move (the character overlay's MoveAvatar), and whether it can move now: false while the
                 // character's position is locked.
                 if (element.TryGetCurrentPattern(TransformPattern.Pattern, out var transform))

@@ -918,6 +918,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         jobs = new(this.clock);
         StartLiveFloor();
         StartPresence();
+        StartRequests();
         // The image and audio models this PC uses (docs/SENSE_MODELS.md), before anything can send them work, and what models were
         // found to hear and see, which routes them before a talk window loads the settings.
         senseModels = SenseModels.Load(dataDirectory);
@@ -993,6 +994,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // A settings change continues the conversation: what was said so far stays as context for the next reply.
             if (configuration?.Revision != next?.Revision) CancelCapturesLocked();
             configuration = next;
+            NameRequests(next);
             stop = RevokeLocked();
             stopListening = RevokeListeningLocked();
         }
@@ -2554,6 +2556,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         if (!operation.OnItsOwn) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
                         // The conversation moved on: a check-in made before this exchange is out of date (UnpromptedSpeech).
                         if (!operation.Report) Interlocked.Exchange(ref lastExchangeTicks, clock.GetUtcNow().UtcTicks);
+                        // The reply a check-in's sing_song continues to write lyrics, as the reply's own call would.
+                        Volatile.Write(ref lastReply, operation);
                         // The note about the last song is in the conversation now.
                         if (songNote is not null) singing?.NoteDelivered(songNote);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
@@ -2881,18 +2885,26 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
             guidance = Join(guidance, WebResearch.Instructions(configured.Prompts));
         }
-        // sing_song, play_song and stop_singing while singing is set up (with the Singing prompt).
+        // sing_song, play_song and stop_singing while singing is set up (with the Singing prompt). While the After each exchange
+        // check-in takes sing_song and play_song over (HandedOffReplyTools), the reply keeps stop_singing and a short line instead.
+        var handedOff = HandedOffReplyTools(configured);
+        var afterReply = new HashSet<string>(StringComparer.Ordinal);
         if (singing is { Offered: true } && configured.SupportsTools)
         {
             var songs = SongTools.Definitions;
-            own.Add((songs[0], (call, token) => ValueTask.FromResult(SingSong(operation, configured, call))));
-            own.Add((songs[1], (call, token) => PlaySongAsync(configured, call, token)));
+            if (handedOff.Contains(songs[0].Name)) afterReply.Add(songs[0].Name);
+            else own.Add((songs[0], (call, token) => ValueTask.FromResult(SingSong(operation, configured, call))));
+            if (handedOff.Contains(songs[1].Name)) afterReply.Add(songs[1].Name);
+            else own.Add((songs[1], (call, token) => PlaySongAsync(configured, call, token)));
             own.Add((songs[2], (call, token) => ValueTask.FromResult(StopSinging(call))));
-            guidance = Join(guidance, SongTools.Instructions(configured.Prompts));
+            if (afterReply.Count == 0) guidance = Join(guidance, SongTools.Instructions(configured.Prompts));
         }
         // draw_picture while pictures are set up (Companion › Pictures).
         if (configured.SupportsTools && dataDirectory is not null && PictureClient.IsSetUp(dataDirectory))
-            own.Add((PictureTools.Definition, (call, token) => ValueTask.FromResult(DrawPicture(operation, configured, call))));
+        {
+            if (handedOff.Contains(PictureTools.DrawName)) afterReply.Add(PictureTools.DrawName);
+            else own.Add((PictureTools.Definition, (call, token) => ValueTask.FromResult(DrawPicture(operation, configured, call))));
+        }
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
             own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, configured.CharacterName, token)));
         var kinds = Creations.Kinds;
@@ -2900,8 +2912,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             var definitions = CreationTools.Definitions(kinds);
             own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
-            own.Add((definitions[1], PerformCreationAsync));
+            if (handedOff.Contains(definitions[1].Name)) afterReply.Add(definitions[1].Name);
+            else own.Add((definitions[1], PerformCreationAsync));
         }
+        guidance = Join(guidance, CreationsCheckIn.ReplyGuidance(afterReply, singing: singing is { Offered: true } && configured.SupportsTools));
         // manage_memories while memory is on: last, so the tools before it start every request the same as before it existed.
         // While the Memory check-in tool set takes it over, the reply gets the read-only find_memories in its place instead.
         if (configured.SupportsTools && memory is not null && configured.Memory is { Enabled: true } remembered)
@@ -2917,20 +2931,27 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     operation.Heard?.Speaker?.Voice, MemoryTools.Name, null, token)));
         }
         // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
-        if (configured.SupportsTools && RemindersTool is { } remind)
-            own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
+        // While an After each exchange check-in takes it over, the reply only lists them (list_reminders) in the same place.
+        if (configured.SupportsTools && RemindersTool is not null)
+        {
+            if (HandedOffReplyTools(configured).Contains(Reminders.ToolName))
+            {
+                own.Add((Reminders.ListDefinition, (call, token) => ListRemindersAsync(token)));
+                guidance = Join(guidance, Reminders.AfterReply);
+            }
+            else own.Add((Reminders.Definition, (call, token) => ReplyRemindAsync(call, token)));
+        }
         // call_on_discord after them while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the
         // connection). While the After each exchange check-in takes it over, the reply only says it will call.
-        var handedOff = configured.SupportsTools ? HandedOffReplyTools(configured) : null;
         if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
         {
-            if (handedOff!.Contains(DiscordCallTool.Name)) guidance = Join(guidance, DiscordCallTool.AfterReply);
+            if (handedOff.Contains(DiscordCallTool.Name)) guidance = Join(guidance, DiscordCallTool.AfterReply);
             else own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
         }
         // set_camera_background last, while Martlet is in the owner's Discord calls (the saved choice only).
         if (configured.SupportsTools && CallCamera is { Offered: true } camera)
         {
-            if (handedOff!.Contains(CameraBackgroundTool.Name)) guidance = Join(guidance, CameraBackgroundTool.AfterReply);
+            if (handedOff.Contains(CameraBackgroundTool.Name)) guidance = Join(guidance, CameraBackgroundTool.AfterReply);
             else own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
         }
         // The tools a check-in that runs after each exchange takes over go to it instead, with one line that says so.
@@ -3003,19 +3024,36 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// the main window. Null where reminders can't be kept (no data folder).</summary>
     internal Func<string, CancellationToken, Task<Reminders.ToolOutcome>>? RemindersTool { get; set; }
 
-    private async ValueTask<ConversationToolResult> RemindAsync(Func<string, CancellationToken, Task<Reminders.ToolOutcome>> remind,
-        TextToolCall call, CancellationToken token)
+    private async ValueTask<ConversationToolResult> ReplyRemindAsync(TextToolCall call, CancellationToken token) =>
+        (await RemindAsync(Reminders.ToolName, call.ArgumentsJson, null, token).ConfigureAwait(false)).Result;
+
+    /// <summary>list_reminders: the reply's read-only reminders tool while a check-in sets and cancels them.</summary>
+    private async ValueTask<ConversationToolResult> ListRemindersAsync(CancellationToken token)
+    {
+        var outcome = await RemindAsync(Reminders.ListToolName, Reminders.ListArgumentsJson, null, token).ConfigureAwait(false);
+        return outcome.Result;
+    }
+
+    /// <summary>Runs one reminders call for the reply or, with <paramref name="checkIn"/>'s name, for a check-in: the same
+    /// reminders, the same tool log line and the same log entry, so a reminder a check-in sets shows like one the reply set.
+    /// A reminders call that can't run gives a failed outcome.</summary>
+    internal async Task<Reminders.ToolOutcome> RemindAsync(string tool, string argumentsJson, string? checkIn, CancellationToken token)
     {
         Reminders.ToolOutcome outcome;
-        try { outcome = await remind(call.ArgumentsJson, token).ConfigureAwait(false); }
-        catch (Exception error) when (!token.IsCancellationRequested && error is IOException or UnauthorizedAccessException or
-            ContractException or InvalidOperationException or TaskCanceledException)
+        if (RemindersTool is not { } remind) outcome = new(new("Reminders can't be kept on this PC.", true), "unavailable", null);
+        else
         {
-            outcome = new(new("Reminders can't be changed right now. Tell the user briefly.", true), "failed", null);
+            try { outcome = await remind(argumentsJson, token).ConfigureAwait(false); }
+            catch (Exception error) when (!token.IsCancellationRequested && error is IOException or UnauthorizedAccessException or
+                ContractException or InvalidOperationException or TaskCanceledException)
+            {
+                outcome = new(new("Reminders can't be changed right now. Tell the user briefly.", true), "failed", null);
+            }
         }
-        tools?.Record("Martlet", Reminders.ToolName, outcome.Outcome, "", outcome.Result.IsError);
-        if (outcome.Own is not null) ErrorLog.Info($"Reminders: {Reminders.ToolName} {outcome.Outcome}.");
-        return outcome.Result;
+        tools?.Record(checkIn is null ? "Martlet" : "Check-in " + checkIn, tool, outcome.Outcome, "", outcome.Result.IsError);
+        if (outcome.Own is not null)
+            ErrorLog.Info($"Reminders: {Reminders.ToolName} {outcome.Outcome}{(checkIn is null ? "" : " by the check-in " + checkIn)}.");
+        return outcome;
     }
 
     /// <summary>Brings a due reminder into this conversation: a finished notice job that Martlet brings up on its own as soon as
@@ -3314,8 +3352,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>sing_song: starts the song job and returns at once, telling the model to tell the user now unless it already did.
     /// Without lyrics, the job first writes them (and the style, tempo and key) with a background think that continues this
     /// reply's request like think_longer's (Thinking steps on, where Deep thinking thinks, waiting for quiet moments when it shares
-    /// the conversation's hardware); then the song maker makes the song in the chosen voice, and the library keeps it.</summary>
-    private ConversationToolResult SingSong(LiveConversationOperation operation, LiveConversationConfiguration configured, TextToolCall call)
+    /// the conversation's hardware); then the song maker makes the song in the chosen voice, and the library keeps it.
+    /// <paramref name="afterReply"/>: a check-in calls it after the reply <paramref name="operation"/> (null: none yet), which
+    /// already told the user.</summary>
+    private ConversationToolResult SingSong(LiveConversationOperation? operation, LiveConversationConfiguration configured, TextToolCall call,
+        bool afterReply = false)
     {
         const string server = "Martlet";
         var (arguments, problem) = SongTools.ParseSing(call.ArgumentsJson);
@@ -3332,8 +3373,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             ErrorLog.Info($"Singing: a song wasn't started ({unavailable}).");
             return new(SongTools.Unavailable(unavailable ?? "singing isn't set up."), true);
         }
-        var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
-        var sent = operation.Sent;
+        var toldUser = afterReply || !string.IsNullOrWhiteSpace(operation?.Turn?.Content.Text);
+        var sent = operation?.Sent;
         Func<string, CancellationToken, Task<LyricsWriter>>? writer = null;
         var where = "";
         if (arguments.Lyrics is null)
@@ -3367,7 +3408,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 ErrorLog.Info($"Singing: {holder} writes its lyrics on {at} (placed on {spot.Computer}, " +
                     $"{jobs.Places.Load(lease.Place.Id)} on it now).");
                 var think = new BackgroundThink(runtime,
-                    left => PrepareThink(configured, place, sent, () => operation.Turn?.Content.Text, task, null, left,
+                    left => PrepareThink(configured, place, sent, () => operation?.Turn?.Content.Text, task, null, left,
                         own => Volatile.Write(ref songAuthorization, own)), clock)
                 {
                     Doing = "Writing the lyrics",
@@ -3609,7 +3650,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     }
 
     /// <summary>Starts a picture job for <paramref name="tool"/>; <paramref name="then"/> runs once the picture is kept (and its
-    /// words are added to the note the conversation gets).</summary>
+    /// words are added to the note the conversation gets). <paramref name="operation"/>: the reply that asked (null: a check-in
+    /// after the reply, which already told the user).</summary>
     private ConversationToolResult StartPicture(LiveConversationOperation? operation, LiveConversationConfiguration configured,
         DrawArguments arguments, string tool, Func<Creation, CancellationToken, Task<string>>? then)
     {
@@ -3621,7 +3663,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             tools?.Record(server, tool, "not started: pictures off", arguments.About, false);
             return new(PictureTools.Unavailable("pictures aren't set up (Companion › Pictures)"), true);
         }
-        var toldUser = !string.IsNullOrWhiteSpace(operation?.Turn?.Content.Text);
+        var toldUser = operation is null || !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var author = new CreationAuthor
         {
             Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName,
@@ -3698,6 +3740,56 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var title = action.Creation.Title ?? "a picture";
         PictureShown?.Invoke(new(action.Creation.Key, title, image, PictureCreations.Metadata(action.Creation)?.Fixture == true));
         return new(PictureTools.Shown(title));
+    }
+
+    // ---------- after the reply: the Songs, pictures and creations check-in tool set ----------
+
+    // The newest finished reply, which a check-in's sing_song continues to write lyrics, as the reply's own call would.
+    private LiveConversationOperation? lastReply;
+
+    /// <summary>Whether this PC runs the Songs, pictures and creations tool set: it keeps creations (a data folder).</summary>
+    internal bool RunsCreationsCheckIn => dataDirectory is not null;
+
+    /// <summary>A check-in's call of a Songs, pictures and creations tool (<see cref="CreationsCheckIn"/>), after the reply: the
+    /// reply's own tool does the work with the same arguments, limits and gates, so its job and the note when it's done reach
+    /// the conversation the same way. A start that was refused or can't happen now is brought up by Martlet on its own, as the
+    /// reply would have said it. The first line of the answer says only the tool and what came of it.</summary>
+    internal async ValueTask<ConversationToolResult> CreationsCheckInAsync(TextToolCall call, CheckInToolContext context, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(context);
+        if (Configuration is not { } configured || dataDirectory is null)
+            return new($"{call.Name}: not done.\nMartlet isn't talking now, so it can't do that.", true);
+        var sings = singing is { Offered: true };
+        var result = call.Name switch
+        {
+            SongTools.SingName => sings ? SingSong(Volatile.Read(ref lastReply), configured, call, afterReply: true)
+                : new(SongTools.Unavailable("singing isn't set up."), true),
+            SongTools.PlayName => sings ? await PlaySongAsync(configured, call, token).ConfigureAwait(false)
+                : new(SongTools.Unavailable("singing isn't set up."), true),
+            PictureTools.DrawName => DrawAfterReply(configured, call),
+            CreationTools.ListName => Creations.Kinds.Count > 0 ? ListCreations(call) : new("Martlet keeps no creations here.", true),
+            CreationTools.PerformName => Creations.Kinds.Count > 0 ? await PerformCreationAsync(call, token).ConfigureAwait(false)
+                : new("Martlet keeps no creations here.", true),
+            _ => new ConversationToolResult($"This set has no tool called {call.Name}.", true)
+        };
+        var told = CreationsCheckIn.TellUser(result) && BringUp(context.CheckInName, result.Output) is not null;
+        ErrorLog.Info($"Check-ins: {call.Name} by the check-in {context.CheckInName} {(result.IsError ? "wasn't done" : "ran")}" +
+            (told ? "; Martlet tells you why on its own." : "."));
+        return new($"{call.Name}: {(result.IsError ? "not done" : "done")}{(told ? "; Martlet tells the user why on its own" : "")}.\n" +
+            result.Output + (told ? "\nMartlet tells the user itself; do nothing more about it." : ""), result.IsError);
+    }
+
+    // draw_picture for a check-in: the reply already told the user, so the started answer asks nothing more.
+    private ConversationToolResult DrawAfterReply(LiveConversationConfiguration configured, TextToolCall call)
+    {
+        var (arguments, problem) = PictureTools.Parse(call.ArgumentsJson);
+        if (arguments is null)
+        {
+            tools?.Record("Martlet", PictureTools.DrawName, "invalid arguments", "", true);
+            return new(problem!, true);
+        }
+        return StartPicture(null, configured, arguments, PictureTools.DrawName, then: null);
     }
 
     /// <summary>The talk window stops the song: Stop and Esc quickly (a 300 ms fade), the talk button musically. The note says
@@ -5523,6 +5615,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             playing = pcListener;
         }
         owned?.Cancel("conversation.closed");
+        StopRequests();
         Cancel(stopListening);
         echoReducer?.Forget();
         soundDigest?.Dispose();

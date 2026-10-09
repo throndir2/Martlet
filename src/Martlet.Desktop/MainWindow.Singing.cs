@@ -196,7 +196,7 @@ public partial class MainWindow
         if (problem) stateLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(stateLine, "SingingState");
         yield return stateLine;
-        var gpu = Note(SingingGpuNote, new Thickness(0, 6, 0, 0));
+        var gpu = HelpTip.Explain(SingingGpuNote, new Thickness(0, 6, 0, 0), "SingingGpu", "singing on the graphics card");
         AutomationProperties.SetAutomationId(gpu, "SingingGpu");
         yield return gpu;
     }

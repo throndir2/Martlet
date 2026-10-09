@@ -185,10 +185,10 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(judgeStatus, "TalkJudgeTurnsStatus");
             turnJudgeStatus = judgeStatus;
             children.Add(judgeStatus);
-            children.Add(Note("On, a small model on this PC (Smart Turn) listens to how you end each sentence after a short pause. " +
+            children.Add(HelpTip.Explain("On, a small model on this PC (Smart Turn) listens to how you end each sentence after a short pause. " +
                 "When you clearly finished, Martlet answers sooner than the pause above; when you trail off mid-thought, it waits " +
                 "longer (up to twice that pause) so it cuts you off less. If it ever answers too soon, just keep talking. Off, the " +
-                "pause above alone decides. Your voice never leaves this PC for this.", new Thickness(0, 0, 0, 0)));
+                "pause above alone decides. Your voice never leaves this PC for this.", new Thickness(0, 0, 0, 0), "SmartTurn", "Smart Turn"));
 
             var earlyReplies = new CheckBox { Content = "Start replies early (recommended)", IsChecked = prefs.EarlyReplies, Margin = new Thickness(0, 16, 0, 4) };
             AutomationProperties.SetAutomationId(earlyReplies, "TalkEarlyReplies");
@@ -213,7 +213,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(earlyStatus, "TalkEarlyRepliesStatus");
             earlyRepliesStatus = earlyStatus;
             children.Add(earlyStatus);
-            var earlyAbout = Note(EarlyRepliesAbout, new Thickness(0, 0, 0, 0));
+            var earlyAbout = HelpTip.Explain(EarlyRepliesAbout, new Thickness(0, 0, 0, 0), "TalkEarlyReplies", "starting replies early");
             AutomationProperties.SetAutomationId(earlyAbout, "TalkEarlyRepliesAbout");
             children.Add(earlyAbout);
 
@@ -228,7 +228,7 @@ public partial class MainWindow
             var wordCheckRow = Labeled("Word check", wordCheck);
             wordCheckRow.Margin = new Thickness(0, 12, 0, 0);
             children.Add(wordCheckRow);
-            var wordCheckAbout = Note(WordCheckAbout, new Thickness(0, 4, 0, 0));
+            var wordCheckAbout = HelpTip.Explain(WordCheckAbout, new Thickness(0, 4, 0, 0), "TalkWordCheck", "word check");
             AutomationProperties.SetAutomationId(wordCheckAbout, "TalkWordCheckAbout");
             children.Add(wordCheckAbout);
 
@@ -237,14 +237,14 @@ public partial class MainWindow
             bargeIn.Checked += (_, _) => SaveTalk(Talk with { BargeIn = true });
             bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
             children.Add(bargeIn);
-            var bargeInAbout = Note("Optional, off by default. Either way Martlet keeps listening while it speaks (with Reduce echo from " +
+            var bargeInAbout = HelpTip.Explain("Optional, off by default. Either way Martlet keeps listening while it speaks (with Reduce echo from " +
                 "my speakers on) and answers what you said once it finishes; Stop (or Esc) in the talk window interrupts it. Turn this " +
                 "on and talking over it with real words stops the reply " +
                 "and answers what you say: a word like \"stop\" or \"wait\" (or Martlet's name) right away, otherwise a few words. A hum, a " +
                 "cough, laughter, a quick \"yeah\" or \"mm-hmm\" and what this PC plays never stop it. With Parakeet on this PC as Listening, " +
                 "Martlet checks your words while you talk; otherwise once you pause. " +
                 "With Reduce echo from my speakers on, this works through speakers too. If Martlet still stops itself, use headphones " +
-                "or turn this off.", new Thickness(0, 0, 0, 0));
+                "or turn this off.", new Thickness(0, 0, 0, 0), "TalkOptional", "this setting");
             AutomationProperties.SetAutomationId(bargeInAbout, "TalkBargeInAbout");
             children.Add(bargeInAbout);
             var bargeInStyle = new ComboBox { Width = 240, ItemsSource = BargeInStyleChoices,
@@ -259,7 +259,7 @@ public partial class MainWindow
             var bargeInStyleRow = Labeled("When you talk over Martlet", bargeInStyle);
             bargeInStyleRow.Margin = new Thickness(0, 8, 0, 0);
             children.Add(bargeInStyleRow);
-            var bargeInStyleAbout = Note(BargeInStyleAbout, new Thickness(0, 4, 0, 0));
+            var bargeInStyleAbout = HelpTip.Explain(BargeInStyleAbout, new Thickness(0, 4, 0, 0), "TalkBargeInBehavior", "talking over Martlet");
             AutomationProperties.SetAutomationId(bargeInStyleAbout, "TalkBargeInBehaviorAbout");
             children.Add(bargeInStyleAbout);
         }
@@ -304,10 +304,10 @@ public partial class MainWindow
         var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "TalkReduceEchoStatus");
         return Card(Heading("Speakers and echo"), reduce, status,
-            Note("While the microphone listens, Martlet also hears what this PC plays (its own voice, videos, music) and removes " +
+            HelpTip.Explain("While the microphone listens, Martlet also hears what this PC plays (its own voice, videos, music) and removes " +
                 "that from the microphone first, so it works without headphones and keeps listening to you while it speaks. Without " +
                 "it (or when it can't run), always listening pauses while Martlet speaks so it doesn't hear itself. That sound is " +
-                "only used to cancel the echo, on this PC; it is never saved or sent.", new Thickness(0, 0, 0, 0)));
+                "only used to cancel the echo, on this PC; it is never saved or sent.", new Thickness(0, 0, 0, 0), "EchoCancel", "hearing this PC"));
     }
 
     internal static (string Text, bool Problem) EchoStatus(bool on, EchoReductionReport? report) => !on
@@ -362,12 +362,12 @@ public partial class MainWindow
                 "about every 20 seconds (45 when Martlet is quiet, 12 when it is chatty), and Thinking mostly stays quiet.",
                 new Thickness(0, 0, 0, 8)),
             describe, describeStatus,
-            Note("Words aren't everything: about every 10 seconds while something plays, Martlet describes the rest of the sound " +
+            HelpTip.Explain("Words aren't everything: about every 10 seconds while something plays, Martlet describes the rest of the sound " +
                 "(music and its mood, game or video sounds, laughter, applause, alarms) in one short line for its next reply. The " +
                 "audio model gets a short clip first when it is a model of its own (Listening › Audio model); otherwise a Thinking pool " +
                 "model that can hear does; without either, a small sound tagger on this PC's processor names " +
                 "what it hears. The last few seconds of sound stay in memory only; the line is never saved or remembered, and a " +
-                "reply never waits for it.", new Thickness(0, 0, 0, 8)),
+                "reply never waits for it.", new Thickness(0, 0, 0, 8), "SoundDigest", "sound descriptions"),
             Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
             .. ChattinessPicker("TalkPcChattiness")]);
     }
@@ -480,9 +480,9 @@ public partial class MainWindow
         volumeRow.Margin = new Thickness(0, 12, 0, 0);
 
         return Card(Heading("In conversations"), speak,
-            Note("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies: they show in the " +
+            HelpTip.Explain("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies: they show in the " +
                 "talk window and the character's speech bubble. Mute voice and Unmute voice on the character's right-click menu " +
-                "change this too.", new Thickness(0, 6, 0, 0)),
+                "change this too.", new Thickness(0, 6, 0, 0), "TalkSpeaks", "spoken replies"),
             volumeRow,
             Note("How loud Martlet speaks and sings, on this PC. A reply or song playing now follows at once. Windows' own volume " +
                 "and other apps aren't changed.", new Thickness(0, 4, 0, 0)));
@@ -527,10 +527,10 @@ public partial class MainWindow
         var delayRow = Labeled("Play one", delay);
         delayRow.Margin = new Thickness(0, 10, 0, 0);
         return Card(Heading("Quick sounds while Martlet thinks"), on,
-            Note("When a reply is slow to start, Martlet first says a quick \"Mm,\" or \"Hmm...\" in its own voice, and the reply " +
+            HelpTip.Explain("When a reply is slow to start, Martlet first says a quick \"Mm,\" or \"Hmm...\" in its own voice, and the reply " +
                 "follows it. It never plays when the reply is quick, never twice in one reply and at most once every 20 seconds. " +
                 "The sounds are made once with your voice and kept on this PC; with a paid cloud voice, Martlet makes them only " +
-                "when you press Make quick sounds now (one short request for each).", new Thickness(0, 6, 0, 0)),
+                "when you press Make quick sounds now (one short request for each).", new Thickness(0, 6, 0, 0), "Fillers", "quick sounds"),
             delayRow, status, Row(quickSoundsMake));
     }
 

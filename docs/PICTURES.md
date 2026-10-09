@@ -62,6 +62,12 @@ so the reply never waits. Shapes are 1024x1024, 1216x832, 832x1216, 1344x768 and
 is kept as a `picture` creation, shown in the talk window, and a note tells Martlet so it can say something about it.
 `perform_creation` with a picture's id shows it again.
 
+While the After each exchange check-in ticks the Songs, pictures and creations
+[tool set](CONVERSATION.md#check-in-tool-sets) (`songs-pictures`) and the Thinking pool has a member that calls tools, the
+reply doesn't get `draw_picture`: it says in a few words that it will draw, and the check-in calls `draw_picture` right
+after the reply, on the Thinking pool, with the same arguments, limits and gate. A picture that can't start (pictures off,
+busy, the hourly limit) is brought up by Martlet on its own.
+
 ## Check and test
 
 Companion › Pictures › **Check** asks the saved place whether it can draw now (for a cloud provider, only whether a key is

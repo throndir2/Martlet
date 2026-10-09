@@ -78,10 +78,10 @@ public partial class MainWindow
         var readNow = saved.On ? PageButton("Read my screen now", () => ReadScreenNowAsync().Forget(), id: "ReadingTest") : null;
         if (readNow is not null) readNow.IsEnabled = !readingTesting;
         page.Children.Add(Card(Heading("Now"), now,
-            Note("While Martlet watches your screen, it reads the text on each changed screenshot, off to the side, so replies " +
+            HelpTip.Explain("While Martlet watches your screen, it reads the text on each changed screenshot, off to the side, so replies " +
                 "never wait for it. New text (a score, \"Victory\", a new message) makes a look more likely, and each look gets the " +
                 "text it read. What you type or say never waits for it. The text is never kept in the conversation.",
-                new Thickness(0, 4, 0, 0)), last, test, text, Row(readNow)));
+                new Thickness(0, 4, 0, 0), "Reading", "reading"), last, test, text, Row(readNow)));
 
         // The main choice: Off, Windows OCR on this PC or Martlet's Reading role. Each option's details hold its button.
         var options = OptionalExtras.ReadingChoices(saved.Place, readingWindows, ReadingShown(saved).Chosen.Model).Select(option => Enum.Parse<ReadingPlace>(option.Key) switch

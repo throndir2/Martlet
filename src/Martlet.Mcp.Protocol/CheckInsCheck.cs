@@ -637,7 +637,7 @@ internal static class CheckInsCheck
         var guidance = CheckIns.HandOffGuidance([new("fixture_tool", CheckIns.Actions, actions.Name, "fixture-set", "Reminders")], null) ?? "";
         step("after each exchange: the reply hands tools off", handed.Select(h => h.Tool).SequenceEqual(replaced) &&
             handed.All(h => h.CheckInId == CheckIns.Actions) && noPool.Count == 0 && off.Count == 0 && lazy.Count == 0 && !asked &&
-            guidance.Contains("right after your reply: reminders", StringComparison.Ordinal) &&
+            guidance.Contains("right after your reply: Reminders.", StringComparison.Ordinal) &&
             CheckIns.HandOffGuidance([], null) is null,
             new { handedOff = handed.Select(h => $"{h.Tool} ({h.SetId})"), guidance });
     }

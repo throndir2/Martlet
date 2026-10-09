@@ -283,3 +283,9 @@ latency) is in [Conversation › Singing in conversation](CONVERSATION.md#singin
 - The mouth follows the vocals only, from a track made once per song: Audio2Face over the vocals when it answers, else
   visemes from `SongResult.Words`, else loudness, played on the song's own clock. Captions follow word by word.
 - MCP: `songs_status` and `song_playback_check` ([MCP](MCP.md)).
+- **After the reply.** While the After each exchange check-in ticks the Songs, pictures and creations
+  [tool set](CONVERSATION.md#check-in-tool-sets) (`songs-pictures`) and the Thinking pool has a member that calls tools,
+  the reply gets only `stop_singing` and a short line instead of `sing_song`, `play_song` and the Singing prompt: it says in
+  a few words that it will sing. The check-in then calls `sing_song` or `play_song` on the Thinking pool, with the same
+  arguments, limits and gates. Its lyrics continue the reply's request, as the reply's own call does. A song that can't start
+  (singing off, busy, the hourly limit) is brought up by Martlet on its own.

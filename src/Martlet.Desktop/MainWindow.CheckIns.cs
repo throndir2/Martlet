@@ -198,6 +198,17 @@ public partial class MainWindow
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
         "{presence}, {touches}, {activity}, {people}, {away} and {exchange}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
+    private const string CheckInsAbout = "A check-in is a short question that the Thinking pool answers for Martlet every few " +
+        "minutes, with only the facts it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, " +
+        "where the eyes look, and the reminders and work Martlet started. Martlet then acts on the answer. It turns off an emote, " +
+        "takes the eyes back to their usual gaze, or puts a short reminder in the notes of your next message, so its next reply " +
+        "follows it. A check-in can also call tools from the sets you tick on its card, and with Its tools act, those calls are " +
+        "what it does. Its card shows each tool it called and what came of it.\n\n" +
+        "Check-ins run only on Thinking pool members, never on the conversation's own Thinking model, so replies never wait for " +
+        "them. They wait while you talk and while nobody uses this PC, and they stay on this PC. The built-in check-ins work like " +
+        "your own: change their prompt, facts, conditions and answer under More settings on their card, and Use built-in settings " +
+        "puts Martlet's own back. Copy as your own makes a check-in of your own from any card.";
+
     private void InitializeCheckIns()
     {
         var (settings, state) = CheckInSettings.Read(store?.DataDirectory);
@@ -696,19 +707,8 @@ public partial class MainWindow
         var last = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(last, "CheckInsLast");
         AutomationProperties.SetLiveSetting(last, AutomationLiveSetting.Polite);
-        page.Children.Add(Card(Heading("Now"), now, last,
+        page.Children.Add(Card(HelpTip.After(Heading("Now"), "check-ins", CheckInsAbout, "CheckInsAbout"), now, last,
             Row(PageButton("Open Thinking pool", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: "CheckInsOpenPool"))));
-        page.Children.Add(Card(Heading("How check-ins work"),
-            Note("A check-in is a short question that the Thinking pool answers for Martlet every few minutes, with only the facts " +
-                "it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, where the eyes look, " +
-                "and the reminders and work Martlet started. Martlet then acts on the answer. It turns off an emote, takes the " +
-                "eyes back to their usual gaze, or puts a short reminder in the notes of your next message, so its next reply " +
-                "follows it. A check-in can also call tools from the sets you tick on its card, and with Its tools act, those " +
-                "calls are what it does. Its card shows each tool it called and what came of it.", new Thickness(0, 0, 0, 0)),
-            Note("Check-ins run only on Thinking pool members, never on the conversation's own Thinking model, so replies never " +
-                "wait for them. They wait while you talk and while nobody uses this PC, and they stay on this PC. The built-in " +
-                "check-ins work like your own: change their prompt, facts, conditions and answer on their card, and Use built-in " +
-                "settings puts Martlet's own back. Copy as your own makes a check-in of your own from any card.", new Thickness(0, 6, 0, 0))));
         var lines = new List<Action>();
         // Edits to the built-in check-ins' prompts and to your own check-ins save on their own, a moment after typing stops.
         var promptBoxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);
@@ -859,7 +859,8 @@ public partial class MainWindow
         row.Children.Add(RowGroup(on));
         row.Children.Add(RowGroup(RowLabel("Every", every), every));
         row.Children.Add(RowGroup(RowLabel("Its answer", outcome), outcome));
-        var children = new List<UIElement> { Heading(checkIn.Name), Note(checkIn.Does, new Thickness(0, 0, 0, 0)), row };
+        var children = new List<UIElement> { Heading(checkIn.Name), Note(checkIn.Does, new Thickness(0, 0, 0, 0)), row, status };
+        var more = new List<UIElement>();
         // Its prompt, like the task of your own check-ins: edited here, saved with Martlet's other prompts (Companion › Prompts
         // lists it too).
         TextBox? promptBox = null;
@@ -888,13 +889,13 @@ public partial class MainWindow
             };
             promptBox = box;
             promptDefault = prompt.Default;
-            children.Add(new Label { Content = "_What it asks", Target = box, Padding = new Thickness(0, 6, 0, 0) });
-            children.Add(box);
-            children.Add(Note(CheckInPlaceholderHelp + " Empty it to stop this check-in from asking anything.", new Thickness(0, 2, 0, 0)));
-            children.Add(state);
+            more.Add(HelpTip.After(new Label { Content = "_What it asks", Target = box, Padding = new Thickness(0), Margin = new Thickness(0, 6, 0, 0) },
+                "placeholders", CheckInPlaceholderHelp + " Empty it to stop this check-in from asking anything.", "CheckInPrompt-" + id));
+            more.Add(box);
+            more.Add(state);
         }
-        children.Add(choices);
-        children.Add(status);
+        more.Add(choices);
+        children.Add(Fold.Create("More settings", "CheckInMore-" + id, false, [.. more]));
         var copy = PageButton("Copy as your own", () => CopyCheckInAsync(id, saveAll).Forget(), id: "CheckInCopy-" + id);
         AutomationProperties.SetHelpText(copy, $"Makes a check-in of your own with this one's prompt and choices, off until you turn it on.");
         var reset = PageButton("Use built-in settings", () => ResetAsync().Forget(), link: true, id: "CheckInReset-" + id);
@@ -1111,25 +1112,17 @@ public partial class MainWindow
         seconds.SelectionChanged += (_, _) => SaveNow();
 
         var view = new StackPanel();
-        view.Children.Add(new TextBlock
-        {
-            Text = "It gets to know (point at each one to see what it gets)", Margin = new Thickness(0, 8, 0, 0),
-            ToolTip = "It always gets the day and time. Each fact you tick adds a few lines of text to its question; " +
-                "a fact Martlet doesn't have now (for example the screen, while Martlet doesn't watch it) says so instead."
-        });
+        view.Children.Add(HelpTip.After(new TextBlock { Text = "It gets to know", Margin = new Thickness(0, 8, 0, 0) }, "what it gets to know",
+            "It always gets the day and time. Each fact you tick adds a few lines of text to its question; a fact Martlet doesn't " +
+            "have now (for example the screen, while Martlet doesn't watch it) says so instead. Point at each one to see what it gets.",
+            "CheckInFacts-" + id));
         view.Children.Add(facts);
-        view.Children.Add(new TextBlock
-        {
-            Text = "It waits until (point at each one to see when)", Margin = new Thickness(0, 4, 0, 0),
-            ToolTip = "Every check-in also waits for its time, while you talk and while nobody uses this PC. Check now skips the " +
-                "waits for time and something new, but not the others."
-        });
+        view.Children.Add(HelpTip.After(new TextBlock { Text = "It waits until", Margin = new Thickness(0, 4, 0, 0) }, "when it waits",
+            "Every check-in also waits for its time, while you talk and while nobody uses this PC. Check now skips the waits for " +
+            "time and something new, but not the others. Point at each one to see when.", "CheckInWhen-" + id));
         view.Children.Add(conditions);
-        view.Children.Add(new TextBlock
-        {
-            Text = "It starts when (instead of every few minutes; point at each one to see when)", Margin = new Thickness(0, 4, 0, 0),
-            ToolTip = CheckInTriggersHelp
-        });
+        view.Children.Add(HelpTip.After(new TextBlock { Text = "It starts when (instead of every few minutes)", Margin = new Thickness(0, 4, 0, 0) },
+            "what starts it", CheckInTriggersHelp + " Point at each one to see when.", "CheckInTriggers-" + id));
         view.Children.Add(triggers);
         view.Children.Add(limits);
         view.Children.Add(new TextBlock { Text = "With each run it takes", Margin = new Thickness(0, 4, 0, 0) });
@@ -1138,29 +1131,25 @@ public partial class MainWindow
         inputs.Children.Add(RowGroup(recording));
         inputs.Children.Add(RowGroup(RowLabel("Length", seconds), seconds));
         view.Children.Add(inputs);
-        view.Children.Add(new Label
+        view.Children.Add(HelpTip.After(new Label
         {
-            Content = "A _script it runs first (Windows PowerShell, optional); the check-in reads what it prints", Target = script,
-            Padding = new Thickness(0, 6, 0, 0)
-        });
+            Content = "A _script it runs first (optional)", Target = script, Padding = new Thickness(0), Margin = new Thickness(0, 6, 0, 0)
+        }, "the script", "A Windows PowerShell script; the check-in reads what it prints. For example, the busiest programs: " +
+            "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU. It runs hidden in your home folder, " +
+            $"as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.", "CheckInScript-" + id));
         view.Children.Add(script);
-        view.Children.Add(Note("For example, the busiest programs: Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 " +
-            $"Name, CPU. It runs hidden in your home folder, as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.",
-            new Thickness(0, 2, 0, 0)));
-        view.Children.Add(new TextBlock
-        {
-            Text = "It may use these tools (point at each one to see what it does)", Margin = new Thickness(0, 8, 0, 0),
-            ToolTip = $"The model can call these tools while it answers, at most {CheckIns.MaximumToolCalls} calls in " +
-                $"{CheckIns.MaximumToolRounds} rounds. Only Thinking pool members on an endpoint, whose model calls tools, take a " +
-                "check-in with tools. With Its tools act, the tools are what it does."
-        });
+        view.Children.Add(HelpTip.After(new TextBlock { Text = "It may use these tools", Margin = new Thickness(0, 8, 0, 0) }, "its tools",
+            $"The model can call these tools while it answers, at most {CheckIns.MaximumToolCalls} calls in " +
+            $"{CheckIns.MaximumToolRounds} rounds. Only Thinking pool members on an endpoint, whose model calls tools, take a " +
+            "check-in with tools. With Its tools act, the tools are what it does. Point at each one to see what it does.",
+            "CheckInTools-" + id));
         view.Children.Add(toolSets);
-        view.Children.Add(new TextBlock { Text = "The model must handle", Margin = new Thickness(0, 8, 0, 0) });
-        view.Children.Add(needs);
-        view.Children.Add(Note("Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model " +
+        view.Children.Add(HelpTip.After(new TextBlock { Text = "The model must handle", Margin = new Thickness(0, 8, 0, 0) }, "what the model must handle",
+            "Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model " +
             "that sees pictures, and a recording needs one that hears recordings. They go only to that member, which can be a " +
             "cloud service. The microphone and what this PC plays are kept in memory, only while a check-in that is on asks for " +
-            "them and Martlet hears them. " + CheckInLengthHelp, new Thickness(0, 0, 0, 0)));
+            "them and Martlet hears them. " + CheckInLengthHelp, "CheckInNeeds-" + id));
+        view.Children.Add(needs);
         return (outcome, view, () => new CheckInEdit(
             factBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInFacts.None, (all, b) => all | b.Fact),
             conditionBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInConditions.None, (all, b) => all | b.Condition),
@@ -1264,13 +1253,13 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Your own check-ins"),
-            Note("Write what the Thinking pool should check, such as \"If the user has been at it for hours, suggest a short break\" or " +
+            HelpTip.Explain("Write what the Thinking pool should check, such as \"If the user has been at it for hours, suggest a short break\" or " +
                 "\"If it's late at night, remind Martlet to talk more softly\". Choose what it gets to know (it always gets the day " +
                 "and time), when it waits, how often it runs and what happens with its answer: a reminder in Martlet's next reply, " +
                 "Martlet brings it up on its own as soon as it's free, it turns off lingering emotes, it takes the eyes back to " +
                 "their usual, or its tools act. A check-in can also take a screenshot, the last seconds of the microphone or of what this PC plays, " +
                 "and what a script of yours prints, and you choose the tool sets it may call and what its model must handle. Copy as your own on a built-in " +
-                "check-in starts from that one. A new check-in starts off.", new Thickness(0, 0, 0, 4))
+                "check-in starts from that one. A new check-in starts off.", new Thickness(0, 0, 0, 4), "CheckInsOwn", "your own check-ins")
         };
         foreach (var custom in checkInSettings.Custom) stack.Add(OwnCheckInRow(custom, lines, rows, autoSave, saveAll));
         var add = PageButton("Add a check-in", AddOwnCheckIn, id: "CheckInAdd");
@@ -1351,11 +1340,11 @@ public partial class MainWindow
         top.Children.Add(RowGroup(RowLabel("Every", every), every));
         top.Children.Add(RowGroup(RowLabel("Its answer", outcome), outcome));
         view.Children.Add(top);
-        view.Children.Add(new Label { Content = "_What it checks", Target = task, Padding = new Thickness(0, 6, 0, 0) });
+        view.Children.Add(HelpTip.After(new Label { Content = "_What it checks", Target = task, Padding = new Thickness(0), Margin = new Thickness(0, 6, 0, 0) },
+            "placeholders", CheckInPlaceholderHelp, "CheckInTask-" + id));
         view.Children.Add(task);
-        view.Children.Add(Note(CheckInPlaceholderHelp, new Thickness(0, 2, 0, 0)));
-        view.Children.Add(choices);
         view.Children.Add(status);
+        view.Children.Add(Fold.Create("More settings", "CheckInMore-" + id, false, choices));
         async Task SaveThenCheckAsync()
         {
             await autoSave.SaveNowAsync();

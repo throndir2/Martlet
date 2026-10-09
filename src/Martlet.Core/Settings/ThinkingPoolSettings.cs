@@ -100,6 +100,33 @@ public sealed record ThinkingPoolSettings
         };
     }
 
+    /// <summary>The external members (by <see cref="DeepThinkingSettings.Key"/>) the owner allowed to receive pictures and
+    /// recordings (May receive pictures and recordings, off for each external member by default). An external member is an
+    /// endpoint that is not on this PC (<see cref="IsExternal"/>); this PC and paired Martlet computers always may. A file saved
+    /// before this list existed reads as empty.</summary>
+    public IReadOnlyList<string> MediaAllowed { get => mediaAllowed; init => mediaAllowed = value ?? []; }
+    private readonly IReadOnlyList<string> mediaAllowed = [];
+
+    /// <summary>Whether <paramref name="member"/> is outside this PC and the paired Martlet computers: an OpenAI-compatible
+    /// endpoint whose address is not this PC (a computer on the home network or a cloud provider).</summary>
+    public static bool IsExternal(DeepThinkingSettings member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return member.Place == DeepThinkingPlace.Endpoint && !member.OnThisPc;
+    }
+
+    /// <summary>Whether <paramref name="member"/> may receive jobs with a picture or a recording: always on this PC and on a
+    /// paired computer, and on an external member only when the owner ticked it.</summary>
+    public bool MayReceiveMedia(DeepThinkingSettings member) =>
+        !IsExternal(member) || MediaAllowed.Contains(member.Key, StringComparer.Ordinal);
+
+    /// <summary>The pool with the member with <paramref name="key"/> allowed (or no longer allowed) to receive pictures and recordings.</summary>
+    public ThinkingPoolSettings WithMedia(string key, bool allow)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        return this with { MediaAllowed = [.. MediaAllowed.Where(k => k != key), .. allow ? new[] { key } : []] };
+    }
+
     /// <summary>The pool as long jobs see it (thinking longer, research and a song's lyrics): only the members that take long
     /// jobs. When none does, those jobs act as with an empty pool: the conversation model, when that is allowed.</summary>
     public ThinkingPoolSettings ForLongJobs() =>
@@ -156,7 +183,8 @@ public sealed record ThinkingPoolSettings
     public ThinkingPoolSettings Remove(string key) => this with
     {
         Members = [.. Members.Where(m => m.Key != key)], AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)],
-        NoQuickJobs = [.. NoQuickJobs.Where(k => k != key)], NoLongJobs = [.. NoLongJobs.Where(k => k != key)]
+        NoQuickJobs = [.. NoQuickJobs.Where(k => k != key)], NoLongJobs = [.. NoLongJobs.Where(k => k != key)],
+        MediaAllowed = [.. MediaAllowed.Where(k => k != key)]
     };
 
     /// <summary>Every place the planner considers: the members, or the conversation model while the pool is empty and that is
@@ -197,6 +225,9 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(RaisePriorityAfterStops is >= MinRaiseAfterStops and <= MaxRaiseAfterStops,
             $"A stopped request's priority goes up after {MinRaiseAfterStops}-{MaxRaiseAfterStops} stops.");
         ContractRules.Require(RetriesOnFailure is >= 0 and <= MaxRetries, $"A failed request is tried again 0-{MaxRetries} times.");
+        ContractRules.Require(MediaAllowed.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
+            MediaAllowed.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl)),
+            "The members that may receive pictures and recordings are a short list of member keys.");
         ContractRules.Require(LeftByOwner.Count <= MaxLeftByOwner &&
             LeftByOwner.All(h => h is { Length: > 0 and <= 128 } && !h.Any(char.IsControl)) &&
             LeftByOwner.Distinct(StringComparer.Ordinal).Count() == LeftByOwner.Count,

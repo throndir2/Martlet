@@ -449,13 +449,14 @@ public static partial class CheckIns
     }
 
     /// <summary>What the reply's instructions say about the tools handed off (Every reply › Things done after the reply): the
-    /// sets' names in plain words, or null when none are handed off or the owner emptied that prompt.</summary>
+    /// sets' names separated by semicolons, or null when none are handed off or the owner emptied that prompt.</summary>
     public static string? HandOffGuidance(IReadOnlyList<CheckInHandOff> handed, PromptSettings? prompts)
     {
         ArgumentNullException.ThrowIfNull(handed);
-        var names = handed.Select(h => h.SetName.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToArray();
+        // Set names may hold commas ("Songs, pictures and creations"), so semicolons separate them.
+        var names = handed.Select(h => h.SetName).Distinct(StringComparer.Ordinal).ToArray();
         if (names.Length == 0) return null;
-        var things = names.Length == 1 ? names[0] : string.Join(", ", names[..^1]) + " and " + names[^1];
+        var things = string.Join("; ", names);
         return PromptSettings.Fill(prompts, PromptCatalog.HandedOffTools, ("things", things));
     }
 
@@ -610,7 +611,7 @@ public static partial class CheckIns
         var offered = tools?.Tools ?? [];
         return new()
         {
-            Kind = ThinkingJobKind.CheckIn, Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
+            Kind = ThinkingJobKind.CheckIn, Label = $"Check-in: {checkIn.Name}", Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
             Needs = ThinkingCapability.Text | checkIn.Needs,
             Image = checkIn.Screenshot ? state.Screenshot : null,
             Audio = checkIn.Recording != CheckInRecording.None ? state.Recording : null,

@@ -139,11 +139,11 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(doctor, "DiscordCallDoctor");
 
         return Card([Heading("Martlet in your Discord calls"), on, status,
-            Note("Join a DM, group DM or server call on your own Discord account as usual; Martlet takes part through this PC. " +
+            HelpTip.Explain("Join a DM, group DM or server call on your own Discord account as usual; Martlet takes part through this PC. " +
                 "Martlet never controls Discord (no clicks, typing or account access) and works while always listening runs. " +
                 "What it hears of the call is transcribed like Hear what this PC plays and goes to Thinking marked as the call's, " +
                 "never as you, never into memory or voice recognition. It answers when someone says its name, and otherwise " +
-                "only now and then.", new Thickness(0, 0, 0, 8)),
+                "only now and then.", new Thickness(0, 0, 0, 8), "DiscordCalls", "Discord calls"),
             Note("Hear:", new Thickness(0, 0, 0, 0)), capture,
             see,
             Note("Your Discord display name (so your own tile lighting up is never taken for someone else):", new Thickness(0, 2, 0, 0)),

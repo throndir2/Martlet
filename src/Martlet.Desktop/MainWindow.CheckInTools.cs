@@ -22,6 +22,9 @@ public partial class MainWindow
         };
         // Only a PC that keeps reminders (a data folder) runs the reminders tool.
         if (conversation?.RemindersTool is not null) handlers[CheckInToolSets.RemindersId] = ReminderToolAsync;
+        // Only a PC that keeps creations (a data folder) runs the songs, pictures and creations tools; each tool keeps the
+        // reply's own gate (singing set up, pictures set up, creation kinds registered).
+        if (conversation is { RunsCreationsCheckIn: true } creations) handlers[CreationsCheckIn.SetId] = creations.CreationsCheckInAsync;
         // Discord calls and camera only while Martlet can call a Discord friend or is in the owner's Discord calls.
         if (conversation is { RunsDiscordCheckInTools: true } talk)
             handlers[DiscordCheckInTools.SetId] = (call, context, token) => talk.RunDiscordCheckInToolAsync(call, token);
@@ -68,20 +71,12 @@ public partial class MainWindow
 
     private async ValueTask<ConversationToolResult> ReminderToolAsync(TextToolCall call, CheckInToolContext context, CancellationToken token)
     {
-        if (call.Name != Reminders.ToolName || conversation?.RemindersTool is not { } remind)
+        if (call.Name != Reminders.ToolName || conversation is not { RemindersTool: not null } talk)
             return new($"This set has no tool called {call.Name}.", true);
-        try
-        {
-            var outcome = await remind(call.ArgumentsJson, token).ConfigureAwait(false);
-            if (outcome.Own is not null) ErrorLog.Info($"Reminders: {Reminders.ToolName} {outcome.Outcome} by the check-in {context.CheckInName}.");
-            // The first line (shown on the card) is the outcome only, never a reminder's text.
-            return new($"Reminders: {outcome.Outcome}.\n{outcome.Result.Output}", outcome.Result.IsError);
-        }
-        catch (Exception error) when (!token.IsCancellationRequested && error is IOException or UnauthorizedAccessException or
-            ContractException or InvalidOperationException or TaskCanceledException)
-        {
-            return new("Reminders: failed.\nReminders can't be changed right now.", true);
-        }
+        // The same reminders as the reply's (this PC's entry, for the owner), in the same tool log and error log.
+        var outcome = await talk.RemindAsync(Reminders.ToolName, call.ArgumentsJson, context.CheckInName, token).ConfigureAwait(false);
+        // The first line (shown on the card) is the outcome only, never a reminder's text.
+        return new($"Reminders: {outcome.Outcome}.\n{outcome.Result.Output}", outcome.Result.IsError);
     }
 
     /// <summary>Turns off the lingering emotes a reply turned on whose tag <paramref name="named"/> picks (on the UI thread);

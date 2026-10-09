@@ -518,6 +518,19 @@ cloud provider) and *Offline*. Each member has three boxes:
 - *Backup for slow replies* (`ThinkingPoolAnswers-<n>`, see
   [Backup Thinking](#backup-thinking-a-hedged-request)).
 
+An external member (an OpenAI-compatible endpoint that is not on this PC: a
+computer on the home network or a cloud provider) has a fourth box, *May
+receive pictures and recordings* (`ThinkingPoolMedia-<n>`), off by default.
+Check-ins, screen and sound summaries and other pool jobs can carry a
+screenshot or a recording (`ThinkingJob.Image`, `ThinkingJob.Audio`). The job
+board passes over an external member without this box for such jobs, as it
+passes over a member that can't see pictures; text-only jobs still go to it.
+When no other member can take such a job, the job gets *no member* with that
+reason, and the pool's guidance says so. This PC and paired Martlet computers
+always may receive them and show no box. Ticking the box saves the key in
+`MediaAllowed` in `thinking-pool.json` (a file without this list reads as
+empty); removing the member clears it.
+
 Quick jobs and Long jobs are on for every member. Unticking one saves the key
 in `NoQuickJobs` or `NoLongJobs` in `thinking-pool.json` (a file without these
 lists reads as every member taking every job). Removing a member clears its
@@ -1278,6 +1291,17 @@ up to a year ahead), `list` and `cancel` with an `id`. Set answers with the id
 and when it is due, so Martlet confirms it with the right time without a clock
 of its own.
 
+**Set after the reply.** The *Reminders* check-in tool set takes this tool
+over (`CheckInToolSet.Replaces`) when an [After each exchange](#check-in-tool-sets)
+check-in that is on ticks it and the Thinking pool has a member that calls
+tools. Then the reply gets the read-only `list_reminders` in its place (same
+place, always the same text), so it can still answer *what reminders do I
+have?*, and one guidance line tells it to agree briefly in its own words. The check-in sets or cancels
+the reminder on the Thinking pool after the reply, with the same code, on this
+PC's own reminders entry. Companion › Tools › *Recent tool use* shows it as
+*Check-in <name> › reminders* with the outcome only, and the desktop log says
+which check-in changed it.
+
 **When it is due**, Martlet brings it up the way it brings up finished
 background work, whatever *When it shares the result* says for Thinking longer:
 
@@ -1716,10 +1740,11 @@ does and its tools. Martlet offers:
 | --- | --- | --- |
 | Emotes and gaze (`character`) | `turn_off_emote`, `look_usual` | Turn off one lingering emote a reply turned on (never a try or a touch's), or take the eyes back to their usual gaze. |
 | Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
-| Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
+| Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. Takes over the reply's `reminders`; the reply then gets the read-only `list_reminders` ([Reminders](#reminders)). |
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
 | Discord calls and camera (`discord`) | `call_on_discord`, `set_camera_background` | Call a Discord friend you asked for, or change Martlet's webcam background in your Discord call ([Discord](DISCORD.md)). Offered only while Martlet can call someone or is in your Discord calls. Replaces the reply's tools of the same names. |
 | Memory (`memory`) | `memory_find`, `memory_remember`, `memory_update`, `memory_forget` | Find, remember, correct, give to someone else and forget facts, as `manage_memories` does ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. |
+| Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Pictures](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
 
 A set can also take over reply tools (`CheckInToolSet.Replaces`): see [Act on what was said](#act-on-what-was-said).
 

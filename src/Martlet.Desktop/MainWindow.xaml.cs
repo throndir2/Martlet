@@ -210,12 +210,14 @@ public partial class MainWindow : ThemedWindow
         InitializeLogs();
         InitializeBackground();
         InitializeTasks();
+        InitializeThinkingRequests();
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         StartAmbientMotion();
         StartSimulatedTask();
+        StartSimulatedRequests();
         await StartRunningAsync();
     }
 

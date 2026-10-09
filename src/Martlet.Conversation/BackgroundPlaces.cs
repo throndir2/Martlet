@@ -47,6 +47,14 @@ public sealed record BackgroundPlace(string Id, string Name, int Rank = 0)
     /// <see cref="LongJobs"/>.</summary>
     public bool Takes(ThinkingJobKind kind) => ThinkingJobKinds.IsFast(kind) ? QuickJobs : LongJobs;
 
+    /// <summary>Whether it may receive pictures and recordings (jobs with an image or audio). Off only for an external member
+    /// (an endpoint not on this PC) whose May receive pictures and recordings box on Companion › Thinking pool is unticked.</summary>
+    public bool Media { get; init; } = true;
+
+    /// <summary>Whether the owner lets it receive a job that needs <paramref name="needs"/>: any text job, and a job with a
+    /// picture or a recording only where <see cref="Media"/>.</summary>
+    public bool MayReceive(ThinkingCapability needs) => Media || (needs & ThinkingPoolMedia.Needs) == 0;
+
     /// <summary>Where it stands in line for new work, lowest first: its rank, and a place kept free for other duties just after the
     /// places of the same rank without any. Deterministic: the same places and the same load always pick the same place.</summary>
     public int Standing => Rank * 2 + (Duties.Count > 0 ? 1 : 0);
@@ -179,6 +187,13 @@ public sealed class BackgroundPlaces
     private readonly List<BackgroundPlaceLease> leases = [];
     private readonly List<Waiter> waiters = [];
     private IPlaceRules? rules;
+
+    /// <param name="clock">The clock the request journal (<see cref="Requests"/>) times requests with.</param>
+    public BackgroundPlaces(TimeProvider? clock = null) => Requests = new(clock);
+
+    /// <summary>Every request for these places' slots with its timings, for the Thinking requests page: Thinking pool jobs and
+    /// the conversation's background work (<see cref="ThinkingRequests"/>).</summary>
+    public ThinkingRequests Requests { get; }
 
     /// <summary>Raised on any thread when a place is taken or released, or the line changes.</summary>
     public event Action? Changed;

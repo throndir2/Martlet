@@ -26,11 +26,11 @@ public partial class MainWindow
         var heading = new TextBlock { Text = "Combos", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 22, 0, 4) };
         AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level3);
         section.Children.Add(heading);
-        section.Children.Add(Note("A combo sets off several emotes, motions and gestures at once with a tag of your own. Write the tags " +
+        section.Children.Add(HelpTip.Explain("A combo sets off several emotes, motions and gestures at once with a tag of your own. Write the tags " +
             "of 2 to 6 of them, such as blush hearts nod. A reply's {tag} sets off each part that is on: a part that stays on stays " +
             "until the reply writes {/tag}, and the others show a moment. Each model starts with Martlet's own combos, such as " +
             "{lovestruck}, {flustered} and {ahegao} (off until you turn it on). Change, turn off or remove any of them; a removed " +
-            "one doesn't come back. Combos are yours, for this model.", new Thickness(0, 0, 0, 4)));
+            "one doesn't come back. Combos are yours, for this model.", new Thickness(0, 0, 0, 4), "CharacterCombos", "combos"));
         characterCombosStatus = Note(CombosStatus(catalog), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(characterCombosStatus, "CharacterCombosStatus");
         AutomationProperties.SetLiveSetting(characterCombosStatus, AutomationLiveSetting.Polite);
