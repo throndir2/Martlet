@@ -12,6 +12,10 @@ Each release's section here is also its notes on GitHub.
 
 - Conversations now has its own page in the side menu, right after Companion, so you can read, search, edit and delete every conversation without opening a separate window. Companion › Memory › **Open conversations** takes you there too. ([#689](https://github.com/throndir2/Martlet/pull/689))
 
+### Changed
+
+- Pages are shorter and easier to scan. Long explanations now sit behind a small **?**: point at it to read, or click it to keep the text open. On Companion › Check-ins, each check-in shows only its switch, how often it runs, its answer and its status, and the rest waits under **More settings**. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.64.0] - 2026-10-09
 
 ### Added

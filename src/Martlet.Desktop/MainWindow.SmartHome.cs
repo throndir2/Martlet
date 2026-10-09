@@ -142,9 +142,9 @@ public partial class MainWindow
         var children = new List<UIElement>
         {
             Heading("Home Assistant"),
-            Note("Connect Home Assistant so Martlet can answer questions and control devices when you ask. Martlet only uses the address below." +
+            HelpTip.Explain("Connect Home Assistant so Martlet can answer questions and control devices when you ask. Martlet only uses the address below." +
                 (hasHosts && clusterEnabled ? " It is one connection for all your computers: connecting here connects them too." : ""),
-                new Thickness(0, 0, 0, 8)),
+                new Thickness(0, 0, 0, 8), "SmartHome", "Home Assistant"),
             Status(connected
                 ? $"Connected to {saved.LocationName} at {saved.Address}" + (saved.Version.Length > 0 ? $" (Home Assistant {saved.Version})." : ".") +
                     (saved.FollowShare ? saved.SharedBy.Length > 0 ? $" Connected on your other computers (through {saved.SharedBy})." : " Your other computers use it too." : "")
@@ -483,9 +483,9 @@ public partial class MainWindow
         var check = PageButton("Check now", () => SyncHomeShareAsync().Forget(), link: true, id: "SmartHomeShareCheck");
         check.IsEnabled = clusterEnabled;
         children.Add(Row(check));
-        children.Add(Note("Home Assistant is one connection for all your computers: your paired Martlet hosts keep its address and Martlet's " +
+        children.Add(HelpTip.Explain("Home Assistant is one connection for all your computers: your paired Martlet hosts keep its address and Martlet's " +
             "access token privately and hand them only to your paired computers, which connect by themselves. Disconnecting disconnects " +
-            "every computer. What Martlet may do with it (below) is the same everywhere too.", new Thickness(0, 6, 0, 0)));
+            "every computer. What Martlet may do with it (below) is the same everywhere too.", new Thickness(0, 6, 0, 0), "HomeAssistantShared", "sharing Home Assistant"));
         return Card([.. children]);
     }
 

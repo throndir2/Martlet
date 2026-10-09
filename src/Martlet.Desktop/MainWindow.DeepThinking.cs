@@ -91,10 +91,10 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Machines"),
-            Note("The machines in the pool do Martlet's background work. Quick jobs are the judges (are you done talking, did you " +
+            HelpTip.Explain("The machines in the pool do Martlet's background work. Quick jobs are the judges (are you done talking, did you " +
                 "interrupt) and the screen and sound summaries. Long jobs are thinking longer, research, a song's lyrics and the " +
                 "other helpers. Each job goes to a free machine that takes it, the one that shares least with the conversation " +
-                "first. Tick what each machine may do.", new Thickness(0, 0, 0, 8))
+                "first. Tick what each machine may do.", new Thickness(0, 0, 0, 8), "ThinkingPool", "the Thinking pool")
         };
 
         var places = ThinkLonger.Places(plan, BackgroundDuties.Of(store?.DataDirectory), choices: pool).Where(p => p.Id != "thinking").ToArray();
@@ -452,11 +452,11 @@ public partial class MainWindow
             new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(status, "ThinkingPoolBackupStatus");
         return Card(Heading("Backup for slow replies"),
-            Note("Off by default. When the conversation's Thinking model has no words after a short wait, the same request also goes " +
+            HelpTip.Explain("Off by default. When the conversation's Thinking model has no words after a short wait, the same request also goes " +
                 "to a machine you ticked for it (Backup for slow replies, on a machine above). Whichever starts first gives the reply, and the " +
                 "other stops at once, so a slow or busy model doesn't keep you waiting. Choose machines with the same model as the " +
                 "conversation, or a similar one. A paid cloud provider is asked only when you tick it, and only for a reply already " +
-                "taken.", new Thickness(0, 0, 0, 8)),
+                "taken.", new Thickness(0, 0, 0, 8), "ThinkingFill", "this setting"),
             on, TerminalRow("Wait for first words", delay), status);
 
         static int IndexOf(IReadOnlyList<int> list, int value)
@@ -591,9 +591,9 @@ public partial class MainWindow
         tabAutoSave = autoSave;
         changed = () => { tabEdited = true; autoSave.Changed(); };
         return Card(Heading("Thinking longer"),
-            Note("Replies answer right away (Thinking steps are off by default). When a task really needs thought, such as writing " +
+            HelpTip.Explain("Replies answer right away (Thinking steps are off by default). When a task really needs thought, such as writing " +
                 "song lyrics, a story or a plan, or tricky math or code, Martlet can say it'll think it over and work on it in the " +
-                "background while you keep talking, then bring it up when it's done.", new Thickness(0, 0, 0, 8)),
+                "background while you keep talking, then bring it up when it's done.", new Thickness(0, 0, 0, 8), "ThinkingSteps", "Thinking steps"),
             turnOn, status,
             TerminalRow("How hard", effort), TerminalRow("Share it", when),
             Note("It thinks with Thinking steps on, whatever replies use; one think runs on each free slot of a machine that takes " +
@@ -650,8 +650,8 @@ public partial class MainWindow
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(disclosure, "WebResearchDisclosure");
         return Card(Heading("Web research"),
-            Note("Ask Martlet to look something up or research it and it says it'll look into it, searches the web and reads pages " +
-                "in the background while you keep talking, then tells you what it found and offers the full report.", new Thickness(0, 0, 0, 4)),
+            HelpTip.Explain("Ask Martlet to look something up or research it and it says it'll look into it, searches the web and reads pages " +
+                "in the background while you keep talking, then tells you what it found and offers the full report.", new Thickness(0, 0, 0, 4), "Research", "looking things up"),
             status, allow, disclosure);
     }
 
@@ -867,10 +867,10 @@ public partial class MainWindow
         shared.Visibility = shared.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetAutomationId(shared, "DeepThinkingLocalShare");
         return [
-            Note("A second model can think here while Thinking's answers you, such as a larger one beside a small, fast one. Ollama runs " +
+            HelpTip.Explain("A second model can think here while Thinking's answers you, such as a larger one beside a small, fast one. Ollama runs " +
                 "each model in its own process, so they answer at the same time, but only while both fit on the graphics card: Martlet " +
                 "checks before each think and doesn't think it over when they don't. They share the graphics card, so replies may start " +
-                "a little later while it thinks.", new Thickness(0, 0, 0, 8)),
+                "a little later while it thinks.", new Thickness(0, 0, 0, 8), "SecondThinking", "a second model"),
             new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 0, 0, 4) }, model, state, fit, shared,
             Row(PageButton("Add to the Thinking pool", () =>
                 {

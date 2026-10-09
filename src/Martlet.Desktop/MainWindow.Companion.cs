@@ -1969,13 +1969,13 @@ public partial class MainWindow
             _ = record.Store.LoadAsync().ContinueWith(_ => Dispatcher.InvokeAsync(() => status.Text = record.Describe(homeSettings?.Memory)),
                 TaskScheduler.Default);
         return Card(Heading("Conversation history"), status, keep,
-            Note("Each exchange (what you typed or said and Martlet's reply) is kept on this PC. When you mention an earlier " +
+            HelpTip.Explain("Each exchange (what you typed or said and Martlet's reply) is kept on this PC. When you mention an earlier " +
                 "conversation, like \"remember when...\" or \"what did we talk about yesterday?\", Martlet brings back what was said. " +
-                "Screen glances and what this PC plays are never recorded.", new Thickness(24, 2, 0, 0)),
+                "Screen glances and what this PC plays are never recorded.", new Thickness(24, 2, 0, 0), "ConversationHistory", "conversation history"),
             search,
-            Note("With a Thinking model that uses tools, Martlet can also look things up in the record whenever it thinks that " +
+            HelpTip.Explain("With a Thinking model that uses tools, Martlet can also look things up in the record whenever it thinks that " +
                 "helps. Its search tool makes every request a little longer, so the first reply of a conversation may start a " +
-                "little later.", new Thickness(24, 2, 0, 0)),
+                "little later.", new Thickness(24, 2, 0, 0), "ConversationSearch", "searching the record"),
             Row(PageButton("Open conversations", History_Click, id: "OpenHistory")));
     }
 

@@ -671,9 +671,16 @@ Companion › Check-ins reads through `ui_value`: `CheckInsNow` (how many are on
 and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
-waits, its last run, runs and actions since Martlet started). Every check-in,
+waits, its last run, runs and actions since Martlet started). `Help-CheckInsAbout`
+next to *Now* explains check-ins (`help`). Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
-`CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
+`CheckInEvery-<id>` and `CheckInOutcome-<id>` show on its card, and the rest
+is under *More settings* (`Fold-CheckInMore-<id>`, closed at first: click it
+before you read or change these), each group with its own *?*
+(`Help-CheckInFacts-<id>`, `Help-CheckInWhen-<id>`, `Help-CheckInTriggers-<id>`,
+`Help-CheckInScript-<id>`, `Help-CheckInTools-<id>`, `Help-CheckInNeeds-<id>`,
+and the placeholders in `Help-CheckInPrompt-<id>` or `Help-CheckInTask-<id>`):
+`CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
 `Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`),
 `CheckInWhen-<id>-<condition>` (when it runs: `CharacterShows`, `EmoteShown`,
@@ -5373,7 +5380,17 @@ its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 `--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
-`NavCompanion` before `CompanionTab-Listening`). Settings › Tools'
+`NavCompanion` before `CompanionTab-Listening`). Many pages keep their longer
+explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
+`ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
+explanation as `help`, and `ui_click` on it only opens a small card with that
+text (passive, no `--allow-ui-effects`). An explanation line that shows only its
+first sentence before its *?* returns that sentence as `value` and all of the
+text as `help`. Settings most people leave alone sit in sections you open and
+close (`Fold-<id>`, such as `Fold-CheckInMore-emotes`): `ui_snapshot` returns
+`expanded` (true or false), their controls show in `ui_snapshot` only while the
+section is open, and `ui_click` opens or closes it (passive). A section stays
+open or closed while Martlet runs, also when its page is built again. Settings › Tools'
 `OpenTroubleshooting` opens Troubleshooting: `SupportReport` returns the status
 report (each check's state and remedy, and the last conversation activity),
 `SupportRefresh` runs the read-only status checks again and `SupportClose`
@@ -6962,7 +6979,7 @@ it), `SingingSetUp` its button while it isn't ready there ("Set up", "Setting
 up..."; disabled with the reason as help text when the computer can't sing) and
 `SingingUse` (*Sing on gpu-pc*, once it is ready there and Martlet doesn't sing
 there yet; it saves `singing.json`, so it needs `--allow-ui-effects`). `SingingGpu` (fixed
-text) answers whether Singing needs a graphics card of its own. With another
+text: its first sentence, with all of it in `help`) answers whether Singing needs a graphics card of its own. With another
 computer paired, the pills `SingingHost-this-pc` and `SingingHost-<host ID>` only
 choose the shown computer (passive). Under *Song choices*, `SingingQuality` ("Fast
 (recommended)", "High quality ...") reports the saved quality (`ui_select` on it
@@ -7398,8 +7415,8 @@ always listening, the same card has `TalkWordCheck` (*Word check*: *Relaxed*,
 *Normal (recommended)* or *Sensitive*; returned as the chosen option, and
 `ui_select` on it needs `--allow-ui-effects` because it saves
 `talk-preferences.json`; an open talk window restarts listening with it) and
-`TalkWordCheckAbout` (returned: that Martlet ignores sounds that aren't words
-and words speech-to-text makes up from noise, what Relaxed and Sensitive change,
+`TalkWordCheckAbout` (returned: its first sentence, that Martlet ignores sounds that aren't words
+and words speech-to-text makes up from noise; its `help` adds what Relaxed and Sensitive change,
 that short answers and Martlet's name always count and that ignored sounds show
 faded in the talk window; `utterance_filter_check` runs the filter itself),
 then `TalkJudgeTurns` (*Judge when I finish talking (recommended)*, on by
@@ -7427,14 +7444,15 @@ own computer; the first spoken words are prepared early too. Last 3: 1 taken as
 the reply, 1 let go because you went on talking, 1 let go for another reason.
 Last: changed after 900 ms.*, updated after each reply started early; the
 desktop log has its *Early reply: ...* lines, and `early_reply_check`
-rehearses it headless) and `TalkEarlyRepliesAbout` (returned: what it does,
-that nothing shows or is said before your turn ends, that it needs Parakeet on
+rehearses it headless) and `TalkEarlyRepliesAbout` (returned: its first sentence, what it does;
+its `help` adds that nothing shows or is said before your turn ends, that it needs Parakeet on
 this PC and why cloud models need the second box),
 then `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
-`talk-preferences.json`) and `TalkBargeInAbout` (returned: that it is optional
-and off by default, that Martlet keeps listening while it speaks either way
+`talk-preferences.json`) and `TalkBargeInAbout` (returned: its first lines, that it is optional
+and off by default and that Martlet keeps listening while it speaks; its `help`, also behind its *?*, has all of it: that
+Martlet keeps listening while it speaks either way
 (with echo reduction on) and answers what was said after the reply, and what talking over
 Martlet takes: real words, a word like "stop" or "wait" right away, never a hum,
 a cough, laughter, a quick "yeah" or what this PC plays, checked while you talk
@@ -7443,8 +7461,8 @@ rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate), then
 `TalkBargeInBehavior` (*When you talk over Martlet*: *Pause and decide
 (recommended)*, the default, or *Stop at once*; choosing one with `ui_select`
 saves `talk-preferences.json`, so it needs `--allow-ui-effects`) and
-`TalkBargeInBehaviorAbout` (returned: that a clear word or Martlet's name still
-stops at once, other words pause Martlet at once and it decides, words for it
+`TalkBargeInBehaviorAbout` (returned: its first sentence, that a clear word or Martlet's name still
+stops at once; its `help` adds that other words pause Martlet at once and it decides, words for it
 stop the reply, a backchannel, agreeing, laughing, side talk or a TV leave it
 playing on from where it paused, and talking on stops it; `barge_in_check`
 returns the verdicts). In the
