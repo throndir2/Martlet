@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Martlet now gets a richer picture of how you touch the character. Right after your touches end, a new built-in check-in, **Describe touches**, has your Thinking pool describe what you have been doing in a few vivid words, true to the character's personality, and Martlet's next reply can draw on it. The touch reaction never waits for it, and it is explicit only while **Adult content** is on. Your own check-ins can follow that choice too with `{adult}`. ([#PR_NUMBER](https://github.com/throndir2/Martlet/pull/PR_NUMBER))
 - A check-in can now start when you touch the character, instead of every few minutes: when your touches end, after an intimate touch, after a stroke across 3 zones, or when you keep coming back to one place. Tick them under **It starts when** on its card. It runs on the Thinking pool a moment after your touches stop, at most once per its **Every**, so replies never wait for it. ([#677](https://github.com/throndir2/Martlet/pull/677))
 
 ## [0.63.0] - 2026-10-09

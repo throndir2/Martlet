@@ -246,6 +246,9 @@ public sealed record CheckInVerdict(bool Act, IReadOnlyList<string> Tags, string
 public static partial class CheckIns
 {
     public const string Emotes = "emotes", Gaze = "gaze", Promises = "promises", Character = "character", Repeats = "repeats";
+    /// <summary>Describe touches: right after the user touches the character, a pool member describes what they have been doing,
+    /// for the next reply (<see cref="CheckInOutcome.Context"/>).</summary>
+    public const string DescribeTouches = "touches";
     /// <summary>The background job kind of what a check-in brings up on Martlet's own (checkin-1...).</summary>
     public const string SayKindName = "checkin";
     public const int MaximumCustom = 8, MaximumNameCharacters = 60, MaximumTaskCharacters = PromptSettings.MaximumTextCharacters,
@@ -286,8 +289,8 @@ public static partial class CheckIns
 
     /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Saying the same things every 10,
     /// Staying in character every 15); Welcome back, Unanswered question, On a call and Someone else is here off until the owner
-    /// turns them on. Each is only data (a prompt, facts, conditions and an outcome) that the owner can change on its card
-    /// or copy as their own.</summary>
+    /// turns them on; Describe touches on, started by touches at most once a minute. Each is only data (a prompt, facts,
+    /// conditions, triggers and an outcome) that the owner can change on its card or copy as their own.</summary>
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
     [
         new(Emotes, "Lingering emotes", "Checks whether the emotes a reply turned on and left on (such as a blush or glasses) still " +
@@ -343,6 +346,14 @@ public static partial class CheckIns
         {
             PromptId = PromptCatalog.CheckInOthers, Facts = CheckInFacts.People | CheckInFacts.Persona,
             Conditions = CheckInConditions.SomeoneElse
+        },
+        new(DescribeTouches, "Describe touches", "Right after you touch the character, describes vividly what you have been doing " +
+            "to it, true to its personality, so Martlet's next reply can draw on it. The touch reaction never waits for it.",
+            CheckInOutcome.Context, true, 1)
+        {
+            PromptId = PromptCatalog.CheckInTouches,
+            Facts = CheckInFacts.Touches | CheckInFacts.Conversation | CheckInFacts.Persona | CheckInFacts.Character,
+            Conditions = CheckInConditions.CharacterShows, Triggers = CheckInTriggers.TouchesEnded
         }
     ];
 

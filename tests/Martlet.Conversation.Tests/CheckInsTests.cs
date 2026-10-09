@@ -39,9 +39,9 @@ public sealed partial class CheckInsTests
     {
         var defaults = CheckIns.All(null);
         Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats, CheckIns.Welcome,
-            CheckIns.Unanswered, CheckIns.Call, CheckIns.Others], defaults.Select(c => c.Id));
+            CheckIns.Unanswered, CheckIns.Call, CheckIns.Others, CheckIns.DescribeTouches], defaults.Select(c => c.Id));
         // The check-ins that wait for a signal are off until the owner turns them on.
-        Assert.Equal([true, true, true, true, true, false, false, false, false], defaults.Select(c => c.On));
+        Assert.Equal([true, true, true, true, true, false, false, false, false, true], defaults.Select(c => c.On));
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
         Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
             defaults.Single(c => c.Id == CheckIns.Repeats) is var repeats ? (repeats.EveryMinutes, repeats.Outcome, repeats.PromptId) : default);
@@ -49,10 +49,10 @@ public sealed partial class CheckInsTests
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);
-        Assert.Equal(10, all.Count);
+        Assert.Equal(11, all.Count);
         Assert.Equal((false, 30), (all[1].On, all[1].EveryMinutes));
-        Assert.True(all[9].Custom);
-        Assert.Equal(CheckInOutcome.Say, all[9].Outcome);
+        Assert.True(all[10].Custom);
+        Assert.Equal(CheckInOutcome.Say, all[10].Outcome);
         Assert.Equal("check-in-promises", CheckIns.Source(CheckIns.Promises));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Character)));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Repeats)));
@@ -538,7 +538,7 @@ public sealed partial class CheckInsTests
     }
 
     public static TheoryData<string> BuiltInIds => [CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats,
-        CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others];
+        CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others, CheckIns.DescribeTouches];
 
     [Theory]
     [MemberData(nameof(BuiltInIds))]
@@ -548,7 +548,7 @@ public sealed partial class CheckInsTests
         var copy = CheckIns.Of(new CustomCheckIn
         {
             Id = "c1", Name = builtIn.Name + " (copy)", On = true, EveryMinutes = builtIn.EveryMinutes, Task = CheckIns.Template(builtIn, null)!,
-            Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome
+            Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome, Triggers = builtIn.Triggers
         });
         var state = State();
         Assert.Equal(CheckIns.Message(builtIn, CheckIns.Focus(builtIn, state), null), CheckIns.Message(copy, CheckIns.Focus(copy, state), null));
@@ -763,7 +763,7 @@ public sealed partial class CheckInsTests
             .With(new CustomCheckIn { Id = "c1", Name = "Touches", Task = "Describe them.", Triggers = CheckInTriggers.TouchesEnded | CheckInTriggers.StrokeAcrossZones })
             .With(CheckIns.Gaze, new CheckInChoice(true, 5) { Triggers = CheckInTriggers.IntimateTouch });
         settings.Validate();
-        Assert.All(CheckIns.All(null), c => Assert.Equal(CheckInTriggers.None, c.Triggers));
+        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded : CheckInTriggers.None, c.Triggers));
         Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)16 }).Validate());
         Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)32 }).Validate());
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
@@ -781,5 +781,47 @@ public sealed partial class CheckInsTests
         {
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         }
+    }
+
+    [Fact]
+    public void DescribeTouchesStartsRightAfterTouchesAndAddsADescriptionForTheNextReply()
+    {
+        var describe = Built(CheckIns.DescribeTouches);
+        Assert.Equal((true, 1, CheckInOutcome.Context, CheckInTriggers.TouchesEnded, PromptCatalog.CheckInTouches),
+            (describe.On, describe.EveryMinutes, describe.Outcome, describe.Triggers, describe.PromptId));
+        Assert.Equal(CheckInFacts.Touches | CheckInFacts.Conversation | CheckInFacts.Persona | CheckInFacts.Character, describe.Facts);
+
+        var ledger = new TouchLedger();
+        var clock = TimeSpan.FromMinutes(30);
+        for (var i = 0; i < 2; i++)
+            ledger.Record(new(PhysicalKind.Stroke, clock - TimeSpan.FromSeconds(20 - i), "down from your tail over your buttocks to your groin",
+                "tail → buttocks → groin", "slowly", Zones: ["your tail", "your buttocks", "your groin"], Intimate: true));
+        var state = State() with { Touches = ledger.History(clock) };
+        var fired = new CheckInTrigger(CheckInTriggers.TouchesEnded, Now.AddSeconds(-2), "2 touches");
+
+        // Only touches start it, never its pace alone, and the touch reply that keeps the conversation busy never holds it up.
+        Assert.NotNull(CheckIns.Wait(describe, state, null));
+        Assert.Null(CheckIns.Wait(describe, state with { Quiet = TimeSpan.Zero }, null, fired: fired));
+        Assert.Equal("next in 50 s", CheckIns.Wait(describe, state, new(Now.AddSeconds(-10), 4, "nothing to add to what Martlet knows", false), fired: fired));
+        Assert.Equal("the character isn't showing", CheckIns.Wait(describe, state with { CharacterShows = false }, null, fired: fired));
+
+        var message = CheckIns.Message(describe, CheckIns.Focus(describe, state), null)!;
+        Assert.StartsWith("Mira is the user's desktop character, and the user has been touching it.", message);
+        Assert.Contains("They slowly stroked down from your tail over your buttocks to your groin twice", message);
+        Assert.Contains("I beat the boss!", message);
+        Assert.Contains("Mira is playful and teasing.", message);
+        Assert.Contains("{glasses} - when reading", message);
+        Assert.Contains(PromptCatalog.DefaultCheckInAdultOffInstructions, message);
+        Assert.Contains("KNOW:", message);
+        Assert.DoesNotContain("{touches}", message);
+        Assert.DoesNotContain("{adult}", message);
+        // Each fact it places in its prompt goes there only, not again after it.
+        Assert.Equal(message.IndexOf("They slowly stroked", StringComparison.Ordinal), message.LastIndexOf("They slowly stroked", StringComparison.Ordinal));
+        Assert.Contains(PromptCatalog.DefaultCheckInAdultOnInstructions, CheckIns.Message(describe, CheckIns.Focus(describe, state with { Adult = true }), null));
+
+        var verdict = CheckIns.Read(describe, "KNOW: Their slow strokes keep sliding from your tail down to your groin.", state);
+        Assert.Equal((true, "Their slow strokes keep sliding from your tail down to your groin."), (verdict.Act, verdict.Text));
+        Assert.Contains("Their slow strokes", CheckIns.Context(null, verdict.Text!));
+        Assert.False(CheckIns.Read(describe, "KNOW: nothing to add", state).Act);
     }
 }

@@ -1325,7 +1325,8 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** The first five are on by default. The four that wait
+**Built-in check-ins.** The first five and Describe touches are on by default.
+The four that wait
 for a signal (Welcome back, Unanswered question, On a call, Someone else is
 here) are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
@@ -1342,6 +1343,7 @@ own character and runs its own conversation.
 | Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
 | On a call (`call`, off) | 2 min | A game, a call or a full-screen app started or ended: did a call start or end? What you do now and before. | A `REMIND:` line (keep quiet and short during the call, or talk as usual again) goes in the notes of the next message. `OK` changes nothing. |
 | Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
+| Describe touches (`touches`) | At most once a minute, right after your touches end | What have you been doing to the character, told vividly as the story so far, true to its personality? How you touched it in the last 10 minutes, the end of the conversation, the personality, the emotes it shows and `{adult}` (explicit only while Adult content is on). | A `KNOW:` line goes with the next reply as [background it may draw on](#describe-touches). `OK` changes nothing. |
 
 **One flow for every check-in.** A built-in check-in is only data: a prompt,
 the facts it gets to know, the conditions it waits for and what its answer
@@ -1374,6 +1376,7 @@ built-in check-in can be recreated, and changed, as your own.
 | Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
 | On a call | What you are doing | What you do changed |
 | Someone else is here | Who is here, its personality | Someone else spoke |
+| Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
 check-ins, and the first one that may run starts. Only one runs at a time (a
@@ -1428,7 +1431,8 @@ check-in waits:
 <a id="check-in-triggers"></a>
 **Triggers.** A check-in can also start when something happens, not only on its pace. Tick
 one or more boxes under *It starts when* on its card (`CheckInTriggers`, saved
-as `Triggers` in `check-ins.json`; the built-in check-ins have none). The
+as `Triggers` in `check-ins.json`; of the built-in check-ins, only Describe
+touches has one). The
 first triggers come from the touches on the desktop character:
 
 | Trigger | It fires when |
@@ -1472,6 +1476,31 @@ TouchesEnded, IntimateTouch fired (3 touches, an intimate one); it starts
 trigger that is not about touches, add a `CheckInTriggers` flag, its words in
 `CheckIns.TriggerWords`, its box in `CheckInTriggerChoices` on the page, and
 call `MainWindow.FireCheckIns` with it when it happens.
+
+<a id="describe-touches"></a>
+**Describe touches.** The built-in check-in `touches` gives Martlet a richer
+picture of what you do to the character, without making any reply wait.
+
+1. You touch, pat or stroke the character. The touch reaction answers at
+   once with Martlet's own local wording, as before.
+2. 1.2 seconds after your last touch, *Your touches end* fires, and Describe
+   touches starts on a Thinking pool member (at most once a minute, while the
+   character shows).
+3. The member gets Companion › Prompts › *Check-in: describe touches*: how you
+   touched the character in the last 10 minutes (`{touches}`, with each
+   stroke's path, the places you keep coming back to and how the personality
+   feels about them), the end of the conversation, the personality, the
+   emotes it shows and `{adult}`. It answers with a `KNOW:` line of at most
+   300 characters: the story so far, not a list of touches.
+4. The description goes on the context board as `check-in-touches` for 3
+   minutes. The next reply takes it once, after your words, as background it
+   may draw on (Companion › Prompts › *Check-in: adds to what Martlet
+   knows*).
+
+With Adult content off, the description stays non-explicit. With it on, it
+may be explicit, never about anyone under 18. With no pool member, it waits,
+and replies keep the local wording only. Turn it off, change its prompt or
+copy it as your own on its card, like any built-in check-in.
 
 An answer that turns off emotes looks only at emotes a reply turned on (their
 own tag or a combo's). It never turns off an emote you turned on with *Try*,
