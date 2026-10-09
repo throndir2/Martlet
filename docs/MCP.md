@@ -5154,8 +5154,10 @@ talk window's `LiveBargeIn` shows the last real decision.
 `EverythingButMartlet`; `seeSpeakers`; `ownerNameSet`, never the name;
 `output`, the chosen output's name; `alsoSpeakers`; `bargeIn`;
 `cameraBackground`; `cameraPicture`, where a saved picture came from,
-`cameraPictureSaved`, and `cameraTool`, whether replies get
-`set_camera_background`). `doctor` checks this PC without recording or playing:
+`cameraPictureSaved`, `cameraTool`, whether replies get
+`set_camera_background`, and `checkInToolSet`, the Discord calls and camera
+check-in tool set: its `id` (`discord`), its `tools` and the reply tools it
+`replaces`). `doctor` checks this PC without recording or playing:
 `appLoopback` (Windows can hear one app alone: a process loopback of Discord,
 or of the MCP server itself while Discord isn't running, is set up and closed
 unstarted, so `recorded` is always false; `appLoopbackProblem` otherwise),
@@ -7620,7 +7622,9 @@ gets `set_camera_background` (last among Martlet's own tools): `color`,
 background. It updates `DiscordCallCameraPictureStatus` like the card's own
 choices (*...a picture from Creations* / *a picture Martlet drew*, never a
 title), and the desktop log notes *Discord call: set_camera_background chose
-...*.
+...*. When the After each exchange check-in takes it over (the `discord`
+check-in tool set), the reply is not offered it and the check-in's run record
+lists the call instead (`check_ins` status, `CheckInRun.Tools`).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process (and its own character renderer child process), then verifies ownership

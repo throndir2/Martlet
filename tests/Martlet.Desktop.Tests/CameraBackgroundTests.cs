@@ -1,6 +1,7 @@
 using Martlet.Core.Pictures;
 using Martlet.Desktop;
 using Martlet.Discord.Calls;
+using Martlet.Providers;
 
 namespace Martlet.Desktop.Tests;
 
@@ -47,11 +48,70 @@ public sealed class CameraBackgroundTests
         Assert.Equal(after, ToolNames(fixture.Llm.Body));
     }
 
+    [Fact]
+    public void TheDiscordCheckInSetTakesOverBothReplyToolsWithTheSameArguments()
+    {
+        var set = Martlet.Conversation.DiscordCheckInTools.Set;
+        Assert.Same(set, Martlet.Conversation.CheckInToolSets.Find(set.Id));
+        Assert.Equal([DiscordCallTool.Name, CameraBackgroundTool.Name], set.Replaces);
+        Assert.Equal([DiscordCallTool.Name, CameraBackgroundTool.Name], set.Tools.Select(t => t.Name));
+        Assert.Equal(DiscordCallTool.Definition.ParametersJson, set.Tools[0].ParametersJson);
+        Assert.Equal(CameraBackgroundTool.Definition.ParametersJson, set.Tools[1].ParametersJson);
+    }
+
+    [Fact]
+    public async Task TheDiscordCheckInToolsRunOnlyWhileTheyApplyAndDoTheReplysWork()
+    {
+        await using var fixture = await LiveFixture.Create(history: true, tools: true);
+        fixture.Controller.AutoCapture = false;
+        fixture.Answer("Hello!");
+        await fixture.Finish(fixture.Start("Hi there."));
+        var controller = fixture.Controller;
+        Assert.False(controller.RunsDiscordCheckInTools);
+        var call = new TextToolCall("c1", CameraBackgroundTool.Name, """{"color":"green"}""");
+        Assert.True((await controller.RunDiscordCheckInToolAsync(call, default)).IsError);
+        Assert.True((await controller.RunDiscordCheckInToolAsync(new("c2", DiscordCallTool.Name, """{"person":"Ana"}"""), default)).IsError);
+
+        var camera = new FakeCamera { Offered = true };
+        controller.CallCamera = camera;
+        Assert.True(controller.RunsDiscordCheckInTools);
+        var result = await controller.RunDiscordCheckInToolAsync(call, default);
+        Assert.False(result.IsError);
+        Assert.Equal("ok", result.Output);
+        Assert.Equal(DiscordCameraBackground.Green, camera.Color);
+        Assert.True((await controller.RunDiscordCheckInToolAsync(new("c3", CameraBackgroundTool.Name, """{"color":"purple"}"""), default)).IsError);
+        // The camera alone never lets a check-in place a Discord call.
+        Assert.True((await controller.RunDiscordCheckInToolAsync(new("c4", DiscordCallTool.Name, """{"person":"Ana"}"""), default)).IsError);
+
+        var caller = new FakeCaller();
+        controller.DiscordCaller = caller;
+        Assert.Equal("Calling Ana.", (await controller.RunDiscordCheckInToolAsync(new("c5", DiscordCallTool.Name, """{"person":"Ana"}"""), default)).Output);
+        Assert.Equal(["Ana"], caller.Called);
+        Assert.True((await controller.RunDiscordCheckInToolAsync(new("c6", DiscordCallTool.Name, "{}"), default)).IsError);
+        Assert.True((await controller.RunDiscordCheckInToolAsync(new("c7", "draw_picture", "{}"), default)).IsError);
+        Assert.Equal(["Ana"], caller.Called);
+    }
+
+    private sealed class FakeCaller : IDiscordCaller
+    {
+        public List<string> Called { get; } = [];
+        public bool CanCall => true;
+        public Task<string> CallAsync(string person, CancellationToken token)
+        {
+            Called.Add(person);
+            return Task.FromResult($"Calling {person}.");
+        }
+    }
+
     private sealed class FakeCamera : ICallCamera
     {
         public bool Offered { get; set; }
-        public Task<string> SetBackgroundAsync(DiscordCameraBackground? color, string? picture, bool drawn, CancellationToken token) =>
-            Task.FromResult("ok");
+        public DiscordCameraBackground? Color { get; private set; }
+        public Task<string> SetBackgroundAsync(DiscordCameraBackground? color, string? picture, bool drawn, CancellationToken token)
+        {
+            Color = color;
+            return Task.FromResult("ok");
+        }
     }
 
     private static string[] ToolNames(byte[] body)
