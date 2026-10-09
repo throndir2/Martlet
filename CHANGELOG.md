@@ -17,7 +17,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
-- When an after-each-exchange check-in has the **Reminders** tools, Martlet sets and cancels your reminders on the Thinking pool right after it answers, so its reply starts sooner. It can still tell you which reminders are waiting. ([#694](https://github.com/throndir2/Martlet/pull/694))
+- When an after-each-exchange check-in has the **Reminders** tools, Martlet sets and cancels your reminders on the Thinking pool right after it answers, so its reply starts sooner. It can still tell you which reminders are waiting. ([#700](https://github.com/throndir2/Martlet/pull/700))
 
 ## [0.64.0] - 2026-10-09
 
