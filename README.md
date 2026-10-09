@@ -15,7 +15,7 @@
 &nbsp;
 <a href="https://www.buymeacoffee.com/throndir" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="44"></a>
 
-[Features](#-everything-shes-got) · [Screenshots](#-take-a-look) · [Get started](#-up-and-running-in-minutes) · [Wiki](https://github.com/throndir2/Martlet/wiki)
+[Features](#-everything-shes-got) · [Coming soon](#-coming-soon) · [Screenshots](#-take-a-look) · [Get started](#-up-and-running-in-minutes) · [Wiki](https://github.com/throndir2/Martlet/wiki)
 
 </div>
 
@@ -36,10 +36,12 @@ Martlet is the friend in the room who's always up for a chat. Just talk (or
 type) and she answers out loud in a voice you picked, while her animated
 character speaks right there on your screen.
 
-She can **watch your game and cheer you on**, **remember what matters to you**,
-**draw you pictures**, **write and sing you songs**, **dim your lights** and
-**help out on your PC**. And it all runs where you want: privately on your own
-computer, on a beefier PC down the hall, or with your favorite cloud AI.
+She can **watch your game and cheer you on**, **read your screen**, **react
+when you touch her**, **remember what matters to you**, **draw you pictures**,
+**write and sing you songs**, **dim your lights** and **help out on your PC**.
+And it all runs where you want: privately on your own computer, on a beefier
+PC down the hall, spread across all your computers, or with your favorite
+cloud AI.
 
 <table>
 <tr>
@@ -59,6 +61,26 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 - 📖 **Sharper screen reading**: Martlet can read your screen with PP-OCRv5, which reads small text that Windows OCR misses.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
+
+## 🔮 Coming soon
+
+Already finished and on the way in the next release:
+
+- 🧵 **Replies that start sooner**: after each reply, your Thinking pool takes care of the follow-up work (reminders, memories, songs and pictures, Discord calls, long thinking and research), so Martlet doesn't stop mid-answer to do it.
+- 🖥️🖥️ **One model per graphics card**: a PC with two or more NVIDIA cards can think on each card at full speed at once.
+- 📋 **Thinking requests**: a new page shows everything your companions ask the Thinking pool to do, where it ran and how long it took.
+- 🚦 **A fair, busy pool**: important requests can go first when the pool is full, and failed ones are tried again.
+- 💬 **Conversations get their own page** in the side menu, to read, search, edit and delete every conversation.
+- 🔐 **Pictures stay closer to home**: cloud and other outside pool models get screenshots and recordings only after you allow it.
+- ❔ **Tidier pages**: long explanations wait behind a small **?**, and check-ins fold their extra settings away.
+
+And still being worked on:
+
+- 🗣️ **Act on what was said**: a check-in right after each exchange does what you asked, so the reply itself carries fewer tools.
+- 🧊 **Pools that keep their cool**: a cloud model that limits requests (such as NVIDIA Build's free tier) cools down and tries again instead of failing the job.
+- 🧭 **Smarter pool routing**: each job goes to the pool model that is best at it and has room.
+
+See [Unreleased](CHANGELOG.md#unreleased) in the changelog for the details.
 
 ## 💬 Things you can say
 
@@ -83,6 +105,9 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 > 🖥️ **"How much space is left on my D: drive?"**
 > Give her tools and she can lend a hand on your PC, always asking before she does anything.
 
+> 🤗 *(Pat her on the head.)*
+> She leans in, smiles and might say something about it, just like she would.
+
 ## 🌸 Everything she's got
 
 <table>
@@ -91,7 +116,8 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 
 ### 🗨️ Conversations that feel natural
 - Talk hands-free from **Start listening** to **Stop listening**, or hold the talk button (or Space) to talk.
-- Replies start fast and are spoken sentence by sentence. Interrupt her any time.
+- Replies start fast and are spoken sentence by sentence. Interrupt her any time, and she remembers only what she actually said aloud.
+- She hears when you've finished talking, so she doesn't jump in mid-thought.
 - **Voice ID** knows your voice and ignores other people talking.
 - She learns who else is around and the names they go by.
 - Prefer typing? The **talk window** is a simple chat that sits beside your work.
@@ -101,8 +127,9 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 
 ### ✨ A character who's really there
 - **Live2D** and **VRM** characters float on your desktop, over full-screen games too.
-- Drag her anywhere, zoom, or lock her in place.
+- Drag her anywhere, zoom, lock her in place or let clicks pass through her while you play.
 - **Speech bubbles** and **subtitles** show what she's saying.
+- She blushes, winks, pouts and shows anime emotes like heart eyes, sweat drops and anger veins, alone or in combos.
 - Her mouth moves with her voice, or go all out with NVIDIA **Audio2Face**.
 - Starts with a built-in character; add as many of your own as you like.
 
@@ -114,17 +141,18 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 ### 🗣️ Any voice you want
 - Expressive voices that **laugh, sigh and whisper**, and one that turns on the drama when the moment calls for it.
 - **Clone a voice** from a few seconds of audio. No training required.
-- Seven voice engines to choose from (Chatterbox Turbo, Original and Nano, F5, XTTS, GPT-SoVITS, Dia), plus Windows and OpenAI voices. Chatterbox Nano even runs without a graphics card.
-- Switch voices with one click.
+- Seven voice engines to choose from (Chatterbox Turbo, Original and Nano, F5, XTTS, GPT-SoVITS, Dia), plus Windows, OpenAI and **ElevenLabs** voices. Chatterbox Nano even runs without a graphics card.
+- Switch voices with one click, and compare them side by side.
+- She can laugh, gasp or giggle in her own voice when you touch her.
 
 </td>
 <td valign="top">
 
 ### 💭 Smart, your way
-- **Free and private** with Ollama on your own PC. Martlet picks a model that fits your graphics card.
-- Or use **OpenAI**, **OpenRouter**, **NVIDIA Build** or any compatible service.
-- **Thinks longer** about the hard stuff in the background without making you wait.
-- A backup model steps in if the main one has a hiccup.
+- **Free and private** with Ollama on your own PC. Martlet picks a model that fits your graphics card, or uses the model app you already run (LM Studio, llama.cpp, vLLM).
+- Or use **OpenAI**, **Google Gemini**, **OpenRouter**, **NVIDIA Build** or any compatible service.
+- A **Thinking pool** shares background work across all your models and computers: thinking longer, web research, check-ins and summaries, without making you wait.
+- A backup model steps in if the main one has a hiccup or is slow to start.
 
 </td>
 </tr>
@@ -133,6 +161,9 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 
 ### 👀 Plays along with you
 - Comments on **your screen**, the window you're in, a **webcam or capture card**, or even your **phone's camera**.
+- **Reads your screen**, small text included (Windows OCR or PP-OCRv5), and notices a new score or message.
+- **Hears what your PC plays**, like music, a video or a game, and how you sound when you talk.
+- Knows which app you're in, so she talks about your game or show, not its menus.
 - Never looks at password managers, private browsing or her own windows.
 - You decide how chatty she is: Quiet, Normal or Chatty.
 
@@ -143,7 +174,47 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 - Write **personas** and switch between them.
 - **Character profiles** swap her look, voice and personality in one step.
 - Import **character cards** and **lorebooks** from SillyTavern.
+- An optional **Adult content (18+)** setting for adult characters, off by default.
 - **Memory** and **conversation history** stay on your PC, and you can see, edit or delete everything.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 🤗 She feels your touch
+- Poke, pat, hold or stroke her: every part of her body is a **touch zone** that reacts the way her personality would.
+- Martlet finds the zones for you, even for tails, wings and ears that swing.
+- Pick each zone's emotes, gestures, motions and sounds, or use a **touch temperament**.
+- She has **moods of her own**: angry or warm, she can change how she takes your touches for a while, and you can undo it.
+
+</td>
+<td valign="top">
+
+### 🔔 Check-ins
+- Every so often, your Thinking pool checks in on how things are going and helps her stay on track.
+- Built-in check-ins welcome you back, follow up on a question you skipped and keep her quiet on calls.
+- Write your own: choose what they know (your screen, your mic, your touches, what was said), when they run and what they do.
+- Check-ins can **use tools**, like emotes, gaze, her next words and reminders, and can start when you touch her.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 🎨 Creative side
+- **Sings** songs she writes, with SoulX or VevoSing, and lip-syncs them.
+- **Paints pictures** with ComfyUI, OpenRouter or NVIDIA Build.
+- **Web research** reports, made in the background.
+- Everything she makes waits for you in **Creations**.
+
+</td>
+<td valign="top">
+
+### ⏰ Always on time
+- **Reminders** from the computer you used last.
+- **Background tasks** have their own page, so you can see what she's working on.
+- **Quick jobs** and **long jobs** can each have their own machines, so a long job never holds up a quick one.
 
 </td>
 </tr>
@@ -154,7 +225,7 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 - **Tools**: browse the MCP Registry and install tool servers with a click.
 - A built-in **Terminal** (off until you turn it on) that asks before every command.
 - **Home Assistant** for lights, climate and more.
-- Chat with her on **Discord** (she can even join voice channels), **Telegram** and **WhatsApp**.
+- Chat with her on **Discord** (she can join voice calls and even show up on camera), **Telegram** and **WhatsApp**.
 
 </td>
 <td valign="top">
@@ -162,18 +233,21 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 ### 🖥️ One Martlet, all your computers
 - The same companion, voices, memories and characters on every PC.
 - Let your gaming rig do the heavy lifting while you chat from a laptop.
-- A **Devices** map shows every computer and what it's doing.
+- A **Devices** map shows every computer, what it's doing and how much of it each part uses.
 - If a computer goes offline, another one running the same engine picks up the job.
+- **Share your computers with friends**, and sign in from outside home.
+- Runs on Windows (Arm PCs too), with early **Linux** and **Mac** apps.
 
 </td>
 </tr>
 </table>
 
 **And all the little things:** a friendly welcome tour, a Home page that tells
-you exactly what needs attention and how to fix it, a setup advisor that
-recommends the best setup for your hardware, automatic updates, living quietly
-in your notification area, starting with Windows, and pretty pink, rose dark and
-character-colored themes.
+you exactly what needs attention and how to fix it, a **Recommended setup**
+that makes the best use of all your computers, quick sounds while she thinks,
+automatic updates, living quietly in your notification area, starting with
+Windows, and pretty pink, rose dark, character-colored and fully **custom**
+themes.
 
 ## 📸 Take a look
 
