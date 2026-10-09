@@ -16,7 +16,8 @@ namespace Martlet.Desktop;
 /// differently. The Thinking model decides the persona's own temperament from the personality in the background after the
 /// personality is saved (Re-decide from personality asks again); the owner's edits here win and stay until they re-decide. The
 /// owner can make named custom temperaments and choose, per persona, its own, the built-in reactions or a custom one; editing a
-/// custom one changes it for each persona that uses it. A zone's own pick under Touch zones still wins over the temperament.</summary>
+/// custom one changes it for each persona that uses it. Under Touch zones each zone plays its own reaction list; the temperament
+/// fills a new zone's list and gives every zone its feeling, linger, look and escalation.</summary>
 public partial class MainWindow
 {
     private const string NotDecided = "(not decided: follow your mouse)";
@@ -460,7 +461,9 @@ public partial class MainWindow
         stack.Add(Note($"Touches are in a row when each comes within {CharacterTouchTemperaments.RepeatWindowSeconds:0} seconds of the one " +
             $"before. A disliked part then plays {TemperamentRow.Words(steps.Disliked)} first, and a loved part {TemperamentRow.Words(steps.Loved)}.",
             new Thickness(0, 4, 0, 0)));
-        stack.Add(Note("A zone's own pick under Touch zones still wins. Intimate parts react only with Include intimate zones on.",
+        stack.Add(Note("Under Touch zones each zone plays its own reaction list. A new zone's list starts from these reactions (Defaults " +
+            "there fills it again); how the persona feels, the linger, the look and the escalation apply to every zone. Intimate parts " +
+            "react only with Include intimate zones on.",
             new Thickness(0, 10, 0, 0)));
         stack.Add(saveState);
         var card = Card([.. stack]);

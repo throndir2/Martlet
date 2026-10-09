@@ -19,7 +19,7 @@ namespace Martlet.Desktop;
 /// a first guess at its zones with no AI (<see cref="TouchZoneDetection.Estimate"/>). The Thinking model then finds the zones in a
 /// snapshot of the character (when it can see; Detect zones asks): the default zones (<see cref="TouchZoneDetection.Defaults"/>) and any the owner added with
 /// Add zone. Martlet binds each to the model's drawables or bones so it follows the model as it moves,
-/// and each zone plays its emotes and gestures, may be noticed by Martlet (the touches go to the Thinking model) and rests a few
+/// and each zone plays its reaction list (its emotes, gestures, motions and voice sounds, in order), may be noticed by Martlet (the touches go to the Thinking model) and rests a few
 /// seconds. Intimate zones work only with Include intimate zones on (on by default). Edits save as you make them, per model, on this PC.</summary>
 public partial class MainWindow
 {
@@ -35,7 +35,15 @@ public partial class MainWindow
 
     private void WireCharacterTouchZones()
     {
-        characterActions.Changed += () => characterTouchZones.Follow(characterActions.Current?.Inventory.ModelId);
+        // Zones saved before reaction lists, and zones just found, get the list they play now once the model's emotes (and the
+        // active persona, for its temperament) are known.
+        characterTouchZones.Fill = settings => homeSettings is { } home && TouchZonesCatalog(settings.ModelId) is { } catalog
+            ? CharacterTouchZones.Filled(settings, catalog, characterTemperaments.For(home.Companion?.ActivePersonaId)) : settings;
+        characterActions.Changed += () =>
+        {
+            characterTouchZones.Follow(characterActions.Current?.Inventory.ModelId);
+            characterTouchZones.FillLists();
+        };
         characterTouchZones.Changed += () => Dispatcher.InvokeAsync(() =>
         {
             // The showing character keeps the zones as they are now (sent only when they change).
@@ -99,18 +107,16 @@ public partial class MainWindow
         return true;
     }
 
-    /// <summary>What touching <paramref name="zone"/> plays: the owner's choice for the zone, else the active persona's touch
-    /// temperament, else by default the model's own tap motion for that part (TapHead, TapBody...) when it has one, then the
-    /// zone's default emotes and gestures.</summary>
-    private TouchReactionPlan TouchPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
-    {
-        var plan = CharacterTouchZones.React(zone, catalog, temperament, repeats);
-        if (plan.From != TouchReactionPlan.FromDefault || catalog is null) return plan;
-        var part = CharacterTouchZones.Kind(zone.Id)?.Group == TouchZoneGroup.Head ? zone.Id.StartsWith("hair", StringComparison.Ordinal) ? "hair" : "head" : "body";
-        var motions = catalog.Entries.Where(e => e.Action.Enabled && e.Source.Kind == CharacterActionKind.Motion).Select(e => e.Source).ToArray();
-        return AvatarController.TouchMotion([.. motions.Select(m => m.Name)], part) is { } group && motions.FirstOrDefault(m => m.Name == group) is { } motion
-            ? plan with { Actions = [motion, .. plan.Actions.Where(s => s != motion)] } : plan;
-    }
+    /// <summary>The emotes and motions of the model with <paramref name="modelId"/>: the one Companion shows, else the showing
+    /// character's; null when neither is that model.</summary>
+    private CharacterActionCatalog? TouchZonesCatalog(string modelId) =>
+        characterActions.Current is { } current && current.Inventory.ModelId == modelId ? current
+            : characterActions.For(avatar.InspectedProfile?.ModelPath) is { } shown && shown.Inventory.ModelId == modelId ? shown : null;
+
+    /// <summary>What touching <paramref name="zone"/> plays: its reaction list on the model, with how the active persona's touch
+    /// temperament feels about it (its linger, look and escalation).</summary>
+    private TouchReactionPlan TouchPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats) =>
+        CharacterTouchZones.React(zone, catalog, temperament, repeats);
 
     /// <summary>Plays one reaction; with <paramref name="lingerSeconds"/> it stays on that long (unless it already showed).</summary>
     private async Task PlayTouchAsync(CharacterActionSource source, string reason, double lingerSeconds)
@@ -145,6 +151,8 @@ public partial class MainWindow
 
     private CancellationTokenSource? detectTouchZones;
     private bool showTouchZonesSent;
+    // The zones whose rows show their box and Delete (More), while Martlet runs.
+    private readonly HashSet<string> openTouchZoneRows = new(StringComparer.Ordinal);
     // The zone map's zoom and the picture's point at the middle of its frame (fractions of the picture), for the model they belong
     // to: drawing the page again (Add zone, each step of Detect zones...) keeps them, and opening it again shows the whole picture.
     private double touchZonesZoom = 1;
@@ -302,6 +310,8 @@ public partial class MainWindow
     {
         var catalog = characterActions.Current;
         characterTouchZones.Follow(catalog?.Inventory.ModelId);
+        // Zones with no reaction list yet show (and save) the list they play now.
+        characterTouchZones.FillLists();
         renderedZonesModel = characterTouchZones.ModelId;
         // A model with no zones and no picture gets a first guess at once (drawn off screen, placed with no AI), so the picture and
         // its zones show before Detect zones. One that couldn't be placed is tried again when the page opens again.
@@ -314,19 +324,13 @@ public partial class MainWindow
         {
             Heading("Touch zones"),
             Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
-                "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts, " +
-                "and Martlet hears about it, like your moves and zooms. The first time this page shows a model, Martlet draws it off " +
-                "screen and places a first guess at its zones from the model's own parts and the body's proportions, with no AI and " +
-                "nothing sent. Detect zones draws the character off screen in its rest pose " +
-                "(so it needn't show, and the one on your desktop never moves) and shows your Thinking model pictures of it (never its " +
-                "files) on a plain backdrop with a grid: first the whole character, to find its head, body and " +
-                "legs, then a close-up of each, to mark its zones. Then the model checks its own boxes, drawn and numbered on the " +
-                "close-up, and corrects them until it says they are right. Between steps Martlet fits each box to the character's " +
-                "pixels, puts left and right back the right way round and points out boxes that look wrong. It then ties each zone " +
-                "to the model's own parts so it follows the character as it moves. " +
-                "Choose what each zone plays, whether Martlet notices it (on by default) and how long it rests. Martlet notices adds " +
-                "up your touches and strokes on the zone and tells your Thinking model: with what you say next, or, when you say " +
-                "nothing, in a short reply of its own about a second after your last touch. Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
+                "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts. " +
+                "Each zone plays its own list of emotes, gestures and motions, in order, on its own when you touch it: what the list " +
+                "shows is exactly what plays. Add, remove and reorder them; a new zone's list starts from the persona's touch " +
+                "temperament or the built-in reactions. Martlet notices adds up your touches on a zone and tells your Thinking model, " +
+                "with what you say next or in a short reply of its own. The first time this page shows a model, Martlet places a first " +
+                "guess at its zones with no AI and nothing sent; Detect zones has your Thinking model find them in pictures of the " +
+                "character (never its files). Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
         };
         var status = Note(catalog is null ? "Reading the character..." : TouchZonesStatusText(settings), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "TouchZonesStatus");
@@ -375,7 +379,10 @@ public partial class MainWindow
         // the note says so.
         detect.IsEnabled = !busy && conversation is not null && catalog is not null && sight.CanSee;
         AutomationProperties.SetHelpText(detect, "Shows your Thinking model pictures of the character (never its files), step by step, to find and check " +
-            "where its parts are. Martlet draws the character off screen in its rest pose, so it works while the character is hidden.");
+            "where its parts are. Martlet draws the character off screen in its rest pose, so it works while the character is hidden. First " +
+            "the whole character on a plain backdrop with a grid, then a close-up of each part; the model checks its own numbered boxes " +
+            "until it says they are right. Martlet fits each box to the character and ties each zone to the model's own parts, so it " +
+            "follows the character as it moves.");
         Button? stopDetecting = null;
         if (busy && detectTouchZones is { } running)
         {
@@ -579,15 +586,18 @@ public partial class MainWindow
         var resetRow = new WrapPanel { Margin = new Thickness(0, 16, 0, 0) };
         var resetReactions = Compact(PageButton("Reset reactions", () =>
         {
-            if (!ConfirmReset("Reset what every zone plays to the defaults? Boxes, names and your own words stay. Autoplay lists are cleared.")) return;
+            if (!ConfirmReset("Reset what every zone plays to the defaults? Boxes, names and your own words stay.")) return;
             var current = characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByOwner };
             SaveAndRender(current with
             {
                 IncludeIntimate = intimate.IsChecked == true,
-                Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()).Select(z => z with { Reaction = new() { Notices = z.Reaction.Notices, Narration = z.Reaction.Narration } })]
+                Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()).Select(z => z with
+                {
+                    Reaction = CharacterTouchZones.FreshReaction(z, catalog, temperament) with { Notices = z.Reaction.Notices, Narration = z.Reaction.Narration }
+                })]
             });
         }, id: "TouchZonesResetReactions"));
-        AutomationProperties.SetHelpText(resetReactions, "Every zone plays its default again and its autoplay list is emptied. Asks first.");
+        AutomationProperties.SetHelpText(resetReactions, "Every zone's list goes back to what a new zone gets. Asks first.");
         var resetZones = Compact(PageButton("Reset all zones", () =>
         {
             if (!ConfirmReset("Remove every zone, including the ones you added, and start again as for a fresh character? Martlet makes a first guess at the zones.")) return;
@@ -675,7 +685,6 @@ public partial class MainWindow
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) PlayTouchAsync(plan[i], $"a try of {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) avatar.Gaze.Attend(reaction.LookSeconds, $"a try of {zone.Name.ToLowerInvariant()}");
-        CharacterTouchZoneService.Autoplay(reaction, $"a try of {zone.Name.ToLowerInvariant()}", PlayTouchAsync);
         characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
                 CharacterTouchZoneService.Describe(reaction, 1) + "." +
                 (zone.Reaction.Notices ? " Martlet notices touches here" + (CharacterTouchZones.Narration(zone) is { } line ? $" (your words: \"{line}\")." : ".") : ""));
@@ -695,22 +704,22 @@ public partial class MainWindow
             new System.Windows.Automation.Peers.FrameworkElementAutomationPeer(this);
     }
 
-    /// <summary>One zone's row: on, name, reaction (two picks), rest, box, Martlet notices and its hint, Try and Delete, and its areas
-    /// on the picture. The fields sit in compact groups that wrap under the name; the hint shows while Martlet notices the zone. A
-    /// zone has one box, or several areas (separated by | in its box field); Add area and Remove area add one or take the last
-    /// away. A zone that follows the model's own part (a tail) shows that part's areas: moving one of them places the zone there
-    /// again, and Martlet finds what of the model it follows from there.</summary>
+    /// <summary>One zone's row, compact: on, name and what it is (its parts, how the persona feels about it), Try and More; its
+    /// reaction list, exactly what plays, in order (each entry a chip: ‹ plays it earlier, × removes it; Add a reaction adds one
+    /// at the end, Defaults fills the list again with what a new zone gets); then how long it rests and Martlet notices with the
+    /// owner's optional words (shown while Martlet notices the zone). More shows the zone's box and Delete. A zone has one box, or
+    /// several areas (separated by | in its box field); Add area and Remove area add one or take the last away. A zone that
+    /// follows the model's own part (a tail) shows that part's areas: moving one of them places the zone there again, and Martlet
+    /// finds what of the model it follows from there. Its areas show on the picture.</summary>
     private sealed class ZoneRow
     {
-        private const string DefaultChoice = "(default)", NothingChoice = "(nothing)", AddChoice = "(add an emote)";
-        private readonly List<string> autoplay;
-        private readonly TextBlock autoplayText;
-        private readonly ComboBox addAutoplay;
-        private readonly TextBox step;
+        private const string AddChoice = "Add a reaction...";
         private readonly CharacterTouchZone zone;
         private readonly CheckBox on, notices;
         private readonly TextBox name, narration, rest, box;
-        private readonly ComboBox first;
+        private readonly ComboBox add;
+        private readonly WrapPanel plays = new() { VerticalAlignment = VerticalAlignment.Center };
+        private readonly List<string> reactions;
         private readonly Button? addArea, removeArea;
         private readonly IReadOnlyList<(string Id, string Label)> items;
         private readonly Action edited;
@@ -721,7 +730,7 @@ public partial class MainWindow
         private int moved = -1;
         internal int Number { get; }
         internal bool Deleted { get; private set; }
-        internal StackPanel View { get; } = new() { Margin = new Thickness(0, 14, 0, 0) };
+        internal StackPanel View { get; } = new() { Margin = new Thickness(0, 12, 0, 0) };
 
         internal ZoneRow(MainWindow window, CharacterTouchZone zone, int number, CharacterActionCatalog catalog,
             IReadOnlyList<(string Id, string Label)> items, CharacterTouchZoneSettings settings, bool showing, Action edited,
@@ -741,13 +750,19 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(name, $"TouchZoneName-{number}");
             var state = new TextBlock
             {
-                Text = Describe(zone, settings, CharacterTouchZones.React(zone with { Reaction = zone.Reaction with { Actions = null } }, catalog, temperament, 1)),
+                Text = Describe(zone, settings, CharacterTouchTemperaments.Attitude(temperament, zone.Id)),
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0), FontSize = 13, TextWrapping = TextWrapping.Wrap
             };
             state.SetResourceReference(StyleProperty, "Muted");
             AutomationProperties.SetAutomationId(state, $"TouchZoneState-{number}");
             var tryIt = Compact(PageButton("Try", () => window.TryTouchZone(Read(), catalog), id: $"TouchZoneTry-{number}"));
             tryIt.IsEnabled = showing;
+            AutomationProperties.SetHelpText(tryIt, "Plays this zone's reaction list on the character.");
+            // More shows the box and Delete; the page keeps it open while it is drawn again.
+            var open = window.openTouchZoneRows.Contains(zone.Id);
+            var more = Compact(PageButton(open ? "Less" : "More", () => { }, id: $"TouchZoneMore-{number}"));
+            more.Margin = new Thickness(6, 0, 0, 0);
+            AutomationProperties.SetHelpText(more, "Shows or hides the zone's box and Delete.");
             var delete = Compact(PageButton("Delete", () =>
             {
                 Deleted = true;
@@ -759,9 +774,9 @@ public partial class MainWindow
                 }
                 edited();
             }, id: $"TouchZoneDelete-{number}"));
-            delete.Margin = new Thickness(6, 0, 0, 0);
+            AutomationProperties.SetHelpText(delete, "Deletes this zone. Detect again finds it again when it is one of the zones it looks for.");
             // Level with the name, also when a narrow window puts the note under it.
-            tryIt.VerticalAlignment = delete.VerticalAlignment = VerticalAlignment.Top;
+            tryIt.VerticalAlignment = more.VerticalAlignment = VerticalAlignment.Top;
             // The note sits beside the name, or under it when the window is too narrow for both.
             var named = new StackPanel { Orientation = Orientation.Horizontal };
             named.Children.Add(on);
@@ -770,18 +785,52 @@ public partial class MainWindow
             title.Children.Add(named);
             title.Children.Add(state);
             var header = new DockPanel();
-            DockPanel.SetDock(delete, Dock.Right);
+            DockPanel.SetDock(more, Dock.Right);
             DockPanel.SetDock(tryIt, Dock.Right);
-            header.Children.Add(delete);
+            header.Children.Add(more);
             header.Children.Add(tryIt);
             header.Children.Add(title);
 
-            var labels = new[] { DefaultChoice, NothingChoice }.Concat(items.Select(i => i.Label)).ToArray();
-            var chosen = zone.Reaction.Actions;
-            first = Compact(new ComboBox { ItemsSource = labels, Width = 170 });
-            first.SelectedIndex = chosen is null ? 0 : chosen.Count == 0 ? 1 : Math.Max(0, IndexOf(chosen[0]) + 2);
-            AutomationProperties.SetName(first, $"What {zone.Name} plays");
-            AutomationProperties.SetAutomationId(first, $"TouchZoneReaction-{number}");
+            // The reaction list: exactly what plays, in order. A zone not filled yet shows what it plays now, and saves it so.
+            reactions = [.. CharacterTouchZones.List(zone, catalog, temperament)];
+            add = Compact(new ComboBox { ItemsSource = new[] { AddChoice }.Concat(items.Select(i => i.Label)).ToArray(), SelectedIndex = 0, Width = 170 });
+            AutomationProperties.SetName(add, $"Add a reaction to {zone.Name}");
+            AutomationProperties.SetAutomationId(add, $"TouchZoneReactionAdd-{number}");
+            AutomationProperties.SetHelpText(add, $"Adds an emote, gesture or motion at the end of the list. A zone plays up to {CharacterTouchZones.MaximumActions}.");
+            add.Margin = new Thickness(0, 4, 6, 0);
+            add.SelectionChanged += (_, _) =>
+            {
+                if (add.SelectedIndex <= 0) return;
+                var id = items[add.SelectedIndex - 1].Id;
+                add.SelectedIndex = 0;
+                if (reactions.Count >= CharacterTouchZones.MaximumActions || reactions.Contains(id, StringComparer.Ordinal)) return;
+                reactions.Add(id);
+                ShowReactions();
+                edited();
+            };
+            var defaults = PageButton("Defaults", () =>
+            {
+                reactions.Clear();
+                reactions.AddRange(CharacterTouchZones.DefaultReactions(zone, catalog, temperament));
+                ShowReactions();
+                edited();
+            }, link: true, id: $"TouchZoneReactionDefaults-{number}");
+            defaults.VerticalAlignment = VerticalAlignment.Center;
+            defaults.Margin = new Thickness(4, 4, 0, 0);
+            AutomationProperties.SetHelpText(defaults, "Fills the list again with what a new zone gets: the persona's touch temperament for this part, " +
+                "else the zone's built-in reactions (and the model's own tap motion).");
+            addPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            addPanel.Children.Add(add);
+            addPanel.Children.Add(defaults);
+            ShowReactions();
+            var list = new DockPanel { Margin = new Thickness(RowIndent, 6, 0, 0) };
+            var playsLabel = RowLabel("Plays", add, width: 44);
+            playsLabel.VerticalAlignment = VerticalAlignment.Top;
+            playsLabel.Margin = new Thickness(0, 6, 0, 0);
+            DockPanel.SetDock(playsLabel, Dock.Left);
+            list.Children.Add(playsLabel);
+            list.Children.Add(plays);
+
             notices = new CheckBox
             {
                 Content = "Martlet notices", IsChecked = zone.Reaction.Notices, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 6)
@@ -831,62 +880,112 @@ public partial class MainWindow
                 removeArea.Margin = new Thickness(6, 0, 0, 0);
             }
 
-            // A second pick saved before the list existed becomes the list's first emote.
-            autoplay = [.. zone.Reaction.Autoplay is { Count: > 0 } saved ? saved : chosen is { Count: > 1 } ? chosen.Skip(1) : []];
-            autoplayText = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0), TextWrapping = TextWrapping.Wrap };
-            autoplayText.SetResourceReference(StyleProperty, "Muted");
-            AutomationProperties.SetAutomationId(autoplayText, $"TouchZoneAutoplayList-{number}");
-            addAutoplay = Compact(new ComboBox { ItemsSource = new[] { AddChoice }.Concat(items.Select(i => i.Label)).ToArray(), Width = 170, SelectedIndex = 0 });
-            AutomationProperties.SetName(addAutoplay, $"Add an emote {zone.Name} autoplays");
-            AutomationProperties.SetAutomationId(addAutoplay, $"TouchZoneAutoplayAdd-{number}");
-            var clearAutoplay = Compact(PageButton("Clear", () => { autoplay.Clear(); ShowAutoplay(); edited(); }, id: $"TouchZoneAutoplayClear-{number}"));
-            clearAutoplay.Margin = new Thickness(6, 0, 0, 0);
-            step = Compact(new TextBox { Text = zone.Reaction.AutoplaySeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 48 });
-            AutomationProperties.SetName(step, $"Seconds each autoplayed emote of {zone.Name} shows");
-            AutomationProperties.SetAutomationId(step, $"TouchZoneAutoplaySeconds-{number}");
-            AutomationProperties.SetHelpText(addAutoplay, "Emotes and gestures this zone plays on its own, one after another, after its reaction.");
-            addAutoplay.SelectionChanged += (_, _) =>
-            {
-                if (addAutoplay.SelectedIndex <= 0) return;
-                if (autoplay.Count < CharacterTouchReaction.MaximumAutoplay) autoplay.Add(items[addAutoplay.SelectedIndex - 1].Id);
-                addAutoplay.SelectedIndex = 0;
-                ShowAutoplay();
-                edited();
-            };
-            step.TextChanged += (_, _) => edited();
-            var autoplayGroup = RowGroup(RowLabel("Autoplays", addAutoplay, width: 70), addAutoplay, clearAutoplay, autoplayText,
-                RowLabel("each", step, 6), step, RowLabel("seconds", step, 6, 0));
-            ShowAutoplay();
-
             on.Checked += (_, _) => edited();
             on.Unchecked += (_, _) => edited();
             name.TextChanged += (_, _) => edited();
-            first.SelectionChanged += (_, _) => edited();
             notices.Checked += (_, _) => { words.Visibility = Visibility.Visible; edited(); };
             notices.Unchecked += (_, _) => { words.Visibility = Visibility.Collapsed; edited(); };
             narration.TextChanged += (_, _) => edited();
             rest.TextChanged += (_, _) => edited();
             box.TextChanged += (_, _) => { Place(); edited(); };
 
-            // Lined up under the name: what it plays and its autoplay list, and Martlet notices; rest and box sit under Details.
+            // Under the list: how long it rests and Martlet notices; the owner's words take the rest of the line, or a line of
+            // their own.
             var fields = new FillWrapPanel { Margin = new Thickness(RowIndent, 6, 0, 0), FillMinimum = 200 };
-            var plays = RowGroup(RowLabel("Plays", first, width: 70), first);
-            plays.Margin = new Thickness(0, 0, 0, 6);
-            fields.Children.Add(plays);
-            fields.Children.Add(autoplayGroup);
+            var rests = RowGroup(RowLabel("Rests", rest, width: 44), rest, RowLabel("seconds", rest, 6, 0));
+            fields.Children.Add(rests);
             fields.Children.Add(notices);
             fields.Children.Add(words);
-            var details = new FillWrapPanel { Margin = new Thickness(0, 6, 0, 0), FillMinimum = 200 };
-            details.Children.Add(RowGroup(RowLabel("Rests", rest), rest, RowLabel("seconds", rest, 6, 0)));
+            // More: the box and Delete, out of the way until wanted.
+            var details = new WrapPanel { Margin = new Thickness(RowIndent, 0, 0, 0), Visibility = open ? Visibility.Visible : Visibility.Collapsed };
             details.Children.Add(addArea is null ? RowGroup(RowLabel("Box", box, width: 44), box)
                 : RowGroup(RowLabel("Box", box, width: 44), box, Spaced(addArea), removeArea!));
-            var more = new Expander { Header = "Details (rest, box)", Content = details, Margin = new Thickness(RowIndent, 0, 0, 0) };
-            AutomationProperties.SetAutomationId(more, $"TouchZoneDetails-{number}");
+            details.Children.Add(RowGroup(delete));
+            more.Click += (_, _) =>
+            {
+                var opened = details.Visibility != Visibility.Visible;
+                details.Visibility = opened ? Visibility.Visible : Visibility.Collapsed;
+                more.Content = opened ? "Less" : "More";
+                if (opened) window.openTouchZoneRows.Add(zone.Id);
+                else window.openTouchZoneRows.Remove(zone.Id);
+            };
             View.Children.Add(header);
+            View.Children.Add(list);
             View.Children.Add(fields);
-            View.Children.Add(more);
+            View.Children.Add(details);
             ShowAreaButtons();
         }
+
+        // Add a reaction and Defaults, after the list's last chip.
+        private readonly StackPanel addPanel;
+
+        /// <summary>Shows the reaction list as chips, in the order they play: each with ‹ (play it earlier; not on the first) and
+        /// × (remove it), then Add a reaction (off while the list is full) and Defaults. An entry the model doesn't have (or a voice
+        /// sound) shows by its name and stays.</summary>
+        private void ShowReactions()
+        {
+            plays.Children.Clear();
+            if (reactions.Count == 0)
+            {
+                var none = new TextBlock { Text = "nothing", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 0) };
+                none.SetResourceReference(StyleProperty, "Muted");
+                AutomationProperties.SetAutomationId(none, $"TouchZoneReactionNone-{Number}");
+                plays.Children.Add(none);
+            }
+            for (var k = 0; k < reactions.Count; k++)
+            {
+                var index = k;
+                var label = Label(reactions[k]);
+                var text = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+                text.SetResourceReference(StyleProperty, "ChipText");
+                if (!Known(reactions[k])) text.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+                AutomationProperties.SetAutomationId(text, $"TouchZoneReactionItem-{Number}-{k + 1}");
+                var content = new StackPanel { Orientation = Orientation.Horizontal };
+                if (k > 0)
+                {
+                    var earlier = ChipButton("\u2039", $"Play {label} earlier", $"TouchZoneReactionEarlier-{Number}-{k + 1}", () =>
+                    {
+                        (reactions[index - 1], reactions[index]) = (reactions[index], reactions[index - 1]);
+                        ShowReactions();
+                        edited();
+                    });
+                    earlier.Padding = new Thickness(0, 0, 6, 0);
+                    content.Children.Add(earlier);
+                }
+                content.Children.Add(text);
+                content.Children.Add(ChipButton("\u00d7", $"Remove {label}", $"TouchZoneReactionRemove-{Number}-{k + 1}", () =>
+                {
+                    reactions.RemoveAt(index);
+                    ShowReactions();
+                    edited();
+                }));
+                var chip = new Border { Child = content, VerticalAlignment = VerticalAlignment.Center };
+                chip.SetResourceReference(StyleProperty, "Chip");
+                plays.Children.Add(chip);
+            }
+            add.IsEnabled = reactions.Count < CharacterTouchZones.MaximumActions;
+            plays.Children.Add(addPanel);
+        }
+
+        private static Button ChipButton(string content, string name, string id, Action run)
+        {
+            var button = new Button { Content = content, Padding = new Thickness(6, 0, 0, 0), Margin = new Thickness(0), ToolTip = name };
+            button.SetResourceReference(StyleProperty, "LinkButton");
+            AutomationProperties.SetName(button, name);
+            AutomationProperties.SetAutomationId(button, id);
+            button.Click += (_, _) => run();
+            return button;
+        }
+
+        // Whether the model has the entry in use (a voice sound counts: the voice plays it).
+        private bool Known(string entry) => CharacterTouchReaction.IsSound(entry) || items.Any(i => i.Id == entry);
+
+        // "Blush  ·  emote" as Add a reaction names it; a voice sound "laugh  ·  sound"; an entry the model doesn't have (or has
+        // turned off) by its name, "F05  ·  not on this model".
+        private string Label(string entry) =>
+            items.FirstOrDefault(i => i.Id == entry).Label ??
+            (CharacterTouchReaction.IsSound(entry) ? $"{entry[CharacterTouchReaction.SoundPrefix.Length..]}  \u00b7  sound"
+                : $"{(entry.IndexOf(':') is var colon and >= 0 ? entry[(colon + 1)..] : entry)}  \u00b7  not on this model");
 
         private static Button Spaced(Button button)
         {
@@ -894,16 +993,8 @@ public partial class MainWindow
             return button;
         }
 
-        private void ShowAutoplay() => autoplayText.Text = autoplay.Count == 0 ? "nothing" :
-            string.Join(" → ", autoplay.Select(id => items.FirstOrDefault(i => i.Id == id).Label ?? id));
-
-        private int IndexOf(string id)
-        {
-            for (var i = 0; i < items.Count; i++) if (items[i].Id == id) return i;
-            return -1;
-        }
-
-        private static string Describe(CharacterTouchZone zone, CharacterTouchZoneSettings settings, TouchReactionPlan defaults)
+        // "top_of_head  ·  3 parts  ·  added by you  ·  loves it".
+        private static string Describe(CharacterTouchZone zone, CharacterTouchZoneSettings settings, string? attitude)
         {
             var kind = CharacterTouchZones.Kind(zone.Id);
             var parts = zone.Drawables.Count > 0 ? $"{zone.Drawables.Count} part{(zone.Drawables.Count == 1 ? "" : "s")}"
@@ -913,8 +1004,7 @@ public partial class MainWindow
                 : areas > 1 ? $"{areas} areas, {parts}" : parts;
             return $"{zone.Id}  \u00b7  {shape}" + (zone.Added ? "  \u00b7  added by you" : TouchZoneDetection.IsSpecial(zone.Id) ? "  \u00b7  special to this character" : "") +
                 (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
-                (defaults.From == TouchReactionPlan.FromTemperament ? $"  \u00b7  temperament ({defaults.Attitude}): " : "  \u00b7  default: ") +
-                (defaults.Actions.Count == 0 ? "nothing" : string.Join(" + ", defaults.Actions.Select(s => s.Name)));
+                (attitude is null ? "" : $"  \u00b7  {attitude} it");
         }
 
         // A tenth of a percent at 1x; a hundredth once the zoomed-in picture is over a thousand pixels, so a drag's steps stay under a
@@ -949,12 +1039,7 @@ public partial class MainWindow
         /// from there.</summary>
         internal CharacterTouchZone Read()
         {
-            IReadOnlyList<string>? actions = first.SelectedIndex switch
-            {
-                <= 0 => null,
-                1 => [],
-                var i => new[] { items[i - 2].Id }
-            };
+            IReadOnlyList<string> actions = [.. reactions];
             var given = name.Text.Trim();
             var line = narration.Text.Trim();
             var shaped = zone;
@@ -976,9 +1061,6 @@ public partial class MainWindow
                 Reaction = new()
                 {
                     Actions = actions, Notices = notices.IsChecked == true,
-                    Autoplay = autoplay.Count == 0 ? null : [.. autoplay],
-                    AutoplaySeconds = double.TryParse(step.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var each) &&
-                        each is >= 1 and <= CharacterTouchReaction.MaximumAutoplaySeconds ? each : zone.Reaction.AutoplaySeconds,
                     Narration = line.Length == 0 || line == CharacterTouchZones.Kind(zone.Id)?.Narration ? null : line,
                     CooldownSeconds = double.TryParse(rest.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds) &&
                         seconds is >= 0 and <= CharacterTouchReaction.MaximumCooldown ? seconds : zone.Reaction.CooldownSeconds
