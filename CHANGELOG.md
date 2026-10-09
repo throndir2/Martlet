@@ -11,6 +11,7 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - A new **Thinking requests** page in the side menu shows everything your companions ask the Thinking pool to do: what each request is for, which companion asked, its type and priority, where it runs, its retries, and how long it waited and ran. **Timing by type** sums up wait and run times since Martlet started. ([#690](https://github.com/throndir2/Martlet/pull/690))
+- Check-ins have a new tool set, **Discord calls and camera**: after a reply, the Thinking pool can call the Discord friend you asked for or change Martlet's webcam background in your Discord call, so the reply itself doesn't stop to do it. ([#696](https://github.com/throndir2/Martlet/pull/696))
 - Companion › Thinking pool has a new **Busy pool** card: choose whether more important requests may stop less important ones when the pool is full, after how many stops a stopped request becomes more important, and how many times a failed request is tried again. ([#695](https://github.com/throndir2/Martlet/pull/695))
 - Conversations now has its own page in the side menu, right after Companion, so you can read, search, edit and delete every conversation without opening a separate window. Companion › Memory › **Open conversations** takes you there too. ([#689](https://github.com/throndir2/Martlet/pull/689))
 

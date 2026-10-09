@@ -25,7 +25,11 @@ internal sealed record CameraBackgroundArguments(DiscordCameraBackground? Color,
 /// character): a solid color for keying, one of its pictures, or a new picture it draws for it.</summary>
 internal static class CameraBackgroundTool
 {
-    internal const string Name = "set_camera_background";
+    internal const string Name = DiscordCheckInTools.Background;
+
+    /// <summary>The reply's guidance while the After each exchange check-in changes the background instead (handed off).</summary>
+    internal const string AfterReply = "To change your webcam background in the owner's Discord call, say briefly that you'll " +
+        "change it: it changes right after your reply.";
 
     internal static TextToolDefinition Definition { get; } = new(Name,
         "Change your webcam background in the owner's Discord call (the camera view behind your character). Give exactly one of: " +
