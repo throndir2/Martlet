@@ -646,21 +646,30 @@ Companion › Check-ins reads through `ui_value`: `CheckInsNow` (how many are on
 and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
-waits, its last run, runs and actions since Martlet started), `CheckInOn-<id>`
-and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>`,
-`CheckInFact-<id>-<fact>`, the model it needs (`CheckInNeeds-<id>-Text`,
-`-Vision` and `-Audio`: checked, and disabled when an input forces it) and what
-each run takes (`CheckInScreenshot-<id>`, `CheckInRecording-<id>` and
-`CheckInSeconds-<id>`). Each fact box and `CheckInSeconds-<id>` also return
-`help`: what the fact gives the check-in (the same text as its tooltip), and
-which models hear a whole minute of recording. A built-in check-in's card has
-its prompt box (`CheckInPrompt-<id>`), its state (`CheckInPromptState-<id>`,
-such as *Edited. About 180 tokens.*, with *Saving...* until it is saved) and
-*Use built-in text* (`CheckInPromptReset-<id>`). The script and prompt boxes
+waits, its last run, runs and actions since Martlet started). Every check-in,
+built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
+`CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
+gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
+`Work`, `Screen`, `Sound`, `Presence`), `CheckInWhen-<id>-<condition>` (when it
+runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
+`Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`), the model it
+needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
+when an input forces it) and what each run takes (`CheckInScreenshot-<id>`,
+`CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact and condition
+box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
+the choice does (the same text as its tooltip), and which models hear a whole
+minute of recording. A built-in check-in's card has its prompt box
+(`CheckInPrompt-<id>`), its state (`CheckInPromptState-<id>`, such as *Edited.
+About 180 tokens.*, with *Saving...* until it is saved) and *Use built-in
+settings* (`CheckInReset-<id>`: Martlet's own prompt, facts, conditions and
+answer back; On and Every stay). Each check-in has *Copy as your own*
+(`CheckInCopy-<id>`), which adds an own check-in (off) with the same prompt and
+choices. The script and prompt boxes
 (`CheckInScript-<id>`, `CheckInPrompt-<id>`) have automation IDs, but
 `ui_value` never reads them: the owner's words stay on the page.
 `CheckInsOpenPool` only opens a page. The boxes and choices, the name, task,
-prompt and script boxes, *Use built-in text*, *Add a check-in* (`CheckInAdd`)
+prompt and script boxes, *Use built-in settings*, *Copy as your own*, *Add a
+check-in* (`CheckInAdd`)
 and *Remove* (`CheckInRemove-<id>`) save `check-ins.json` or the prompts, and
 *Check now* (`CheckInRun-<id>`) sends the check to a
 Thinking pool member, which may be a paid provider, so they need
@@ -4442,8 +4451,10 @@ credentials.
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
-*GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task` and
-`facts`, and what it `does`; for every check-in the `needs` (*Text*, or
+*GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task`, the
+`facts` and `conditions` (such as *Said, Replies* or *CharacterShows,
+EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
+Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
 *Text, Vision, Audio*), the `screenshot`, the `recording` (*None*,
 *Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
 whether it runs a `script` and `scriptCharacters`, never the script itself), `desktop` from `check-ins-status.json` (written by
@@ -4467,7 +4478,8 @@ Read-only.
 `check_ins_check` rehearses check-ins with the production code (`CheckIns`,
 `CheckInSettings`, `ThinkingJobBoard`, `HeldEmotes`, `ContextBoard`,
 `BackgroundJobs`), FIXTURE facts and canned answers (NOT AI): the job kind's
-rules; `check-ins.json` saved and read back, with a bad pace refused; when each
+rules; `check-ins.json` saved and read back, with a bad pace refused and a
+built-in check-in's changed answer and facts kept; when each
 built-in check-in waits or runs (a young emote, a hidden character, the pace,
 three times the pace after an answer that kept everything, you talking, nobody
 at the PC, a young gaze, nothing new, no personality, too little said lately,
@@ -4477,7 +4489,11 @@ production job board with a fixture member; the answers read (`OFF {blush}`
 after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, a
 `REMIND:` after a `<think>` block, `OK`,
 `SAY:`) and odd answers that change nothing (`KEEP`, a tag it wasn't asked
-about, chatter, `REMIND: nothing`); and what Martlet does: a reply's emote off
+about, chatter, `REMIND: nothing`); `built-in ones recreated as your own`
+(each built-in check-in copied as an own check-in with its prompt, facts,
+conditions and answer sends the same message, waits the same way and reads
+answers the same way, and an own check-in that gets what Martlet said in the
+last hour and its last replies); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
 `SAY:` worded in its own words beside a due reminder. Six `own:` steps check

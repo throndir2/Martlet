@@ -5,15 +5,25 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Conversation;
 
-/// <summary>The owner's choice for a built-in check-in: on or off, and how often it runs (one of
-/// <see cref="CheckIns.EveryChoices"/>, in minutes).</summary>
-public sealed record CheckInChoice(bool On, int EveryMinutes);
+/// <summary>The owner's choice for a built-in check-in: on or off, how often it runs (one of <see cref="CheckIns.EveryChoices"/>,
+/// in minutes), and what they changed on its card (null: the built-in default).</summary>
+public sealed record CheckInChoice(bool On, int EveryMinutes)
+{
+    public CheckInFacts? Facts { get; init; }
+    public CheckInConditions? Conditions { get; init; }
+    public CheckInOutcome? Outcome { get; init; }
+    public ThinkingCapability? Needs { get; init; }
+    public bool? Screenshot { get; init; }
+    public CheckInRecording? Recording { get; init; }
+    public int? RecordingSeconds { get; init; }
+    public string? Script { get; init; }
+}
 
 /// <summary>One of the owner's own check-ins (Companion › Check-ins › Your own check-ins): its name, what to check
-/// (<see cref="Task"/>, sent with the Check-in: your own prompt), what it gets to know (<see cref="Facts"/>), what it gathers
-/// for each run (a <see cref="Screenshot"/>, a <see cref="Recording"/>, the output of a <see cref="Script"/>), what a Thinking
-/// pool member must handle to take it (<see cref="Needs"/>) and what happens with its answer
-/// (<see cref="CheckInOutcome.Note"/> or <see cref="CheckInOutcome.Say"/>).</summary>
+/// (<see cref="Task"/>, sent with the Check-ins: each check prompt), what it gets to know (<see cref="Facts"/>), when it runs
+/// (<see cref="Conditions"/>), what it gathers for each run (a <see cref="Screenshot"/>, a <see cref="Recording"/>, the output of
+/// a <see cref="Script"/>), what a Thinking pool member must handle to take it (<see cref="Needs"/>) and what happens with its
+/// answer (<see cref="Outcome"/>). It can do all that a built-in check-in does.</summary>
 public sealed record CustomCheckIn
 {
     /// <summary>"c1" to "c99".</summary>
@@ -23,6 +33,7 @@ public sealed record CustomCheckIn
     public int EveryMinutes { get; init; } = 30;
     public string Task { get; init; } = "";
     public CheckInFacts Facts { get; init; } = CheckInFacts.Conversation;
+    public CheckInConditions Conditions { get; init; }
     public CheckInOutcome Outcome { get; init; } = CheckInOutcome.Note;
     /// <summary>What a Thinking pool member must handle besides text: <see cref="ThinkingCapability.Vision"/> (pictures) and
     /// <see cref="ThinkingCapability.Audio"/> (recordings). Only members that can are given the check-in. A screenshot adds
@@ -50,6 +61,7 @@ public sealed record CheckInSettings
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new JsonStringEnumConverter() }
     };
 
@@ -66,10 +78,15 @@ public sealed record CheckInSettings
     /// <summary>The owner's choice for the built-in check-in <paramref name="id"/>, or null (its default).</summary>
     public CheckInChoice? Choice(string id) => BuiltIn.GetValueOrDefault(id);
 
-    /// <summary>These settings with the built-in check-in <paramref name="id"/> on or off and its pace.</summary>
-    public CheckInSettings With(string id, bool on, int everyMinutes) => this with
+    /// <summary>These settings with the built-in check-in <paramref name="id"/> on or off and its pace (what else the owner
+    /// changed on its card stays).</summary>
+    public CheckInSettings With(string id, bool on, int everyMinutes) =>
+        With(id, (Choice(id) ?? new(on, everyMinutes)) with { On = on, EveryMinutes = everyMinutes });
+
+    /// <summary>These settings with the owner's <paramref name="choice"/> for the built-in check-in <paramref name="id"/>.</summary>
+    public CheckInSettings With(string id, CheckInChoice choice) => this with
     {
-        BuiltIn = new Dictionary<string, CheckInChoice>(BuiltIn, StringComparer.Ordinal) { [id] = new(on, everyMinutes) }
+        BuiltIn = new Dictionary<string, CheckInChoice>(BuiltIn, StringComparer.Ordinal) { [id] = choice }
     };
 
     /// <summary>These settings with <paramref name="checkIn"/> added, or in place of the one with its ID.</summary>
@@ -93,6 +110,9 @@ public sealed record CheckInSettings
             ContractRules.Require(CheckIns.BuiltIn.Any(c => c.Id == id), $"Martlet has no check-in \"{id}\".");
             ContractRules.Require(choice is not null && CheckIns.EveryChoices.Contains(choice.EveryMinutes),
                 $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
+            Check(choice!.Facts ?? CheckInFacts.None, choice.Conditions ?? CheckInConditions.None, choice.Outcome ?? CheckInOutcome.Note,
+                choice.Needs ?? ThinkingCapability.Text, choice.Recording ?? CheckInRecording.None, choice.RecordingSeconds ?? 10,
+                choice.Script ?? "");
         }
         ContractRules.Require(Custom.Count <= CheckIns.MaximumCustom, $"You can have at most {CheckIns.MaximumCustom} check-ins of your own.");
         ContractRules.Require(Custom.Select(c => c?.Id).Distinct(StringComparer.Ordinal).Count() == Custom.Count, "Two of your check-ins have the same ID.");
@@ -106,17 +126,23 @@ public sealed record CheckInSettings
                 !task.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t'),
                 $"What a check-in checks is at most {CheckIns.MaximumTaskCharacters} characters.");
             ContractRules.Require(CheckIns.EveryChoices.Contains(checkIn.EveryMinutes), $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
-            ContractRules.Require(checkIn.Outcome is CheckInOutcome.Note or CheckInOutcome.Say,
-                "A check-in of your own reminds Martlet in its next reply or has Martlet bring it up.");
-            ContractRules.Require(((int)checkIn.Facts & ~127) == 0, "A check-in of your own gets only the facts Martlet offers.");
-            ContractRules.Require(((int)checkIn.Needs & ~(int)(ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio)) == 0,
-                "A check-in of your own needs only text, pictures or recordings.");
-            ContractRules.Require(Enum.IsDefined(checkIn.Recording), "A check-in of your own records the microphone, what the PC plays or nothing.");
-            ContractRules.Require(CheckIns.RecordingChoices.Contains(checkIn.RecordingSeconds),
-                $"A check-in's recording is {string.Join(", ", CheckIns.RecordingChoices.SkipLast(1))} or {CheckIns.RecordingChoices[^1]} seconds long.");
-            ContractRules.Require(checkIn.Script is { Length: <= CheckIns.MaximumScriptCharacters } script && !script.Contains('\0'),
-                $"A check-in's script is at most {CheckIns.MaximumScriptCharacters} characters.");
+            Check(checkIn.Facts, checkIn.Conditions, checkIn.Outcome, checkIn.Needs, checkIn.Recording, checkIn.RecordingSeconds, checkIn.Script);
         }
+    }
+
+    private static void Check(CheckInFacts facts, CheckInConditions conditions, CheckInOutcome outcome, ThinkingCapability needs,
+        CheckInRecording recording, int recordingSeconds, string? script)
+    {
+        ContractRules.Require(Enum.IsDefined(outcome), "A check-in reminds Martlet, has it bring something up, turns off emotes or moves the eyes.");
+        ContractRules.Require(((int)facts & ~511) == 0, "A check-in gets only the facts Martlet offers.");
+        ContractRules.Require(((int)conditions & ~1023) == 0, "A check-in waits only for the conditions Martlet offers.");
+        ContractRules.Require(((int)needs & ~(int)(ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio)) == 0,
+            "A check-in needs only text, pictures or recordings.");
+        ContractRules.Require(Enum.IsDefined(recording), "A check-in records the microphone, what the PC plays or nothing.");
+        ContractRules.Require(CheckIns.RecordingChoices.Contains(recordingSeconds),
+            $"A check-in's recording is {string.Join(", ", CheckIns.RecordingChoices.SkipLast(1))} or {CheckIns.RecordingChoices[^1]} seconds long.");
+        ContractRules.Require(script is { Length: <= CheckIns.MaximumScriptCharacters } && !script.Contains('\0'),
+            $"A check-in's script is at most {CheckIns.MaximumScriptCharacters} characters.");
     }
 
     /// <summary>The saved check-ins, or the defaults when there is no file or it can't be read.</summary>

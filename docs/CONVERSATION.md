@@ -1334,21 +1334,58 @@ own character and runs its own conversation.
 | Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Saying the same things (`repeats`) | 10 min | Does the character keep saying the same things (the same remark, joke, question, opener or topic again and again, or something it said not long ago while nothing new happened)? [What it said lately](#what-you-said-lately), each with when (`10:05 PM (12 min ago)`), and the day and time. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 
+**One flow for every check-in.** A built-in check-in is only data: a prompt,
+the facts it gets to know, the conditions it waits for and what its answer
+does. Your own check-ins have the same parts, and Martlet runs both the same
+way (`CheckIns.Wait`, `Message`, `Read`). Each card on Companion › Check-ins
+has the same editor:
+
+- *What it asks*: the prompt of a built-in check-in, or your own words.
+- *It gets to know*: the facts (table below).
+- *It runs when*: the conditions (table below).
+- *Its answer*: what Martlet does with the answer.
+- *It takes*: a screenshot, a recording or a script's output, and the model
+  it needs.
+
+Change a built-in check-in on its card, and only what you changed is saved
+(`CheckInChoice`, null for each default). *Use built-in settings* puts its
+prompt, facts, conditions and answer back; On and Every stay. *Copy as your
+own* adds an own check-in (off) with the same prompt and choices, so every
+built-in check-in can be recreated, and changed, as your own.
+
+| Built-in | It gets to know | It runs when |
+| --- | --- | --- |
+| Lingering emotes | Emotes and gaze, the conversation | The character shows, an emote a reply turned on shows, slower when nothing changes |
+| Where the character looks | Emotes and gaze, the conversation | The character shows, a reply chose where the eyes look, slower when nothing changes |
+| Promises | The conversation, reminders and background work | You talked lately, something new was said |
+| Staying in character | Its personality, Martlet's last replies | A personality is active, Martlet replied twice, 4 new replies |
+| Saying the same things | What Martlet said in the last hour | Martlet said 3 things lately, something new was said |
+
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
 check-ins, and the first one that may run starts. Only one runs at a time. A
 check-in waits:
 
 - until its pace (1, 2, 5, 10, 15, 30, 60 or 120 minutes) has passed since it last
-  ran. After an answer that kept everything (`KEEP`), with nothing new said
-  since, Lingering emotes and Where the character looks wait three times their
+  ran. With *Slower when nothing changes*, after an answer that kept everything
+  (`KEEP` or `OK`), with nothing new said since, it waits three times its
   pace, so the pool isn't asked the same question again and again;
-- until it has something to check: an emote a reply turned on that has shown
-  for 3 minutes, a gaze a reply chose 3 minutes ago, something new said
-  (Promises, while the conversation was active in the last 30 minutes), 4 new
-  replies (Staying in character), 3 things the character said in the last
-  hour and something new said since it last ran (Saying the same things), or a
-  written task (your own);
-- for your own check-in that records the microphone or what this PC plays,
+- until each condition ticked under *It runs when* is met:
+
+  | Condition | It waits |
+  | --- | --- |
+  | You talked lately (`Talked`) | until something was said in the conversation, and while it has been quiet for more than 30 minutes (not for *Check now*) |
+  | Something new was said (`SomethingNew`) | after it runs, until something new was said |
+  | 4 new replies (`NewReplies`) | after it runs, until the conversation had 4 new exchanges |
+  | Martlet replied twice (`Replies`) | until Martlet gave at least 2 replies |
+  | Martlet said 3 things lately (`Sayings`) | until Martlet said at least 3 things in the last hour |
+  | A personality is active (`Persona`) | while no personality is active |
+  | The character shows (`CharacterShows`) | while the character isn't on the desktop |
+  | An emote a reply turned on shows (`EmoteShown`) | until such an emote has shown for 3 minutes (any age for *Check now*); it reads only those emotes |
+  | A reply chose where the eyes look (`GazeChosen`) | until a reply chose a gaze at least 3 minutes ago (any age for *Check now*) |
+  | Slower when nothing changes (`SlowWhenKept`) | three times its pace, as above |
+
+- while its prompt is empty;
+- for a check-in that records the microphone or what this PC plays,
   until Martlet hears it (*Martlet doesn't hear the microphone now*);
 - while the conversation is busy (you talk, or something happened in the last
   10 seconds), so it never races a reply;
@@ -1357,9 +1394,9 @@ check-in waits:
 - while no Thinking pool member can take it (*no Thinking pool member can take
   it (it needs a model for text and pictures)*).
 
-Lingering emotes looks only at emotes a reply turned on (their own tag or a
-combo's). It never turns off an emote you turned on with *Try*, or one a touch
-holds: `HeldEmote.Why` records why each emote went on.
+An answer that turns off emotes looks only at emotes a reply turned on (their
+own tag or a combo's). It never turns off an emote you turned on with *Try*,
+or one a touch holds: `HeldEmote.Why` records why each emote went on.
 
 **Where it runs.** A check-in is a `ThinkingJobKind.CheckIn` job
 ([Job board](#job-board)): the helpers' priority (20), never the slot kept
@@ -1380,22 +1417,26 @@ with `consume`, so it goes with exactly one request, in the notes after your
 words. It is never kept in the conversation, so the start of every request
 stays the same. It waits at most 30 minutes for a message.
 
-**Your own check-ins.** *Add a check-in* adds one (off, at most 8). Each has a
-name, what it checks (your words, up to 2,000 characters), how often it runs,
-what it gets to know (the conversation, its personality, emotes and gaze,
-reminders and background work, what changed on screen, what the PC plays,
-whether you're at the PC; it always gets the day and time) and what happens
-with its answer. Point at a fact on the page to see what it gives the check-in:
+**Your own check-ins.** *Add a check-in* adds one (off, at most 8), and *Copy
+as your own* adds a copy of any check-in. Each has a name, what it checks (your
+words, up to 8,192 characters), how often it runs, what it gets to know, when
+it runs and what happens with its answer. It always gets the day and time.
+Point at a fact or a condition on the page to see what it does:
 
-| Fact | What the check-in gets |
-| --- | --- |
-| The conversation | The last 6 exchanges, oldest first, and how long it has been quiet since. |
-| Its personality | The active personality: the character's name and its text. |
-| Emotes and gaze | The emotes a reply turned on that still show, how long each has shown, and where the eyes look. |
-| Reminders and background work | The reminders set and the background work started or finished in this conversation. |
-| What changed on screen | Martlet's newest words about what changed on the screen, while it watches. Not a screenshot. |
-| What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. |
-| Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. |
+| Fact | What the check-in gets | Placeholder |
+| --- | --- | --- |
+| The conversation | The last 6 exchanges, oldest first, and how long it has been quiet since. | `{conversation}` |
+| Its personality | The active personality: the character's name and its text. | `{persona}` |
+| Martlet's last replies | Martlet's last 6 replies, numbered, oldest first, without what you said. | `{replies}` |
+| What Martlet said in the last hour | Everything Martlet said in the last hour (the newest 10), each with when, such as *10:05 PM (12 min ago)*. | `{said}` |
+| Emotes and gaze | The emotes a reply turned on that still show, how long each has shown, and where the eyes look. | `{emotes}`, `{example}`, `{looking}`, `{usual}`, `{since}` |
+| Reminders and background work | The reminders set and the background work started or finished in this conversation. | `{work}` |
+| What changed on screen | Martlet's newest words about what changed on the screen, while it watches. Not a screenshot. | `{screen}` |
+| What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. | `{sound}` |
+| Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. | `{presence}` |
+
+A placeholder puts that fact where you write it in the prompt; `{name}` and
+`{time}` work too. The facts you tick that the prompt doesn't name go after it.
 
 What happens with its answer:
 
@@ -1408,13 +1449,19 @@ What happens with its answer:
   message*). Where no conversation runs, Martlet starts one without the talk
   window, as for a reminder. A notice kind's own prompts are its
   `BackgroundJobKind.Wording`; due reminders keep theirs and come first.
+- *Turns off the emotes it names*: `OFF` lines with the tags of lingering
+  emotes, as Lingering emotes does (tick *Emotes and gaze*).
+- *Takes the eyes back to their usual*: `USUAL`, as Where the character looks
+  does.
 
-Your words go through Companion › Prompts › *Check-in: your own*, which adds the
-facts, the time and the answer format. Ideas: *"If the user has been at it for
+Every check-in's prompt goes through Companion › Prompts › *Check-ins: each
+check* (`{task}`, `{facts}`, `{time}`, `{answer}`), which adds the facts, the
+time and the answer format. Ideas: *"If the user has been at it for
 hours, suggest a short break"*, *"If it's late at night, remind Martlet to talk
 more softly"*, *"If the user seems stressed, remind Martlet to be gentle"*.
 
-**What your own check-ins take.** Each run of your own check-in can also take:
+**What a check-in takes.** Each run of a check-in, built-in or your own, can
+also take:
 
 - *A screenshot* of the screen in front (`ScreenGlancer`, the capture Martlet
   uses to look at your screen, with private windows painted over). With no
@@ -1440,7 +1487,7 @@ more softly"*, *"If the user seems stressed, remind Martlet to be gentle"*.
   programs. Only you write the script, on the page; Martlet never shows it in
   the status, the log or MCP.
 
-**The model it needs.** Your own check-in is given only to a Thinking pool
+**The model it needs.** A check-in is given only to a Thinking pool
 member that can handle what it needs (`CheckIns.Needs`): text always, plus
 *Sees pictures* (vision) and *Hears recordings* (audio) when you tick them. A
 screenshot ticks *Sees pictures* and a recording ticks *Hears recordings* on
@@ -1462,11 +1509,12 @@ says so).
 **Prompts.** Each built-in check-in's card on Companion › Check-ins has its
 prompt (*What it asks*), the same way your own check-ins have their task. Edit
 it there: it saves a moment after you stop typing, and the next run uses it.
-*Use built-in text* puts Martlet's own text back. The page saves only the
+*Use built-in settings* puts Martlet's own text and choices back. The page saves only the
 prompts you typed there, into the newest saved settings, so edits to other
 prompts stay. Companion › Prompts › *Check-ins* also lists every check-in
 prompt: the instructions every check-in gets, one for each built-in check-in,
-the wrapper of your own, the reminder for the next reply and the two prompts
+*Check-ins: each check* (the wrapper of every check), the reminder for the next
+reply and the two prompts
 for what is brought up. Empty a built-in check-in's prompt and it doesn't run.
 
 **What you see.** Companion › Check-ins shows how many are on and the member
@@ -1482,21 +1530,28 @@ reminded.
 **API** (`Martlet.Conversation.CheckIns`): `All(settings)` lists the
 check-ins, `Wait(checkIn, state, last, now)` says why one waits (null: it
 runs), `Focus` narrows the facts to what it may act on, `Prepare` makes the
-`ThinkingJob` (with `Needs`, and the screenshot and recording of your own),
-`Gathered` words what your own took for the message, `ScriptRan` reads a
+`ThinkingJob` (with `Needs`, and the screenshot and recording it took),
+`Gathered` words what a check-in took for the message, `ScriptRan` reads a
 script's run, `Read` reads the answer into a `CheckInVerdict` and `Note` words
 a reminder. The desktop gathers `CheckInState` on its UI thread
 (`MainWindow.CheckIns.cs`), and the screenshot, recording and script output
 just before the run. To add a built-in check-in:
 
-1. Add it to `CheckIns.BuiltIn`, with its prompt in `PromptCatalog`.
-2. Add its waits to `CheckIns.Wait` and its message to `CheckIns.Message`.
+1. Add it to `CheckIns.BuiltIn` with its facts, conditions and outcome, and
+   its prompt in `PromptCatalog` (the task only; *Check-ins: each check* adds
+   the answer format).
+2. For a new fact, add a `CheckInFacts` flag, its text in `CheckIns.Facts` and
+   its placeholder in `CheckIns.Placeholders`. For a new condition, add a
+   `CheckInConditions` flag and its wait in `CheckIns.Wait`. Add each to the
+   page's choices, so your own check-ins can use it too.
 3. Give it an outcome Martlet already acts on, or act on a new one in
    `MainWindow.ActOnCheckInAsync`.
 
 Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
 wording beside a due reminder, settings, the model a check-in needs, what it
-takes and a script's run), `SoundDigestTests` (the kept microphone and the
+takes, a script's run, each built-in check-in recreated as your own with the
+same message, waits and answers, and a built-in check-in's changes saved and
+read back), `SoundDigestTests` (the kept microphone and the
 sound kept for a check-in), the Desktop tests for an emote a reply
 turned on against a try, a check-in taking the eyes back to their usual gaze and
 the real talk window bringing up a check-in's `SAY:` through a fixture Thinking
