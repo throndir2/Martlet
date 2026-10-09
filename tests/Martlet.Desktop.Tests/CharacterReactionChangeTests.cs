@@ -130,9 +130,15 @@ public sealed class CharacterReactionChangeTests
         Assert.False(answer.Failed, answer.Result);
         var change = Assert.Single(saved);
         Assert.Equal("hand_left", change.Target);
-        Assert.Equal(["expression:Angry", "gesture:pout", "gesture:nod"], change.Reactions);
-        Assert.Contains("a zone plays at most", answer.Result);
-        Assert.Equal(change.Reactions, CharacterReactionChanges.Zone(Hand, null, CharacterReactionChanges.Active(saved, Persona, Now), context.Catalog).Reaction.Actions);
+        Assert.Equal(["expression:Angry", "gesture:pout", "gesture:nod", "sound:laugh"], change.Reactions);
+        var hand = CharacterReactionChanges.Zone(Hand, null, CharacterReactionChanges.Active(saved, Persona, Now), context.Catalog);
+        Assert.Equal(change.Reactions, hand.Reaction.Actions);
+        Assert.Equal(["laugh"], CharacterTouchZones.React(hand, context.Catalog, null, 1).Sounds!);
+        // At most 8 things in a zone's list.
+        var many = Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"tilt\",\"nod\",\"blush\",\"smile\",\"anger\",\"flinch\"," +
+            "\"look_away\",\"pout\",\"lean_in\",\"hearts\"],\"why\":\"All of it.\"}", [], context);
+        Assert.Contains("a zone plays at most 8 things", many.Answer.Result);
+        Assert.Equal(CharacterTouchZones.MaximumActions, many.Saved.Single().Reactions!.Count);
 
         Assert.Equal(["sound:laugh"], Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"sound:laugh\"],\"why\":\"Ha.\"}", [], context).Saved.Single().Reactions);
         Assert.Contains("laugh", CharacterReactionTools.SoundCues);

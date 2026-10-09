@@ -62,7 +62,7 @@ public static class CharacterReactionChanges
     public const int MaximumBytes = 256 * 1024;
     public const double MinimumHours = 0.25, MaximumHours = 72, DefaultHours = 6;
     /// <summary>What a reaction list entry starts with for a voice sound ("sound:laugh").</summary>
-    public const string SoundPrefix = "sound:";
+    public const string SoundPrefix = CharacterTouchReaction.SoundPrefix;
 
     /// <summary>The persona's changes in effect at <paramref name="now"/>, oldest first.</summary>
     public static IReadOnlyList<CharacterReactionChange> Active(IReadOnlyList<CharacterReactionChange> changes, Guid personaId, DateTimeOffset now) =>
@@ -171,7 +171,7 @@ public static class CharacterReactionChanges
             if (catalog is null) return zone;
             list = [.. CharacterTouchTemperaments.Resolve(words ?? CharacterTouchTemperaments.DefaultReactions(attitude), catalog).Select(s => s.Id)];
         }
-        return zone with { Reaction = zone.Reaction with { Actions = list } };
+        return zone with { Reaction = zone.Reaction with { Actions = list, Later = null } };
     }
 
     /// <summary>The zones with the <paramref name="active"/> changes over their reaction lists.</summary>

@@ -93,7 +93,8 @@ internal static class ReactionChangesCheck
                     var plan = CharacterTouchZones.React(changed, catalog, felt, 1);
                     return new
                     {
-                        zone = zone.Id, feeling = plan.Attitude, plays = plan.Actions.Select(s => s.Name).ToArray(),
+                        zone = zone.Id, feeling = plan.Attitude,
+                        plays = plan.Actions.Select(s => s.Name).Concat((plan.Sounds ?? []).Select(cue => CharacterReactionChanges.SoundPrefix + cue)).ToArray(),
                         list = changed.Reaction.Actions, changedByCharacter = !ReferenceEquals(changed, zone)
                     };
                 }).ToArray() ?? []

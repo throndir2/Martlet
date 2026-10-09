@@ -101,7 +101,7 @@ public static class CharacterReactionTools
             {
                 var changed = CharacterReactionChanges.Zone(zone, context.Temperament, active, context.Catalog);
                 var plan = CharacterTouchZones.React(changed, context.Catalog, felt, 1);
-                var plays = plan.Actions.Select(s => s.Name).Concat(changed.Reaction.Actions?.Where(IsSound) ?? []).ToArray();
+                var plays = plan.Actions.Select(s => s.Name).Concat((plan.Sounds ?? []).Select(cue => CharacterReactionChanges.SoundPrefix + cue)).ToArray();
                 text.Append("- ").Append(zone.Id).Append(": ").Append(zone.Name).Append(", ").Append(CharacterReactionChanges.CategoryOf(zone.Id))
                     .Append(" - ").Append(plan.Attitude ?? CharacterTouchTemperaments.AttitudeWord(0)).Append("; plays ")
                     .Append(plays.Length == 0 ? "nothing" : string.Join(", ", plays)).Append('\n');
@@ -136,8 +136,6 @@ public static class CharacterReactionTools
     /// <summary>The emotes, motions and gestures turned on that a zone can play.</summary>
     public static IReadOnlyList<CharacterActionSource> Playable(CharacterActionCatalog? catalog) =>
         catalog is null ? [] : [.. catalog.Entries.Where(e => e.Action.Enabled).Select(e => e.Source)];
-
-    private static bool IsSound(string entry) => entry.StartsWith(CharacterReactionChanges.SoundPrefix, StringComparison.Ordinal);
 
     // How many changes are left this run, today and at once.
     private static (int Run, int Day, int Slots) Left(ReactionToolContext context, IReadOnlyList<CharacterReactionChange> saved)
