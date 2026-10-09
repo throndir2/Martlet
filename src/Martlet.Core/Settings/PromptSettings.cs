@@ -73,6 +73,7 @@ public static class PromptCatalog
     public const string HomeDeclined = "home_declined";
     public const string HomeUnreachable = "home_unreachable";
     public const string ThinkLonger = "think_longer";
+    public const string HandedOffTools = "handed_off_tools";
     public const string BackgroundThink = "background_think";
     public const string BackgroundDone = "background_done";
     public const string BackgroundDoneNotes = "background_done_notes";
@@ -100,6 +101,7 @@ public static class PromptCatalog
     public const string CheckInCall = "check_in_call";
     public const string CheckInOthers = "check_in_others";
     public const string CheckInReactions = "check_in_reactions";
+    public const string CheckInActions = "check_in_actions";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInContext = "check_in_context";
@@ -254,6 +256,18 @@ public static class PromptCatalog
         "exactly what one zone plays. When the reason for one of its earlier changes has passed, end it with " +
         "undo_touch_change. Keep changes small and let them last a few hours, as a mood does, and stay in character. If " +
         "nothing changed, change nothing.";
+
+    public const string DefaultHandedOffToolsInstructions =
+        "Some things you do happen on their own right after your reply: {things}. You have no tools for them. When the user " +
+        "asks for one, or you offer one and they agree, just say briefly, in character, that you'll do it, like \"Sure, I'll " +
+        "remind you at five.\" Don't say it's already done, and don't explain how it happens.";
+
+    public const string DefaultCheckInActionsInstructions =
+        "{name} is the user's desktop companion. It talks with the user but doesn't use tools while it talks: you do the work " +
+        "right after its reply, with your tools.\n\n{exchange}\n\nWhat {name} has set up or started:\n{work}\n\n" +
+        "If the user asked {name} for something your tools do, or {name} said it would do something your tools do, do it now " +
+        "with your tools, exactly as asked. Don't do what is already set up or started, what {name} only offered and the user " +
+        "didn't accept, or what the user only talked about. If nothing needs doing, call no tool.";
 
     public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. {answer}";
 
@@ -577,6 +591,12 @@ public static class PromptCatalog
             "Added to every reply offered think_longer (Companion › Replies › Thinking longer, on by default, on a Thinking route " +
             "that does function calling), after the tools prompt. It stays the same from reply to reply while the setting is on.",
             DefaultThinkLongerInstructions, []),
+        new(HandedOffTools, ConversationGroup, "Things done after the reply",
+            "Added to every reply while Companion › Check-ins › Act on what was said (or another check-in that runs after each " +
+            "reply) takes over some of the reply's tools, because a Thinking pool member that calls tools does that work right " +
+            "after the reply. {things} names what it does, such as reminders. It stays the same from reply to reply while those " +
+            "settings stay. Empty it to send nothing.",
+            DefaultHandedOffToolsInstructions, ["things"]),
         new(BackgroundDone, ConversationGroup, "Background work finished",
             "The message of the reply Martlet starts on its own as soon as it is free, once its background work (a think_longer " +
             "task) finished. It stays in the conversation like a message. {results} lists each finished job, how it ended and " +
@@ -976,6 +996,11 @@ public static class PromptCatalog
             "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
             "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
             DefaultCheckInOthersInstructions, ["name", "people"]),
+        new(CheckInActions, CheckInGroup, "Check-in: act on what was said",
+            "What Act on what was said checks right after each reply. {exchange} is the latest exchange (what the user said and " +
+            "the reply), or every exchange since it last ran, and {work} the reminders set and the background work started or " +
+            "finished. It changes nothing itself: the tools of the sets it may use do (such as reminders).",
+            DefaultCheckInActionsInstructions, ["name", "exchange", "work"]),
         new(CheckInReactions, CheckInGroup, "Check-in: how I react",
             "What How I react checks. {persona} is the active personality, {conversation} the end of the conversation and " +
             "{touches} how the user touched the character lately. It changes nothing itself: the Touch reactions tools it calls " +

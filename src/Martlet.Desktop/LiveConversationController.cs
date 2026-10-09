@@ -2313,7 +2313,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             described,
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),
                             picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply),
-                            describes ? PictureDescriptions.Instructions(prompts) : null),
+                            describes ? PictureDescriptions.Instructions(prompts) : null,
+                            // Every one of Martlet's own tools was handed off and no other tool is offered: what the reply is told
+                            // instead still reaches it (with tools, it follows the tools prompt).
+                            toolset is null && builtIns is { Tools.Count: 0 } ? builtIns.Guidance : null),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null && describedNote is null ? null : noticed, recalled, songNote, whileSinging, touchNote),
@@ -2499,6 +2502,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // A reply that ends by asking something makes a short answer to it ("yes", "mm-hmm") count as words for a while.
             if (terminal.State == ConversationState.Completed && !passed && !string.IsNullOrWhiteSpace(turn.Content.Text))
                 Interlocked.Exchange(ref askedAt, AsksSomething(turn.Content.Text) ? clock.GetTimestamp() : 0);
+            var exchangeEnded = false;
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)
@@ -2527,6 +2531,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                                 : operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
                             // A pass stays in the conversation too, so later replies know what was said around Martlet.
                             context.Add(Saw(said)!, kept, configured.HostTarget() is null ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+                            // The check-ins that run after each exchange read it now (a pass said nothing to act on).
+                            exchangeEnded = !passed;
                             // The record of conversations keeps the user's own words (never what the PC played) and the reply,
                             // written in the background after the reply. A pass wasn't said to Martlet, and glances never get here.
                             if (!passed && this.history is { } historyRecord && historyRecord.Active(configured.Memory) &&
@@ -2577,6 +2583,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             operation.Publish(new(passed ? "listen.passed" : "runtime." + terminal.State, Finished: true, Quarantined: terminal.Quarantined,
                 Policy: PolicyReason.DispatchAccepted, ProviderFailure: terminal.ProviderFailure, AudioFailure: terminal.Playback?.Error?.Code));
+            if (exchangeEnded) ExchangeEnded?.Invoke();
             await turn.OwnershipRelease.ConfigureAwait(false);
             if (turn.Snapshot.Quarantined)
             {
@@ -2817,6 +2824,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             $"{(filled ? "replaced the recording in the conversation" : "came after the conversation was cleared")}" +
             (recorded ? ", went to the record of conversations" : "") + (remembering ? " and to remembering" : "") +
             (keep.Passed ? " (Martlet had stayed quiet)" : "") + ".");
+        // Its words are in the conversation now, so the check-ins that run after each exchange can read them.
+        if (filled && !keep.Passed) ExchangeEnded?.Invoke();
     }
 
     /// <summary>The desktop log's line for the words of what went straight to Thinking, once speech-to-text beside the reply has
@@ -2860,7 +2869,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on, then reminders, call_on_discord and set_camera_background
-    /// while they apply. Null when there are none.</summary>
+    /// while they apply. Last, the tools a check-in that runs after each exchange takes over (<see cref="HandedOffReplyTools"/>)
+    /// are left out, and the Things done after the reply prompt says so. Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
@@ -2957,7 +2967,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (handedOff.Contains(CameraBackgroundTool.Name)) guidance = Join(guidance, CameraBackgroundTool.AfterReply);
             else own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
         }
-        return own.Count == 0 ? null : new(own, guidance);
+        // The tools a check-in that runs after each exchange takes over go to it instead, with one line that says so.
+        var handed = HandOffs(configured);
+        return WithoutHandedOff(new(own, guidance), handed, CheckIns.HandOffGuidance(handed, configured.Prompts));
     }
 
     /// <summary>Changes the webcam background in the owner's Discord calls; null while that isn't wired.</summary>
@@ -3010,10 +3022,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 return new(new ConversationToolResult($"This set has no tool called {call.Name}.", true));
         }
     }
-
-    /// <summary>The reply tool names the After each exchange check-in takes over now, from saved settings only, so the start of
-    /// every request stays the same. The foundation change owns this; until it merges, the reply keeps every tool.</summary>
-    internal IReadOnlySet<string> HandedOffReplyTools(LiveConversationConfiguration configured) => new HashSet<string>(StringComparer.Ordinal);
 
     private async ValueTask<ConversationToolResult> CallOnDiscordAsync(IDiscordCaller caller, TextToolCall call, CancellationToken token)
     {

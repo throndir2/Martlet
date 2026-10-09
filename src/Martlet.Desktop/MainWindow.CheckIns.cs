@@ -57,6 +57,8 @@ public partial class MainWindow
     private readonly Dictionary<string, CheckInTrigger> checkInFired = new(StringComparer.Ordinal);
     private CheckInTrigger? checkInFiredLast;
     private string? checkInTriggeredRunning;
+    // What the last check-in after an exchange couldn't do, in a few words, or null when it worked (check-ins-status.json).
+    private string? checkInAfterExchangeProblem;
 
     private static readonly (CheckInFacts Fact, string Label, string Help)[] CheckInFactChoices =
     [
@@ -97,7 +99,10 @@ public partial class MainWindow
             "voices it knows, a voice it doesn't know, which one is yours, each with when. Never what they said. Placeholder: {people}."),
         (CheckInFacts.WhileAway, "What happened while you were away",
             $"After you come back from {CheckIns.Idle.TotalMinutes:0} minutes or more away: how long you were away, what Martlet " +
-            "said meanwhile, the background work that finished and the reminders that came due. Placeholder: {away}.")
+            "said meanwhile, the background work that finished and the reminders that came due. Placeholder: {away}."),
+        (CheckInFacts.Latest, "The latest exchange",
+            "What you said last and Martlet's reply, in full, or every exchange since it last ran (at most " +
+            $"{CheckIns.MaximumLatest}), so a check-in that runs after each reply misses nothing. Placeholder: {{exchange}}.")
     ];
 
     private static readonly (CheckInConditions Condition, string Label, string Help)[] CheckInConditionChoices =
@@ -158,13 +163,16 @@ public partial class MainWindow
             $"It runs after your touches stop, when a stroke crossed {CheckIns.StrokeZones} or more zones Martlet notices."),
         (CheckInTriggers.KeepsComingBack, "You keep coming back to one place",
             $"It runs after your touches stop, when they touched a place you touched {TouchLedger.OftenTouches} times or more in the " +
-            $"last {TouchLedger.OftenWindow.TotalMinutes:0} minutes.")
+            $"last {TouchLedger.OftenWindow.TotalMinutes:0} minutes."),
+        (CheckInTriggers.ExchangeEnded, "A reply ends",
+            "It runs right after each of Martlet's replies (once it was said), with what you said and the reply. Exchanges " +
+            "that end while it waits for its Every are kept, and it reads them all when it runs.")
     ];
 
-    private const string CheckInTriggersHelp = "With one ticked, it runs only when one of them happens, a moment after your " +
-        "touches stop, and at most once per Every (Every is then the time it waits before it can run again). It runs on the " +
-        "Thinking pool, so a reply never waits for it. It still waits while it's off, while nobody uses this PC, for its " +
-        "conditions and for a pool member. With none ticked, it runs every few minutes.";
+    private const string CheckInTriggersHelp = "With one ticked, it runs only when one of them happens (a moment after your " +
+        "touches stop, or right after a reply), and at most once per Every (Every is then the time it waits before it can run " +
+        "again). It runs on the Thinking pool, so a reply never waits for it. It still waits while it's off, while nobody uses " +
+        "this PC, for its conditions and for a pool member. With none ticked, it runs every few minutes.";
 
     // The answers a check-in can give, in the order of its Its answer list.
     private static readonly (CheckInOutcome Outcome, string Label)[] CheckInOutcomeChoices =
@@ -188,7 +196,7 @@ public partial class MainWindow
     private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {adult} (whether " +
         "Adult content is on: an explicit or a non-explicit line, from Companion › Prompts), {conversation}, " +
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
-        "{presence}, {touches}, {activity}, {people} and {away}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
+        "{presence}, {touches}, {activity}, {people}, {away} and {exchange}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
     private const string CheckInsAbout = "A check-in is a short question that the Thinking pool answers for Martlet every few " +
         "minutes, with only the facts it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, " +
@@ -235,6 +243,7 @@ public partial class MainWindow
         var all = CheckIns.All(checkInSettings);
         KeepCheckInSound(all);
         TrackCheckInSignals(all, DateTimeOffset.Now);
+        ShareCheckInChoices();
         var blocked = Role != DeviceRole.Companion ? "this PC is a Martlet host" : conversation is null ? "Martlet can't talk on this PC" : null;
         if (blocked is not null || now is null && !all.Any(c => c.On))
         {
@@ -245,7 +254,15 @@ public partial class MainWindow
         var state = CheckInStateNow();
         checkInExchanged = state.Exchanged;
         foreach (var (id, old) in checkInFired.ToArray())
-            if (state.Now - old.At > CheckIns.TriggerAge) checkInFired.Remove(id);
+        {
+            if (state.Now - old.At <= CheckIns.Age(old)) continue;
+            checkInFired.Remove(id);
+            // An exchange that waited too long for its check-in is a promise Martlet didn't keep.
+            if (old.Fired.HasFlag(CheckInTriggers.ExchangeEnded) && all.FirstOrDefault(c => c.Id == id) is { } waited &&
+                CheckIns.ActsAfterExchanges(waited))
+                ReportAfterExchange(waited, $"it waited {Reminders.Span(CheckIns.ExchangeAge)}" +
+                    (checkInWaits.GetValueOrDefault(id) is { Length: > 0 } why ? ": " + why : ""));
+        }
         var fixture = CheckInFixture() is not null;
         CheckIn? next = null;
         foreach (var checkIn in all)
@@ -281,7 +298,7 @@ public partial class MainWindow
     private void CheckInTouched(PhysicalEvent physical)
     {
         if (closing || conversation is null || !PhysicalKinds.IsTouch(physical.Kind)) return;
-        if (!CheckIns.All(checkInSettings).Any(c => c.On && c.Triggers != CheckInTriggers.None)) return;
+        if (!CheckIns.All(checkInSettings).Any(c => c.On && (c.Triggers & CheckIns.ByTouches) != 0)) return;
         checkInTouches.Touched(physical, conversation.Touches.Peek(conversation.TouchNow)?.Often);
         checkInTouchesSettle.Stop();
         checkInTouchesSettle.Start();
@@ -296,6 +313,35 @@ public partial class MainWindow
         FireCheckIns(fired);
     }
 
+    // A reply ended and its exchange is in the conversation: it fires the check-ins that run after each exchange (only those
+    // that are on, so the log doesn't note every reply while none is).
+    private void CheckInExchangeEnded()
+    {
+        if (closing || Role != DeviceRole.Companion) return;
+        if (!CheckIns.All(checkInSettings).Any(c => c.On && c.Triggers.HasFlag(CheckInTriggers.ExchangeEnded))) return;
+        FireCheckIns(CheckIns.ExchangeTrigger(DateTimeOffset.Now));
+    }
+
+    /// <summary>Gives the conversation the saved check-in choices on a companion PC (where check-ins run), so the reply leaves
+    /// the tools a check-in takes over to it (<see cref="LiveConversationController.HandedOffReplyTools"/>); none elsewhere.</summary>
+    private void ShareCheckInChoices()
+    {
+        if (conversation is not null) conversation.CheckInChoices = Role == DeviceRole.Companion ? checkInSettings : null;
+    }
+
+    /// <summary>What a check-in should have done after an exchange didn't happen (<paramref name="broken"/>, a few words, or
+    /// null when it worked): the talk window says so once, and the next reply gets a reminder to tell the user, so Martlet never
+    /// silently breaks a promise.</summary>
+    private void ReportAfterExchange(CheckIn checkIn, string? broken)
+    {
+        checkInAfterExchangeProblem = broken;
+        conversation?.ReportAfterExchange(broken);
+        if (broken is null) return;
+        ErrorLog.Warn($"Check-ins: {checkIn.Name} didn't do what was asked after the reply ({broken}).");
+        PostCheckInNote(checkIn.Id, $"What you said you would do after your last reply didn't happen ({broken}). Tell the user " +
+            "briefly, and don't say it is done.", homeSettings?.Prompts);
+    }
+
     /// <summary>Something that starts check-ins happened (<paramref name="fired"/>): each check-in that is on and starts on it
     /// keeps it until it runs or it is older than <see cref="CheckIns.TriggerAge"/> (a newer one replaces it), and the triggered
     /// check-ins are looked at at once, not at the next 15-second look. A new kind of trigger calls this with its flag.</summary>
@@ -304,7 +350,10 @@ public partial class MainWindow
         if (closing) return;
         checkInFiredLast = fired;
         var started = CheckIns.All(checkInSettings).Where(c => c.On && (c.Triggers & fired.Fired) != 0).ToArray();
-        foreach (var checkIn in started) checkInFired[checkIn.Id] = fired;
+        // An exchange that ends while the last one still waits counts both, and the run reads both (CheckInFacts.Latest).
+        foreach (var checkIn in started)
+            checkInFired[checkIn.Id] = fired.Fired == CheckInTriggers.ExchangeEnded
+                ? CheckIns.ExchangeTrigger(fired.At, checkInFired.GetValueOrDefault(checkIn.Id)) : fired;
         ErrorLog.Info($"Check-ins: {fired.Fired} fired ({fired.What}); " +
             (started.Length == 0 ? "no check-in that is on starts on it." : $"it starts {string.Join(", ", started.Select(c => c.Name))}."));
         if (started.Length > 0) FollowCheckInsAsync(triggered: true).Forget();
@@ -349,7 +398,7 @@ public partial class MainWindow
     /// up the trigger it kept.</summary>
     private async Task RunCheckInAsync(CheckIn checkIn, CheckInState state, bool now, bool triggered = false)
     {
-        var focused = CheckIns.Focus(checkIn, state, now);
+        var focused = CheckIns.Focus(checkIn, state, now) with { Since = checkInRuns.GetValueOrDefault(checkIn.Id)?.Exchanged };
         var prompts = homeSettings?.Prompts;
         if (CheckIns.Prepare(checkIn, focused, prompts) is null)
         {
@@ -363,7 +412,7 @@ public partial class MainWindow
         var began = Stopwatch.GetTimestamp();
         string result;
         bool acted = false, kept = false;
-        string? member = null, gathered = null, scriptHash = null;
+        string? member = null, gathered = null, scriptHash = null, broken = null;
         var previous = checkInRuns.GetValueOrDefault(checkIn.Id);
         // The tools of its chosen sets that this PC runs, for every member the pool tries during this run.
         var tools = checkIn.ToolSets.Count > 0
@@ -414,6 +463,9 @@ public partial class MainWindow
                     result += $"; it called {used.Count} tool{(used.Count == 1 ? "" : "s")}";
                     acted |= used.Any(u => !u.Failed);
                 }
+                // What didn't happen, for a check-in that does the reply's work after an exchange.
+                broken = used.FirstOrDefault(u => u.Failed) is { } failed ? $"{failed.Tool} failed" + (failed.Result.Length > 0 ? $": {failed.Result}" : "")
+                    : !done.Succeeded && used.Count == 0 ? result : null;
             }
         }
         catch (OperationCanceledException) { return; }
@@ -435,6 +487,8 @@ public partial class MainWindow
         var counts = checkInCounts.GetValueOrDefault(checkIn.Id);
         checkInCounts[checkIn.Id] = (counts.Runs + 1, counts.Acted + (acted ? 1 : 0));
         checkInWaits[checkIn.Id] = "";
+        if (fired is { Fired: var by } && by.HasFlag(CheckInTriggers.ExchangeEnded) && CheckIns.ActsAfterExchanges(checkIn))
+            ReportAfterExchange(checkIn, broken);
         ErrorLog.Info($"Check-ins: {checkIn.Name}{(fired is null ? "" : $" (started by {fired.What})")}" +
             $"{(member is null ? "" : " ran on " + member)} in {elapsed.TotalSeconds:0.0} s" +
             $"{(gathered is null ? "" : " with " + gathered)}: {result}{(uses.Count == 0 ? "" : " (" + CheckIns.ToolsText(uses) + ")")}.");
@@ -1343,6 +1397,7 @@ public partial class MainWindow
             return false;
         }
         checkInSettings = next;
+        ShareCheckInChoices();
         KeepCheckInSound(CheckIns.All(next));
         if (said is not null) ActionText.Text = said;
         ShowCheckInsNow();
@@ -1351,6 +1406,25 @@ public partial class MainWindow
     }
 
     // ---------- check-ins-status.json ----------
+
+    // Which reply tools the check-ins that run after each exchange take over, and why (never what was said).
+    private object AfterExchangeStatus()
+    {
+        var companion = Role == DeviceRole.Companion && conversation is not null;
+        var candidates = CheckIns.HandOffs(checkInSettings, homeSettings?.Prompts, poolCallsTools: true);
+        var poolCalls = companion && conversation!.PoolCallsTools();
+        var handed = companion && poolCalls ? candidates : [];
+        return new
+        {
+            poolCallsTools = poolCalls,
+            handedOff = handed.Select(h => new { tool = h.Tool, checkIn = h.CheckInId, set = h.SetId }).ToArray(),
+            why = !companion ? "check-ins run only on a companion PC that talks"
+                : candidates.Count == 0 ? "no check-in that is on and runs after each reply ticks a set that takes over reply tools"
+                : !poolCalls ? "no configured Thinking pool member takes check-ins and calls tools, so the reply keeps its tools"
+                : "a check-in that runs after each reply does this work, so the reply isn't offered these tools",
+            lastProblem = checkInAfterExchangeProblem
+        };
+    }
 
     private void WriteCheckInStatus()
     {
@@ -1384,6 +1458,8 @@ public partial class MainWindow
                 lastFired = checkInFiredLast is { } lastFired ? new { triggers = lastFired.Fired.ToString(), at = lastFired.At, what = lastFired.What } : null
             },
             pool = new { canRun = member is not null, member = member?.Name, model = member?.Model, fixture = CheckInFixture() is not null },
+            // The reply tools a check-in that runs after each exchange takes over, and why (saved settings only).
+            afterExchange = AfterExchangeStatus(),
             checkIns = CheckIns.All(checkInSettings).Select(c =>
             {
                 var last = checkInRuns.GetValueOrDefault(c.Id);

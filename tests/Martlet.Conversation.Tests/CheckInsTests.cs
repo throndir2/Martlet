@@ -39,15 +39,15 @@ public sealed partial class CheckInsTests
     {
         var defaults = CheckIns.All(null);
         Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats, CheckIns.Reactions,
-            CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others, CheckIns.DescribeTouches], defaults.Select(c => c.Id));
+            CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Actions], defaults.Select(c => c.Id));
         // The check-ins that wait for a signal are off until the owner turns them on.
-        Assert.Equal([true, true, true, true, true, true, false, false, false, false, true], defaults.Select(c => c.On));
+        Assert.Equal([true, true, true, true, true, true, false, false, false, false, true, true], defaults.Select(c => c.On));
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
         Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
             defaults.Single(c => c.Id == CheckIns.Repeats) is var repeats ? (repeats.EveryMinutes, repeats.Outcome, repeats.PromptId) : default);
         // How I react runs after touches (at most every 5 minutes) and acts only through its Touch reactions tools.
         var reactions = defaults.Single(c => c.Id == CheckIns.Reactions);
-        Assert.Equal((5, CheckInOutcome.Tools, PromptCatalog.CheckInReactions, CheckIns.AllTriggers),
+        Assert.Equal((5, CheckInOutcome.Tools, PromptCatalog.CheckInReactions, CheckIns.ByTouches),
             (reactions.EveryMinutes, reactions.Outcome, reactions.PromptId, reactions.Triggers));
         Assert.Equal([TouchReactions.SetId], reactions.ToolSets);
         Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Touches,
@@ -58,10 +58,10 @@ public sealed partial class CheckInsTests
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);
-        Assert.Equal(12, all.Count);
+        Assert.Equal(13, all.Count);
         Assert.Equal((false, 30), (all[1].On, all[1].EveryMinutes));
-        Assert.True(all[11].Custom);
-        Assert.Equal(CheckInOutcome.Say, all[11].Outcome);
+        Assert.True(all[12].Custom);
+        Assert.Equal(CheckInOutcome.Say, all[12].Outcome);
         Assert.Equal("check-in-promises", CheckIns.Source(CheckIns.Promises));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Character)));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Repeats)));
@@ -419,7 +419,7 @@ public sealed partial class CheckInsTests
         Assert.Equal("text and recordings", CheckIns.Describe(ThinkingCapability.Text | ThinkingCapability.Audio));
         Assert.Equal("text, pictures and recordings", CheckIns.Describe(CheckIns.Of(Inputs()).Needs));
         // Built-in check-ins need text only, but How I react, which calls its tools.
-        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id == CheckIns.Reactions ? ThinkingCapability.Text | ThinkingCapability.Tools
+        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id is CheckIns.Reactions or CheckIns.Actions ? ThinkingCapability.Text | ThinkingCapability.Tools
             : ThinkingCapability.Text, c.Needs));
     }
 
@@ -849,7 +849,7 @@ public sealed partial class CheckInsTests
         }
         Assert.True(watch.Waiting);
         var fired = watch.Settle(Now)!;
-        Assert.Equal(CheckIns.AllTriggers, fired.Fired);
+        Assert.Equal(CheckIns.ByTouches, fired.Fired);
         Assert.Equal(Now, fired.At);
         Assert.Equal("2 touches, an intimate one, a stroke across 3 zones, one place touched 6 times lately", fired.What);
         Assert.False(watch.Waiting);
@@ -891,7 +891,7 @@ public sealed partial class CheckInsTests
         Assert.Equal("the conversation is busy", CheckIns.Wait(checkIn with { Triggers = CheckInTriggers.None }, busy, null, fired: fired));
         Assert.Equal("nothing", CheckIns.TriggerWords(CheckInTriggers.None));
         Assert.Equal("your touches to end, an intimate touch, a stroke across 3 zones or you to keep coming back to one place",
-            CheckIns.TriggerWords(CheckIns.AllTriggers));
+            CheckIns.TriggerWords(CheckIns.ByTouches));
     }
 
     [Fact]
@@ -903,9 +903,9 @@ public sealed partial class CheckInsTests
         settings.Validate();
         // Only Describe touches and How I react start on touches by default.
         Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
-            : c.Id == CheckIns.Reactions ? CheckIns.AllTriggers : CheckInTriggers.None, c.Triggers));
-        Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)16 }).Validate());
-        Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)32 }).Validate());
+            : c.Id == CheckIns.Reactions ? CheckIns.ByTouches : c.Id == CheckIns.Actions ? CheckInTriggers.ExchangeEnded : CheckInTriggers.None, c.Triggers));
+        Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)32 }).Validate());
+        Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)64 }).Validate());
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
         try
         {

@@ -67,7 +67,7 @@ public static partial class CheckIns
 {
     public const string Welcome = "welcome", Unanswered = "unanswered", Call = "call", Others = "others";
     /// <summary>Every fact Martlet offers.</summary>
-    public const CheckInFacts KnownFacts = (CheckInFacts)((1 << 13) - 1);
+    public const CheckInFacts KnownFacts = (CheckInFacts)((1 << 14) - 1);
     /// <summary>Every condition Martlet offers.</summary>
     public const CheckInConditions KnownConditions = (CheckInConditions)((1 << 19) - 1);
     public const int DefaultFromHour = 8, DefaultUntilHour = 22;

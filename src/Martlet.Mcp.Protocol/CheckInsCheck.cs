@@ -73,7 +73,7 @@ internal static class CheckInsCheck
         maximumScriptOutputCharacters = CheckIns.MaximumScriptOutputCharacters, scriptTimeoutSeconds = CheckIns.ScriptTimeout.TotalSeconds,
         jobKind = ThinkingJobKinds.Name(ThinkingJobKind.CheckIn), priority = ThinkingJobKinds.Priority(ThinkingJobKind.CheckIn).ToString(),
         fast = ThinkingJobKinds.IsFast(ThinkingJobKind.CheckIn), stoppedWhenLive = LiveFloorRules.Stops(ThinkingJobKind.CheckIn),
-        triggers = CheckIns.AllTriggers.ToString(), triggerAgeSeconds = CheckIns.TriggerAge.TotalSeconds,
+        triggers = CheckIns.AllTriggers.ToString(), triggerAgeSeconds = CheckIns.TriggerAge.TotalSeconds, exchangeAgeSeconds = CheckIns.ExchangeAge.TotalSeconds,
         touchesSettleMs = TouchDebounce.Quiet.TotalMilliseconds, strokeZones = CheckIns.StrokeZones,
         oftenTouches = TouchLedger.OftenTouches, oftenWindowMinutes = TouchLedger.OftenWindow.TotalMinutes,
         signalWindowMinutes = CheckIns.SignalWindow.TotalMinutes, unansweredAfterMinutes = CheckIns.UnansweredAfter.TotalMinutes,
@@ -207,7 +207,8 @@ internal static class CheckInsCheck
             [CheckIns.Call] = "REMIND: They just joined a call; stay quiet and keep any reply very short until it ends.",
             [CheckIns.Others] = "REMIND: Someone else is here; don't share private things about the user.",
             [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin.",
-            [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome."
+            [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome.",
+            [CheckIns.Actions] = "OK"
         };
         var places = new BackgroundPlaces();
         BackgroundPlace member = new("endpoint:fixture", "FIXTURE member") { Slots = 2, Model = "fixture-model" };
@@ -356,6 +357,7 @@ internal static class CheckInsCheck
         await OwnInputsAsync(Step, now, facts, cancellation);
         TouchesFact(Step, now, facts);
         Triggers(Step, now, facts);
+        AfterExchange(Step, now, facts);
         await ContextAsync(Step, now, facts, cancellation);
         await DescribeTouchesAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
@@ -481,7 +483,7 @@ internal static class CheckInsCheck
         var felt = CharacterReactionChanges.Temperament(null, active, persona);
         var hand = CharacterReactionChanges.Zone(zones.Zones[1], null, active, catalog);
         step("how I react: the built-in check-in changes how the character reacts, bounded",
-            checkIn is { On: true, Outcome: CheckInOutcome.Tools, Triggers: CheckIns.AllTriggers } && checkIn.ToolSets.SequenceEqual([TouchReactions.SetId]) &&
+            checkIn is { On: true, Outcome: CheckInOutcome.Tools, Triggers: CheckIns.ByTouches } && checkIn.ToolSets.SequenceEqual([TouchReactions.SetId]) &&
             checkIn.Needs.HasFlag(ThinkingCapability.Tools) && waits is not null && waits.StartsWith("it waits for", StringComparison.Ordinal) && fired is null &&
             job is not null && job.Tools.Select(t => t.Name).SequenceEqual(CharacterReactionTools.Names) && message.Contains("read_touch_reactions", StringComparison.Ordinal) &&
             message.Contains("How the user touched", StringComparison.Ordinal) && done is { Succeeded: true } &&
@@ -516,12 +518,12 @@ internal static class CheckInsCheck
             var (read, state) = CheckInSettings.Read(folder);
             var all = CheckIns.All(read);
             var refused = false;
-            try { new CheckInSettings().With(custom with { Triggers = (CheckInTriggers)16 }).Validate(); }
+            try { new CheckInSettings().With(custom with { Triggers = (CheckInTriggers)32 }).Validate(); }
             catch (Martlet.Core.Contracts.ContractException) { refused = true; }
             step("triggers: saved and read back", wrote && state == "loaded" && all.Single(c => c.Id == "c4").Triggers == custom.Triggers &&
                 all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
                 CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
-                    : c.Id == CheckIns.Reactions ? CheckIns.AllTriggers : CheckInTriggers.None)) && refused,
+                    : c.Id == CheckIns.Reactions ? CheckIns.ByTouches : c.Id == CheckIns.Actions ? CheckInTriggers.ExchangeEnded : CheckInTriggers.None)) && refused,
                 new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
         }
         finally
@@ -596,6 +598,49 @@ internal static class CheckInsCheck
             new { waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), jobKind = job is null ? null : ThinkingJobKinds.Name(job.Kind) });
     }
 
+    /// <summary>10b. Act on what was said (NOT AI): an ended exchange fires it (two that end while it waits count both), it waits
+    /// longer than touches, it reads every exchange since it last ran, its default tool sets are the sets that take over reply
+    /// tools, and the reply hands those tools off only while it is on and the configured pool has a member that calls tools.</summary>
+    private static void AfterExchange(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
+    {
+        var actions = CheckIns.All(null).Single(c => c.Id == CheckIns.Actions);
+        var first = CheckIns.ExchangeTrigger(now.AddSeconds(-30));
+        var second = CheckIns.ExchangeTrigger(now, first);
+        var expectedSets = CheckInToolSets.All.Where(s => s.Replaces.Count > 0).Select(s => s.Id).ToArray();
+        step("after each exchange: the built-in check-in and its trigger", actions is { On: true, Outcome: CheckInOutcome.Tools, EveryMinutes: 1,
+                Triggers: CheckInTriggers.ExchangeEnded, Facts: CheckInFacts.Latest | CheckInFacts.Work } &&
+            actions.Conditions == CheckInConditions.SomethingNew && actions.ToolSets.SequenceEqual(expectedSets) &&
+            first.What == "1 exchange" && second.What == "2 exchanges" && CheckIns.Age(second) == CheckIns.ExchangeAge &&
+            CheckIns.Fires(actions, first with { At = now.AddMinutes(-5) }, now) && !CheckIns.Fires(actions, first with { At = now.AddMinutes(-11) }, now) &&
+            !CheckIns.Fires(actions, new(CheckInTriggers.TouchesEnded, now, "1 touch"), now) &&
+            CheckIns.TriggerWords(CheckInTriggers.ExchangeEnded) == "a reply to end",
+            new { sets = actions.ToolSets, first = first.What, second = second.What, ageMinutes = CheckIns.ExchangeAge.TotalMinutes });
+
+        // It reads the exchanges since it last ran (2 of the 4 here), or the newest one before its first run.
+        var since = CheckIns.Latest(facts with { Since = 2 });
+        var newest = CheckIns.Latest(facts);
+        var message = CheckIns.Message(actions, facts with { Since = 3 }, null) ?? "";
+        step("after each exchange: it reads what was said since it last ran", since.StartsWith("The latest 2 exchanges", StringComparison.Ordinal) &&
+            since.Contains("Okay, back to work now.", StringComparison.Ordinal) && !since.Contains("check the oven", StringComparison.Ordinal) &&
+            newest.StartsWith("The latest exchange:", StringComparison.Ordinal) && newest.Contains("This bug is driving me crazy", StringComparison.Ordinal) &&
+            message.Contains("This bug is driving me crazy", StringComparison.Ordinal) && message.Contains("FIXTURE plan for the trip", StringComparison.Ordinal) &&
+            message.Contains("Use your tools for what needs doing", StringComparison.Ordinal) && !message.Contains("{exchange}", StringComparison.Ordinal),
+            new { since, newest });
+
+        // Which reply tools it takes over: the sets' Replaces, only while it is on and the configured pool calls tools.
+        var replaced = CheckInToolSets.All.Where(s => s.Replaces.Count > 0).SelectMany(s => s.Replaces).Distinct(StringComparer.Ordinal).ToArray();
+        var handed = CheckIns.HandOffs(null, null, poolCallsTools: true);
+        var noPool = CheckIns.HandOffs(null, null, poolCallsTools: false);
+        var off = CheckIns.HandOffs(new CheckInSettings().With(CheckIns.Actions, false, 1), null, poolCallsTools: true);
+        var asked = false;
+        var lazy = CheckIns.HandOffs(new CheckInSettings().With(CheckIns.Actions, false, 1), null, () => asked = true);
+        var guidance = CheckIns.HandOffGuidance([new("fixture_tool", CheckIns.Actions, actions.Name, "fixture-set", "Reminders")], null) ?? "";
+        step("after each exchange: the reply hands tools off", handed.Select(h => h.Tool).SequenceEqual(replaced) &&
+            handed.All(h => h.CheckInId == CheckIns.Actions) && noPool.Count == 0 && off.Count == 0 && lazy.Count == 0 && !asked &&
+            guidance.Contains("right after your reply: Reminders.", StringComparison.Ordinal) &&
+            CheckIns.HandOffGuidance([], null) is null,
+            new { handedOff = handed.Select(h => $"{h.Tool} ({h.SetId})"), guidance });
+    }
     // The built-in check-ins that wait for a signal: off until the owner turns them on.
     private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Unanswered or CheckIns.Call or CheckIns.Others;
 

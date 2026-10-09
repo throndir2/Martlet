@@ -1449,12 +1449,13 @@ built-in check-in can be recreated, and changed, as your own.
 | Promises | The conversation, reminders and background work | You talked lately, something new was said |
 | Staying in character | Its personality, Martlet's last replies | A personality is active, Martlet replied twice, 4 new replies |
 | Saying the same things | What Martlet said in the last hour | Martlet said 3 things lately, something new was said |
-| How I react | Its personality, the conversation, how you touched the character | A personality is active; it starts when your touches end (any trigger) |
+| How I react | Its personality, the conversation, how you touched the character | A personality is active; it starts when your touches end (any touch trigger) |
 | Welcome back | What happened while you were away, what you are doing, its personality | You came back |
 | Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
 | On a call | What you are doing | What you do changed |
 | Someone else is here | Who is here, its personality | Someone else spoke |
 | Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
+| Act on what was said | The latest exchange (or every exchange since it last ran), reminders and background work | Something new was said; it starts when a reply ends ([below](#act-on-what-was-said)) |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
 check-ins, and the first one that may run starts. Only one runs at a time (a
@@ -1509,9 +1510,10 @@ check-in waits:
 <a id="check-in-triggers"></a>
 **Triggers.** A check-in can also start when something happens, not only on its pace. Tick
 one or more boxes under *It starts when* on its card (`CheckInTriggers`, saved
-as `Triggers` in `check-ins.json`; of the built-in check-ins, only Describe
-touches has one). The
-first triggers come from the touches on the desktop character:
+as `Triggers` in `check-ins.json`; of the built-in check-ins, Describe
+touches, How I react and Act on what was said have them). The touch triggers
+come from the touches on the desktop character, and one comes from the
+conversation:
 
 | Trigger | It fires when |
 | --- | --- |
@@ -1519,6 +1521,7 @@ first triggers come from the touches on the desktop character:
 | An intimate touch (`IntimateTouch`) | those touches included an intimate zone |
 | A stroke across 3 zones (`StrokeAcrossZones`) | a stroke among them crossed 3 or more noticed zones |
 | You keep coming back to one place (`KeepsComingBack`) | they touched a place touched 5 or more times in the last 10 minutes (the touch ledger's `TouchHabit`, *They keep coming back to ...*) |
+| A reply ends (`ExchangeEnded`) | a reply ended and its exchange is in the conversation: after its voice played (or, for what went [straight to Thinking](#straight-to-thinking), once its words are in the conversation). Never for a `[pass]` or a reply that failed or was stopped |
 
 Moving, zooming, locking or hiding the character never fires a trigger. A
 check-in with triggers runs this way:
@@ -1529,8 +1532,12 @@ check-in with triggers runs this way:
   15-second look.
 - It keeps the newest trigger that fired for it (a newer one replaces it) for
   2 minutes, as long as the touch ledger keeps touches
-  (`CheckIns.TriggerAge`). A trigger that fires during the cooldown runs when
-  the cooldown ends, if it is still that fresh.
+  (`CheckIns.TriggerAge`), and 10 minutes for *A reply ends*
+  (`CheckIns.ExchangeAge`). A trigger that fires during the cooldown runs when
+  the cooldown ends, if it is still that fresh. A newer *A reply ends* counts
+  the one it replaces (*2 exchanges*), and the run reads every exchange since
+  the check-in last ran (the fact *The latest exchange*, `{exchange}`,
+  `CheckInFacts.Latest`, at most 6), so no exchange is dropped.
 - Triggered check-ins run one at a time beside the paced ones, so a due
   triggered check-in never waits behind a paced one.
 - It doesn't wait for the conversation to settle: the touches and the reply to
@@ -1551,7 +1558,7 @@ keeps a trigger, *A trigger fired at 10:15 PM (3 touches, an intimate one).*
 The desktop log notes each trigger and run with counts only: *Check-ins:
 TouchesEnded, IntimateTouch fired (3 touches, an intimate one); it starts
 ...*, then *... (started by 3 touches, an intimate one) ran on ...*. To add a
-trigger that is not about touches, add a `CheckInTriggers` flag, its words in
+trigger, add a `CheckInTriggers` flag, its words in
 `CheckIns.TriggerWords`, its box in `CheckInTriggerChoices` on the page, and
 call `MainWindow.FireCheckIns` with it when it happens.
 
@@ -1777,6 +1784,8 @@ does and its tools. Martlet offers:
 | Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Pictures](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
 | Background work (`background-work`) | `think_longer`, `research` | Start a background think or web research on the last exchange, which Martlet brings up when done. Takes over the reply's `think_longer` and `research` ([Thinking longer](#thinking-longer-and-background-work)). Offered only while Thinking longer is on and Deep thinking can think. |
 
+A set can also take over reply tools (`CheckInToolSet.Replaces`): see [Act on what was said](#act-on-what-was-said).
+
 **How a run calls tools.** The job offers the tools of the chosen sets that
 this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls
 them in a bounded loop: at most 4 rounds (`CheckIns.MaximumToolRounds`) and 8
@@ -1815,6 +1824,54 @@ said or reminded.
 The card, the settings check (an unknown set or the same set twice is refused),
 the status and MCP pick up the new set by themselves.
 
+<a id="act-on-what-was-said"></a>
+### Act on what was said: the reply's work after the reply
+
+A small conversation model replies faster and better with fewer tools. The
+built-in **Act on what was said** check-in (`actions`, on, every 1 minute at
+most) takes work off the live reply. Right after each reply, a Thinking pool
+member reads what you said and what Martlet answered and calls the tools for
+what you asked for or Martlet promised. The reply only says, briefly, that it
+will do it.
+
+- **When it runs.** It starts when a reply ends (`ExchangeEnded`) and something
+  new was said. It gets the latest exchange, or every exchange since it last
+  ran (`{exchange}`), and the reminders and background work (`{work}`). Its
+  prompt is *Check-in: act on what was said* (`check_in_actions`).
+- **It never slows a reply.** It runs only after the reply's voice played, on
+  the Thinking pool, never on the conversation's own route. The live floor
+  still holds it while the live turn uses shared hardware, so the time to
+  Martlet's first word and the conversation's prompt cache stay the same.
+- **Its tools.** By default it ticks every set whose `CheckInToolSet.Replaces`
+  is not empty (`CheckIns.ActionSets`, computed, so a new set joins it with no
+  change here). A set's `Replaces` names the reply tools it takes over.
+- **Which reply tools are handed off.** A reply tool is not offered to the reply
+  while both are true (`CheckIns.HandOffs`,
+  `LiveConversationController.HandedOffReplyTools`):
+  1. A check-in that is on, starts when a reply ends and has a prompt ticks a
+     set whose `Replaces` names that tool.
+  2. The **configured** Thinking pool has a member that takes check-ins and
+     calls tools (an OpenAI-compatible endpoint; a paired computer's gateway
+     has no function calling), whether its computer answers now or not.
+
+  Both come from saved settings only, so the start of every request stays the
+  same while computers come and go. Otherwise the reply keeps its tools as
+  before. Tools whose result the reply needs (`search_conversations`, finding
+  memories, listing reminders, `list_creations`) and instant controls
+  (`stop_singing`, `cancel_thinking`) stay on the reply.
+- **What the reply is told.** The *Things done after the reply* prompt
+  (`handed_off_tools`, Every reply) names what happens after the reply and
+  tells the reply to say only, briefly, that it will do it. It goes after the
+  tools prompt, or in the instructions when no tool is left to offer.
+- **A broken promise is said.** When a run fails, finds no pool member, a
+  tool call fails, or an exchange waits 10 minutes without a run, the talk
+  window says *Couldn't do what was asked after the reply: ...* once (the same
+  problem again stays in the log until a run works), and the next reply gets a
+  reminder to tell you.
+- **What you see.** `check-ins-status.json` has `afterExchange`: whether the
+  configured pool calls tools (`poolCallsTools`), the tools handed off with
+  their check-in and set (`handedOff`), why (`why`) and the last problem
+  (`lastProblem`).
 ### How I react
 
 The character can change how it reacts to your touches, as itself. If it gets
