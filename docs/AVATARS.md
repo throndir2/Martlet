@@ -1089,6 +1089,48 @@ category*; **Add part** offers every zone, the breasts and the groin too.
   An older Martlet that gets version 2 from another computer says that a newer
   Martlet saved it, instead of dropping temperaments it can't read.
 
+### Changes the character made
+
+The character can change how it reacts to touches for a while, as itself. The
+**How I react** check-in (see
+[How I react](CONVERSATION.md#how-i-react)) reads the conversation and, when
+the character's feelings toward you changed (it got angry or hurt, or it
+warmed up), calls the Touch reactions tools:
+
+- **set_touch_mood** makes every touch one or two steps less liked (or more
+  liked), for example while the character is angry with you.
+- **change_touch_feeling** changes how it feels about one category or one
+  zone, and optionally which reaction words play there.
+- **change_zone_reactions** chooses exactly what one zone plays: emotes,
+  motions, gestures and voice sounds.
+- **undo_touch_change** ends its own changes early, for example after it
+  calmed down. **read_touch_reactions** shows it how it reacts now.
+
+Its changes apply over your zones and your temperament while they last. They
+never edit them. A changed feeling plays that feeling's reactions on the
+zones it covers, and it also changes the touch line, the escalation, the
+lingering and the looking. A mood leaves a zone's list as you chose it when
+the mood doesn't change how much that zone is liked.
+
+Every change is limited:
+
+- at most 4 changes in one check and 12 in a day, and at most 8 in effect at
+  once (a newer change of the same kind and target replaces the older one);
+- each lasts 15 minutes to 72 hours (6 hours when the character doesn't say),
+  then ends on its own;
+- a feeling moves at most 2 steps from what your temperament says (from
+  *neutral* where it says nothing), and a mood shifts at most 2 steps;
+- each change needs a short reason in the character's own words.
+
+Companion › Touch › **Changes the character made** lists the active persona's
+changes in effect: what each does, until when, when it was made and why.
+**Undo** ends one now and **Undo all** ends them all. *Ended lately* shows the
+newest five that ended, and who ended them. **Reset** ends them too, at its
+*Undo the character's own reaction changes* level. The changes are kept in
+`character-reaction-changes.json` on this PC only; they don't travel with the
+shared settings. To stop new changes, turn off How I react on Companion ›
+Check-ins.
+
 ## 1. Choose a renderer, analyzer and feature owners separately
 
 A renderer draws a model. An analyzer derives animation from speech. A mapping
