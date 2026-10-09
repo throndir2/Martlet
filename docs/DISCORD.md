@@ -238,6 +238,15 @@ switches to a plain color (`color`), one of its pictures (`picture`, a creation 
 Creations and becomes the background when it's ready. A picture goes through the same `discord-camera-background` file
 as the card's choices, so it stays the background until changed, and shows at once while the camera view is open.
 
+**After the reply.** Both tools are also the **Discord calls and camera** check-in tool set (`discord`,
+`DiscordCheckInTools`), with the same names, arguments and limits. The set replaces the reply's `call_on_discord` and
+`set_camera_background` (`CheckInToolSet.Replaces`). When the After each exchange check-in takes them over and the Thinking
+pool has a member that calls tools, the reply is not offered them. The reply only says it will call or change the
+background, and the check-in does it on the Thinking pool after the reply, so the reply starts no later. The check-in runs
+the set only while Martlet can call a Discord friend or is in the owner's Discord calls, and each tool keeps its own gate: the
+camera mode alone never places a call. A new background picture is drawn by the same `picture-N` job as `draw_picture`. See
+[Check-in tool sets](CONVERSATION.md#check-in-tool-sets).
+
 **Settings and status.** `discord-calls.json` (`DiscordCallPreferences`): `On`, `Capture`, `SeeSpeakers`, `OwnerName`,
 `OutputId`/`OutputName`, `AlsoSpeakers`, `BargeIn`, `CameraBackground`, `CameraPicture` (`File`, `Creation` or `Drawn`),
 `CameraZoom` (1 fits the view's height), `CameraX`/`CameraY` (the character's middle from the view's center, as fractions of its
