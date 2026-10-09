@@ -16,7 +16,10 @@ public enum CheckInOutcome
     /// <summary>Puts the answer's "REMIND:" line in the notes of the next message, once, for the conversation model.</summary>
     Note,
     /// <summary>Brings the answer's "SAY:" line up on Martlet's own as soon as it is free, or with what the user says next.</summary>
-    Say
+    Say,
+    /// <summary>Puts the answer's "KNOW:" line (a short description of what is happening) in the notes of the next message, once,
+    /// as background the conversation model may draw on, not an instruction (<see cref="CheckIns.ContextAge"/>).</summary>
+    Context = 4
 }
 
 /// <summary>What a check-in gets to know besides the day and time. A fact whose placeholder the prompt names ({conversation},
@@ -42,7 +45,11 @@ public enum CheckInFacts
     /// <summary>What the character said in the last hour (replies, remarks, reactions), each with when.</summary>
     Said = 128,
     /// <summary>The character's last replies, numbered, oldest first.</summary>
-    Replies = 256
+    Replies = 256,
+    /// <summary>What the user did to the desktop character lately (pokes, pats, holds, strokes with their path, moves), each
+    /// with when, which were intimate, how the persona feels about them and the places the user keeps coming back to; read
+    /// without taking it, so the next reply still gets the touches.</summary>
+    Touches = 512
 }
 
 /// <summary>When a check-in runs: each condition chosen must hold, or it waits and says why on its card.</summary>
@@ -158,6 +165,9 @@ public sealed record CheckInState
     public BoundedWaveAudio? Recording { get; init; }
     /// <summary>What the owner's script printed for this run (or why it didn't run), or null.</summary>
     public string? ScriptOutput { get; init; }
+    /// <summary>What the user did to the desktop character over the last <see cref="TouchLedger.OftenWindow"/>, from the
+    /// conversation's touch ledger, read without taking it (<see cref="TouchLedger.History"/>); null when they did nothing.</summary>
+    public TouchHistory? Touches { get; init; }
 
     /// <summary>The character's name for the check: the personality's, or Martlet.</summary>
     public string Who => string.IsNullOrWhiteSpace(Name) ? "Martlet" : Name.Trim();
@@ -219,6 +229,9 @@ public static partial class CheckIns
     public static TimeSpan Idle => TimeSpan.FromMinutes(10);
     /// <summary>How long a reminder for the next reply waits on the context board for a message to carry it.</summary>
     public static TimeSpan NoteAge => TimeSpan.FromMinutes(30);
+    /// <summary>How long what a check-in adds to what Martlet knows waits on the context board for a message to carry it: short,
+    /// because it describes the moment.</summary>
+    public static TimeSpan ContextAge => TimeSpan.FromMinutes(3);
     /// <summary>How many times its pace Lingering emotes and Where the character looks wait after an answer that kept everything,
     /// while nothing new was said.</summary>
     public const int KeptPace = 3;
@@ -308,6 +321,7 @@ public static partial class CheckIns
             CheckInOutcome.Say => "Your own check-in: Martlet brings up what it says, on its own.",
             CheckInOutcome.EmotesOff => "Your own check-in: Martlet turns off the lingering emotes it names.",
             CheckInOutcome.GazeUsual => "Your own check-in: Martlet takes the eyes back to their usual when it says so.",
+            CheckInOutcome.Context => "Your own check-in: what it describes adds to what Martlet knows in its next reply.",
             _ => "Your own check-in: what it says reminds Martlet in its next reply."
         }, custom.Outcome, custom.On, custom.EveryMinutes)
         {
@@ -335,7 +349,8 @@ public static partial class CheckIns
         return parts.Count == 1 ? parts[0] : string.Join(", ", parts.SkipLast(1)) + " and " + parts[^1];
     }
 
-    /// <summary>The context board source of a check-in's reminder for the next reply ("check-in-promises").</summary>
+    /// <summary>The context board source of a check-in's reminder for the next reply, or of what it adds to what Martlet knows
+    /// ("check-in-promises").</summary>
     public static string Source(string id) => "check-in-" + id;
 
     /// <summary>Why <paramref name="checkIn"/> doesn't run now, in a few plain words, or null when it may. With
@@ -422,7 +437,8 @@ public static partial class CheckIns
         ("conversation", CheckInFacts.Conversation), ("emotes", CheckInFacts.Character), ("example", CheckInFacts.Character),
         ("looking", CheckInFacts.Character), ("usual", CheckInFacts.Character), ("since", CheckInFacts.Character),
         ("persona", CheckInFacts.Persona), ("work", CheckInFacts.Work), ("screen", CheckInFacts.Screen), ("sound", CheckInFacts.Sound),
-        ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies)
+        ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies),
+        ("touches", CheckInFacts.Touches)
     ];
 
     /// <summary>The facts <paramref name="template"/> places itself with their placeholders.</summary>
@@ -450,7 +466,7 @@ public static partial class CheckIns
             ("persona", string.IsNullOrWhiteSpace(state.Persona) ? "(no personality written)" : Clip(state.Persona.Trim(), 2_000)),
             ("work", Work(state)), ("screen", Screen(state)), ("sound", Sound(state)), ("presence", Presence(state)),
             ("said", Said(state).Count > 0 ? SaidLately.Lines(Said(state), state.Now) : "(nothing)"),
-            ("replies", RepliesText(state))
+            ("replies", RepliesText(state)), ("touches", Touches(state))
         ]);
         var facts = string.Join("\n\n", new[] { Facts(checkIn.Facts & ~Placed(template), state), Gathered(checkIn, state) }
             .Where(part => part.Length > 0));
@@ -461,6 +477,9 @@ public static partial class CheckIns
             CheckInOutcome.GazeUsual => "Write only USUAL to take the eyes back to their usual, or KEEP to leave them.",
             CheckInOutcome.Say => "If nothing needs doing now, write only: OK\nOtherwise write one line that starts with SAY: and " +
                 $"says what {who} should bring up with the user now.",
+            CheckInOutcome.Context => "If there is nothing worth adding, write only: OK\nOtherwise write one line that starts with KNOW: " +
+                $"and describes what is happening, briefly and vividly, as background {who} can draw on in its next reply. " +
+                $"Describe it; don't tell {who} what to do or say.",
             _ => $"If nothing needs doing now, write only: OK\nOtherwise write one line to {who} that starts with REMIND: and says " +
                 "what to keep in mind or do in its next reply."
         };
@@ -471,7 +490,7 @@ public static partial class CheckIns
 
     /// <summary>Reads a member's answer to <paramref name="checkIn"/> (asked with <paramref name="state"/>, narrowed with
     /// <see cref="Focus"/>). Lingering emotes: the tags of the emotes asked about on "OFF" lines; KEEP is nothing. Where the
-    /// character looks: USUAL or KEEP. The others: the text of a "REMIND:" (or "SAY:") line, or OK. The last such line decides,
+    /// character looks: USUAL or KEEP. The others: the text of a "REMIND:" (or "SAY:", or "KNOW:") line, or OK. The last such line decides,
     /// so thinking written before the answer doesn't count; markdown, bullets, quotes and a reasoning model's &lt;think&gt; block
     /// are skipped. Anything else reads as unreadable, which changes nothing.</summary>
     public static CheckInVerdict Read(CheckIn checkIn, string? answer, CheckInState state)
@@ -506,7 +525,12 @@ public static partial class CheckIns
                 return CheckInVerdict.Unreadable;
             default:
             {
-                string[] keywords = checkIn.Outcome == CheckInOutcome.Say ? ["SAY"] : ["REMIND", "REMINDER"];
+                string[] keywords = checkIn.Outcome switch
+                {
+                    CheckInOutcome.Say => ["SAY"],
+                    CheckInOutcome.Context => ["KNOW"],
+                    _ => ["REMIND", "REMINDER"]
+                };
                 foreach (var line in lines.Reverse())
                 {
                     if (keywords.FirstOrDefault(keyword => Starts(line, keyword)) is { } found)
@@ -525,6 +549,12 @@ public static partial class CheckIns
     /// for the next reply), or null when the owner emptied that prompt.</summary>
     public static string? Note(PromptSettings? prompts, string reminder) =>
         PromptSettings.Fill(prompts, PromptCatalog.CheckInNote, ("reminder", reminder));
+
+    /// <summary>What a check-in adds to what Martlet knows says in the notes of the next message (Companion › Prompts › Check-in:
+    /// adds to what Martlet knows): background the reply may draw on, not a reminder to follow. Null when the owner emptied that
+    /// prompt.</summary>
+    public static string? Context(PromptSettings? prompts, string context) =>
+        PromptSettings.Fill(prompts, PromptCatalog.CheckInContext, ("context", context));
 
     /// <summary>The day and time as a check reads it: "Wednesday, October 7, 10:17 PM".</summary>
     public static string Time(DateTimeOffset now) => now.ToString("dddd, MMMM d, h:mm tt", CultureInfo.InvariantCulture);
@@ -601,7 +631,30 @@ public static partial class CheckIns
         if (facts.HasFlag(CheckInFacts.Sound))
             parts.Add(state.Sound is { Length: > 0 } ? "What the user's PC plays: " + Sound(state) : Sound(state));
         if (facts.HasFlag(CheckInFacts.Presence) && state.Away is not null) parts.Add(Presence(state));
+        if (facts.HasFlag(CheckInFacts.Touches)) parts.Add(Touches(state));
         return string.Join("\n\n", parts);
+    }
+
+    /// <summary>What the user did to the character lately (<see cref="CheckInFacts.Touches"/>), as the check reads it: one line
+    /// for each run, oldest first, with when and whether it was intimate, in the words the character's replies hear
+    /// (<see cref="TouchWording.Line"/>: "you" is the character, with how it feels about it), then the places the user keeps
+    /// coming back to (<see cref="TouchWording.Often"/>); or that they did nothing.</summary>
+    public static string Touches(CheckInState state)
+    {
+        var minutes = (int)TouchLedger.OftenWindow.TotalMinutes;
+        if (state.Touches is not { Entries.Count: > 0 } touches)
+            return $"The user didn't touch {state.Who}'s character on the desktop in the last {minutes} minutes.";
+        var text = new StringBuilder($"What the user did to {state.Who}'s character on the desktop in the last {minutes} minutes, " +
+            $"oldest first, each with when, in the words {state.Who} hears (\"you\" is {state.Who}):");
+        foreach (var entry in touches.Entries)
+        {
+            var ago = touches.Now - entry.Last;
+            text.Append("\n- ").Append(SaidLately.Clock((state.Now - ago).ToOffset(state.Now.Offset))).Append(" (")
+                .Append(Reminders.Span(ago)).Append(" ago").Append(entry.Intimate ? ", intimate" : "").Append("): ")
+                .Append(TouchWording.Line([entry]));
+        }
+        if (TouchWording.Often(touches.Often) is { Length: > 0 } often) text.Append('\n').Append(often.Trim());
+        return text.ToString();
     }
 
     /// <summary>What a check-in gathered for this run, as the check reads it: that a screenshot or a recording is attached, and
@@ -656,12 +709,13 @@ public static partial class CheckIns
             .Select(word => word.Trim('{', '}', '[', ']', '(', ')', '/', '.', ':', '!', '"', '\'', '*', '`'))
             .Where(word => word.Length > 0)];
 
-    // A REMIND: or SAY: line that says there is nothing to do.
+    // A REMIND:, SAY: or KNOW: line that says there is nothing to do.
     private static bool NothingSaid(string text)
     {
         var plain = text.Trim().TrimEnd('.', '!').Trim().ToLowerInvariant();
         return plain.Length == 0 || plain is "ok" or "okay" or "none" or "nothing" or "n/a" or "na" or "no" or "keep" or "no reminder" or
-            "nothing needed" or "no need" or "nothing to remind" or "nothing to say" or "nothing to bring up" or "nothing new";
+            "nothing needed" or "no need" or "nothing to remind" or "nothing to say" or "nothing to bring up" or "nothing new" or
+            "nothing to add";
     }
 
     private static string OneLine(string text) => Spaces().Replace(text, " ").Trim();

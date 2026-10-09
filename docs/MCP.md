@@ -638,7 +638,8 @@ lingering emotes still fit, does the gaze a reply chose still fit, did the
 character keep its promises, did it stay in character, does it keep saying the
 same things, and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
-instructions. A reminder for the next reply goes in the notes of that one
+instructions. A reminder for the next reply, or what a check-in adds to what
+Martlet knows, goes in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
 each run with words and counts only (`Check-ins:`).
 
@@ -650,7 +651,7 @@ waits, its last run, runs and actions since Martlet started). Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`), `CheckInWhen-<id>-<condition>` (when it
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`), `CheckInWhen-<id>-<condition>` (when it
 runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
 `Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`), the model it
 needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
@@ -682,9 +683,10 @@ makes every check-in read its answer from that file instead of asking the
 Thinking pool (FIXTURE - NOT AI; read again before each run, and check-ins run
 then without a pool member). `CheckInsNow` and each run's member say *FIXTURE -
 NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
-`REMIND:` line and a `SAY:` line answers both kinds of the owner's own
-check-ins, so *Check now* shows the whole flow on a disposable data directory:
-a reminder waiting for the next reply, or something Martlet brings up.
+`REMIND:` line, a `SAY:` line and a `KNOW:` line answers all three kinds of
+the owner's own check-ins that use a line, so *Check now* shows the whole flow
+on a disposable data directory: a reminder waiting for the next reply,
+something Martlet brings up, or background for the next reply.
 
 ## Local MCP control (Windows)
 
@@ -1791,7 +1793,12 @@ is kept and its `snapshotProbe` (how many `chains` and `springs` the probe kept
 beside it has; the desktop binds the zones again with it when the owner moves
 one), what the last detection `sent` (its plain `line`, `requests`,
 `pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
-each zone's parts, its number of `areas`, what it `follows`, `plays`, whether
+each zone's parts, its number of `areas`, what it `follows`, `plays`, its
+`reactions` (the reaction list as saved, in play order: emote, gesture and
+motion IDs and `sound:<cue>` voice sounds, every entry kept, also one the model
+doesn't have; null for a zone not filled yet), its `seed` (the list a new zone
+gets, which *Defaults* fills in), its `sounds` (the cues of its voice sounds),
+whether
 Martlet `notices` it, whether the owner `added` it, whether it is `special` to
 the character (found as special, not added) and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
@@ -1883,16 +1890,20 @@ The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
 writes the parsed zones (with `detect`, the detected ones and every picture the
 detection sent, as *Detect zones* would) with `snapshotPath` (a PNG)
-as their picture and `includeIntimate` setting the switch, so the section can
+as their picture and `includeIntimate` setting the switch, each zone with no
+reaction list yet given the one a new zone gets (as the desktop saves them),
+so the section can
 be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
 for [Touch temperament](AVATARS.md#touch-temperament), such as
 `{"groups":{"head":{"attitude":2,"reactions":["hearts","blush"]}}}`) or
 `personaId` (the temperament that persona uses in the `dataDirectory`'s
 `character-temperaments.json`: its own, the built-in reactions or a custom
-one), `match` plays what the temperament decides
-when the zone has no pick of its own, and its `reaction` tells `from`
-(`owner`, `temperament` or `default`), the `attitude` word, whether it
-`escalated` (with `repeats`, the touches in a row) and how long it `linger`s.
+one), `match` plays the zone's reaction list (a zone not filled yet: what the
+temperament gives a new zone), and its `reaction` tells `from`
+(`owner` for the zone's own list; `temperament` or `default` for a zone not
+filled yet), the `attitude` word, whether it
+`escalated` (with `repeats`, the touches in a row), how long it `linger`s and
+the cues of its voice `sounds`.
 `temperament` in the result shows the request Thinking gets (with
 `personality`, its text), the `vocabulary` and `attitudes` allowed, the six
 `categories` (each `Id`, `Label` and the zone kinds it covers, `parts`; every
@@ -1958,8 +1969,12 @@ it follows, for a zone with several areas how many, for a zone that follows the
 model's own part *follows the model's own 尾巴 wherever it moves: 21 parts in 6
 areas*, *added by you* for a zone the owner added, which *Detect again*
 looks for too and keeps where it is when it can't find it, or *special to this
-character* for a zone *Detect zones* found as special to the character, and its
-default reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
+character* for a zone *Detect zones* found as special to the character, and how
+the persona's touch temperament feels about it, such as *loves it*), each entry
+of its reaction list in play order (`TouchZoneReactionItem-<n>-<k>`: *Blush ·
+emote*, *nod · gesture*, *TapHead · motion*, *laugh · sound*, or *F05 · not on
+this model* for an entry the model doesn't have, which stays; or
+`TouchZoneReactionNone-<n>`: *nothing* for an empty list), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
 *Detect zones looks for the hair, eyes, ears, nose, mouth, neck, breasts, upper
 arms, forearms, stomach, hips, groin, thighs, calves and feet, and for anything
 special to this character, such as animal ears, a tail, wings, a hat or a bow.
@@ -1988,9 +2003,16 @@ Explorer, `TouchZoneTry-<n>` plays on the character, and
 the breasts and the groin too), `TouchZonesAdd`/`TouchZonesAddKind` (its value
 is the zone chosen to add; it offers every zone the model doesn't have yet, and
 the zone it adds is marked *added by you*) and each zone's
-`TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
+`TouchZoneOn-`, `TouchZoneName-`, the reaction list's
+`TouchZoneReactionAdd-` (*Add a reaction...*: choosing an emote, gesture or
+motion with `ui_select` adds it at the end, up to 8; it is off while the list
+is full), `TouchZoneReactionEarlier-<n>-<k>` (*‹*: plays entry k one place
+earlier), `TouchZoneReactionRemove-<n>-<k>` (*×*) and
+`TouchZoneReactionDefaults-` (*Defaults*: fills the list again with what a new
+zone gets),
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`
-(its value is each area's box, left, top, width and height in percent, the areas
+(under *More*: `TouchZoneMore-<n>` is a passive click that shows or hides the
+zone's box and Delete, and reads *Less* while they show; its value is each area's box, left, top, width and height in percent, the areas
 separated by `|`; for a zone that follows the model's own part, setting a
 different box places the zone there as one box again),
 `TouchZoneAddArea-` (*Add area*: a box beside the zone's last one; shown while
@@ -1999,7 +2021,7 @@ the zone has fewer than 8 areas and doesn't follow the model's own part),
 zone has more than one),
 `TouchZoneDelete-` and its areas on the picture (`TouchZoneRect-<n>` for the
 first, `TouchZoneRect-<n>-<k>` for area k from 2, inside
-`TouchZonesPicture`) save, so they all (except Stop) need `--allow-ui-effects`.
+`TouchZonesPicture`) save, so they all (except Stop and More) need `--allow-ui-effects`.
 Saving binds the zones to the model again with the probe kept beside the
 picture, so a box moved onto a tail gets that tail's areas, and the page then
 shows them. `TouchZonesShowOnCharacter` (*Show the zones on the character*, a
@@ -2043,6 +2065,28 @@ zones* is on without a model that can see). With it, setting
 makes the stand-in fail that request instead of answering, as a model whose
 computer stopped answering: *Detect zones* then stops there and keeps the zones
 from before (FIXTURE - NOT AI in `TouchZonesDetection`).
+
+At the end of the Touch zones card, *Start over* resets the character's touch
+to how a fresh character starts, for the model shown and the active persona
+only. `TouchZonesResetLevel` (a choice; its value is the level: *Zone
+reactions*, *Zones*, *Touch temperament* or *Everything*) chooses how much,
+and `TouchZonesResetNote` reads what that level clears (fixed text).
+`TouchZonesReset` (*Reset...*) opens a confirmation whose question,
+`TouchZonesResetQuestion`, lists exactly what is lost (zone names and counts,
+the persona's name, a custom temperament's name, the date the temperament was
+decided) and what happens after; `ConfirmationNo` (*Cancel*) leaves everything
+as it was and `ConfirmationYes` (*Reset*) resets. When the level has nothing to
+lose, no question opens. `TouchZonesResetState` reads what the last reset did
+(*Reset zones at 11:40 PM. Martlet places a first guess...*), *Nothing was
+reset.* after Cancel, or why it couldn't (*Not reset: ...*). *Zone reactions*
+gives every zone the reaction a fresh zone gets (its reactions, rest, *Martlet
+notices* and own words) and keeps the zones; *Zones* forgets this model's zones,
+found and added, with the picture and what the last detection sent, and the
+page then places a first guess again; *Touch temperament* forgets the persona's
+own temperament and what it uses instead, and the Thinking model decides it
+again from the personality when Martlet isn't replying; *Everything* does the
+last two. Choosing a level, Reset and its `ConfirmationYes` need
+`--allow-ui-effects`.
 
 `character_eyes` rehearses Companion › Eyes › [Where the eyes are](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
@@ -2144,8 +2188,9 @@ it offers every zone). A line shows only the controls that apply: a category at
 *(built-in)* shows only its attitude, `TouchTemperamentReaction2-` shows after
 a chosen first reaction and `TouchTemperamentLinger-` not after *(nothing)*,
 so the others are not in `ui_snapshot` until then.
-`TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
-reaction came from the temperament and how long it looks at your mouse.
+`TouchZonesLast` names the attitude, where the reaction came from (*its
+reaction list*, or for a zone not filled yet the temperament) and how long it
+looks at your mouse; `TouchZoneState-<n>` names the attitude (*loves it*).
 `TouchTemperamentDecide` (*Decide from personality* before anything is
 decided, then *Re-decide from personality*) sends the personality to Thinking
 (and the persona then uses its own decided temperament),
@@ -3383,6 +3428,15 @@ the whole reply. With `muted`, `ok` needs the voice muted at that piece
 text and captions that show all of it (every line unsaid for `text-only`).
 With `stopped`, `ok` needs the reply `Canceled` instead of completed, no voice
 failure and the `failAt`-th piece made; the text and the captions stop there.
+It also returns `cutOff`, what the conversation does with a reply the user
+stopped while Martlet said it (`CutOffReply`, as the talk window does):
+`saidAloud` (the turn's `SaidAloud`), `kept` (what the conversation keeps:
+only that, ending with the cut-off marker ` —`), `unsaid` (the rest of the
+reply's text so far) and `note` (the one-request note with the rest, from
+Companion › Prompts › *Cut off: what you hadn't said*, `prompt`), with
+`boardSource` and `noteAgeSeconds`. `cutOff.ok` (part of `ok`) needs `kept`
+to end with the marker, `saidAloud` to be the start of the reply's words and
+`saidAloud` and `unsaid` together to be all of them.
 Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
 spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
@@ -4506,7 +4560,25 @@ wanted), `own: waits for the sound it records`, `own: the message carries what
 it took` (a real FIXTURE script, `Write-Output ('FIXTURE ' + (6 * 7))`, run by
 the production `TerminalRunner`, a FIXTURE picture and recording) and
 `own: only a capable member takes it` (a text-only member never gets it; a
-member with vision and audio gets the picture and the sound). `passed` and
+member with vision and audio gets the picture and the sound). `touches fact`
+records FIXTURE pats, strokes across intimate zones, a move and a poke on a
+production `TouchLedger`, with replies draining some of them, then fills
+`{touches}` into an own check-in: each run with when, which were intimate,
+the persona's feeling and the places touched again and again. It shows that
+reading the history (`TouchLedger.History`) leaves what the next reply gets
+the same, that the history outlives a reply's `Drain`, that the fact goes
+after the prompt when it is ticked but not placed, and that facts past
+`Touches` are refused. Its `detail` gives counts (`runs`, `things`,
+`intimate`, `often`), `filled` and the FIXTURE message. Three
+`context:` steps check *Adds to what Martlet knows*: `context: asked and read`
+(an own check-in's message asks for a `KNOW:` line or `OK`, and a fixture
+member's `KNOW:` bullet after a `<think>` block is read on a production job
+board), `context: goes with one request` (the description, wrapped in
+*Check-in: adds to what Martlet knows*, goes on a production context board as
+`check-in-c7` with one request only, is dropped after
+`CheckIns.ContextAge` (3 minutes) and is not posted when that prompt is
+emptied) and `context: nothing changes nothing` (`KNOW: nothing to add`, `OK`,
+a `REMIND:` line and chatter post nothing). `passed` and
 each step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
@@ -4848,7 +4920,18 @@ member lets the rules decide at once (*no Thinking pool judge was available*)
 and an answer without a verdict lets them decide; each with `answer`,
 `verdict`, `source`, `reason`, `tookMs` and `promptLines`) and `ok` when every
 expectation held. `thinking_pool_status` says whether the pool has a member
-that can run the judge.
+that can run the judge. `unprompted` (with `unpromptedOk`) checks [what
+Martlet says on its own](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)
+(`UnpromptedSpeech`): `talkOver` has one entry for each kind (`Reminder`,
+`FinishedWork`, `CheckIn`, `Remark`) with `pausedForJudge` (false for a
+remark: it is dropped at once) and what a not-for-Martlet verdict does after a
+600 ms and a 3000 ms pause (`Resume` or `Drop`; `resumeWithinMs` is the
+limit). `notices` starts a fixture check-in notice and a fixture reminder on
+the production `BackgroundJobs` with a simulated clock and checks them again
+as just before they are said: `action` `Say`, `Wait` (`code` `mid_utterance`
+or `live`) or `Drop` (`too_old` after `checkInMaxWaitMinutes`, `moved_on`
+after a kept exchange), a reminder never dropped, and `DropStale` dropping
+only the old check-in. Each has `why` in words, never the notice's text.
 Nothing is recorded or played and nothing leaves this PC. `spoken_reply_check`
 `paused` rehearses the pause and resume through the production runtime; the
 talk window's `LiveBargeIn` shows the last real decision.
@@ -7192,7 +7275,11 @@ talk window, `LiveBargeIn` (shown once you talked over Martlet with barge-in on)
 says what happened the last time, never the words: *Talked over at 14:02:11:
 paused 430 ms, then resumed (not for Martlet: agreeing or laughing along; rules
 judge, 1 ms).* or *... stopped at once (for Martlet: a stop word; a clear
-cue).* In the
+cue).* A remark Martlet started on its own ends *then dropped* when it was
+dropped. `LiveUnprompted` (shown after the first drop) counts what Martlet
+meant to say on its own but dropped, never the text: *Dropped on its own: 2 (1
+too old, 1 the conversation moved on, 0 talked over). Last: checkin-3 (a
+check-in) at 14:02:11: too old: ...*. In the
 talk window, what always listening ignored shows in `LiveHistory` as a faded
 note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
 *Always listening ignored what it heard: ...*, *Always listening heard you

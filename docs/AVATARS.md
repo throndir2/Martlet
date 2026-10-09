@@ -517,6 +517,22 @@ ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner
 thighs) react too while **Include intimate zones** is on, which it is by
 default; turn it off to leave them out. The check box names each of these parts.
 
+**Start over**, at the end of the card, resets the character's touch to how a
+fresh character starts. Choose how much, then press **Reset...**:
+
+- **Zone reactions:** each zone plays what a fresh zone gets again, rests 4
+  seconds, Martlet notices it and your own words go. The zones and boxes stay.
+- **Zones:** this model's zones, found and added, go with their boxes, names,
+  reactions and pictures. Martlet places a first guess again, as for a new
+  character.
+- **Touch temperament:** the active persona's touch temperament, decided or
+  changed by you, goes with any temperament it uses instead. The Thinking
+  model decides it again from the personality. Your other computers share it.
+- **Everything:** the zones and the touch temperament.
+
+Martlet first lists exactly what you lose and resets nothing until you press
+**Reset**. Other models and personas keep theirs.
+
 - **First zones, with no AI.** The first time the page shows a model that has
   no zones and no picture yet, Martlet draws the character off screen (as
   Detect zones does, step 1 below) and places a first guess at the short list
@@ -791,9 +807,19 @@ default; turn it off to leave them out. The check box names each of these parts.
   zones' boxes where the part is now, not where it hung at rest. So a click on
   the tail where it swung beside the waist doesn't also touch the calf that
   hid the tail at rest.
-- Each zone plays its emotes and gestures (by default the model's own where it
-  has them: a head pat leans in or tilts and smiles, a cheek blushes, an
-  intimate zone blushes and flinches) and rests a few seconds before reacting
+- Each zone has a reaction list: the emotes, gestures and motions (and voice
+  sounds) it plays on its own, in order, each time you touch it. The list
+  shows exactly what plays; nothing hidden plays instead. Under **Plays** each
+  entry is a chip: **‹** plays it earlier, **×** removes it, **Add a
+  reaction** adds one at the end (up to 8), and **Defaults** fills the list
+  again with what a new zone gets. A new zone's list starts from the
+  persona's touch temperament for that part, else from the zone's built-in
+  reaction (the model's own where it has them: its tap motion, then a head pat
+  leans in or tilts and smiles, a cheek blushes, an intimate zone blushes and
+  flinches). Zones saved before reaction lists get the list they played then,
+  the first time Martlet reads the model's emotes, so nothing changes. An
+  entry the model doesn't have stays in the list, greyed (*not on this
+  model*), and is skipped. The zone then rests a few seconds before reacting
   again. **Martlet notices** is on for every zone by default (zones saved
   before it was, where you never turned it on for any zone, get it on once;
   turn it off for a zone to keep its touches between you and the character).
@@ -820,8 +846,12 @@ default; turn it off to leave them out. The check box names each of these parts.
   *(touch: top of head pat x3)*, the talk window shows a touch-only reply as a
   note, and the prompts are on Companion › Prompts (*Touched*,
   *Touched, with your message* and *Touched, cutting you off*). While the switch is on, a box beside it takes your
-  own words for the touch (optional), sent as a hint. Rename, turn off, move or resize
-  (drag the box or its corner on the picture, or type it), delete or add zones;
+  own words for the touch (optional), sent as a hint. Each zone's row is
+  compact: its switch, name and parts, **Try** (plays its list), then its
+  reaction list, then how long it rests and **Martlet notices**. **More**
+  shows its box and **Delete**. Rename, turn off, move or resize zones (drag
+  the box or its corner on the picture, or type it under **More**), delete or
+  add zones;
   **Try** plays one. To place a box precisely, zoom the picture in with
   **Zoom in** (up to 8x) or Ctrl+mouse wheel over it (which zooms where the
   pointer is): the picture grows but the boxes' lines, names and corners keep
@@ -1000,11 +1030,13 @@ category*; **Add part** offers every zone, the breasts and the groin too.
 - A reaction resolves on the model shown: the model's own expression or motion
   with a matching name (Angry, Love, Blush...) comes first, else Martlet's
   gesture or overlay.
-- What a touch plays: a zone's own pick under Touch zones, then the part's own
-  line in the temperament the persona uses, then its category, then the zone's
-  built-in reaction. How long the eyes then look at your mouse always comes
-  from the temperament. Intimate parts react only with **Include intimate
-  zones** on.
+- What a touch plays: the zone's reaction list under Touch zones. The
+  temperament the persona uses fills a new zone's list (the part's own line,
+  then its category, else the zone's built-in reaction). For every zone it
+  also gives how the character feels about the touch, how long the first
+  reaction lingers, how long the eyes then look at your mouse, and the
+  escalation, which plays first. Intimate parts react only with **Include
+  intimate zones** on.
 - A temperament decided before the Intimate parts category has no intimate
   line. Its *Intimate parts* line then reads *(as the body)*: each
   intimate part reacts as before, as the category of the body around it. The

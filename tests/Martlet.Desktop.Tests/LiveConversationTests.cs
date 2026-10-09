@@ -2903,6 +2903,62 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    [Theory]
+    [InlineData("talked over")]
+    [InlineData("stop")]
+    public Task AReplyStoppedWhileSpokenKeepsOnlyWhatWasSaidAloudAndTheRestGoesOnce(string how) => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Once upon a time there was a fox.", " It lived in a quiet wood.");
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: true));
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "Tell me a story.";
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            var story = Assert.IsType<LiveConversationOperation>(window.Current);
+            await Until(() => story.Turn?.SaidAloud.Length > 0 && story.Turn.Content.Text.Contains("quiet wood"));
+
+            // Talking over it stops it the way the talk window's barge-in does; Stop is the button (or Esc).
+            if (how == "stop") Click(window, "StopButton");
+            else fixture.Controller.Stop(story, "conversation.interrupted", keepContext: true);
+            await fixture.Advance(() => story.OwnershipReleased);
+            fixture.Output.AutoConsume = true;
+            Assert.Equal(new CutOffKept("Once upon a time there was a fox.".Length, "It lived in a quiet wood.".Length, true), story.CutOff);
+            Assert.Equal(1, fixture.Controller.ContextTurns);
+
+            // The next reply's history has only what was said aloud, marked as cut off; the rest goes once in its notes.
+            fixture.Answer("A red fox.");
+            Control<TextBox>(window, "InputText").Text = "Wait, what kind of fox?";
+            Click(window, "SendButton");
+            await fixture.Advance(() => fixture.Llm.Calls >= 2);
+            using (var body = JsonDocument.Parse(fixture.Llm.Body))
+            {
+                var input = body.RootElement.GetProperty("input");
+                Assert.Equal("Tell me a story.", input[0].GetProperty("content").GetString());
+                Assert.Equal("Once upon a time there was a fox." + CutOffReply.Marker, input[1].GetProperty("content").GetString());
+                Assert.DoesNotContain("quiet wood", input[1].GetProperty("content").GetString());
+                var notes = ResponsesCurrentNotes(body);
+                Assert.Contains("What you hadn't said yet: \"It lived in a quiet wood.\"", notes);
+            }
+            var next = Assert.IsType<LiveConversationOperation>(window.Current);
+            await fixture.Advance(() => next.OwnershipReleased);
+            Assert.Null(next.CutOff);
+            Assert.Equal(2, fixture.Controller.ContextTurns);
+            Assert.Contains(fixture.Controller.RecentSayings(fixture.Clock.GetLocalNow()), said => said.Text == "Once upon a time there was a fox." + CutOffReply.Marker);
+
+            // It went with that one request only.
+            fixture.Answer("Sure.");
+            Control<TextBox>(window, "InputText").Text = "Go on.";
+            Click(window, "SendButton");
+            await fixture.Advance(() => fixture.Llm.Calls >= 3);
+            using var third = JsonDocument.Parse(fixture.Llm.Body);
+            Assert.DoesNotContain("quiet wood", ResponsesCurrentUserText(third));
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public Task ATouchThatIsNotIntimateWaitsWhileMartletTalksWhenOnlyIntimateTouchesStopIt() => DispatcherTest(async () =>
     {

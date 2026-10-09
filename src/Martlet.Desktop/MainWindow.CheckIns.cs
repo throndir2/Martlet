@@ -75,7 +75,12 @@ public partial class MainWindow
             "Martlet's newest words about what this PC plays (music, videos, games), while it hears it. It isn't a recording: " +
             "choose one below for that. Placeholder: {sound}."),
         (CheckInFacts.Presence, "Whether you're at the PC",
-            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse. Placeholder: {presence}.")
+            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse. Placeholder: {presence}."),
+        (CheckInFacts.Touches, "How you touched the character",
+            $"What you did to the character on the desktop in the last {TouchLedger.OftenWindow.TotalMinutes:0} minutes, oldest " +
+            "first, each with when: pokes, pats, holds, strokes with their path and direction, and moves. It says which touches " +
+            "were intimate, how the personality feels about them and the places you keep coming back to. Martlet only reads " +
+            "it: its next reply still gets your touches. Placeholder: {touches}.")
     ];
 
     private static readonly (CheckInConditions Condition, string Label, string Help)[] CheckInConditionChoices =
@@ -106,18 +111,21 @@ public partial class MainWindow
     [
         (CheckInOutcome.Note, "Reminds Martlet in its next reply"),
         (CheckInOutcome.Say, "Martlet brings it up"),
+        (CheckInOutcome.Context, "Adds to what Martlet knows"),
         (CheckInOutcome.EmotesOff, "Turns off the emotes it names"),
         (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual")
     ];
 
     private const string CheckInOutcomeHelp = "Martlet adds the answer format to the prompt. A reminder: a REMIND: line goes in " +
         "the notes of your next message, so Martlet's next reply follows it. Brings it up: a SAY: line, which Martlet says on its " +
-        "own as soon as it's free. Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
+        "own as soon as it's free. Adds to what Martlet knows: a KNOW: line, a short description of what is happening, goes in " +
+        "the notes of your next message (within a few minutes) as background Martlet may draw on, not a reminder to follow. " +
+        "Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing.";
 
     private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {conversation}, " +
-        "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound} and " +
-        "{presence}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
+        "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
+        "{presence} and {touches}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
     private void InitializeCheckIns()
     {
@@ -337,6 +345,7 @@ public partial class MainWindow
                 CheckInOutcome.EmotesOff => "every emote still fits",
                 CheckInOutcome.GazeUsual => "the gaze still fits",
                 CheckInOutcome.Say => "nothing to bring up",
+                CheckInOutcome.Context => "nothing to add to what Martlet knows",
                 _ => "nothing to remind Martlet of"
             }, false);
         switch (checkIn.Outcome)
@@ -370,6 +379,15 @@ public partial class MainWindow
                 catch (InvalidOperationException) { return ("the context board is full, so nothing went to the conversation", false); }
                 return ($"a reminder waits for the next reply ({verdict.Text!.Length} characters)", true);
             }
+            case CheckInOutcome.Context:
+            {
+                if (CheckIns.Context(prompts, verdict.Text!) is not { } context)
+                    return ("the Check-in: adds to what Martlet knows prompt is empty, so nothing went to the conversation", false);
+                try { contextBoard.Post(CheckIns.Source(checkIn.Id), context, DateTimeOffset.Now, CheckIns.ContextAge, consume: true); }
+                catch (InvalidOperationException) { return ("the context board is full, so nothing went to the conversation", false); }
+                return ($"background for the next reply waits {CheckIns.ContextAge.TotalMinutes:0} minutes at most " +
+                    $"({verdict.Text!.Length} characters)", true);
+            }
             default:
                 return ConversationSession()?.BringUp(checkIn.Name, verdict.Text!) is null
                     ? ("Martlet can't talk now, so it was dropped", false)
@@ -379,7 +397,8 @@ public partial class MainWindow
 
     /// <summary>What the check-ins may know now (on the UI thread): the time, the personality, the conversation's newest
     /// exchanges, what Martlet said lately with when, how long it and this PC have been quiet, the lingering emotes a reply
-    /// turned on, a gaze a reply chose, the reminders and background work, and the context board's screen and sound notes.</summary>
+    /// turned on, a gaze a reply chose, the reminders and background work, the context board's screen and sound notes, and what
+    /// the user did to the character lately (read without taking it from the next reply).</summary>
     private CheckInState CheckInStateNow()
     {
         var now = DateTimeOffset.Now;
@@ -406,6 +425,8 @@ public partial class MainWindow
             Screen = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Screen)?.Text,
             Sound = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Sound)?.Text,
             Said = conversation?.RecentSayings(now) ?? [],
+            // Read without taking: the next reply still drains these touches as before.
+            Touches = conversation?.Touches.History(conversation.TouchNow),
             HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh)
         };
     }

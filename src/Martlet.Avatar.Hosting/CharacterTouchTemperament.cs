@@ -149,12 +149,13 @@ public sealed record TouchTemperamentSet
 }
 
 /// <summary>What a touch on a zone plays: the model's emotes, motions and gestures, how long the first one lingers, the
-/// persona's attitude word for the zone (null without a temperament), where the reaction came from (<c>owner</c>: the zone's
-/// own pick, <c>temperament</c>: the persona's temperament, <c>default</c>: the zone's built-in reaction), whether repeated
-/// touches escalated it, and how many seconds the character looks at the mouse pointer after it (the temperament's; 0: it
-/// doesn't).</summary>
+/// persona's attitude word for the zone (null without a temperament), where the list came from (<c>owner</c>: the zone's own
+/// reaction list, <c>temperament</c>: a zone not filled yet, from the persona's temperament, <c>default</c>: a zone not filled
+/// yet, its built-in reaction), whether repeated touches escalated it, how many seconds the character looks at the mouse
+/// pointer after it (the temperament's; 0: it doesn't), and the cues of the active voice's sounds the list holds
+/// (<see cref="CharacterTouchReaction.SoundPrefix"/>), in order.</summary>
 public sealed record TouchReactionPlan(IReadOnlyList<CharacterActionSource> Actions, double LingerSeconds = 0, string? Attitude = null,
-    string From = TouchReactionPlan.FromDefault, bool Escalated = false, double LookSeconds = 0)
+    string From = TouchReactionPlan.FromDefault, bool Escalated = false, double LookSeconds = 0, IReadOnlyList<string>? Sounds = null)
 {
     public const string FromOwner = "owner", FromTemperament = "temperament", FromDefault = "default";
 }
@@ -294,12 +295,17 @@ public static class CharacterTouchTemperaments
     public static (IReadOnlyList<string> Words, bool Escalated) Words(CharacterTouchTemperament temperament, TouchTemperamentEntry entry, int repeats)
     {
         var words = entry.Reactions ?? DefaultReactions(entry.Attitude);
-        var escalation = repeats >= Math.Max(MinimumAfter, temperament.Escalation.After)
-            ? entry.Attitude <= -1 ? temperament.Escalation.Disliked : entry.Attitude >= 2 ? temperament.Escalation.Loved : null
-            : null;
-        if (escalation is not { Count: > 0 }) return (words.Take(MaximumReactions).ToArray(), false);
+        if (Escalation(temperament, entry, repeats) is not { Count: > 0 } escalation) return (words.Take(MaximumReactions).ToArray(), false);
         return (escalation.Concat(words).Distinct(StringComparer.Ordinal).Take(MaximumReactions).ToArray(), true);
     }
+
+    /// <summary>What plays first after <see cref="TouchEscalation.After"/> touches in a row (<paramref name="repeats"/>, this one
+    /// included): <see cref="TouchEscalation.Disliked"/> for a disliked or hated zone, <see cref="TouchEscalation.Loved"/> for a
+    /// loved or craved one; null before that or for a zone the persona feels less strongly about.</summary>
+    public static IReadOnlyList<string>? Escalation(CharacterTouchTemperament temperament, TouchTemperamentEntry entry, int repeats) =>
+        repeats >= Math.Max(MinimumAfter, temperament.Escalation.After)
+            ? entry.Attitude <= -1 ? temperament.Escalation.Disliked : entry.Attitude >= 2 ? temperament.Escalation.Loved : null
+            : null;
 
     /// <summary>The model's emotes and motions for abstract reactions: for each word, the model's own expression (then motion)
     /// whose tag or name matches it first, else Martlet's gesture of that name, if in use. Words the model has neither for are

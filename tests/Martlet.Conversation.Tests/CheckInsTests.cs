@@ -241,6 +241,52 @@ public sealed class CheckInsTests
         Assert.Null(CheckIns.Note(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInNote] = "" } }, "x"));
     }
 
+    [Theory]
+    [InlineData("KNOW: Her tail is still curled from the long stroke down her back.", "Her tail is still curled from the long stroke down her back.")]
+    [InlineData("<think>Touches on the tail and hips.</think>\n- **KNOW:** \"She leans into the touch.\"", "She leans into the touch.")]
+    [InlineData("OK", null)]
+    [InlineData("KNOW: nothing to add.", null)]
+    [InlineData("KNOW: nothing", null)]
+    public void ReadsWhatACheckInAddsToWhatMartletKnows(string answer, string? expected)
+    {
+        var describes = CheckIns.Of(new() { Id = "c1", Name = "Describes", Task = "Describe the moment.", Outcome = CheckInOutcome.Context });
+        var verdict = CheckIns.Read(describes, answer, State());
+        Assert.True(verdict.Readable);
+        Assert.Equal(expected, verdict.Text);
+        Assert.Equal(expected is not null, verdict.Act);
+        Assert.False(CheckIns.Read(describes, "REMIND: Be gentle.", State()).Act);
+        Assert.False(CheckIns.Read(describes, "It all looks calm.", State()).Readable);
+        Assert.False(CheckIns.Read(Built(CheckIns.Promises), "KNOW: She leans into the touch.", State()).Act);
+    }
+
+    [Fact]
+    public void ACheckInsContextAsksForAKnowLineAndGoesWithOneFreshRequestOnly()
+    {
+        var describes = CheckIns.Of(new() { Id = "c1", Name = "Describes", Task = "Describe the moment.", Outcome = CheckInOutcome.Context });
+        Assert.Contains("adds to what Martlet knows", describes.Does);
+        var message = CheckIns.Message(describes, State(), null)!;
+        Assert.Contains("If there is nothing worth adding, write only: OK", message);
+        Assert.Contains("one line that starts with KNOW: and describes what is happening, briefly and vividly, as background Mira", message);
+        Assert.DoesNotContain("REMIND:", message);
+
+        var context = CheckIns.Context(null, "She leans into the touch.")!;
+        Assert.Contains("What is happening now, from your own check-in, for you only: She leans into the touch.", context);
+        Assert.Contains("not a reminder to follow", context);
+        var board = new ContextBoard();
+        board.Post(CheckIns.Source("c1"), context, Now, CheckIns.ContextAge, consume: true);
+        var sent = board.Snapshot(Now.AddMinutes(1));
+        Assert.Contains("check-in-c1", sent.Sources);
+        board.MarkSent(sent);
+        Assert.DoesNotContain("check-in-c1", board.Snapshot(Now.AddMinutes(1.5)).Sources);
+        board.Post(CheckIns.Source("c1"), context, Now, CheckIns.ContextAge, consume: true);
+        Assert.DoesNotContain("check-in-c1", board.Snapshot(Now + CheckIns.ContextAge + TimeSpan.FromSeconds(1)).Sources);
+        Assert.True(CheckIns.ContextAge < CheckIns.NoteAge);
+        Assert.Null(CheckIns.Context(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInContext] = "" } }, "x"));
+        new CheckInSettings().With(CheckIns.Promises, new CheckInChoice(true, 5) { Outcome = CheckInOutcome.Context })
+            .With(new CustomCheckIn { Id = "c1", Name = "Describes", Outcome = CheckInOutcome.Context }).Validate();
+        Assert.Equal(4, (int)CheckInOutcome.Context);
+    }
+
     [Fact]
     public async Task WhatACheckInBringsUpIsWordedAsItsOwnBesideADueReminder()
     {
@@ -326,7 +372,7 @@ public sealed class CheckInsTests
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
             PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
-            PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
+            PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
         foreach (var id in ids)
         {
             var prompt = PromptCatalog.Find(id)!;
@@ -545,6 +591,46 @@ public sealed class CheckInsTests
         Assert.Contains("- 10:05 PM (12 min ago): \"Ooh, that boss is almost down!\"\n", placed);
         Assert.Contains("\nIs that too much?", placed);
         Assert.DoesNotContain("What Mira said in the last hour", placed);
+    }
+
+    // The Touches fact: what the user did to the character lately, with when, which touches were intimate, how the persona feels
+    // and where they keep coming back to, in the words the replies hear; read from the ledger without taking it.
+    [Fact]
+    public void YourOwnCheckInCanKnowHowTheUserTouchedTheCharacter()
+    {
+        var ledger = new TouchLedger();
+        var at = TimeSpan.FromMinutes(30);
+        PhysicalEvent Stroke(TimeSpan when) => new(PhysicalKind.Stroke, when, "down from your tail to your groin", "tail → groin", "slowly",
+            Zones: ["your tail", "your groin"], Intimate: true, Feeling: "you love being touched there");
+        ledger.Record(new(PhysicalKind.Pat, at - TimeSpan.FromMinutes(6), "the top of your head", "top of head"));
+        ledger.Drain(at - TimeSpan.FromMinutes(6));
+        for (var i = 0; i < 5; i++) ledger.Record(Stroke(at - TimeSpan.FromSeconds(30)));
+        var waiting = ledger.Peek(at)!.Line;
+        var state = State() with { Touches = ledger.History(at) };
+        Assert.Equal(waiting, ledger.Peek(at)!.Line);
+
+        var own = CheckIns.Of(new CustomCheckIn { Id = "c1", Name = "Touches", Task = "Describe the touches.", Facts = CheckInFacts.Touches });
+        var message = CheckIns.Message(own, state, null)!;
+        Assert.Contains("What the user did to Mira's character on the desktop in the last 10 minutes, oldest first, each with when, " +
+            "in the words Mira hears (\"you\" is Mira):\n" +
+            "- 10:11 PM (6 min ago): They patted the top of your head once.\n" +
+            "- 10:16 PM (30 s ago, intimate): They slowly stroked down from your tail to your groin 5 times (you love being touched there).\n" +
+            "They keep coming back to your tail (5 times) and your groin (5 times) in the last minute.", message);
+        Assert.DoesNotContain("The end of the conversation", message);
+
+        var placed = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c2", Name = "Placed", Task = "Lately:\n{touches}\nDescribe it.", Facts = CheckInFacts.Touches
+        }), state, null)!;
+        Assert.StartsWith("Lately:\nWhat the user did to Mira's character", placed);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(placed, "What the user did to"));
+        Assert.Equal(CheckInFacts.Touches, CheckIns.Placed("{touches}"));
+        Assert.Equal("The user didn't touch Mira's character on the desktop in the last 10 minutes.", CheckIns.Touches(State()));
+
+        // Reading it never takes what the next reply gets.
+        Assert.Equal(waiting, ledger.Drain(at)!.Line);
+        new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Touches", Facts = CheckInFacts.Touches }).Validate();
+        Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", Facts = (CheckInFacts)1024 }).Validate());
     }
 
     [Fact]

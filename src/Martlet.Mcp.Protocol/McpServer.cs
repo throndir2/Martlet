@@ -788,11 +788,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "wanted ones it couldn't place and the steps (what placed each). save writes " +
             "the parsed (or detected, or estimated) zones (or, with add alone, the zones with the ones added) (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
-            "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
+            "disposable dataDirectory as Detect zones would, each zone with no reaction list yet given the one a new zone gets (as " +
+            "the desktop saves them). Each saved zone reports reactions (its reaction list as saved, in play order: emote, gesture and " +
+            "motion IDs and sound:<cue> voice sounds, every entry kept; null when not filled yet), seed (the list a new zone gets: " +
+            "Defaults), plays (what it plays on the model) and sounds (the cues of its voice sounds). temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
             "personaId (the temperament that persona uses in the dataDirectory's character-temperaments.json: its own, the built-in " +
-            "reactions or a custom one) decides what the touch plays when the zone has no pick of its own, with repeats (touches in a " +
-            "row, for escalation); personality shows the request Thinking gets. The result's temperament also lists the categories with " +
+            "reactions or a custom one) seeds the list of a zone not filled yet and gives every zone its attitude, linger, look and, " +
+            "with repeats (touches in a " +
+            "row), escalation; personality shows the request Thinking gets. The result's temperament also lists the categories with " +
             "the zone kinds each covers (intimate holds every intimate kind), the custom temperaments and which temperament each persona " +
             "uses. Contacts nothing; never returns the model's path.", new
         {
@@ -1241,7 +1245,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "latency line saying it paused and resumed (with characterTags, also no cue acted while paused: a cue that falls in " +
             "the pause waits for it); stopped has the user stop the reply (Stop, or talking over it) as the failAt-th piece starts " +
             "playing, and ok then needs the reply canceled and no cue acted after the stop (character.stoppedAtMs; the cues still " +
-            "waiting are dropped); text-only sends the reply with no voice at all (Speak " +
+            "waiting are dropped) and cutOff right: what the conversation keeps (kept: only saidAloud, ending with the cut-off " +
+            "marker) and the rest it hadn't said (unsaid, with the note that goes once in the next request's notes, Companion > " +
+            "Prompts > Cut off: what you hadn't said), which together are the reply's words; text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -1401,7 +1407,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "deadline, and one in time must be used. holds: what a pause does on a simulated clock (quiet after notForMe plays on; " +
             "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). modelJudge: the Thinking pool's model " +
             "judge with fixture answers (NOT AI): a verdict is used, no pool member lets the rules decide at once, an answer without " +
-            "a verdict lets them decide. Also returns the saved choice " +
+            "a verdict lets them decide. unprompted: what Martlet says on its own (UnpromptedSpeech): words over a screen or camera " +
+            "remark drop it at once; notForMe over a reminder plays on, over finished work or a check-in plays on only after a short " +
+            "pause (resumeWithinMs), else drops it; and a waiting check-in and reminder checked again just before they are said on a " +
+            "simulated clock (say, wait while you are mid-utterance or the live floor is Live, drop a check-in that is too old or that " +
+            "the conversation moved on from; a reminder is never dropped). Also returns the saved choice " +
             "(behavior PauseAndDecide or StopAtOnce from talk-preferences.json, bargeIn, wordCheck) and the timings. ok when every " +
             "expectation held. Nothing is recorded or played; nothing leaves this PC.", new
         {

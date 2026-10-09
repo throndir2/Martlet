@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 /// when the page opens on a model with none (<see cref="EstimateAsync"/>), then found per model by the Thinking model (when it
 /// can see) step by step in a snapshot of the character (<see cref="TouchZoneDetection"/>), bound to the model's drawables or
 /// bones, saved per model in character-touch-zones.json with the pictures the model saw, and what a touch on each does.</summary>
-internal sealed class CharacterTouchZoneService(string? dataDirectory)
+internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
 {
     /// <summary>A file whose zones (JSON as a vision model answers about the whole snapshot) stand in for the vision model: every
     /// request of a detection is answered from them (FIXTURE - NOT AI), so MCP verification runs the real snapshot, pictures,
@@ -69,6 +69,10 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         sent.Pictures.FirstOrDefault(p => p.Kind == nameof(ZoneAskKind.Parts)) is { } first &&
         Path.Combine(folder, first.File) is var path && File.Exists(path) ? path : null;
 
+    /// <summary>Fills the reaction lists the zones don't have yet (<see cref="CharacterTouchZones.Filled"/>) once the model's emotes
+    /// are known; unchanged settings otherwise. Set by the main window; applied to the zones loaded and to every save.</summary>
+    internal Func<CharacterTouchZoneSettings, CharacterTouchZoneSettings>? Fill { get; set; }
+
     /// <summary>Loads the zones of the model with <paramref name="id"/> unless they are already loaded.</summary>
     internal void Follow(string? id)
     {
@@ -79,13 +83,24 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         Volatile.Write(ref detection, null);
         lock (rested) rested.Clear();
         lock (streaks) streaks.Clear();
+        FillLists();
         Changed?.Invoke();
+    }
+
+    /// <summary>Gives the loaded zones that have no reaction list yet (saved before reaction lists, or just found) the list they
+    /// play now, and saves them, once the model's emotes are known (<see cref="Fill"/>).</summary>
+    internal void FillLists()
+    {
+        if (Current is not { } loaded || Fill?.Invoke(loaded) is not { } filled || ReferenceEquals(filled, loaded)) return;
+        Volatile.Write(ref current, filled);
+        SaveAsync(filled, CancellationToken.None).Forget();
     }
 
     /// <summary>Saves the loaded model's zones; returns why they couldn't be saved, or null.</summary>
     internal async Task<string?> SaveAsync(CharacterTouchZoneSettings settings, CancellationToken token)
     {
         if (dataDirectory is null) return "Martlet's data folder isn't available.";
+        settings = Fill?.Invoke(settings) ?? settings;
         try
         {
             var saved = await CharacterTouchZones.SaveAsync(dataDirectory, settings, DateTimeOffset.Now, token);
@@ -473,7 +488,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     internal static string Describe(TouchReactionPlan reaction, int repeats) =>
         " (" + (reaction.Attitude is { } attitude ? attitude + " it, " : "") + reaction.From switch
         {
-            TouchReactionPlan.FromOwner => "your pick for the zone",
+            TouchReactionPlan.FromOwner => "its reaction list",
             TouchReactionPlan.FromTemperament => "from the persona's temperament",
             _ => "built-in reaction"
         } + (reaction.LookSeconds > 0 ? System.FormattableString.Invariant($", looks at your mouse for {reaction.LookSeconds:0.#} s") : "") +

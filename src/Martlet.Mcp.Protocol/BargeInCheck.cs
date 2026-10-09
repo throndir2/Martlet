@@ -54,12 +54,13 @@ internal static class BargeInCheck
         var deadlines = await DeadlineAsync(deadline, slow, sensitivity, cancellation);
         var holds = Holds();
         var models = await ModelJudgeAsync(sensitivity, cancellation);
+        var unprompted = await UnpromptedAsync(cancellation);
         var modelsOk = models.All(m => m.Ok);
         var deadlinesOk = deadlines.All(d => d.Ok);
         var holdsOk = holds.All(h => h.Ok);
         return new
         {
-            ok = samplesOk && deadlinesOk && holdsOk && modelsOk,
+            ok = samplesOk && deadlinesOk && holdsOk && modelsOk && unprompted.Ok,
             behavior = behavior.ToString(),
             behaviorSource = source,
             bargeIn,
@@ -80,11 +81,95 @@ internal static class BargeInCheck
             holdsOk,
             holds = holds.Select(h => h.Value),
             modelJudgeOk = modelsOk,
-            modelJudge = models.Select(m => m.Value)
+            modelJudge = models.Select(m => m.Value),
+            unpromptedOk = unprompted.Ok,
+            unprompted = unprompted.Value
         };
     }
 
     private sealed record Result(bool Ok, object Value);
+
+    private sealed class SettableClock(DateTimeOffset now) : TimeProvider
+    {
+        internal DateTimeOffset Now { get; set; } = now;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    // What Martlet says on its own (UnpromptedSpeech): what words over each kind do (a screen or camera remark is dropped at once,
+    // a reminder plays on, finished work and a check-in play on only after a short pause), and a waiting check-in and reminder
+    // checked again just before they are said on a simulated clock: production BackgroundJobs, Recheck and DropStale.
+    private static async Task<Result> UnpromptedAsync(CancellationToken cancellation)
+    {
+        var shortPause = TimeSpan.FromMilliseconds(600);
+        var longPause = TimeSpan.FromMilliseconds(3000);
+        var talkOver = new List<Result>();
+        foreach (var (kind, judged, afterShort, afterLong) in new (UnpromptedKind, bool, UnpromptedAfterTalkOver, UnpromptedAfterTalkOver)[]
+        {
+            (UnpromptedKind.Reminder, true, UnpromptedAfterTalkOver.Resume, UnpromptedAfterTalkOver.Resume),
+            (UnpromptedKind.FinishedWork, true, UnpromptedAfterTalkOver.Resume, UnpromptedAfterTalkOver.Drop),
+            (UnpromptedKind.CheckIn, true, UnpromptedAfterTalkOver.Resume, UnpromptedAfterTalkOver.Drop),
+            (UnpromptedKind.Remark, false, UnpromptedAfterTalkOver.Drop, UnpromptedAfterTalkOver.Drop)
+        })
+        {
+            var isJudged = UnpromptedSpeech.Judged(kind);
+            var quick = UnpromptedSpeech.AfterNotForMe(kind, shortPause);
+            var slow = UnpromptedSpeech.AfterNotForMe(kind, longPause);
+            var ok = isJudged == judged && quick == afterShort && slow == afterLong;
+            talkOver.Add(new(ok, new
+            {
+                kind = kind.ToString(), ok, pausedForJudge = isJudged, notForMeAfterShortPause = quick.ToString(),
+                notForMeAfterLongPause = slow.ToString(), interrupt = "Stop"
+            }));
+        }
+
+        var start = new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
+        var clock = new SettableClock(start);
+        using var jobs = new BackgroundJobs(clock);
+        var checkIn = jobs.Start(CheckIns.SayKind, "fixture check-in",
+            (_, _) => Task.FromResult(BackgroundJobOutcome.Done("FIXTURE notice text"))).Job!;
+        var reminder = jobs.Start(Reminders.Kind, "fixture reminder",
+            (_, _) => Task.FromResult(BackgroundJobOutcome.Done("FIXTURE reminder text"))).Job!;
+        for (var i = 0; i < 200 && !(checkIn.Finished && reminder.Finished); i++) await Task.Delay(10, cancellation);
+        var due = checkIn.FinishedUtc ?? start;
+        var notices = new List<Result>();
+        void Case(string name, BackgroundJob job, DateTimeOffset now, DateTimeOffset? exchange, bool mid, LiveFloorLevel floor,
+            NoticeAction expect, string code)
+        {
+            var check = UnpromptedSpeech.Recheck(job, now, exchange, mid, floor);
+            var ok = check.Action == expect && check.Code == code;
+            notices.Add(new(ok, new { name, ok, job = job.Id, action = check.Action.ToString(), code = check.Code, why = check.Why }));
+        }
+        Case("fresh check-in, nothing holds it", checkIn, due + TimeSpan.FromSeconds(5), null, false, LiveFloorLevel.Idle, NoticeAction.Say, "free");
+        Case("you are mid-utterance", checkIn, due + TimeSpan.FromSeconds(5), null, true, LiveFloorLevel.Listening, NoticeAction.Wait, "mid_utterance");
+        Case("the live floor is Live", checkIn, due + TimeSpan.FromSeconds(5), null, false, LiveFloorLevel.Live, NoticeAction.Wait, "live");
+        Case("the conversation moved on", checkIn, due + TimeSpan.FromMinutes(1), due + TimeSpan.FromSeconds(30), false,
+            LiveFloorLevel.Idle, NoticeAction.Drop, "moved_on");
+        Case("check-in too old", checkIn, due + UnpromptedSpeech.CheckInMaxWait + TimeSpan.FromMinutes(1), null, false,
+            LiveFloorLevel.Idle, NoticeAction.Drop, "too_old");
+        Case("reminder never too old", reminder, due + TimeSpan.FromHours(3), due + TimeSpan.FromMinutes(5), false,
+            LiveFloorLevel.Idle, NoticeAction.Say, "free");
+
+        // DropStale on the production job list: the old check-in goes, the reminder still waits to be said.
+        clock.Now = due + UnpromptedSpeech.CheckInMaxWait + TimeSpan.FromMinutes(1);
+        var dropped = UnpromptedSpeech.DropStale(jobs, clock.Now, null);
+        var dropOk = dropped.Count == 1 && ReferenceEquals(dropped[0].Job, checkIn) && checkIn.Delivery == BackgroundDeliveryState.Dropped &&
+            reminder.Delivery == BackgroundDeliveryState.Pending && jobs.HasNotice;
+        notices.Add(new(dropOk, new
+        {
+            name = "drop stale from the job list", ok = dropOk, dropped = dropped.Select(d => new { job = d.Job.Id, code = d.Check.Code }),
+            checkIn = checkIn.Delivery.ToString(), reminder = reminder.Delivery.ToString(), noticeStillWaits = jobs.HasNotice
+        }));
+
+        var allOk = talkOver.All(r => r.Ok) && notices.All(r => r.Ok);
+        return new(allOk, new
+        {
+            ok = allOk,
+            resumeWithinMs = (int)UnpromptedSpeech.ResumeWithin.TotalMilliseconds,
+            checkInMaxWaitMinutes = UnpromptedSpeech.CheckInMaxWait.TotalMinutes,
+            talkOver = talkOver.Select(r => r.Value),
+            notices = notices.Select(r => r.Value)
+        });
+    }
 
     // A fixture model judge (NOT AI) that always says interrupt after a delay: slower than the deadline the rules decide (here
     // "not for Martlet" for agreement), in time its verdict is used.

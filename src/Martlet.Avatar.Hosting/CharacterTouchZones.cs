@@ -53,14 +53,26 @@ public sealed record TouchZoneBox(double X, double Y, double Width, double Heigh
     }
 }
 
-/// <summary>What touching a zone does: the gestures, emotes and motions it plays (their <see cref="CharacterActionSource.Id"/>s;
-/// null plays the zone's default, an empty list nothing), whether Martlet notices it (<see cref="Notices"/>, on by default: the
-/// touch goes to the Thinking model, with what the user says or as a short reply of its own, <see cref="Narration"/> an optional
-/// hint in the owner's words) and how long the zone then rests.</summary>
+/// <summary>What touching a zone does: its reaction list (<see cref="Actions"/>), whether Martlet notices it (<see cref="Notices"/>,
+/// on by default: the touch goes to the Thinking model, with what the user says or as a short reply of its own,
+/// <see cref="Narration"/> an optional hint in the owner's words) and how long the zone then rests.</summary>
 public sealed record CharacterTouchReaction
 {
     public const double DefaultCooldown = 4, MaximumCooldown = 600;
+    /// <summary>A reaction list entry for one of the active voice's sounds: this prefix and the sound's cue
+    /// (<see cref="Martlet.Core.Settings.VoiceTag.Cue"/>), such as <c>sound:laugh</c>.</summary>
+    public const string SoundPrefix = "sound:";
+    /// <summary>At most this many characters in one reaction list entry.</summary>
+    public const int MaximumEntryLength = 160;
+    /// <summary>The zone's reaction list: what plays on its own, in this order, each time the zone is touched. Each entry is an
+    /// emote, gesture or motion of the model (its <see cref="CharacterActionSource.Id"/>) or a voice sound
+    /// (<see cref="SoundPrefix"/> and its cue). An entry the model doesn't have is kept and skipped when it plays. An empty list
+    /// plays nothing. Null: not filled yet (a zone saved before reaction lists, or one just found): it plays and gets its
+    /// <see cref="CharacterTouchZones.DefaultReactions"/> as soon as the model's emotes are known
+    /// (<see cref="CharacterTouchZones.Filled"/>).</summary>
     public IReadOnlyList<string>? Actions { get; init; }
+    /// <summary>Whether a reaction list entry is a voice sound (<see cref="SoundPrefix"/>).</summary>
+    public static bool IsSound(string entry) => entry.StartsWith(SoundPrefix, StringComparison.Ordinal);
     /// <summary>Martlet notices touches on this zone (on unless the owner turns it off; was "Tell the character", saved as
     /// <c>tell</c> before).</summary>
     public bool Notices { get; init; } = true;
@@ -73,6 +85,17 @@ public sealed record CharacterTouchReaction
     }
     public string? Narration { get; init; }
     public double CooldownSeconds { get; init; } = DefaultCooldown;
+    // An early, unreleased version saved a second list (autoplay) that played after the reaction. It is read here and joined to
+    // the end of the reaction list (CharacterTouchZones.List; Filled saves it so), and written only until then. Its step
+    // (autoplay_seconds) is ignored: the list plays together, as the reaction did.
+    [JsonInclude, JsonPropertyName("autoplay")]
+    private IReadOnlyList<string>? SavedAutoplay
+    {
+        get => Later;
+        init => Later = value is { Count: > 0 } ? value : null;
+    }
+    /// <summary>Entries of the old second list that join the end of <see cref="Actions"/>; null once joined.</summary>
+    [JsonIgnore] internal IReadOnlyList<string>? Later { get; init; }
 }
 
 /// <summary>One area of a zone: its box in the snapshot (fractions of the picture) and the Live2D drawables, VRM humanoid bones
@@ -205,7 +228,8 @@ public static partial class CharacterTouchZones
 {
     public const string FileName = "character-touch-zones.json";
     public const string SnapshotFolder = "character-touch-zones";
-    public const int MaximumModels = 32, MaximumZones = 64, MaximumBytes = 4 * 1024 * 1024, MaximumActions = 3;
+    /// <summary><see cref="MaximumActions"/>: at most this many entries in a zone's reaction list.</summary>
+    public const int MaximumModels = 32, MaximumZones = 64, MaximumBytes = 4 * 1024 * 1024, MaximumActions = 8;
     /// <summary>At most this many areas make up one zone.</summary>
     public const int MaximumAreas = 8;
     public const int MaximumNarrationLength = 160, MaximumLabelLength = 40;
@@ -848,31 +872,104 @@ public static partial class CharacterTouchZones
 
     // ---------- reactions ----------
 
-    /// <summary>What touching <paramref name="zone"/> plays on the model: the owner's choice, or for each default slot the first of
-    /// its names the model has (its own expressions and motions before Martlet's gestures). Only emotes and motions in use.</summary>
+    /// <summary>What touching <paramref name="zone"/> plays on the model: its reaction list, or for a zone not filled yet its
+    /// <see cref="DefaultReactions"/> with no temperament. Only emotes and motions in use.</summary>
     public static IReadOnlyList<CharacterActionSource> Plan(CharacterTouchZone zone, CharacterActionCatalog? catalog) => React(zone, catalog, null, 0).Actions;
 
-    /// <summary>What a touch on <paramref name="zone"/> plays, in this order of precedence: the owner's own pick for the zone, the
-    /// persona's <paramref name="temperament"/> for the zone kind or its group (escalated after <paramref name="repeats"/> touches
-    /// in a row), else the zone's built-in default reaction. How long the eyes then turn to the mouse pointer always comes from
-    /// the temperament.</summary>
+    /// <summary>What a touch on <paramref name="zone"/> plays: its reaction list (<see cref="CharacterTouchReaction.Actions"/>, as
+    /// the model has it; a zone not filled yet plays its <see cref="DefaultReactions"/>) and its voice sounds. The persona's
+    /// <paramref name="temperament"/> for the zone kind or its group adds how it feels about the touch, how long the first
+    /// reaction lingers, how long the eyes then turn to the mouse pointer, and after <paramref name="repeats"/> touches in a
+    /// row of a disliked or loved zone, its escalation first.</summary>
     public static TouchReactionPlan React(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
     {
         var attitude = CharacterTouchTemperaments.Attitude(temperament, zone.Id);
         var entry = CharacterTouchTemperaments.Entry(temperament, zone.Id);
-        var look = entry?.LookSeconds ?? 0;
-        if (zone.Reaction.Actions is { } chosen)
+        var list = List(zone, catalog, temperament);
+        var from = zone.Reaction.Actions is not null ? TouchReactionPlan.FromOwner
+            : entry is not null ? TouchReactionPlan.FromTemperament : TouchReactionPlan.FromDefault;
+        var actions = Sources(list, catalog);
+        var escalated = false;
+        if (temperament is not null && entry is not null && CharacterTouchTemperaments.Escalation(temperament, entry, repeats) is { Count: > 0 } first)
         {
-            var entries = catalog?.Entries.Where(e => e.Action.Enabled).ToArray() ?? [];
-            return new(chosen.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Take(MaximumActions).ToArray(),
-                0, attitude, TouchReactionPlan.FromOwner, LookSeconds: look);
+            actions = [.. CharacterTouchTemperaments.Resolve(first, catalog).Concat(actions).Distinct().Take(MaximumActions)];
+            escalated = true;
         }
-        if (temperament is not null && entry is not null)
+        string[] sounds = [.. list.Where(CharacterTouchReaction.IsSound).Select(s => s[CharacterTouchReaction.SoundPrefix.Length..]).Where(c => c.Length > 0)];
+        return new(actions, entry?.LingerSeconds ?? 0, attitude, from, escalated, entry?.LookSeconds ?? 0, sounds);
+    }
+
+    /// <summary>The reaction list a new zone gets: with a <paramref name="temperament"/> that covers the zone (its kind, else its
+    /// category), its reactions (or its feeling's usual ones) as the model has them; else the model's own tap motion for that part
+    /// (a group named like TapHead or TapBody) when it has one, then the zone's built-in emotes and gestures (one from each of its
+    /// slots, the first of their names the model has; a zone special to the character reacts as the extras do). Entries are
+    /// <see cref="CharacterActionSource.Id"/>s of the model's emotes and motions in use; empty without the model's emotes
+    /// (<paramref name="catalog"/> null).</summary>
+    public static IReadOnlyList<string> DefaultReactions(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament)
+    {
+        if (catalog is null) return [];
+        if (temperament is not null && CharacterTouchTemperaments.Entry(temperament, zone.Id) is { } entry)
+            return [.. CharacterTouchTemperaments.Resolve(CharacterTouchTemperaments.Words(temperament, entry, 1).Words, catalog).Select(s => s.Id)];
+        var plan = DefaultPlan(zone, catalog);
+        return TapMotion(zone, catalog) is { } motion ? [motion.Id, .. plan.Where(s => s != motion).Select(s => s.Id)] : [.. plan.Select(s => s.Id)];
+    }
+
+    /// <summary>The reaction a new zone gets: its <see cref="DefaultReactions"/>, noticed by Martlet, with no words of the owner's
+    /// and the usual rest.</summary>
+    public static CharacterTouchReaction FreshReaction(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament) =>
+        new() { Actions = DefaultReactions(zone, catalog, temperament) };
+
+    /// <summary><paramref name="settings"/> with each zone whose reaction list isn't filled yet (null: saved before reaction lists,
+    /// or just found) given its <see cref="DefaultReactions"/>, and entries of the old second list joined to its end
+    /// (<see cref="List"/>), so the list shows exactly what plays. The same settings when there is nothing to fill or
+    /// <paramref name="catalog"/> is another model's.</summary>
+    public static CharacterTouchZoneSettings Filled(CharacterTouchZoneSettings settings, CharacterActionCatalog catalog, CharacterTouchTemperament? temperament) =>
+        catalog.Inventory.ModelId != settings.ModelId || settings.Zones.All(z => z.Reaction is { Actions: not null, Later: null }) ? settings : settings with
         {
-            var (words, escalated) = CharacterTouchTemperaments.Words(temperament, entry, repeats);
-            return new(CharacterTouchTemperaments.Resolve(words, catalog), entry.LingerSeconds, attitude, TouchReactionPlan.FromTemperament, escalated, look);
-        }
-        return new(DefaultPlan(zone, catalog));
+            Zones = [.. settings.Zones.Select(z => z.Reaction is { Actions: not null, Later: null } ? z
+                : z with { Reaction = z.Reaction with { Actions = List(z, catalog, temperament), Later = null } })]
+        };
+
+    /// <summary>The zone's reaction list as it plays: <see cref="CharacterTouchReaction.Actions"/> (a zone not filled yet: its
+    /// <see cref="DefaultReactions"/>), with entries saved in the old second list (autoplay) joined to its end, at most
+    /// <see cref="MaximumActions"/>.</summary>
+    public static IReadOnlyList<string> List(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament)
+    {
+        var list = zone.Reaction.Actions ?? DefaultReactions(zone, catalog, temperament);
+        return zone.Reaction.Later is { Count: > 0 } later ? [.. list.Concat(later).Distinct(StringComparer.Ordinal).Take(MaximumActions)] : list;
+    }
+
+    /// <summary>Whether a reaction list entry plays on the model: an emote, gesture or motion it has in use, or a voice sound
+    /// (<see cref="CharacterTouchReaction.SoundPrefix"/> and a cue).</summary>
+    public static bool Resolves(string entry, CharacterActionCatalog? catalog) =>
+        CharacterTouchReaction.IsSound(entry) ? entry.Length > CharacterTouchReaction.SoundPrefix.Length
+            : catalog?.Entries.Any(e => e.Action.Enabled && e.Source.Id == entry) == true;
+
+    // The emotes, gestures and motions of a reaction list the model has in use, in order (voice sounds and the rest left out).
+    private static IReadOnlyList<CharacterActionSource> Sources(IReadOnlyList<string> list, CharacterActionCatalog? catalog)
+    {
+        var entries = catalog?.Entries.Where(e => e.Action.Enabled).ToArray() ?? [];
+        return [.. list.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Distinct().Take(MaximumActions)];
+    }
+
+    // The model's own tap motion for the zone's part, when it has one in use: the head's for the head's zones (the hair's for hair).
+    private static CharacterActionSource? TapMotion(CharacterTouchZone zone, CharacterActionCatalog catalog)
+    {
+        var part = Kind(zone.Id)?.Group == TouchZoneGroup.Head ? zone.Id.StartsWith("hair", StringComparison.Ordinal) ? "hair" : "head" : "body";
+        var motions = catalog.Entries.Where(e => e.Action.Enabled && e.Source.Kind == CharacterActionKind.Motion).Select(e => e.Source).ToArray();
+        return TouchMotion([.. motions.Select(m => m.Name)], part) is { } group ? motions.FirstOrDefault(m => m.Name == group) : null;
+    }
+
+    /// <summary>The model's motion group for a tap on <paramref name="zone"/> (a rough zone: head, hair, face, body...), matched
+    /// ignoring case and punctuation: Tap or Touch followed by the zone, then by Head (for the head, hair and face) or Body
+    /// (elsewhere), then plain Tap or Touch.</summary>
+    public static string? TouchMotion(IReadOnlyList<string> groups, string zone)
+    {
+        static string Plain(string name) => new(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        var part = zone is "head" or "hair" or "face" ? "head" : "body";
+        foreach (var wanted in new[] { "tap" + zone, "touch" + zone, "tap" + part, "touch" + part, "tap", "touch" })
+            if (groups.FirstOrDefault(group => Plain(group) == wanted) is { } found) return found;
+        return null;
     }
 
     private static IReadOnlyList<CharacterActionSource> DefaultPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
@@ -975,7 +1072,9 @@ public static partial class CharacterTouchZones
             if (zone.Follows is { Length: > 256 }) return "What a zone follows needs a shorter name.";
             if (zone.Label is { Length: > MaximumLabelLength }) return $"A zone's name can be at most {MaximumLabelLength} characters.";
             if (zone.Reaction.Narration is { Length: > MaximumNarrationLength }) return $"What a touch tells the character can be at most {MaximumNarrationLength} characters.";
-            if (zone.Reaction.Actions is { Count: > MaximumActions }) return $"A zone plays at most {MaximumActions} emotes or gestures.";
+            if (zone.Reaction.Actions is { Count: > MaximumActions }) return $"A zone plays at most {MaximumActions} reactions.";
+            if (zone.Reaction.Actions?.Any(a => string.IsNullOrWhiteSpace(a) || a.Length > CharacterTouchReaction.MaximumEntryLength) == true)
+                return $"{zone.Name}'s reactions need short names.";
             if (!double.IsFinite(zone.Reaction.CooldownSeconds) || zone.Reaction.CooldownSeconds is < 0 or > CharacterTouchReaction.MaximumCooldown)
                 return $"A zone's rest must be 0 to {CharacterTouchReaction.MaximumCooldown:0} seconds.";
         }
