@@ -47,11 +47,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
-        // Companion › Check-ins: Open Thinking pool and Edit their prompts only open those pages (so does each check-in's Edit
-        // its prompt, CheckInPrompt-<id>). Each check-in's On box, Every and Its answer choices, the fact boxes, the name and
-        // task boxes, Add a check-in and Remove save check-ins.json, and Check now (CheckInRun-<id>) sends the check to a
-        // Thinking pool member, which may be a paid provider, so they need --allow-ui-effects.
-        "CheckInsOpenPool", "CheckInsOpenPrompts",
+        // Companion › Check-ins: Open Thinking pool only opens that page. Each check-in's On box, Every and Its answer choices,
+        // the fact boxes, the name and task boxes, a built-in check-in's prompt box (CheckInPrompt-<id>) and its Use built-in
+        // text (CheckInPromptReset-<id>), Add a check-in and Remove save check-ins.json or the prompts, and Check now
+        // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
+        // --allow-ui-effects.
+        "CheckInsOpenPool",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
         // there); Connect only reads the typed ComfyUI's status and models. Neither saves or draws. Draw a test picture, Set up
         // and the Draw with/Turn off buttons need --allow-ui-effects.
@@ -203,8 +204,6 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
-        // Companion › Check-ins: a check-in's Edit its prompt ("CheckInPrompt-emotes") only opens Prompts.
-        "CheckInPrompt-",
         // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
         // details, only show where it stands on that computer; their own buttons commit.
         "PicturesHost-", "ReadingHost-",
@@ -914,11 +913,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), its On box and Every choice
         // ("CheckInOn-emotes", "CheckInEvery-emotes"), and for the owner's own its Its answer choice and fact boxes
         // ("CheckInOutcome-c1", "CheckInFact-c1-Conversation"), the model it needs ("CheckInNeeds-c1-Vision"), its screenshot
-        // box ("CheckInScreenshot-c1"), its recording and length choices ("CheckInRecording-c1", "CheckInSeconds-c1"). Changing
-        // any of them saves check-ins.json, so it needs --allow-ui-effects; the name, task and script boxes (the owner's own
-        // words) aren't read here.
+        // box ("CheckInScreenshot-c1"), its recording and length choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for
+        // a built-in one its prompt's state ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact box and
+        // the length choice carry what they mean as "help". Changing any of them saves check-ins.json, so it needs
+        // --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
         // button's name ("DeepThinkingAddRole-diva" reads "Add the Thinking pool role on diva"; clicking it installs the role, so it
@@ -1086,8 +1086,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
                         ? ((SelectionItemPattern)item).Current.IsSelected : null
                 };
                 // A status line's details sit in its tooltip, its accessible help text (the talk window's LiveContext: the
-                // tokens and the last reply's cache use).
-                if (value is not null && element.Current.ControlType == ControlType.Text && element.Current.HelpText is { Length: > 0 } help)
+                // tokens and the last reply's cache use); a readable check box or choice says what it means the same way
+                // (Companion › Check-ins' fact boxes).
+                if (value is not null && element.Current.HelpText is { Length: > 0 } help &&
+                    (element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.CheckBox ||
+                        element.Current.ControlType == ControlType.ComboBox))
                     entry["help"] = help;
                 // A control ui_move can move (the character overlay's MoveAvatar), and whether it can move now: false while the
                 // character's position is locked.

@@ -1338,7 +1338,7 @@ own character and runs its own conversation.
 check-ins, and the first one that may run starts. Only one runs at a time. A
 check-in waits:
 
-- until its pace (2, 5, 10, 15, 30, 60 or 120 minutes) has passed since it last
+- until its pace (1, 2, 5, 10, 15, 30, 60 or 120 minutes) has passed since it last
   ran. After an answer that kept everything (`KEEP`), with nothing new said
   since, Lingering emotes and Where the character looks wait three times their
   pace, so the pool isn't asked the same question again and again;
@@ -1385,7 +1385,19 @@ name, what it checks (your words, up to 2,000 characters), how often it runs,
 what it gets to know (the conversation, its personality, emotes and gaze,
 reminders and background work, what changed on screen, what the PC plays,
 whether you're at the PC; it always gets the day and time) and what happens
-with its answer:
+with its answer. Point at a fact on the page to see what it gives the check-in:
+
+| Fact | What the check-in gets |
+| --- | --- |
+| The conversation | The last 6 exchanges, oldest first, and how long it has been quiet since. |
+| Its personality | The active personality: the character's name and its text. |
+| Emotes and gaze | The emotes a reply turned on that still show, how long each has shown, and where the eyes look. |
+| Reminders and background work | The reminders set and the background work started or finished in this conversation. |
+| What changed on screen | Martlet's newest words about what changed on the screen, while it watches. Not a screenshot. |
+| What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. |
+| Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. |
+
+What happens with its answer:
 
 - *Reminds Martlet in its next reply*: a `REMIND:` line goes on the context
   board, as above.
@@ -1408,12 +1420,17 @@ more softly"*, *"If the user seems stressed, remind Martlet to be gentle"*.
   uses to look at your screen, with private windows painted over). With no
   screenshot (a private window or Martlet's own windows in front, a locked
   screen), the run stops and says why.
-- *A recording* of the last 5, 10, 15 or 30 seconds of the microphone or of
+- *A recording* of the last 5, 10, 15, 30 or 60 seconds of the microphone or of
   what this PC plays. Martlet keeps these seconds in memory only while a
   check-in that is on asks for them (`PcSoundBuffer.Wanted`), and only from the
   last pause. It needs Martlet to listen at that time: the microphone is open
   (for example, always listening), or *Hear what this PC plays* is on. Less
-  than 1 second of sound stops the run.
+  than 1 second of sound stops the run. A check-in request takes up to 60
+  seconds of audio (`BoundedTextInput.HardMaxAudioSeconds`); a conversation
+  message still takes at most 30 (`MessageAudioSeconds`). Not every model
+  hears a whole minute: Gemma 4 and Gemma 3n hear only the first 30 seconds of
+  a clip, while Gemini, OpenAI's audio models and Voxtral hear far longer
+  audio.
 - *A script* you write (Windows PowerShell, at most 4,000 characters). Martlet
   runs it hidden, in your home folder, before each run, and stops it after 20
   seconds, as the [terminal tool](MCP.md#terminal) does. What it prints (at
@@ -1442,10 +1459,15 @@ the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
 nothing` change nothing, and so does an answer Martlet can't read (the status
 says so).
 
-**Prompts.** Companion › Prompts › *Check-ins* holds every check-in prompt: the
-instructions every check-in gets, one for each built-in check-in, the wrapper
-of your own, the reminder for the next reply and the two prompts for what is
-brought up. Empty a built-in check-in's prompt and it doesn't run.
+**Prompts.** Each built-in check-in's card on Companion › Check-ins has its
+prompt (*What it asks*), the same way your own check-ins have their task. Edit
+it there: it saves a moment after you stop typing, and the next run uses it.
+*Use built-in text* puts Martlet's own text back. The page saves only the
+prompts you typed there, into the newest saved settings, so edits to other
+prompts stay. Companion › Prompts › *Check-ins* also lists every check-in
+prompt: the instructions every check-in gets, one for each built-in check-in,
+the wrapper of your own, the reminder for the next reply and the two prompts
+for what is brought up. Empty a built-in check-in's prompt and it doesn't run.
 
 **What you see.** Companion › Check-ins shows how many are on and the member
 that takes them first (`CheckInsNow`), the last check-in that ran

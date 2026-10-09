@@ -114,7 +114,10 @@ public sealed class BoundedTextInput
     /// the transcript, never part of history.</summary>
     [JsonIgnore]
     public BoundedWaveAudio? Audio { get; }
-    public const double HardMaxAudioSeconds = 30;
+    /// <summary>The longest recording a request may carry: a check-in's minute of the microphone or of what the PC plays.</summary>
+    public const double HardMaxAudioSeconds = 60;
+    /// <summary>The longest recording of what you said that goes with one conversation message.</summary>
+    public const double MessageAudioSeconds = 30;
     // Local admission reservation per started second of audio (providers count roughly 25-32 tokens a second).
     public const int AudioTokensPerSecond = 32;
     /// <summary>Functions the model may call. Empty means a plain text request.</summary>
