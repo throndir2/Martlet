@@ -111,12 +111,18 @@ internal sealed class CharacterTemperamentService(string? dataDirectory)
     /// <summary>Deletes a custom temperament; the personas that used it use their own again.</summary>
     internal Task<string?> DeleteCustomAsync(Guid id, CancellationToken token) => UpdateAsync(set => set.WithoutCustom(id), token);
 
+    /// <summary>Touch zones' Reset: forgets the persona's own temperament (decided or edited) and what it uses instead (the
+    /// built-in reactions or a custom one), as for a fresh persona. Custom temperaments and other personas stay.</summary>
+    internal Task<string?> ForgetAsync(Guid personaId, CancellationToken token) =>
+        UpdateAsync(set => set.WithoutOwn(personaId).Choose(personaId, null), token);
+
     /// <summary>A persona's personality was saved: unless the change is only spacing, case or punctuation, or the owner's own
     /// choices hold its own temperament, decide that again after <see cref="Settle"/> once Martlet isn't replying
     /// (<paramref name="replying"/>). A newer save of the same persona replaces a decision still waiting. What the persona uses
-    /// (its own, the built-in reactions or a custom temperament) doesn't change.</summary>
+    /// (its own, the built-in reactions or a custom temperament) doesn't change. <paramref name="news"/> replaces the status line
+    /// that says a decision is coming (Touch zones' Reset says why).</summary>
     internal void PersonalitySaved(PersonaProfile persona, Func<bool> replying,
-        Func<string, string, string, CancellationToken, Task<(string? Answer, string? Failure)>> ask, CancellationToken lifetime)
+        Func<string, string, string, CancellationToken, Task<(string? Answer, string? Failure)>> ask, CancellationToken lifetime, string? news = null)
     {
         if (string.IsNullOrWhiteSpace(persona.Text)) return;
         var digest = CharacterTouchTemperaments.Digest(persona.Text);
@@ -134,7 +140,7 @@ internal sealed class CharacterTemperamentService(string? dataDirectory)
             next = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
             pending[persona.Id] = next;
         }
-        Report($"{persona.Name}'s personality changed; Martlet decides how it reacts to touch in a moment.");
+        Report(news ?? $"{persona.Name}'s personality changed; Martlet decides how it reacts to touch in a moment.");
         _ = Task.Run(async () =>
         {
             try

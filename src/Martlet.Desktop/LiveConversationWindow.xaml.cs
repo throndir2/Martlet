@@ -2074,6 +2074,8 @@ public partial class LiveConversationWindow : ThemedWindow
     internal bool ListeningStarted => !listenPaused;
     /// <summary>Always listening is hearing you, or what you just said is still being transcribed or taken.</summary>
     internal bool HearingYou => MicBusy;
+    /// <summary>Always listening hears your voice right now (a touch's voice sound waits for you).</summary>
+    internal bool UserTalking => listener is { Hearing: true };
 
     /// <summary>Home's listening indicator: what listening is doing now, and whether that is a problem.</summary>
     internal (string Text, bool Problem) ListeningStatus
@@ -2305,7 +2307,7 @@ public partial class LiveConversationWindow : ThemedWindow
         PttButton.Visibility = pushToTalk || held ? Visibility.Visible : Visibility.Collapsed;
         // Keep a held button enabled until release; disabling it would lose capture and discard the recording.
         PttButton.IsEnabled = held || pushToTalk;
-        var talkLabel = held || Recording ? "Release to send" : "Hold to _talk";
+        var talkLabel = held || Recording ? "Release to send" : "Hold to talk";
         if (!Equals(PttButton.Content, talkLabel)) PttButton.Content = talkLabel;
 
         // Always listening starts and stops here (it is off when the window opens); the dot and the name say how it is going.

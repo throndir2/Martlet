@@ -48,7 +48,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Check-ins: Open Thinking pool only opens that page. Each check-in's On box, Every and Its answer choices,
-        // the fact and condition boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>), the name and task boxes, a
+        // the fact, condition and trigger boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>,
+        // CheckInTrigger-<id>-<trigger>), the name and task boxes, a
         // built-in check-in's prompt box (CheckInPrompt-<id>) and its Use built-in settings (CheckInReset-<id>), Copy as your
         // own (CheckInCopy-<id>), Add a check-in and Remove save check-ins.json or the prompts, and Check now
         // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
@@ -494,15 +495,31 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
         // the owner added, which Detect again looks for too, or "special to this character" for one Detect zones found as special to
         // it, and how the persona's temperament feels about it), and each entry of its reaction list, in play order
-        // (TouchZoneReactionItem-<n>-<k>: "Blush  ·  emote", "laugh  ·  sound", "F05  ·  not on this model"; TouchZoneReactionNone-<n>
-        // reads "nothing" for an empty list).
+        // (TouchZoneReactionItem-<n>-<k>: "Blush  ·  emote", "Laugh  ·  sound" for a voice sound the voice makes, "laugh  ·  sound,
+        // not with this voice", "F05  ·  not on this model"; TouchZoneReactionNone-<n> reads "nothing" for an empty list).
+        // TouchZonesVoiceSounds says which voice makes the voice sounds and which, or why none plays, what is being made, the last
+        // problem and what the last sound did (played or not, and why). ▶ on a sound (TouchZoneReactionHear-<n>-<k>) plays it,
+        // so it needs --allow-ui-effects.
         // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
         // Detect zones looks for, and that it also looks for anything special to the character (fixed text). TouchZonesZoom says how
         // far the zone map is zoomed in ("Zoom 2x").
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
-        "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom",
+        "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom", "TouchZonesVoiceSounds",
+        // Touch zones › Start over: the level chosen to reset (TouchZonesResetLevel: Zone reactions, Zones, Touch temperament, The
+        // character's own changes or Everything), what that level clears (fixed text), what the last reset did or why it couldn't,
+        // and the confirmation's question (what the owner loses: zone names, counts, the persona's and custom temperaments' names,
+        // a date, and what each of the character's own changes does, never why). Choosing a
+        // level needs --allow-ui-effects; Reset (TouchZonesReset) opens the question and its ConfirmationYes resets, so they need
+        // --allow-ui-effects too.
+        "TouchZonesResetLevel", "TouchZonesResetNote", "TouchZonesResetState", "TouchZonesResetQuestion",
+        // Companion › Touch › Changes the character made: how many changes of its own the active persona has in effect and what
+        // the last Undo did; ReactionChange-<n> (each change in effect: what it does, until when, when and by which check-in it was
+        // made) and ReactionChangeEnded-<n> (the newest that ended, and who ended them) read through SafeValuePrefixes. The
+        // character's reasons (ReactionChangeWhy-<n>, ReactionChangeEndedWhy-<n>) come from the conversation and aren't values.
+        // Undo (ReactionChangeUndo-<n>) and Undo all (ReactionChangesUndoAll) end changes, so they need --allow-ui-effects.
+        "ReactionChangesStatus", "ReactionChangesState",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
@@ -752,10 +769,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // one's computer, how many were busy and how long it waited. Job names and host IDs only.
         "WorkSharingStatus",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
-        // status line (Martlet is running, listening, paused or watching). StayAwakeStatus (shown only when this PC runs its own
+        // status line (Martlet is running, listening, paused or watching), and the menu's items, which read as their fixed labels
+        // (Talk to Martlet or Show the talk window, Start listening or Stop listening, Pause Martlet or Resume Martlet...).
+        // StayAwakeStatus (shown only when this PC runs its own
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
+        "TrayOpen", "TrayTalk", "TrayStartListening", "TrayStopListening", "TrayStartWatching", "TrayStopWatching", "TrayPause",
+        "TrayResume", "TrayEndTalk", "TrayCharacter", "TrayCharacterClickThrough", "TrayCharacterProfiles", "TrayCloseToTray",
+        "TrayStartWithWindows", "TrayExit",
         // Settings › Appearance: the palette (Pink light, Rose dark, Character light, Character dark or Custom; menus and every window
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
@@ -881,7 +903,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
         "PickerFacts-", "PickerDetail-", "PickerFact-", "PickerState-", "PickerCell-", "PickerSummary-",
-        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -925,14 +947,19 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), and for every check-in, built-in or
         // the owner's own, its On box and Every choice ("CheckInOn-emotes", "CheckInEvery-emotes"), its Its answer choice
-        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), the
+        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), what
+        // starts it at once ("CheckInTrigger-c1-TouchesEnded"), the
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
-        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
-        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact and condition box, the answer and the
-        // length choice carry what they mean as "help". Changing any of them saves check-ins.json, so it needs
-        // --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
+        // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), its tool set boxes ("CheckInTools-c1-next-reply", whose help says
+        // what the set does and its tools), and for a built-in one its prompt's state
+        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact, condition and trigger box, the answer and the
+        // length choice carry what they mean as "help". The hours and cap choices ("CheckInFrom-welcome" reads "8 AM",
+        // "CheckInUntil-welcome" "10 PM", "CheckInMostPerHour-c1" "Once an hour") carry theirs too. Changing any of them saves
+        // check-ins.json, so it needs --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTools-",
+        "CheckInTrigger-",
+        "CheckInFrom-", "CheckInUntil-", "CheckInMostPerHour-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
         // button's name ("DeepThinkingAddRole-diva" reads "Add the Thinking pool role on diva"; clicking it installs the role, so it

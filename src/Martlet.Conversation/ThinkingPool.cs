@@ -21,9 +21,10 @@ public enum ThinkingPriority
     BargeInJudge = 70
 }
 
-/// <summary>What a job needs from a member, and what a member can do: text, pictures (vision) and recordings (audio).</summary>
+/// <summary>What a job needs from a member, and what a member can do: text, pictures (vision), recordings (audio) and tool calls
+/// (tools: only members on an OpenAI-compatible endpoint, which does function calling; a paired computer's gateway doesn't).</summary>
 [Flags]
-public enum ThinkingCapability { None = 0, Text = 1, Vision = 2, Audio = 4 }
+public enum ThinkingCapability { None = 0, Text = 1, Vision = 2, Audio = 4, Tools = 8 }
 
 /// <summary>The rules of each <see cref="ThinkingJobKind"/>.</summary>
 public static class ThinkingJobKinds
@@ -89,10 +90,18 @@ public sealed record ThinkingJob
     public int MaxOutputTokens { get; init; } = 1_024;
     /// <summary>Whether the member thinks step by step first: true on (slower), false off (judges), null the model's default.</summary>
     public bool? Reasoning { get; init; }
+    /// <summary>The tools the member's model may call (a check-in's tool sets); only members that can call tools take the job.</summary>
+    public IReadOnlyList<TextToolDefinition> Tools { get; init; } = [];
+    /// <summary>Runs the calls the model makes; required with <see cref="Tools"/>. It lives as long as the job, over every member
+    /// the board tries.</summary>
+    public IConversationToolHost? ToolHost { get; init; }
+    /// <summary>How many tool rounds one attempt may use before the model must answer in text.</summary>
+    public int MaxToolRounds { get; init; }
 
-    public ThinkingCapability Required => Needs ?? ThinkingCapability.Text |
+    public ThinkingCapability Required => (Needs ?? ThinkingCapability.Text |
         (Image is null ? ThinkingCapability.None : ThinkingCapability.Vision) |
-        (Audio is null ? ThinkingCapability.None : ThinkingCapability.Audio);
+        (Audio is null ? ThinkingCapability.None : ThinkingCapability.Audio)) |
+        (Tools.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
 
     public void Validate()
     {
@@ -100,6 +109,8 @@ public sealed record ThinkingJob
         ContractRules.Require(!string.IsNullOrWhiteSpace(Text) && Instructions is not null, "A Thinking pool job needs text.");
         ContractRules.Require(Timeout > TimeSpan.Zero && Timeout <= TimeSpan.FromHours(1), "A Thinking pool job's timeout is up to an hour.");
         ContractRules.Require(MaxOutputTokens is >= 1 and <= 65_536, "A Thinking pool job writes 1-65536 tokens.");
+        ContractRules.Require(Tools is not null && (Tools.Count == 0 || ToolHost is not null) &&
+            MaxToolRounds is >= 0 and <= BoundedTextInput.HardMaxToolRounds, "A Thinking pool job with tools needs a tool host and 0-8 rounds.");
     }
 
     public override string ToString() => $"{nameof(ThinkingJob)} {ThinkingJobKinds.Name(Kind)} (content omitted)";
@@ -147,7 +158,8 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     {
         needs.HasFlag(ThinkingCapability.Text) ? "text" : null,
         needs.HasFlag(ThinkingCapability.Vision) ? "pictures" : null,
-        needs.HasFlag(ThinkingCapability.Audio) ? "recordings" : null
+        needs.HasFlag(ThinkingCapability.Audio) ? "recordings" : null,
+        needs.HasFlag(ThinkingCapability.Tools) ? "tool calls" : null
     }.Where(word => word is not null));
 
     public override string ToString() => $"{nameof(ThinkingJobResult)} {Outcome} on {Member ?? "none"}";
@@ -477,7 +489,8 @@ public sealed class ThinkingJobBoard
 
 /// <summary>What a Thinking pool member can do, from what Martlet knows of its model: pictures as Martlet's vision catalog and
 /// model abilities say, recordings only on an OpenAI-compatible endpoint whose model hears (a paired computer's Ollama takes no
-/// recordings).</summary>
+/// recordings), and tool calls only on an OpenAI-compatible endpoint (Chat Completions function calling; a paired computer's
+/// gateway has none).</summary>
 public static class ThinkingPoolCapabilities
 {
     public static ThinkingCapability For(DeepThinkingSettings member, ModelAbilities? abilities = null)
@@ -487,6 +500,7 @@ public static class ThinkingPoolCapabilities
         switch (member.Place)
         {
             case DeepThinkingPlace.Endpoint:
+                can |= ThinkingCapability.Tools;
                 if (VisionModelCatalog.ForRoute(member.Origin, member.ModelId, abilities) == VisionSupport.Supported) can |= ThinkingCapability.Vision;
                 if (HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, member.Origin, member.ModelId, abilities) == HearingSupport.Supported)
                     can |= ThinkingCapability.Audio;

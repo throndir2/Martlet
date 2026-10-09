@@ -42,6 +42,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        AccessKeys.RequireAlt();
         SettingsStore? store = null;
         string? error = null;
         // Flags after the data folder: an automatic update restarts Martlet minimized and without taking focus from whatever you

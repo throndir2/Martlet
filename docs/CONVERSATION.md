@@ -1325,7 +1325,10 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** All are on by default. The choices are this PC's own
+**Built-in check-ins.** The first five, How I react and Describe touches are on
+by default. The four that wait
+for a signal (Welcome back, Unanswered question, On a call, Someone else is
+here) are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
 own character and runs its own conversation.
 
@@ -1336,6 +1339,12 @@ own character and runs its own conversation.
 | Promises (`promises`) | 5 min | Did the character say it would do something it never started? The end of the conversation, the reminders set and this conversation's background work. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Saying the same things (`repeats`) | 10 min | Does the character keep saying the same things (the same remark, joke, question, opener or topic again and again, or something it said not long ago while nothing new happened)? [What it said lately](#what-you-said-lately), each with when (`10:05 PM (12 min ago)`), and the day and time. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
+| How I react (`reactions`) | After your touches, at most every 5 min | Did the character's feelings toward you change (it got angry, hurt or shy, or it warmed up)? Its personality, the end of the conversation and [how you touched it lately](#check-in-triggers). | Its [Touch reactions](#how-i-react) tools change how it reacts to your touches for a while. Its answer is only a short line for the log. |
+| Welcome back (`welcome`, off) | 30 min | You came back after 10 minutes or more away: should Martlet welcome you back? How long you were away and what happened meanwhile, what you do now, the personality. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
+| On a call (`call`, off) | 2 min | A game, a call or a full-screen app started or ended: did a call start or end? What you do now and before. | A `REMIND:` line (keep quiet and short during the call, or talk as usual again) goes in the notes of the next message. `OK` changes nothing. |
+| Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
+| Describe touches (`touches`) | At most once a minute, right after your touches end | What have you been doing to the character, told vividly as the story so far, true to its personality? How you touched it in the last 10 minutes, the end of the conversation, the personality, the emotes it shows and `{adult}` (explicit only while Adult content is on). | A `KNOW:` line goes with the next reply as [background it may draw on](#describe-touches). `OK` changes nothing. |
 
 **One flow for every check-in.** A built-in check-in is only data: a prompt,
 the facts it gets to know, the conditions it waits for and what its answer
@@ -1346,13 +1355,15 @@ has the same editor:
 - *What it asks*: the prompt of a built-in check-in, or your own words.
 - *It gets to know*: the facts (table below).
 - *It runs when*: the conditions (table below).
+- *It starts when*: the triggers that start it at once ([below](#check-in-triggers)).
 - *Its answer*: what Martlet does with the answer.
 - *It takes*: a screenshot, a recording or a script's output, and the model
   it needs.
+- *It may use these tools*: the [tool sets](#check-in-tool-sets) it may call.
 
 Change a built-in check-in on its card, and only what you changed is saved
 (`CheckInChoice`, null for each default). *Use built-in settings* puts its
-prompt, facts, conditions and answer back; On and Every stay. *Copy as your
+prompt, facts, conditions, answer, inputs and tools back; On and Every stay. *Copy as your
 own* adds an own check-in (off) with the same prompt and choices, so every
 built-in check-in can be recreated, and changed, as your own.
 
@@ -1363,9 +1374,16 @@ built-in check-in can be recreated, and changed, as your own.
 | Promises | The conversation, reminders and background work | You talked lately, something new was said |
 | Staying in character | Its personality, Martlet's last replies | A personality is active, Martlet replied twice, 4 new replies |
 | Saying the same things | What Martlet said in the last hour | Martlet said 3 things lately, something new was said |
+| How I react | Its personality, the conversation, how you touched the character | A personality is active; it starts when your touches end (any trigger) |
+| Welcome back | What happened while you were away, what you are doing, its personality | You came back |
+| Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
+| On a call | What you are doing | What you do changed |
+| Someone else is here | Who is here, its personality | Someone else spoke |
+| Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
-check-ins, and the first one that may run starts. Only one runs at a time. A
+check-ins, and the first one that may run starts. Only one runs at a time (a
+check-in that a [trigger](#check-in-triggers) starts runs beside it). A
 check-in waits:
 
 - until its pace (1, 2, 5, 10, 15, 30, 60 or 120 minutes) has passed since it last
@@ -1386,7 +1404,23 @@ check-in waits:
   | An emote a reply turned on shows (`EmoteShown`) | until such an emote has shown for 3 minutes (any age for *Check now*); it reads only those emotes |
   | A reply chose where the eyes look (`GazeChosen`) | until a reply chose a gaze at least 3 minutes ago (any age for *Check now*) |
   | Slower when nothing changes (`SlowWhenKept`) | three times its pace, as above |
+  | You came back (`CameBack`) | until you use this PC again after 10 minutes or more away; it runs within 5 minutes of that, once each time |
+  | Not on a call (`NotOnCall`) | while you're in a call or a voice chat (Discord, Zoom, Teams...), as far as Martlet can tell from what this PC plays (also for *Check now*) |
+  | What you do changed (`ActivityChanged`) | until a game, a call or a full-screen app started or ended since it last ran (Martlet tells only while it hears what this PC plays) |
+  | Only between these hours (`Between`) | outside the hours chosen under it (*From* 8 AM *Until* 10 PM by default; past midnight when *Until* comes first, such as 10 PM to 6 AM) |
+  | Martlet asked something you didn't answer (`Unanswered`) | until Martlet's last remark ended with a question, nothing was said for 2 minutes after it, you used the PC in the last 2 minutes and it didn't run since that question; a question older than 30 minutes is let go |
+  | A taskbar button flashed or a notification showed (`Attention`) | until a taskbar button flashed or a pop-up notification showed since it last ran |
+  | A song ended (`SongEnded`) | until a song Martlet sang played to its end since it last ran |
+  | The script's output changed (`ScriptChanged`) | while it has no script. Its script runs at its pace, and when it prints the same as last time (the same hash), the run ends there without asking the Thinking pool (not for *Check now*) |
+  | Someone else spoke (`SomeoneElse`) | until Martlet heard a voice that isn't yours in the last 10 minutes, since it last ran (Voice ID; with no voice marked as yours, two different voices) |
 
+  For a check-in's first run, "since it last ran" means in the last 5 minutes
+  (`CheckIns.SignalWindow`). *Check now* skips the waits for a new signal, the
+  hours and the cap, but not a call or what there must be to check (a
+  question, someone else, a script);
+- while it ran as many times in the last hour as *At most* allows (*No limit*,
+  or once, 2, 3, 4, 6 or 12 times an hour), a guard however often its
+  conditions are met;
 - while its prompt is empty;
 - for a check-in that records the microphone or what this PC plays,
   until Martlet hears it (*Martlet doesn't hear the microphone now*);
@@ -1396,6 +1430,80 @@ check-in waits:
   Martlet), so the pool isn't asked again and again while nobody is there;
 - while no Thinking pool member can take it (*no Thinking pool member can take
   it (it needs a model for text and pictures)*).
+
+<a id="check-in-triggers"></a>
+**Triggers.** A check-in can also start when something happens, not only on its pace. Tick
+one or more boxes under *It starts when* on its card (`CheckInTriggers`, saved
+as `Triggers` in `check-ins.json`; of the built-in check-ins, only Describe
+touches has one). The
+first triggers come from the touches on the desktop character:
+
+| Trigger | It fires when |
+| --- | --- |
+| Your touches end (`TouchesEnded`) | a burst of touches Martlet noticed ends: 1.2 seconds pass after the last tap, pat, hold or stroke on a zone with *Martlet notices* on (`TouchDebounce.Quiet`) |
+| An intimate touch (`IntimateTouch`) | those touches included an intimate zone |
+| A stroke across 3 zones (`StrokeAcrossZones`) | a stroke among them crossed 3 or more noticed zones |
+| You keep coming back to one place (`KeepsComingBack`) | they touched a place touched 5 or more times in the last 10 minutes (the touch ledger's `TouchHabit`, *They keep coming back to ...*) |
+
+Moving, zooming, locking or hiding the character never fires a trigger. A
+check-in with triggers runs this way:
+
+- It runs only when one of its triggers fires. It doesn't also run on its
+  pace: *Every* is then its cooldown, so it runs at most once per pace.
+- The desktop looks at it as soon as the touches settle, not at the next
+  15-second look.
+- It keeps the newest trigger that fired for it (a newer one replaces it) for
+  2 minutes, as long as the touch ledger keeps touches
+  (`CheckIns.TriggerAge`). A trigger that fires during the cooldown runs when
+  the cooldown ends, if it is still that fresh.
+- Triggered check-ins run one at a time beside the paced ones, so a due
+  triggered check-in never waits behind a paced one.
+- It doesn't wait for the conversation to settle: the touches and the reply to
+  them would otherwise hold it up. Its other waits still apply: it is on,
+  someone uses this PC, its conditions, the sound it records and a pool member
+  that can take it. *Check now* runs it at once, with no trigger.
+- It runs only on the Thinking pool, like every check-in, never on the
+  conversation's own route, and the live floor still stops it while the live
+  turn runs on shared hardware. No reply waits for it, so the time to
+  Martlet's first words stays the same. The reply to touches keeps its instant
+  local wording. With no pool member, nothing runs.
+- Watching the touches never takes them from the touch ledger
+  (`TouchTriggers` reads `TouchLedger.Peek`), so the touch reply and the next
+  reply still get every touch.
+
+Its status line says *Waits: it waits for your touches to end.* and, while it
+keeps a trigger, *A trigger fired at 10:15 PM (3 touches, an intimate one).*
+The desktop log notes each trigger and run with counts only: *Check-ins:
+TouchesEnded, IntimateTouch fired (3 touches, an intimate one); it starts
+...*, then *... (started by 3 touches, an intimate one) ran on ...*. To add a
+trigger that is not about touches, add a `CheckInTriggers` flag, its words in
+`CheckIns.TriggerWords`, its box in `CheckInTriggerChoices` on the page, and
+call `MainWindow.FireCheckIns` with it when it happens.
+
+<a id="describe-touches"></a>
+**Describe touches.** The built-in check-in `touches` gives Martlet a richer
+picture of what you do to the character, without making any reply wait.
+
+1. You touch, pat or stroke the character. The touch reaction answers at
+   once with Martlet's own local wording, as before.
+2. 1.2 seconds after your last touch, *Your touches end* fires, and Describe
+   touches starts on a Thinking pool member (at most once a minute, while the
+   character shows).
+3. The member gets Companion › Prompts › *Check-in: describe touches*: how you
+   touched the character in the last 10 minutes (`{touches}`, with each
+   stroke's path, the places you keep coming back to and how the personality
+   feels about them), the end of the conversation, the personality, the
+   emotes it shows and `{adult}`. It answers with a `KNOW:` line of at most
+   300 characters: the story so far, not a list of touches.
+4. The description goes on the context board as `check-in-touches` for 3
+   minutes. The next reply takes it once, after your words, as background it
+   may draw on (Companion › Prompts › *Check-in: adds to what Martlet
+   knows*).
+
+With Adult content off, the description stays non-explicit. With it on, it
+may be explicit, never about anyone under 18. With no pool member, it waits,
+and replies keep the local wording only. Turn it off, change its prompt or
+copy it as your own on its card, like any built-in check-in.
 
 An answer that turns off emotes looks only at emotes a reply turned on (their
 own tag or a combo's). It never turns off an emote you turned on with *Try*,
@@ -1451,6 +1559,9 @@ Point at a fact or a condition on the page to see what it does:
 | What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. | `{sound}` |
 | Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. | `{presence}` |
 | How you touched the character | What you did to the character on the desktop in the last 10 minutes (pokes, pats, holds, strokes with their path and direction, moves), oldest first, each with when; which touches were intimate, how the personality feels about them and the places you keep coming back to. | `{touches}` |
+| What you are doing | What you seem to be doing on this PC (a game, a call or voice chat, a video, music, full screen), what it was before and when it changed. Martlet knows it only while it hears what this PC plays (`PcActivity`). | `{activity}` |
+| Who is here | The voices Martlet heard in the last 10 minutes (Voice ID), newest first: the names of the voices it knows, *a voice Martlet doesn't know*, which one is yours, each with when, and whether someone other than you seems to be here. Never what they said. | `{people}` |
+| What happened while you were away | After you come back from 10 minutes or more away: how long you were away and, from then, what Martlet said, the background work that finished and the reminders that came due. | `{away}` |
 
 A placeholder puts that fact where you write it in the prompt; `{name}` and
 `{time}` work too. The facts you tick that the prompt doesn't name go after it.
@@ -1464,6 +1575,43 @@ log of the last 10 minutes (`OftenWindow`, at most 24 runs) that a reply's
 gets, and nothing is added to a reply's request. Like the other facts, it goes
 only to the pool member with the check, never to the log, the status file or
 MCP output.
+
+`{adult}` says whether Companion › Replies › Adult content is on, so a
+check-in follows the same choice as the replies. While it is on, `{adult}` is
+Companion › Prompts › *Check-in: adult content on* (the check-in may be
+explicit, never about anyone under 18). While it is off, it is *Check-in:
+adult content off* (keep it non-explicit). Empty either prompt and `{adult}`
+says nothing (`CheckIns.Adult`, `CheckInState.Adult`).
+
+**Signals.** Some facts and conditions follow things Martlet already notices
+on this PC (`CheckInSignals.cs`, `MainWindow.CheckInSignals.cs`). The desktop
+follows them at each 15-second look:
+
+- *You came back*: the keyboard and mouse (and talking with Martlet), as the
+  10-minute idle wait reads them. The start of a time away of 10 minutes or
+  more and when someone came back are kept in memory.
+- *What you are doing*: the PC activity monitor of *Hear what this PC plays*
+  (`PcActivityMonitor`). A change is a game, a call or voice chat, or a
+  full-screen app that starts or ends. The first look only learns what you do.
+- *A taskbar button flashed or a notification showed*: the same shell hook and
+  notification check that Martlet uses when it watches the whole screen
+  (`ScreenAttention`). It runs once a second, only while a check-in that is on
+  waits for it. Martlet reads no notification text.
+- *A song ended*: a song Martlet sang played to its end
+  (`ConversationSinging.EndedAt`).
+- *Who is here* and *Someone else spoke*: the voices Voice ID recognized in
+  what Martlet heard (`LiveConversationController.RecentVoices`), names and
+  times only, for 10 minutes.
+- *Martlet asked something you didn't answer*: the last thing Martlet said
+  (`CheckIns.LastQuestion`), how long the conversation has been quiet and how
+  long since you used the PC.
+- *The script's output changed*: a short SHA-256 hash of what the script
+  printed (`CheckIns.ScriptHash`), kept with the run, never the output.
+
+Like the other facts, these go only to the pool member with the check. The
+status and MCP say only counts and yes or no (`signals` in
+`check-ins-status.json`), and the waits say why in general words (*you're on a
+call*), never who spoke or what you do.
 
 What happens with its answer:
 
@@ -1482,6 +1630,9 @@ What happens with its answer:
   emotes, as Lingering emotes does (tick *Emotes and gaze*).
 - *Takes the eyes back to their usual*: `USUAL`, as Where the character looks
   does.
+- *Its tools act*: the check-in's [tool calls](#check-in-tool-sets) are the
+  action. Its answer is only one short line that says what it did and why (or
+  `OK`), for the status; Martlet reads nothing else from it.
 
 Every check-in's prompt goes through Companion › Prompts › *Check-ins: each
 check* (`{task}`, `{facts}`, `{time}`, `{answer}`), which adds the facts, the
@@ -1520,7 +1671,11 @@ also take:
 member that can handle what it needs (`CheckIns.Needs`): text always, plus
 *Sees pictures* (vision) and *Hears recordings* (audio) when you tick them. A
 screenshot ticks *Sees pictures* and a recording ticks *Hears recordings* on
-their own, and they can't be unticked then. The job's `Needs` go to the
+their own, and they can't be unticked then. A check-in with tool sets also needs
+a member that calls tools (`ThinkingCapability.Tools`): an OpenAI-compatible
+endpoint (Chat Completions function calling), the same rule as the
+conversation's own tools; a paired computer's Ollama gateway calls none. The
+job's `Needs` go to the
 [job board](#job-board), which gives it only to a member whose abilities
 include them. With no such member, the check-in waits.
 
@@ -1528,6 +1683,112 @@ What a check-in takes goes only to the member that takes it, which can be a
 cloud service. The page says so. Nothing taken is saved or logged: the log
 and the status say only what was taken (*a screenshot (1280x720), 10 s of the
 microphone, a script (exit code 0, 0.4 s, 312 characters)*).
+
+### Check-in tool sets
+
+A check-in can do more than answer: it can call tools. Tools come in named
+**tool sets**, and each check-in, built-in or your own, ticks the sets it may
+use under *It may use these tools* on its card. Point at a set to see what it
+does and its tools. Martlet offers:
+
+| Tool set (`id`) | Tools | What they do |
+| --- | --- | --- |
+| Emotes and gaze (`character`) | `turn_off_emote`, `look_usual` | Turn off one lingering emote a reply turned on (never a try or a touch's), or take the eyes back to their usual gaze. |
+| Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
+| Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
+| Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
+
+**How a run calls tools.** The job offers the tools of the chosen sets that
+this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls
+them in a bounded loop: at most 4 rounds (`CheckIns.MaximumToolRounds`) and 8
+calls in all (`CheckIns.MaximumToolCalls`), over every member the pool tries.
+After the eighth call, each call gets an error that says to answer without
+tools. An unknown tool and a tool that fails are errors the model reads; they
+never stop the run. With the answer *Its tools act*, the calls are the action
+and the run counts as acted on when at least one call worked. With any other
+answer, the message says *You may call your tools first if they help*, and
+Martlet still reads the answer as before. The calls run at once on this PC:
+the tool calls of a run that the pool later drops or stops still happened.
+
+**What you see.** The card's status line and `check-ins-status.json` say which
+tools the last run called and what came of each (`CheckInRun.Tools`: the set,
+the tool, the first line of its answer, at most 120 characters, and whether it
+failed), for example *Tools it called: remind_next_reply: Reminded the next
+reply.* The log says the same. A handler's first line never holds what was
+said or reminded.
+
+**Add a tool set** (`Martlet.Conversation.CheckInToolSets`):
+
+1. Make a `CheckInToolSet(Id, Name, Does, Tools)`: a lowercase kebab-case ID
+   that check-ins.json keeps, a name and plain words for the card, and its
+   `TextToolDefinition`s. Tool names are unique across every set.
+2. Add it to `CheckInToolSets.All` (after the static sets it lists, so they
+   exist when the list is made).
+3. Register its handler in `MainWindow.CheckInToolHandlers()`
+   (`MainWindow.CheckInTools.cs`): a `CheckInToolHandler` gets the call and a
+   `CheckInToolContext` (the check-in's ID and name, the active personality's
+   ID and when the run began, the same for every call of one run). It runs on a
+   pool thread, so it does UI work through the dispatcher, and returns a
+   `ConversationToolResult` (an error, not an exception, for a declined call).
+4. To have a built-in check-in use it, give its `CheckIns.BuiltIn` entry
+   `ToolSets = [<id>]`, usually with `Outcome = CheckInOutcome.Tools`.
+
+The card, the settings check (an unknown set or the same set twice is refused),
+the status and MCP pick up the new set by themselves.
+
+### How I react
+
+The character can change how it reacts to your touches, as itself. If it gets
+angry with you, a head pat can make it pout instead of smile, for a while.
+The built-in **How I react** check-in (`reactions`, on) does this with the
+**Touch reactions** tool set (`touch-reactions`).
+
+- **When it runs.** It starts when your touches end, after an intimate touch,
+  after a stroke across zones and when you keep touching one place
+  ([triggers](#check-in-triggers)), at most every 5 minutes. It does not also
+  run on a timer. It needs an active personality and a pool member whose model
+  can call tools.
+- **What it knows.** The personality, the end of the conversation and how you
+  touched the character in the last 10 minutes (`{touches}`). Its prompt is
+  *Check-in: how I react* on Companion › Prompts.
+- **What it does.** It reads how the character reacts now
+  (`read_touch_reactions`), then changes it when its feelings toward you
+  changed: `set_touch_mood` (every touch one or two steps less or more liked),
+  `change_touch_feeling` (how it feels about one category or zone, and which
+  reaction words play there) or `change_zone_reactions` (exactly what one zone
+  plays, by the emote, motion and gesture IDs the read lists, and
+  `sound:<sound>` for one of the sounds the active voice makes). `undo_touch_change` ends its
+  own changes, for example after it calmed down. Each change needs a short
+  reason in its own words. Its answer is only a short line for the log.
+- **Limits** (`CharacterReactionChanges`). At most 4 changes in one run and 12
+  in a day, at most 8 in effect at once (a newer change of the same kind and
+  target replaces the older one). Each lasts 15 minutes to 72 hours (6 hours
+  by default) and then ends on its own. A feeling moves at most 2 steps from
+  what your temperament says, and a mood shifts at most 2 steps.
+- **How it applies.** The changes never edit your zones or your temperament.
+  While they last, a touch, a stroke and the touch line use them over yours
+  (`CharacterReactionChanges.Temperament` and `.Zone`). A changed feeling
+  plays its reaction words, or that feeling's own, on the zones it covers, and
+  changes escalation, lingering and looking. A mood leaves a zone's list as
+  you chose it when it doesn't change how much that zone is liked. Nothing
+  here is on the reply path: the check-in runs only on the Thinking pool, and
+  a touch reads the changes from memory.
+- **What you see.** Companion › Touch ›
+  [Changes the character made](AVATARS.md#changes-the-character-made) lists
+  the changes in effect (what, until when, when and why), with **Undo** and
+  **Undo all**, and the newest that ended. Touch zones' **Start over** undoes
+  them too. The check-in's card shows the first line of each tool's answer,
+  which never holds the character's reason. The changes are kept in
+  `character-reaction-changes.json` on this PC only.
+
+The tools run in `Martlet.Avatar.Hosting.CharacterReactionTools` (with no
+provider types, so the desktop's handler, `MainWindow.TouchReactionTools.cs`,
+and MCP's `character_reaction_changes` run the same calls). Checked locally:
+`CharacterReactionChangeTests` (each tool, every limit, the overlay on the
+temperament and the zones, undo and storage), the Start over level in
+`CharacterTouchResetTests` and step 12 of `check_ins_check` (the built-in
+check-in run end to end with a FIXTURE member that calls the tools). A real
+model calling these tools is **NOT RUN**.
 
 **Answers.** Martlet reads the last decisive line, so thinking written before
 the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
@@ -1557,12 +1818,14 @@ the same for [MCP](MCP.md#check-ins). Neither keeps what was said, answered or
 reminded.
 
 **API** (`Martlet.Conversation.CheckIns`): `All(settings)` lists the
-check-ins, `Wait(checkIn, state, last, now)` says why one waits (null: it
+check-ins, `Wait(checkIn, state, last, now, prompts, fired)` says why one waits (null: it
 runs), `Focus` narrows the facts to what it may act on, `Prepare` makes the
 `ThinkingJob` (with `Needs`, and the screenshot and recording it took),
 `Gathered` words what a check-in took for the message, `ScriptRan` reads a
 script's run, `Read` reads the answer into a `CheckInVerdict` and `Note` words
-a reminder. The desktop gathers `CheckInState` on its UI thread
+a reminder. `TouchTriggers` collects a burst of touches and says which
+`CheckInTriggers` it fires once it settles (a `CheckInTrigger`), and `Fires`
+says whether a kept trigger still starts a check-in. The desktop gathers `CheckInState` on its UI thread
 (`MainWindow.CheckIns.cs`), and the screenshot, recording and script output
 just before the run. To add a built-in check-in:
 
@@ -1571,7 +1834,10 @@ just before the run. To add a built-in check-in:
    the answer format).
 2. For a new fact, add a `CheckInFacts` flag, its text in `CheckIns.Facts` and
    its placeholder in `CheckIns.Placeholders`. For a new condition, add a
-   `CheckInConditions` flag and its wait in `CheckIns.Wait`. Add each to the
+   `CheckInConditions` flag and its wait in `CheckIns.Wait` (a signal's wait
+   goes in `CheckInSignals.cs`, with the signal in `CheckInState` and followed
+   in `MainWindow.CheckInSignals.cs`). Widen `CheckIns.KnownFacts` or
+   `KnownConditions`, which `CheckInSettings.Validate` checks. Add each to the
    page's choices, so your own check-ins can use it too.
 3. Give it an outcome Martlet already acts on, or act on a new one in
    `MainWindow.ActOnCheckInAsync`.
@@ -1579,14 +1845,23 @@ just before the run. To add a built-in check-in:
 Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
 wording beside a due reminder, settings, the model a check-in needs, what it
 takes, a script's run, each built-in check-in recreated as your own with the
-same message, waits and answers, and a built-in check-in's changes saved and
-read back), `SoundDigestTests` (the kept microphone and the
+same message, waits and answers, a built-in check-in's changes saved and
+read back, and tool sets: the tools a job offers, the call limit, unknown and
+failing tools, and the sets saved and read back; `CheckInsTests.Signals.cs`:
+each signal condition, the hours, an unanswered question, someone else's
+voice, the signal facts' words, the four signal check-ins, a script whose
+output didn't change and the per-hour cap; the triggers: what fixture touches fire, when a triggered
+check-in waits or runs, and triggers saved and read back),
+`SoundDigestTests` (the kept microphone and the
 sound kept for a check-in), the Desktop tests for an emote a reply
 turned on against a try, a check-in taking the eyes back to their usual gaze and
 the real talk window bringing up a check-in's `SAY:` through a fixture Thinking
 endpoint, MCP's `check_ins_check` and `check_ins_status`, and the page on a
-disposable data folder through `-Desktop`. A real model answering a check-in,
-and a real screenshot or recording sent to a pool member, are **NOT RUN**.
+disposable data folder through `-Desktop`, with `character_touch` and
+`character_stroke` firing a triggered check-in that the
+`MARTLET_CHECK_INS_FIXTURE` file answered. A real model answering a check-in,
+a real model calling a check-in's tools, and a real screenshot or recording
+sent to a pool member, are **NOT RUN**.
 
 ## Singing in conversation
 

@@ -659,7 +659,8 @@ each offer, take and reminder said by id only (`Reminders:`). See
 minutes a Thinking pool member answers one short question for Martlet (do the
 lingering emotes still fit, does the gaze a reply chose still fit, did the
 character keep its promises, did it stay in character, does it keep saying the
-same things, and the owner's own),
+same things, the four that wait for a signal (welcome back, an unanswered
+question, a call, someone else here) and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
 instructions. A reminder for the next reply, or what a check-in adds to what
 Martlet knows, goes in the notes of that one
@@ -674,19 +675,29 @@ waits, its last run, runs and actions since Martlet started). Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`, `Touches`), `CheckInWhen-<id>-<condition>` (when it
-runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
-`Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`), the model it
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`),
+`CheckInWhen-<id>-<condition>` (when it runs: `CharacterShows`, `EmoteShown`,
+`GazeChosen`, `Talked`, `SomethingNew`, `Persona`, `Replies`, `NewReplies`,
+`Sayings`, `SlowWhenKept`, `CameBack`, `NotOnCall`, `ActivityChanged`,
+`Between`, `Unanswered`, `Attention`, `SongEnded`, `ScriptChanged`,
+`SomeoneElse`), `CheckInTrigger-<id>-<trigger>` (what starts it at once:
+`TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`), its
+hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
+as *8 AM* and *10 PM*, used with `Between`) and its cap
+(`CheckInMostPerHour-<id>`: *No limit*, *Once an hour* or *2*, *3*, *4*, *6* or
+*12 times an hour*), the model it
 needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
 when an input forces it) and what each run takes (`CheckInScreenshot-<id>`,
-`CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact and condition
-box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
+`CheckInRecording-<id>` and `CheckInSeconds-<id>`), and the tool sets it may
+call (`CheckInTools-<id>-<setId>`, such as `CheckInTools-c1-next-reply`; its
+`help` says what the set does and names its tools). Each fact, condition and
+trigger box, `CheckInOutcome-<id>` and `CheckInSeconds-<id>` also return `help`: what
 the choice does (the same text as its tooltip), and which models hear a whole
 minute of recording. A built-in check-in's card has its prompt box
 (`CheckInPrompt-<id>`), its state (`CheckInPromptState-<id>`, such as *Edited.
 About 180 tokens.*, with *Saving...* until it is saved) and *Use built-in
-settings* (`CheckInReset-<id>`: Martlet's own prompt, facts, conditions and
-answer back; On and Every stay). Each check-in has *Copy as your own*
+settings* (`CheckInReset-<id>`: Martlet's own prompt, facts, conditions,
+answer, inputs and tools back; On and Every stay). Each check-in has *Copy as your own*
 (`CheckInCopy-<id>`), which adds an own check-in (off) with the same prompt and
 choices. The script and prompt boxes
 (`CheckInScript-<id>`, `CheckInPrompt-<id>`) have automation IDs, but
@@ -710,6 +721,17 @@ NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
 the owner's own check-ins that use a line, so *Check now* shows the whole flow
 on a disposable data directory: a reminder waiting for the next reply,
 something Martlet brings up, or background for the next reply.
+
+[Check-in triggers](CONVERSATION.md#check-in-triggers) are driven live with
+`character_touch` and `character_stroke` (both need `--allow-ui-effects` and
+the character showing with touch zones): about 1.2 seconds after the last
+touch, `check_ins_status`'s `desktop.touches.lastFired` names the triggers
+that fired, and a check-in that starts on one shows its run with
+`last.trigger`, or keeps it as `pending` while its pace runs. Check one on a
+disposable data directory: write a `check-ins.json` with an own check-in that
+has `"Triggers": "TouchesEnded"`, launch with `MARTLET_CHECK_INS_FIXTURE`, show
+the character (`ToggleCharacter`), open `CompanionTab-Touch` so Martlet places
+its first zones, then tap it.
 
 ## Local MCP control (Windows)
 
@@ -2089,6 +2111,29 @@ makes the stand-in fail that request instead of answering, as a model whose
 computer stopped answering: *Detect zones* then stops there and keeps the zones
 from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
+At the end of the Touch zones card, *Start over* resets the character's touch
+to how a fresh character starts, for the model shown and the active persona
+only. `TouchZonesResetLevel` (a choice; its value is the level: *Zone
+reactions*, *Zones*, *Touch temperament*, *The character's own changes* or
+*Everything*) chooses how much,
+and `TouchZonesResetNote` reads what that level clears (fixed text).
+`TouchZonesReset` (*Reset...*) opens a confirmation whose question,
+`TouchZonesResetQuestion`, lists exactly what is lost (zone names and counts,
+the persona's name, a custom temperament's name, the date the temperament was
+decided) and what happens after; `ConfirmationNo` (*Cancel*) leaves everything
+as it was and `ConfirmationYes` (*Reset*) resets. When the level has nothing to
+lose, no question opens. `TouchZonesResetState` reads what the last reset did
+(*Reset zones at 11:40 PM. Martlet places a first guess...*), *Nothing was
+reset.* after Cancel, or why it couldn't (*Not reset: ...*). *Zone reactions*
+gives every zone the reaction a fresh zone gets (its reactions, rest, *Martlet
+notices* and own words) and keeps the zones; *Zones* forgets this model's zones,
+found and added, with the picture and what the last detection sent, and the
+page then places a first guess again; *Touch temperament* forgets the persona's
+own temperament and what it uses instead, and the Thinking model decides it
+again from the personality when Martlet isn't replying; *Everything* does the
+last two. Choosing a level, Reset and its `ConfirmationYes` need
+`--allow-ui-effects`.
+
 `character_eyes` rehearses Companion › Eyes › [Where the eyes are](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
 width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
@@ -2214,6 +2259,39 @@ each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
 source `fixture`). Saving a changed personality (`OpenCompanion`,
 `CompanionText`, `CompanionClose`) then runs the real decide, store and route
 path with no model.
+
+`character_reaction_changes` rehearses Companion › Touch ›
+[Changes the character made](AVATARS.md#changes-the-character-made) with no
+model request. It returns `set` (the Touch reactions tool set the How I react
+check-in calls: its `id`, `tools` and `limits`), `model` (`modelId`, the
+`catalog` used: the model's own emotes when `modelPath` is given, else a
+FIXTURE catalog of Martlet's gestures, and how many `zones` the
+`dataDirectory`'s `character-touch-zones.json` has for it), `temperament` (what
+`personaId` uses, in words), `changes` (every change kept in
+`character-reaction-changes.json`: `id`, `persona`, `kind`, `target`, `what`,
+`why`, `at`, `until`, `active`, `endedBy` and `by`), and `before` and `after`
+(for `personaId`: how many changes are in effect, the feeling for each
+category, and for each zone in use its `feeling`, what it `plays`, its `list`
+and `changedByCharacter`). `tool` (`read_touch_reactions`,
+`change_touch_feeling`, `change_zone_reactions`, `set_touch_mood` or
+`undo_touch_change`) with `arguments` (the JSON a model sends) runs one call
+as the desktop runs it, with every limit, and returns `call` (`result`,
+`failed`, `changed` and `saved`). `undo` (a change ID, or `all`) ends changes
+as the owner's **Undo** does. `save` writes the call's change or the undo into
+an explicit, disposable `dataDirectory`. `at` sets the time (ISO 8601) and
+`checkInId` the calling check-in (`reactions`). `read` is what
+`read_touch_reactions` returns afterwards.
+
+The card's `ReactionChangesStatus` says how many changes of the active persona
+are in effect. `ReactionChange-<n>` is each change in effect (what it does,
+until when, and when and by which check-in it was made),
+`ReactionChangeEnded-<n>` each of the newest five that ended (and who ended
+it), and `ReactionChangesState` what the last **Undo** did. The character's
+reasons (`ReactionChangeWhy-<n>`, `ReactionChangeEndedWhy-<n>`) come from the
+conversation, so they aren't values MCP reads; `character_reaction_changes`
+shows `why` and `read` only for an explicit `dataDirectory`.
+`ReactionChangeUndo-<n>` and `ReactionChangesUndoAll` end changes, so they need
+`--allow-ui-effects`.
 
 `character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 `usual` is the usual gaze from the `dataDirectory`'s `talk-preferences.json`
@@ -3854,6 +3932,33 @@ and the newest desktop `log` lines about quick sounds (*Quick sound: "Mm," 712
 ms after the reply was confirmed (...)*, *Quick sounds: made 4 with ...*).
 Read-only; it never plays anything.
 
+`voice_sounds_status` reads the touch zones' voice sounds (`sound:<cue>`
+entries in a zone's reaction list) from a data directory (optional absolute
+`dataDirectory`; the script gives a disposable one): the `voice` replies speak
+with (`words`, its `engine`, whether it is `paid` and its `key` per voice and
+character, or null), `noSounds` (why no sound plays, when the voice makes none),
+each of the voice's `sounds` (`entry`, `cue`, `label`, the engine's `tag`,
+whether it is `made` on this PC and its `milliseconds`), every zone in `zones`
+that lists sounds (`model`, `zone`, `enabled`, and for each sound its `entry`
+and whether it `plays` with this voice), the clips `kept` in `voice-sounds\`,
+the `last` sound played or skipped (*Voice sound: laugh for a touch on hair not
+played (Martlet is speaking).*) and the newest desktop `log` lines about voice
+sounds. Read-only; it never plays anything.
+
+`voice_sounds_check` rehearses voice sounds with the production code and
+fixtures (a fixture voice makes a quiet tone, NOT AI; fixture speakers take
+audio at a real speaker's pace and play nothing). Scenarios (`scenario` runs
+one): `sounds` (the sounds each engine offers, and the words for a voice that
+makes none), `rules` (`VoiceSoundGate`: no sound with no voice, *Speak replies
+aloud* off, the conversation paused or muted, a sound the voice can't make,
+while Martlet speaks, while you talk or over another sound; a clip not made yet
+is made instead), `make` (the engine's tag alone through
+`ConversationRuntime.SynthesizeAsync`, trimmed and kept), `play`
+(`ConversationRuntime.PlayClipAsync` plays the clip whole with lip sync and
+refuses a second one meanwhile) and `cut` (a reply's own voice cuts a sound
+still playing; `replyFirstAudioMs` must be no later than
+`sameReplyWithoutSoundFirstAudioMs` plus 150 ms).
+
 `quick_sounds_check` rehearses quick sounds (see
 [Voice latency](VOICE_LATENCY.md#quick-sounds-while-martlet-thinks)) with the
 production rules (`QuickSoundGate`, `QuickSoundWatcher`,
@@ -4506,28 +4611,46 @@ credentials.
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
-*GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task`, the
+*GazeUsual*, *Note*, *Say*, *Context* or *Tools*, built-in `prompt`, the owner's `task`, the
 `facts` and `conditions` (such as *Said, Replies* or *CharacterShows,
 EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
 Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
-*Text, Vision, Audio*), the `screenshot`, the `recording` (*None*,
+*Text, Vision, Audio, Tools*), the `screenshot`, the `recording` (*None*,
 *Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
-whether it runs a `script` and `scriptCharacters`, never the script itself), `desktop` from `check-ins-status.json` (written by
-the desktop on a companion PC: `role`, the check-in `running`, `pool` with
+whether it runs a `script` and `scriptCharacters`, never the script itself;
+`hours` such as *8 AM-10 PM* with `Between`, else null; `mostPerHour`, null
+without a cap; its `triggers`, such as *None* or *TouchesEnded,
+IntimateTouch*; and its `toolSets` (set IDs such as *next-reply*)), `desktop` from `check-ins-status.json` (written by
+the desktop on a companion PC: `role`, the check-in `running` and the
+triggered one `runningTriggered`, `touches` with `settling` (touches wait to
+settle), `settleMs` and `lastFired` (`triggers`, `at` and `what` in counts
+only, such as *3 touches, an intimate one*), `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
-`recording`, `recordingSeconds`, `script`, `waiting`, `nextAt`, `runs`, `acted`
-and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
+`recording`, `recordingSeconds`, `script`, `triggers`, `pending` (the trigger
+it keeps: `triggers`, `at`, `what` and `expiresAt`), `toolSets`, `waiting`, `hours`, `mostPerHour`,
+`lastHour` (its runs in the last hour), `nextAt`, `runs`, `acted` and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
 took in a few words, such as *a screenshot (1280x720), 10 s of the
-microphone*) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
-`pcKept` and `pcHeard`; never what was said, answered, reminded, taken or
-printed) and the
+microphone*), `trigger` (what started it, or null), `ms` and `tools` (each call the run made: its `set`, the `tool`,
+the `result`, the first line of the tool's answer at most 120 characters, and
+`failed`); `sound` with `microphoneKept`, `microphoneHeard`,
+`pcKept` and `pcHeard`; `signals` with `attentionWatched` (Martlet watches
+for flashing taskbar buttons and notifications because a check-in that is on
+waits for them), `activityKnown`, `cameBackMinutesAgo` and `voicesLately` (a
+count); never what was said, answered, reminded, taken or printed, what the
+user does or who spoke) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `saidLatelyMinutes` for Saying the same things, `recordingChoices`,
 `maximumScriptCharacters`, `maximumScriptOutputCharacters` and
-`scriptTimeoutSeconds` for the owner's inputs, the job kind
-`check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
+`scriptTimeoutSeconds` for the owner's inputs, `signalWindowMinutes`,
+`unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
+`mostPerHourChoices` for the signals, `maximumToolRounds` (4),
+`maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
+(each set's `id`, `name`, `does` and `tools`), the job kind
+`check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
+and for triggers the `triggers` offered, `triggerAgeSeconds`,
+`touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
 Read-only.
 
 `check_ins_check` rehearses check-ins with the production code (`CheckIns`,
@@ -4548,7 +4671,9 @@ about, chatter, `REMIND: nothing`); `built-in ones recreated as your own`
 (each built-in check-in copied as an own check-in with its prompt, facts,
 conditions and answer sends the same message, waits the same way and reads
 answers the same way, and an own check-in that gets what Martlet said in the
-last hour and its last replies); and what Martlet does: a reply's emote off
+last hour and its last replies); `adult content line` (`{adult}` is the
+non-explicit line while Adult content is off and the explicit line only while
+it is on); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
 `SAY:` worded in its own words beside a due reminder. Six `own:` steps check
@@ -4571,6 +4696,17 @@ the same, that the history outlives a reply's `Drain`, that the fact goes
 after the prompt when it is ticked but not placed, and that facts past
 `Touches` are refused. Its `detail` gives counts (`runs`, `things`,
 `intimate`, `often`), `filled` and the FIXTURE message. Three
+`triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
+with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
+check-in's triggers, an unknown trigger refused, only Describe touches has one by default),
+`triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
+and a stroke from the tail over the buttocks to the groin, after 5 earlier
+touches there, fire all four triggers once they settle; the ledger still holds
+every touch; a pat alone fires only `TouchesEnded`; a zoom fires nothing) and
+`triggers: when a triggered check-in waits` (only on its own triggers, not
+after 2 minutes, at most once per its pace, never held by a busy
+conversation, still off, still waiting while nobody is at the PC, *Check now*
+with no trigger, and a paced check-in still waiting for a busy conversation). Three
 `context:` steps check *Adds to what Martlet knows*: `context: asked and read`
 (an own check-in's message asks for a `KNOW:` line or `OK`, and a fixture
 member's `KNOW:` bullet after a `<think>` block is read on a production job
@@ -4579,8 +4715,46 @@ board), `context: goes with one request` (the description, wrapped in
 `check-in-c7` with one request only, is dropped after
 `CheckIns.ContextAge` (3 minutes) and is not posted when that prompt is
 emptied) and `context: nothing changes nothing` (`KNOW: nothing to add`, `OK`,
-a `REMIND:` line and chatter post nothing). `passed` and
-each step's `passed` and `detail`. No model, network or credentials.
+a `REMIND:` line and chatter post nothing). `describe touches` checks the
+built-in Describe touches check-in end to end with FIXTURE touches and a
+canned answer: it is on, runs at most once a minute, adds to what Martlet
+knows and starts on *Your touches end*; it waits with no trigger, runs on a
+fired trigger while the touch reply keeps the conversation busy, waits during
+its cooldown and while the character is hidden; its message has the strokes
+from `{touches}`, the personality, the `KNOW:` format and the non-explicit
+`{adult}` line (the explicit line only with Adult content on); and a fixture
+member's `KNOW:` answer goes on a production context board as
+`check-in-touches` for one request only. Three `signals:` steps check the
+signal conditions and facts with FIXTURE facts: `signals: when they wait` (each
+condition waits for its signal since the last run and runs on it: you came
+back, a call, a change in what you do, the hours past midnight, an unanswered
+question asked once, a flashing taskbar button, a song that ended, someone
+else's voice, a check-in with no script to compare, the per-hour cap, and a
+script whose output hash didn't change, which *Check now* still asks),
+`signals: the facts and the check-ins` (Welcome back, Unanswered question, On a
+call and Someone else is here send `{away}`, `{activity}` and `{people}` and
+read `SAY:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
+and read back` (equal hours, a cap of 5 and an unknown condition refused).
+The settings step also checks that these four built-in check-ins are off by
+default. Three `tools:`
+steps check [tool sets](CONVERSATION.md#check-in-tool-sets): `tools: sets saved
+and read back` (an own check-in's and a built-in choice's sets kept; an unknown
+set and the same set twice refused), `tools: the job offers them` (the job
+needs a member that calls tools, offers the chosen sets' tools for 4 rounds and
+asks for the *Its tools act* answer; with no sets it waits) and `tools: only a
+member that calls tools runs them` (a text-only member never gets it; on a
+member that calls tools, FIXTURE calls are kept with their first line only, an
+unknown tool and a failing handler are errors, and every call after the eighth
+is refused). `how I react: the built-in check-in changes how the character
+reacts, bounded` runs [How I react](CONVERSATION.md#how-i-react): it is on,
+starts only on touches (it waits without a trigger and runs with a fresh one),
+offers the five Touch reactions tools and asks with `{touches}`; on a FIXTURE
+member that calls them (NOT AI) through the production tool host and
+`CharacterReactionTools` on FIXTURE zones, a mood, a feeling, an arms feeling
+and a hand list are made, a call without a reason and a fifth change are
+refused, and no call's first line holds the character's reasons (`detail`:
+`waits`, `fired`, `tools`, `made`, `changes` and `hand`). `passed` and each
+step's `passed` and `detail`. No model, network or credentials.
 
 `said_lately_check` rehearses [what Martlet said
 lately](CONVERSATION.md#what-you-said-lately) with the production code
@@ -5833,6 +6007,20 @@ rather than ticked (navigation, Companion's side list, radio buttons and
 filter pills, list items), a combo box in the status fields reads as its
 chosen option, and a check box in the status fields reads as its label (its
 `checkedState` says whether it is ticked).
+
+Keyboard shortcuts (underlined letters, such as the *x* of Settings' *Exit
+Martlet*) need Alt: Martlet ignores the plain letter, so a stray key never
+presses a button. Enter and Esc still press a dialog's default and cancel
+buttons, and an open menu still takes plain letters. The controls that talk,
+listen, watch or show the character have no shortcut at all: Home's
+`HomeListen`, `HomeWatch`, `OpenLiveConversation`, `ToggleCharacter` and the
+character buttons beside them, the talk window's `LiveStop` and `LivePtt`, and
+the notification-area menu's `TrayTalk`, `TrayStartListening`,
+`TrayStopListening`, `TrayStartWatching`, `TrayStopWatching`, `TrayPause`,
+`TrayResume`, `TrayEndTalk`, `TrayCharacter`, `TrayCharacterClickThrough` and
+`TrayCharacterProfiles`. UI Automation doesn't report WPF's shortcuts, so
+`ui_snapshot` can't show them; `AccessKeysTests` in `Martlet.Desktop.Tests`
+checks the Alt rule.
 
 Companion's side list starts with *How it works*, the jobs Martlet needs in
 priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
@@ -7439,7 +7627,8 @@ talk window* while it is open), and while the talk window is open `TrayPause` or
 `TrayCharacterClickThrough` (while the character shows or click-through is on;
 see the character overlay above), the checkable
 `TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
-current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
+current choice) and `TrayExit`. Each item reads as its label in `value`
+(*Start listening*, *Pause Martlet*, *Exit Martlet*...). The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
 column in the dark palettes; `ui_snapshot` returns the palette as `AppearanceTheme`
 (*Pink light*, *Rose dark*, *Character light*, *Character dark* or *Custom*; choosing one with
@@ -7657,7 +7846,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

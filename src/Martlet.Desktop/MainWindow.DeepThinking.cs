@@ -200,7 +200,8 @@ public partial class MainWindow
         var slots = member.ThinksAtOnce;
         string[] reads = ["text", .. can.HasFlag(ThinkingCapability.Vision) ? ["pictures"] : Array.Empty<string>(),
             .. can.HasFlag(ThinkingCapability.Audio) ? ["sound"] : Array.Empty<string>()];
-        var detail = $"Reads {(reads.Length == 1 ? reads[0] : string.Join(", ", reads[..^1]) + " and " + reads[^1])}; writes text. " +
+        var detail = $"Reads {(reads.Length == 1 ? reads[0] : string.Join(", ", reads[..^1]) + " and " + reads[^1])}; writes text" +
+            $"{(can.HasFlag(ThinkingCapability.Tools) ? " and calls tools" : "")}. " +
             $"{slots} slot{(slots == 1 ? "" : "s")}{(member.OnHostRole && hostId is not null ? $", set on {hostId}" : "")}." +
             (plan.Find(key) is { Plan.Available: false } spot ? $" Can't run now: {spot.Plan.Why}" : "") +
             // A paired computer that stopped answering stays a member: its slots come back by themselves.

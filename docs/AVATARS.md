@@ -517,6 +517,27 @@ ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner
 thighs) react too while **Include intimate zones** is on, which it is by
 default; turn it off to leave them out. The check box names each of these parts.
 
+**Start over**, at the end of the card, resets the character's touch to how a
+fresh character starts. Choose how much, then press **Reset...**:
+
+- **Zone reactions:** each zone plays what a fresh zone gets again, rests 4
+  seconds, Martlet notices it and your own words go. The zones and boxes stay.
+- **Zones:** this model's zones, found and added, go with their boxes, names,
+  reactions and pictures. Martlet places a first guess again, as for a new
+  character.
+- **Touch temperament:** the active persona's touch temperament, decided or
+  changed by you, goes with any temperament it uses instead. The Thinking
+  model decides it again from the personality. Your other computers share it.
+- **The character's own changes:** the changes the active persona's
+  character made itself to how it reacts to touches
+  ([Changes the character made](#changes-the-character-made)) end, so
+  touches play what you chose again.
+- **Everything:** the zones, the touch temperament and the character's own
+  changes.
+
+Martlet first lists exactly what you lose and resets nothing until you press
+**Reset**. Other models and personas keep theirs.
+
 - **First zones, with no AI.** The first time the page shows a model that has
   no zones and no picture yet, Martlet draws the character off screen (as
   Detect zones does, step 1 below) and places a first guess at the short list
@@ -888,6 +909,43 @@ default; turn it off to leave them out. The check box names each of these parts.
   your face*. Moving it around starts a short reply of its own, like a touch;
   the rest go with your next message.
 
+### Voice sounds
+
+A zone's reaction list can hold voice sounds as well as emotes: a laugh, a
+gasp, a sigh or a giggle that Martlet's own voice makes alone, with no words.
+Each one is saved as `sound:<cue>` (`sound:laugh`, `sound:gasp`), where the cue
+is the same for every voice. So a zone keeps its sounds when you change to
+another voice that makes them.
+
+- **Which sounds.** Only the sounds the voice replies speak with makes alone:
+  the sound tags of its engine. Chatterbox Turbo and Chatterbox Nano make nine
+  (laugh, chuckle, sigh, gasp, cough, clear throat, groan, sniff, shush), Dia
+  makes thirteen (also breaths, a hum, a sneeze and a whistle) and ElevenLabs
+  six. F5-TTS, XTTS-v2, GPT-SoVITS, the original Chatterbox and OpenAI's voice
+  say words only. With one of those voices the zone list says so, keeps the
+  sounds you added and plays none of them.
+- **Made once, then instant.** Martlet makes each sound once for each voice and
+  character: it sends the engine's own tag alone (`[laugh]` for Chatterbox,
+  `(laughs)` for Dia) on the reply's own voice path, cuts the silence around
+  it, keeps at most 2.5 seconds and stores it in `voice-sounds\` in the data
+  folder. A touch then plays the stored clip at once. It never asks the voice
+  for a sound at the touch. A sound that is not made yet is made in the
+  background and plays from the next touch. Sounds are made only while no reply
+  runs, so they never hold up a reply. A paid cloud voice (ElevenLabs) makes a
+  sound only when you click **Hear it**: one short request.
+- **When a sound plays.** A touched zone plays one of its sounds; with several,
+  they take turns. A sound plays through the same speakers as replies, at the
+  voice volume, and the character's mouth moves with it. It doesn't play while
+  Martlet speaks or sings, while always listening hears you, while the
+  conversation is paused or muted, or with *Speak Martlet's replies aloud* off.
+  A reply's own voice cuts a sound still playing the moment it starts. The reply
+  never waits for it, so it adds no time before Martlet's first word.
+- **Hear it** plays a sound now (making it first when needed) so you can try it.
+
+MCP's `voice_sounds_status` shows the voice, its sounds, which are made, which
+zones list sounds and the last one played or skipped and why.
+`voice_sounds_check` rehearses the rules, making and playing with fixtures.
+
 ### Eyes
 
 Some overlay emotes are drawn over the eyes (heart eyes, star eyes, the dizzy
@@ -1035,6 +1093,49 @@ category*; **Add part** offers every zone, the breasts and the groin too.
   1, as before, so updating Martlet changes nothing that your computers share.
   An older Martlet that gets version 2 from another computer says that a newer
   Martlet saved it, instead of dropping temperaments it can't read.
+
+### Changes the character made
+
+The character can change how it reacts to touches for a while, as itself. The
+**How I react** check-in (see
+[How I react](CONVERSATION.md#how-i-react)) reads the conversation and, when
+the character's feelings toward you changed (it got angry or hurt, or it
+warmed up), calls the Touch reactions tools:
+
+- **set_touch_mood** makes every touch one or two steps less liked (or more
+  liked), for example while the character is angry with you.
+- **change_touch_feeling** changes how it feels about one category or one
+  zone, and optionally which reaction words play there.
+- **change_zone_reactions** chooses exactly what one zone plays: emotes,
+  motions, gestures and voice sounds.
+- **undo_touch_change** ends its own changes early, for example after it
+  calmed down. **read_touch_reactions** shows it how it reacts now.
+
+Its changes apply over your zones and your temperament while they last. They
+never edit them. A changed feeling plays that feeling's reactions on the
+zones it covers, and it also changes the touch line, the escalation, the
+lingering and the looking. A mood leaves a zone's list as you chose it when
+the mood doesn't change how much that zone is liked.
+
+Every change is limited:
+
+- at most 4 changes in one check and 12 in a day, and at most 8 in effect at
+  once (a newer change of the same kind and target replaces the older one);
+- each lasts 15 minutes to 72 hours (6 hours when the character doesn't say),
+  then ends on its own;
+- a feeling moves at most 2 steps from what your temperament says (from
+  *neutral* where it says nothing), and a mood shifts at most 2 steps;
+- each change needs a short reason in the character's own words.
+
+Companion › Touch › **Changes the character made** lists the active persona's
+changes in effect: what each does, until when, when it was made and why.
+**Undo** ends one now and **Undo all** ends them all. *Ended lately* shows the
+newest five that ended, and who ended them. Touch zones' **Start over** ends
+them too, at its *The character's own changes* level (and at *Everything*).
+The changes are kept in
+`character-reaction-changes.json` on this PC only; they don't travel with the
+shared settings. To stop new changes, turn off How I react on Companion ›
+Check-ins.
 
 ## 1. Choose a renderer, analyzer and feature owners separately
 

@@ -17,6 +17,13 @@ public sealed record CheckInChoice(bool On, int EveryMinutes)
     public CheckInRecording? Recording { get; init; }
     public int? RecordingSeconds { get; init; }
     public string? Script { get; init; }
+    public CheckInTriggers? Triggers { get; init; }
+    public int? FromHour { get; init; }
+    public int? UntilHour { get; init; }
+    public int? MostPerHour { get; init; }
+    /// <summary>The tool sets it may call (<see cref="CheckInToolSets"/> IDs); null: the built-in default. Compared by value.</summary>
+    public IReadOnlyList<string>? ToolSets { get => toolSets; init => toolSets = value is null ? null : new(value); }
+    private readonly CheckInToolSetIds? toolSets;
 }
 
 /// <summary>One of the owner's own check-ins (Companion › Check-ins › Your own check-ins): its name, what to check
@@ -48,6 +55,16 @@ public sealed record CustomCheckIn
     /// <summary>A Windows PowerShell script Martlet runs on this PC before each run (empty: none); its output goes with the
     /// check. Only the owner writes it, on the Check-ins page.</summary>
     public string Script { get; init; } = "";
+    /// <summary>What starts it at once (<see cref="CheckInTriggers"/>); none: it runs on its pace.</summary>
+    public CheckInTriggers Triggers { get; init; }
+    /// <summary>With <see cref="CheckInConditions.Between"/>: the hours it runs, from <see cref="FromHour"/> up to <see cref="UntilHour"/>.</summary>
+    public int FromHour { get; init; } = CheckIns.DefaultFromHour;
+    public int UntilHour { get; init; } = CheckIns.DefaultUntilHour;
+    /// <summary>At most this many runs in an hour (0: no limit).</summary>
+    public int MostPerHour { get; init; }
+    /// <summary>The tool sets it may call (<see cref="CheckInToolSets"/> IDs); empty: none. Compared by value.</summary>
+    public IReadOnlyList<string> ToolSets { get => toolSets; init => toolSets = value is null ? CheckInToolSetIds.Empty : new(value); }
+    private readonly CheckInToolSetIds toolSets = CheckInToolSetIds.Empty;
 }
 
 /// <summary>Companion › Check-ins on this PC (check-ins.json in the data folder; never shared, because each PC shows its own
@@ -112,7 +129,9 @@ public sealed record CheckInSettings
                 $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
             Check(choice!.Facts ?? CheckInFacts.None, choice.Conditions ?? CheckInConditions.None, choice.Outcome ?? CheckInOutcome.Note,
                 choice.Needs ?? ThinkingCapability.Text, choice.Recording ?? CheckInRecording.None, choice.RecordingSeconds ?? 10,
-                choice.Script ?? "");
+                choice.Script ?? "", choice.ToolSets ?? []);
+            CheckIns.CheckTriggers(choice.Triggers ?? CheckInTriggers.None);
+            CheckIns.CheckSignals(choice.FromHour ?? CheckIns.DefaultFromHour, choice.UntilHour ?? CheckIns.DefaultUntilHour, choice.MostPerHour ?? 0);
         }
         ContractRules.Require(Custom.Count <= CheckIns.MaximumCustom, $"You can have at most {CheckIns.MaximumCustom} check-ins of your own.");
         ContractRules.Require(Custom.Select(c => c?.Id).Distinct(StringComparer.Ordinal).Count() == Custom.Count, "Two of your check-ins have the same ID.");
@@ -126,17 +145,21 @@ public sealed record CheckInSettings
                 !task.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t'),
                 $"What a check-in checks is at most {CheckIns.MaximumTaskCharacters} characters.");
             ContractRules.Require(CheckIns.EveryChoices.Contains(checkIn.EveryMinutes), $"A check-in runs every {CheckIns.EveryChoicesText} minutes.");
-            Check(checkIn.Facts, checkIn.Conditions, checkIn.Outcome, checkIn.Needs, checkIn.Recording, checkIn.RecordingSeconds, checkIn.Script);
+            Check(checkIn.Facts, checkIn.Conditions, checkIn.Outcome, checkIn.Needs, checkIn.Recording, checkIn.RecordingSeconds, checkIn.Script,
+                checkIn.ToolSets);
+            CheckIns.CheckTriggers(checkIn.Triggers);
+            CheckIns.CheckSignals(checkIn.FromHour, checkIn.UntilHour, checkIn.MostPerHour);
         }
     }
 
     private static void Check(CheckInFacts facts, CheckInConditions conditions, CheckInOutcome outcome, ThinkingCapability needs,
-        CheckInRecording recording, int recordingSeconds, string? script)
+        CheckInRecording recording, int recordingSeconds, string? script, IReadOnlyList<string> toolSets)
     {
         ContractRules.Require(Enum.IsDefined(outcome),
-            "A check-in reminds Martlet, has it bring something up, adds to what it knows, turns off emotes or moves the eyes.");
-        ContractRules.Require(((int)facts & ~1023) == 0, "A check-in gets only the facts Martlet offers.");
-        ContractRules.Require(((int)conditions & ~1023) == 0, "A check-in waits only for the conditions Martlet offers.");
+            "A check-in reminds Martlet, has it bring something up, adds to what it knows, turns off emotes, moves the eyes or lets " +
+            "its tools act.");
+        ContractRules.Require((facts & ~CheckIns.KnownFacts) == 0, "A check-in gets only the facts Martlet offers.");
+        ContractRules.Require((conditions & ~CheckIns.KnownConditions) == 0, "A check-in waits only for the conditions Martlet offers.");
         ContractRules.Require(((int)needs & ~(int)(ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio)) == 0,
             "A check-in needs only text, pictures or recordings.");
         ContractRules.Require(Enum.IsDefined(recording), "A check-in records the microphone, what the PC plays or nothing.");
@@ -144,6 +167,8 @@ public sealed record CheckInSettings
             $"A check-in's recording is {string.Join(", ", CheckIns.RecordingChoices.SkipLast(1))} or {CheckIns.RecordingChoices[^1]} seconds long.");
         ContractRules.Require(script is { Length: <= CheckIns.MaximumScriptCharacters } && !script.Contains('\0'),
             $"A check-in's script is at most {CheckIns.MaximumScriptCharacters} characters.");
+        ContractRules.Require(toolSets.All(id => CheckInToolSets.Find(id) is not null) &&
+            toolSets.Distinct(StringComparer.Ordinal).Count() == toolSets.Count, "A check-in uses only the tool sets Martlet offers, each once.");
     }
 
     /// <summary>The saved check-ins, or the defaults when there is no file or it can't be read.</summary>

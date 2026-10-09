@@ -40,7 +40,7 @@ public partial class MainWindow
         var catalog = characterActions.For(avatar.InspectedProfile?.ModelPath);
         characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
         var settings = characterTouchZones.Current;
-        var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
+        var temperament = FeltTemperament();
         // Every zone a sample is on (zones can overlap); the matched one comes first and starts the reactions.
         IReadOnlyList<string> ZonesOf(CharacterTouch touch)
         {
@@ -56,7 +56,7 @@ public partial class MainWindow
             var first = strokeHold is null;
             characterTouchZones.React(touch, (zone, repeats) =>
             {
-                var plan = TouchPlan(zone, catalog, temperament, repeats);
+                var plan = TouchPlan(ChangedZone(zone, catalog), catalog, temperament, repeats);
                 if (first && plan.Actions.FirstOrDefault(s => s.Kind is CharacterActionKind.Expression or CharacterActionKind.Gesture) is { } hold)
                 {
                     strokeHold = hold;
@@ -64,7 +64,7 @@ public partial class MainWindow
                 }
                 return plan;
             }, (source, reason, linger) => source == strokeHold && !strokeHoldWasOn ? HoldForStrokeAsync(source, reason)
-                : PlayTouchAsync(source, reason, linger), _ => { }, "stroke", avatar.Gaze.Attend);
+                : PlayTouchAsync(source, reason, linger), _ => { }, "stroke", avatar.Gaze.Attend, PlayTouchSoundsLater);
         }
         if (ended is null) return;
         if (strokeHold is { } held)
@@ -98,7 +98,7 @@ public partial class MainWindow
         var labels = crossed.Select(z => z.Name.ToLowerInvariant()).ToArray();
         var noticed = crossed.Where(z => z.Reaction.Notices).ToArray();
         var words = CharacterPhysicalWords.Stroke(summary, noticed);
-        var feeling = CharacterTouchTemperaments.Feeling(characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId), noticed);
+        var feeling = CharacterTouchTemperaments.Feeling(FeltTemperament(), noticed);
         for (var i = 0; words is not null && i < words.Times; i++)
             NoticePhysical(PhysicalKind.Stroke, words.Where, words.Label, words.Pace, words.Hint, [.. noticed.Select(CharacterTouchZones.Part)],
                 noticed.Any(z => CharacterTouchZones.Kind(z.Id)?.Intimate == true), feeling);

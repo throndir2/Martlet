@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 /// when the page opens on a model with none (<see cref="EstimateAsync"/>), then found per model by the Thinking model (when it
 /// can see) step by step in a snapshot of the character (<see cref="TouchZoneDetection"/>), bound to the model's drawables or
 /// bones, saved per model in character-touch-zones.json with the pictures the model saw, and what a touch on each does.</summary>
-internal sealed class CharacterTouchZoneService(string? dataDirectory)
+internal sealed partial class CharacterTouchZoneService(string? dataDirectory)
 {
     /// <summary>A file whose zones (JSON as a vision model answers about the whole snapshot) stand in for the vision model: every
     /// request of a detection is answered from them (FIXTURE - NOT AI), so MCP verification runs the real snapshot, pictures,
@@ -406,11 +406,11 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting), and
     /// <paramref name="notice"/> gets every zone the touch landed in that Martlet notices (zones can overlap,
     /// <see cref="CharacterTouchZones.Touched"/>; the matched zone first), resting or not: every touch adds up. When the
-    /// reaction says so, <paramref name="look"/> turns the eyes to the mouse pointer for that many seconds. Returns the match,
-    /// or null.</summary>
+    /// reaction says so, <paramref name="look"/> turns the eyes to the mouse pointer for that many seconds, and
+    /// <paramref name="sound"/> gets the zone's voice sounds (their cues, in list order). Returns the match, or null.</summary>
     internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, int, TouchReactionPlan> planFor,
         Func<CharacterActionSource, string, double, Task> play, Action<IReadOnlyList<CharacterTouchZone>> notice, string kind = "touch",
-        Action<double, string>? look = null)
+        Action<double, string>? look = null, Action<CharacterTouchZone, IReadOnlyList<string>, string>? sound = null)
     {
         var settings = Current;
         var match = CharacterTouchZones.Match(settings, touch);
@@ -447,8 +447,11 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) look?.Invoke(reaction.LookSeconds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
+        var sounds = reaction.Sounds is { Count: > 0 } cues && sound is not null ? cues : null;
+        if (sounds is not null) sound!(zone, sounds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
         Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({how}){with} at {when}: " +
-            (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
+            (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
+            (sounds is null ? "" : $", voice sound {string.Join(" or ", sounds)}") + Describe(reaction, repeats) +
             (noticed is null ? "." : $", and Martlet noticed {noticed}."));
         ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {string.Join(" + ", touched.Select(z => z.Id))} ({how}{(touch.Held ? ", held" : "")}): " +
             $"{plan.Count} played from {reaction.From} for {zone.Id}{(reaction.Escalated ? " (escalated)" : "")}" +

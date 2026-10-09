@@ -50,6 +50,7 @@ internal static class ThinkingPoolCheck
                     key = m.Key, where = m.Describe(), place = m.Place.ToString(), model = m.ModelId, hostId = m.HostId,
                     hostRole = m.OnHostRole, slots = m.ThinksAtOnce, ownKey = m.CredentialId is not null,
                     text = true, vision = can.HasFlag(ThinkingCapability.Vision), audio = can.HasFlag(ThinkingCapability.Audio),
+                    tools = can.HasFlag(ThinkingCapability.Tools),
                     available = spot?.Plan.Available ?? false, rank = spot?.Plan.Rank, why = spot?.Plan.Why,
                     // Whether its computer answers now (null: the desktop hasn't said), and since when it doesn't.
                     online = seen?["online"]?.GetValue<bool>(), offlineSince = seen?["offlineSince"]?.GetValue<DateTimeOffset>(),
@@ -76,6 +77,7 @@ internal static class ThinkingPoolCheck
             {
                 text = places.Any(p => p.Takes(kind)), vision = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Vision)),
                 audio = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Audio)),
+                tools = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Tools)),
                 priority = (int)ThinkingJobKinds.Priority(kind), fast = ThinkingJobKinds.IsFast(kind)
             }),
             guidance = ThinkingJobBoard.Guidance(members),

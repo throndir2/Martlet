@@ -109,6 +109,7 @@ public partial class MainWindow : ThemedWindow
         characterTouchZones = new(store?.DataDirectory);
         characterEyes = new(store?.DataDirectory);
         characterTemperaments = new(store?.DataDirectory);
+        characterReactionChanges = new(store?.DataDirectory);
         // The character's usual gaze: your choice, else what the active persona's temperament decided.
         avatar.Gaze.Personality = () => characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)?.Gaze;
         avatar.Gaze.Configure(Talk.GazeUsual, Talk.GazeFree);
@@ -155,6 +156,8 @@ public partial class MainWindow : ThemedWindow
         }
         WireCharacterActions();
         WireCharacterTouchZones();
+        WireVoiceSounds();
+        WireCharacterReactionChanges();
         WireCharacterPhysical();
         WireCharacterThemes();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -361,7 +364,7 @@ public partial class MainWindow : ThemedWindow
     private void RenderConversationButton()
     {
         var open = openConversation is not null;
-        ConversationButton.Content = open ? "Show _conversation" : "Start _talking";
+        ConversationButton.Content = open ? "Show conversation" : "Start talking";
         AutomationProperties.SetName(ConversationButton, open ? "Show conversation" : "Start talking");
     }
 
@@ -470,7 +473,7 @@ public partial class MainWindow : ThemedWindow
     }
     private void UpdateCharacterButton()
     {
-        CharacterButton.Content = avatar.IsShowing ? "Hide _character" : "Show _character";
+        CharacterButton.Content = avatar.IsShowing ? "Hide character" : "Show character";
         // Reset stays reachable while the character is hidden (or lost off screen) once it has a saved place.
         ResetCharacterButton.Visibility = avatar.IsShowing || avatar.Placement is not null ? Visibility.Visible : Visibility.Collapsed;
         ResetCharacterZoomButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
@@ -482,7 +485,7 @@ public partial class MainWindow : ThemedWindow
         // Unlocking also works while the character is hidden: it then shows at its default spot.
         LockCharacterButton.Visibility = avatar.IsShowing || locked ? Visibility.Visible : Visibility.Collapsed;
         LockCharacterButton.IsEnabled = !changingCharacterLock;
-        LockCharacterButton.Content = locked ? "Un_lock character position" : "Lock character p_osition";
+        LockCharacterButton.Content = locked ? "Unlock character position" : "Lock character position";
         AutomationProperties.SetName(LockCharacterButton, locked ? "Unlock character position" : "Lock character position");
         LockCharacterButton.ToolTip = locked ? "Let the character be dragged, moved and resized again"
             : "Keep the character where it is until you unlock it here or on its right-click menu";
@@ -490,7 +493,7 @@ public partial class MainWindow : ThemedWindow
         var clickThrough = avatar.ClickThrough;
         ClickThroughCharacterButton.Visibility = avatar.IsShowing || clickThrough ? Visibility.Visible : Visibility.Collapsed;
         ClickThroughCharacterButton.IsEnabled = !changingCharacterClickThrough;
-        ClickThroughCharacterButton.Content = clickThrough ? "Turn off click-thro_ugh" : "Turn on click-thro_ugh";
+        ClickThroughCharacterButton.Content = clickThrough ? "Turn off click-through" : "Turn on click-through";
         AutomationProperties.SetName(ClickThroughCharacterButton, clickThrough ? "Turn off click-through" : "Turn on click-through");
         ClickThroughCharacterButton.ToolTip = clickThrough
             ? "Let the character catch clicks again, so you can drag it, zoom it and right-click it"

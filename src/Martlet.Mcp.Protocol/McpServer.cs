@@ -810,6 +810,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" },
             estimate = new { type = "boolean" }, special = new { type = "integer", minimum = 0, maximum = 10 }
         }),
+        Tool("character_reaction_changes", "Companion > Touch > Changes the character made (Martlet.Avatar.Hosting " +
+            "CharacterReactionChanges and CharacterReactionTools; docs/CONVERSATION.md \"How I react\") with NO model request: the " +
+            "Touch reactions tool set the How I react check-in calls (its tools and limits), the changes the character made itself in " +
+            "the dataDirectory's character-reaction-changes.json (what, why, when, until, whether in effect, who ended it), and what " +
+            "each zone of the model (modelId, or modelPath to read its emotes; else a FIXTURE catalog of Martlet's gestures) plays and " +
+            "how personaId's character feels about each category and zone before and after. tool (read_touch_reactions, " +
+            "change_touch_feeling, change_zone_reactions, set_touch_mood or undo_touch_change) with arguments (the JSON a model would " +
+            "send, such as {\"target\":\"head\",\"feeling\":\"dislikes\",\"why\":\"...\"}) runs one call as the desktop runs it, with " +
+            "every bound; undo (a change id, or all) ends changes as the owner's Undo does. save writes the call's change or the undo " +
+            "into an explicit, disposable dataDirectory; at (an ISO time) sets the time; checkInId the check-in that calls (reactions). " +
+            "read is what read_touch_reactions returns after it. Contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }, personaId = new { type = "string" }, modelId = new { type = "string" },
+            modelPath = new { type = "string" }, tool = new { type = "string" }, arguments = new { type = "string" },
+            undo = new { type = "string" }, save = new { type = "boolean" }, at = new { type = "string" }, checkInId = new { type = "string" }
+        }),
         Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
             "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
@@ -1646,8 +1662,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
             "task and facts), check-ins-status.json written by the desktop on a companion PC (the pool member that can take them, " +
             "why each waits, the one running, runs and actions since Martlet started and each last run's time, member, duration and " +
-            "result in a few words; never what was said, answered or reminded) and the fixed rules (pace, minimum age, quiet and idle " +
-            "waits, the job kind's priority and live floor rule). Read-only.", new
+            "result in a few words; never what was said, answered or reminded; each check-in's triggers, a trigger it keeps and what " +
+            "started its last run, and the last touches that fired a trigger, in counts only) and the fixed rules (pace, minimum age, " +
+            "quiet and idle waits, the job kind's priority and live floor rule, the trigger age and touch thresholds). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1658,7 +1675,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "message each sends, their runs on a production Thinking pool job board with a fixture member, reading answers (OFF " +
             "tags, KEEP, USUAL, REMIND:, SAY:, OK, a <think> block, chatter), and what Martlet does: a reply's lingering emote off " +
             "on a production HeldEmotes (never the owner's try), a reminder on a production context board that goes with exactly " +
-            "one request, and something to bring up worded as the check-in's own beside a due reminder. No model, network or " +
+            "one request, and something to bring up worded as the check-in's own beside a due reminder; and check-in triggers with " +
+            "FIXTURE touches on a production touch ledger (a stroke across 3 zones, an intimate touch, a place touched again and " +
+            "again fire their triggers once the touches settle, the ledger keeps every touch, and a triggered check-in runs only on " +
+            "its own triggers, at most once per its pace, never held by a busy conversation). No model, network or " +
             "credentials.", new { }),
         Tool("said_lately_check", "Rehearse what Martlet said lately (docs/CONVERSATION.md#what-you-said-lately) with the " +
             "production code and FIXTURE sayings at fixed times (NOT anything Martlet said): what is noted (never a [pass] or " +
@@ -1849,6 +1869,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             scenario = new { type = "string", @enum = QuickSoundCheck.Scenarios },
             delayMs = new { type = "integer", @enum = new[] { 500, 700, 1000, 1500 } }
+        }),
+        Tool("voice_sounds_status", "Companion > Touch > Touch zones' voice sounds (\"sound:<cue>\" entries in a zone's reaction " +
+            "list: a gasp, a giggle, a sigh that Martlet's own voice makes alone), from a data directory: the voice replies speak " +
+            "with (in words, its engine, whether it is a paid cloud voice, and its key per voice and character), why no sound plays " +
+            "(noSounds, when the voice makes none), each sound the voice makes (its entry, cue, label, the engine's tag, and whether " +
+            "its clip is made on this PC and how long), every zone that lists sounds and whether each plays with this voice, the " +
+            "clips kept in voice-sounds\\, the last sound played or skipped and why (last) and the newest desktop log lines about " +
+            "voice sounds. Read-only; never plays anything.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("voice_sounds_check", "Rehearse touch zones' voice sounds with the production code: sounds (the sounds each engine " +
+            "offers: Chatterbox's nine, Dia's without (mumbles), ElevenLabs' six, none for F5 or OpenAI), rules (VoiceSoundGate: " +
+            "never with no voice, Speak replies aloud off, paused or muted, a sound the voice can't make, while Martlet speaks, while " +
+            "you talk or over another sound; a clip not made yet is made instead), make (a clip made with the engine's tag alone " +
+            "through ConversationRuntime.SynthesizeAsync and a fixture host voice, trimmed and kept in voice-sounds\\), play " +
+            "(ConversationRuntime.PlayClipAsync plays it whole at the speakers' pace with lip sync, and refuses a second sound " +
+            "meanwhile) and cut (a reply's own voice cuts a sound still playing the moment it starts; the reply never waits). " +
+            "scenario runs one. Fixture voice (a quiet tone, NOT AI), fixture speakers paced like real ones; loopback only; plays " +
+            "nothing.", new
+        {
+            scenario = new { type = "string", @enum = VoiceSoundCheck.Scenarios }
         }),
         Tool("elevenlabs_check", "Rehearse ElevenLabs as the Voice (the owner's cloned voice with tones) end to end against a local " +
             "fixture on 127.0.0.1 that follows ElevenLabs' documented protocol (FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet " +
@@ -2171,6 +2213,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
                     OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false,
                     OptionalInt(arguments, "special")),
+                "character_reaction_changes" => await ReactionChangesCheck.RunAsync(DataDirectory(arguments),
+                    OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "personaId"), OptionalString(arguments, "modelId"),
+                    OptionalString(arguments, "modelPath"), OptionalString(arguments, "tool"), OptionalString(arguments, "arguments"),
+                    OptionalString(arguments, "undo"), OptionalBool(arguments, "save") ?? false, OptionalString(arguments, "at"),
+                    OptionalString(arguments, "checkInId"), cancellation),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
@@ -2274,6 +2321,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
                 "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
+                "voice_sounds_status" => VoiceSoundCheck.Status(DataDirectory(arguments)),
+                "voice_sounds_check" => await VoiceSoundCheck.RunAsync(OptionalString(arguments, "scenario"), cancellation),
                 "elevenlabs_check" => await ElevenLabsCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalString(arguments, "model"),
                     OptionalString(arguments, "reply"), OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
