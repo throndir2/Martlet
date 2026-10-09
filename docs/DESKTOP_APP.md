@@ -104,8 +104,9 @@ for it), and a slow close stays out of sight.
 ## Appearance
 
 **Settings › Appearance › Your palette** switches between **Pink light** (blush,
-cream and berry), **Rose dark** (deep plum and soft rose) and the **Character
-light/dark** palettes, which take their colors from the character you show.
+cream and berry), **Rose dark** (deep plum and soft rose), the **Character
+light/dark** palettes, which take their colors from the character you show,
+and **Custom**, your own palette.
 Rounded controls, matching form fields, confirmation prompts and the companion
 home screen share the palette across every window. The transparent avatar
 overlay keeps its canvas clear while its controls and speech bubbles follow the
@@ -113,11 +114,31 @@ current palette and Windows high contrast. Windows high contrast overrides the
 decorative colors; Windows file and folder pickers keep their system
 appearance.
 
+**Custom** starts as a copy of the palette you used before. Under the choice,
+the editor lists the twelve parts of Martlet (window background, cards,
+buttons and side bar, text, quiet text, outlines, accent, text on accent, focus
+ring, good news, warnings and glow) with their colors:
+
+1. Select a part.
+2. Type its color code (#RRGGBB or #RGB), move the hue, saturation and
+   lightness sliders, or select one of your character's colors.
+3. To start again from another palette, select it in **Start from** and select
+   **Use its colors**. Martlet asks first when you changed the colors.
+
+Every window and the character overlay change as you edit. A line under the
+editor says whether every color is easy to read (Martlet's contrast rules,
+[Character palettes](UI_DESIGN.md#character-palettes)). When something may be
+hard to read, **Make it easy to read** moves the colors that break a rule in
+lightness only, so they keep their hue. A custom palette is dark when its
+window background is dark.
+
 Pink light is the first-launch default. Changing the palette saves only
-`appearance.txt` in the selected data directory, separately from profile
+`appearance.txt` (and, for Custom, `appearance-custom.json`) in the selected
+data directory, separately from profile
 settings, credentials and consent. It is not part of configuration
 backup/restore. Launch reads this preference without creating files;
-inaccessible or malformed preferences are reported on the home screen. An
+inaccessible or malformed preferences are reported on the home screen (a
+custom palette that can't be read starts as Pink light's colors). An
 unsavable choice still applies for the current session. Appearance changes
 never start a conversation, network or audio action.
 
