@@ -94,14 +94,11 @@ public static class PromptCatalog
     public const string CheckInPromises = "check_in_promises";
     public const string CheckInCharacter = "check_in_character";
     public const string CheckInRepeats = "check_in_repeats";
-<<<<<<< a2c630c887626c944029e5763d0f82da5fdfbaad
     public const string CheckInTouches = "check_in_touches";
-=======
     public const string CheckInWelcome = "check_in_welcome";
     public const string CheckInUnanswered = "check_in_unanswered";
     public const string CheckInCall = "check_in_call";
     public const string CheckInOthers = "check_in_others";
->>>>>>> origin/main
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInContext = "check_in_context";
@@ -943,15 +940,12 @@ public static class PromptCatalog
             "first), each with when it said it (\"10:05 PM (12 min ago)\"). Check-ins: each check adds the answer format (a " +
             "REMIND: line or OK).",
             DefaultCheckInRepeatsInstructions, ["name", "said"]),
-<<<<<<< a2c630c887626c944029e5763d0f82da5fdfbaad
         new(CheckInTouches, CheckInGroup, "Check-in: describe touches",
             "What Describe touches asks right after you touch the character. {touches} is what you did to it in the last 10 " +
             "minutes, in the words of the touch reaction, {conversation} the end of the conversation, {persona} its personality, " +
             "{emotes} the emotes it shows and {adult} whether Adult content is on. Check-ins: each check adds the answer format " +
             "(a description that goes with the next reply, or nothing).",
             DefaultCheckInTouchesInstructions, ["name", "touches", "conversation", "persona", "emotes", "adult"]),
-        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
-=======
         new(CheckInWelcome, CheckInGroup, "Check-in: welcome back",
             "What Welcome back checks, when the user comes back to the PC after 10 minutes or more away. {away} says how long " +
             "they were away and what happened meanwhile (what Martlet said, background work that finished, reminders that came " +
@@ -968,8 +962,8 @@ public static class PromptCatalog
         new(CheckInOthers, CheckInGroup, "Check-in: someone else is here",
             "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
             "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
-            DefaultCheckInOthersInstructions, ["name", "people"]),        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
->>>>>>> origin/main
+            DefaultCheckInOthersInstructions, ["name", "people"]),
+        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
             "Wraps the prompt of every check-in, built-in or your own. {task} is the check-in's prompt with its placeholders " +
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +

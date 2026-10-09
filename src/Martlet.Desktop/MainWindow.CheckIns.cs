@@ -569,14 +569,9 @@ public partial class MainWindow
             Said = conversation?.RecentSayings(now) ?? [],
             // Read without taking: the next reply still drains these touches as before.
             Touches = conversation?.Touches.History(conversation.TouchNow),
-<<<<<<< a2c630c887626c944029e5763d0f82da5fdfbaad
             HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh),
             Adult = GenerationSettings.Adult(homeSettings?.Generation)
-        };
-=======
-            HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh)
         });
->>>>>>> origin/main
     }
 
     // The reminders waiting and this conversation's background work, one short line each.

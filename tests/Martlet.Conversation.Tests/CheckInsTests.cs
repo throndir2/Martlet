@@ -373,15 +373,10 @@ public sealed partial class CheckInsTests
     public void CheckInPromptsAreInTheirOwnGroupAndTheBroughtUpMessageCantBeEmptied()
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
-<<<<<<< a2c630c887626c944029e5763d0f82da5fdfbaad
-            PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
-            PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes, PromptCatalog.CheckInAdultOn,
-            PromptCatalog.CheckInAdultOff, PromptCatalog.CheckInTouches];
-=======
             PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInWelcome, PromptCatalog.CheckInUnanswered,
             PromptCatalog.CheckInCall, PromptCatalog.CheckInOthers, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
-            PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
->>>>>>> origin/main
+            PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes, PromptCatalog.CheckInAdultOn,
+            PromptCatalog.CheckInAdultOff, PromptCatalog.CheckInTouches];
         foreach (var id in ids)
         {
             var prompt = PromptCatalog.Find(id)!;

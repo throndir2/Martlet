@@ -1544,14 +1544,13 @@ gets, and nothing is added to a reply's request. Like the other facts, it goes
 only to the pool member with the check, never to the log, the status file or
 MCP output.
 
-<<<<<<< a2c630c887626c944029e5763d0f82da5fdfbaad
 `{adult}` says whether Companion › Replies › Adult content is on, so a
 check-in follows the same choice as the replies. While it is on, `{adult}` is
 Companion › Prompts › *Check-in: adult content on* (the check-in may be
 explicit, never about anyone under 18). While it is off, it is *Check-in:
 adult content off* (keep it non-explicit). Empty either prompt and `{adult}`
 says nothing (`CheckIns.Adult`, `CheckInState.Adult`).
-=======
+
 **Signals.** Some facts and conditions follow things Martlet already notices
 on this PC (`CheckInSignals.cs`, `MainWindow.CheckInSignals.cs`). The desktop
 follows them at each 15-second look:
@@ -1581,7 +1580,6 @@ Like the other facts, these go only to the pool member with the check. The
 status and MCP say only counts and yes or no (`signals` in
 `check-ins-status.json`), and the waits say why in general words (*you're on a
 call*), never who spoke or what you do.
->>>>>>> origin/main
 
 What happens with its answer:
 
