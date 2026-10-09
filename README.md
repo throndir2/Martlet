@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.61.0
+## 🆕 What's new in 0.62.0
 
-- 📋 **Every part, in priority order**: Recommended setup now lists all of Martlet's parts, from Thinking down to Pictures. It shows what each needs, where it runs, and which are optional.
-- ⭕ **Off is a real choice**: tick **Off** on an optional part (advanced lip-sync, Deep thinking, singing, pictures) and Martlet plans without it. Parts with no room show as Off, with the reason.
-- 🧠 **Thinking first on your PC**: with no API key and your other computers off, your PC's graphics card goes to a local Thinking model first. Then comes Chatterbox Turbo, or Chatterbox Nano when Turbo doesn't fit. Everything else runs on the processor.
-- 🔧 **Reconfigure in the right order**: it frees the graphics card first, sets up Thinking before anything else, then the rest by priority.
-- 🖥️ **Computers that are off are left out** of the recommendation right away.
+- 🧠 **One simple Thinking pool**: Companion › Thinking pool is now one list of your machines. Tick **Quick jobs** or **Long jobs** on each one to keep it for quick checks while you talk or for long thinking and research.
+- ⏰ **Smarter check-ins**: your own check-ins can say which model they need. They can also take a screenshot, a few seconds of your microphone or your PC's sound, or what a script of yours prints.
+- 🎨 **Your own colors**: Settings › Appearance has a **Custom** palette. Choose each color yourself, and Martlet tells you if anything gets hard to read and can fix it for you.
+- 📋 **Every part in Recommended setup**: Vision, Reading, Hearing and Smart home now join the priority list, and each part says where it runs.
+- 👀 **Now on every Companion page**: each page, including the Optional extras, starts with one line that says what it uses, then its main choice with a clear **Off**. Choices show their key facts, and **Compare them** puts them side by side.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
