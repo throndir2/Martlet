@@ -47,6 +47,13 @@ the README's *What's new in <version>* highlights and checks
 publishes that section as the release notes. Full steps:
 [Changelog and release notes](../AGENTS.md#changelog-and-release-notes).
 
+**Clean up before you finish:** stop the processes you started, then run
+`.\scripts\Clean-Martlet.ps1` (`-WhatIf` first) to remove your checkout's
+`bin\`, `obj\`, `node_modules\` and other build output. Clean only your own
+checkout; use `-AllWorktrees` or `-Git` only when the developer asks. Never
+delete tracked files, uncommitted work or unmerged branches. Details:
+[Cleaning up disk space](../docs/CLEANUP.md).
+
 Deliver actual production paths
 early and replace obsolete designs when warranted. Write responses, updates and
 developer docs in ASD-STE100 Simplified Technical English
