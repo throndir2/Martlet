@@ -17,6 +17,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- The Optional extras (Vision, Reading, Hearing, Thinking pool, Smart home, Singing and Pictures) now look alike: **Now** first, then the main choice with a clear **Off**, then their settings. Each choice is one short row with its key facts, such as graphics memory, download size, speed, cost, where your data goes and its license, and **Compare them** puts them side by side. How Martlet hears your tone has its own **Hearing** page, and Singing can now be turned off without removing it. ([#659](https://github.com/throndir2/Martlet/pull/659))
 - Every Companion page now starts with **Now**: one line that says what the page uses and what stops it, such as "Tools: 3 MCP servers on, the terminal off." Speech bubbles, People, Tools, Smart home, Discord and Messaging then show their main choice with a clear **Off**, and the settings follow. ([#654](https://github.com/throndir2/Martlet/pull/654))
 
 ## [0.61.0] - 2026-10-08
