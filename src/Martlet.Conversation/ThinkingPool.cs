@@ -66,8 +66,36 @@ public static class ThinkingJobKinds
 /// (null: the places it may run on).</summary>
 public sealed record ThinkingDemand(ThinkingJobKind Kind, int Priority, bool KeepLastFree, IReadOnlyList<BackgroundPlace>? Pool = null)
 {
+    /// <summary>When no slot is free, the broker stops a running preemptible Thinking pool job of lower priority on a place of
+    /// this demand's pool to make space (<see cref="ThinkingPoolPolicy.PreemptLowerPriority"/>).</summary>
+    public bool PreemptsLower { get; init; }
+    /// <summary>Waits at the front of the line for its priority (a job that was stopped for higher-priority work).</summary>
+    public bool Front { get; init; }
+
     public static ThinkingDemand For(ThinkingJobKind kind, IReadOnlyList<BackgroundPlace>? pool = null, ThinkingPriority? priority = null) =>
         new(kind, (int)(priority ?? ThinkingJobKinds.Priority(kind)), !ThinkingJobKinds.IsFast(kind), pool);
+}
+
+/// <summary>How the Thinking pool's line treats priority and failures (Companion › Thinking pool, from
+/// <see cref="ThinkingPoolSettings"/>). <see cref="PreemptLowerPriority"/>: a job that finds no free slot stops a running job of
+/// lower priority; the stopped job keeps its priority and waits at the front of the line for it. After every
+/// <see cref="RaiseAfterStops"/> such stops, the stopped job's priority goes up by one. <see cref="Retries"/>: how many more
+/// times a job that failed or timed out on every member it could use is tried again, at the priority it had then.</summary>
+public sealed record ThinkingPoolPolicy(bool PreemptLowerPriority = true, int RaiseAfterStops = ThinkingPoolSettings.DefaultRaiseAfterStops,
+    int Retries = ThinkingPoolSettings.DefaultRetries)
+{
+    public static ThinkingPoolPolicy Default { get; } = new();
+    /// <summary>The line as before these rules: no stops for priority and no retries. A board uses it until its owner sets
+    /// <see cref="ThinkingJobBoard.Policy"/> (the desktop sets it from the settings).</summary>
+    public static ThinkingPoolPolicy Off { get; } = new(false, ThinkingPoolSettings.DefaultRaiseAfterStops, 0);
+
+    public static ThinkingPoolPolicy From(ThinkingPoolSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return new(settings.PreemptLowerPriority,
+            Math.Clamp(settings.RaisePriorityAfterStops, ThinkingPoolSettings.MinRaiseAfterStops, ThinkingPoolSettings.MaxRaiseAfterStops),
+            Math.Clamp(settings.RetriesOnFailure, 0, ThinkingPoolSettings.MaxRetries));
+    }
 }
 
 /// <summary>One job for the Thinking pool: instructions (the system text), the text to work on and optionally one picture and
@@ -146,6 +174,12 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     public string? Model { get; init; }
     /// <summary>How many times the live conversation stopped it (or a member held its graphics card for one) before it ended.</summary>
     public int Preemptions { get; init; }
+    /// <summary>How many times higher-priority work stopped it (part of <see cref="Preemptions"/>).</summary>
+    public int PriorityStops { get; init; }
+    /// <summary>How many times it was tried again after it failed or timed out (<see cref="ThinkingPoolPolicy.Retries"/>).</summary>
+    public int Retries { get; init; }
+    /// <summary>The priority it had when it ended: its first priority, plus one for each raise after stops.</summary>
+    public int Priority { get; init; }
     public static ThinkingJobResult NoMember(ThinkingCapability needs) =>
         new(ThinkingJobOutcome.NoMember, null, null, null, $"the Thinking pool has no member that can do {Describe(needs)}", 0);
 
@@ -153,6 +187,13 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     /// <see cref="NoMember"/>.</summary>
     public static ThinkingJobResult Offline(ThinkingCapability needs) =>
         new(ThinkingJobOutcome.NoMember, null, null, null, $"every Thinking pool member that can do {Describe(needs)} is offline", 0);
+
+    /// <summary>Every member that could do the job is external and the owner didn't let it receive pictures and recordings
+    /// (<see cref="BackgroundPlace.Media"/>): callers use their fallback, as for <see cref="NoMember"/>.</summary>
+    public static ThinkingJobResult NoConsent(ThinkingCapability needs, IReadOnlyList<BackgroundPlace> members) =>
+        new(ThinkingJobOutcome.NoMember, null, null, null,
+            $"{ThinkingPoolMedia.Names(members.Select(m => m.Name))} may not receive pictures and recordings, and no other member can do " +
+            $"{Describe(needs)}. Tick May receive pictures and recordings on Companion › Thinking pool to allow it", 0);
 
     public static string Describe(ThinkingCapability needs) => string.Join(" and ", new[]
     {
@@ -170,6 +211,21 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
 public sealed record ThinkingPoolMemberStatus(string Id, string Name, int Slots, int Used, ThinkingCapability Can, int Rank)
 {
     public bool Online { get; init; } = true;
+    /// <summary>Whether it may receive pictures and recordings (<see cref="BackgroundPlace.Media"/>).</summary>
+    public bool Media { get; init; } = true;
+}
+
+/// <summary>Pictures and recordings in Thinking pool jobs: an external member gets them only when the owner allows it.</summary>
+public static class ThinkingPoolMedia
+{
+    /// <summary>What a job with a picture or a recording needs.</summary>
+    public const ThinkingCapability Needs = ThinkingCapability.Vision | ThinkingCapability.Audio;
+
+    internal static string Names(IEnumerable<string> names)
+    {
+        var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
+        return distinct.Length <= 1 ? distinct.FirstOrDefault() ?? "" : $"{string.Join(", ", distinct[..^1])} and {distinct[^1]}";
+    }
 }
 
 /// <summary>A member the board passes over until <paramref name="Until"/> for jobs that need at least <paramref name="Needs"/>,
@@ -194,6 +250,13 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
     public IReadOnlyList<string> SharesLive { get; init; } = [];
     /// <summary>The members the board passes over for a while because their computer refused a request as invalid.</summary>
     public IReadOnlyList<ThinkingPoolRest> Resting { get; init; } = [];
+    /// <summary>The line's rules now (<see cref="ThinkingJobBoard.Policy"/>).</summary>
+    public ThinkingPoolPolicy Policy { get; init; } = ThinkingPoolPolicy.Default;
+    /// <summary>Since the board started: jobs stopped for higher-priority work, priority raises after stops, and retries after a
+    /// failure.</summary>
+    public int StoppedForPriority { get; init; }
+    public int Raised { get; init; }
+    public int Retried { get; init; }
 }
 
 /// <summary>The Thinking pool's job board: one in-process board for every Thinking pool job. Members are places
@@ -210,6 +273,9 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
 /// A member whose computer refused a request as invalid (<see cref="ThinkingAnswer.Refused"/>) rests for
 /// <see cref="RefusedRest"/>: the board gives it no job that needs at least what the refused job needed, so the pool never sends
 /// that computer request after request it refuses.
+/// The <see cref="Policy"/> adds: a job that finds no free slot stops a running job of lower priority (it keeps its priority,
+/// waits at the front of the line for it and rises one priority after every RaiseAfterStops such stops), and a job that failed or
+/// timed out is tried again up to Retries times at the priority it had.
 /// Thread-safe.</summary>
 public sealed class ThinkingJobBoard
 {
@@ -239,6 +305,11 @@ public sealed class ThinkingJobBoard
     }
 
     public BackgroundPlaces Places { get; }
+
+    /// <summary>The line's rules (read on each job and each try, so a settings change takes effect at once).</summary>
+    public Func<ThinkingPoolPolicy> Policy { get; set; } = () => ThinkingPoolPolicy.Off;
+
+    private int stoppedForPriority, raised, retried;
 
     /// <summary>Every member, whether its computer answers now or not.</summary>
     public IReadOnlyList<BackgroundPlace> Members => members();
@@ -279,10 +350,10 @@ public sealed class ThinkingJobBoard
             .OrderBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
     }
 
-    // A member takes a job when the owner lets it take the job's kind (Quick jobs, Long jobs), it can do what the job needs and it
-    // doesn't rest for such jobs.
+    // A member takes a job when the owner lets it take the job's kind (Quick jobs, Long jobs), it can do what the job needs, the
+    // owner lets it receive the job's pictures or recordings, and it doesn't rest for such jobs.
     private bool Takes(BackgroundPlace member, ThinkingJobKind kind, ThinkingCapability needs) =>
-        member.Takes(kind) && (member.Can & needs) == needs && !Rests(member, needs);
+        member.Takes(kind) && (member.Can & needs) == needs && member.MayReceive(needs) && !Rests(member, needs);
 
     // A member rests for the jobs that need at least what a job it refused needed, until its rest ends.
     private bool Rests(BackgroundPlace member, ThinkingCapability needs) =>
@@ -309,6 +380,9 @@ public sealed class ThinkingJobBoard
         var pool = Members;
         var capable = pool.Where(member => member.Takes(job.Kind) && (member.Can & needs) == needs).ToArray();
         if (capable.Length == 0) return ThinkingJobResult.NoMember(needs);
+        // The members that could do it are all external and may not receive pictures or recordings: the caller's fallback runs.
+        if (!capable.Any(member => member.MayReceive(needs))) return ThinkingJobResult.NoConsent(needs, capable);
+        capable = [.. capable.Where(member => member.MayReceive(needs))];
         // A computer that refused such a request as invalid gets no more of them until its rest ends; the caller's fallback runs.
         if (capable.All(member => Rests(member, needs)))
             return new(ThinkingJobOutcome.NoMember, null, null, null,
@@ -318,34 +392,51 @@ public sealed class ThinkingJobBoard
         var holder = $"{ThinkingJobKinds.Name(job.Kind)}-{Interlocked.Increment(ref number)}";
         if (holder.Length > 64) holder = holder[..64];
         var demand = ThinkingDemand.For(job.Kind, pool, job.Priority);
+        var priority = demand.Priority;
+        var front = false;
         using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
         HashSet<string> tried = new(StringComparer.Ordinal);
         string? problem = null;
-        int attempts = 0, preemptions = 0;
+        int attempts = 0, preemptions = 0, priorityStops = 0, retries = 0, conversationStops = 0;
+        ThinkingJobResult Ended(ThinkingJobResult result) =>
+            result with { Preemptions = preemptions, PriorityStops = priorityStops, Retries = retries, Priority = priority };
         ThinkingJobResult Stale()
         {
             // Every capable member was held for the live conversation (or it was stopped for it): say so.
             var rules = Places.Rules;
-            var conversation = preemptions > 0 || rules is not null && capable.All(member => !rules.MayStart(member, job.Kind));
-            return new(ThinkingJobOutcome.Stale, null, null, null,
-                conversation ? $"the conversation needed its members for more than {Wait(job.Timeout)}" : $"no member came free within {Wait(job.Timeout)}",
-                attempts) { Preemptions = preemptions };
+            var conversation = conversationStops > 0 || rules is not null && capable.All(member => !rules.MayStart(member, job.Kind));
+            return Ended(new(ThinkingJobOutcome.Stale, null, null, null,
+                conversation ? $"the conversation needed its members for more than {Wait(job.Timeout)}"
+                : priorityStops > 0 ? $"higher-priority work kept its members busy for more than {Wait(job.Timeout)}"
+                : $"no member came free within {Wait(job.Timeout)}", attempts));
+        }
+        // Tries the job again at the priority it has now, on every member it may use, while the owner's retries allow it.
+        bool Retry(ThinkingPoolPolicy policy)
+        {
+            if (retries >= policy.Retries || stale.IsCancellationRequested || !capable.Any(member => !Rests(member, needs))) return false;
+            retries++;
+            Interlocked.Increment(ref retried);
+            tried.Clear();
+            return true;
         }
         while (true)
         {
+            var policy = Policy();
             var left = capable.Where(member => !tried.Contains(member.Id) && !Rests(member, needs)).ToArray();
             if (left.Length == 0)
-                return new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "no member could do it", attempts) { Preemptions = preemptions };
+            {
+                if (Retry(policy)) continue;
+                return Ended(new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "no member could do it", attempts));
+            }
             // The members left are all offline (one may have stopped answering during the last attempt): don't wait for them.
             if (!left.Any(Places.Answers))
-                return new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "every member that could do it is offline", attempts)
-                {
-                    Preemptions = preemptions
-                };
+                return Ended(new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "every member that could do it is offline", attempts));
             BackgroundPlaceLease lease;
-            try { lease = await Places.AcquireAsync(left, holder, waiting.Token, demand, preemptible: true).ConfigureAwait(false); }
+            var asked = demand with { Priority = priority, PreemptsLower = policy.PreemptLowerPriority, Front = front };
+            try { lease = await Places.AcquireAsync(left, holder, waiting.Token, asked, preemptible: true).ConfigureAwait(false); }
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { return Stale(); }
+            front = false;
             var pause = false;
             using (lease)
             {
@@ -361,29 +452,44 @@ public sealed class ThinkingJobBoard
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                 catch (OperationCanceledException) when (lease.StopRequested && !limit.IsCancellationRequested)
                 {
-                    answer = ThinkingAnswer.Failed($"the conversation needed {member.Name}");
+                    answer = ThinkingAnswer.Failed(lease.StoppedForPriority ? $"higher-priority work needed {member.Name}"
+                        : $"the conversation needed {member.Name}");
                 }
                 catch (OperationCanceledException)
                 {
-                    return new(ThinkingJobOutcome.TimedOut, null, member.Id, member.Name,
-                        $"it didn't finish within {Wait(job.Timeout)}", attempts) { Preemptions = preemptions };
+                    // An attempt that ran out of time is tried again while the retries allow it (never past a stale job's time).
+                    if (Retry(policy)) continue;
+                    return Ended(new(ThinkingJobOutcome.TimedOut, null, member.Id, member.Name,
+                        $"it didn't finish within {Wait(job.Timeout)}", attempts));
                 }
                 catch (Exception error) when (error is not OutOfMemoryException)
                 {
                     answer = ThinkingAnswer.Failed($"{member.Name} failed ({error.GetType().Name})");
                 }
                 if (answer.Text is { Length: > 0 } text)
-                    return new(ThinkingJobOutcome.Succeeded, text, member.Id, member.Name, null, attempts, answer.Cut)
+                    return Ended(new(ThinkingJobOutcome.Succeeded, text, member.Id, member.Name, null, attempts, answer.Cut) { Model = member.Model });
+                if (lease.StoppedForPriority)
+                {
+                    // Higher-priority work took the slot: the job keeps its priority and waits at the front of the line for it, and
+                    // after every RaiseAfterStops such stops its priority goes up by one, until it completes.
+                    preemptions++;
+                    priorityStops++;
+                    Interlocked.Increment(ref stoppedForPriority);
+                    if (priorityStops % Math.Max(1, policy.RaiseAfterStops) == 0)
                     {
-                        Model = member.Model, Preemptions = preemptions
-                    };
-                if (lease.StopRequested || answer.HeldForLive)
+                        priority++;
+                        Interlocked.Increment(ref raised);
+                    }
+                    front = true;
+                }
+                else if (lease.StopRequested || answer.HeldForLive)
                 {
                     preemptions++;
+                    conversationStops++;
                     // A summary is only worth its moment; every other kind waits in line again, where the rules allow.
                     if (job.Kind == ThinkingJobKind.Digest)
-                        return new(ThinkingJobOutcome.Preempted, null, member.Id, member.Name,
-                            answer.Problem ?? $"the conversation needed {member.Name}", attempts) { Preemptions = preemptions };
+                        return Ended(new(ThinkingJobOutcome.Preempted, null, member.Id, member.Name,
+                            answer.Problem ?? $"the conversation needed {member.Name}", attempts));
                     // A member whose computer refused because a live turn holds its graphics card is asked again a moment later.
                     pause = !lease.StopRequested;
                 }
@@ -409,6 +515,8 @@ public sealed class ThinkingJobBoard
         var now = clock.GetUtcNow();
         return Describe(pool, Places) with
         {
+            Policy = Policy(),
+            StoppedForPriority = Volatile.Read(ref stoppedForPriority), Raised = Volatile.Read(ref raised), Retried = Volatile.Read(ref retried),
             Resting = [.. rests.Values.Where(rest => rest.Until > now && pool.Any(member => member.Id == rest.Id)).OrderBy(rest => rest.Id, StringComparer.Ordinal)]
         };
     }
@@ -422,7 +530,7 @@ public sealed class ThinkingJobBoard
         var members = pool.Select(member => new ThinkingPoolMemberStatus(member.Id, member.Name, member.Slots,
             Math.Min(member.Slots, leases.Where(l => l.Place.Id == member.Id).Sum(l => l.Whole ? member.Slots : 1)), member.Can, member.Rank)
         {
-            Online = places.Answers(member)
+            Online = places.Answers(member), Media = member.Media
         }).ToArray();
         var online = members.Where(m => m.Online).ToArray();
         var slots = online.Sum(m => m.Slots);
@@ -475,6 +583,16 @@ public sealed class ThinkingJobBoard
             notes.Add(members.Any(m => m.Can.HasFlag(ThinkingCapability.Audio))
                 ? "No member that answers now hears recordings: sound summaries use the transcript only until one does."
                 : "No member hears recordings: sound summaries use the transcript only.");
+        // Members that see or hear but are external and may not receive pictures and recordings (the owner's box unticked).
+        var withheld = online.Where(m => !m.Media && (m.Can & ThinkingPoolMedia.Needs) != 0).ToArray();
+        string[] lost = [.. online.Any(m => m.Can.HasFlag(ThinkingCapability.Vision)) &&
+                !online.Any(m => m.Media && m.Can.HasFlag(ThinkingCapability.Vision)) ? ["pictures"] : Array.Empty<string>(),
+            .. online.Any(m => m.Can.HasFlag(ThinkingCapability.Audio)) &&
+                !online.Any(m => m.Media && m.Can.HasFlag(ThinkingCapability.Audio)) ? ["recordings"] : Array.Empty<string>()];
+        if (lost.Length > 0)
+            notes.Add($"No member may receive {string.Join(" or ", lost)}: {ThinkingPoolMedia.Names(withheld.Select(m => m.Name))} " +
+                $"{(withheld.Select(m => m.Name).Distinct().Count() == 1 ? "is" : "are")} outside this PC and your paired computers, so jobs with " +
+                "a screenshot or a recording use their simple rules. Tick May receive pictures and recordings on Companion › Thinking pool to allow it.");
         return notes;
     }
 

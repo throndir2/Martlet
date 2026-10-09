@@ -90,6 +90,165 @@ public sealed class ThinkingPoolTests
         Assert.Equal([ThinkingJobKind.ThinkLonger, ThinkingJobKind.BargeInJudge, ThinkingJobKind.Digest, ThinkingJobKind.Research], ran);
     }
 
+    // One slot ("a sequential local model"): every job but the one that runs waits; a job stops when its token is canceled.
+    private static (BackgroundPlaces Places, ThinkingJobBoard Board, List<(ThinkingJobKind Kind, bool Stopped)> Ran, Func<ThinkingJobKind, TaskCompletionSource> Gate)
+        Sequential(ThinkingPoolPolicy policy)
+    {
+        var places = new BackgroundPlaces();
+        BackgroundPlace member = new("host:one", "one");
+        List<(ThinkingJobKind, bool)> ran = [];
+        Dictionary<ThinkingJobKind, TaskCompletionSource> gates = [];
+        TaskCompletionSource Gate(ThinkingJobKind kind)
+        {
+            lock (gates)
+            {
+                if (!gates.TryGetValue(kind, out var gate)) gates[kind] = gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                return gate;
+            }
+        }
+        var board = new ThinkingJobBoard(places, () => [member], async (m, job, token) =>
+        {
+            try { await Gate(job.Kind).Task.WaitAsync(token); }
+            catch (OperationCanceledException)
+            {
+                lock (ran) ran.Add((job.Kind, true));
+                throw;
+            }
+            lock (ran) ran.Add((job.Kind, false));
+            return ThinkingAnswer.Done(m.Name);
+        }) { Policy = () => policy };
+        return (places, board, ran, Gate);
+    }
+
+    [Fact]
+    public async Task A_higher_priority_job_stops_a_lower_one_which_waits_at_the_front_of_its_priority()
+    {
+        var (places, board, ran, gate) = Sequential(new(PreemptLowerPriority: true, RaiseAfterStops: 5, Retries: 0));
+        gate(ThinkingJobKind.Memory).TrySetResult();
+        var memory = board.RunAsync(Job(ThinkingJobKind.Research) with { Priority = ThinkingPriority.Helper }, CancellationToken.None);
+        await Until(() => places.Leases.Count == 1);
+        // A second helper-priority job waits behind it, then a judge needs the only slot.
+        var naming = board.RunAsync(Job(ThinkingJobKind.Naming), CancellationToken.None);
+        await Until(() => places.WaitingKinds.Count == 1);
+        gate(ThinkingJobKind.BargeInJudge).TrySetResult();
+        var judge = await board.RunAsync(Job(ThinkingJobKind.BargeInJudge), CancellationToken.None);
+        Assert.True(judge.Succeeded);
+        Assert.Equal((ThinkingJobKind.Research, true), ran[0]);
+        // The stopped job keeps its priority and goes back to the front: it waits ahead of naming, which came first.
+        await Until(() => places.Leases.Count == 1 && places.Leases[0].Kind == ThinkingJobKind.Research);
+        Assert.Equal(ThinkingJobKind.Research, places.Leases[0].Kind);
+        Assert.Equal([ThinkingJobKind.Naming], places.WaitingKinds);
+        gate(ThinkingJobKind.Research).TrySetResult();
+        gate(ThinkingJobKind.Naming).TrySetResult();
+        var stopped = await memory;
+        Assert.True(stopped.Succeeded);
+        Assert.Equal((1, 1, (int)ThinkingPriority.Helper), (stopped.PriorityStops, stopped.Preemptions, stopped.Priority));
+        Assert.True((await naming).Succeeded);
+        Assert.Equal(1, board.Status().StoppedForPriority);
+    }
+
+    [Fact]
+    public async Task Without_preemption_a_higher_priority_job_waits()
+    {
+        var (places, board, ran, gate) = Sequential(ThinkingPoolPolicy.Off);
+        var research = board.RunAsync(Job(ThinkingJobKind.Research), CancellationToken.None);
+        await Until(() => places.Leases.Count == 1);
+        var judge = board.RunAsync(Job(ThinkingJobKind.BargeInJudge), CancellationToken.None);
+        await Until(() => places.WaitingKinds.Count == 1);
+        await Task.Delay(50);
+        Assert.False(judge.IsCompleted);
+        Assert.Empty(ran);
+        gate(ThinkingJobKind.Research).TrySetResult();
+        gate(ThinkingJobKind.BargeInJudge).TrySetResult();
+        Assert.Equal(0, (await research).PriorityStops);
+        Assert.True((await judge).Succeeded);
+    }
+
+    [Fact]
+    public async Task A_job_stopped_often_enough_rises_one_priority_each_time_until_it_completes()
+    {
+        var (places, board, _, gate) = Sequential(new(PreemptLowerPriority: true, RaiseAfterStops: 2, Retries: 0));
+        var research = board.RunAsync(Job(ThinkingJobKind.Research), CancellationToken.None);
+        for (var stop = 1; stop <= 4; stop++)
+        {
+            await Until(() => places.Leases.Count == 1 && places.Leases[0].Kind == ThinkingJobKind.Research);
+            var judge = gate(ThinkingJobKind.BargeInJudge);
+            judge.TrySetResult();
+            Assert.True((await board.RunAsync(Job(ThinkingJobKind.BargeInJudge), CancellationToken.None)).Succeeded);
+        }
+        await Until(() => places.Leases.Count == 1 && places.Leases[0].Kind == ThinkingJobKind.Research);
+        Assert.Equal((int)ThinkingPriority.Research + 2, places.Leases[0].Priority);
+        gate(ThinkingJobKind.Research).TrySetResult();
+        var done = await research;
+        Assert.True(done.Succeeded);
+        Assert.Equal((4, (int)ThinkingPriority.Research + 2), (done.PriorityStops, done.Priority));
+        Assert.Equal((4, 2), (board.Status().StoppedForPriority, board.Status().Raised));
+    }
+
+    [Fact]
+    public async Task A_lower_priority_job_never_stops_a_higher_one()
+    {
+        var (places, board, ran, gate) = Sequential(new(PreemptLowerPriority: true, RaiseAfterStops: 3, Retries: 0));
+        var digest = board.RunAsync(Job(ThinkingJobKind.Digest), CancellationToken.None);
+        await Until(() => places.Leases.Count == 1);
+        var research = board.RunAsync(Job(ThinkingJobKind.Research), CancellationToken.None);
+        await Until(() => places.WaitingKinds.Count == 1);
+        await Task.Delay(50);
+        Assert.Empty(ran);
+        gate(ThinkingJobKind.Digest).TrySetResult();
+        gate(ThinkingJobKind.Research).TrySetResult();
+        Assert.Equal(0, (await digest).Preemptions);
+        Assert.True((await research).Succeeded);
+    }
+
+    [Fact]
+    public async Task A_failed_job_is_tried_again_up_to_the_retries_at_the_priority_it_had()
+    {
+        var calls = 0;
+        BackgroundPlace member = new("host:one", "one");
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (m, _, _) =>
+            Interlocked.Increment(ref calls) <= 2 ? throw new InvalidOperationException("boom") : Task.FromResult(ThinkingAnswer.Done(m.Name)))
+        {
+            Policy = () => new(true, 3, Retries: 2)
+        };
+        var result = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.True(result.Succeeded);
+        Assert.Equal((3, 2, (int)ThinkingPriority.Helper), (result.Attempts, result.Retries, result.Priority));
+        Assert.Equal(2, board.Status().Retried);
+
+        calls = -10;
+        board.Policy = () => new(true, 3, Retries: 1);
+        var failed = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal((ThinkingJobOutcome.Failed, 2, 1), (failed.Outcome, failed.Attempts, failed.Retries));
+    }
+
+    [Fact]
+    public async Task A_timed_out_job_is_tried_again_and_without_retries_times_out_as_before()
+    {
+        var calls = 0;
+        BackgroundPlace member = new("host:one", "one");
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], async (m, _, token) =>
+        {
+            if (Interlocked.Increment(ref calls) == 1) await Task.Delay(Timeout.Infinite, token);
+            return ThinkingAnswer.Done(m.Name);
+        }) { Policy = () => new(false, 3, Retries: 1) };
+        var retried = await board.RunAsync(Job(ThinkingJobKind.Memory, timeout: TimeSpan.FromMilliseconds(100)), CancellationToken.None);
+        Assert.Equal((true, 1, 2), (retried.Succeeded, retried.Retries, retried.Attempts));
+
+        calls = 0;
+        board.Policy = () => ThinkingPoolPolicy.Off;
+        var timedOut = await board.RunAsync(Job(ThinkingJobKind.Memory, timeout: TimeSpan.FromMilliseconds(100)), CancellationToken.None);
+        Assert.Equal((ThinkingJobOutcome.TimedOut, 0), (timedOut.Outcome, timedOut.Retries));
+    }
+
+    [Fact]
+    public void The_policy_comes_from_the_settings()
+    {
+        Assert.Equal(new ThinkingPoolPolicy(true, 3, 1), ThinkingPoolPolicy.From(new ThinkingPoolSettings()));
+        Assert.Equal(new ThinkingPoolPolicy(false, 7, 0),
+            ThinkingPoolPolicy.From(new ThinkingPoolSettings { PreemptLowerPriority = false, RaisePriorityAfterStops = 7, RetriesOnFailure = 0 }));
+    }
+
     [Fact]
     public async Task A_failed_member_is_passed_over_for_the_next()
     {
@@ -196,6 +355,54 @@ public sealed class ThinkingPoolTests
         Assert.Null(second.Job!.Place);
         Assert.NotNull(jobs.Places.TryAcquire([member], "judge", demand: ThinkingDemand.For(ThinkingJobKind.BargeInJudge)));
         jobs.CancelAll();
+    }
+
+    [Fact]
+    public async Task An_external_member_gets_pictures_and_recordings_only_when_allowed()
+    {
+        const ThinkingCapability Sees = ThinkingCapability.Text | ThinkingCapability.Vision;
+        const ThinkingCapability Hears = ThinkingCapability.Text | ThinkingCapability.Audio;
+        BackgroundPlace cloud = new("endpoint:cloud", "cloud") { Can = Sees | Hears, Media = false };
+        var asked = 0;
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud], (m, _, _) =>
+        {
+            Interlocked.Increment(ref asked);
+            return Task.FromResult(ThinkingAnswer.Done(m.Name));
+        });
+        Assert.False(board.CanRun(ThinkingJobKind.CheckIn, Sees));
+        Assert.False(board.CanRun(ThinkingJobKind.Digest, Hears));
+        Assert.Null(board.Find(ThinkingJobKind.Digest, Sees));
+        Assert.True(board.CanRun(ThinkingJobKind.CheckIn));
+        var picture = await board.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), CancellationToken.None);
+        Assert.Equal(ThinkingJobOutcome.NoMember, picture.Outcome);
+        Assert.Contains("may not receive pictures and recordings", picture.Problem);
+        Assert.Equal(0, asked);
+        Assert.Equal("cloud", (await board.RunAsync(Job(ThinkingJobKind.CheckIn), CancellationToken.None)).Member);
+        Assert.Contains(board.Status().Guidance, g => g.Contains("No member may receive pictures or recordings") && g.Contains("cloud"));
+
+        // A member on this PC or a paired computer takes the picture job instead; the external one still gets none.
+        BackgroundPlace home = new("host:diva", "diva") { Can = Sees | Hears, Rank = 3 };
+        var mixed = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud, home], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        Assert.Equal("diva", (await mixed.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), CancellationToken.None)).Member);
+        Assert.DoesNotContain(mixed.Status().Guidance, g => g.Contains("may receive pictures", StringComparison.OrdinalIgnoreCase));
+
+        var allowed = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud with { Media = true }], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        Assert.Equal("cloud", (await allowed.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), CancellationToken.None)).Member);
+    }
+
+    [Fact]
+    public void Pool_places_follow_the_media_box()
+    {
+        var cloud = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "https://api.example.com/v1", ModelId = "gpt-fixture" };
+        var local = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "http://127.0.0.1:11434/v1", ModelId = "gemma3" };
+        var pool = new ThinkingPoolSettings().Add(cloud).Add(local);
+        var plan = pool.Plan([]);
+        bool Media(ThinkingPoolSettings? choices, DeepThinkingSettings member) =>
+            ThinkLonger.Places(plan, choices: choices).Single(p => p.Id == member.Key).Media;
+        Assert.False(Media(pool, cloud));
+        Assert.False(Media(null, cloud));
+        Assert.True(Media(pool, local));
+        Assert.True(Media(pool.WithMedia(cloud.Key, true), cloud));
     }
 
     [Fact]

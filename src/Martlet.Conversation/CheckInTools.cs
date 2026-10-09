@@ -10,6 +10,11 @@ namespace Martlet.Conversation;
 /// unique across every set. The desktop runs each set's calls with one <see cref="CheckInToolHandler"/>.</summary>
 public sealed record CheckInToolSet(string Id, string Name, string Does, IReadOnlyList<TextToolDefinition> Tools)
 {
+    /// <summary>The reply tools (Martlet's own tools on the live reply, by name) this set takes over when an After each exchange
+    /// check-in that is on ticks it and the configured Thinking pool has a member that calls tools: the reply is then offered
+    /// none of them, and the check-in does that work after the reply instead. Empty: the reply keeps all its tools.</summary>
+    public IReadOnlyList<string> Replaces { get; init; } = [];
+
     public override string ToString() => $"{nameof(CheckInToolSet)} {Id}";
 }
 
@@ -63,7 +68,7 @@ public static class CheckInToolSets
         "Sets, lists and cancels your reminders, as Martlet does when you ask it in a conversation.", [Reminders.Definition]);
 
     /// <summary>Every set, in the order the card shows them. The static sets above come first, so they exist when this list is made.</summary>
-    public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set];
+    public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set, DiscordCheckInTools.Set, MemoryToolSet.Set];
 
     public static CheckInToolSet? Find(string? id) => id is null ? null : All.FirstOrDefault(s => s.Id == id);
 

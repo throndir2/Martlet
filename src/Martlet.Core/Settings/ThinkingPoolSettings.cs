@@ -42,6 +42,22 @@ public sealed record ThinkingPoolSettings
     public IReadOnlyList<string> AnswersForConversation { get => answering; init => answering = value ?? []; }
     private readonly IReadOnlyList<string> answering = [];
 
+    /// <summary>Higher priority first: when the pool has no free slot for a request, it stops a running request of lower
+    /// priority to make space. The stopped request keeps its priority and goes back to the front of the line for that priority.
+    /// On by default.</summary>
+    public bool PreemptLowerPriority { get; init; } = true;
+
+    /// <summary>After a request was stopped this many times for higher-priority work, its priority goes up by one, and again after
+    /// each further such number of stops, until it completes (<see cref="MinRaiseAfterStops"/>-<see cref="MaxRaiseAfterStops"/>).</summary>
+    public int RaisePriorityAfterStops { get; init; } = DefaultRaiseAfterStops;
+
+    /// <summary>How many more times a Thinking request that failed (or timed out) is tried again, at the priority it had, before it
+    /// fails (0-<see cref="MaxRetries"/>).</summary>
+    public int RetriesOnFailure { get; init; } = DefaultRetries;
+
+    public const int DefaultRaiseAfterStops = 3, MinRaiseAfterStops = 1, MaxRaiseAfterStops = 20;
+    public const int DefaultRetries = 1, MaxRetries = 10;
+
     /// <summary>The fixed delays Backup Thinking offers, in milliseconds.</summary>
     public static IReadOnlyList<int> BackupDelayChoices { get; } = [500, 700, 900, 1200, 1500, 2000, 3000];
 
@@ -82,6 +98,33 @@ public sealed record ThinkingPoolSettings
             NoQuickJobs = quick is { } q ? [.. NoQuickJobs.Where(k => k != key), .. q ? [] : new[] { key }] : NoQuickJobs,
             NoLongJobs = @long is { } l ? [.. NoLongJobs.Where(k => k != key), .. l ? [] : new[] { key }] : NoLongJobs
         };
+    }
+
+    /// <summary>The external members (by <see cref="DeepThinkingSettings.Key"/>) the owner allowed to receive pictures and
+    /// recordings (May receive pictures and recordings, off for each external member by default). An external member is an
+    /// endpoint that is not on this PC (<see cref="IsExternal"/>); this PC and paired Martlet computers always may. A file saved
+    /// before this list existed reads as empty.</summary>
+    public IReadOnlyList<string> MediaAllowed { get => mediaAllowed; init => mediaAllowed = value ?? []; }
+    private readonly IReadOnlyList<string> mediaAllowed = [];
+
+    /// <summary>Whether <paramref name="member"/> is outside this PC and the paired Martlet computers: an OpenAI-compatible
+    /// endpoint whose address is not this PC (a computer on the home network or a cloud provider).</summary>
+    public static bool IsExternal(DeepThinkingSettings member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return member.Place == DeepThinkingPlace.Endpoint && !member.OnThisPc;
+    }
+
+    /// <summary>Whether <paramref name="member"/> may receive jobs with a picture or a recording: always on this PC and on a
+    /// paired computer, and on an external member only when the owner ticked it.</summary>
+    public bool MayReceiveMedia(DeepThinkingSettings member) =>
+        !IsExternal(member) || MediaAllowed.Contains(member.Key, StringComparer.Ordinal);
+
+    /// <summary>The pool with the member with <paramref name="key"/> allowed (or no longer allowed) to receive pictures and recordings.</summary>
+    public ThinkingPoolSettings WithMedia(string key, bool allow)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        return this with { MediaAllowed = [.. MediaAllowed.Where(k => k != key), .. allow ? new[] { key } : []] };
     }
 
     /// <summary>The pool as long jobs see it (thinking longer, research and a song's lyrics): only the members that take long
@@ -140,7 +183,8 @@ public sealed record ThinkingPoolSettings
     public ThinkingPoolSettings Remove(string key) => this with
     {
         Members = [.. Members.Where(m => m.Key != key)], AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)],
-        NoQuickJobs = [.. NoQuickJobs.Where(k => k != key)], NoLongJobs = [.. NoLongJobs.Where(k => k != key)]
+        NoQuickJobs = [.. NoQuickJobs.Where(k => k != key)], NoLongJobs = [.. NoLongJobs.Where(k => k != key)],
+        MediaAllowed = [.. MediaAllowed.Where(k => k != key)]
     };
 
     /// <summary>Every place the planner considers: the members, or the conversation model while the pool is empty and that is
@@ -178,6 +222,12 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(new[] { NoQuickJobs, NoLongJobs }.All(keys => keys.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
             keys.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl))),
             "The members kept from quick or long jobs are a short list of member keys.");
+        ContractRules.Require(RaisePriorityAfterStops is >= MinRaiseAfterStops and <= MaxRaiseAfterStops,
+            $"A stopped request's priority goes up after {MinRaiseAfterStops}-{MaxRaiseAfterStops} stops.");
+        ContractRules.Require(RetriesOnFailure is >= 0 and <= MaxRetries, $"A failed request is tried again 0-{MaxRetries} times.");
+        ContractRules.Require(MediaAllowed.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
+            MediaAllowed.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl)),
+            "The members that may receive pictures and recordings are a short list of member keys.");
         ContractRules.Require(LeftByOwner.Count <= MaxLeftByOwner &&
             LeftByOwner.All(h => h is { Length: > 0 and <= 128 } && !h.Any(char.IsControl)) &&
             LeftByOwner.Distinct(StringComparer.Ordinal).Count() == LeftByOwner.Count,

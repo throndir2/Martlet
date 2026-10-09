@@ -137,6 +137,80 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Priority_and_retry_choices_have_defaults_and_ranges()
+    {
+        var pool = new ThinkingPoolSettings();
+        Assert.True(pool.PreemptLowerPriority);
+        Assert.Equal(3, pool.RaisePriorityAfterStops);
+        Assert.Equal(1, pool.RetriesOnFailure);
+        pool.Validate();
+        new ThinkingPoolSettings { PreemptLowerPriority = false, RaisePriorityAfterStops = 1, RetriesOnFailure = 0 }.Validate();
+        new ThinkingPoolSettings { RaisePriorityAfterStops = 20, RetriesOnFailure = 10 }.Validate();
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RaisePriorityAfterStops = 0 }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RaisePriorityAfterStops = 21 }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RetriesOnFailure = -1 }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { RetriesOnFailure = 11 }.Validate());
+    }
+
+    [Fact]
+    public void Priority_and_retry_choices_are_saved_and_an_older_file_reads_as_defaults()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName),
+            """{ "SchemaVersion": 1, "Members": [], "UseConversationModelWhenEmpty": true }""");
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.True(loaded.PreemptLowerPriority);
+        Assert.Equal(ThinkingPoolSettings.DefaultRaiseAfterStops, loaded.RaisePriorityAfterStops);
+        Assert.Equal(ThinkingPoolSettings.DefaultRetries, loaded.RetriesOnFailure);
+
+        Assert.True((loaded with { PreemptLowerPriority = false, RaisePriorityAfterStops = 7, RetriesOnFailure = 4 }).Save(directory));
+        var saved = ThinkingPoolSettings.Load(directory);
+        Assert.False(saved.PreemptLowerPriority);
+        Assert.Equal(7, saved.RaisePriorityAfterStops);
+        Assert.Equal(4, saved.RetriesOnFailure);
+    }
+
+    [Fact]
+    public void Only_an_external_member_needs_the_media_box()
+    {
+        Directory.CreateDirectory(directory);
+        var cloud = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = OpenRouter, ModelId = "x-ai/grok-4.3" };
+        var lan = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "https://192.168.1.20/v1", ModelId = "gemma3" };
+        var local = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = Ollama, ModelId = "gemma3" };
+        var host = Role("diva");
+        Assert.True(ThinkingPoolSettings.IsExternal(cloud) && ThinkingPoolSettings.IsExternal(lan));
+        Assert.False(ThinkingPoolSettings.IsExternal(local) || ThinkingPoolSettings.IsExternal(host));
+
+        var pool = new ThinkingPoolSettings().Add(cloud).Add(lan).Add(local);
+        Assert.False(pool.MayReceiveMedia(cloud) || pool.MayReceiveMedia(lan));
+        Assert.True(pool.MayReceiveMedia(local) && pool.MayReceiveMedia(host));
+
+        var allowed = pool.WithMedia(cloud.Key, true);
+        Assert.True(allowed.MayReceiveMedia(cloud));
+        Assert.False(allowed.MayReceiveMedia(lan));
+        Assert.False(allowed.WithMedia(cloud.Key, false).MayReceiveMedia(cloud));
+        Assert.Empty(allowed.Remove(cloud.Key).MediaAllowed);
+
+        Assert.True(allowed.Save(directory));
+        Assert.Equal(new[] { cloud.Key }, ThinkingPoolSettings.Load(directory).MediaAllowed);
+    }
+
+    [Fact]
+    public void An_older_file_without_the_media_list_reads_as_empty()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName),
+            """{ "SchemaVersion": 1, "Members": [], "UseConversationModelWhenEmpty": true, "AnswersForConversation": [] }""");
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Empty(loaded.MediaAllowed);
+
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName), """{ "SchemaVersion": 1, "MediaAllowed": null }""");
+        Assert.Empty(ThinkingPoolSettings.Read(directory).Settings.MediaAllowed);
+    }
+
+    [Fact]
     public void An_older_file_without_the_kept_out_list_reads_as_empty()
     {
         Directory.CreateDirectory(directory);

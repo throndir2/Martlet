@@ -671,6 +671,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // may answer, and the wait now; member names only). The box and the wait save thinking-pool.json, so they need
         // --allow-ui-effects. Each member's Backup for slow replies box reads through ThinkingPoolAnswers- below.
         "ThinkingPoolBackup", "ThinkingPoolBackupDelay", "ThinkingPoolBackupStatus",
+        // Companion › Thinking pool › Busy pool: whether higher-priority requests may stop lower ones, after how many stops a
+        // stopped request becomes more important, how many times a failed request is tried again, and its line (the choices
+        // and, since Martlet started, how many requests were stopped, made more important and tried again; counts only). The
+        // box and both choices save thinking-pool.json, so they need --allow-ui-effects.
+        "ThinkingPoolPreempt", "ThinkingPoolRaiseAfterStops", "ThinkingPoolRetries", "ThinkingPoolPriorityStatus",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
@@ -982,7 +987,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // you talk · Costs money · Offline", only those that apply), its slot choice (ThinkingPoolSlots-0, not for a paired
         // computer's role) and its Remove button (ThinkingPoolRemove-0, not for a paired computer). Its Quick jobs, Long jobs and
         // Backup for slow replies boxes ("ThinkingPoolQuick-0", "ThinkingPoolLong-0", "ThinkingPoolAnswers-0" read "diva's Thinking
-        // pool (qwen3-8b): Quick jobs" and whether each is ticked). The slot choice, Remove and every box save thinking-pool.json,
+        // pool (qwen3-8b): Quick jobs" and whether each is ticked). An external member (an endpoint not on this PC) also has
+        // May receive pictures and recordings ("ThinkingPoolMedia-0", off by default; this PC and paired computers have no such
+        // box because they always may). The slot choice, Remove and every box save thinking-pool.json,
         // so they need --allow-ui-effects.
         // Each paired computer's shared-card warning, when the Thinking pool role there shares one graphics card with its Thinking
         // model ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
@@ -991,7 +998,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Thinking pool role runs qwen2.5vl:7b: it sees pictures.") and its Use for pictures button's name ("ImageModelUseHost-diva"
         // reads "Use diva for pictures"; clicking it checks diva and saves sense-models.json, so it needs --allow-ui-effects).
         "ImageModelHost-", "ImageModelUseHost-",
-        "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-",
+        "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-", "ThinkingPoolMedia-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",

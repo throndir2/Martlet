@@ -53,7 +53,8 @@ public sealed partial class CheckInsTests
         Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Touches,
             reactions.Facts | CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInReactions)));
         Assert.Same(TouchReactions.Set, CheckInToolSets.Find(TouchReactions.SetId));
-
+        Assert.Same(MemoryToolSet.Set, CheckInToolSets.Find(MemoryToolSet.Id));
+        Assert.Equal(["manage_memories"], MemoryToolSet.Set.Replaces);
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);
@@ -821,6 +822,9 @@ public sealed partial class CheckInsTests
         Assert.NotEqual(new CheckInToolSetIds(["a", "b"]), new CheckInToolSetIds(["b", "a"]));
         Assert.All(CheckInToolSets.All, s => Assert.True(CheckInToolSets.IsId(s.Id)));
         Assert.Equal(CheckInToolSets.All.SelectMany(s => s.Tools).Count(), CheckInToolSets.All.SelectMany(s => s.Tools).Select(t => t.Name).Distinct().Count());
+        // A reply tool is taken over by one set at most.
+        Assert.Equal(CheckInToolSets.All.SelectMany(s => s.Replaces).Count(), CheckInToolSets.All.SelectMany(s => s.Replaces).Distinct().Count());
+        Assert.Empty(new CheckInToolSet("x", "X", "Does x.", []).Replaces);
     }
 
     [Fact]
