@@ -29,6 +29,16 @@ public sealed partial class FootprintCatalog
         Peak = new(vramGb, ramGb + 0.5, 2, diskGb), ContextGb = contextGb, QualityTier = tier, Evidence = evidence, Source = source
     };
 
+    /// <summary>An image or audio model of its own in Ollama (docs/SENSE_MODELS.md): Ollama on this PC or a paired computer's,
+    /// not a host role of its own. The numbers are the model's as Thinking (8,192-token context).</summary>
+    private static ComponentOption Sense(PlanComponent component, string model, string name, ResourceUse steady, ResourceUse peak, int tier,
+        FootprintEvidence evidence, string source) => new()
+    {
+        Id = (component == PlanComponent.Vision ? "vision:" : "hearing:") + model, Component = component, DisplayName = name, ModelId = model,
+        Gpu = GpuRequirement.AnyGpu, Steady = steady, Peak = peak, QualityTier = tier, SeesImages = component == PlanComponent.Vision,
+        HearsAudio = component == PlanComponent.Hearing, Evidence = evidence, Source = source
+    };
+
     private static IEnumerable<ComponentOption> SeedOptions() =>
     [
         // Thinking, local (Ollama on a graphics card). VRAM: the model's runner at 8,192 tokens. Disk: ollama.com's tag size
@@ -247,6 +257,88 @@ public sealed partial class FootprintCatalog
             Gpu = GpuRequirement.Nvidia, MinGpuGb = 8, Platforms = DockerNvidia, Steady = new(7, 12, 2, 31), Peak = new(8, 20, 4, 31),
             QualityTier = 3,
             Source = $"Disk: 20.7 GB of pinned models (docs/PICTURES_HOST.md) plus image estimate; VRAM and RAM estimate for bf16 with --lowvram ({Doc})"
+        },
+        new()
+        {
+            Id = "hosted:nvidia-build-pictures", Component = PlanComponent.Pictures, DisplayName = "NVIDIA Build (FLUX)", Hosting = OptionHosting.External,
+            ProviderId = "nvidia-build", ModelId = "black-forest-labs/flux.1-schnell", QualityTier = 3, FreeTier = true, NeedsSignup = true,
+            Reliability = OptionReliability.Medium, Source = "Hosted: uses no local resources; the description goes to NVIDIA (docs/PICTURES.md)"
+        },
+        new()
+        {
+            Id = "hosted:openrouter-pictures", Component = PlanComponent.Pictures, DisplayName = "OpenRouter", Hosting = OptionHosting.External,
+            ProviderId = "openrouter", ModelId = "google/gemini-3.1-flash-image", QualityTier = 4, NeedsSignup = true,
+            Source = "Hosted: uses no local resources; each picture costs money (docs/PICTURES.md)"
+        },
+
+        // Vision: the image model (Companion › Vision). Thinking's own model by default; a model of its own describes each
+        // picture for Thinking.
+        new()
+        {
+            Id = "vision:thinking", Component = PlanComponent.Vision, DisplayName = "Thinking's own model", UsesThinking = true, SeesImages = true,
+            QualityTier = 3, Source = "Thinking takes the pictures in its own request, so nothing more runs (docs/SENSE_MODELS.md)"
+        },
+        Sense(PlanComponent.Vision, "gemma4:e2b", "Gemma 4 E2B", new(3.3, 1.5, 1, 7.5), new(3.3, 2, 2, 7.5), 2, FootprintEvidence.Measured,
+            $"VRAM measured as Thinking: RTX 4070, Ollama 0.35.1, 8,192 tokens (docs/VOICE_LATENCY.md); RAM estimate ({Doc})"),
+        Sense(PlanComponent.Vision, "qwen3.5:4b", "Qwen3.5 4B", new(4.1, 0.5, 1, 4.0), new(4.1, 1, 2, 4.0), 3, FootprintEvidence.Measured,
+            $"VRAM measured as Thinking: RTX 4070, Ollama 0.35.1, 8,192 tokens (docs/VOICE_LATENCY.md); RAM estimate ({Doc})"),
+        Sense(PlanComponent.Vision, "qwen2.5vl:7b", "Qwen2.5-VL 7B", new(7, 1, 1, 6.0), new(7.5, 1.5, 2, 6.0), 4, FootprintEvidence.Estimate,
+            $"Estimate: ollama.com download 6.0 GB plus the KV cache at 8,192 tokens (about 0.5 GB) and a picture's buffers ({Doc})"),
+        new()
+        {
+            Id = "hosted:nvidia-build-vision", Component = PlanComponent.Vision, DisplayName = "NVIDIA Build (free endpoint)",
+            Hosting = OptionHosting.External, ProviderId = "nvidia-build", ModelId = Settings.ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId,
+            QualityTier = 4, SeesImages = true, FreeTier = true, NeedsSignup = true, Reliability = OptionReliability.Medium,
+            Source = "Hosted: uses no local resources; pictures go to NVIDIA (docs/HOSTED_THINKING.md)"
+        },
+        new()
+        {
+            Id = "hosted:openai-vision", Component = PlanComponent.Vision, DisplayName = "OpenAI", Hosting = OptionHosting.External,
+            ProviderId = "openai", QualityTier = 5, SeesImages = true, NeedsSignup = true, Source = "Hosted: uses no local resources; pictures go to OpenAI"
+        },
+
+        // Reading: the text on the screen while Martlet watches (Companion › Reading, docs/READING.md). Both run on a processor.
+        new()
+        {
+            Id = "reading:windows-ocr", Component = PlanComponent.Reading, DisplayName = "Windows OCR", RunsInApp = true, Platforms = ["windows"],
+            Steady = new(0, 0.05, 1, 0), Peak = new(0, 0.1, 1, 0), QualityTier = 3, FirstWordMs = 15,
+            Source = $"docs/READING.md: about 15 ms for a 1024 x 576 screenshot, built into Windows (no download); memory estimate ({Doc})"
+        },
+        new()
+        {
+            Id = "reading:rapidocr", Component = PlanComponent.Reading, DisplayName = "Martlet's Reading role (RapidOCR)", ModelId = "rapidocr-ppocrv4",
+            HostRoleKind = "ocr", Platforms = DockerNvidia, Steady = new(0, 0.4, 4, 0.5), Peak = new(0, 0.6, 4, 0.5), QualityTier = 4,
+            FirstWordMs = 900,
+            Source = $"Read time measured: 0.9 s for one screenshot on a 24-thread processor (docs/READING.md); 4 threads (docs/OCR_HOST.md); " +
+                $"models 15 MB; memory and image estimate ({Doc})"
+        },
+
+        // Hearing: the audio model (Companion › Hearing). Thinking's own model by default; a model of its own describes how you
+        // sound for Thinking.
+        new()
+        {
+            Id = "hearing:thinking", Component = PlanComponent.Hearing, DisplayName = "Thinking's own model", UsesThinking = true, HearsAudio = true,
+            QualityTier = 3, Source = "Thinking takes your recording in its own request, so nothing more runs (docs/SENSE_MODELS.md)"
+        },
+        Sense(PlanComponent.Hearing, "gemma4:e2b", "Gemma 4 E2B", new(3.3, 1.5, 1, 7.5), new(3.3, 2, 2, 7.5), 3, FootprintEvidence.Measured,
+            $"VRAM measured as Thinking: RTX 4070, Ollama 0.35.1, 8,192 tokens (docs/VOICE_LATENCY.md); RAM estimate ({Doc})"),
+        Sense(PlanComponent.Hearing, "gemma4:e4b", "Gemma 4 E4B", new(4.9, 2.5, 1, 9.5), new(4.9, 3, 2, 9.5), 4, FootprintEvidence.Measured,
+            $"VRAM measured as Thinking: RTX 4070, Ollama 0.35.1, 8,192 tokens (docs/VOICE_LATENCY.md); RAM estimate ({Doc})"),
+        new()
+        {
+            Id = "hosted:nvidia-build-hearing", Component = PlanComponent.Hearing, DisplayName = "NVIDIA Build: Nemotron 3 Nano Omni (free endpoint)",
+            Hosting = OptionHosting.External, ProviderId = "nvidia-build", ModelId = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            QualityTier = 4, HearsAudio = true, SeesImages = true, FreeTier = true, NeedsSignup = true, Reliability = OptionReliability.Low,
+            Source = "Hosted: uses no local resources; recordings go to NVIDIA. Takes input_audio; 72.6% uptime observed (docs/HOSTED_THINKING.md)"
+        },
+
+        // Smart home: Home Assistant, always on, on a processor (Companion › Smart home, docs/SMART_HOME.md).
+        new()
+        {
+            Id = "smart-home:home-assistant", Component = PlanComponent.SmartHome, DisplayName = "Home Assistant (the smart home role)",
+            HostRoleKind = "home-assistant", Platforms = ["linux"], Steady = new(0, 0.5, 0.2, 2), Peak = new(0, 1, 1, 2), QualityTier = 3,
+            Source = $"Estimate: the official container with a few integrations; Home Assistant asks for 2 GB of memory for a whole " +
+                $"Home Assistant OS; image about 2 GB; Linux Docker Engine only (deploy/host/README.md, {Doc})"
         }
     ];
 }

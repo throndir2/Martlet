@@ -556,6 +556,88 @@ public sealed class NetworkRecommenderTests
         Assert.True(again.AlreadyOptimal, string.Join("\n", again.Changes.Select(c => c.Summary)));
     }
 
+    private static NetworkSetupRequest Extended(PartChoice reading, PartChoice home, params NetworkMachine[] companions) =>
+        Network([.. companions, Host("cpu-box") with { Roles = [Role("ocr", "rapidocr-ppocrv4"), Role("home-assistant")] }, Host("gpu-box", Nvidia(16))]) with
+        {
+            Choices =
+            [
+                new PartChoice(PlanComponent.Vision, true) { OptionId = "vision:thinking" },
+                reading,
+                new PartChoice(PlanComponent.Hearing, true) { OptionId = "hearing:gemma4:e4b" },
+                home
+            ]
+        };
+
+    [Fact]
+    public void EveryWayToExtendMartletHasALineAndThePagePartsAreTurnedOffOnTheirPages()
+    {
+        var recommendation = NetworkRecommender.Recommend(Extended(new PartChoice(PlanComponent.Reading, true) { OptionId = "reading:rapidocr", HostId = "cpu-box" },
+            new PartChoice(PlanComponent.SmartHome, true), Companion("c1")));
+        var parts = recommendation.Components.ToDictionary(c => c.Component);
+
+        Assert.Equal(ComponentRanking.All.Select(i => i.Component), recommendation.Components.Select(c => c.Component));
+        Assert.Equal("Gemma 4 E2B, Thinking's own model", parts[PlanComponent.Vision].Where);
+        Assert.True(parts[PlanComponent.Vision].On);
+        Assert.Equal("Martlet's Reading role (RapidOCR) on cpu-box's processor", parts[PlanComponent.Reading].Where);
+        Assert.Equal("Gemma 4 E4B in Ollama on this PC", parts[PlanComponent.Hearing].Where);
+        Assert.Contains("companion PC's graphics card is for Thinking and the voice", parts[PlanComponent.Hearing].Why, StringComparison.Ordinal);
+        Assert.Equal("Home Assistant on cpu-box's processor", parts[PlanComponent.SmartHome].Where);
+        foreach (var part in new[] { PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.SmartHome })
+        {
+            Assert.True(parts[part].CanBeOff);
+            Assert.False(parts[part].OffInReview);
+        }
+        Assert.True(parts[PlanComponent.Singing].OffInReview);
+        // The roles stay: Reading is on, and Home Assistant runs the home.
+        Assert.Contains(RolesOf(recommendation, "cpu-box"), r => r.Kind == "ocr");
+        Assert.Contains(RolesOf(recommendation, "cpu-box"), r => r.Kind == "home-assistant");
+        Assert.DoesNotContain(recommendation.Changes, c => c.RoleKind is "ocr" or "home-assistant");
+    }
+
+    [Fact]
+    public void ReadingsRoleGoesWhenReadingIsOffAndNoOtherCompanionPcMayUseIt()
+    {
+        var off = new PartChoice(PlanComponent.Reading, false) { OptionId = "reading:rapidocr", HostId = "cpu-box" };
+        var homeOff = new PartChoice(PlanComponent.SmartHome, false);
+        var alone = NetworkRecommender.Recommend(Extended(off, homeOff, Companion("c1")));
+
+        var remove = alone.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "ocr");
+        Assert.Equal(SetupChangeBenefit.Improvement, remove.Benefit);
+        Assert.Equal("Reading is off in Companion \u203a Reading, and no other companion PC uses it.", remove.Why);
+        var parts = alone.Components.ToDictionary(c => c.Component);
+        Assert.False(parts[PlanComponent.Reading].On);
+        Assert.True(parts[PlanComponent.Reading].OwnerOff);
+        Assert.Equal("Off: Martlet doesn't read the text on your screen.", parts[PlanComponent.Reading].Where);
+        // Home Assistant runs the owner's home: it stays even with Smart home off on this PC.
+        Assert.DoesNotContain(alone.Changes, c => c.RoleKind == "home-assistant");
+        Assert.False(parts[PlanComponent.SmartHome].On);
+        Assert.Contains("still runs your home", parts[PlanComponent.SmartHome].Why, StringComparison.Ordinal);
+
+        // Another companion PC may read with the role, also one the request leaves out (no hardware report).
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Extended(off, homeOff, Companion("c1"), Companion("c2"))).Changes, c => c.RoleKind == "ocr");
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Extended(off, homeOff, Companion("c1")) with { CompanionPcs = 2 }).Changes, c => c.RoleKind == "ocr");
+        // The review's Off doesn't turn off a part this PC sets on its page.
+        Assert.DoesNotContain(NetworkRecommender.Recommend(Extended(off with { On = true }, homeOff, Companion("c1")) with
+        {
+            Off = [PlanComponent.Reading]
+        }).Changes, c => c.RoleKind == "ocr");
+    }
+
+    [Fact]
+    public void WithoutChoicesTheExtrasReadAsTheirDefaults()
+    {
+        var recommendation = NetworkRecommender.Recommend(Network(Companion("c1", true, Nvidia(12))) with { Preference = HostingPreference.PreferLocal });
+        var parts = recommendation.Components.ToDictionary(c => c.Component);
+
+        Assert.True(parts[PlanComponent.Vision].On);
+        Assert.EndsWith("Thinking's own model", parts[PlanComponent.Vision].Where, StringComparison.Ordinal);
+        Assert.Equal("Windows OCR inside Martlet on this PC's processor", parts[PlanComponent.Reading].Where);
+        Assert.True(parts[PlanComponent.Hearing].On);
+        Assert.False(parts[PlanComponent.SmartHome].On);
+        Assert.Equal("Off: Martlet doesn't control your smart home.", parts[PlanComponent.SmartHome].Where);
+        Assert.False(parts[PlanComponent.SmartHome].OwnerOff);
+    }
+
     [Fact]
     public void AProcessorInstallAsksTheHostForItsProcessorVariant()
     {

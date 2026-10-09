@@ -48,13 +48,17 @@ public sealed record ComponentOption
     public double ContextGb { get; init; }
     /// <summary>1 (basic) to 5 (best) within its component; higher is an upgrade.</summary>
     public int QualityTier { get; init; } = 1;
-    /// <summary>About how long until the first word (Thinking: first sentence; Voice: first audio; Listening: transcript), or null.</summary>
+    /// <summary>About how long until the first word (Thinking: first sentence; Voice: first audio; Listening: transcript;
+    /// Reading: the text of one screenshot), or null.</summary>
     public int? FirstWordMs { get; init; }
     /// <summary>Thinking: hears recordings itself (an omni model), so replies need no transcript first.</summary>
     public bool HearsAudio { get; init; }
     public bool SeesImages { get; init; }
     /// <summary>Runs inside the Martlet app, so only on the PC the user talks to (Parakeet, the character).</summary>
     public bool RunsInApp { get; init; }
+    /// <summary>Vision and Hearing: Thinking's own model takes the pictures or recordings (it sees or hears itself), so the
+    /// option takes no resources of its own and runs where Thinking runs (docs/SENSE_MODELS.md).</summary>
+    public bool UsesThinking { get; init; }
     /// <summary>Platforms it runs on (windows, linux, macos); null means any.</summary>
     public IReadOnlyList<string>? Platforms { get; init; }
     public string? ModelId { get; init; }
@@ -105,6 +109,7 @@ public sealed record ComponentOption
         get
         {
             if (!IsLocal) return "Runs online: nothing runs on your computers.";
+            if (UsesThinking) return "Runs with Thinking: Thinking's own model does it, so it takes nothing more.";
             if (Gpu == GpuRequirement.None) return "Runs on the CPU: no graphics card needed.";
             var usual = Usual.VramGb;
             var memory = $"about {Gb(usual)} GB of graphics memory" + (GpuGb >= usual + 0.1 ? $", up to {Gb(GpuGb)} GB" : "");

@@ -15,9 +15,10 @@ internal sealed record ReviewChange(string Summary, string Why, string Benefit, 
 
 /// <summary>One part of Martlet in the review's priority list: its place in the list, whether a conversation needs it
 /// ("Needed") or it is optional and can be off, where it runs in the recommended setup or that it is off, and why.
-/// <see cref="OwnerOff"/>: the owner turned it off here.</summary>
+/// <see cref="OffChoice"/>: the review offers its Off (a part this PC sets on its Companion page is turned off there);
+/// <see cref="OwnerOff"/>: the owner turned it off.</summary>
 internal sealed record ReviewPart(PlanComponent Component, int Rank, string Name, string Need, bool On, string Where, string Why,
-    bool CanBeOff, bool OwnerOff)
+    bool OffChoice, bool OwnerOff)
 {
     internal string Key => Component.ToString();
 
@@ -127,7 +128,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()))
         {
             Parts = [.. recommendation.Components.Select(c => new ReviewPart(c.Component, c.Rank, c.Name, c.CanBeOff ? "Optional" : "Needed",
-                c.On, c.Where, c.Why, c.CanBeOff, c.OwnerOff))]
+                c.On, c.Where, c.Why, c.OffInReview, c.OwnerOff))]
         };
     }
 

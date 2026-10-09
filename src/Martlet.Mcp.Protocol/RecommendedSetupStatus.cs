@@ -76,7 +76,8 @@ internal static class RecommendedSetupStatus
                 thinkingPoolOptOut = build.Request.ThinkingPoolOptOut,
                 voiceEngine = build.Request.VoiceEngine,
                 preference = build.Request.Preference.ToString(),
-                off = build.Request.Off.Select(p => p.ToString())
+                off = build.Request.Off.Select(p => p.ToString()),
+                choices = build.Request.Choices.Select(c => new { part = ComponentRanking.Name(c.Component), on = c.On, option = c.OptionId, model = c.Model, where = c.Where, host = c.HostId })
             },
             recommendation = new
             {
@@ -84,7 +85,7 @@ internal static class RecommendedSetupStatus
                 components = recommendation.Components.Select(c => new
                 {
                     rank = c.Rank, part = c.Name, need = c.CanBeOff ? "optional" : "needed", on = c.On, where = c.Where, why = c.Why,
-                    canBeOff = c.CanBeOff, ownerOff = c.OwnerOff
+                    canBeOff = c.CanBeOff, ownerOff = c.OwnerOff, offInReview = c.OffInReview, page = c.Page
                 }),
                 changes = recommendation.Changes.Select(c => new
                 {
@@ -166,8 +167,32 @@ internal static class RecommendedSetupStatus
         {
             Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Device = device, ThinkingPool = pool,
             PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers,
-            Off = RecommendedSetupMemory.Load(directory).OffParts
+            Off = RecommendedSetupMemory.Load(directory).OffParts, Choices = Choices(directory)
         };
+    }
+
+    /// <summary>This PC's choices for the parts it sets on their Companion pages, as the desktop reads them: vision on and Let ...
+    /// hear my voice (talk-preferences.json), the image and audio models (sense-models.json), Reading (reading.json) and the
+    /// Home Assistant address (smart-home.json; never its token).</summary>
+    private static IReadOnlyList<PartChoice> Choices(string directory)
+    {
+        var talk = Json(directory, "talk-preferences.json");
+        var watch = talk?["Watch"] is JsonValue w && w.TryGetValue<bool>(out var watching) ? watching : true;
+        bool? hear = talk?["HearVoice"] is JsonValue h && h.TryGetValue<bool>(out var hears) ? hears : null;
+        // Version 4 made Let Thinking hear my voice three-way; an older "false" was only the old default (never chosen).
+        if (hear == false && !(talk?["Version"] is JsonValue v && v.TryGetValue<int>(out var version) && version >= 4)) hear = null;
+        var home = Json(directory, "smart-home.json")?["Address"] is JsonValue a && a.TryGetValue<string>(out var address) ? address : null;
+        return RecommendedSetupInputs.Choices(watch, hear, SenseModels.Load(directory), Martlet.Core.Reading.ReadingSettings.Load(directory), home);
+    }
+
+    private static JsonObject? Json(string directory, string file)
+    {
+        try
+        {
+            var path = Path.Combine(directory, file);
+            return File.Exists(path) && new FileInfo(path).Length <= 262_144 ? JsonNode.Parse(File.ReadAllText(path)) as JsonObject : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
     }
 
     private static ClusterPlan? Plan(string directory)
