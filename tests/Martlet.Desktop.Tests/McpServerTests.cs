@@ -36,6 +36,31 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task ThinkingPoolCheckRehearsesPriorityStopsRaisesAndRetriesOnOneSlot()
+    {
+        var result = ToolResult((await SendAsync("""{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"thinking_pool_check"}}"""))[0]);
+        var steps = result.GetProperty("steps").EnumerateArray()
+            .ToDictionary(step => step.GetProperty("name").GetString()!, step => (Passed: step.GetProperty("passed").GetBoolean(), Detail: step.GetProperty("detail").GetString()));
+        foreach (var name in new[]
+        {
+            "priority stop: on one slot, a barge-in judge stops research and research runs again later",
+            "priority stop off: the judge waits for research to end",
+            "priority stop: the stopped job keeps its priority and goes before same-priority jobs that waited",
+            "priority stop: a summary stopped for priority waits again and is not dropped",
+            "priority raise: after every 2 stops the stopped job's priority goes up by 1",
+            "priority raise: a job of the raised priority no longer stops it",
+            "retries: a failed job is tried again at its priority; with 0 retries it fails",
+            "retries: a timed-out job is tried again",
+            "retries: a raised job is tried again at the priority it was left at"
+        })
+            Assert.True(steps[name].Passed, $"{name}: {steps[name].Detail}");
+        var priority = result.GetProperty("priority");
+        Assert.Equal(11, priority.GetProperty("raise").GetProperty("low").GetProperty("Priority").GetInt32());
+        Assert.Equal(1, priority.GetProperty("retries").GetProperty("oneRetry").GetProperty("Retries").GetInt32());
+        Assert.True(result.GetProperty("passed").GetBoolean(), result.GetRawText());
+    }
+
+    [Fact]
     public async Task ActiveAppCheckNamesTheProgramInFrontAndRehearsesWhatALookTellsTheModel()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.ActiveApp." + Guid.NewGuid().ToString("N"));

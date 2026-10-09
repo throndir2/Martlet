@@ -668,6 +668,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // may answer, and the wait now; member names only). The box and the wait save thinking-pool.json, so they need
         // --allow-ui-effects. Each member's Backup for slow replies box reads through ThinkingPoolAnswers- below.
         "ThinkingPoolBackup", "ThinkingPoolBackupDelay", "ThinkingPoolBackupStatus",
+        // Companion › Thinking pool › Busy pool: whether higher-priority requests may stop lower ones, after how many stops a
+        // stopped request becomes more important, how many times a failed request is tried again, and its line (the choices
+        // and, since Martlet started, how many requests were stopped, made more important and tried again; counts only). The
+        // box and both choices save thinking-pool.json, so they need --allow-ui-effects.
+        "ThinkingPoolPreempt", "ThinkingPoolRaiseAfterStops", "ThinkingPoolRetries", "ThinkingPoolPriorityStatus",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
