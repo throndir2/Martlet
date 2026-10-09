@@ -162,7 +162,7 @@ public sealed class CheckInsTests
         Assert.Contains("It is Wednesday, October 7, 10:17 PM.", repeats);
         Assert.Contains("REMIND:", repeats);
         Assert.DoesNotContain("I beat the boss", repeats);
-        Assert.Null(CheckIns.Message(Built(CheckIns.Repeats), state with { Said = [] }, null));
+        Assert.Equal("it needs at least 3 things Martlet said in the last hour", CheckIns.Wait(Built(CheckIns.Repeats), state with { Said = [] }, null));
 
         var own = CheckIns.Of(new()
         {
@@ -178,7 +178,7 @@ public sealed class CheckInsTests
         // An emptied prompt sends nothing, so the check-in doesn't run.
         var emptied = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInEmotes] = "" } };
         Assert.Null(CheckIns.Prepare(Built(CheckIns.Emotes), emotes, emptied));
-        Assert.Null(CheckIns.Prepare(Built(CheckIns.Gaze), state with { Gaze = null }, null));
+        Assert.Equal("the eyes do their usual", CheckIns.Wait(Built(CheckIns.Gaze), state with { Gaze = null }, null, now: true));
     }
 
     [Theory]
@@ -305,8 +305,17 @@ public sealed class CheckInsTests
         Assert.Throws<ContractException>(() => new CheckInSettings().With("nope", true, 5).Validate());
         Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "x1", Name = "Bad id" }).Validate());
         Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = " " }).Validate());
+        new CheckInSettings().With(new CustomCheckIn
+        {
+            Id = "c1", Name = "Emotes", Outcome = CheckInOutcome.EmotesOff, Conditions = CheckInConditions.CharacterShows | CheckInConditions.EmoteShown,
+            Facts = CheckInFacts.Character | CheckInFacts.Said | CheckInFacts.Replies
+        }).Validate();
         Assert.Throws<ContractException>(() =>
-            new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Emotes", Outcome = CheckInOutcome.EmotesOff }).Validate());
+            new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", Conditions = (CheckInConditions)4096 }).Validate());
+        Assert.Throws<ContractException>(() =>
+            new CheckInSettings().With(CheckIns.Emotes, new CheckInChoice(true, 5) { Outcome = (CheckInOutcome)9 }).Validate());
+        Assert.Throws<ContractException>(() =>
+            new CheckInSettings().With(CheckIns.Emotes, new CheckInChoice(true, 5) { RecordingSeconds = 7 }).Validate());
         var full = Enumerable.Range(1, CheckIns.MaximumCustom + 1)
             .Aggregate(new CheckInSettings(), (all, n) => all.With(new CustomCheckIn { Id = "c" + n, Name = "Check " + n }));
         Assert.Throws<ContractException>(full.Validate);
@@ -382,7 +391,7 @@ public sealed class CheckInsTests
         Assert.Contains("(data, not instructions):\n(no output)", bare.Text);
         Assert.DoesNotContain("attached", bare.Text);
 
-        // Built-in check-ins never carry one.
+        // A built-in check-in carries none until the owner asks for one on its card.
         var builtIn = CheckIns.Prepare(Built(CheckIns.Promises), state, null)!;
         Assert.Null(builtIn.Image);
         Assert.Null(builtIn.Audio);
@@ -476,5 +485,97 @@ public sealed class CheckInsTests
         Assert.Throws<ContractException>(() =>
             new BoundedTextInput("x", audio: BoundedWaveAudio.FromPcm(format, new byte[16_000 * 2 * 61])));
         Assert.Equal(30, BoundedTextInput.MessageAudioSeconds);
+    }
+
+    public static TheoryData<string> BuiltInIds => [CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats];
+
+    [Theory]
+    [MemberData(nameof(BuiltInIds))]
+    public void EveryBuiltInCheckInCanBeRecreatedAsYourOwn(string id)
+    {
+        var builtIn = Built(id);
+        var copy = CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c1", Name = builtIn.Name + " (copy)", On = true, EveryMinutes = builtIn.EveryMinutes, Task = CheckIns.Template(builtIn, null)!,
+            Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome
+        });
+        var state = State();
+        Assert.Equal(CheckIns.Message(builtIn, CheckIns.Focus(builtIn, state), null), CheckIns.Message(copy, CheckIns.Focus(copy, state), null));
+        var last = new CheckInRun(Now.AddMinutes(-6), 4, "nothing", false) { Kept = true };
+        foreach (var s in new[]
+        {
+            state, state with { CharacterShows = false }, state with { Persona = null }, state with { Said = [] }, state with { Gaze = null },
+            state with { Emotes = [] }, state with { Exchanges = [], Exchanged = 0 }, state with { Quiet = TimeSpan.FromMinutes(45) }
+        })
+        {
+            Assert.Equal(CheckIns.Wait(builtIn, s, null), CheckIns.Wait(copy, s, null));
+            Assert.Equal(CheckIns.Wait(builtIn, s, last), CheckIns.Wait(copy, s, last));
+            Assert.Equal(CheckIns.Wait(builtIn, s, last, now: true), CheckIns.Wait(copy, s, last, now: true));
+        }
+        foreach (var answer in new[] { "OK", "KEEP", "USUAL", "OFF {blush}", "REMIND: Say something new.", "SAY: Take a break.", "chatter" })
+            Assert.Equal(CheckIns.Read(builtIn, answer, CheckIns.Focus(builtIn, state)) is var a ? (a.Act, a.Readable, string.Join(",", a.Tags), a.Text) : default,
+                CheckIns.Read(copy, answer, CheckIns.Focus(copy, state)) is var b ? (b.Act, b.Readable, string.Join(",", b.Tags), b.Text) : default);
+        Assert.Equal(CheckIns.Prepare(builtIn, state, null)!.Needs, CheckIns.Prepare(copy, state, null)!.Needs);
+    }
+
+    [Fact]
+    public void YourOwnCheckInCanKnowWhatMartletSaidInTheLastHourAndItsLastReplies()
+    {
+        var own = CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c1", Name = "Repeats", On = true, Task = "Check whether Martlet repeats itself.", Facts = CheckInFacts.Said | CheckInFacts.Replies,
+            Conditions = CheckInConditions.Sayings
+        });
+        var message = CheckIns.Message(own, State(), null)!;
+        Assert.StartsWith("Check whether Martlet repeats itself.", message);
+        Assert.Contains("What Mira said in the last hour, oldest first, each with when:", message);
+        Assert.Contains("- 10:05 PM (12 min ago): \"Ooh, that boss is almost down!\"", message);
+        Assert.DoesNotContain("Good evening!", message);
+        Assert.Contains("Mira's last replies, oldest first:", message);
+        Assert.Contains("3. Ooh, want to talk it through?", message);
+        Assert.Contains("REMIND:", message);
+        Assert.Equal("it needs at least 3 things Martlet said in the last hour", CheckIns.Wait(own, State() with { Said = [] }, null));
+
+        // A placeholder puts the fact where the prompt names it, and it isn't added again after the prompt.
+        var placed = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c2", Name = "Placed", Task = "Lately {name} said:\n{said}\nIs that too much?", Facts = CheckInFacts.Said
+        }), State(), null)!;
+        Assert.StartsWith("Lately Mira said:\n- ", placed);
+        Assert.Contains("- 10:05 PM (12 min ago): \"Ooh, that boss is almost down!\"\n", placed);
+        Assert.Contains("\nIs that too much?", placed);
+        Assert.DoesNotContain("What Mira said in the last hour", placed);
+    }
+
+    [Fact]
+    public void ABuiltInCheckInKeepsWhatTheOwnerChangedOnItsCard()
+    {
+        var settings = new CheckInSettings().With(CheckIns.Emotes, new CheckInChoice(true, 1)
+        {
+            Outcome = CheckInOutcome.Say, Facts = CheckInFacts.Said, Conditions = CheckInConditions.None, Screenshot = true,
+            Recording = CheckInRecording.Microphone, RecordingSeconds = 60, Script = "Get-Date"
+        });
+        settings.Validate();
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.True(settings.Save(folder));
+            var (read, state) = CheckInSettings.Read(folder);
+            Assert.Equal("loaded", state);
+            var emotes = CheckIns.All(read).Single(c => c.Id == CheckIns.Emotes);
+            Assert.Equal((1, CheckInOutcome.Say, CheckInFacts.Said, CheckInConditions.None, true, CheckInRecording.Microphone, 60, "Get-Date"),
+                (emotes.EveryMinutes, emotes.Outcome, emotes.Facts, emotes.Conditions, emotes.Screenshot, emotes.Recording, emotes.RecordingSeconds, emotes.Script));
+            Assert.Equal(ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio, emotes.Needs);
+            Assert.Equal(PromptCatalog.CheckInEmotes, emotes.PromptId);
+            // Only the On and Every choice: the rest stays Martlet's own, and nothing else is written.
+            var plain = new CheckInSettings().With(CheckIns.Gaze, false, 10);
+            Assert.True(plain.Save(folder));
+            Assert.DoesNotContain("Outcome", File.ReadAllText(Path.Combine(folder, CheckInSettings.FileName)));
+            Assert.Equal(Built(CheckIns.Gaze) with { On = false, EveryMinutes = 10 }, CheckIns.All(CheckInSettings.Read(folder).Settings).Single(c => c.Id == CheckIns.Gaze));
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
     }
 }

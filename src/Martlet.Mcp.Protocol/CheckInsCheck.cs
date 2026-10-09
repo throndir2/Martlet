@@ -43,7 +43,8 @@ internal static class CheckInsCheck
                 checkIns = CheckIns.All(settings).Select(c => new
                 {
                     id = c.Id, name = c.Name, custom = c.Custom, on = c.On, everyMinutes = c.EveryMinutes, outcome = c.Outcome.ToString(),
-                    prompt = c.PromptId, facts = c.Custom ? c.Facts.ToString() : null, task = c.Task, does = c.Does,
+                    prompt = c.PromptId, facts = c.Facts.ToString(), conditions = c.Conditions.ToString(), task = c.Task, does = c.Does,
+                    changed = !c.Custom && settings.Choice(c.Id) is { } choice && choice != new CheckInChoice(choice.On, choice.EveryMinutes),
                     needs = c.Needs.ToString(), screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds,
                     // Whether it runs a script and how long it is; never the script (the owner's own words).
@@ -93,7 +94,8 @@ internal static class CheckInsCheck
                 Id = "c1", Name = "FIXTURE break", On = true, EveryMinutes = 60, Task = "If the user has been at it for hours, suggest a short break.",
                 Facts = CheckInFacts.Conversation | CheckInFacts.Presence, Outcome = CheckInOutcome.Say
             };
-            var saved = new CheckInSettings().With(CheckIns.Gaze, false, 10).With(mine);
+            var saved = new CheckInSettings().With(CheckIns.Gaze, false, 10).With(mine)
+                .With(CheckIns.Promises, new CheckInChoice(true, 1) { Outcome = CheckInOutcome.Say, Facts = CheckInFacts.Conversation | CheckInFacts.Said });
             var wrote = saved.Save(folder);
             var (read, state) = CheckInSettings.Read(folder);
             var all = CheckIns.All(read);
@@ -102,8 +104,14 @@ internal static class CheckInsCheck
             catch (Martlet.Core.Contracts.ContractException) { refused = true; }
             Step("settings saved and read back", wrote && state == "loaded" && all.Count == CheckIns.BuiltIn.Count + 1 &&
                 all.Single(c => c.Id == CheckIns.Gaze) is { On: false, EveryMinutes: 10 } && all.Single(c => c.Id == "c1") is { Custom: true, Outcome: CheckInOutcome.Say } &&
+                all.Single(c => c.Id == CheckIns.Promises) is { EveryMinutes: 1, Outcome: CheckInOutcome.Say, Facts: CheckInFacts.Conversation | CheckInFacts.Said } promises &&
+                promises.Conditions == CheckIns.BuiltIn.Single(c => c.Id == CheckIns.Promises).Conditions &&
                 CheckIns.All(new CheckInSettings()).All(c => c.On) && refused,
-                new { state, checkIns = all.Select(c => $"{c.Id}: {(c.On ? "on" : "off")}, every {c.EveryMinutes} min, {c.Outcome}"), badPaceRefused = refused });
+                new
+                {
+                    state, checkIns = all.Select(c => $"{c.Id}: {(c.On ? "on" : "off")}, every {c.EveryMinutes} min, {c.Outcome}, facts {c.Facts}, when {c.Conditions}"),
+                    badPaceRefused = refused
+                });
         }
         finally
         {
@@ -244,6 +252,41 @@ internal static class CheckInsCheck
         Step("odd answers change nothing", odd["emotes: KEEP"] is { Act: false, Readable: true } && odd["emotes: a tag that isn't asked about"] is { Act: false } &&
             odd["emotes: chatter"] is { Readable: false } && odd["promises: REMIND: nothing"] is { Act: false, Readable: true } &&
             odd["gaze: KEEP after thinking"] is { Act: false, Readable: true }, odd.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable }));
+
+        // 4b. Every built-in check-in is only data: one of your own with its prompt and choices asks, waits and reads the same,
+        //     and your own can know what Martlet said in the last hour.
+        var recreated = new Dictionary<string, object>();
+        var same = true;
+        var lastRun = new CheckInRun(now.AddMinutes(-6), 4, "nothing to remind Martlet of", false);
+        CheckInState[] states =
+        [
+            facts, facts with { CharacterShows = false }, facts with { Persona = null }, facts with { Said = [] }, facts with { Gaze = null },
+            facts with { Emotes = [] }, facts with { Exchanges = [], Exchanged = 0 }, facts with { Quiet = TimeSpan.FromMinutes(45) }
+        ];
+        foreach (var builtIn in CheckIns.BuiltIn)
+        {
+            var copy = CheckIns.Of(new CustomCheckIn
+            {
+                Id = "c9", Name = builtIn.Name + " (copy)", On = true, EveryMinutes = builtIn.EveryMinutes,
+                Task = CheckIns.Template(builtIn, null) ?? "", Facts = builtIn.Facts, Conditions = builtIn.Conditions, Outcome = builtIn.Outcome
+            });
+            var sameMessage = CheckIns.Message(builtIn, CheckIns.Focus(builtIn, facts), null) == CheckIns.Message(copy, CheckIns.Focus(copy, facts), null);
+            var sameWaits = states.All(s => CheckIns.Wait(builtIn, s, null) == CheckIns.Wait(copy, s, null) &&
+                CheckIns.Wait(builtIn, s, lastRun) == CheckIns.Wait(copy, s, lastRun));
+            var builtInVerdict = CheckIns.Read(builtIn, answers[builtIn.Id], CheckIns.Focus(builtIn, facts));
+            var copyVerdict = CheckIns.Read(copy, answers[builtIn.Id], CheckIns.Focus(copy, facts));
+            var sameRead = builtInVerdict.Act == copyVerdict.Act && builtInVerdict.Tags.SequenceEqual(copyVerdict.Tags) && builtInVerdict.Text == copyVerdict.Text;
+            same &= sameMessage && sameWaits && sameRead;
+            recreated[builtIn.Id] = new { message = sameMessage, waits = sameWaits, read = sameRead };
+        }
+        var saidOwn = CheckIns.Message(CheckIns.Of(new CustomCheckIn
+        {
+            Id = "c8", Name = "FIXTURE", Task = "Check whether Martlet repeats itself.", Facts = CheckInFacts.Said | CheckInFacts.Replies
+        }), facts, null) ?? "";
+        Step("built-in ones recreated as your own", same && saidOwn.Contains("said in the last hour, oldest first", StringComparison.Ordinal) &&
+            saidOwn.Contains("- 10:05 PM (12 min ago):", StringComparison.Ordinal) && saidOwn.Contains("last replies, oldest first", StringComparison.Ordinal) &&
+            saidOwn.Contains("REMIND:", StringComparison.Ordinal),
+            new { recreated, saidInTheLastHour = saidOwn });
 
         // 5. What Martlet does: emotes a reply turned on go off (never the owner's try), a reminder goes with exactly one request,
         //    and what to bring up is worded as the check-in's own, beside a due reminder.

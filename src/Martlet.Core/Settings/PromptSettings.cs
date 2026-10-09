@@ -179,40 +179,38 @@ public static class PromptCatalog
 
     public const string DefaultCheckInEmotesInstructions =
         "{name}, the user's desktop character, shows these emotes now. A reply turned each one on, and it stays on until something " +
-        "turns it off:\n{emotes}\n\n{conversation}\n\nIt is {time}. Decide for each emote whether it still fits {name}'s mood and " +
-        "what is happening now. An emote that fit an earlier moment, such as a blush or tears after something that is over, no " +
-        "longer fits. An outfit or accessory may stay on unless the conversation moved away from it.\nFor each emote to turn off, " +
-        "write a line with OFF and its tag, like: OFF {example}\nIf every emote still fits, write only: KEEP";
+        "turns it off:\n{emotes}\n\n{conversation}\n\nDecide for each emote whether it still fits {name}'s mood and what is " +
+        "happening now. An emote that fit an earlier moment, such as a blush or tears after something that is over, no longer " +
+        "fits. An outfit or accessory may stay on unless the conversation moved away from it.";
 
     public const string DefaultCheckInGazeInstructions =
         "{name}, the user's desktop character, chose where to look {since}: its eyes {looking}. Usually they {usual}.\n\n" +
-        "{conversation}\n\nIt is {time}. Decide whether the eyes should stay that way or go back to their usual. Keep the choice " +
-        "only while it clearly still fits what is happening now.\nWrite only USUAL to go back, or KEEP to stay.";
+        "{conversation}\n\nDecide whether the eyes should stay that way or go back to their usual. Keep the choice only while " +
+        "it clearly still fits what is happening now.";
 
     public const string DefaultCheckInPromisesInstructions =
         "Read the end of {name}'s conversation with the user. Look for something {name} said it would do, such as remind them " +
         "later, think something over, look something up, sing a song or draw a picture, that it never started.\n\n" +
-        "{conversation}\n\nWhat {name} has set up or started:\n{work}\n\nIt is {time}. If {name} said it would do something " +
-        "that isn't in that list, write one line to {name} that starts with REMIND: and says what to do now, like: REMIND: You " +
-        "said you'd remind them about the oven in 10 minutes but never set the reminder; set it now, or tell them you can't.\n" +
-        "If {name} kept every promise or made none, write only: OK";
+        "{conversation}\n\nWhat {name} has set up or started:\n{work}\n\nIf {name} said it would do something that isn't in " +
+        "that list, tell {name} what to do now, like: You said you'd remind them about the oven in 10 minutes but never set the " +
+        "reminder; set it now, or tell them you can't. If {name} kept every promise or made none, nothing needs doing.";
 
     public const string DefaultCheckInCharacterInstructions =
         "{name} is the user's desktop companion. Its personality:\n{persona}\n\nIts last replies, oldest first:\n{replies}\n\n" +
         "Check whether these replies drifted: out of character, sounding like a generic assistant, saying the same words or " +
-        "starting the same way again and again, getting long, or talking about notes, tools or being an AI. If they did, write " +
-        "one line to {name} that starts with REMIND: and says how to talk from now on, like: REMIND: Stay playful and teasing; " +
-        "your last replies all started with \"Ooh\" and got long.\nIf they are fine, write only: OK";
+        "starting the same way again and again, getting long, or talking about notes, tools or being an AI. If they did, tell " +
+        "{name} how to talk from now on, like: Stay playful and teasing; your last replies all started with \"Ooh\" and got " +
+        "long. If they are fine, nothing needs doing.";
 
     public const string DefaultCheckInRepeatsInstructions =
-        "{name}, the user's desktop companion, said these things lately, oldest first, each with when:\n{said}\n\nIt is {time}. " +
+        "{name}, the user's desktop companion, said these things lately, oldest first, each with when:\n{said}\n\n" +
         "Check whether {name} keeps saying the same things: the same remark, joke, compliment, question, opener or topic again " +
         "and again, or something it said not long ago while nothing new happened that made it worth saying again. If it does, " +
-        "write one line to {name} that starts with REMIND: and says what it keeps repeating and what to do instead, like: " +
-        "REMIND: You said the boss fight looked intense three times in 10 minutes; don't bring it up again unless something " +
-        "changes, and talk about something new.\nIf it doesn't, write only: OK";
+        "tell {name} what it keeps repeating and what to do instead, like: You said the boss fight looked intense three times " +
+        "in 10 minutes; don't bring it up again unless something changes, and talk about something new. If it doesn't, nothing " +
+        "needs doing.";
 
-    public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. If nothing needs doing now, write only: OK\n{answer}";
+    public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. {answer}";
 
     public const string DefaultCheckInNoteInstructions =
         "A reminder from your own check-in, for you only: {reminder} Follow it in this reply where it fits, without mentioning it.";
@@ -850,33 +848,38 @@ public static class PromptCatalog
             "follows as the message.",
             DefaultCheckInInstructions, []),
         new(CheckInEmotes, CheckInGroup, "Check-in: lingering emotes",
-            "Asks whether the emotes a reply turned on and left on still fit. Martlet turns off each one the answer names in an " +
-            "\"OFF {tag}\" line; KEEP changes nothing. {name} is the character's name, {emotes} lists the emotes with their hints " +
-            "and how long each has shown, {example} is the first one's tag, {conversation} is the end of the conversation and how " +
-            "long it has been quiet, and {time} is the day and time.",
-            DefaultCheckInEmotesInstructions, ["name", "emotes", "example", "conversation", "time"]),
+            "What Lingering emotes checks. Every check-in's prompt may name any of these placeholders: {name} the character's " +
+            "name, {time} the day and time, {conversation} the end of the conversation, {emotes} the lingering emotes with their " +
+            "hints and how long each has shown, {example} the first one's tag, {looking}, {usual} and {since} the gaze a reply " +
+            "chose, {persona}, {work}, {screen}, {sound}, {presence}, {said} what it said in the last hour and {replies} its last " +
+            "replies. Check-ins: each check adds the facts ticked that the prompt doesn't name and the answer format (OFF " +
+            "lines or KEEP for this one).",
+            DefaultCheckInEmotesInstructions, ["name", "emotes", "conversation"]),
         new(CheckInGaze, CheckInGroup, "Check-in: where the character looks",
-            "Asks whether the gaze a reply chose still fits. USUAL takes the eyes back to their usual gaze; KEEP changes nothing. " +
-            "{looking} is what the eyes do now, {since} when the reply chose it (\"12 min ago\"), {usual} what they usually do, " +
-            "{conversation} the end of the conversation and {time} the day and time.",
-            DefaultCheckInGazeInstructions, ["name", "since", "looking", "usual", "conversation", "time"]),
+            "What Where the character looks checks. {looking} is what the eyes do now, {since} when the reply chose it (\"12 min " +
+            "ago\"), {usual} what they usually do and {conversation} the end of the conversation. Check-ins: each check adds the " +
+            "answer format (USUAL or KEEP for this one).",
+            DefaultCheckInGazeInstructions, ["name", "since", "looking", "usual", "conversation"]),
         new(CheckInPromises, CheckInGroup, "Check-in: promises",
-            "Asks whether the character said it would do something it never started. A REMIND: line goes in the notes of the next " +
-            "message (Check-in: reminder for the next reply); OK changes nothing. {work} lists the reminders set and the " +
-            "background work started or finished in this conversation.",
-            DefaultCheckInPromisesInstructions, ["name", "conversation", "work", "time"]),
+            "What Promises checks. {work} lists the reminders set and the background work started or finished in this " +
+            "conversation. Check-ins: each check adds the answer format (a REMIND: line goes in the notes of the next message; " +
+            "OK changes nothing).",
+            DefaultCheckInPromisesInstructions, ["name", "conversation", "work"]),
         new(CheckInCharacter, CheckInGroup, "Check-in: staying in character",
-            "Asks whether the character's last replies drifted from its personality. A REMIND: line goes in the notes of the next " +
-            "message; OK changes nothing. {persona} is the active personality and {replies} the last replies, oldest first.",
+            "What Staying in character checks. {persona} is the active personality and {replies} the last replies, oldest first. " +
+            "Check-ins: each check adds the answer format (a REMIND: line or OK).",
             DefaultCheckInCharacterInstructions, ["name", "persona", "replies"]),
         new(CheckInRepeats, CheckInGroup, "Check-in: saying the same things",
-            "Asks whether the character keeps saying the same things. A REMIND: line goes in the notes of the next message; OK " +
-            "changes nothing. {said} lists what it said in the last hour (the newest 10, oldest first), each with when it said it " +
-            "(\"10:05 PM (12 min ago)\"), and {time} is the day and time.",
-            DefaultCheckInRepeatsInstructions, ["name", "said", "time"]),
-        new(CheckInCustom, CheckInGroup, "Check-in: your own",
-            "Wraps each of your own check-ins. {task} is what you wrote for it, {facts} what you chose it gets to know, {time} the " +
-            "day and time, and {answer} the line that asks for REMIND: (a reminder for the next reply) or SAY: (Martlet brings it up).",
+            "What Saying the same things checks. {said} lists what the character said in the last hour (the newest 10, oldest " +
+            "first), each with when it said it (\"10:05 PM (12 min ago)\"). Check-ins: each check adds the answer format (a " +
+            "REMIND: line or OK).",
+            DefaultCheckInRepeatsInstructions, ["name", "said"]),
+        new(CheckInCustom, CheckInGroup, "Check-ins: each check",
+            "Wraps the prompt of every check-in, built-in or your own. {task} is the check-in's prompt with its placeholders " +
+            "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
+            "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
+            "or KEEP (move the eyes), a REMIND: line or OK (a reminder for the next reply), a SAY: line or OK (Martlet brings it " +
+            "up). Emptied, each check sends only its prompt and facts, so the prompt must then ask for the answer format itself.",
             DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),
         new(CheckInNote, CheckInGroup, "Check-in: reminder for the next reply",
             "Goes in the notes of the next message when a check-in answers with a REMIND: line, once, never in the instructions, " +
@@ -1029,7 +1032,12 @@ public sealed partial record PromptSettings : IContract
     public static string? Fill(PromptSettings? settings, string id, params (string Name, string Value)[] values)
     {
         var text = Text(settings, id);
-        if (string.IsNullOrWhiteSpace(text)) return null;
+        return string.IsNullOrWhiteSpace(text) ? null : FillText(text, values);
+    }
+
+    /// <summary><paramref name="text"/> with its placeholders filled in, in one pass; unknown placeholders stay as written.</summary>
+    public static string FillText(string text, params (string Name, string Value)[] values)
+    {
         if (values.Length == 0) return text;
         return Placeholder().Replace(text, match =>
             values.FirstOrDefault(v => v.Name == match.Groups[1].Value) is { Name: not null } found ? found.Value : match.Value);

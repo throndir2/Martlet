@@ -97,6 +97,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
         var steps = ToolResult(messages[0]).GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("name").GetString()).ToArray();
         Assert.Contains("which requests carry it", steps);
         Assert.Contains("the check-in reads the same lines", steps);
+        var checkInSteps = ToolResult(messages[1]).GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("name").GetString()).ToArray();
+        Assert.Contains("built-in ones recreated as your own", checkInSteps);
     }
 
     [Fact]

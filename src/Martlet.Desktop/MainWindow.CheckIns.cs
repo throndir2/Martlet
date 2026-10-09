@@ -53,21 +53,71 @@ public partial class MainWindow
     private static readonly (CheckInFacts Fact, string Label, string Help)[] CheckInFactChoices =
     [
         (CheckInFacts.Conversation, "The conversation",
-            "The last 6 exchanges of the conversation (you and Martlet, oldest first) and how long it has been quiet since."),
-        (CheckInFacts.Persona, "Its personality", "The active personality: the character's name and the text you wrote for it."),
+            "The last 6 exchanges of the conversation (you and Martlet, oldest first) and how long it has been quiet since. " +
+            "Placeholder: {conversation}."),
+        (CheckInFacts.Persona, "Its personality",
+            "The active personality: the character's name and the text you wrote for it. Placeholder: {persona}."),
+        (CheckInFacts.Replies, "Martlet's last replies",
+            "Martlet's last 6 replies, numbered, oldest first, without what you said. Placeholder: {replies}."),
+        (CheckInFacts.Said, "What Martlet said in the last hour",
+            "Everything Martlet said in the last hour (replies, remarks and reactions; the newest 10), each with when it said it, " +
+            "such as \"10:05 PM (12 min ago)\". Placeholder: {said}."),
         (CheckInFacts.Character, "Emotes and gaze",
-            "The emotes a reply turned on that still show on the character, how long each has shown, and where its eyes look now."),
+            "The emotes a reply turned on that still show on the character, with their hints and how long each has shown, and " +
+            "where its eyes look now and usually. Placeholders: {emotes}, {example} (the first emote's tag), {looking}, {usual} " +
+            "and {since}."),
         (CheckInFacts.Work, "Reminders and background work",
-            "The reminders that are set and the background work Martlet started or finished in this conversation."),
+            "The reminders that are set and the background work Martlet started or finished in this conversation. Placeholder: {work}."),
         (CheckInFacts.Screen, "What changed on screen",
             "Martlet's newest words about what changed on your screen, while it watches the screen. It isn't a screenshot: " +
-            "tick A screenshot below for that."),
+            "tick A screenshot below for that. Placeholder: {screen}."),
         (CheckInFacts.Sound, "What the PC plays",
             "Martlet's newest words about what this PC plays (music, videos, games), while it hears it. It isn't a recording: " +
-            "choose one below for that."),
+            "choose one below for that. Placeholder: {sound}."),
         (CheckInFacts.Presence, "Whether you're at the PC",
-            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse.")
+            "Whether someone uses this PC now, or how long since someone last used the keyboard or mouse. Placeholder: {presence}.")
     ];
+
+    private static readonly (CheckInConditions Condition, string Label, string Help)[] CheckInConditionChoices =
+    [
+        (CheckInConditions.Talked, "You talked lately",
+            $"It waits until something was said in the conversation, and while it has been quiet for more than " +
+            $"{CheckIns.PromiseWindow.TotalMinutes:0} minutes."),
+        (CheckInConditions.SomethingNew, "Something new was said",
+            "After it runs, it waits until something new was said in the conversation."),
+        (CheckInConditions.NewReplies, $"{CheckIns.CharacterReplies} new replies",
+            $"After it runs, it waits until the conversation had {CheckIns.CharacterReplies} new exchanges."),
+        (CheckInConditions.Replies, "Martlet replied twice", "It waits until Martlet gave at least 2 replies in this conversation."),
+        (CheckInConditions.Sayings, $"Martlet said {CheckIns.RepeatsSayings} things lately",
+            $"It waits until Martlet said at least {CheckIns.RepeatsSayings} things in the last hour."),
+        (CheckInConditions.Persona, "A personality is active", "It waits while no personality is active."),
+        (CheckInConditions.CharacterShows, "The character shows", "It waits while the character isn't on the desktop."),
+        (CheckInConditions.EmoteShown, "An emote a reply turned on shows",
+            $"It waits until an emote a reply turned on has shown for {CheckIns.MinimumShown.TotalMinutes:0} minutes, and it " +
+            "reads only those emotes (Check now reads all of them)."),
+        (CheckInConditions.GazeChosen, "A reply chose where the eyes look",
+            $"It waits until a reply chose where the eyes look, at least {CheckIns.MinimumShown.TotalMinutes:0} minutes ago."),
+        (CheckInConditions.SlowWhenKept, "Slower when nothing changes",
+            $"After an answer that changed nothing, and while nothing new was said, it waits {CheckIns.KeptPace} times as long.")
+    ];
+
+    // The answers a check-in can give, in the order of its Its answer list.
+    private static readonly (CheckInOutcome Outcome, string Label)[] CheckInOutcomeChoices =
+    [
+        (CheckInOutcome.Note, "Reminds Martlet in its next reply"),
+        (CheckInOutcome.Say, "Martlet brings it up"),
+        (CheckInOutcome.EmotesOff, "Turns off the emotes it names"),
+        (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual")
+    ];
+
+    private const string CheckInOutcomeHelp = "Martlet adds the answer format to the prompt. A reminder: a REMIND: line goes in " +
+        "the notes of your next message, so Martlet's next reply follows it. Brings it up: a SAY: line, which Martlet says on its " +
+        "own as soon as it's free. Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
+        "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing.";
+
+    private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {conversation}, " +
+        "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound} and " +
+        "{presence}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
     private void InitializeCheckIns()
     {
@@ -108,7 +158,7 @@ public partial class MainWindow
         CheckIn? next = null;
         foreach (var checkIn in all)
         {
-            var wait = CheckIns.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now);
+            var wait = CheckIns.Wait(checkIn, state, checkInRuns.GetValueOrDefault(checkIn.Id), checkIn.Id == now, homeSettings?.Prompts);
             if (wait is null && !fixture && !conversation.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, checkIn.Needs))
                 wait = CheckInNoMember(checkIn);
             checkInWaits[checkIn.Id] = wait ?? "";
@@ -126,8 +176,8 @@ public partial class MainWindow
     private void KeepCheckInSound(IReadOnlyList<CheckIn> all)
     {
         var companion = Role == DeviceRole.Companion;
-        checkInMicrophone.Wanted = companion && all.Any(c => c is { On: true, Custom: true, Recording: CheckInRecording.Microphone });
-        checkInPcSound.Wanted = companion && all.Any(c => c is { On: true, Custom: true, Recording: CheckInRecording.PcSound });
+        checkInMicrophone.Wanted = companion && all.Any(c => c is { On: true, Recording: CheckInRecording.Microphone });
+        checkInPcSound.Wanted = companion && all.Any(c => c is { On: true, Recording: CheckInRecording.PcSound });
     }
 
     /// <summary>One look at the check-ins: each says why it waits, and the first one that may run (or the one the owner asked
@@ -207,14 +257,14 @@ public partial class MainWindow
             $"{(gathered is null ? "" : " with " + gathered)}: {result}.");
     }
 
-    /// <summary>What one of the owner's check-ins takes with this run: its script's output (Windows PowerShell, hidden, in the
+    /// <summary>What a check-in takes with this run: its script's output (Windows PowerShell, hidden, in the
     /// home folder, stopped after <see cref="CheckIns.ScriptTimeout"/>), a screenshot of the screen in front and the last seconds
     /// of the microphone or of what this PC plays. <c>Missing</c> says why the run can't go on (no screenshot, no recording);
     /// <c>Took</c> says what it took in a few words (never the content).</summary>
     private async Task<(CheckInState State, string? Missing, string? Took)> GatherForCheckInAsync(CheckIn checkIn, CheckInState state,
         CancellationToken token)
     {
-        if (!checkIn.Custom || !checkIn.Screenshot && checkIn.Recording == CheckInRecording.None && !checkIn.RunsScript) return (state, null, null);
+        if (!checkIn.Screenshot && checkIn.Recording == CheckInRecording.None && !checkIn.RunsScript) return (state, null, null);
         var took = new List<string>();
         string? output = null;
         if (checkIn.RunsScript)
@@ -409,8 +459,9 @@ public partial class MainWindow
                 "eyes back to their usual gaze, or puts a short reminder in the notes of your next message, so its next reply " +
                 "follows it.", new Thickness(0, 0, 0, 0)),
             Note("Check-ins run only on Thinking pool members, never on the conversation's own Thinking model, so replies never " +
-                "wait for them. They wait while you talk and while nobody uses this PC, and they stay on this PC. Each check-in's " +
-                "prompt is on its card below: change it there, and Use built-in text puts Martlet's own back.", new Thickness(0, 6, 0, 0))));
+                "wait for them. They wait while you talk and while nobody uses this PC, and they stay on this PC. The built-in " +
+                "check-ins work like your own: change their prompt, facts, conditions and answer on their card, and Use built-in " +
+                "settings puts Martlet's own back. Copy as your own makes a check-in of your own from any card.", new Thickness(0, 6, 0, 0))));
         var lines = new List<Action>();
         // Edits to the built-in check-ins' prompts and to your own check-ins save on their own, a moment after typing stops.
         var promptBoxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);
@@ -420,12 +471,21 @@ public partial class MainWindow
         {
             foreach (var show in promptStates) show();
         }));
+        var builtIns = new List<(string Id, Func<CheckInChoice> Read)>();
         var rows = new List<Func<CustomCheckIn>>();
         // Synchronous on purpose: Remove saves the other rows first, and a save still running must not bring the removed row back.
         var autoSave = new AutoSave(() =>
         {
+            var next = checkInSettings;
+            foreach (var (id, read) in builtIns)
+            {
+                var choice = read();
+                var standard = CheckIns.BuiltIn.First(b => b.Id == id);
+                if (choice != (next.Choice(id) ?? new CheckInChoice(standard.On, standard.EveryMinutes))) next = next.With(id, choice);
+            }
             CustomCheckIn[] custom = [.. rows.Select(read => read())];
-            if (!custom.SequenceEqual(checkInSettings.Custom)) SaveCheckIns(checkInSettings with { Custom = custom }, null);
+            if (!custom.SequenceEqual(next.Custom)) next = next with { Custom = custom };
+            if (!ReferenceEquals(next, checkInSettings)) SaveCheckIns(next, null);
             if (promptsTyped.Count > 0) promptSave.SaveNowAsync().Forget();
             return Task.FromResult(true);
         });
@@ -441,8 +501,8 @@ public partial class MainWindow
                 tabEdited = true;
                 promptsTyped.Add(id);
                 autoSave.Changed();
-            }, SaveAllAsync));
-        page.Children.Add(OwnCheckInsCard(lines, rows, autoSave));
+            }, builtIns, autoSave, SaveAllAsync));
+        page.Children.Add(OwnCheckInsCard(lines, rows, autoSave, SaveAllAsync));
         showCheckIns = () =>
         {
             now.Text = CheckInsNowText();
@@ -500,47 +560,64 @@ public partial class MainWindow
     }
 
     private Border BuiltInCheckInCard(CheckIn checkIn, List<Action> lines, Dictionary<string, TextBox> promptBoxes,
-        List<Action> promptStates, Action<string> promptTyped, Func<Task> saveAll)
+        List<Action> promptStates, Action<string> promptTyped, List<(string Id, Func<CheckInChoice> Read)> builtIns, AutoSave autoSave,
+        Func<Task> saveAll)
     {
+        var id = checkIn.Id;
+        var standard = CheckIns.BuiltIn.First(b => b.Id == id);
         var on = new CheckBox { Content = "On", IsChecked = checkIn.On, VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetAutomationId(on, "CheckInOn-" + checkIn.Id);
+        AutomationProperties.SetAutomationId(on, "CheckInOn-" + id);
         AutomationProperties.SetName(on, checkIn.Name + " on");
         var every = EveryChoice(checkIn.EveryMinutes);
-        AutomationProperties.SetAutomationId(every, "CheckInEvery-" + checkIn.Id);
+        AutomationProperties.SetAutomationId(every, "CheckInEvery-" + id);
         AutomationProperties.SetName(every, checkIn.Name + ": how often");
         var status = Note("", new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(status, "CheckInStatus-" + checkIn.Id);
-        lines.Add(() => status.Text = CheckInLine(checkIn.Id));
-        void Save()
+        AutomationProperties.SetAutomationId(status, "CheckInStatus-" + id);
+        lines.Add(() => status.Text = CheckInLine(id));
+        var (outcome, choices, read) = CheckInEditor(id, checkIn.Name, new CheckInEdit(checkIn.Facts, checkIn.Conditions, checkIn.Outcome,
+            checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text, checkIn.Screenshot, checkIn.Recording, checkIn.RecordingSeconds,
+            checkIn.Script ?? ""), autoSave);
+        // Only what differs from Martlet's own is kept, so a later Martlet can improve the rest.
+        builtIns.Add((id, () =>
         {
-            var minutes = CheckIns.EveryChoices[Math.Max(0, every.SelectedIndex)];
-            SaveCheckIns(checkInSettings.With(checkIn.Id, on.IsChecked == true, minutes),
-                $"{checkIn.Name} is {(on.IsChecked == true ? "on, every " + EveryText(minutes) : "off")}.");
-        }
-        on.Checked += (_, _) => Save();
-        on.Unchecked += (_, _) => Save();
-        every.SelectionChanged += (_, _) => Save();
+            var edit = read();
+            return new CheckInChoice(on.IsChecked == true, CheckIns.EveryChoices[Math.Max(0, every.SelectedIndex)])
+            {
+                Facts = edit.Facts == standard.Facts ? null : edit.Facts,
+                Conditions = edit.Conditions == standard.Conditions ? null : edit.Conditions,
+                Outcome = edit.Outcome == standard.Outcome ? null : edit.Outcome,
+                Needs = edit.Needs == ThinkingCapability.Text ? null : edit.Needs,
+                Screenshot = edit.Screenshot == standard.Screenshot ? null : edit.Screenshot,
+                Recording = edit.Recording == standard.Recording ? null : edit.Recording,
+                RecordingSeconds = edit.RecordingSeconds == standard.RecordingSeconds ? null : edit.RecordingSeconds,
+                Script = edit.Script == (standard.Script ?? "") ? null : edit.Script
+            };
+        }));
+        on.Checked += (_, _) => autoSave.SaveNowAsync().Forget();
+        on.Unchecked += (_, _) => autoSave.SaveNowAsync().Forget();
+        every.SelectionChanged += (_, _) => autoSave.SaveNowAsync().Forget();
         var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
         row.Children.Add(RowGroup(on));
         row.Children.Add(RowGroup(RowLabel("Every", every), every));
+        row.Children.Add(RowGroup(RowLabel("Its answer", outcome), outcome));
         var children = new List<UIElement> { Heading(checkIn.Name), Note(checkIn.Does, new Thickness(0, 0, 0, 0)), row };
         // Its prompt, like the task of your own check-ins: edited here, saved with Martlet's other prompts (Companion › Prompts
         // lists it too).
+        TextBox? promptBox = null;
+        string? promptDefault = null;
         if (checkIn.PromptId is { } promptId && PromptCatalog.Find(promptId) is { } prompt)
         {
-            var help = prompt.Help + (prompt.Placeholders.Count == 0 ? ""
-                : " Fills in: " + string.Join(", ", prompt.Placeholders.Select(p => "{" + p + "}")) + ".");
             var box = new TextBox
             {
                 Text = PromptSettings.Text(homeSettings?.Prompts, promptId), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
                 MaxLength = PromptSettings.MaximumTextCharacters, MinHeight = 56, MaxHeight = 260,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 4, 0, 0)
             };
-            AutomationProperties.SetAutomationId(box, "CheckInPrompt-" + checkIn.Id);
+            AutomationProperties.SetAutomationId(box, "CheckInPrompt-" + id);
             AutomationProperties.SetName(box, checkIn.Name + ": what it asks");
-            AutomationProperties.SetHelpText(box, help);
+            AutomationProperties.SetHelpText(box, prompt.Help);
             var state = Note("", new Thickness(0, 2, 0, 0));
-            AutomationProperties.SetAutomationId(state, "CheckInPromptState-" + checkIn.Id);
+            AutomationProperties.SetAutomationId(state, "CheckInPromptState-" + id);
             void ShowState() => state.Text = PromptState(prompt, box.Text, homeSettings?.Prompts);
             ShowState();
             promptStates.Add(ShowState);
@@ -550,28 +627,248 @@ public partial class MainWindow
                 ShowState();
                 promptTyped(promptId);
             };
-            var reset = PageButton("Use built-in text", () =>
-            {
-                box.Text = prompt.Default;
-                saveAll().Forget();
-            }, link: true, id: "CheckInPromptReset-" + checkIn.Id);
-            AutomationProperties.SetHelpText(reset, $"Puts Martlet's own prompt for {checkIn.Name} back.");
+            promptBox = box;
+            promptDefault = prompt.Default;
             children.Add(new Label { Content = "_What it asks", Target = box, Padding = new Thickness(0, 6, 0, 0) });
             children.Add(box);
-            children.Add(Note(help + " Empty it to stop this check-in from asking anything.", new Thickness(0, 2, 0, 0)));
+            children.Add(Note(CheckInPlaceholderHelp + " Empty it to stop this check-in from asking anything.", new Thickness(0, 2, 0, 0)));
             children.Add(state);
-            children.Add(Row(reset));
         }
+        children.Add(choices);
         children.Add(status);
-        children.Add(Row(PageButton("Check now", () => SaveThenCheckAsync().Forget(), id: "CheckInRun-" + checkIn.Id)));
+        var copy = PageButton("Copy as your own", () => CopyCheckInAsync(id, saveAll).Forget(), id: "CheckInCopy-" + id);
+        AutomationProperties.SetHelpText(copy, $"Makes a check-in of your own with this one's prompt and choices, off until you turn it on.");
+        var reset = PageButton("Use built-in settings", () => ResetAsync().Forget(), link: true, id: "CheckInReset-" + id);
+        AutomationProperties.SetHelpText(reset, $"Puts Martlet's own prompt, facts, conditions, answer and inputs for {checkIn.Name} " +
+            "back. On and Every stay as they are.");
+        children.Add(Row(PageButton("Check now", () => SaveThenCheckAsync().Forget(), id: "CheckInRun-" + id), copy, reset));
         return Card([.. children]);
 
         // A prompt still saving is saved first, so Check now asks what you typed.
         async Task SaveThenCheckAsync()
         {
             await saveAll();
-            await CheckInNowAsync(checkIn.Id);
+            await CheckInNowAsync(id);
         }
+
+        async Task ResetAsync()
+        {
+            if (promptBox is not null && promptDefault is not null) promptBox.Text = promptDefault;
+            await saveAll();
+            var kept = checkInSettings.Choice(id) is { } choice ? new CheckInChoice(choice.On, choice.EveryMinutes) : null;
+            var next = kept is null ? checkInSettings : checkInSettings.With(id, kept);
+            if (ReferenceEquals(next, checkInSettings) || SaveCheckIns(next, null))
+            {
+                ActionText.Text = $"{checkIn.Name} uses Martlet's own settings again.";
+                RenderTab();
+            }
+        }
+    }
+
+    /// <summary>What a check-in's shared controls hold: what it gets to know, when it waits, its answer, what its model must
+    /// handle (as chosen; a screenshot and a recording add theirs on their own), what it takes with each run and its script.</summary>
+    private sealed record CheckInEdit(CheckInFacts Facts, CheckInConditions Conditions, CheckInOutcome Outcome, ThinkingCapability Needs,
+        bool Screenshot, CheckInRecording Recording, int RecordingSeconds, string Script);
+
+    /// <summary>The controls every check-in card shares, built-in or your own: Its answer, then what it gets to know, when it
+    /// waits, what it takes with each run, a script and what its model must handle. A switch or a choice saves at once, and
+    /// typing saves after a short pause.</summary>
+    private (ComboBox Outcome, StackPanel Choices, Func<CheckInEdit> Read) CheckInEditor(string id, string name, CheckInEdit start,
+        AutoSave autoSave)
+    {
+        void SaveNow() => autoSave.SaveNowAsync().Forget();
+        var outcome = Compact(new ComboBox
+        {
+            ItemsSource = CheckInOutcomeChoices.Select(c => c.Label).ToArray(),
+            SelectedIndex = Math.Max(0, Array.FindIndex(CheckInOutcomeChoices, c => c.Outcome == start.Outcome)), Width = 250,
+            ToolTip = CheckInOutcomeHelp
+        });
+        AutomationProperties.SetAutomationId(outcome, "CheckInOutcome-" + id);
+        AutomationProperties.SetName(outcome, name + ": what happens with its answer");
+        AutomationProperties.SetHelpText(outcome, CheckInOutcomeHelp);
+        outcome.SelectionChanged += (_, _) => SaveNow();
+        CheckBox Choice(string label, bool on, string help, string automationId)
+        {
+            var box = new CheckBox { Content = label, IsChecked = on, Margin = new Thickness(0, 0, 16, 6), ToolTip = help };
+            AutomationProperties.SetAutomationId(box, automationId);
+            AutomationProperties.SetHelpText(box, help);
+            box.Checked += (_, _) => SaveNow();
+            box.Unchecked += (_, _) => SaveNow();
+            return box;
+        }
+        var facts = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var factBoxes = new List<(CheckInFacts Fact, CheckBox Box)>();
+        foreach (var (fact, label, help) in CheckInFactChoices)
+        {
+            var box = Choice(label, start.Facts.HasFlag(fact), help, $"CheckInFact-{id}-{fact}");
+            factBoxes.Add((fact, box));
+            facts.Children.Add(box);
+        }
+        var conditions = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var conditionBoxes = new List<(CheckInConditions Condition, CheckBox Box)>();
+        foreach (var (condition, label, help) in CheckInConditionChoices)
+        {
+            var box = Choice(label, start.Conditions.HasFlag(condition), help, $"CheckInWhen-{id}-{condition}");
+            conditionBoxes.Add((condition, box));
+            conditions.Children.Add(box);
+        }
+        // The model it needs: text always; pictures and recordings by choice, and always for a screenshot or a recording.
+        var ownVision = start.Needs.HasFlag(ThinkingCapability.Vision);
+        var ownAudio = start.Needs.HasFlag(ThinkingCapability.Audio);
+        var text = new CheckBox { Content = "Text", IsChecked = true, IsEnabled = false, Margin = new Thickness(0, 0, 16, 6) };
+        AutomationProperties.SetAutomationId(text, $"CheckInNeeds-{id}-Text");
+        var vision = new CheckBox { Content = "Sees pictures", Margin = new Thickness(0, 0, 16, 6) };
+        AutomationProperties.SetAutomationId(vision, $"CheckInNeeds-{id}-Vision");
+        AutomationProperties.SetHelpText(vision, "Only Thinking pool members whose model sees pictures take this check-in.");
+        var audio = new CheckBox { Content = "Hears recordings", Margin = new Thickness(0, 0, 16, 6) };
+        AutomationProperties.SetAutomationId(audio, $"CheckInNeeds-{id}-Audio");
+        AutomationProperties.SetHelpText(audio, "Only Thinking pool members whose model hears recordings take this check-in.");
+        var needs = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        needs.Children.Add(text);
+        needs.Children.Add(vision);
+        needs.Children.Add(audio);
+        var screenshot = new CheckBox
+        {
+            Content = "A screenshot of the screen in front", IsChecked = start.Screenshot, Margin = new Thickness(0, 0, 16, 6),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        AutomationProperties.SetAutomationId(screenshot, "CheckInScreenshot-" + id);
+        AutomationProperties.SetHelpText(screenshot, "Each run takes a screenshot of the screen you work on. It doesn't run while a private window is in front.");
+        var recording = Compact(new ComboBox
+        {
+            ItemsSource = new[] { "No recording", "The last seconds of the microphone", "The last seconds of what this PC plays" },
+            SelectedIndex = (int)start.Recording, Width = 280
+        });
+        AutomationProperties.SetAutomationId(recording, "CheckInRecording-" + id);
+        AutomationProperties.SetName(recording, "Recording with each run");
+        var seconds = Compact(new ComboBox
+        {
+            ItemsSource = CheckIns.RecordingChoices.Select(s => $"{s} seconds").ToArray(),
+            SelectedIndex = Math.Max(0, CheckIns.RecordingChoices.ToList().IndexOf(start.RecordingSeconds)), Width = 120
+        });
+        AutomationProperties.SetAutomationId(seconds, "CheckInSeconds-" + id);
+        AutomationProperties.SetName(seconds, "How many seconds it records");
+        seconds.ToolTip = CheckInLengthHelp;
+        AutomationProperties.SetHelpText(seconds, CheckInLengthHelp);
+        var script = new TextBox
+        {
+            Text = start.Script, AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.NoWrap,
+            MaxLength = CheckIns.MaximumScriptCharacters, MinHeight = 40, MaxHeight = 160, FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(script, "CheckInScript-" + id);
+        AutomationProperties.SetName(script, "A script it runs first");
+        AutomationProperties.SetHelpText(script, "Windows PowerShell runs it hidden in your home folder before each run, " +
+            $"for at most {CheckIns.ScriptTimeout.TotalSeconds:0} seconds. What it prints goes to the check-in.");
+        void ShowNeeds()
+        {
+            // Disable before checking, so a forced tick isn't taken as the owner's choice.
+            vision.IsEnabled = screenshot.IsChecked != true;
+            vision.IsChecked = !vision.IsEnabled || ownVision;
+            audio.IsEnabled = recording.SelectedIndex <= 0;
+            audio.IsChecked = !audio.IsEnabled || ownAudio;
+            seconds.IsEnabled = recording.SelectedIndex > 0;
+        }
+        ShowNeeds();
+        script.TextChanged += (_, _) =>
+        {
+            tabEdited = true;
+            autoSave.Changed();
+        };
+        void Chose(CheckBox box, bool on)
+        {
+            if (!box.IsEnabled) return;
+            if (box == vision) ownVision = on;
+            else ownAudio = on;
+            SaveNow();
+        }
+        vision.Checked += (_, _) => Chose(vision, true);
+        vision.Unchecked += (_, _) => Chose(vision, false);
+        audio.Checked += (_, _) => Chose(audio, true);
+        audio.Unchecked += (_, _) => Chose(audio, false);
+        void Gathers()
+        {
+            ShowNeeds();
+            SaveNow();
+        }
+        screenshot.Checked += (_, _) => Gathers();
+        screenshot.Unchecked += (_, _) => Gathers();
+        recording.SelectionChanged += (_, _) => Gathers();
+        seconds.SelectionChanged += (_, _) => SaveNow();
+
+        var view = new StackPanel();
+        view.Children.Add(new TextBlock
+        {
+            Text = "It gets to know (point at each one to see what it gets)", Margin = new Thickness(0, 8, 0, 0),
+            ToolTip = "It always gets the day and time. Each fact you tick adds a few lines of text to its question; " +
+                "a fact Martlet doesn't have now (for example the screen, while Martlet doesn't watch it) says so instead."
+        });
+        view.Children.Add(facts);
+        view.Children.Add(new TextBlock
+        {
+            Text = "It waits until (point at each one to see when)", Margin = new Thickness(0, 4, 0, 0),
+            ToolTip = "Every check-in also waits for its time, while you talk and while nobody uses this PC. Check now skips the " +
+                "waits for time and something new, but not the others."
+        });
+        view.Children.Add(conditions);
+        view.Children.Add(new TextBlock { Text = "With each run it takes", Margin = new Thickness(0, 4, 0, 0) });
+        var inputs = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        inputs.Children.Add(RowGroup(screenshot));
+        inputs.Children.Add(RowGroup(recording));
+        inputs.Children.Add(RowGroup(RowLabel("Length", seconds), seconds));
+        view.Children.Add(inputs);
+        view.Children.Add(new Label
+        {
+            Content = "A _script it runs first (Windows PowerShell, optional); the check-in reads what it prints", Target = script,
+            Padding = new Thickness(0, 6, 0, 0)
+        });
+        view.Children.Add(script);
+        view.Children.Add(Note("For example, the busiest programs: Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 " +
+            $"Name, CPU. It runs hidden in your home folder, as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.",
+            new Thickness(0, 2, 0, 0)));
+        view.Children.Add(new TextBlock { Text = "The model must handle", Margin = new Thickness(0, 8, 0, 0) });
+        view.Children.Add(needs);
+        view.Children.Add(Note("Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model " +
+            "that sees pictures, and a recording needs one that hears recordings. They go only to that member, which can be a " +
+            "cloud service. The microphone and what this PC plays are kept in memory, only while a check-in that is on asks for " +
+            "them and Martlet hears them. " + CheckInLengthHelp, new Thickness(0, 0, 0, 0)));
+        return (outcome, view, () => new CheckInEdit(
+            factBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInFacts.None, (all, b) => all | b.Fact),
+            conditionBoxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInConditions.None, (all, b) => all | b.Condition),
+            CheckInOutcomeChoices[Math.Max(0, outcome.SelectedIndex)].Outcome,
+            ThinkingCapability.Text | (ownVision ? ThinkingCapability.Vision : ThinkingCapability.None) |
+                (ownAudio ? ThinkingCapability.Audio : ThinkingCapability.None),
+            screenshot.IsChecked == true, (CheckInRecording)Math.Max(0, recording.SelectedIndex),
+            CheckIns.RecordingChoices[Math.Max(0, seconds.SelectedIndex)], script.Text.Replace("\r\n", "\n", StringComparison.Ordinal)));
+    }
+
+    /// <summary>Copy as your own: a check-in of your own with <paramref name="id"/>'s prompt (as it is now, built-in or edited) and
+    /// every choice, off until you turn it on.</summary>
+    private async Task CopyCheckInAsync(string id, Func<Task> saveAll)
+    {
+        await saveAll();
+        if (CheckIns.All(checkInSettings).FirstOrDefault(c => c.Id == id) is not { } current) return;
+        if (checkInSettings.Custom.Count >= CheckIns.MaximumCustom || checkInSettings.NewId() is not { } newId)
+        {
+            ActionText.Text = $"{current.Name} not copied: you have {CheckIns.MaximumCustom} check-ins of your own, the most Martlet " +
+                "keeps. Remove one first.";
+            return;
+        }
+        var name = current.Name + " (copy)";
+        var task = CheckIns.Template(current, homeSettings?.Prompts) ?? "";
+        var copy = new CustomCheckIn
+        {
+            Id = newId, Name = name.Length > CheckIns.MaximumNameCharacters ? name[..CheckIns.MaximumNameCharacters] : name, On = false,
+            EveryMinutes = current.EveryMinutes,
+            Task = task.Length > CheckIns.MaximumTaskCharacters ? task[..CheckIns.MaximumTaskCharacters] : task,
+            Facts = current.Facts, Conditions = current.Conditions, Outcome = current.Outcome,
+            Needs = current.Custom ? checkInSettings.Custom.First(c => c.Id == id).Needs : checkInSettings.Choice(id)?.Needs ?? ThinkingCapability.Text,
+            Screenshot = current.Screenshot, Recording = current.Recording, RecordingSeconds = current.RecordingSeconds,
+            Script = current.Script ?? ""
+        };
+        if (SaveCheckIns(checkInSettings.With(copy), $"Copied {current.Name} as {copy.Name}, a check-in of your own. It's off until you turn it on."))
+            RenderTab();
     }
 
     /// <summary>The Check-ins page's prompt save: writes only the built-in check-in prompts typed on this page into the newest saved
@@ -627,19 +924,20 @@ public partial class MainWindow
 
     /// <summary>Your own check-ins: a row for each and Add a check-in. Their edits save on their own (one save for all of them, at
     /// once for a switch or a choice and after a short pause for typing).</summary>
-    private Border OwnCheckInsCard(List<Action> lines, List<Func<CustomCheckIn>> rows, AutoSave autoSave)
+    private Border OwnCheckInsCard(List<Action> lines, List<Func<CustomCheckIn>> rows, AutoSave autoSave, Func<Task> saveAll)
     {
         var stack = new List<UIElement>
         {
             Heading("Your own check-ins"),
             Note("Write what the Thinking pool should check, such as \"If the user has been at it for hours, suggest a short break\" or " +
                 "\"If it's late at night, remind Martlet to talk more softly\". Choose what it gets to know (it always gets the day " +
-                "and time), how often it runs and what happens with its answer: a reminder in Martlet's next reply, or Martlet " +
-                "brings it up on its own as soon as it's free. A check-in can also take a screenshot, the last seconds of the " +
-                "microphone or of what this PC plays, and what a script of yours prints, and you choose what its model must " +
-                "handle. A new check-in starts off.", new Thickness(0, 0, 0, 4))
+                "and time), when it waits, how often it runs and what happens with its answer: a reminder in Martlet's next reply, " +
+                "Martlet brings it up on its own as soon as it's free, it turns off lingering emotes, or it takes the eyes back to " +
+                "their usual. A check-in can also take a screenshot, the last seconds of the microphone or of what this PC plays, " +
+                "and what a script of yours prints, and you choose what its model must handle. Copy as your own on a built-in " +
+                "check-in starts from that one. A new check-in starts off.", new Thickness(0, 0, 0, 4))
         };
-        foreach (var custom in checkInSettings.Custom) stack.Add(OwnCheckInRow(custom, lines, rows, autoSave));
+        foreach (var custom in checkInSettings.Custom) stack.Add(OwnCheckInRow(custom, lines, rows, autoSave, saveAll));
         var add = PageButton("Add a check-in", AddOwnCheckIn, id: "CheckInAdd");
         add.IsEnabled = checkInSettings.Custom.Count < CheckIns.MaximumCustom;
         AutomationProperties.SetHelpText(add, $"Adds a check-in of your own, off until you turn it on (at most {CheckIns.MaximumCustom}).");
@@ -659,7 +957,8 @@ public partial class MainWindow
         if (SaveCheckIns(checkInSettings.With(custom), "Added a check-in. Write what it checks, then turn it on.")) RenderTab();
     }
 
-    private StackPanel OwnCheckInRow(CustomCheckIn custom, List<Action> lines, List<Func<CustomCheckIn>> rows, AutoSave autoSave)
+    private StackPanel OwnCheckInRow(CustomCheckIn custom, List<Action> lines, List<Func<CustomCheckIn>> rows, AutoSave autoSave,
+        Func<Task> saveAll)
     {
         var id = custom.Id;
         var view = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
@@ -672,106 +971,30 @@ public partial class MainWindow
         var every = EveryChoice(custom.EveryMinutes);
         AutomationProperties.SetAutomationId(every, "CheckInEvery-" + id);
         AutomationProperties.SetName(every, "How often it runs");
-        var outcome = Compact(new ComboBox
-        {
-            ItemsSource = new[] { "Reminds Martlet in its next reply", "Martlet brings it up" },
-            SelectedIndex = custom.Outcome == CheckInOutcome.Say ? 1 : 0, Width = 250
-        });
-        AutomationProperties.SetAutomationId(outcome, "CheckInOutcome-" + id);
-        AutomationProperties.SetName(outcome, "What happens with its answer");
+        var (outcome, choices, read) = CheckInEditor(id, custom.Name, new CheckInEdit(custom.Facts, custom.Conditions, custom.Outcome,
+            custom.Needs, custom.Screenshot, custom.Recording, custom.RecordingSeconds, custom.Script), autoSave);
         var task = new TextBox
         {
             Text = custom.Task, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxLength = CheckIns.MaximumTaskCharacters,
-            MinHeight = 56, MaxHeight = 200, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 4, 0, 0)
+            MinHeight = 56, MaxHeight = 260, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 4, 0, 0)
         };
         AutomationProperties.SetAutomationId(task, "CheckInTask-" + id);
         AutomationProperties.SetName(task, "What it checks");
-        var facts = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-        var boxes = new List<(CheckInFacts Fact, CheckBox Box)>();
-        foreach (var (fact, label, help) in CheckInFactChoices)
-        {
-            var box = new CheckBox
-            {
-                Content = label, IsChecked = custom.Facts.HasFlag(fact), Margin = new Thickness(0, 0, 16, 6), ToolTip = help
-            };
-            AutomationProperties.SetAutomationId(box, $"CheckInFact-{id}-{fact}");
-            AutomationProperties.SetHelpText(box, help);
-            boxes.Add((fact, box));
-            facts.Children.Add(box);
-        }
+        AutomationProperties.SetHelpText(task, CheckInPlaceholderHelp);
         var status = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(status, "CheckInStatus-" + id);
         lines.Add(() => status.Text = CheckInLine(id));
-        // The model it needs: text always; pictures and recordings by choice, and always for a screenshot or a recording.
-        var ownVision = custom.Needs.HasFlag(ThinkingCapability.Vision);
-        var ownAudio = custom.Needs.HasFlag(ThinkingCapability.Audio);
-        var text = new CheckBox { Content = "Text", IsChecked = true, IsEnabled = false, Margin = new Thickness(0, 0, 16, 6) };
-        AutomationProperties.SetAutomationId(text, $"CheckInNeeds-{id}-Text");
-        var vision = new CheckBox { Content = "Sees pictures", Margin = new Thickness(0, 0, 16, 6) };
-        AutomationProperties.SetAutomationId(vision, $"CheckInNeeds-{id}-Vision");
-        AutomationProperties.SetHelpText(vision, "Only Thinking pool members whose model sees pictures take this check-in.");
-        var audio = new CheckBox { Content = "Hears recordings", Margin = new Thickness(0, 0, 16, 6) };
-        AutomationProperties.SetAutomationId(audio, $"CheckInNeeds-{id}-Audio");
-        AutomationProperties.SetHelpText(audio, "Only Thinking pool members whose model hears recordings take this check-in.");
-        var needs = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-        needs.Children.Add(text);
-        needs.Children.Add(vision);
-        needs.Children.Add(audio);
-        var screenshot = new CheckBox
+        rows.Add(() =>
         {
-            Content = "A screenshot of the screen in front", IsChecked = custom.Screenshot, Margin = new Thickness(0, 0, 16, 6),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        AutomationProperties.SetAutomationId(screenshot, "CheckInScreenshot-" + id);
-        AutomationProperties.SetHelpText(screenshot, "Each run takes a screenshot of the screen you work on. It doesn't run while a private window is in front.");
-        var recording = Compact(new ComboBox
-        {
-            ItemsSource = new[] { "No recording", "The last seconds of the microphone", "The last seconds of what this PC plays" },
-            SelectedIndex = (int)custom.Recording, Width = 280
-        });
-        AutomationProperties.SetAutomationId(recording, "CheckInRecording-" + id);
-        AutomationProperties.SetName(recording, "Recording with each run");
-        var seconds = Compact(new ComboBox
-        {
-            ItemsSource = CheckIns.RecordingChoices.Select(s => $"{s} seconds").ToArray(),
-            SelectedIndex = Math.Max(0, CheckIns.RecordingChoices.ToList().IndexOf(custom.RecordingSeconds)), Width = 120
-        });
-        AutomationProperties.SetAutomationId(seconds, "CheckInSeconds-" + id);
-        AutomationProperties.SetName(seconds, "How many seconds it records");
-        seconds.ToolTip = CheckInLengthHelp;
-        AutomationProperties.SetHelpText(seconds, CheckInLengthHelp);
-        var script = new TextBox
-        {
-            Text = custom.Script, AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.NoWrap,
-            MaxLength = CheckIns.MaximumScriptCharacters, MinHeight = 40, MaxHeight = 160, FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Margin = new Thickness(0, 4, 0, 0)
-        };
-        AutomationProperties.SetAutomationId(script, "CheckInScript-" + id);
-        AutomationProperties.SetName(script, "A script it runs first");
-        AutomationProperties.SetHelpText(script, "Windows PowerShell runs it hidden in your home folder before each run, " +
-            $"for at most {CheckIns.ScriptTimeout.TotalSeconds:0} seconds. What it prints goes to the check-in.");
-        void ShowNeeds()
-        {
-            // Disable before checking, so a forced tick isn't taken as the owner's choice.
-            vision.IsEnabled = screenshot.IsChecked != true;
-            vision.IsChecked = !vision.IsEnabled || ownVision;
-            audio.IsEnabled = recording.SelectedIndex <= 0;
-            audio.IsChecked = !audio.IsEnabled || ownAudio;
-            seconds.IsEnabled = recording.SelectedIndex > 0;
-        }
-        ShowNeeds();
-        rows.Add(() => new CustomCheckIn
-        {
-            Id = id, Name = name.Text.Trim() is { Length: > 0 } named ? named : "My check-in", On = on.IsChecked == true,
-            EveryMinutes = CheckIns.EveryChoices[Math.Max(0, every.SelectedIndex)], Task = task.Text.Replace("\r\n", "\n", StringComparison.Ordinal),
-            Facts = boxes.Where(b => b.Box.IsChecked == true).Aggregate(CheckInFacts.None, (all, b) => all | b.Fact),
-            Outcome = outcome.SelectedIndex == 1 ? CheckInOutcome.Say : CheckInOutcome.Note,
-            Needs = ThinkingCapability.Text | (ownVision ? ThinkingCapability.Vision : ThinkingCapability.None) |
-                (ownAudio ? ThinkingCapability.Audio : ThinkingCapability.None),
-            Screenshot = screenshot.IsChecked == true, Recording = (CheckInRecording)Math.Max(0, recording.SelectedIndex),
-            RecordingSeconds = CheckIns.RecordingChoices[Math.Max(0, seconds.SelectedIndex)],
-            Script = script.Text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            var edit = read();
+            return new CustomCheckIn
+            {
+                Id = id, Name = name.Text.Trim() is { Length: > 0 } named ? named : "My check-in", On = on.IsChecked == true,
+                EveryMinutes = CheckIns.EveryChoices[Math.Max(0, every.SelectedIndex)],
+                Task = task.Text.Replace("\r\n", "\n", StringComparison.Ordinal), Facts = edit.Facts, Conditions = edit.Conditions,
+                Outcome = edit.Outcome, Needs = edit.Needs, Screenshot = edit.Screenshot, Recording = edit.Recording,
+                RecordingSeconds = edit.RecordingSeconds, Script = edit.Script
+            };
         });
         void Typed()
         {
@@ -780,36 +1003,9 @@ public partial class MainWindow
         }
         name.TextChanged += (_, _) => Typed();
         task.TextChanged += (_, _) => Typed();
-        script.TextChanged += (_, _) => Typed();
         on.Checked += (_, _) => autoSave.SaveNowAsync().Forget();
         on.Unchecked += (_, _) => autoSave.SaveNowAsync().Forget();
         every.SelectionChanged += (_, _) => autoSave.SaveNowAsync().Forget();
-        outcome.SelectionChanged += (_, _) => autoSave.SaveNowAsync().Forget();
-        foreach (var (_, box) in boxes)
-        {
-            box.Checked += (_, _) => autoSave.SaveNowAsync().Forget();
-            box.Unchecked += (_, _) => autoSave.SaveNowAsync().Forget();
-        }
-        void Chose(CheckBox box, bool on)
-        {
-            if (!box.IsEnabled) return;
-            if (box == vision) ownVision = on;
-            else ownAudio = on;
-            autoSave.SaveNowAsync().Forget();
-        }
-        vision.Checked += (_, _) => Chose(vision, true);
-        vision.Unchecked += (_, _) => Chose(vision, false);
-        audio.Checked += (_, _) => Chose(audio, true);
-        audio.Unchecked += (_, _) => Chose(audio, false);
-        void Gathers()
-        {
-            ShowNeeds();
-            autoSave.SaveNowAsync().Forget();
-        }
-        screenshot.Checked += (_, _) => Gathers();
-        screenshot.Unchecked += (_, _) => Gathers();
-        recording.SelectionChanged += (_, _) => Gathers();
-        seconds.SelectionChanged += (_, _) => autoSave.SaveNowAsync().Forget();
         var top = new WrapPanel();
         top.Children.Add(RowGroup(name));
         top.Children.Add(RowGroup(on));
@@ -818,34 +1014,8 @@ public partial class MainWindow
         view.Children.Add(top);
         view.Children.Add(new Label { Content = "_What it checks", Target = task, Padding = new Thickness(0, 6, 0, 0) });
         view.Children.Add(task);
-        view.Children.Add(new TextBlock
-        {
-            Text = "It gets to know (point at each one to see what it gets)", Margin = new Thickness(0, 8, 0, 0),
-            ToolTip = "It always gets the day and time. Each fact you tick adds a few lines of text to its question; " +
-                "a fact Martlet doesn't have now (for example the screen, while Martlet doesn't watch it) says so instead."
-        });
-        view.Children.Add(facts);
-        view.Children.Add(new TextBlock { Text = "With each run it takes", Margin = new Thickness(0, 4, 0, 0) });
-        var inputs = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-        inputs.Children.Add(RowGroup(screenshot));
-        inputs.Children.Add(RowGroup(recording));
-        inputs.Children.Add(RowGroup(RowLabel("Length", seconds), seconds));
-        view.Children.Add(inputs);
-        view.Children.Add(new Label
-        {
-            Content = "A _script it runs first (Windows PowerShell, optional); the check-in reads what it prints", Target = script,
-            Padding = new Thickness(0, 6, 0, 0)
-        });
-        view.Children.Add(script);
-        view.Children.Add(Note("For example, the busiest programs: Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 " +
-            $"Name, CPU. It runs hidden in your home folder, as you, and stops after {CheckIns.ScriptTimeout.TotalSeconds:0} seconds.",
-            new Thickness(0, 2, 0, 0)));
-        view.Children.Add(new TextBlock { Text = "The model must handle", Margin = new Thickness(0, 8, 0, 0) });
-        view.Children.Add(needs);
-        view.Children.Add(Note("Only Thinking pool members that can do all of these take this check-in. A screenshot needs a model " +
-            "that sees pictures, and a recording needs one that hears recordings. They go only to that member, which can be a " +
-            "cloud service. The microphone and what this PC plays are kept in memory, only while a check-in that is on asks for " +
-            "them and Martlet hears them. " + CheckInLengthHelp, new Thickness(0, 0, 0, 0)));
+        view.Children.Add(Note(CheckInPlaceholderHelp, new Thickness(0, 2, 0, 0)));
+        view.Children.Add(choices);
         view.Children.Add(status);
         async Task SaveThenCheckAsync()
         {
@@ -853,6 +1023,7 @@ public partial class MainWindow
             await CheckInNowAsync(id);
         }
         view.Children.Add(Row(PageButton("Check now", () => SaveThenCheckAsync().Forget(), id: "CheckInRun-" + id),
+            PageButton("Copy as your own", () => CopyCheckInAsync(id, saveAll).Forget(), id: "CheckInCopy-" + id),
             PageButton("Remove", () =>
             {
                 // The other rows' edits save first; the save is synchronous, so nothing brings the removed row back.
@@ -939,9 +1110,10 @@ public partial class MainWindow
                 return new
                 {
                     id = c.Id, name = c.Name, custom = c.Custom, on = c.On, everyMinutes = c.EveryMinutes, outcome = c.Outcome.ToString(),
-                    facts = c.Custom ? c.Facts.ToString() : null, prompt = c.PromptId,
+                    facts = c.Facts.ToString(), conditions = c.Conditions.ToString(), prompt = c.PromptId,
+                    changed = !c.Custom && checkInSettings.Choice(c.Id) is { } choice && choice != new CheckInChoice(choice.On, choice.EveryMinutes),
                     needs = c.Needs.ToString(), canRun = member is not null && conversation!.ThinkingPool.CanRun(ThinkingJobKind.CheckIn, c.Needs),
-                    screenshot = c.Screenshot, recording = c.Custom ? c.Recording.ToString() : null,
+                    screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds, script = c.RunsScript,
                     waiting = checkInWaits.GetValueOrDefault(c.Id) is { Length: > 0 } wait ? wait : null,
                     nextAt = last is null ? (DateTimeOffset?)null : last.At + CheckIns.Pace(c, last, checkInExchanged),
