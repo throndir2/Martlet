@@ -64,7 +64,7 @@ public partial class MainWindow
                 }
                 return plan;
             }, (source, reason, linger) => source == strokeHold && !strokeHoldWasOn ? HoldForStrokeAsync(source, reason)
-                : PlayTouchAsync(source, reason, linger), _ => { }, "stroke", avatar.Gaze.Attend);
+                : PlayTouchAsync(source, reason, linger), _ => { }, "stroke", avatar.Gaze.Attend, PlayTouchSoundsLater);
         }
         if (ended is null) return;
         if (strokeHold is { } held)

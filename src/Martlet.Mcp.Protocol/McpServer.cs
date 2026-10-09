@@ -1854,6 +1854,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             scenario = new { type = "string", @enum = QuickSoundCheck.Scenarios },
             delayMs = new { type = "integer", @enum = new[] { 500, 700, 1000, 1500 } }
         }),
+        Tool("voice_sounds_status", "Companion > Touch > Touch zones' voice sounds (\"sound:<cue>\" entries in a zone's reaction " +
+            "list: a gasp, a giggle, a sigh that Martlet's own voice makes alone), from a data directory: the voice replies speak " +
+            "with (in words, its engine, whether it is a paid cloud voice, and its key per voice and character), why no sound plays " +
+            "(noSounds, when the voice makes none), each sound the voice makes (its entry, cue, label, the engine's tag, and whether " +
+            "its clip is made on this PC and how long), every zone that lists sounds and whether each plays with this voice, the " +
+            "clips kept in voice-sounds\\, the last sound played or skipped and why (last) and the newest desktop log lines about " +
+            "voice sounds. Read-only; never plays anything.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("voice_sounds_check", "Rehearse touch zones' voice sounds with the production code: sounds (the sounds each engine " +
+            "offers: Chatterbox's nine, Dia's without (mumbles), ElevenLabs' six, none for F5 or OpenAI), rules (VoiceSoundGate: " +
+            "never with no voice, Speak replies aloud off, paused or muted, a sound the voice can't make, while Martlet speaks, while " +
+            "you talk or over another sound; a clip not made yet is made instead), make (a clip made with the engine's tag alone " +
+            "through ConversationRuntime.SynthesizeAsync and a fixture host voice, trimmed and kept in voice-sounds\\), play " +
+            "(ConversationRuntime.PlayClipAsync plays it whole at the speakers' pace with lip sync, and refuses a second sound " +
+            "meanwhile) and cut (a reply's own voice cuts a sound still playing the moment it starts; the reply never waits). " +
+            "scenario runs one. Fixture voice (a quiet tone, NOT AI), fixture speakers paced like real ones; loopback only; plays " +
+            "nothing.", new
+        {
+            scenario = new { type = "string", @enum = VoiceSoundCheck.Scenarios }
+        }),
         Tool("elevenlabs_check", "Rehearse ElevenLabs as the Voice (the owner's cloned voice with tones) end to end against a local " +
             "fixture on 127.0.0.1 that follows ElevenLabs' documented protocol (FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet " +
             "tone): Instant Voice Cloning (POST /v1/voices/add with a synthetic WAV; clone.sent shows the form Martlet sent), one " +
@@ -2278,6 +2300,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
                 "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
+                "voice_sounds_status" => VoiceSoundCheck.Status(DataDirectory(arguments)),
+                "voice_sounds_check" => await VoiceSoundCheck.RunAsync(OptionalString(arguments, "scenario"), cancellation),
                 "elevenlabs_check" => await ElevenLabsCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalString(arguments, "model"),
                     OptionalString(arguments, "reply"), OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),

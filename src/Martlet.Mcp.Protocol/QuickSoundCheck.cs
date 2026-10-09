@@ -222,7 +222,7 @@ internal static class QuickSoundCheck
 
     // Answers each request after the set wait with one short sentence (a hidden reasoning delta first with reasoning), the way
     // a cloud model streams.
-    private static async Task ServeAsync(TcpListener listener, TimeSpan firstWords, bool reasoning, CancellationToken cancellation)
+    internal static async Task ServeAsync(TcpListener listener, TimeSpan firstWords, bool reasoning, CancellationToken cancellation)
     {
         while (!cancellation.IsCancellationRequested)
         {

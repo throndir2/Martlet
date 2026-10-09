@@ -189,14 +189,19 @@ public static class QuickSoundAudio
     private const int Margin = SampleRate * 30 / 1000, Fade = SampleRate * 10 / 1000;
 
     /// <summary>The clip to keep from <paramref name="pcm"/> (24 kHz mono 16-bit PCM), or empty when it holds no voice.</summary>
-    public static byte[] Prepare(ReadOnlySpan<byte> pcm)
+    public static byte[] Prepare(ReadOnlySpan<byte> pcm) => Prepare(pcm, MaximumLength);
+
+    /// <summary>The clip to keep from <paramref name="pcm"/>, at most <paramref name="maximum"/> long (a voice sound's
+    /// <see cref="VoiceSoundLibrary.MaximumLength"/>), or empty when it holds no voice.</summary>
+    public static byte[] Prepare(ReadOnlySpan<byte> pcm, TimeSpan maximum)
     {
+        var maximumSamples = (int)(SampleRate * maximum.TotalSeconds);
         var samples = new short[pcm.Length / 2];
         for (var i = 0; i < samples.Length; i++) samples[i] = (short)(pcm[2 * i] | pcm[2 * i + 1] << 8);
         int first = Array.FindIndex(samples, s => Math.Abs((int)s) > Quiet), last = Array.FindLastIndex(samples, s => Math.Abs((int)s) > Quiet);
         if (first < 0) return [];
         var start = Math.Max(0, first - Margin);
-        var end = Math.Min(samples.Length, Math.Min(last + 1 + Margin, start + MaximumBytes / 2));
+        var end = Math.Min(samples.Length, Math.Min(last + 1 + Margin, start + maximumSamples));
         var length = end - start;
         var clip = new byte[length * 2];
         for (var i = 0; i < length; i++)
