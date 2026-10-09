@@ -188,6 +188,13 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     public static ThinkingJobResult Offline(ThinkingCapability needs) =>
         new(ThinkingJobOutcome.NoMember, null, null, null, $"every Thinking pool member that can do {Describe(needs)} is offline", 0);
 
+    /// <summary>Every member that could do the job is external and the owner didn't let it receive pictures and recordings
+    /// (<see cref="BackgroundPlace.Media"/>): callers use their fallback, as for <see cref="NoMember"/>.</summary>
+    public static ThinkingJobResult NoConsent(ThinkingCapability needs, IReadOnlyList<BackgroundPlace> members) =>
+        new(ThinkingJobOutcome.NoMember, null, null, null,
+            $"{ThinkingPoolMedia.Names(members.Select(m => m.Name))} may not receive pictures and recordings, and no other member can do " +
+            $"{Describe(needs)}. Tick May receive pictures and recordings on Companion › Thinking pool to allow it", 0);
+
     public static string Describe(ThinkingCapability needs) => string.Join(" and ", new[]
     {
         needs.HasFlag(ThinkingCapability.Text) ? "text" : null,
@@ -204,6 +211,21 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
 public sealed record ThinkingPoolMemberStatus(string Id, string Name, int Slots, int Used, ThinkingCapability Can, int Rank)
 {
     public bool Online { get; init; } = true;
+    /// <summary>Whether it may receive pictures and recordings (<see cref="BackgroundPlace.Media"/>).</summary>
+    public bool Media { get; init; } = true;
+}
+
+/// <summary>Pictures and recordings in Thinking pool jobs: an external member gets them only when the owner allows it.</summary>
+public static class ThinkingPoolMedia
+{
+    /// <summary>What a job with a picture or a recording needs.</summary>
+    public const ThinkingCapability Needs = ThinkingCapability.Vision | ThinkingCapability.Audio;
+
+    internal static string Names(IEnumerable<string> names)
+    {
+        var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
+        return distinct.Length <= 1 ? distinct.FirstOrDefault() ?? "" : $"{string.Join(", ", distinct[..^1])} and {distinct[^1]}";
+    }
 }
 
 /// <summary>A member the board passes over until <paramref name="Until"/> for jobs that need at least <paramref name="Needs"/>,
@@ -328,10 +350,10 @@ public sealed class ThinkingJobBoard
             .OrderBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
     }
 
-    // A member takes a job when the owner lets it take the job's kind (Quick jobs, Long jobs), it can do what the job needs and it
-    // doesn't rest for such jobs.
+    // A member takes a job when the owner lets it take the job's kind (Quick jobs, Long jobs), it can do what the job needs, the
+    // owner lets it receive the job's pictures or recordings, and it doesn't rest for such jobs.
     private bool Takes(BackgroundPlace member, ThinkingJobKind kind, ThinkingCapability needs) =>
-        member.Takes(kind) && (member.Can & needs) == needs && !Rests(member, needs);
+        member.Takes(kind) && (member.Can & needs) == needs && member.MayReceive(needs) && !Rests(member, needs);
 
     // A member rests for the jobs that need at least what a job it refused needed, until its rest ends.
     private bool Rests(BackgroundPlace member, ThinkingCapability needs) =>
@@ -358,6 +380,9 @@ public sealed class ThinkingJobBoard
         var pool = Members;
         var capable = pool.Where(member => member.Takes(job.Kind) && (member.Can & needs) == needs).ToArray();
         if (capable.Length == 0) return ThinkingJobResult.NoMember(needs);
+        // The members that could do it are all external and may not receive pictures or recordings: the caller's fallback runs.
+        if (!capable.Any(member => member.MayReceive(needs))) return ThinkingJobResult.NoConsent(needs, capable);
+        capable = [.. capable.Where(member => member.MayReceive(needs))];
         // A computer that refused such a request as invalid gets no more of them until its rest ends; the caller's fallback runs.
         if (capable.All(member => Rests(member, needs)))
             return new(ThinkingJobOutcome.NoMember, null, null, null,
@@ -505,7 +530,7 @@ public sealed class ThinkingJobBoard
         var members = pool.Select(member => new ThinkingPoolMemberStatus(member.Id, member.Name, member.Slots,
             Math.Min(member.Slots, leases.Where(l => l.Place.Id == member.Id).Sum(l => l.Whole ? member.Slots : 1)), member.Can, member.Rank)
         {
-            Online = places.Answers(member)
+            Online = places.Answers(member), Media = member.Media
         }).ToArray();
         var online = members.Where(m => m.Online).ToArray();
         var slots = online.Sum(m => m.Slots);
@@ -558,6 +583,16 @@ public sealed class ThinkingJobBoard
             notes.Add(members.Any(m => m.Can.HasFlag(ThinkingCapability.Audio))
                 ? "No member that answers now hears recordings: sound summaries use the transcript only until one does."
                 : "No member hears recordings: sound summaries use the transcript only.");
+        // Members that see or hear but are external and may not receive pictures and recordings (the owner's box unticked).
+        var withheld = online.Where(m => !m.Media && (m.Can & ThinkingPoolMedia.Needs) != 0).ToArray();
+        string[] lost = [.. online.Any(m => m.Can.HasFlag(ThinkingCapability.Vision)) &&
+                !online.Any(m => m.Media && m.Can.HasFlag(ThinkingCapability.Vision)) ? ["pictures"] : Array.Empty<string>(),
+            .. online.Any(m => m.Can.HasFlag(ThinkingCapability.Audio)) &&
+                !online.Any(m => m.Media && m.Can.HasFlag(ThinkingCapability.Audio)) ? ["recordings"] : Array.Empty<string>()];
+        if (lost.Length > 0)
+            notes.Add($"No member may receive {string.Join(" or ", lost)}: {ThinkingPoolMedia.Names(withheld.Select(m => m.Name))} " +
+                $"{(withheld.Select(m => m.Name).Distinct().Count() == 1 ? "is" : "are")} outside this PC and your paired computers, so jobs with " +
+                "a screenshot or a recording use their simple rules. Tick May receive pictures and recordings on Companion › Thinking pool to allow it.");
         return notes;
     }
 

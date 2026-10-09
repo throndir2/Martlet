@@ -53,7 +53,8 @@ public sealed partial class CheckInsTests
         Assert.Equal(CheckInFacts.Persona | CheckInFacts.Conversation | CheckInFacts.Touches,
             reactions.Facts | CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInReactions)));
         Assert.Same(TouchReactions.Set, CheckInToolSets.Find(TouchReactions.SetId));
-
+        Assert.Same(MemoryToolSet.Set, CheckInToolSets.Find(MemoryToolSet.Id));
+        Assert.Equal(["manage_memories"], MemoryToolSet.Set.Replaces);
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);

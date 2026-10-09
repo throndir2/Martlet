@@ -2905,8 +2905,19 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         guidance = Join(guidance, CreationsCheckIn.ReplyGuidance(afterReply, singing: singing is { Offered: true } && configured.SupportsTools));
         // manage_memories while memory is on: last, so the tools before it start every request the same as before it existed.
+        // While the Memory check-in tool set takes it over, the reply gets the read-only find_memories in its place instead.
         if (configured.SupportsTools && memory is not null && configured.Memory is { Enabled: true } remembered)
-            own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(operation, remembered.ConfigurationRevision, call, token)));
+        {
+            if (HandedOffReplyTools(configured).Contains(MemoryTools.Name))
+            {
+                own.Add((MemoryTools.FindDefinition, (call, token) => ManageMemoriesAsync(remembered.ConfigurationRevision,
+                    MemoryTools.WithAction(call.ArgumentsJson, "find"), operation.Heard?.Speaker?.Voice, MemoryTools.FindName, null, token)));
+                guidance = Join(guidance, MemoryTools.HandedOffGuidance);
+            }
+            else
+                own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(remembered.ConfigurationRevision, call.ArgumentsJson,
+                    operation.Heard?.Speaker?.Voice, MemoryTools.Name, null, token)));
+        }
         // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
         if (configured.SupportsTools && RemindersTool is { } remind)
             own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
@@ -3041,17 +3052,22 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted
-    /// in the talk window like background remembering's.</summary>
-    private async ValueTask<ConversationToolResult> ManageMemoriesAsync(LiveConversationOperation operation, Guid revision, TextToolCall call,
-        CancellationToken token)
+    /// <summary>manage_memories (and find_memories, and the Memory check-in tool set's tools): finds, adds, corrects, reassigns or
+    /// forgets facts. Changes are noted in the talk window like background remembering's and in the Tools log under
+    /// <paramref name="tool"/>; <paramref name="by"/> names the check-in that called it (null: the reply).</summary>
+    private async ValueTask<ConversationToolResult> ManageMemoriesAsync(Guid revision, string argumentsJson, Martlet.Core.Speakers.KnownVoice? speaker,
+        string tool, string? by, CancellationToken token) =>
+        (await RunMemoryToolAsync(revision, argumentsJson, speaker, tool, by, token).ConfigureAwait(false)).Result;
+
+    private async Task<MemoryToolOutcome> RunMemoryToolAsync(Guid revision, string argumentsJson, Martlet.Core.Speakers.KnownVoice? speaker,
+        string tool, string? by, CancellationToken token)
     {
         var roster = voices?.Roster;
         MemoryToolOutcome outcome;
         try
         {
-            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, call.ArgumentsJson, roster,
-                operation.Heard?.Speaker?.Voice, token), token).ConfigureAwait(false);
+            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, argumentsJson, roster, speaker, token),
+                token).ConfigureAwait(false);
         }
         catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
             ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -3064,13 +3080,34 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             };
             outcome = new(new(why + " Tell the user briefly.", true), "failed", []);
         }
-        tools?.Record("Martlet", MemoryTools.Name, outcome.Outcome, "", outcome.Result.IsError);
+        tools?.Record("Martlet", tool, outcome.Outcome, "", outcome.Result.IsError);
         if (outcome.Changes.Count > 0)
         {
-            ErrorLog.Info($"Memory: manage_memories {outcome.Outcome}.");
+            ErrorLog.Info($"Memory: {tool} {outcome.Outcome}{(by is null ? "" : $" by the check-in {by}")}.");
             MemoryCaptured?.Invoke(new(outcome.Changes.Select(change => change with { Person = MemoryPeople.Label(change.VoiceId, roster) }).ToArray()));
         }
-        return outcome.Result;
+        return outcome;
+    }
+
+    /// <summary>Runs one call of the Memory check-in tool set (<see cref="MemoryToolSet"/>) for the check-in <paramref name="by"/>,
+    /// as its matching manage_memories action, while memory is on. "Me" is whoever spoke last.</summary>
+    internal async ValueTask<ConversationToolResult> CheckInMemoryAsync(TextToolCall call, string by, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        if (MemoryToolSet.Action(call.Name) is not { } action) return new($"This set has no tool called {call.Name}.", true);
+        LiveConversationConfiguration? configured;
+        Martlet.Core.Speakers.KnownVoice? speaker;
+        lock (gate)
+        {
+            configured = configuration;
+            speaker = lastAsked.Heard?.Speaker?.Voice;
+        }
+        if (memory is null || configured?.Memory is not { Enabled: true } remembered)
+            return new("Memory: off.\nMemory is off, so nothing changed.", true);
+        var outcome = await RunMemoryToolAsync(remembered.ConfigurationRevision, MemoryTools.WithAction(call.ArgumentsJson, action),
+            speaker, call.Name, by, token).ConfigureAwait(false);
+        // The first line (shown on the card and in check-ins-status.json) is the outcome only, never a fact or a name.
+        return new($"Memory: {outcome.Outcome}.\n{outcome.Result.Output}", outcome.Result.IsError);
     }
 
     /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has), the
