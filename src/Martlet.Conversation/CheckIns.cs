@@ -42,7 +42,11 @@ public enum CheckInFacts
     /// <summary>What the character said in the last hour (replies, remarks, reactions), each with when.</summary>
     Said = 128,
     /// <summary>The character's last replies, numbered, oldest first.</summary>
-    Replies = 256
+    Replies = 256,
+    /// <summary>What the user did to the desktop character lately (pokes, pats, holds, strokes with their path, moves), each
+    /// with when, which were intimate, how the persona feels about them and the places the user keeps coming back to; read
+    /// without taking it, so the next reply still gets the touches.</summary>
+    Touches = 512
 }
 
 /// <summary>When a check-in runs: each condition chosen must hold, or it waits and says why on its card.</summary>
@@ -158,6 +162,9 @@ public sealed record CheckInState
     public BoundedWaveAudio? Recording { get; init; }
     /// <summary>What the owner's script printed for this run (or why it didn't run), or null.</summary>
     public string? ScriptOutput { get; init; }
+    /// <summary>What the user did to the desktop character over the last <see cref="TouchLedger.OftenWindow"/>, from the
+    /// conversation's touch ledger, read without taking it (<see cref="TouchLedger.History"/>); null when they did nothing.</summary>
+    public TouchHistory? Touches { get; init; }
 
     /// <summary>The character's name for the check: the personality's, or Martlet.</summary>
     public string Who => string.IsNullOrWhiteSpace(Name) ? "Martlet" : Name.Trim();
@@ -422,7 +429,8 @@ public static partial class CheckIns
         ("conversation", CheckInFacts.Conversation), ("emotes", CheckInFacts.Character), ("example", CheckInFacts.Character),
         ("looking", CheckInFacts.Character), ("usual", CheckInFacts.Character), ("since", CheckInFacts.Character),
         ("persona", CheckInFacts.Persona), ("work", CheckInFacts.Work), ("screen", CheckInFacts.Screen), ("sound", CheckInFacts.Sound),
-        ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies)
+        ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies),
+        ("touches", CheckInFacts.Touches)
     ];
 
     /// <summary>The facts <paramref name="template"/> places itself with their placeholders.</summary>
@@ -450,7 +458,7 @@ public static partial class CheckIns
             ("persona", string.IsNullOrWhiteSpace(state.Persona) ? "(no personality written)" : Clip(state.Persona.Trim(), 2_000)),
             ("work", Work(state)), ("screen", Screen(state)), ("sound", Sound(state)), ("presence", Presence(state)),
             ("said", Said(state).Count > 0 ? SaidLately.Lines(Said(state), state.Now) : "(nothing)"),
-            ("replies", RepliesText(state))
+            ("replies", RepliesText(state)), ("touches", Touches(state))
         ]);
         var facts = string.Join("\n\n", new[] { Facts(checkIn.Facts & ~Placed(template), state), Gathered(checkIn, state) }
             .Where(part => part.Length > 0));
@@ -601,7 +609,30 @@ public static partial class CheckIns
         if (facts.HasFlag(CheckInFacts.Sound))
             parts.Add(state.Sound is { Length: > 0 } ? "What the user's PC plays: " + Sound(state) : Sound(state));
         if (facts.HasFlag(CheckInFacts.Presence) && state.Away is not null) parts.Add(Presence(state));
+        if (facts.HasFlag(CheckInFacts.Touches)) parts.Add(Touches(state));
         return string.Join("\n\n", parts);
+    }
+
+    /// <summary>What the user did to the character lately (<see cref="CheckInFacts.Touches"/>), as the check reads it: one line
+    /// for each run, oldest first, with when and whether it was intimate, in the words the character's replies hear
+    /// (<see cref="TouchWording.Line"/>: "you" is the character, with how it feels about it), then the places the user keeps
+    /// coming back to (<see cref="TouchWording.Often"/>); or that they did nothing.</summary>
+    public static string Touches(CheckInState state)
+    {
+        var minutes = (int)TouchLedger.OftenWindow.TotalMinutes;
+        if (state.Touches is not { Entries.Count: > 0 } touches)
+            return $"The user didn't touch {state.Who}'s character on the desktop in the last {minutes} minutes.";
+        var text = new StringBuilder($"What the user did to {state.Who}'s character on the desktop in the last {minutes} minutes, " +
+            $"oldest first, each with when, in the words {state.Who} hears (\"you\" is {state.Who}):");
+        foreach (var entry in touches.Entries)
+        {
+            var ago = touches.Now - entry.Last;
+            text.Append("\n- ").Append(SaidLately.Clock((state.Now - ago).ToOffset(state.Now.Offset))).Append(" (")
+                .Append(Reminders.Span(ago)).Append(" ago").Append(entry.Intimate ? ", intimate" : "").Append("): ")
+                .Append(TouchWording.Line([entry]));
+        }
+        if (TouchWording.Often(touches.Often) is { Length: > 0 } often) text.Append('\n').Append(often.Trim());
+        return text.ToString();
     }
 
     /// <summary>What a check-in gathered for this run, as the check reads it: that a screenshot or a recording is attached, and
