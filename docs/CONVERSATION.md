@@ -1997,6 +1997,44 @@ voice pipeline never waits for a whole reply:
   words stop the reply at once. MCP `barge_in_check` returns the verdicts, the
   deadline fallback and what a pause does; `spoken_reply_check` `paused`
   rehearses a pause and resume through the production runtime.
+- **What Martlet says on its own yields to you.** Martlet speaks without being
+  asked in four ways (`UnpromptedSpeech`, `LiveConversationOperation.Unprompted`):
+  a due reminder, finished background work, a check-in's notice (`checkin-N`)
+  and a screen or camera remark. A reply to you, to what this PC played or to a
+  touch is never one of them, and nothing here runs before a reply to you.
+  With *Pause and decide*, real words over one of them work as over a reply,
+  with these changes. A screen or camera remark is not paused for the judge: it
+  stops at once (*dropped*), because it would not play on after you talked over
+  it in any case, and no judge job runs. For the others, *interrupt* stops them
+  as before. When the words were not for Martlet, a reminder plays on (you
+  asked for it), and finished work or a check-in plays on only after a pause of
+  at most 1.5 s (`UnpromptedSpeech.ResumeWithin`); after a longer pause the rest
+  is dropped. A dropped report gives its finished work and notices back, so they
+  go in the notes of the reply to what you said next. The code knew a report
+  (`Report`) and a glance (`Commentary`) before, but a pause treated them as a
+  reply; this keeps one rule per kind, so a low-value remark is never played on
+  after a long pause. The desktop log says *Barge-in: Martlet paused its remark
+  (a check-in) ...*, then *... resumed its remark ...* or *Barge-in: Martlet
+  dropped its remark (a check-in) after a N ms pause: what you said wasn't for
+  it (...), but it plays on only after a pause of at most 1500 ms)*; the
+  `LiveBargeIn` line ends *then dropped*.
+- **Waiting things to say are checked again just before they are said.** A
+  notice or finished work waits for Martlet to be free, or for your next
+  message. Just before a report starts, and just before a reply takes what
+  waits into its notes, `UnpromptedSpeech.Recheck` looks at each one again
+  (local rules only: no request and no wait). A check-in's notice is dropped
+  when it waited more than 10 minutes (`CheckInMaxWait`), or when the
+  conversation moved on: an exchange with you was kept after the notice became
+  due, so the check-in decided on an older conversation. A due reminder and
+  finished work are what you asked for, so they are never dropped. A report
+  still waits while you talk (mid-utterance, or something you said is about to
+  be answered) and now also while the [live floor](#the-live-floor-the-live-turn-comes-first) is Live.
+  Each drop goes to the desktop log as *Said on its own: Martlet dropped
+  checkin-3 (a check-in) before saying it: too old: it waited 12 minutes, and a
+  check-in waits at most 10 minutes.* (the ID, kind and why, never the text).
+  The talk window's `LiveUnprompted` line counts the drops: *Dropped on its
+  own: 2 (1 too old, 1 the conversation moved on, 0 talked over). Last: ...*.
+  MCP `barge_in_check` `unprompted` rehearses both rules.
 - **What is said aloud decides what stops it.** Each reply carries a playback
   mode (`PlaybackMode`: `Reply`, or `Song` for singing). A song keeps going
   while you talk and stops only when asked to: a stop word with Martlet's name
