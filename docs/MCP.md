@@ -3935,7 +3935,8 @@ it isn't answering*), `RecommendedSetupChange-<n>` (its name is the
 benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupComputerKind-<n>`, `RecommendedSetupToday-<n>`,
 `RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
-`RecommendedSetupBar-<n>-<vram|ram|cpu>`, `RecommendedSetupJob-<n>`,
+`RecommendedSetupBar-<n>-<vram|ram|cpu>` (its `help` is the bar's hover
+breakdown, as for `DeviceResource-<key>` on Devices), `RecommendedSetupJob-<n>`,
 `RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
 `RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
 `RecommendedSetupSecret-<n>` (the label only; the key box `SetupSecretInput-<n>`
@@ -4992,7 +4993,14 @@ then the most they take (*Graphics memory: 11-14 of 32 GB planned (34-44%), ...*
 When the usual amount fits but the most does not, the bar is tight (*..., tight:
 at their busiest the jobs can need 2 GB more than it can give, and slow down or
 fail.*); when even the usual amount does not fit, it is over (*..., 1-3 GB more
-than it can give.*). One
+than it can give.*). Hovering a bar (or its line) shows its breakdown, and each
+`DeviceResource-<key>` returns that breakdown as its `help`, one line each: the
+heading (*Graphics memory (12 GB)*), a line per job in segment order
+(*Singing (ACE-Step + SoulX): 5-7.2 GB (42-60%)*), then *Free for Martlet: 1.1 GB
+(9%)* (or *More than it can give: ...* when it is tight or over), *Kept for the
+system: 1.2 GB* when Martlet leaves room for the system, and *In use now: 27 GB
+(84%)* where the device reports it. Hovering one job's segment shows the same
+breakdown with that job in bold. One
 `DeviceShare-<option>` per job (*Deep thinking (Gemma 4 12B): 16-25% graphics
 memory, 3% memory, 6% processor.*; one number when the job does not grow),
 `DeviceHeadroom` (*Left free: ...*, then *Tight on graphics memory: ...* or
