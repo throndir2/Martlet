@@ -3744,7 +3744,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
-                if (setting.Key is "memory" or "appearance" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
+                if (setting.Key is "memory" or "appearance" or "appearance-custom" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
                     "model-abilities" or "work-sharing" || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);

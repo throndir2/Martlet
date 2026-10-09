@@ -892,7 +892,7 @@ user's): `sync` as above, `state` (`none` before the first sync, else `loaded`),
 the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
 `replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
-`talk`, `speech-display`, `appearance`, `voice-recognition`, `voice-id`,
+`talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-recognition`, `voice-id`,
 `smart-home`, `updates`, a computer's own `pc.<device ID>`, a computer's
 `role.<device ID>` (`companion` or `host`: written by that computer, or by
 another one asking it to switch), or a newer
@@ -902,7 +902,8 @@ Martlet's), `updatedBy`, `updatedAt`,
 it can't follow it yet (or changed it since), `unknown` when it never had the
 setting. `value` is shown only for non-personal settings: each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
-memory, how you talk, speech bubbles and subtitles, the theme, recognizing
+memory, how you talk, speech bubbles and subtitles, the theme and the custom
+palette's colors (`Colors` by role), recognizing
 voices (`on`), what Martlet may do with Home Assistant (`control`,
 `allow_sensitive`, `model_tools`), app updates (`checks`,
 `interval_minutes`, `auto_install`, `auto_update_hosts`) and each computer's
@@ -7080,14 +7081,31 @@ see the character overlay above), the checkable
 current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
 column in the dark palettes; `ui_snapshot` returns the palette as `AppearanceTheme`
-(*Pink light*, *Rose dark*, *Character light* or *Character dark*; choosing one with
+(*Pink light*, *Rose dark*, *Character light*, *Character dark* or *Custom*; choosing one with
 `ui_select` saves `appearance.txt`, so it needs `--allow-ui-effects`) and
 Settings' line about it as `AppearanceStatus`. Settings › Appearance also has
 `AppearanceCharacterStatus` (the character's colors: how many and where the
 accent comes from, or why they couldn't be read; never its name),
 `AppearanceColor-<n>` (each main color: *#2B3440 31% dark grayish blue*),
 and `AppearancePreview-rules-<light|dark>` (each character palette's colors by
-role). The
+role). While *Custom* is chosen, the custom palette's editor shows:
+`CustomThemeRole-<role>` (each of the twelve parts with its color, for example
+*Accent: #A52D64*; clicking one only selects it, so it needs no
+`--allow-ui-effects`), `CustomThemeRoleName` and `CustomThemeRoleHelp` (the
+selected part), `CustomThemeHex` (its color code), `CustomThemeHue`,
+`CustomThemeSaturation` and `CustomThemeLightness` (sliders: degrees and
+percent), `CustomThemeHexHint` (shown when the typed code isn't a color),
+`CustomThemePick-<n>` (the character's colors: *Use #6F92D1 blue*),
+`CustomThemeBase` (the palette *Start from* names), `CustomThemeCheck` (*Easy
+to read: ...* or what may be hard to read, such as *Text on window background:
+1.3:1 (needs 7:1)*) and `CustomThemeFix` (*Make it easy to read*, shown only
+when something is hard to read). `ui_set_text` on `CustomThemeHex`,
+`ui_set_range` on a slider and `ui_click` on a `CustomThemePick-<n>`,
+`CustomThemeFix` or `CustomThemeStartFrom` change the palette and save
+`appearance-custom.json`, so they need `--allow-ui-effects`.
+`CustomThemeStartFrom` asks `CustomThemeStartFromQuestion` first when the
+colors were changed from every other palette (`ConfirmationYes` replaces them).
+The
 desktop log records *Read N colors from the character's textures.* and
 *Applied the Character dark palette (#D194AE accent on #161E24).*
 `character_theme` makes the same colors and palettes headlessly.
