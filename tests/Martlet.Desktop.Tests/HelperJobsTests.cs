@@ -242,6 +242,23 @@ public sealed class HelperJobsTests
     }
 
     [Fact]
+    public void The_busy_pool_line_says_the_choices_and_counts()
+    {
+        var pool = new Martlet.Core.Settings.ThinkingPoolSettings();
+        Assert.Equal("More important requests may stop less important ones; a request stopped 3 times becomes more important. " +
+            "A failed request is tried once more.", MainWindow.PriorityLine(pool, null));
+        Assert.Equal("Requests wait for a free slot and never stop each other. A failed request isn't tried again.",
+            MainWindow.PriorityLine(pool with { PreemptLowerPriority = false, RetriesOnFailure = 0 }, null));
+        var status = new Martlet.Conversation.ThinkingPoolStatus([], 2, 1, false, new Dictionary<string, int>(), new Dictionary<string, int>(), [])
+        {
+            StoppedForPriority = 4, Raised = 1, Retried = 2
+        };
+        Assert.Equal("More important requests may stop less important ones; a request stopped once becomes more important. " +
+            "A failed request is tried up to 5 more times. Since Martlet started: 4 stopped, 1 made more important, 2 tried again.",
+            MainWindow.PriorityLine(pool with { RaisePriorityAfterStops = 1, RetriesOnFailure = 5 }, status));
+    }
+
+    [Fact]
     public void A_hosts_refusal_for_a_live_turn_is_preempted_not_busy_or_a_failure()
     {
         var held = new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.busy", "busy") { Detail = "live" };

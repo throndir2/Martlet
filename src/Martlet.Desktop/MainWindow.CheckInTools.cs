@@ -25,6 +25,9 @@ public partial class MainWindow
         // Only a PC that keeps creations (a data folder) runs the songs, pictures and creations tools; each tool keeps the
         // reply's own gate (singing set up, pictures set up, creation kinds registered).
         if (conversation is { RunsCreationsCheckIn: true } creations) handlers[CreationsCheckIn.SetId] = creations.CreationsCheckInAsync;
+        // Discord calls and camera only while Martlet can call a Discord friend or is in the owner's Discord calls.
+        if (conversation is { RunsDiscordCheckInTools: true } talk)
+            handlers[DiscordCheckInTools.SetId] = (call, context, token) => talk.RunDiscordCheckInToolAsync(call, token);
         return handlers;
     }
 

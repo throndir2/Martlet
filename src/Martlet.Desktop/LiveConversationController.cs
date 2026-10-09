@@ -2911,12 +2911,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (configured.SupportsTools && RemindersTool is { } remind)
             own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
         // call_on_discord after them while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the
-        // connection).
+        // connection). While the After each exchange check-in takes it over, the reply only says it will call.
         if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
-            own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
+        {
+            if (handedOff.Contains(DiscordCallTool.Name)) guidance = Join(guidance, DiscordCallTool.AfterReply);
+            else own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
+        }
         // set_camera_background last, while Martlet is in the owner's Discord calls (the saved choice only).
         if (configured.SupportsTools && CallCamera is { Offered: true } camera)
-            own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
+        {
+            if (handedOff.Contains(CameraBackgroundTool.Name)) guidance = Join(guidance, CameraBackgroundTool.AfterReply);
+            else own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
+        }
         return own.Count == 0 ? null : new(own, guidance);
     }
 
@@ -2925,7 +2931,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>set_camera_background: a color or a kept picture at once; a new picture is drawn first (draw_picture's job) and
     /// used when it's ready.</summary>
-    private async ValueTask<ConversationToolResult> SetCameraBackgroundAsync(LiveConversationOperation operation,
+    private async ValueTask<ConversationToolResult> SetCameraBackgroundAsync(LiveConversationOperation? operation,
         LiveConversationConfiguration configured, ICallCamera camera, TextToolCall call, CancellationToken token)
     {
         var (arguments, problem) = CameraBackgroundTool.Parse(call.ArgumentsJson);
@@ -2945,6 +2951,35 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>Rings a Discord friend for call_on_discord; null while Discord isn't wired.</summary>
     internal IDiscordCaller? DiscordCaller { get; set; }
+
+    /// <summary>Whether a check-in may run the Discord calls and camera set (<see cref="DiscordCheckInTools"/>) now: Martlet can
+    /// call a Discord friend or is in the owner's Discord calls.</summary>
+    internal bool RunsDiscordCheckInTools => DiscordCaller is { CanCall: true } || CallCamera is { Offered: true };
+
+    /// <summary>Runs one call of the Discord calls and camera check-in tool set, on a pool thread after the reply: the same work,
+    /// arguments, gates and limits as the reply's tools of the same names. A new background picture is drawn by draw_picture's job.</summary>
+    internal ValueTask<ConversationToolResult> RunDiscordCheckInToolAsync(TextToolCall call, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        switch (call.Name)
+        {
+            case DiscordCheckInTools.Call:
+                return DiscordCaller is { CanCall: true } caller ? CallOnDiscordAsync(caller, call, token)
+                    : new(new ConversationToolResult("Martlet can't call anyone on Discord now.", true));
+            case DiscordCheckInTools.Background:
+                if (CallCamera is not { Offered: true } camera)
+                    return new(new ConversationToolResult("Martlet isn't in the owner's Discord calls, so there's no webcam background.", true));
+                if (Configuration is not { } configured)
+                    return new(new ConversationToolResult("The conversation isn't set up, so the background can't change now.", true));
+                return SetCameraBackgroundAsync(null, configured, camera, call, token);
+            default:
+                return new(new ConversationToolResult($"This set has no tool called {call.Name}.", true));
+        }
+    }
+
+    /// <summary>The reply tool names the After each exchange check-in takes over now, from saved settings only, so the start of
+    /// every request stays the same. The foundation change owns this; until it merges, the reply keeps every tool.</summary>
+    internal IReadOnlySet<string> HandedOffReplyTools(LiveConversationConfiguration configured) => new HashSet<string>(StringComparer.Ordinal);
 
     private async ValueTask<ConversationToolResult> CallOnDiscordAsync(IDiscordCaller caller, TextToolCall call, CancellationToken token)
     {
@@ -3639,10 +3674,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     // The newest finished reply, which a check-in's sing_song continues to write lyrics, as the reply's own call would.
     private LiveConversationOperation? lastReply;
-
-    /// <summary>The reply tool names the After each exchange check-in takes over now (<see cref="CheckInToolSet.Replaces"/>); it
-    /// reads saved settings only, so the start of every request stays the same. The foundation owns its implementation.</summary>
-    internal IReadOnlySet<string> HandedOffReplyTools(LiveConversationConfiguration configured) => new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>Whether this PC runs the Songs, pictures and creations tool set: it keeps creations (a data folder).</summary>
     internal bool RunsCreationsCheckIn => dataDirectory is not null;
