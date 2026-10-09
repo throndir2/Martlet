@@ -163,4 +163,76 @@ public sealed class PlacementEngineTests
         Assert.Equal(PlanStep.Voice, ComponentRanking.ClaimOrder(HostingPreference.Balanced)[1]);
         Assert.Equal(PlanStep.ThinkingPrimary, ComponentRanking.ClaimOrder(HostingPreference.PreferLocal)[1]);
     }
+
+    [Fact]
+    public void TheRankingListsEveryPartOnceNeededFirstAndEveryOptionalPartCanBeOff()
+    {
+        var all = ComponentRanking.All;
+        Assert.Equal(Enum.GetValues<PlanComponent>(), all.Select(i => i.Component));
+        Assert.Equal(Enumerable.Range(1, all.Count), all.Select(i => i.Rank));
+        Assert.Equal(all.OrderBy(i => i.Necessity == ComponentNecessity.Optional ? 1 : 0).Select(i => i.Component), all.Select(i => i.Component));
+        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.DeepThinking, PlanComponent.SmartHome,
+            PlanComponent.Singing, PlanComponent.Pictures], all.Where(i => i.Necessity == ComponentNecessity.Optional).Select(i => i.Component));
+        foreach (var info in all)
+        {
+            Assert.Equal(info.Necessity == ComponentNecessity.Optional || info.Component == PlanComponent.LipSync, ComponentRanking.CanBeOff(info.Component));
+            if (ComponentRanking.CanBeOff(info.Component)) Assert.NotEqual("it doesn't run", ComponentRanking.OffMeans(info.Component));
+            Assert.StartsWith("Companion \u203a ", ComponentRanking.Page(info.Component), StringComparison.Ordinal);
+        }
+        Assert.Equal("Companion \u203a Hearing", ComponentRanking.Page(PlanComponent.Hearing));
+        Assert.Equal("Companion \u203a Thinking pool", ComponentRanking.Page(PlanComponent.DeepThinking));
+        // Only Thinking and the voice may use a companion PC's card; Vision and Hearing only as Thinking's own model.
+        Assert.Equal([PlanComponent.Thinking, PlanComponent.Voice], all.Select(i => i.Component).Where(ComponentRanking.UsesCompanionCard));
+        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.SmartHome],
+            all.Select(i => i.Component).Where(ComponentRanking.SetOnPage));
+        foreach (var preference in Enum.GetValues<HostingPreference>())
+            Assert.All(new[] { PlanStep.Vision, PlanStep.Reading, PlanStep.Hearing, PlanStep.SmartHome },
+                step => Assert.Contains(step, ComponentRanking.ClaimOrder(preference)));
+    }
+
+    [Fact]
+    public void VisionAndHearingUseThinkingsOwnModelAndReadingRunsInMartlet()
+    {
+        var plan = Plan(HostingPreference.PreferLocal, Pc(32, 16, Nvidia(12)));
+
+        var thinking = plan.Primary(PlanComponent.Thinking)!;
+        var vision = plan.Primary(PlanComponent.Vision)!;
+        Assert.Equal("vision:thinking", vision.Option.Id);
+        Assert.Equal(thinking.MachineId, vision.MachineId);
+        Assert.Equal("hearing:thinking", plan.Primary(PlanComponent.Hearing)!.Option.Id);
+        Assert.Equal("reading:windows-ocr", plan.Primary(PlanComponent.Reading)!.Option.Id);
+        // Thinking's own model takes no room of its own; Home Assistant needs a Linux computer.
+        Assert.DoesNotContain(plan.Usage("this-pc")!.Items, i => i.Component is PlanComponent.Vision or PlanComponent.Hearing);
+        Assert.Contains(plan.Dropped, d => d.Component == PlanComponent.SmartHome);
+        Assert.Equal(0, PlacementEngine.Afford(plan, vision.Option));
+
+        var withHost = Plan(HostingPreference.PreferLocal, Pc(32, 16, Nvidia(12)), Host("home-box", 8, 4));
+        Assert.Equal("home-box", withHost.Primary(PlanComponent.SmartHome)!.MachineId);
+    }
+
+    [Fact]
+    public void AThinkingModelThatDoesntSeeGetsAnImageModelOfItsOwnWhereItFits()
+    {
+        var blind = new FootprintCatalog(FootprintCatalog.Default.Options.Select(o => o.Component == PlanComponent.Thinking ? o with { SeesImages = false } : o));
+        var plan = PlacementEngine.Plan(new PlanRequest([Pc(64, 24, Nvidia(24))]) { Preference = HostingPreference.PreferLocal }, blind);
+
+        var vision = plan.Primary(PlanComponent.Vision)!;
+        Assert.False(vision.Option.UsesThinking);
+        Assert.True(vision.Option.UsesGpu);
+        Assert.Contains(plan.Usage("this-pc")!.Items, i => i.Component == PlanComponent.Vision && i.Use.VramGb > 0);
+        Assert.InRange(plan.Usage("this-pc")!.Gpus[0].Vram.Percent, 1, 100);
+    }
+
+    [Fact]
+    public void MeasureCountsThinkingsOwnModelAsNothingMore()
+    {
+        var plan = PlacementEngine.Measure(new PlanRequest([Pc(32, 16, Nvidia(8))])
+        {
+            Current = [new(PlanComponent.Thinking, "gemma4:e2b", "this-pc"), new(PlanComponent.Vision, "vision:thinking", "this-pc")]
+        });
+
+        Assert.Equal("vision:thinking", plan.Primary(PlanComponent.Vision)!.Option.Id);
+        Assert.Single(plan.Usage("this-pc")!.Items);
+        Assert.Empty(plan.Notes);
+    }
 }
