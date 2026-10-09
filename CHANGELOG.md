@@ -22,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- **Read my screen now** and screen reading while Martlet watches now read all the text on your screen, not just a word or two. Martlet reads a full-size copy of the screen, and **Read my screen now** shows its size. ([#670](https://github.com/throndir2/Martlet/pull/670))
 - Thinking in Ollama on one of your computers now hears your voice when its model can hear, such as Gemma 4 E4B, instead of saying the model doesn't hear recordings. **Test hearing** works there too. Update Martlet on that computer as well. ([#668](https://github.com/throndir2/Martlet/pull/668))
 
 ## [0.62.1] - 2026-10-08
