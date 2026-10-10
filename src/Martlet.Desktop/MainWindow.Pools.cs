@@ -64,7 +64,7 @@ public partial class MainWindow
         if (options.Intro is not null) stack.Add(Note(options.Intro, new Thickness(0, 0, 0, 8)));
         var on = list.Members.Count(m => !m.Off);
         var summary = Note(on == 0
-                ? area.Required ? $"Nothing in the list is on, so {area.WhenEmpty.ToLowerInvariant()} is used."
+                ? area.Required ? $"Nothing in the list is on. Instead: {area.WhenEmpty}."
                 : area.ConversationFirst ? "Empty: a reply always waits for the conversation's own model."
                 : "Off: nothing in the list is on."
                 : area.ConversationFirst

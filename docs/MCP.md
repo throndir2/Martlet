@@ -4545,7 +4545,8 @@ The pool list control (Companion › Voice and Listening under *Where it runs*,
 Companion › Thinking under *When the Thinking model is busy*, and each pooled
 area's page) reads through `ui_snapshot` with `idPrefix` `Pool-<area>`:
 `Pool-<area>-Summary` ("One member is on. Requests go to it.", "Off: nothing
-in the list is on.", or the fallback for a required area),
+in the list is on.", or for a required area "Nothing in the list is on.
+Instead: Voice loudness on this PC."),
 `Pool-<area>-Member-<i>` ("1. This PC. Each companion PC itself."),
 `Pool-<area>-On-<i>` (ticked or not), `Pool-<area>-Up-<i>`, `-Down-<i>`,
 `-Remove-<i>`, `-Settings-<i>`, `-OnlyFor-<i>` and the Add buttons
