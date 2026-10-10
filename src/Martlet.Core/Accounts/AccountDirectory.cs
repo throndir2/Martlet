@@ -131,7 +131,7 @@ public sealed record AccountDirectory
         foreach (var entry in incoming.Accounts)
         {
             if (known.Contains(entry.Content)) continue;
-            if (Refusal(current.Find(entry.Id), entry, roster) is null) taken.Add(entry);
+            if (Refusal(current.Find(entry.Id), entry, roster, AccountBindingRules.MergedInto(entry.Id, current, incoming)) is null) taken.Add(entry);
             else rejected++;
         }
         return new(taken.Count == 0 ? current : Merge(current, Empty with { Accounts = taken }), rejected);
@@ -144,15 +144,17 @@ public sealed record AccountDirectory
     /// <item><c>account.no_network</c>: this computer has no network roster to check the signer against.</item>
     /// <item><c>account.signer</c>: not signed, with the key the roster lists, by a desktop that is active in it.</item>
     /// <item><c>account.creator</c>: it changes the device that created the account.</item>
+    /// <item><c>account.binding</c>: a device binding without proof that the device proved the account
+    /// (<see cref="AccountBindingRules"/>). <paramref name="mergedIntoThis"/>: the removed accounts merged into it.</item>
     /// </list>
     /// </summary>
-    public static string? Refusal(Account? accepted, Account incoming, NetworkRoster? roster)
+    public static string? Refusal(Account? accepted, Account incoming, NetworkRoster? roster, IReadOnlyCollection<Account>? mergedIntoThis = null)
     {
         ArgumentNullException.ThrowIfNull(incoming);
         if (roster is null) return "account.no_network";
         if (!Verify(incoming, roster)) return "account.signer";
         if (accepted is not null && accepted.Id == incoming.Id && accepted.CreatedBy != incoming.CreatedBy) return "account.creator";
-        return null;
+        return AccountBindingRules.Refusal(accepted, incoming, roster, mergedIntoThis);
     }
 
     /// <summary>Whether <paramref name="entry"/> carries a valid signature by an active desktop of <paramref name="roster"/>.</summary>
