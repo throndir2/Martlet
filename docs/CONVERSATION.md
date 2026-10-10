@@ -1067,7 +1067,11 @@ member ticked for *Long jobs*:
   takes at most 60 seconds and 4,096 tokens a request (Martlet holds a think
   there to that and logs that the computer should be updated). A computer that
   also does Thinking for the conversation thinks only with its Deep thinking
-  role, never with Thinking's own model.
+  role, never with Thinking's own model. Its Ollama answers one request at a
+  time and keeps one conversation in its prompt cache, so a pool job there
+  would make replies wait. A member on such a computer's Ollama says so in
+  *Can't run now* and shows no shared-card warning (it is the same model, not
+  a second one).
 - *Ollama on this PC* (*Add a machine*): a second model of its own here, beside Thinking's (a
   larger one can think while a small, fast one answers you), never Thinking's
   own model. The page shows whether it fits beside Thinking's on the graphics
