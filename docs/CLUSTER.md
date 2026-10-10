@@ -239,7 +239,9 @@ is busy, or whichever of the two finishes first when both are. Keeping machine
 3 for itself leaves machine 2 only machine 1.
 
 Lip-sync, singing and pictures are not shared yet: each stays on its one
-computer. Thinking with Ollama on a companion PC itself talks to that Ollama
+computer. Reading the screen goes to a pool of your computers that run the
+Reading role through the same queue, without a card here
+([the Reading pool](READING.md#the-reading-pool)). Thinking with Ollama on a companion PC itself talks to that Ollama
 directly, so the queue can't see those replies; Ollama queues them. The
 Devices card's status line (`WorkSharingStatus`) and the desktop log
 (`Sharing work: Speaking went to m3-host (1 busy) after 240 ms.`) say when a

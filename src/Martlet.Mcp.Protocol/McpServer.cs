@@ -1004,7 +1004,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the joined text, missing words and milliseconds. desktop: a drawn 1920 x 1080 desktop of 108 small (12 px) text lines " +
             "read at full size, as the desktop reads the screen, and at a vision look's 1024 x 576: lines found, lines read right " +
             "and milliseconds for each. With endpoint (a Reading role's worker on loopback, such as " +
-            "http://127.0.0.1:50087/) that worker's GET /status and POST /read read the same picture as a PNG. Never captures the " +
+            "http://127.0.0.1:50087/) that worker's GET /status and POST /read read the same picture as a PNG. pool (with " +
+            "dataDirectory): the computers a read tries, first to last (tries: the one named, then your other computers the shared " +
+            "plan says run the Reading role). poolCheck: the production planner and queue with simulated computers (NOT real " +
+            "hosts): a busy computer passed over, a wait for the first to free, a friend's host left for its owner. Never captures the " +
             "real screen.", new
         {
             dataDirectory = new { type = "string" },

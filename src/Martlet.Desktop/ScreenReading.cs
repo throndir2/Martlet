@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Cluster;
 using Martlet.Core.Platforms;
 using Martlet.Core.Reading;
 using Martlet.Discord.Calls;
@@ -63,55 +64,166 @@ internal sealed class WindowsScreenTextReader : IScreenTextReader
     public void Dispose() { }
 }
 
-/// <summary>A paired computer's Reading role (RapidOCR or PP-OCRv5) through its gateway (route
-/// <c>martlet.gateway.ocr.v1</c>). The screenshot goes there as a JPEG, is read in memory and is not kept. The computer named in
-/// Companion › Reading reads; without one, the first paired computer that offers the route.</summary>
-internal sealed class HostScreenTextReader(string dataDirectory, string? hostId) : IScreenTextReader
+/// <summary>The owner's computers that run the Reading role (RapidOCR or PP-OCRv5), as a pool, through their gateways (route
+/// <c>martlet.gateway.ocr.v1</c>). The screenshot goes there as a JPEG, is read in memory and is not kept. Each read goes through
+/// <see cref="WorkQueue"/> at background priority (<see cref="Targets"/>): first the computer named in Companion › Reading, then
+/// the owner's other computers that the shared plan says run the Reading role. A computer that is busy, doesn't answer or
+/// doesn't run the role is passed over for the next at once; when every one is busy the read waits up to <see cref="Wait"/>
+/// for the first to free. While the named computer is free nothing changes: no extra request. Each computer's connection is
+/// kept open between reads and dropped when that computer fails. A host a friend shares reads only when it is the one named.</summary>
+internal sealed class HostScreenTextReader : IScreenTextReader
 {
-    private (PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)? open;
+    /// <summary>Reads <paramref name="jpeg"/> on one computer: the route it used and the lines.</summary>
+    internal delegate Task<(HostRoute Route, IReadOnlyList<ReadLine> Lines)> HostRead(PairedHost host, byte[] jpeg, CancellationToken token);
 
-    public string Engine => open is { } found
-        ? $"{found.Host.HostId}'s Reading role" + (OptionalExtras.ReadingModelOf(found.Route.ModelId) is { } model ? $" ({model.Name})" : "")
+    /// <summary>How long a read waits in line when every computer is busy. The next capture brings a newer screenshot anyway.</summary>
+    internal static TimeSpan Wait => TimeSpan.FromSeconds(3);
+
+    private sealed record Used(string HostId, HostRoute Route);
+
+    private readonly string dataDirectory;
+    private readonly string? hostId;
+    private readonly WorkQueue queue;
+    private readonly TimeSpan wait;
+    private readonly HostRead read;
+    private readonly object gate = new();
+    private readonly Dictionary<string, (HostRoute Route, Audio2FaceHostConnection Connection)> open = new(StringComparer.Ordinal);
+    private volatile Used? last;
+
+    /// <summary>Reads on <paramref name="hostId"/> first (null: the owner's computers that run the Reading role). The other
+    /// arguments are for tests: the queue (default <see cref="WorkQueue.Shared"/>), the wait and the read on one computer.</summary>
+    internal HostScreenTextReader(string dataDirectory, string? hostId, WorkQueue? queue = null, TimeSpan? wait = null, HostRead? read = null)
+    {
+        this.dataDirectory = dataDirectory;
+        this.hostId = hostId;
+        this.queue = queue ?? WorkQueue.Shared;
+        this.wait = wait ?? Wait;
+        this.read = read ?? ReadOnAsync;
+    }
+
+    /// <summary>The computer that did the last read, else the one named.</summary>
+    public string Engine => last is { } found
+        ? $"{found.HostId}'s Reading role" + (OptionalExtras.ReadingModelOf(found.Route.ModelId) is { } model ? $" ({model.Name})" : "")
         : hostId is null ? "Martlet's Reading role" : $"{hostId}'s Reading role";
 
     public async Task<IReadOnlyList<ReadLine>> ReadAsync(byte[] bgra, int width, int height, CancellationToken token)
     {
         // Encoded below normal priority: the conversation's own work on this PC comes first.
+        var targets = Targets();
         var jpeg = await LowPriority.RunAsync(() => Jpeg(bgra, width, height), token, "Martlet screen reading").ConfigureAwait(false);
-        var (host, route, connection) = await OpenAsync(token).ConfigureAwait(false);
+        // The queue throws the last refusal, which is always from the computer it tried last.
+        var tried = targets[0];
         try
         {
-            return Lines(await connection.OcrReadAsync(route, jpeg, "image/jpeg", token).ConfigureAwait(false));
+            var (host, route, lines) = await queue.RunAsync(WorkSharingJobs.Reading, targets, h => h.HostId, async (h, t) =>
+            {
+                tried = h;
+                var (route, lines) = await WorkSharingRoster.WatchedOnce(h.HostId, "reading", read(h, jpeg, t)).ConfigureAwait(false);
+                return (h, route, lines);
+            }, WorkSharingRoster.Classify, DateTimeOffset.UtcNow + wait, null, token, WorkPriority.Background).ConfigureAwait(false);
+            last = new(host.HostId, route);
+            return lines;
+        }
+        catch (WorkPreemptedException) when (!token.IsCancellationRequested)
+        {
+            // Background priority: a computer that keeps its graphics card for a live turn, or for its owner (a friend's host),
+            // was passed over, and no other took the read.
+            throw new ScreenReadException(targets.Count == 1 && tried.Shared
+                ? $"{tried.HostId} is busy with its owner's own work; Martlet reads again in a moment."
+                : "The computers that read keep their graphics cards for other work now; Martlet reads again in a moment.", busy: true);
+        }
+        catch (Audio2FaceHostException error) when (error.Code == "job.busy")
+        {
+            throw new ScreenReadException(error.OwnerFirst ? $"{tried.HostId} is busy with its owner's own work; Martlet reads again in a moment."
+                : targets.Count == 1 ? $"{tried.HostId}'s Reading role is busy."
+                : $"Every computer that runs the Reading role is busy ({targets.Count}); Martlet reads again in a moment.", busy: true, error);
+        }
+        catch (Audio2FaceHostException error) when (error.Code is "host.unreachable" or "worker.unavailable")
+        {
+            throw new ScreenReadException(error.Message, inner: error);
         }
         catch (Audio2FaceHostException error)
         {
-            if (error.Code == "job.busy")
-                throw new ScreenReadException(error.OwnerFirst ? $"{host.HostId} is busy with its owner's own work; Martlet reads again in a moment."
-                    : $"{host.HostId}'s Reading role is busy.", busy: true, error);
-            Dispose();
-            throw new ScreenReadException($"{host.HostId}'s Reading role: {error.Message}", inner: error);
+            throw new ScreenReadException($"{tried.HostId}'s Reading role: {error.Message}", inner: error);
         }
         catch (Exception error) when (error is HttpRequestException or IOException)
         {
-            Dispose();
-            throw new ScreenReadException($"{host.HostId} stopped answering ({error.Message}).", inner: error);
+            throw new ScreenReadException($"{tried.HostId} stopped answering ({error.Message}).", inner: error);
         }
         finally { Array.Clear(jpeg); }
     }
 
-    /// <summary>The Reading role's state on that computer ("ready" or "loading").</summary>
+    /// <summary>The computers a read tries, first to last: the one named in Companion › Reading, then the owner's other
+    /// computers that the shared plan says run the Reading role (<see cref="WorkSharingRoster.Order"/>: this PC's own host
+    /// service, then the fewest jobs first; never a computer kept for another companion PC). A host a friend shares is in it
+    /// only when it is the one named (the shared plan never lists one). With none named and none in the plan, every computer
+    /// of the owner's own, as before the plan knew the Reading role.</summary>
+    internal IReadOnlyList<PairedHost> Targets()
+    {
+        List<PairedHost> order = [.. WorkSharingRoster.Order(dataDirectory, WorkSharingJobs.Reading, HostRoles.Ocr, null, hostId)
+            .Select(p => p.Host).OfType<PairedHost>().Where(h => !h.Shared || h.HostId == hostId)];
+        if (hostId is null && order.Count == 0)
+        {
+            var sharing = WorkSharingRoster.Settings(dataDirectory);
+            order.AddRange(Registry().Where(h => !h.Shared && sharing.Allows(h.HostId, WorkSharingRoster.Device)));
+        }
+        return order.Count > 0 ? order : throw new ScreenReadException(hostId is null
+            ? "No paired computer runs the Reading role. Set it up in Companion › Reading."
+            : $"{hostId} doesn't run the Reading role. Set it up there in Companion › Reading.");
+    }
+
+    private IReadOnlyList<PairedHost> Registry()
+    {
+        try { return HostRegistry.Load(dataDirectory); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            throw new ScreenReadException(error.Message, inner: error);
+        }
+    }
+
+    /// <summary>The Reading role's state on the computer named ("ready" or "loading"); without one, on the first to try.</summary>
     internal async Task<string> StatusAsync(CancellationToken token)
     {
-        var (host, route, connection) = await OpenAsync(token).ConfigureAwait(false);
+        var host = hostId is null ? Targets()[0] : Registry().FirstOrDefault(h => h.HostId == hostId) ??
+            throw new ScreenReadException($"{hostId} isn't paired with this PC.");
         try
         {
-            var answer = await connection.OcrStatusAsync(route, token).ConfigureAwait(false);
-            return answer.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String ? state.GetString()! : "unknown";
+            var (route, connection) = await OpenAsync(host, token).ConfigureAwait(false);
+            try
+            {
+                var answer = await connection.OcrStatusAsync(route, token).ConfigureAwait(false);
+                return answer.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String ? state.GetString()! : "unknown";
+            }
+            catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException)
+            {
+                Drop(host.HostId, connection);
+                throw;
+            }
+        }
+        catch (Audio2FaceHostException error) when (error.Code is "host.unreachable" or "worker.unavailable")
+        {
+            throw new ScreenReadException(error.Message, inner: error);
         }
         catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException)
         {
-            Dispose();
             throw new ScreenReadException($"{host.HostId}'s Reading role: {error.Message}", inner: error);
+        }
+    }
+
+    // One read on one computer. A failure other than busy (or a bad answer) drops its connection, so the next read connects
+    // again; the queue passes over a computer that is busy or doesn't answer.
+    private async Task<(HostRoute, IReadOnlyList<ReadLine>)> ReadOnAsync(PairedHost host, byte[] jpeg, CancellationToken token)
+    {
+        var (route, connection) = await OpenAsync(host, token).ConfigureAwait(false);
+        try
+        {
+            return (route, Lines(await connection.OcrReadAsync(route, jpeg, "image/jpeg", token).ConfigureAwait(false)));
+        }
+        catch (Exception error) when (error is not (OperationCanceledException or ScreenReadException or
+            Audio2FaceHostException { Code: "job.busy" or "job.preempted" }))
+        {
+            Drop(host.HostId, connection);
+            throw;
         }
     }
 
@@ -152,46 +264,52 @@ internal sealed class HostScreenTextReader(string dataDirectory, string? hostId)
         return found;
     }
 
-    private async Task<(PairedHost, HostRoute, Audio2FaceHostConnection)> OpenAsync(CancellationToken token)
+    // The computer's kept connection and its Reading route; a new one when there is none. A computer that doesn't answer, or
+    // doesn't run the role, refuses as unavailable (host.unreachable, worker.unavailable), so the queue passes it over.
+    private async Task<(HostRoute Route, Audio2FaceHostConnection Connection)> OpenAsync(PairedHost host, CancellationToken token)
     {
-        if (open is { } known) return known;
-        IReadOnlyList<PairedHost> hosts;
-        try { hosts = HostRegistry.Load(dataDirectory); }
-        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
+        lock (gate)
+            if (open.TryGetValue(host.HostId, out var known)) return known;
+        Audio2FaceHostConnection? connection = null;
+        try
         {
-            throw new ScreenReadException(error.Message, inner: error);
+            connection = ClusterSync.Connect(host.Pairing);
+            var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
+            var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.OcrRouteId) ?? throw new Audio2FaceHostException(
+                "worker.unavailable", $"{host.HostId} doesn't run the Reading role. Set it up there in Companion › Reading.");
+            lock (gate)
+            {
+                if (open.TryGetValue(host.HostId, out var raced)) return raced;
+                open[host.HostId] = (route, connection);
+            }
+            var kept = (route, connection);
+            connection = null;
+            return kept;
         }
-        // Without a computer named, only your own: a host a friend shares reads only once you chose it in Companion › Reading.
-        foreach (var host in hosts.Where(h => hostId is null ? !h.Shared : h.HostId == hostId))
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error) when (ClusterSync.IsHostFailure(error) && error is not Audio2FaceHostException { Code: "worker.unavailable" })
         {
-            Audio2FaceHostConnection? connection = null;
-            try
-            {
-                connection = ClusterSync.Connect(host.Pairing);
-                var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
-                if (routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.OcrRouteId) is { } route)
-                {
-                    open = (host, route, connection);
-                    connection = null;
-                    return open.Value;
-                }
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (Exception error) when (ClusterSync.IsHostFailure(error))
-            {
-                if (hostId is not null) throw new ScreenReadException($"{hostId} isn't reachable ({error.Message}).", inner: error);
-            }
-            finally { connection?.Dispose(); }
+            throw new Audio2FaceHostException("host.unreachable", $"{host.HostId} isn't reachable ({error.Message}).");
         }
-        throw new ScreenReadException(hostId is null
-            ? "No paired computer runs the Reading role. Set it up in Companion › Reading."
-            : $"{hostId} doesn't run the Reading role. Set it up there in Companion › Reading.");
+        finally { connection?.Dispose(); }
+    }
+
+    private void Drop(string host, Audio2FaceHostConnection connection)
+    {
+        lock (gate)
+            if (open.TryGetValue(host, out var kept) && ReferenceEquals(kept.Connection, connection)) open.Remove(host);
+        connection.Dispose();
     }
 
     public void Dispose()
     {
-        open?.Connection.Dispose();
-        open = null;
+        (HostRoute, Audio2FaceHostConnection Connection)[] all;
+        lock (gate)
+        {
+            all = [.. open.Values];
+            open.Clear();
+        }
+        foreach (var kept in all) kept.Connection.Dispose();
     }
 }
 
