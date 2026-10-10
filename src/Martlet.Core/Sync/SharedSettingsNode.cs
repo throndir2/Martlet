@@ -124,12 +124,18 @@ public sealed class SharedSettingsNode
     private readonly string device;
     private readonly IReadOnlyList<ISharedSection> sections;
     private readonly Action? invalidate;
+    private readonly bool account;
     private readonly Dictionary<string, string> observed;
     private readonly Dictionary<string, string> secrets = new(StringComparer.Ordinal);
     /// <summary>Entries applied that still read back differently; not applied again until they change.</summary>
     private readonly Dictionary<string, string> mismatched = new(StringComparer.Ordinal);
 
-    public SharedSettingsNode(string directory, string device, IReadOnlyList<ISharedSection> sections, Action? invalidate = null)
+    /// <param name="account">An account's node (docs/ACCOUNTS.md, "Account settings"): its copy is that account's whole set of
+    /// settings, which a switch gives back to the files. So every setting the files hold that the copy lacks is recorded, a
+    /// default one at the lowest revision (any choice made anywhere wins over it), and a setting <see cref="AdoptAsync(CancellationToken)"/>
+    /// gives the files is recorded too. A household node records a default only as a change made here.</param>
+    public SharedSettingsNode(string directory, string device, IReadOnlyList<ISharedSection> sections, Action? invalidate = null,
+        bool account = false)
     {
         ContractRules.Identifier(device);
         ContractRules.Require(sections.Select(s => s.Key).All(SharedSettings.IsKey) &&
@@ -138,8 +144,13 @@ public sealed class SharedSettingsNode
         this.device = device;
         this.sections = sections;
         this.invalidate = invalidate;
+        this.account = account;
         (Document, observed) = SharedSettingsState.Load(directory);
     }
+
+    /// <summary>The lowest revision: an account's setting recorded only so its copy is whole (a default, or what the files held
+    /// when the account first took them), which any choice made anywhere replaces.</summary>
+    public const long KeptRevision = 1;
 
     /// <summary>What <c>shared-settings.json</c> records for a setting this computer's files don't hold yet: an account's
     /// setting <see cref="AdoptAsync"/> could not give the files yet. Such a setting is never recorded as a change made here
@@ -181,7 +192,9 @@ public sealed class SharedSettingsNode
             {
                 // An account's setting the files don't hold yet: give it to them first; what they have now is not this
                 // account's, so it is never recorded.
-                if (await AdoptSectionAsync(section, document, waiting, token) is (true, var adopted)) locals[section.Key] = adopted;
+                var (adopted, adoptedLocal, adoptedDocument) = await AdoptSectionAsync(section, document, waiting, token);
+                document = adoptedDocument;
+                if (adopted) locals[section.Key] = adoptedLocal;
                 continue;
             }
             SharedLocal? local;
@@ -201,11 +214,20 @@ public sealed class SharedSettingsNode
             {
                 if (!observed.TryGetValue(section.Key, out var seen))
                 {
-                    if (!local.IsDefault && entry?.Holds(local.Value, local.SecretSha256) != true && Evidence(local, now) is var evidence &&
-                        (entry is null || evidence > entry.Revision))
+                    if (entry?.Holds(local.Value, local.SecretSha256) != true)
                     {
-                        document = document.Put(section.Key, local.Value, local.Secret, device, local.ChangedAt ?? now, evidence);
-                        recorded.Add(section.Key);
+                        if (!local.IsDefault && Evidence(local, now) is var evidence && (entry is null || evidence > entry.Revision))
+                        {
+                            document = document.Put(section.Key, local.Value, local.Secret, device, local.ChangedAt ?? now, evidence);
+                            recorded.Add(section.Key);
+                        }
+                        // An account's copy holds every setting it has, so a switch can give it back; a default one at the
+                        // lowest revision, so it never replaces a choice made anywhere.
+                        else if (account && entry is null)
+                        {
+                            document = document.Put(section.Key, local.Value, local.Secret, device, local.ChangedAt ?? now, KeptRevision);
+                            recorded.Add(section.Key);
+                        }
                     }
                     observed[section.Key] = digest;
                 }
@@ -287,7 +309,7 @@ public sealed class SharedSettingsNode
 
     /// <summary>Makes this computer's files hold this node's settings, as when an account signs in here: every section takes its
     /// entry in this copy, or its <see cref="ISharedSection.Default"/> when the copy has none (a section without a default, or
-    /// already at its default, keeps what this computer has). What the files held before (another account's settings) is never
+    /// holding exactly it, keeps what this computer has). What the files held before (another account's settings) is never
     /// recorded as a change of this node's: a section that can't take its value yet waits, is tried again on every
     /// <see cref="SyncAsync"/>, and is recorded only once the files hold it. Safe to run again. Returns the sections still
     /// waiting, with why.</summary>
@@ -309,14 +331,16 @@ public sealed class SharedSettingsNode
         SharedSettingsState.Save(directory, Document, observed);
         invalidate?.Invoke();
         var waiting = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var section in sections) await AdoptSectionAsync(section, Document, waiting, token);
+        foreach (var section in sections)
+            if (await AdoptSectionAsync(section, Document, waiting, token) is { Document: { } kept }) Document = kept;
         Waiting = waiting;
         SharedSettingsState.Save(directory, Document, observed);
         return waiting;
     }
 
-    // Gives one section this node's value (its entry, else its default) and records what then reads back as seen.
-    private async Task<(bool Adopted, SharedLocal? Local)> AdoptSectionAsync(ISharedSection section, SharedSettings document,
+    // Gives one section this node's value (its entry, else its default) and records what then reads back as seen; an account's
+    // node also records it in its copy when the copy had none, so the copy is whole (the same default comes back next time).
+    private async Task<(bool Adopted, SharedLocal? Local, SharedSettings Document)> AdoptSectionAsync(ISharedSection section, SharedSettings document,
         Dictionary<string, string> waiting, CancellationToken token)
     {
         var entry = document.Find(section.Key);
@@ -325,11 +349,11 @@ public sealed class SharedSettingsNode
         catch (Exception error) when (error is not OperationCanceledException)
         {
             waiting[section.Key] = error is ContractException ? error.Message : $"Couldn't read it here: {error.Message}";
-            return (false, null);
+            return (false, null, document);
         }
-        // Without an entry the files take the default, unless they hold nothing for this setting yet (nothing of another
-        // account's to replace, and a new computer's files are not made just for a default) or hold the default already.
-        var value = entry?.Value ?? (local is null or { IsDefault: true } ? null : section.Default);
+        // Without an entry the files take the default (they hold another account's value, whatever it looks like), unless they
+        // hold nothing for this setting yet (a new computer's files are not made just for a default) or exactly the default.
+        var value = entry?.Value ?? (local is null ? null : section.Default);
         var holds = local is not null && (entry is not null ? entry.Holds(local.Value, local.SecretSha256)
             : string.Equals(local.Value, value, StringComparison.Ordinal) && local.Secret is null);
         if (value is not null && !holds)
@@ -338,7 +362,7 @@ public sealed class SharedSettingsNode
             if (entry?.SecretSha256 is not null && secret is null)
             {
                 waiting[section.Key] = "Its API key hasn't reached this PC yet.";
-                return (false, null);
+                return (false, null, document);
             }
             var setting = entry ?? new SharedSetting
             {
@@ -350,7 +374,7 @@ public sealed class SharedSettingsNode
             if (!result.Applied)
             {
                 waiting[section.Key] = result.Note ?? "Not yet.";
-                return (false, null);
+                return (false, null, document);
             }
             invalidate?.Invoke();
             try { local = await section.ReadAsync(token); }
@@ -363,7 +387,9 @@ public sealed class SharedSettingsNode
             if (local.Secret is { } own) secrets[SharedSettings.Sha256(own)] = own;
         }
         mismatched.Remove(section.Key);
-        return (true, local);
+        if (account && entry is null && local is not null)
+            document = document.Put(section.Key, local.Value, local.Secret, device, DateTimeOffset.UtcNow, KeptRevision);
+        return (true, local, document);
     }
 
     /// <summary>Records <paramref name="value"/> for <paramref name="key"/>, an entry this computer has no section for (asking
