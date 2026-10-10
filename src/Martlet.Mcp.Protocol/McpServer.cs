@@ -492,6 +492,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("accounts_status", "Read who uses Martlet on a desktop's data directory (docs/ACCOUNTS.md): this device's ID; the " +
+            "account session (accounts\\session.json: none, loaded or unreadable; whether its Windows login is the " +
+            "MARTLET_SIMULATE_WINDOWS_LOGIN fixture), the account in use and each account signed in on this device (ID as 32 hex " +
+            "digits, display name, role, whether it still waits to reach the household's directory, whether its folder " +
+            "accounts\\<id> exists), the household's owner account; and this PC's copy of the account directory (accounts.json: " +
+            "how many accounts, removed and owners, its revision, and per account its ID, name, role, login kinds, how many devices " +
+            "it is signed in on, whether this device is one, who created and last changed it, and when). Never a SID, e-mail, " +
+            "signature or attestation. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("outside_reachability_check", "Check how each host in this PC's Martlet network (network.json in a data directory) can " +
             "be reached: its home address and each owner-set outside address (overlay or port forward), each dialed directly, checked " +
             "against the host key pinned in the roster and asked GET /health/live (no credential, nothing else). Returns per host which " +
@@ -2307,6 +2318,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
                 "account_security_status" => AccountSecurityStatus.Read(DataDirectory(arguments)),
+                "accounts_status" => AccountsStatus.Read(DataDirectory(arguments)),
                 "outside_reachability_check" => await OutsideReachabilityAsync(arguments, cancellation),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
             "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
