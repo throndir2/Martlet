@@ -390,8 +390,9 @@ public sealed class AppSettingsSections
         var result = await LoadAsync(token).ConfigureAwait(false);
         if (result.Settings?.Companion is not { } companion) return null;
         var persona = companion.Personas.Count == 1 ? companion.Personas[0] : null;
+        // Character profiles are a choice too: a companion with any is not Martlet's default.
         var isDefault = persona is not null && persona.Name == "Martlet" && persona.Text == CompanionSettings.Create().Personas[0].Text &&
-            persona.Breaks is null;
+            persona.Breaks is null && companion.CharacterList.Count == 0;
         return new(Write(companion), null, isDefault, SettingsTime());
     }
 

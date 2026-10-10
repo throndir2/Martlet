@@ -458,6 +458,13 @@ sections ([Scopes](#scopes)).
   *adopting*. It is tried again on every sync and is never recorded as the
   incoming account's choice until the files hold it. If the step fails, the
   files go back to the outgoing account's settings and the marker stays.
+- **An account's copy is whole.** Every setting the files hold that the copy
+  lacks is recorded, also when it is Martlet's default (with
+  `SharedSettingsNode.KeptRevision`, the lowest revision, so any choice made
+  anywhere wins over it). The default a new account takes is recorded the same
+  way, so it comes back unchanged (the same personality ID). A new account
+  takes each setting's default unless the files hold exactly that value; the
+  files' value is never kept because it looks like a default.
 - **Older desktops and older hosts.** An older Martlet keeps every setting in
   the household document. While the owner is signed in, the desktop merges the
   account entries of the household document into the owner's account copy, and
