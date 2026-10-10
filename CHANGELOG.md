@@ -12,6 +12,10 @@ Each release's section here is also its notes on GitHub.
 
 - Martlet now treats background sounds and voices as context instead of ignoring them, and answers someone in your call or room who clearly talks to it. ([#711](https://github.com/throndir2/Martlet/pull/711))
 
+### Fixed
+
+- Changing a host's conversation model to a bigger one (such as `gemma4:12b` on a 16 GB graphics card) no longer stops with "Check the host's disk space and network": if the new model doesn't load beside the old one, the host unloads the old one and tries again. ([#712](https://github.com/throndir2/Martlet/pull/712))
+
 ## [0.65.0] - 2026-10-09
 
 ### Added
