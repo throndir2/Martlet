@@ -34,14 +34,16 @@ public partial class MainWindow
     // ---------- the account and the household entries ----------
 
     /// <summary>The account signed in now, or null without accounts.</summary>
-    private Guid? SharingAccount => null;
+    private Guid? SharingAccount => accounts?.AccountId;
 
     /// <summary>Whether this PC's settings files hold the signed-in account's settings now (never in the middle of a switch), so
     /// what it shares is read from its own characters.</summary>
-    private bool SharingFilesReady() => SharingAccount is not null;
+    private bool SharingFilesReady() => accounts is { Switching: false };
 
-    /// <summary>A household member's name, for *Shared by*.</summary>
-    private string AccountName(Guid account) => "someone in your household";
+    /// <summary>A household member's name, for *Shared by*: from the account directory, else an account signed in on this PC.</summary>
+    private string HouseholdMemberName(Guid account) =>
+        accounts?.Directory.Find(account) is { Removed: false } entry ? entry.Name
+        : accounts?.SignedIn.FirstOrDefault(a => a.Id == account)?.Name ?? "someone in your household";
 
     /// <summary>Every account's household sharing entry in this PC's copy of the household settings.</summary>
     private IReadOnlyDictionary<Guid, HouseholdSharing> HouseholdEntries() =>
@@ -137,7 +139,7 @@ public partial class MainWindow
                 }
                 var name = companion.CharacterList.FirstOrDefault(c => c.Id == joined.CharacterId)?.Name ?? "A character";
                 if (!await LeaveMirrorAsync(joined.CharacterId)) return;
-                notes.Add($"{AccountName(joined.AccountId)} no longer shares '{name}' together, so it left your characters.");
+                notes.Add($"{HouseholdMemberName(joined.AccountId)} no longer shares '{name}' together, so it left your characters.");
                 ErrorLog.Info($"Sharing: a character shared together ({joined.CharacterId.ToString("N")[..8]}) is no longer shared; it left this account's characters.");
                 changed = true;
                 if (await SharingSourcesAsync(lifetime.Token) is not { } after) return;
@@ -190,6 +192,40 @@ public partial class MainWindow
             _ => $"'{profile.Name}' is private again. Copies people made stay theirs."
         };
         if (openTab == CompanionTab.Profiles) RenderTab();
+    }
+
+    // ---------- your memories ----------
+
+    /// <summary>Whether new facts about the signed-in person go to the household memory space (*Share new memories about me*).</summary>
+    internal bool ShareNewMemoriesAboutMe => OwnSharing()?.NewFactsAboutMe == true;
+
+    /// <summary>The voices that are the signed-in person: those the account directory links to the account, else the voice marked
+    /// *This is me* on People.</summary>
+    internal IReadOnlySet<string> MyVoices() =>
+        MemorySharing.MyVoices(SharingAccount is { } me ? accounts?.Directory.Find(me)?.Voices : null, localVoices.Roster);
+
+    /// <summary>Turns *Share new memories about me* on or off: in the household entry (it works on every PC), and in the account
+    /// directory entry's <c>sharing.memories_about_me</c> when the account is there already.</summary>
+    internal async Task<bool> SetShareNewMemoriesAboutMeAsync(bool on)
+    {
+        if (!await ChangeOwnSharingAsync(own => own.WithNewFactsAboutMe(on))) return false;
+        ErrorLog.Info($"Sharing: new facts about this person {(on ? "go to the household's memories" : "stay in the account's memories")}.");
+        if (accounts?.Directory.Find(accounts.AccountId) is { Removed: false } entry && entry.Sharing.MemoriesAboutMe != on && store is not null &&
+            networkState.Roster is not null)
+        {
+            try
+            {
+                using var key = NetworkIdentity.LoadOrCreate(store.DataDirectory, NetworkIdentity.DeviceId(homeHosts));
+                accounts.Follow(accounts.Directory.Put(key, entry with { Sharing = entry.Sharing with { MemoriesAboutMe = on } }, DateTimeOffset.UtcNow), []);
+                QueueAccountsSync();
+            }
+            catch (Exception error) when (error is ContractException or System.IO.IOException or UnauthorizedAccessException or
+                InvalidOperationException or System.Security.Cryptography.CryptographicException)
+            {
+                ErrorLog.Warn("Sharing: couldn't write Share new memories about me into the household's account directory.", error);
+            }
+        }
+        return true;
     }
 
     /// <summary>A removed character of yours is no longer shared.</summary>
@@ -290,7 +326,7 @@ public partial class MainWindow
                 : "Shared together. Talk to it to add it to your profiles.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = character.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            text.Children.Add(Note($"Shared by {AccountName(owner)} · Look: {LookName(character.ModelId, library)} · Voice: {VoiceName(character.VoiceId, voices)}",
+            text.Children.Add(Note($"Shared by {HouseholdMemberName(owner)} · Look: {LookName(character.ModelId, library)} · Voice: {VoiceName(character.VoiceId, voices)}",
                 new Thickness(0, 2, 0, 0)));
             var stateText = Note(state + (problem is null ? "" : " " + problem), new Thickness(0, 2, 0, 0));
             AutomationProperties.SetAutomationId(stateText, "HouseholdCharacterState-" + character.Key);
