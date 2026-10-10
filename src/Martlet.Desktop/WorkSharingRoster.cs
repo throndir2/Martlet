@@ -67,9 +67,16 @@ internal static partial class WorkSharingRoster
     /// that does it there; <paramref name="model"/>, when given, the model it must run. Without <paramref name="planned"/>, only
     /// the computers the plan says run it.</summary>
     internal static IReadOnlyList<(PairedHost? Host, string? Model)> Order(string? directory, string job, string roleKind, string? model,
-        string? planned)
+        string? planned) =>
+        [.. Places(directory, job, roleKind, model, planned).Where(p => p.Cloud is null).Select(p => (p.Host, p.Model))];
+
+    /// <summary><see cref="Order"/> with the area's other members in their turn: each stop is a paired computer (with its model)
+    /// or, for Speaking and Listening, a cloud member <paramref name="cloud"/> says can take it on this PC (it has a key here).
+    /// Without <paramref name="cloud"/>, only computers.</summary>
+    internal static IReadOnlyList<(PairedHost? Host, string? Model, PoolMember? Cloud)> Places(string? directory, string job, string roleKind,
+        string? model, string? planned, Func<PoolMember, bool>? cloud = null)
     {
-        if (directory is null) return [(null, null)];
+        if (directory is null) return [(null, null, null)];
         var hosts = Hosts(directory);
         var plan = Cached(Path.Combine(directory, ClusterSync.PlanFile), () => ClusterSync.LoadPlan(directory));
         var own = OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
@@ -77,13 +84,15 @@ internal static partial class WorkSharingRoster
             .Select(n => (Node: n, Role: n.Roles.FirstOrDefault(r => r.Kind == roleKind && (model is null || r.Model == model))))
             .Where(p => p.Role is not null)
             .ToDictionary(p => p.Node.HostId, p => p.Role!.Model, StringComparer.Ordinal);
-        (PairedHost? Host, string? Model) Place(string id) => id == planned ? (hosts.FirstOrDefault(h => h.HostId == id), (string?)null)
-            : (hosts.First(h => h.HostId == id), runs[id]);
+        (PairedHost? Host, string? Model, PoolMember? Cloud) Place(string id) => id == planned
+            ? (hosts.FirstOrDefault(h => h.HostId == id), (string?)null, null)
+            : (hosts.First(h => h.HostId == id), runs[id], null);
         // Speaking's, Listening's and Thinking's pool list (Companion › Voice, Listening, Thinking), once it has one: its members
         // in the owner's order. The other pooled areas route their own lists.
         if (PoolAreas.Find(job) is { } area && (area == PoolAreas.Speaking || area == PoolAreas.Listening || area == PoolAreas.Thinking) &&
             Pool(directory, area) is { } list)
-            return [.. PoolHosts(area, list, planned, own, runs.Keys.ToHashSet(StringComparer.Ordinal)).Select(Place)];
+            return [.. PoolRouting.Stops(area, list, Device, planned, own, runs.Keys.ToHashSet(StringComparer.Ordinal), cloud)
+                .Select(stop => stop.HostId is { } id ? Place(id) : (null, null, stop.Member))];
         var places = runs.Keys.Select(id => new WorkPlace(id, id == own,
             plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == id))).ToArray();
         var order = WorkSharing.Order(Settings(directory), job, Device, planned, places);
@@ -134,7 +143,8 @@ internal static partial class WorkSharingRoster
             WorkRefusal.Unavailable,
         HostTextException { Code: ProviderFailureCode.ModelNotFound or ProviderFailureCode.CredentialUnavailable } => WorkRefusal.Unavailable,
         HttpRequestException or IOException => WorkRefusal.Unavailable,
-        _ => WorkRefusal.None
+        // A cloud member of the list: a rate limit is busy, a missing key or an outage is unavailable (PoolCloud).
+        _ => PoolCloud.Refusal(error)
     };
 
     private static readonly Dictionary<string, long> OwnerNoticed = new(StringComparer.Ordinal);

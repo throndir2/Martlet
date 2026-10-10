@@ -254,13 +254,7 @@ public partial class MainWindow
         if (SelfHostSetup.IsGateway(route.RouteType) && route.Gateway is { } gateway)
             return gateway.HostId == ThisPcHost()?.HostId && !area.ConversationFirst ? PoolMember.ThisPc() : PoolMember.Computer(gateway.HostId);
         if (RunsHereWithoutHost(route)) return PoolMember.ThisPc();
-        var member = route.RouteType switch
-        {
-            null or SetupRouteType.OpenAi => PoolMember.Cloud("openai", route.ModelId),
-            SetupRouteType.ElevenLabs => PoolMember.Cloud("elevenlabs", route.ModelId),
-            SetupRouteType.ChatCompletions => PoolMember.Cloud("chat-completions", route.ModelId, route.Origin.TrimEnd('/')),
-            _ => null
-        };
+        var member = PoolCloud.MemberOf(route);
         return member is not null && route.Consent is not null ? member.WithConsent(area.Id, DateTimeOffset.UtcNow) : member;
     }
 
@@ -273,7 +267,17 @@ public partial class MainWindow
         var made = false;
         foreach (var (area, role, job) in RoutePools)
         {
-            if (WorkSharingRoster.Pool(store.DataDirectory, area) is not null) continue;
+            if (WorkSharingRoster.Pool(store.DataDirectory, area) is { } existing)
+            {
+                // A graphics card of a computer is one row for its computer here: a host runs one route per engine.
+                if (existing.Members.Any(m => m.Kind == PoolMemberKind.Gpu))
+                {
+                    var rows = existing.Members.Select(m => m.Kind == PoolMemberKind.Gpu ? m with { Kind = PoolMemberKind.Computer, Card = null } : m)
+                        .DistinctBy(m => m.Key).ToArray();
+                    made |= PoolSettings.SaveFor(store.DataDirectory, area, existing with { Members = rows });
+                }
+                continue;
+            }
             var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role);
             var list = PoolMigration.FromWorkSharing(area, SharingSettings(), RouteMember(area, route), SharingPlaces(job));
             // Nothing to keep: no list yet, so a new computer never shares an empty list over another computer's choices.
@@ -296,10 +300,19 @@ public partial class MainWindow
         var known = poolRouteSeen.TryGetValue(area.Id, out var seen);
         poolRouteSeen[area.Id] = member?.Key;
         if (member is null || route!.Enabled == false || WorkSharingRoster.Pool(store.DataDirectory, area) is not { } list) return;
+        // A cloud route's key stays the member's own (pool-keys.json), so it can take its turn after the route moves elsewhere.
+        if (member.Kind == PoolMemberKind.Cloud && route.CredentialId is { } credential)
+        {
+            var keys = PoolKeys.Load(store.DataDirectory);
+            if (keys.For(area.Id, member.Key) != credential && keys.With(area.Id, member.Key, credential).Save(store.DataDirectory))
+                WorkSharingRoster.Forget();
+        }
         PoolList next;
         if (list.Find(member.Key) is null) next = list with { Members = [member, .. list.Members] };
         else if (known && seen != member.Key && list.Members.FirstOrDefault(m => !m.Off)?.Key != member.Key)
             next = list.With(list.Find(member.Key)! with { Off = false }).Move(member.Key, -PoolSettings.MaximumMembers);
+        else if (member.Setting(PoolSettingKeys.Voice) is { } voice && list.Find(member.Key)!.Setting(PoolSettingKeys.Voice) != voice)
+            next = list.With(list.Find(member.Key)!.WithSetting(PoolSettingKeys.Voice, voice));
         else return;
         if (!PoolSettings.SaveFor(store.DataDirectory, area, next)) return;
         WorkSharingRoster.Forget();
@@ -398,8 +411,10 @@ public partial class MainWindow
                     : check?.Reachable == false ? "not reachable right now"
                     : check?.Reachable == true ? $"doesn't run {job.Engine} yet" : "not checked yet");
             }
-            if (member.Kind == PoolMemberKind.Gpu) parts.Add("its computer picks the card until each card runs its own engine");
-            if (member.Kind == PoolMemberKind.Cloud && member.Key != routeMember?.Key) parts.Add("used when it is first in the list");
+            if (member.Kind == PoolMemberKind.Cloud && member.Key != routeMember?.Key)
+                parts.Add(PoolCloud.Usable(store?.DataDirectory, role, member)
+                    ? "takes a request in its turn when the ones before it are busy or don't answer"
+                    : "can't take a turn on this PC yet: set it up below and choose Use once, so its key is here");
             return parts.Count == 0 ? null : string.Join("; ", parts);
         }
         UIElement? Settings(PoolMember member)

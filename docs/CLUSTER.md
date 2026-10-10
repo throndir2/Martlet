@@ -231,7 +231,7 @@ each list you can:
 | **Remove** | Takes the member out of the list |
 | **Settings** | Shows the member's own settings: *Change model* on a computer, and the place's own card under the list (voice engine, speech recognizer, cloud provider with its key and consent) |
 | *Every companion PC* / *Only* | Keeps the member for one companion PC: no other companion PC sends it work |
-| **Add to the list** | This PC, each paired computer, each graphics card of a computer with two or more, and a cloud provider (set up under the list; Use puts it first) |
+| **Add to the list** | This PC, each paired computer and a cloud provider (set up under the list; Use puts it first, and Down moves it to its turn). Areas that take graphics cards (lip-sync, vision, hearing...) also offer each card of a computer with two or more |
 
 Thinking is different: the conversation's own model always goes first, so
 nothing changes while it is free and no latency is added. Its list holds only
@@ -259,9 +259,21 @@ speaks on its own Chatterbox, machine 3 on its own, and machine 2 on machine
 1, or machine 3 when machine 1 is busy, or whichever of the two finishes first
 when both are. Keeping machine 3 for itself leaves machine 2 only machine 1.
 
-Cloud members of Speaking and Listening are used when they are first in the
-list (the route is that provider); a cloud member after a computer is shown in
-the list but host requests don't fall back to it yet.
+A cloud member of Speaking or Listening takes a request in its turn
+(`PoolCloud`, `PoolRouting.Stops`). When the members before it are busy or
+don't answer, the request goes to it through the same queue, under its member
+key. A free first member takes the request at once, so the cloud member adds no
+latency and is never asked. It uses its own key: the credential ID in
+`pool-keys.json` (recorded when its route was in use on this PC), else the key
+of the route the job kept aside when it moved to a computer. It also uses the
+owner's agreement recorded on the member. OpenAI and ElevenLabs voices give the
+same 24 kHz mono PCM16 as a host's voice, and OpenAI transcribes the same
+16 kHz recording. A rate limit (429) counts as busy; a missing key, a refused
+key, an exhausted quota or an outage counts as not answering. A cloud member
+without its key on this PC says so on the list and is skipped. When a cloud
+member is first, the route is that provider and the conversation calls it
+directly. Speaking, Listening and Thinking take one row per computer and no
+graphics card: a host runs one route per engine.
 Lip-sync goes to a pool of the places that run Audio2Face through the same
 queue, without a card here ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)).
 Pictures go through each PC's Pictures list (`PicturePool`, lane `pictures`): a

@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- A cloud provider in the Voice or Listening list now helps in its turn: when the computers before it are busy or don't answer, it speaks or listens instead, with its own key. While the first computer is free, nothing changes. ([#730](https://github.com/throndir2/Martlet/pull/730))
 - The character's lip-sync now uses every one of your computers that runs Audio2Face: when the one doing it is busy with another companion PC, the next one moves the mouth instead of falling back to voice loudness for half a minute. ([#728](https://github.com/throndir2/Martlet/pull/728))
 - Pictures now go to whichever of your picture computers is free: when the one you chose is busy drawing, doesn't answer or lacks the checkpoint or workflow, another computer with the Pictures role draws instead, and when all are busy the picture waits on the one with the shortest line. Each computer also frees its own graphics card a few minutes after its last picture. ([#727](https://github.com/throndir2/Martlet/pull/727))
 - When your image or audio model is busy, offline or can't fit beside Thinking, Martlet now hands the picture or recording to the next model in your Thinking pool that can see or hear, and waits for the first free one when all are busy. A cloud model gets pictures and recordings only when you allowed it, and the conversation's own Thinking model never does. ([#726](https://github.com/throndir2/Martlet/pull/726))
