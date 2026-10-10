@@ -306,6 +306,9 @@ internal sealed class LiveConversationOperation
     /// <summary>How many things Martlet said lately went in this request's notes (What you said lately; SaidLately): only what
     /// Martlet says on its own carries them.</summary>
     internal int SaidLately { get; set; }
+    /// <summary>What a look went without because it didn't fit Thinking's context size (LiveConversationController.LookReadText
+    /// and the rest), in the order it was left out; empty when everything fit.</summary>
+    internal IReadOnlyList<string> LookLeftOut { get; set; } = [];
     /// <summary><paramref name="text"/> (a message as the conversation keeps it) with <see cref="BoardKept"/> as its last line.</summary>
     internal string? WithBoardKept(string? text) => text is null || BoardKept is null ? text : text + "\n" + BoardKept;
     internal ListeningOptions? Listening { get; init; }
@@ -1776,6 +1779,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// only the look's [Screen] line, never this text.</summary>
     internal static string GlanceMessage(string prompt, string? read) => read is null ? prompt : prompt + "\n\n" + read;
 
+    // What a look too long for Thinking's context size goes without, in this order (RunCommentaryAsync), in the log's words.
+    internal const string LookReadText = "the text read on the screen";
+    internal const string LookNotes = "the context notes and what Martlet said lately";
+    internal const string LookGaze = "the look tags";
+    internal const string LookActions = "the character's emotes and motions";
+
     /// <summary>The Text on screen prompt for a look's read text; null when there is none or the prompt is emptied.</summary>
     internal static string? ReadOnScreen(PromptSettings? prompts, string? screenText) =>
         string.IsNullOrWhiteSpace(screenText) ? null
@@ -1820,6 +1829,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 .ConfigureAwait(false);
             ConversationTurn turn;
             ContextBoardSnapshot board;
+            var boardSent = true;
             lock (gate)
             {
                 operation.Authorization.Check(worker);
@@ -1835,17 +1845,58 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Described: the image model's words go in the message in place of the picture, with no seen tag and no look
                 // tags (only the picture tells where to look); the instructions say what the words are.
                 var note = described is null ? null : PictureDescriptions.Note(configured.Prompts, described) ?? described.Text;
-                var request = configured.Request(new(note is null ? GlanceMessage(prompt, read) : PictureDescriptions.GlanceMessage(prompt, note, read)),
-                    operation.Authorization.Voice, history, null, lore,
-                    out var usedHistory, out _, out var usedLore, note is null ? image : null,
-                    Join(LiveConversationConfiguration.Moment(configured.Prompts), configured.AdultInstructions,
-                        LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides, described: note is not null)),
-                    LiveConversationConfiguration.SilentReply, characterActions: characterActions,
-                    gaze: look && note is null ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
-                    chattiness: decides ? configured.ChattinessNote(level) : null,
-                    controlTags: LiveConversationConfiguration.ControlTags(decides, picture: note is null, configured.Prompts),
-                    board: Join(board.Text, lately));
-                operation.SaidLately = latelyCount;
+                var gaze = look && note is null;
+                // A look too long for Thinking's context size (the earlier exchanges and lore entries already left out) goes
+                // without, in turn: the text read on the screen, the context board's notes with what Martlet said lately, the
+                // look tags, then the character's emotes and motions. The picture and the persona always go.
+                var optional = new List<string>();
+                if (read is not null) optional.Add(LookReadText);
+                if (board.Text is not null || lately is not null) optional.Add(LookNotes);
+                if (gaze) optional.Add(LookGaze);
+                if (characterActions?.Invoke(operation.Authorization.Voice ? configured.SpeakingEngine() : null, configured.Prompts) is not null)
+                    optional.Add(LookActions);
+                var leftOut = 0;
+                ConversationRequest request;
+                int usedHistory, usedLore;
+                while (true)
+                {
+                    var without = optional.Take(leftOut).ToArray();
+                    try
+                    {
+                        var withRead = without.Contains(LookReadText) ? null : read;
+                        request = configured.Request(new(note is null ? GlanceMessage(prompt, withRead) : PictureDescriptions.GlanceMessage(prompt, note, withRead)),
+                            operation.Authorization.Voice, history, null, lore,
+                            out usedHistory, out _, out usedLore, note is null ? image : null,
+                            Join(LiveConversationConfiguration.Moment(configured.Prompts), configured.AdultInstructions,
+                                LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides, described: note is not null)),
+                            LiveConversationConfiguration.SilentReply, characterActions: without.Contains(LookActions) ? null : characterActions,
+                            gaze: gaze && !without.Contains(LookGaze) ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
+                            chattiness: decides ? configured.ChattinessNote(level) : null,
+                            controlTags: LiveConversationConfiguration.ControlTags(decides, picture: note is null, configured.Prompts),
+                            board: without.Contains(LookNotes) ? null : Join(board.Text, lately));
+                        boardSent = !without.Contains(LookNotes);
+                        operation.LookLeftOut = without;
+                        if (without.Length > 0)
+                            ErrorLog.Info($"Vision: the {(camera ? "camera look" : "screen glance")} didn't fit Thinking's context size " +
+                                $"({configured.Context.Describe()}), so it went without {string.Join(", ", without)}.");
+                        break;
+                    }
+                    catch (LiveActionException error) when (error.Code == "conversation.input_limit")
+                    {
+                        if (leftOut < optional.Count)
+                        {
+                            leftOut++;
+                            continue;
+                        }
+                        ErrorLog.Warn($"Vision: a {(camera ? "camera look" : "screen glance")} doesn't fit Thinking's context size " +
+                            $"({configured.Context.Describe()}: about {configured.TextInputTokens:N0} tokens for the request, at most " +
+                            $"{configured.TextLimits.MaxInputBytes:N0} bytes of text), even without anything a look can leave out. The persona " +
+                            $"is about {BoundedTextInput.TextTokens(persona?.Text):N0} tokens and the picture " +
+                            $"{(note is null ? BoundedImage.TokenReservation : BoundedTextInput.TextTokens(note)):N0}.");
+                        throw;
+                    }
+                }
+                operation.SaidLately = boardSent ? latelyCount : 0;
                 operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
@@ -1858,9 +1909,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
             }
-            BoardSent(board);
-            operation.BoardNotes = board.Notes.Count;
-            operation.BoardKept = board.KeptText;
+            if (boardSent)
+            {
+                BoardSent(board);
+                operation.BoardNotes = board.Notes.Count;
+                operation.BoardKept = board.KeptText;
+            }
             // Nothing else waited (that would have made it a reply that takes the look along): the look alone.
             operation.Inputs = MomentTurn.Describe(false, 0, described is null, operation.Attention?.Plain, 0, contextNotes: operation.BoardNotes,
                 said: operation.SaidLately, described: described is not null);

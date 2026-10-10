@@ -48,6 +48,7 @@ internal static class ContextCheck
                 budget.Tokens, source = budget.Source.ToString(), budget.ReplyTokens, budget.InputTokens, budget.ModelTokens,
                 described = budget.Describe()
             },
+            look = budget is null ? null : Look(budget, thinking!, loaded.Settings?.Companion?.ActivePersona?.Text),
             probe = await ProbeAsync(cancellation),
             fit = Fit(),
             cache = await CacheAsync(cancellation)
@@ -267,6 +268,29 @@ internal static class ContextCheck
 
     /// <summary>A long synthetic conversation (1,000 exchanges, about 900 KB; NOT anything said) fitted the way a reply fits it,
     /// for each kind of route: a cloud model at Martlet's default and at 1,000,000 tokens, a paired host and Ollama on this PC.</summary>
+    /// <summary>How much of the context a screen glance or camera look has for Martlet's own instructions, its message and its
+    /// notes once the active persona and the picture are in (estimated as the desktop estimates them). When those don't fit,
+    /// the look leaves out, in order, the text read on the screen, the context notes and what Martlet said lately, the look
+    /// tags and the character's emotes and motions; vision stops only when the picture and the persona alone don't fit.</summary>
+    private static object Look(ContextBudget budget, SetupRoute thinking, string? persona)
+    {
+        var personaTokens = BoundedTextInput.TextTokens(persona);
+        var room = budget.InputTokens - personaTokens - BoundedImage.TokenReservation;
+        return new
+        {
+            personaTokens,
+            pictureTokens = BoundedImage.TokenReservation,
+            textTokens = budget.InputTokens,
+            // A paired host's gateway takes at most 16 KiB of text in a whole request, whatever its context size.
+            maxTextBytes = thinking.RouteType == SetupRouteType.GatewayOllama ? BoundedTextInput.HardMaxUtf8Bytes : (int?)null,
+            roomForTheRest = room,
+            leavesOut = "When a look doesn't fit, it goes without the text read on the screen, then the context notes and what Martlet " +
+                "said lately, then the look tags, then the character's emotes and motions (docs/SCREEN_COMMENTARY.md).",
+            problem = room <= 0 ? "The picture and the persona alone don't fit: vision stops. Shorten the persona, or raise " +
+                "Companion > Replies > Context size." : null
+        };
+    }
+
     private static object Fit()
     {
         var history = new List<TextHistoryMessage>();
