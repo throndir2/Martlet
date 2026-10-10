@@ -8,6 +8,10 @@ Martlet measurements**; no GPU/driver/model tuple is qualified yet
 VRAM headroom and measure your own machine. Per-model numbers, with which are
 measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS.md).
 
+**Changing next:** [Recommendation design](RECOMMENDATION_DESIGN.md) adds saved
+recommendation preferences, plans for gaming and for a host that is away, and
+options from the [model catalog](MODEL_CATALOG.md).
+
 **In the app:** the welcome tour's **Recommend a setup for me**, or **Plan a
 setup from scratch** on Home, opens the setup advisor. It asks for
 your goal (balanced, smartest, fastest or private), features and computers. For
