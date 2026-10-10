@@ -1020,7 +1020,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "memory spaces (a fact in one account's space stays apart from other spaces and the old document, and survives a host restart), " +
             "accounts with the hosts' account directory (the owner's memories from before accounts move into the owner's space and sync with " +
             "both its space and the old document; the household space is shared; a device of another account is refused the owner's space " +
-            "and the old document; a desktop on an older Martlet keeps using the old document) and " +
+            "and the old document; a desktop on an older Martlet keeps using the old document), sharing (another account gives a fact to " +
+            "the owner's space through the give route without reading it, and a character's space follows the owner's household sharing " +
+            "entry: open to the household while shared together, the owner's only once private again) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
         Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
             "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +

@@ -1437,7 +1437,13 @@ no account): A's store from before accounts moves into Sam's space
 together with the old document records nothing new and gives both hosts every
 fact; B syncs Sam's space and the household; D shares the household fact but
 is refused Sam's space and the old document; E keeps using the old document,
-and A's next sync brings E's fact into Sam's space; no fact in any desktop data
+and A's next sync brings E's fact into Sam's space; sharing
+([accounts](ACCOUNTS.md#sharing)): D gives a fact to Sam's space through the give
+route (`GiveMemoriesAsync`; the host takes it once, D is still refused Sam's
+space, and A's next sync takes it), and a character space follows Sam's
+household sharing entry (`sharing.<account>`, merged into both hosts' settings):
+shared together, D remembers in it and A reads it; private again, D is refused on
+both hosts and A still syncs it; no fact in any desktop data
 folder while the hosts' copy holds them; and an unsigned request refused (HTTP
 401). Synthetic facts, loopback only; the folder is deleted.
 
@@ -3685,7 +3691,21 @@ remembered, changed or forgotten elsewhere (remembering after a reply,
 the `MemoryStorageSection` and `MemoryExportSection` expanders are passive
 clicks; `MemoryDeleteFact` (the selected fact or facts), `MemoryDeleteShown`
 (every fact listed now: one person's or what the search found) and
-`MemoryDeleteAll` ask first and need `--allow-ui-effects`. Their
+`MemoryDeleteAll` ask first and need `--allow-ui-effects`. With accounts the
+Memory window also shares ([Sharing memories](MEMORY.md#sharing-memories)):
+`MemoryShareAboutMe` (*Share new memories about me with the household*,
+`ui_toggle`), `MemoryShareTarget` (*Share selected with*: "The household's
+memories", "<name>'s memories" for each other person, "<name>'s memories (shared
+together)" for each character shared together, chosen with `ui_select`),
+`MemoryShareCopy` and `MemoryShareMove` (enabled with facts selected; select
+facts in `MemoryFacts` with `ui_select` and the fact's words). These change
+memories, so they need `--allow-ui-effects`. `MemoryShareStatus` reads what they
+did, with counts and the kind of place only (*Copied 1 fact to the household's
+memories.*, *Moved 2 facts to another person's memories.*, *New facts about you
+now go to the household's memories.*). A share to another person without a
+paired host puts *Pair a Martlet host to share facts with someone else's
+memories.* in `MemoryFactStatus` and moves nothing. `memory_status` then counts
+the facts of each space. Their
 fields (`CompanionName`, `CompanionText`,
 the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
