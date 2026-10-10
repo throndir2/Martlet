@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- Two people with their own Windows sign-ins on one PC are now two separate computers to your hosts, so pairing Martlet for one no longer replaces the other's pairing. Computers that are already paired keep their ID. ([#744](https://github.com/throndir2/Martlet/pull/744))
+
 ## [0.66.1] - 2026-10-10
 
 ### Fixed
