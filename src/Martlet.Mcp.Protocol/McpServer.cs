@@ -744,7 +744,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "missing); the profile switched to last; which profile matches what Martlet uses now (the active persona, the look " +
             "in avatar.json and the voice the speaking route keeps or the shared list chose); and what each profile keeps on this " +
             "PC (character-profiles-local.json: its place, size, monitor and lock, its usual gaze and whether replies may change " +
-            "it, and which touches stop it while it talks) with the profile whose choices this PC uses. Never returns names. " +
+            "it, and which touches stop it while it talks) with the profile whose choices this PC uses; and how the account in use shares " +
+            "each profile with the household (sharing: private, copy, together, or joined for someone else's character shared together; " +
+            "null without accounts). Never returns names. " +
             "Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -955,9 +957,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "version, size, length, when and on which device it was made, whether Martlet may clean it up, its assets (name, media " +
             "type, size, pieces), whether this PC holds all of it and on how many hosts it is complete; the asset files here (unused " +
             "ones and copies in progress); the last sync (when, its summary, each paired host's state and how many creations it " +
-            "holds); and the limits. Never a title, text, voice or personality. Read-only; contacts nothing.", new
+            "holds); and the limits. Never a title, text, voice or personality. Each account keeps its own creations " +
+            "(docs/ACCOUNTS.md) in accounts\\<32 hex>; with account (32 hex digits or a GUID) it reads that account's, else the " +
+            "account the data folder's creations moved to (creations-moved.json), or the data folder itself before that move. " +
+            "from names the account, the folder read, why it was chosen and the recorded move. Read-only; contacts nothing.", new
         {
-            dataDirectory = new { type = "string" }
+            dataDirectory = new { type = "string" },
+            account = new { type = "string", maxLength = 36 }
         }),
         Tool("creations_check", "Rehearse Martlet's creations end to end with the production code: list_creations and " +
             "perform_creation (Martlet.Conversation.CreationTools) on a disposable folder with the production store and the FIXTURE - " +
@@ -968,7 +974,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "desktop's paired client. Checks FLAC sizes, sharing every 3 MiB piece, skipping unchanged hosts, a new desktop and a " +
             "relay host, resuming an interrupted copy, performing on another computer, an unknown kind passing through, rename, " +
             "delete everywhere (pieces and files deleted), stale copies, a host restart, piece checks, an unsigned request refused, " +
-            "a kind's rules and the per-host sync record. Loopback only; folders are deleted and the credential vault is untouched. " +
+            "a kind's rules and the per-host sync record; then two accounts (docs/ACCOUNTS.md) on one host: each syncs through its " +
+            "own list, the host keeps one pool of pieces (a piece goes only when no list uses it), the owner's sync joins the old " +
+            "single list both ways for desktops on an older Martlet (the owner bridge) and skips an unchanged host, the other " +
+            "account never sees the old list or the owner's creations, and a restart keeps every list. Loopback only; folders are " +
+            "deleted and the credential vault is untouched. " +
             "With seedDataDirectory (a disposable folder under the temporary folder, never Martlet's own), it instead writes two " +
             "FIXTURE - NOT AI test tones there, so the Creations page can be checked with a desktop on that folder.", new
         {
@@ -977,25 +987,43 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
             "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
             "companion, replies, prompts, memory, lorebooks, character, character-actions, talk, speech-display, appearance, " +
-            "voice-recognition, voice-id, smart-home, updates) with which computer changed it and when, its revision, whether it uses an " +
+            "voice-recognition, voice-id, smart-home, updates) with its scope (household or account), which computer changed it and when, " +
+            "its revision, whether it uses an " +
             "API key (never the key or its digest), the provider and model of each job's route, the values of non-personal settings, " +
-            "and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
-            "contacts nothing and reads no credentials.", new
+            "and whether this PC still has the same value (\"same\", \"different\", \"adopting\" while the files don't hold the signed-in " +
+            "account's value yet, or \"unknown\" for its own files). With accounts it also reads accounts\\working-copy.json (whose " +
+            "settings the files hold, and since when) and that account's own copy in accounts\\<id>\\shared-settings.json with the same " +
+            "fields, and lists the account folders on this PC (IDs only). Read-only; contacts nothing and reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
         }),
         Tool("memory_sync_status", "Read one memory on every computer (what Martlet remembers, the same on all the owner's computers " +
             "through the paired hosts) from a data directory's memory-sync.json: whether sync is on, when this PC last synced its memory " +
             "store, how many facts it had then and which computer wrote each version, and how many forgotten facts every computer agreed " +
-            "on. Never a fact or its text. Read-only; contacts nothing.", new
+            "on, for the file from before accounts and for each memory space (spaces: space ID and the same counts, from " +
+            "memory-sync\\<space>\\memory-sync.json). Never a fact or its text. Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
         Tool("memory_status", "Read what Martlet remembers, and whose, from a data directory: whether memory is on and where it is kept " +
             "(settings.json), then the memory store's facts counted by where they came from (typed, conversation), how many expire, and " +
             "whose they are: everyone's, each voice they belong to by its tag from voices.json (V3, whether it is named or the owner's) " +
-            "and those of forgotten voices. Never a fact's text, a name, a voice ID or a path. Read-only (it never opens or locks the " +
+            "and those of forgotten voices; then spaces: each memory space kept in the data folder (an account's own space in " +
+            "accounts\\<id>\\memory, household and character spaces in memory-spaces\\<space>) with its space ID and the same counts. The " +
+            "top-level counts are the store in the memory setting's folder (memories from before accounts until they move to the owner's " +
+            "space, or a custom folder). Never a fact's text, a name, a voice ID or a path. Read-only (it never opens or locks a " +
             "store); contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("household_sharing", "Read what each account of a household shares (docs/ACCOUNTS.md \"Sharing\") from a desktop's data " +
+            "directory: its copy of the household settings (shared-settings.json, the sharing.<account> entries) and the account in use " +
+            "(accounts\\session.json). Per account: its ID (32 hex), how many characters it shares as a copy and together, each shared " +
+            "character's key (first 8 hex digits), mode, memory space when shared together, lorebook and entry counts and whether it sets " +
+            "a look and a voice, the characters shared together it talks to (and whether their owner still shares them), whether new " +
+            "facts about this person go to the household space, the entry's size, writer and time; plus how many household characters " +
+            "the account in use sees and entries that can't be read. Never a name, a personality's text or a lorebook entry. Read-only; " +
+            "contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1005,7 +1033,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Walks saving on one computer and recalling on another, an edit, a deletion reaching every computer (and never coming back), " +
             "offline edits on two computers, a host that missed changes, a new computer taking everything, an expired fact, a full store " +
             "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder, " +
-            "memory spaces (a fact in one account's space stays apart from other spaces and the old document, and survives a host restart) and " +
+            "memory spaces (a fact in one account's space stays apart from other spaces and the old document, and survives a host restart), " +
+            "accounts with the hosts' account directory (the owner's memories from before accounts move into the owner's space and sync with " +
+            "both its space and the old document; the household space is shared; a device of another account is refused the owner's space " +
+            "and the old document; a desktop on an older Martlet keeps using the old document), sharing (another account gives a fact to " +
+            "the owner's space through the give route without reading it, and a character's space follows the owner's household sharing " +
+            "entry: open to the household while shared together, the owner's only once private again) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
         Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
             "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +
@@ -1738,7 +1771,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             live = new { type = "boolean" }
         }),
         Tool("reminders_status", "Martlet's reminders (the reply model's reminders tool: set, list, cancel; docs/CONVERSATION.md#reminders), " +
-            "from a data directory's shared-settings.json: every computer's reminders entry, each reminder's text, due and set times, " +
+            "from the shared-settings.json of the account signed in on a data directory (accounts\\<id>, named by accounts\\working-copy.json; " +
+            "the data directory's own for a folder from before accounts), with which account and copy it read: every computer's reminders entry, each reminder's text, due and set times, " +
             "the computer it was set on, its state (Pending, Done, Canceled, Missed) and who settled it, and each computer's marks " +
             "(Bid with its idle seconds, Claim, Done, Cancel, Missed), plus the tool exactly as the model gets it. Read-only.", new
         {
@@ -2377,7 +2411,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
-                "creations_status" => CreationsCheck.Status(DataDirectory(arguments)),
+                "creations_status" => CreationsCheck.Status(DataDirectory(arguments), OptionalString(arguments, "account")),
                 "creations_check" => OptionalString(arguments, "seedDataDirectory") is { } seed
                     ? await CreationsCheck.SeedAsync(seed, cancellation)
                     : await CreationsCheck.RunAsync(() => NodeLinkCheckAsync(cancellation, "creations"), cancellation),
@@ -2385,6 +2419,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
+                "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
@@ -3644,6 +3679,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var current = companion?.CurrentCharacter(modelNow, voiceNow);
         var profiles = companion?.CharacterList ?? [];
         var (hereState, hereInUse, here) = ProfilesHere(directory);
+        var sharing = HouseholdSharingStatus.Own(directory);
         return new
         {
             state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
@@ -3670,7 +3706,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 },
                 voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
                 inUse = p.Id == current?.Id,
-                here = here.GetValueOrDefault(p.Id)
+                here = here.GetValueOrDefault(p.Id),
+                // How the account in use shares it with the household (household_sharing); null without accounts.
+                sharing = HouseholdSharingStatus.ModeOf(sharing, p.Id)
             }).ToArray()
         };
     }
@@ -4060,7 +4098,43 @@ internal sealed class McpServer(DesktopAutomation desktop)
         try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
         var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
-        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.SharedSettingsState.FileName))) return new { sync, state = "none" };
+        // Each account's settings (docs/ACCOUNTS.md): the account whose settings the data folder's files hold, its own copy, and
+        // the accounts that have a folder here (IDs only).
+        var marker = Martlet.Core.Sync.AccountWorkingCopy.Load(directory);
+        string[] folders;
+        try
+        {
+            var accountsDirectory = Path.Combine(directory, Martlet.Core.Sync.AccountWorkingCopy.DirectoryName);
+            folders = Directory.Exists(accountsDirectory)
+                ? [.. Directory.GetDirectories(accountsDirectory).Select(Path.GetFileName).OfType<string>()
+                    .Where(n => n.Length == 32 && n.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')).Order(StringComparer.Ordinal)]
+                : [];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { folders = []; }
+        object? Account()
+        {
+            if (marker is not { } m) return null;
+            var folder = Martlet.Core.Sync.AccountWorkingCopy.Folder(directory, m.Account);
+            if (!File.Exists(Path.Combine(folder, Martlet.Core.Sync.SharedSettingsState.FileName)))
+                return new { id = m.Account.ToString("N"), filesSince = m.Since, state = "none" };
+            var (own, seen) = Martlet.Core.Sync.SharedSettingsState.Load(folder);
+            return new
+            {
+                id = m.Account.ToString("N"), filesSince = m.Since, state = "loaded", revision = own.Revision, count = own.Settings.Count,
+                settings = Describe(own, seen)
+            };
+        }
+        object Accounts() => new
+        {
+            filesHold = marker?.Account.ToString("N"),
+            folders = folders.Select(id => new
+            {
+                id, settingsCopy = File.Exists(Path.Combine(directory, Martlet.Core.Sync.AccountWorkingCopy.DirectoryName, id,
+                    Martlet.Core.Sync.SharedSettingsState.FileName))
+            }).ToArray()
+        };
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.SharedSettingsState.FileName)))
+            return new { sync, state = "none", account = Account(), accounts = Accounts() };
         var (document, observed) = Martlet.Core.Sync.SharedSettingsState.Load(directory);
         object? Route(Martlet.Core.Sync.SharedSetting setting)
         {
@@ -4086,17 +4160,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             catch (Exception error) when (error is JsonException or Martlet.Core.Contracts.ContractException or KeyNotFoundException or InvalidOperationException) { }
             return null;
         }
+        object[] Describe(Martlet.Core.Sync.SharedSettings copy, IReadOnlyDictionary<string, string> seenHere) => [.. copy.Settings.Select(s => new
+        {
+            key = s.Key, scope = Martlet.Core.Sync.SettingScopes.Of(s.Key), updatedBy = s.UpdatedBy, updatedAt = s.UpdatedAt, revision = s.Revision,
+            usesKey = s.SecretSha256 is not null, characters = s.Value.Length, off = s.Value == "null",
+            here = !seenHere.TryGetValue(s.Key, out var seen) ? "unknown"
+                : seen == Martlet.Core.Sync.SharedSettingsNode.AdoptingDigest ? "adopting"
+                : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
+            value = Route(s)
+        })];
         return new
         {
             sync, state = "loaded", revision = document.Revision, count = document.Settings.Count,
-            settings = document.Settings.Select(s => new
-            {
-                key = s.Key, updatedBy = s.UpdatedBy, updatedAt = s.UpdatedAt, revision = s.Revision, usesKey = s.SecretSha256 is not null,
-                characters = s.Value.Length, off = s.Value == "null",
-                here = !observed.TryGetValue(s.Key, out var seen) ? "unknown"
-                    : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
-                value = Route(s)
-            }).ToArray()
+            settings = Describe(document, observed),
+            account = Account(),
+            accounts = Accounts()
         };
     }
 
@@ -4110,14 +4188,29 @@ internal sealed class McpServer(DesktopAutomation desktop)
         try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
         var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
-        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.MemorySyncState.FileName))) return new { sync, state = "none" };
-        var state = Martlet.Core.Sync.MemorySyncState.Load(directory);
-        return new
+        object Described(Martlet.Core.Sync.MemorySyncState state) => new
         {
-            sync, state = state.StoreId == Guid.Empty ? "unreadable" : "loaded", syncedAt = state.SyncedAt, facts = state.Observed.Count,
+            state = state.StoreId == Guid.Empty ? "unreadable" : "loaded", syncedAt = state.SyncedAt, facts = state.Observed.Count,
             byComputer = state.Observed.Values.GroupBy(s => s.By, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
                 .Select(g => new { device = g.Key, facts = g.Count() }).ToArray(),
             forgotten = state.Forgotten.Count
+        };
+        // Each memory space syncs on its own (memory-sync\<space>\memory-sync.json).
+        var spaces = new List<object>();
+        var folder = Path.Combine(directory, Martlet.Core.Sync.MemorySpaceFolders.SyncFolder);
+        if (Directory.Exists(folder))
+            foreach (var space in Directory.EnumerateDirectories(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal))
+                if (Martlet.Core.Sync.MemorySpaceId.IsValid(space) && File.Exists(Path.Combine(folder, space!, Martlet.Core.Sync.MemorySyncState.FileName)))
+                    spaces.Add(new { space, sync = Described(Martlet.Core.Sync.MemorySyncState.Load(Path.Combine(folder, space!))) });
+        // memory-sync.json in the data folder is from before accounts, until it moves to the owner's space.
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.MemorySyncState.FileName))) return new { sync, state = "none", spaces };
+        var legacy = Martlet.Core.Sync.MemorySyncState.Load(directory);
+        return new
+        {
+            sync, state = legacy.StoreId == Guid.Empty ? "unreadable" : "loaded", syncedAt = legacy.SyncedAt, facts = legacy.Observed.Count,
+            byComputer = legacy.Observed.Values.GroupBy(s => s.By, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { device = g.Key, facts = g.Count() }).ToArray(),
+            forgotten = legacy.Forgotten.Count, spaces
         };
     }
 
@@ -4159,15 +4252,54 @@ internal sealed class McpServer(DesktopAutomation desktop)
             voiceList = "unreadable";
         }
 
+        // Memory spaces (docs/MEMORY.md, "Memory spaces on the desktop"): each account's own space in its folder (accounts\<id>\
+        // memory, or the account's custom folder, which is the folder above) and the other spaces in memory-spaces\<space>.
+        var spaces = new List<object>();
+        var accounts = Path.Combine(directory, Martlet.Core.Sync.MemorySpaceFolders.AccountsFolder);
+        if (Directory.Exists(accounts))
+            foreach (var account in Directory.EnumerateDirectories(accounts).Order(StringComparer.Ordinal))
+                if (Martlet.Core.Sync.MemorySpaceId.IsValid(Martlet.Core.Sync.MemorySpaceId.AccountPrefix + Path.GetFileName(account)) &&
+                    File.Exists(Path.Combine(account, Martlet.Core.Settings.MemorySettings.AppLocalDirectoryName, Martlet.Core.Sync.MemorySpaceFolders.StoreFileName)))
+                    spaces.Add(new { space = Martlet.Core.Sync.MemorySpaceId.AccountPrefix + Path.GetFileName(account),
+                        store = Shaped(await MemoryStoreCountsAsync(Path.Combine(account, Martlet.Core.Settings.MemorySettings.AppLocalDirectoryName), roster, cancellation)) });
+        var others = Path.Combine(directory, Martlet.Core.Sync.MemorySpaceFolders.SpacesFolder);
+        if (Directory.Exists(others))
+            foreach (var space in Directory.EnumerateDirectories(others).Select(Path.GetFileName).Order(StringComparer.Ordinal))
+                if (Martlet.Core.Sync.MemorySpaceId.IsValid(space) &&
+                    File.Exists(Path.Combine(others, space!, Martlet.Core.Sync.MemorySpaceFolders.StoreFileName)))
+                    spaces.Add(new { space, store = Shaped(await MemoryStoreCountsAsync(Path.Combine(others, space!), roster, cancellation)) });
+
+        // The store in the memory setting's folder: this PC's memories from before accounts (until they move into the owner's
+        // space) or the owner's custom folder.
+        var here = await MemoryStoreCountsAsync(folder, roster, cancellation);
+        return here is null ? new { memory, storage, state = "none", voiceList, spaces = (object)spaces }
+            : here.State == "unreadable" ? new { memory, storage, state = "unreadable", voiceList, spaces = (object)spaces }
+            : (object)new { memory, storage, state = "loaded", voiceList, facts = here.Facts, typed = here.Typed,
+                fromConversation = here.FromConversation, expiring = here.Expiring, whose = here.Whose, spaces };
+    }
+
+    private sealed record MemoryCounts(string State, int Facts = 0, int Typed = 0, int FromConversation = 0, int Expiring = 0, object? Whose = null);
+
+    private static object? Shaped(MemoryCounts? counts) => counts is null ? null : new
+    {
+        state = counts.State, facts = counts.Facts, typed = counts.Typed, fromConversation = counts.FromConversation,
+        expiring = counts.Expiring, whose = counts.Whose
+    };
+
+    /// <summary>The counts of one memory store's authoritative file (".martlet-memory.v1.json", the name Martlet.Memory's
+    /// MemoryStore uses), read as JSON without opening or locking the store; null when there is no store there. Counts and voice
+    /// tags only.</summary>
+    private static async Task<MemoryCounts?> MemoryStoreCountsAsync(string folder, Martlet.Core.Speakers.VoiceRoster roster, CancellationToken cancellation)
+    {
         var path = Path.Combine(folder, ".martlet-memory.v1.json");
-        if (!File.Exists(path)) return new { memory, storage, state = "none", voiceList };
+        if (!File.Exists(path)) return null;
         List<(string? Voice, string? Source, string? Retention)> facts = [];
         try
         {
             byte[] bytes;
             await using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             {
-                if (stream.Length > 8 * 1024 * 1024) return new { memory, storage, state = "unreadable", voiceList };
+                if (stream.Length > 8 * 1024 * 1024) return new("unreadable");
                 bytes = new byte[stream.Length];
                 await stream.ReadExactlyAsync(bytes, cancellation);
             }
@@ -4187,25 +4319,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
             InvalidOperationException)
         {
-            return new { memory, storage, state = "unreadable", voiceList };
+            return new("unreadable");
         }
         var owned = facts.Where(f => f.Voice is not null).Select(f => roster.Resolve(f.Voice!)).ToArray();
-        return new
-        {
-            memory, storage, state = "loaded", voiceList,
-            facts = facts.Count,
-            typed = facts.Count(f => f.Source is "user_entry" or "user_reviewed_import"),
-            fromConversation = facts.Count(f => f.Source == "conversation"),
-            expiring = facts.Count(f => f.Retention == "expires_at"),
-            whose = new
+        return new("loaded", facts.Count,
+            facts.Count(f => f.Source is "user_entry" or "user_reviewed_import"),
+            facts.Count(f => f.Source == "conversation"),
+            facts.Count(f => f.Retention == "expires_at"),
+            new
             {
                 everyone = facts.Count(f => f.Voice is null),
                 voices = owned.OfType<Martlet.Core.Speakers.KnownVoice>().GroupBy(v => v.Id, StringComparer.Ordinal)
                     .OrderBy(g => g.First().Number)
                     .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, linked = g.First().Account is not null, facts = g.Count() }).ToArray(),
                 forgottenVoices = owned.Count(v => v is null)
-            }
-        };
+            });
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the
@@ -4538,10 +4666,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
 
-        var lore = await new Martlet.Core.Lorebooks.LorebookStore(directory).LoadAsync(cancellation);
+        // Lorebooks live in the folder of the account whose settings the data folder holds (docs/ACCOUNTS.md); a data folder from
+        // before accounts keeps them itself.
+        var loreFolder = Martlet.Core.Sync.AccountWorkingCopy.Load(directory) is { } signedIn
+            ? Martlet.Core.Sync.AccountWorkingCopy.Folder(directory, signedIn.Account) : directory;
+        var lore = await new Martlet.Core.Lorebooks.LorebookStore(loreFolder).LoadAsync(cancellation);
         object lorebooks = new
         {
-            state = lore.Loaded ? File.Exists(Path.Combine(directory, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            state = lore.Loaded ? File.Exists(Path.Combine(loreFolder, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            account = loreFolder == directory ? null : Path.GetFileName(loreFolder),
             books = lore.Library.Books.Count,
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)

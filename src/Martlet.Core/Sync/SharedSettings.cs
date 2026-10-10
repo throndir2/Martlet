@@ -107,6 +107,14 @@ public sealed record SharedSettings
     /// <summary>This copy without any secret, as a desktop keeps it on disk.</summary>
     public SharedSettings WithoutSecrets() => Secrets.Count == 0 ? this : this with { Secrets = [] };
 
+    /// <summary>Only the entries whose key <paramref name="keep"/> accepts (and the secrets they use), each with its own
+    /// revision and writer, so merging the result into another copy is the same last-writer-wins merge.</summary>
+    public SharedSettings Only(Func<string, bool> keep)
+    {
+        ArgumentNullException.ThrowIfNull(keep);
+        return Bounded(Settings.Where(s => keep(s.Key)), Secrets);
+    }
+
     /// <summary>Joins two copies: per setting the entry with the newest (revision, writer, content) wins; the secrets of both are
     /// pooled and only those a winning entry uses are kept.</summary>
     public static SharedSettings Merge(SharedSettings left, SharedSettings right)

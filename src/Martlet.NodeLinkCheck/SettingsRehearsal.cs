@@ -4,8 +4,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
+using Martlet.Core.Network;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Gateway;
@@ -31,12 +33,27 @@ internal static class SettingsRehearsal
     private const string NvidiaKey = "nvapi-lab-desktop-b-0123456789";
     private const string FallbackKey = "sk-lab-fallback-key-0123456789";
     private const string Parakeet = LocalSpeechSetup.ParakeetV2EnglishModelId;
+    private static readonly Guid SamAccount = Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7");
+    private static readonly Guid AlexAccount = Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0");
+
+    // Text as it appears inside a shared setting's JSON value.
+    private static string Json(string text) => System.Text.Json.JsonSerializer.Serialize(text)[1..^1];
 
     internal static async Task<(bool Ok, object Report)> RunAsync(CancellationToken token)
     {
         var steps = new List<(string Name, bool Ok, string Detail)>();
         var started = DateTimeOffset.UtcNow;
         var root = Path.Combine(Path.GetTempPath(), "martlet-settings-rehearsal-" + Guid.NewGuid().ToString("N"));
+        // The household's account directory on the hosts: a host serves an account's settings only to a device where that account
+        // is signed in (GatewayMemorySpaceAccess.cs). Sam, the owner, and Alex are both signed in on lab-desktop-d.
+        using (var founder = NetworkKey.Create("lab-desktop-d"))
+        {
+            var login = AccountLoginKey.ForWindows("lab-desktop-d", "S-1-5-21-1-2-3-1001");
+            LabHost.Accounts = AccountDirectory.Empty
+                .Put(founder, Account.Create("Sam", AccountRoles.Owner, SamAccount).WithDevice(AccountDevice.For("lab-desktop-d", login, started)), started)
+                .Put(founder, Account.Create("Alex", AccountRoles.Member, AlexAccount).WithDevice(AccountDevice.For("lab-desktop-d", login, started)), started)
+                .Write();
+        }
         await using var h1 = await LabHost.StartAsync("lab-settings-1");
         await using var h2 = await LabHost.StartAsync("lab-settings-2");
         LabHost[] hosts = [h1, h2];
@@ -311,6 +328,86 @@ internal static class SettingsRehearsal
                 return (response.StatusCode != HttpStatusCode.OK && !body.Contains(RotatedKey, StringComparison.Ordinal),
                     $"HTTP {(int)response.StatusCode}, no key in the answer");
             });
+
+            // Accounts (docs/ACCOUNTS.md): D runs this Martlet, with each person's settings apart; A, B and C act as older Martlets.
+            var d = new LabAccountDesktop("lab-desktop-d", Path.Combine(root, "d"));
+            await Run("An updated desktop D signs in as the owner (Sam): Sam's own copy takes the personality the older desktops share", async () =>
+            {
+                foreach (var host in hosts) await d.PairAsync(host);
+                await d.SignInAsync(hosts, SamAccount, token);
+                await d.SyncAsync(hosts, owner: true, token);
+                var text = (await d.SettingsAsync()).Companion!.ActivePersona.Text;
+                var shared = (await a.SettingsAsync()).Companion!.ActivePersona.Text;
+                var samCopy = await d.ReadAccountAsync(h1, SamAccount, token);
+                return (text == shared && samCopy.Find(AppSettingsSections.Companion)?.Value.Contains(Json(shared), StringComparison.Ordinal) == true &&
+                        samCopy.Find(AppSettingsSections.Thinking) is null && AccountWorkingCopy.Load(d.Directory)?.Account == SamAccount,
+                    $"D's personality matches the older desktops': {text == shared}; Sam's copy on lab-settings-1 has {samCopy.Settings.Count} " +
+                    $"setting(s) ({string.Join(", ", samCopy.Settings.Select(s => s.Key))}), no route or key");
+            });
+
+            await Run("The owner edits the personality on older desktop B, then on D: each reaches the other", async () =>
+            {
+                await b.EditPersonaAsync("Martlet helps the owner with the garden.");
+                await b.SyncAsync(hosts, token);
+                await d.SyncAsync(hosts, owner: true, token);
+                var onD = (await d.SettingsAsync()).Companion!.ActivePersona.Text;
+                await d.EditPersonaAsync("Martlet helps the owner with the garden and the bees.");
+                await d.SyncAsync(hosts, owner: true, token);
+                await b.SyncAsync(hosts, token);
+                var onB = (await b.SettingsAsync()).Companion!.ActivePersona.Text;
+                return (onD == "Martlet helps the owner with the garden." && onB == "Martlet helps the owner with the garden and the bees.",
+                    $"D took B's edit: {onD == "Martlet helps the owner with the garden."}; B took D's edit: {onB.EndsWith("bees.", StringComparison.Ordinal)}");
+            });
+
+            await Run("Alex signs in on D: the files take Alex's settings (the default personality), and nothing of Sam's goes into Alex's copy", async () =>
+            {
+                await d.SignInAsync(hosts, AlexAccount, token);
+                await d.SyncAsync(hosts, owner: false, token);
+                var text = (await d.SettingsAsync()).Companion!.ActivePersona.Text;
+                var alexCopy = await d.ReadAccountAsync(h1, AlexAccount, token);
+                var leaked = alexCopy.Settings.Any(s => s.Value.Contains("bees", StringComparison.Ordinal));
+                return (text == CompanionSettings.Create().Personas[0].Text && !leaked && AccountWorkingCopy.Load(d.Directory)?.Account == AlexAccount,
+                    $"D shows the default personality: {text == CompanionSettings.Create().Personas[0].Text}; Sam's words in Alex's copy: {leaked}");
+            });
+
+            await Run("Alex's own personality goes only to Alex's copy: the household copy and the older desktops keep Sam's", async () =>
+            {
+                await d.EditPersonaAsync("Martlet helps Alex practice the cello.");
+                await d.SyncAsync(hosts, owner: false, token);
+                await b.SyncAsync(hosts, token);
+                var alexCopy = await d.ReadAccountAsync(h2, AlexAccount, token);
+                var household = await d.ReadAsync(h1, token);
+                var onB = (await b.SettingsAsync()).Companion!.ActivePersona.Text;
+                return (alexCopy.Find(AppSettingsSections.Companion)?.Value.Contains("cello", StringComparison.Ordinal) == true &&
+                        household.Find(AppSettingsSections.Companion)?.Value.Contains("bees", StringComparison.Ordinal) == true && onB.EndsWith("bees.", StringComparison.Ordinal),
+                    $"Alex's copy on lab-settings-2 has Alex's words; the household copy and B keep Sam's: {onB.EndsWith("bees.", StringComparison.Ordinal)}");
+            });
+
+            await Run("Back to Sam on D: Sam's personality returns; the hosts keep both people's settings apart", async () =>
+            {
+                await d.SignInAsync(hosts, SamAccount, token);
+                await d.SyncAsync(hosts, owner: true, token);
+                var text = (await d.SettingsAsync()).Companion!.ActivePersona.Text;
+                var kept = h1.Server.AccountSettings;
+                return (text == "Martlet helps the owner with the garden and the bees." &&
+                        kept.SequenceEqual(new[] { AlexAccount.ToString("N"), SamAccount.ToString("N") }.Order(StringComparer.Ordinal)),
+                    $"D shows Sam's words: {text.EndsWith("bees.", StringComparison.Ordinal)}; lab-settings-1 keeps settings for {kept.Count} people");
+            });
+
+            await Run("A person's settings never carry an API key, and an unsigned request for them is refused", async () =>
+            {
+                var keyed = SharedSettings.Empty.Put(AppSettingsSections.Companion, "{}", OpenRouterKey, "lab-desktop-d", DateTimeOffset.UtcNow);
+                var refused = false;
+                try { await d.MergeAccountAsync(h1, SamAccount, keyed, token); }
+                catch (ArgumentException) { refused = true; }
+                using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+                using var client = new HttpClient(handler);
+                using var response = await client.GetAsync(h1.Origin + "/martlet/v1/settings/accounts/" + SamAccount.ToString("N"), token);
+                var body = await response.Content.ReadAsStringAsync(token);
+                var leaks = d.FileContains(OpenRouterKey) || d.FileContains(RotatedKey);
+                return (refused && response.StatusCode != HttpStatusCode.OK && !body.Contains("bees", StringComparison.Ordinal) && !leaks,
+                    $"a copy with a key refused before sending: {refused}; unsigned: HTTP {(int)response.StatusCode}; keys in D's files: {leaks}");
+            });
         }
         finally
         {
@@ -328,8 +425,11 @@ internal static class SettingsRehearsal
             scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with an in-memory shared-settings.json, and three " +
                 "simulated desktops using the desktop's paired client, the real sync engine and the real settings sections over real " +
                 "settings.json, lorebooks.json and shared-settings.json files in a temporary folder, with an in-memory stand-in for Windows " +
-                "Credential Manager. Not covered: the desktop window and its 15-second sync, its own preference files (character, how you " +
-                "talk, speech bubbles, theme), the Linux host's files, a real Credential Manager and two real computers on a LAN.",
+                "Credential Manager; a fourth simulated desktop on this Martlet keeps each person's settings apart (the household's node, " +
+                "the signed-in account's node in accounts\\<id>, the owner's bridge to older desktops, switching account) against the " +
+                "hosts' /settings/accounts routes. Not covered: the desktop window and its 15-second sync, its own preference files " +
+                "(character, how you talk, speech bubbles, theme), the account picker, the Linux host's files, a real Credential Manager " +
+                "and two real computers on a LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -508,6 +608,118 @@ internal static class SettingsRehearsal
         }
     }
 
+    /// <summary>A simulated desktop on this Martlet, with accounts: the household's settings on one node, the signed-in account's
+    /// on another in its folder, switched and synced as the desktop does (<see cref="AccountSettingsSync"/>).</summary>
+    private sealed class LabAccountDesktop
+    {
+        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly SharedSettingsNode household;
+        private SharedSettingsNode? account;
+        private Guid? signedIn;
+        internal string DeviceId { get; }
+        internal string Directory { get; }
+        internal LabVault Vault { get; } = new();
+        internal SetupService Setup { get; }
+
+        internal LabAccountDesktop(string deviceId, string directory)
+        {
+            DeviceId = deviceId;
+            Directory = directory;
+            System.IO.Directory.CreateDirectory(directory);
+            Setup = new SetupService(new SettingsStore(directory), Vault);
+            var sections = new AppSettingsSections(Setup, Vault, directory, null);
+            household = new SharedSettingsNode(directory, deviceId, [.. sections.Sections.Where(s => !SettingScopes.IsAccountKey(s.Key))],
+                sections.Invalidate);
+        }
+
+        internal async Task PairAsync(LabHost host)
+        {
+            var card = host.Server.Pairing.OpenWindow(new() { DeviceId = DeviceId, DisplayName = DeviceId.ToUpperInvariant(), Roles = [GatewayRole.Voice] });
+            pairings[host.HostId] = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, DeviceId,
+                card.PairingId, card.Token.Reveal());
+        }
+
+        private Audio2FaceHostConnection Connect(LabHost host)
+        {
+            var (pairing, secret) = pairings[host.HostId];
+            return new Audio2FaceHostConnection(pairing, secret);
+        }
+
+        internal async Task<SharedSettings> ReadAsync(LabHost host, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.ReadSettingsAsync(token);
+        }
+
+        internal async Task<SharedSettings> ReadAccountAsync(LabHost host, Guid id, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.ReadAccountSettingsAsync(id, token);
+        }
+
+        internal async Task<SharedSettings> MergeAccountAsync(LabHost host, Guid id, SharedSettings settings, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.MergeAccountSettingsAsync(id, settings, token);
+        }
+
+        private SharedSettingsNode NodeFor(Guid id)
+        {
+            var folder = AccountWorkingCopy.Folder(Directory, id);
+            var sections = new AppSettingsSections(Setup, Vault, Directory, new LorebookStore(folder));
+            return new SharedSettingsNode(folder, DeviceId, [.. sections.Sections.Where(s => SettingScopes.IsAccountKey(s.Key))], sections.Invalidate,
+                account: true);
+        }
+
+        /// <summary>What a switch does: record the files into the outgoing account's copy, read the incoming account's copies
+        /// from the hosts, give the files its settings, and write the working-copy marker.</summary>
+        internal async Task SignInAsync(IEnumerable<LabHost> hosts, Guid id, CancellationToken token)
+        {
+            var copies = new List<SharedSettings>();
+            foreach (var host in hosts.Where(h => h.Running)) copies.Add(await ReadAccountAsync(host, id, token));
+            var next = NodeFor(id);
+            await AccountSettingsSync.SwitchAsync(account, next, copies, Directory, id, DateTimeOffset.UtcNow, token);
+            account = next;
+            signedIn = id;
+        }
+
+        /// <summary>What the desktop's sync does with accounts: read the household's and the account's copies, sync both (with
+        /// the owner's bridge), and give each host the merged copies.</summary>
+        internal async Task SyncAsync(IEnumerable<LabHost> hosts, bool owner, CancellationToken token)
+        {
+            var reachable = hosts.Where(h => h.Running).ToArray();
+            var householdCopies = new List<SharedSettings>();
+            var accountCopies = new List<SharedSettings>();
+            foreach (var host in reachable)
+            {
+                householdCopies.Add(await ReadAsync(host, token));
+                if (signedIn is { } id) accountCopies.Add(await ReadAccountAsync(host, id, token));
+            }
+            var (h, a) = await AccountSettingsSync.SyncAsync(household, account, owner, householdCopies, accountCopies, true, DateTimeOffset.UtcNow, token);
+            foreach (var host in reachable)
+            {
+                using var connection = Connect(host);
+                await connection.MergeSettingsAsync(h.Document, token);
+                if (a is not null && signedIn is { } id) await connection.MergeAccountSettingsAsync(id, a.Document, token);
+            }
+        }
+
+        internal async Task<AppSettings> SettingsAsync() => (await Setup.LoadAsync()).Settings ?? throw new InvalidOperationException("No settings yet.");
+
+        internal async Task EditPersonaAsync(string text)
+        {
+            var loaded = await Setup.LoadAsync();
+            var settings = SetupSettings.Begin(loaded.Settings);
+            settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api } };
+            var persona = settings.Companion!.ActivePersona;
+            var saved = await Setup.SaveAsync(settings with { Companion = settings.Companion.Update(persona.Id, persona.Name, text) }, loaded.Revision);
+            if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
+        }
+
+        internal bool FileContains(string text) => System.IO.Directory.EnumerateFiles(Directory, "*", SearchOption.AllDirectories)
+            .Any(path => File.ReadAllText(path).Contains(text, StringComparison.Ordinal));
+    }
+
     /// <summary>A real gateway on 127.0.0.1 with an in-memory shared-settings.json that survives a restart.</summary>
     private sealed class LabHost : IAsyncDisposable, IGatewaySettingsStorage, IGatewayAuditSink
     {
@@ -543,6 +755,7 @@ internal static class SettingsRehearsal
             var origin = new GatewayOrigin(Origin);
             Server = new GatewayServer(Identity, origin, [], this);
             Server.AttachSettingsStorage(this);
+            if (Accounts is { } accounts) Server.AttachAccountStorage(new AccountFile(accounts));
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
 
@@ -550,6 +763,15 @@ internal static class SettingsRehearsal
         {
             if (listener is not null) await listener.DisposeAsync();
             listener = null;
+        }
+
+        /// <summary>The household's account directory every lab host starts with (accounts.json).</summary>
+        internal static byte[]? Accounts { get; set; }
+
+        private sealed class AccountFile(byte[] bytes) : IGatewayAccountStorage
+        {
+            public byte[]? Load() => bytes;
+            public void Save(byte[] value) { }
         }
 
         public byte[]? Load() => saved;

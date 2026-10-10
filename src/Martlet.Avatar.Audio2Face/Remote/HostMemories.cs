@@ -131,6 +131,47 @@ public sealed partial class Audio2FaceHostConnection
         if (!MemorySpaceId.IsValid(space)) throw new ArgumentException("Not a memory space ID.", nameof(space));
     }
 
+    /// <summary>Gives <paramref name="memories"/> (1-64 facts, none forgotten) to the memory space <paramref name="space"/>: the
+    /// host adds the facts whose IDs the space doesn't have and answers how many it took, never the space itself. This is how
+    /// a fact is shared with another account, whose space this device may not read (docs/ACCOUNTS.md, "Sharing"). Hosts older
+    /// than it refuse with <c>request.invalid</c>.</summary>
+    public async Task<int> GiveMemoriesAsync(string space, SharedMemories memories, CancellationToken cancellationToken = default)
+    {
+        RequireSpace(space);
+        ArgumentNullException.ThrowIfNull(memories);
+        if (memories.Facts.Count is 0 or > 64 || memories.Forgotten.Any())
+            throw new ArgumentException("Give 1-64 facts and no forgotten ones.", nameof(memories));
+        var body = memories.Write();
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + MemorySpacesPath + space + "/give")
+            {
+                Content = Audio2FaceHostClient.JsonContent(body)
+            };
+            Sign(request, body);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using var response = await Audio2FaceHostClient.Send(http, request, timeout.Token).ConfigureAwait(false);
+            using var document = await Audio2FaceHostClient.ReadJson(response, 4_096, timeout.Token).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.OK) throw Audio2FaceHostClient.Remote(document.RootElement);
+            try
+            {
+                var root = document.RootElement;
+                if (root.GetProperty("host_id").GetString() != pairing.HostId)
+                    throw new Audio2FaceHostException("response.invalid", "The host identity changed; pair again.");
+                if (root.GetProperty("space").GetString() != space) throw new FormatException();
+                var taken = root.GetProperty("taken").GetInt32();
+                if (taken < 0 || taken > memories.Facts.Count) throw new FormatException();
+                return taken;
+            }
+            catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+            {
+                throw new Audio2FaceHostException("response.invalid", "The host's answer to shared facts was invalid.");
+            }
+        }
+        finally { CryptographicOperations.ZeroMemory(body); }
+    }
+
     private async Task<SharedMemories> MemoriesAsync(HttpRequestMessage request, string? space, CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

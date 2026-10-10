@@ -110,15 +110,19 @@ last-writer-wins entries with tombstones (`CreationLibrary`, the same hybrid
 revisions and merge rules as the cluster plan, so copies converge in any order)
 and assets moved piece by piece, content-addressed by SHA-256.
 
-- **Each desktop** keeps `creations.json` in Martlet's data folder and each asset
-  once in `creations\<sha256>.bin`. Pieces copied from another computer wait in
+- **Each desktop** keeps the signed-in account's creations in that account's
+  folder, `accounts\<32 hex>\` in Martlet's data folder
+  ([accounts](ACCOUNTS.md)): `creations.json` and each asset once in
+  `creations\<sha256>.bin`. Pieces copied from another computer wait in
   `creations-incoming` until the asset is complete and its SHA-256 checks; then it
   moves into place in one step. Files no live creation uses are deleted.
-- **Each host** keeps `creations.json` and every piece of every live creation as
-  `creation-chunk-<sha256>.bin` beside `host.json` (0600, gateway service owner;
-  not part of the approved configuration). A host performs nothing; it keeps
-  everything so a desktop that was off when something was made catches up from any
-  host. Pieces no live creation uses are deleted.
+- **Each host** keeps one list per account as `creations-account-<32 hex>.json`,
+  the old single list `creations.json` for desktops on an older Martlet, and one
+  pool of pieces for all of them as `creation-chunk-<sha256>.bin`, beside
+  `host.json` (0600, gateway service owner; not part of the approved
+  configuration). A host performs nothing; it keeps everything so a desktop that
+  was off when something was made catches up from any host. A piece is deleted
+  when no list's live creation uses it.
 - **`creations-sync.json`** on each desktop records the last sync: when, what it
   said and each paired host's state and which creations it holds completely (IDs
   only), for the Creations page and MCP's `creations_status`.
@@ -130,6 +134,17 @@ and assets moved piece by piece, content-addressed by SHA-256.
 | `POST /martlet/v1/creations` | Merge a desktop's list in; returns the merged list and `present` |
 | `GET /martlet/v1/creations/chunks/<sha256>` | One piece (`chunk.missing` when the host has none) |
 | `POST /martlet/v1/creations/chunks/<sha256>` | Send `{"data_base64": ...}` for a live creation; refused (`request.invalid`) for a wrong SHA-256, a piece no live creation has, a wrong length or anything else in the body |
+| `GET /martlet/v1/creations/accounts/<32 hex>` | One account's list and the pieces of it the host holds; the answer names the `account` |
+| `GET /martlet/v1/creations/accounts/<32 hex>/digest` | The digests of that list and of its `present` |
+| `POST /martlet/v1/creations/accounts/<32 hex>` | Merge a desktop's list into that account's; a host keeps lists for at most 64 accounts (`creations.accounts_full`) |
+| `GET`, `POST /martlet/v1/creations/accounts/<32 hex>/chunks/<sha256>` | One piece of that account's live creations, as above |
+
+The account routes are only for paired member devices that may use the
+account's memory space `account-<32 hex>` (the host's access hook,
+`GatewayMemorySpaces.Access`): reading needs read access, a `POST` read and write
+access. Other devices get `creations.account_denied`; friends and API keys are
+refused before that. The old routes stay as they are for desktops on an older
+Martlet.
 
 Every 30 seconds while any host is paired and Martlet is the same on all your
 computers (and two seconds after a creation is made, renamed or deleted here) the
@@ -143,9 +158,31 @@ can perform any creation. Nothing is written while no host is paired or while th
 switch is off. A host older than creations refuses with `request.invalid`; the
 page asks you to update it.
 
-Creations are the owner's own, like memories: only paired devices may read them,
-nothing in them is a secret Martlet uses, MCP never returns a title, text, voice
-or personality, and the log names counts and short IDs only.
+### Each account's own creations
+
+Each [account](ACCOUNTS.md) has its own creations. The desktop syncs only the
+signed-in account's list, so an account's creations reach only the computers
+where that account is signed in, and every host keeps every account's list.
+
+- **The owner bridge.** Desktops on an older Martlet still use the old single
+  list. When the signed-in account is the owner, the desktop's sync joins the
+  owner's list and the old list on each host (`CreationOwnerBridge`) and keeps
+  them the same in both directions. Both are last-writer-wins merges, so the
+  owner's creations stay the same on older desktops and older hosts too. On a
+  host older than accounts the owner's sync uses the old list alone. Other
+  accounts never read the old list; their sync says such a host needs an update.
+- **The move.** The creations kept in the data folder before accounts move once
+  into the folder of the first account that signs in on that data folder (on an
+  updated desktop, the owner). The list is saved in its new place first; an asset
+  file is deleted only when the new place holds a file with the same SHA-256 and
+  length; and running it again finishes an interrupted move. A list that can't be
+  read stays where it is. `accounts\creations-moved.json` records the move: the
+  account, when, how many creations and how many asset files.
+
+Creations are their account's own, like memories: only paired devices that may
+use the account read them, nothing in them is a secret Martlet uses, MCP never
+returns a title, text, voice or personality, and the log names counts and short
+IDs only.
 
 ## Martlet's tools
 
@@ -193,7 +230,13 @@ store, sync engine and paired client, using the FIXTURE - NOT AI test-tone kind:
 FLAC sizes and exact decoding, sharing every piece, skipping unchanged hosts, a
 new desktop and a relay host, an interrupted copy, performing a creation on
 another computer, an unknown kind passing through, rename and delete everywhere,
-a stale copy, a host restart, piece checks and an unsigned request refused. The
+a stale copy, a host restart, piece checks and an unsigned request refused; then
+two accounts on one host: each syncing through its own list, one pool of pieces
+(a piece goes only when no list uses it), the owner bridge in both directions
+with an older desktop, an unchanged host skipped through the bridge, the other
+account never seeing the old list or the owner's creations, and a restart. The
+gateway tests cover the account routes, their access hook and limits, and the
+core tests the move and the bridge on a host older than accounts. The
 Creations page was checked through MCP on a disposable data folder (empty state,
 listing, selecting, renaming and deleting test tones). Unit tests cover the codec
 (against itself; libFLAC was checked both ways by hand), the merge rules, cleanup

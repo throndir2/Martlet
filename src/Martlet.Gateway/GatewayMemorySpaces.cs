@@ -17,11 +17,13 @@ public interface IGatewayMemorySpaceStorage
     void Save(string space, byte[] bytes);
 }
 
-/// <summary>What a device asks to do with a memory space.</summary>
+/// <summary>What a device asks to do with a memory space. <see cref="Give"/> only adds new facts to a space (sharing a fact
+/// with another account, docs/ACCOUNTS.md "Sharing") and never reads it, so every member device may normally give.</summary>
 internal enum GatewayMemorySpaceUse
 {
     Read,
-    Write
+    Write,
+    Give
 }
 
 /// <summary>Whether a paired device may read or write a memory space. This is the seam where the account directory decides
@@ -41,8 +43,8 @@ internal sealed class GatewayMemorySpaces
     private readonly Dictionary<string, GatewayMemoryStore> spaces = new(StringComparer.Ordinal);
     private IGatewayMemorySpaceStorage? storage;
 
-    /// <summary>Decides which device may use which space. Until the account directory sets it, every member device may use
-    /// every space, as every paired device can read the old single memory document.</summary>
+    /// <summary>Decides which device may use which space. The gateway application sets the account directory's rules
+    /// (GatewayMemorySpaceAccess.cs); a store on its own lets every member device use every space.</summary>
     internal GatewayMemorySpaceAccess Access { get; set; } = EveryMember;
 
     internal static bool EveryMember(GatewayPrincipal principal, string space, GatewayMemorySpaceUse use) =>
@@ -105,6 +107,27 @@ internal sealed class GatewayMemorySpaces
         return store.Merge(incoming);
     }
 
+    /// <summary>Adds the live facts of <paramref name="given"/> whose IDs the space doesn't have yet (sharing facts with an account
+    /// whose space the giver may not read) and returns how many it took. A fact the space already has, or forgot, is never
+    /// changed. A gift that brings nothing makes no space; a new space past <see cref="MaximumSpaces"/> is
+    /// <c>memories.spaces_full</c>.</summary>
+    internal int Give(string space, SharedMemories given)
+    {
+        GatewayMemoryStore? store;
+        lock (gate)
+        {
+            if (!spaces.TryGetValue(space, out store))
+            {
+                if (!given.Live.Any()) return 0;
+                GatewayRules.Require(spaces.Count < MaximumSpaces, "memories.spaces_full");
+                store = new GatewayMemoryStore();
+                if (storage is not null) store.Attach(new SpaceStorage(storage, space));
+                spaces[space] = store;
+            }
+        }
+        return store.Give(given);
+    }
+
     private sealed class SpaceStorage(IGatewayMemorySpaceStorage storage, string space) : IGatewayMemoryStorage
     {
         public byte[]? Load() => storage.Load(space);
@@ -116,6 +139,10 @@ internal sealed partial class GatewayHttpApplication
 {
     internal const string MemorySpacesPath = MemoriesPath + "/spaces/";
     private const string MemorySpaceDigestSuffix = "/digest";
+    private const string MemorySpaceGiveSuffix = "/give";
+    /// <summary>Most facts one gift may carry.</summary>
+    internal const int MaximumGivenFacts = 64;
+    private const int MaximumGiveBytes = MaximumGivenFacts * (SharedMemories.MaximumFactBytes + 1_024);
 
     internal GatewayMemorySpaces MemorySpaces { get; } = new();
 
@@ -125,10 +152,16 @@ internal sealed partial class GatewayHttpApplication
     /// and returns the merged result, and GET /memories/spaces/{space}/digest returns only the copy's digest. The same rules as
     /// the single memory document apply (paired member devices over their signed, pinned connection; never friends or API
     /// keys), and <see cref="GatewayMemorySpaces.Access"/> decides which device may use which space. A POST needs both read
-    /// and write access, because it returns the merged space.</summary>
+    /// and write access, because it returns the merged space. POST /memories/spaces/{space}/give only adds new facts to a space
+    /// (<see cref="GatewayMemorySpaceUse.Give"/>) and answers how many it took, never the space.</summary>
     private async ValueTask InvokeMemorySpaceAsync(HttpContext context, string rawTarget)
     {
         var rest = rawTarget[MemorySpacesPath.Length..];
+        if (rest.EndsWith(MemorySpaceGiveSuffix, StringComparison.Ordinal))
+        {
+            await GiveMemorySpaceAsync(context, rest[..^MemorySpaceGiveSuffix.Length]).ConfigureAwait(false);
+            return;
+        }
         var digestOnly = rest.EndsWith(MemorySpaceDigestSuffix, StringComparison.Ordinal);
         var space = digestOnly ? rest[..^MemorySpaceDigestSuffix.Length] : rest;
         GatewayRules.Require(MemorySpaceId.IsValid(space), "request.invalid");
@@ -174,4 +207,38 @@ internal sealed partial class GatewayHttpApplication
 
     private void AdmitMemorySpace(GatewayPrincipal principal, string space, GatewayMemorySpaceUse use) =>
         GatewayRules.Require(MemorySpaces.Access(principal, space, use), "memories.space_denied");
+
+    /// <summary>POST /memories/spaces/{space}/give: 1-<see cref="MaximumGivenFacts"/> facts and no forgotten ones, added to the
+    /// space when their IDs are new to it. The answer says only how many the space took.</summary>
+    private async ValueTask GiveMemorySpaceAsync(HttpContext context, string space)
+    {
+        GatewayRules.Require(MemorySpaceId.IsValid(space) && context.Request.Method == HttpMethods.Post, "request.invalid");
+        var bytes = await ReadInferenceBodyAsync(context.Request, MaximumGiveBytes, context.RequestAborted).ConfigureAwait(false);
+        int taken;
+        try
+        {
+            AdmitMemorySpace(authenticator.Authenticate(context.Request, crypto.Sha256(bytes)), space, GatewayMemorySpaceUse.Give);
+            SharedMemories given;
+            try { given = SharedMemories.Parse(bytes); }
+            catch (ContractException) { throw new GatewayProtocolException("request.invalid"); }
+            GatewayRules.Require(given.Facts.Count is > 0 and <= MaximumGivenFacts && !given.Forgotten.Any(), "request.invalid");
+            taken = MemorySpaces.Give(space, given);
+        }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+        await WriteJsonAsync(context, StatusCodes.Status200OK, new MemoriesGivenDocument
+        {
+            ProtocolVersion = GatewayProtocolVersion.Current,
+            HostId = identity.HostId,
+            Space = space,
+            Taken = taken
+        }).ConfigureAwait(false);
+    }
+
+    private sealed record MemoriesGivenDocument
+    {
+        public required GatewayProtocolVersion ProtocolVersion { get; init; }
+        public required string HostId { get; init; }
+        public required string Space { get; init; }
+        public required int Taken { get; init; }
+    }
 }

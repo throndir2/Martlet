@@ -691,6 +691,20 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     internal (long Input, long Cached)? LastCache { get { lock (gate) return lastCache; } }
     /// <summary>Martlet's data directory (null in tests), where model-limits.json is kept.</summary>
     internal string? DataDirectory => dataDirectory;
+
+    private string? creationsDirectory;
+
+    /// <summary>Where the signed-in account keeps its creations (docs/ACCOUNTS.md): its account folder, set by the desktop
+    /// between replies; the data folder until then.</summary>
+    internal string? CreationsDirectory
+    {
+        get => Volatile.Read(ref creationsDirectory) ?? dataDirectory;
+        set
+        {
+            Volatile.Write(ref creationsDirectory, value);
+            if (singing is not null) singing.CreationsDirectory = value;
+        }
+    }
     internal ParticipationSnapshot PolicySnapshot => policy.Snapshot;
     internal (bool Paused, bool Muted, bool Locked) Controls { get { lock (gate) return (paused, muted, locked); } }
     /// <summary>Raised off the dispatcher after a finished exchange changed memory or could not be remembered.</summary>
@@ -3238,8 +3252,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>list_creations: what Martlet made, from this PC's copy of the shared list (read only when called).</summary>
     private ConversationToolResult ListCreations(TextToolCall call)
     {
-        var library = CreationStore.View(dataDirectory!);
-        var result = CreationTools.List(library, Creations, call.ArgumentsJson, c => CreationStore.IsComplete(dataDirectory!, c));
+        var directory = CreationsDirectory!;
+        var library = CreationStore.View(directory);
+        var result = CreationTools.List(library, Creations, call.ArgumentsJson, c => CreationStore.IsComplete(directory, c));
         tools?.Record("Martlet", CreationTools.ListName, result.IsError ? "invalid arguments" : $"{library.Live.Count} creations", "", result.IsError);
         return result;
     }
@@ -3248,8 +3263,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// song handler), or says clearly why it can't.</summary>
     private async ValueTask<ConversationToolResult> PerformCreationAsync(TextToolCall call, CancellationToken token)
     {
-        var library = CreationStore.View(dataDirectory!);
-        var result = await CreationTools.PerformAsync(library, Creations, call.ArgumentsJson, c => CreationStore.Assets(dataDirectory!, c), token)
+        var directory = CreationsDirectory!;
+        var library = CreationStore.View(directory);
+        var result = await CreationTools.PerformAsync(library, Creations, call.ArgumentsJson, c => CreationStore.Assets(directory, c), token)
             .ConfigureAwait(false);
         tools?.Record("Martlet", CreationTools.PerformName, result.IsError ? "not performed" : "performed", "", result.IsError);
         ErrorLog.Info($"Creations: perform_creation {(result.IsError ? "didn't start" : "started")}.");
@@ -3459,7 +3475,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         var label = SongTools.Label(arguments.About);
         var (setup, unavailable) = singing?.Source?.Current() ?? (null, "singing isn't set up.");
-        if (setup is null || singing?.DataDirectory is not { } library)
+        if (setup is null || singing?.DataDirectory is null || CreationsDirectory is not { } library)
         {
             tools?.Record(server, SongTools.SingName, "not started: singing unavailable", label, false);
             ErrorLog.Info($"Singing: a song wasn't started ({unavailable}).");
@@ -3720,7 +3736,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             tools?.Record(server, SongTools.PlayName, "invalid arguments", "", true);
             return new(problem, true);
         }
-        var directory = singing?.DataDirectory;
+        var directory = singing?.DataDirectory is null ? null : CreationsDirectory;
         if (directory is null || SongCreations.Find(directory, id) is not { } creation)
         {
             tools?.Record(server, SongTools.PlayName, "no such song", "", true);
@@ -3854,7 +3870,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             Creation creation;
             try
             {
-                creation = await CreationStore.AddAsync(dataDirectory!, PictureCreations.Draft(result, arguments.Title, arguments.About, request, author),
+                creation = await CreationStore.AddAsync(CreationsDirectory!, PictureCreations.Draft(result, arguments.Title, arguments.About, request, author),
                     CreationRegistry.Shared, clock.GetUtcNow(), token).ConfigureAwait(false);
             }
             catch (Exception error) when (CreationStore.IsFailure(error))
@@ -4625,6 +4641,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var remember = job.Remember;
         MemoryCaptureReport? report = null;
         IReadOnlyList<MemoryFact>? known = null;
+        IReadOnlyDictionary<Guid, string>? knownSpaces = null;
         var roster = voices?.Roster;
         // Whose new facts are: the speaker among the voices recognized in the message, when remembering has them.
         var speaker = job.Present?.Speaker?.Voice;
@@ -4635,8 +4652,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             {
                 try
                 {
-                    known = (await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
-                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token), token).ConfigureAwait(false)).Facts;
+                    var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
+                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token), token).ConfigureAwait(false);
+                    (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
                 }
                 catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
                     IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -4682,7 +4700,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 {
                     var shown = known!.Take(prompt.ShownFacts).ToArray();
                     var changes = await RetryStoreAsync(() => memory!.RememberAsync(job.Configuration.Memory!.ConfigurationRevision, shown,
-                        operations, id => MemoryPeople.Canonical(id, roster), token), token).ConfigureAwait(false);
+                        operations, id => MemoryPeople.Canonical(id, roster), token, knownSpaces), token).ConfigureAwait(false);
                     // Whose each change is, as the talk window names them (with any name learned from this same answer).
                     var whose = voices?.Roster ?? roster;
                     report = changes.Count == 0 ? null

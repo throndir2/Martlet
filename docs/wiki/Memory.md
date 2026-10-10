@@ -26,4 +26,12 @@ The **Conversations** page in the side menu lets you browse, edit or delete reco
 
 With **Keep Martlet the same on all my computers** on, memories sync through paired hosts. There is no cloud memory service by default.
 
+## Sharing memories with your household
+
+When several people use Martlet, each person has their own memories, and the household has shared memories that every character knows.
+
+- In the Memory window, select facts and use **Share selected with**. Choose **The household's memories**, another person, or a character you share together, then choose **Copy** or **Move**. Facts for another person go through your paired hosts, which never show you that person's memories.
+- Tick **Share new memories about me with the household** to let every character in the household remember new things Martlet learns about you.
+- A character shared together remembers everyone it talks to in its own memories. Your other characters don't see them.
+
 More detail: [Memory](https://github.com/throndir2/Martlet/blob/main/docs/MEMORY.md), [Conversation](https://github.com/throndir2/Martlet/blob/main/docs/CONVERSATION.md), [Cluster](https://github.com/throndir2/Martlet/blob/main/docs/CLUSTER.md).
