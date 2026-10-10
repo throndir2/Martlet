@@ -40,6 +40,16 @@ internal static class ThinkingPoolCheck
             useConversationModelWhenEmpty = pool.UseConversationModelWhenEmpty,
             // The paired computers the owner keeps out (host IDs only): they never join the pool by themselves.
             leftByOwner = pool.LeftByOwner,
+            // The list is the pool: with no member on, it is off.
+            poolOff = pool.Members.Count == 0,
+            // The machines the owner turned off: in the list with their boxes, but they take no jobs; a paired computer's card
+            // here never joins again by itself.
+            offMembers = pool.OffMembers.Select(m => new
+            {
+                key = m.Key, where = m.Describe(), place = m.Place.ToString(), model = m.ModelId, hostId = m.HostId, hostRole = m.OnHostRole,
+                card = m.Place == DeepThinkingPlace.Host ? m.Card : (int?)null, slots = m.ThinksAtOnce,
+                quickJobs = pool.TakesQuickJobs(m.Key), longJobs = pool.TakesLongJobs(m.Key), answersForConversation = pool.Answers(m.Key)
+            }),
             migratedAt = pool.MigratedAt,
             members = pool.Members.Select(m =>
             {
@@ -391,6 +401,17 @@ internal static class ThinkingPoolCheck
                 gone is { Change: ThinkingPoolHostChange.CardRemoved } && gone.Pool.Members.Count == 1 &&
                 later is { Change: ThinkingPoolHostChange.Joined, Member.Card: 2 } && takenOut.Members.Count == 0 && takenOut.Left("diva"),
                 $"{gone.Why} {later.Why}");
+            // The list is the pool: the owner turns one card off and the other keeps working; the card stays off at each check,
+            // keeps its boxes, and is on again when ticked. Every card off means the computer adds nothing.
+            var oneOff = both.Pool.WithJobs("host:diva#gpu2", quick: false).TurnOff("host:diva#gpu2");
+            var checkedAgain = ThinkingPoolAutoJoin.For(oneOff, Seen("diva", card1, card2), null, now: now);
+            var allOff = ThinkingPoolAutoJoin.For(oneOff.TurnOff("host:diva"), Seen("diva", card1, card2), null, now: now);
+            var backOn = oneOff.TurnOn("host:diva#gpu2");
+            Check("per GPU: a card turned off stays off while the computer's other card keeps working, and comes back with its boxes",
+                !checkedAgain.Changed && oneOff.Members.Select(m => m.Key).SequenceEqual(["host:diva"]) && oneOff.IsOff("host:diva#gpu2") &&
+                !allOff.Changed && allOff.Pool.Members.Count == 0 &&
+                backOn.Members.Select(m => m.Key).SequenceEqual(["host:diva", "host:diva#gpu2"]) && !backOn.TakesQuickJobs("host:diva#gpu2"),
+                $"{checkedAgain.Why} {allOff.Why}");
 
             var thinking = new SetupRoute
             {

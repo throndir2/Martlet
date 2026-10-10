@@ -200,13 +200,13 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
      reads it from the cache and a model on this PC keeps the conversation in
      its cache.
    - A think always runs in parallel and is never paused, so it runs only where
-     it has a model of its own (**Deep thinking**, Companion › Deep thinking ›
-     *Where it thinks*): a paired computer's Ollama, a cloud provider, a second
+     it has a model of its own (a machine that is on in Companion › Thinking
+     pool's machine list): a paired computer's Ollama, a cloud provider, a second
      model in Ollama on this PC, or Thinking's own model when its provider
      answers several requests at once. Thinking's own model on this PC or a
      paired computer answers one request at a time and keeps one conversation
      in its cache, so there `think_longer` isn't offered at all (and its tools
-     and prompt aren't in the request), and *Off* turns it off everywhere.
+     and prompt aren't in the request), and Thinking longer's own box turns it off everywhere.
    - On another machine the conversation's model, cache and graphics card are
      left alone. A second model in Ollama on this PC runs in its own process
      beside Thinking's, so Thinking's cache stays, and a think starts only when

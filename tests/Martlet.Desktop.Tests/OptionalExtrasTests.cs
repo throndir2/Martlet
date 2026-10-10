@@ -147,27 +147,6 @@ public sealed class OptionalExtrasTests
         Assert.Null(OptionalExtras.ReadingModelOf(null));
     }
 
-    [Fact]
-    public void The_thinking_pool_marks_each_place_that_has_members()
-    {
-        DeepThinkingSettings[] members =
-        [
-            new() { Place = DeepThinkingPlace.Host, HostId = "diva", ModelId = "gemma4:e4b" },
-            new() { Place = DeepThinkingPlace.Endpoint, Origin = MainWindow.LocalOllamaBaseUrl, ModelId = "gemma4:e4b" }
-        ];
-        var on = OptionalExtras.ThinkingPoolChoices(on: true, members);
-        Assert.Equal(new[] { "Off", "Computer", "ThisPc", "Cloud" }, on.Select(o => o.Key));
-        Assert.Equal(new[] { "Computer", "ThisPc" }, on.Where(o => o.InUse).Select(o => o.Key));
-        // The graphics memory a member takes comes from the catalog's Thinking pool models.
-        var local = FootprintCatalog.Default.For(PlanComponent.DeepThinking).Where(o => o.IsLocal).ToArray();
-        Assert.Contains(local.Max(o => o.GpuGb).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB", Fact(on[2], "vram"));
-        Assert.Equal("Shares the GPU", on[2].Facts.Single(f => f.Key == "conversation").Short);
-
-        var off = OptionalExtras.ThinkingPoolChoices(on: false, members);
-        Assert.True(off[0].InUse);
-        Assert.DoesNotContain(off.Skip(1), o => o.InUse);
-    }
-
     private static SetupRoute Thinking(string model) => new()
     {
         Role = SetupRole.Llm, RouteType = SetupRouteType.ChatCompletions, ProviderAlias = ChatCompletionsSetup.Alias,

@@ -284,65 +284,6 @@ internal static class OptionalExtras
         }
     ];
 
-    // ---------- Thinking pool ----------
-
-    /// <summary>Companion › Thinking pool's main choice, keyed by where a member thinks: Off, one of your computers, Ollama on this
-    /// PC or a cloud provider or server. <paramref name="members"/>: the pool's members now (several places can be in use at once).</summary>
-    internal static IReadOnlyList<PickerOption> ThinkingPoolChoices(bool on, IReadOnlyList<DeepThinkingSettings> members)
-    {
-        var local = FootprintCatalog.Default.For(PlanComponent.DeepThinking).Where(o => o.IsLocal).ToArray();
-        var vram = local.Length == 0 ? "" : $"about {Gb(local.Min(o => o.GpuGb))} to {Gb(local.Max(o => o.GpuGb))} GB, by the model, with a long think";
-        var download = local.Length == 0 ? "" : $"about {Gb(local.Min(o => o.Peak.DiskGb))} to {Gb(local.Max(o => o.Peak.DiskGb))} GB, by the model";
-        bool Has(Func<DeepThinkingSettings, bool> place) => on && members.Any(place);
-        var computer = Has(m => m.Place == DeepThinkingPlace.Host);
-        var thisPc = Has(m => m.Place == DeepThinkingPlace.Endpoint && m.Origin == MainWindow.LocalOllamaBaseUrl);
-        var cloud = Has(m => m.Place == DeepThinkingPlace.Endpoint && m.Origin != MainWindow.LocalOllamaBaseUrl);
-        return
-        [
-            Off(CompanionTab.DeepThinking, !on),
-            new("Computer", "One of your computers",
-                "Your paired computers with a Thinking model join the pool by themselves: local, private and parallel.")
-            {
-                InUse = computer, Badge = computer ? "in use" : "recommended",
-                Facts =
-                [
-                    new("runs-on", "Runs on", "a graphics card on another of your computers (its Thinking pool role, or its Ollama)", "Another PC's GPU"),
-                    new("vram", "Graphics memory", $"on that computer: {vram}", null),
-                    new("download", "Download", $"on that computer: {download}", null),
-                    new("conversation", "The conversation", "keeps full speed: the work runs on another computer", "No slowdown"),
-                    new("cost", "Cost", "free", "free"),
-                    new("data", "Your data", "a job's text goes to that computer through its paired, pinned connection", null)
-                ]
-            },
-            new("ThisPc", "Ollama on this PC", "A second model beside Thinking's, when both fit on the graphics card.")
-            {
-                InUse = thisPc, Badge = thisPc ? "in use" : null,
-                Facts =
-                [
-                    new("runs-on", "Runs on", "this PC's graphics card, beside Thinking's model", "This PC's GPU"),
-                    new("vram", "Graphics memory", $"{vram}, more than Thinking's; it thinks only while both fit", null),
-                    new("download", "Download", download, null),
-                    new("conversation", "The conversation", "shares the graphics card: replies may start a little later while it thinks", "Shares the GPU"),
-                    new("cost", "Cost", "free", "free"),
-                    new("data", "Your data", "stays on this PC", null)
-                ]
-            },
-            new("Cloud", "A cloud provider or server",
-                "OpenRouter, OpenAI, NVIDIA Build or another compatible server. Requests may cost money.")
-            {
-                InUse = cloud, Badge = cloud ? "in use" : null,
-                Facts =
-                [
-                    new("runs-on", "Runs on", "online: nothing runs on your computers", "Online"),
-                    new("conversation", "The conversation", "keeps full speed: they never wait for each other", "No slowdown"),
-                    new("quality", "Quality", "strong reasoning models you can't run at home", null),
-                    new("cost", "Cost", "NVIDIA Build has free endpoints; other providers charge for each request", "free or paid"),
-                    new("data", "Your data", "a job's text (for a think, the recent conversation and the task) goes to the provider", null)
-                ]
-            }
-        ];
-    }
-
     // ---------- Vision and Hearing (the image model and the audio model) ----------
 
     /// <summary>The picker of a sense's page: Vision for pictures, Hearing for recordings.</summary>

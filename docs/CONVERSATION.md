@@ -466,6 +466,19 @@ Thinking models for background work. It replaces the older *Deep thinking*
 places. The live conversation keeps its own Thinking route and prompt cache;
 pool jobs never use that route, except the empty-pool fallback below.
 
+**The list is the pool.** The page has no separate on/off choice and no *Where
+it thinks* picker. The *Machines* card lists every machine: one row for each
+graphics card of a paired computer that runs a Thinking pool model, each model
+in Ollama on this PC and each cloud provider or server. Each row has an *On*
+box (`ThinkingPoolOn-<n>`). A machine that is off stays in the list with its
+settings and boxes (`OffMembers` in `thinking-pool.json`; a file without this
+list reads as empty) but takes no jobs, and a paired computer's card that is
+off never joins again by itself, while that computer's other cards still do.
+Ticking *On* moves it back to `Members` (at most 8 machines are on). With no
+machine on, the pool is off (`ThinkingPoolSummary` says so). Whether Martlet
+offers to think things over at all stays Thinking longer's own box
+(`ThinkLongerOn`), which your computers share.
+
 **Members.** A member is one place with a slot count (how many jobs it runs at
 once, 1 to 8):
 
@@ -488,15 +501,17 @@ once, 1 to 8):
   says *In the pool, offline now* and its slots come back when it answers
   (see *Computers that go offline* below).
   A computer never joins by itself when the owner took it out (`LeftByOwner`,
-  below), Devices › Sharing work says the Thinking pool never uses it or keeps
+  below), a graphics card never joins when the owner turned it off
+  (`OffMembers`), Devices › Sharing work says the Thinking pool never uses it or keeps
   it for other companion PCs, the pool already has 8 members, or this PC is a
   host PC.
-- *In the pool* (`DeepThinkingPool-<host>`, on each paired computer's row) is
-  the owner's opt-out. Unticking it, or *Remove* on the computer's member, takes the computer out and adds its host ID to
-  `LeftByOwner` in `thinking-pool.json` (a file saved before this list existed
-  reads as empty), so it doesn't join again. Ticking it clears that and adds
-  the computer at once. `DeepThinkingAutoJoin` (*Add a machine*) states the rule
-  and names the computers kept out.
+- *On* on each card's row is the owner's opt-out, card by card (above). A
+  computer kept out by an older Martlet (its host ID in `LeftByOwner`, a file
+  saved before this list existed reads as empty) is listed with the paired
+  computers that aren't in the pool; ticking its *In the pool*
+  (`DeepThinkingPool-<host>`) clears that and adds the computer at once.
+  `DeepThinkingAutoJoin` (*Add a machine* › *Another of your computers*)
+  states the rule and names the computers kept out.
 - A model in Ollama on this PC, beside Thinking's (checked to fit on the
   graphics card before each job).
 - An OpenAI-compatible endpoint (a cloud provider or another server).
@@ -570,14 +585,24 @@ member it went to and why.
 Quick jobs and Long jobs are on for every member. Unticking one saves the key
 in `NoQuickJobs` or `NoLongJobs` in `thinking-pool.json` (a file without these
 lists reads as every member taking every job). Removing a member clears its
-keys. A paired computer's Thinking pool role sets its slots on that computer, so
-its row shows *N slots, set on diva* and *Change model*
-(`DeepThinkingChangeModel-<host>`), never a slot choice: Martlet resets those
-slots from the role at each check. Other members have a slot choice
-(`ThinkingPoolSlots-<n>`). A paired computer's row has *In the pool*; another
-member's row has *Remove* (`ThinkingPoolRemove-<n>`). Each paired
-computer that isn't a member follows the members, with why it isn't in
-(`DeepThinkingHost-<host>`). Priorities are fixed (see the job board), so the
+keys. Each row chooses its model (`ThinkingPoolModel-<n>`). A paired
+computer's Thinking pool model and slots are that card's role settings on that
+computer, so its row shows *N slots, set on diva*: choosing another model (from
+the role's list) or slot count runs the role's change there in a run window
+(`martlet-host add deep-thinking` with the chosen `OLLAMA_MODEL` and
+`OLLAMA_NUM_PARALLEL`; for a new model, the most slots that fit, at most the
+slots it had). The old model works until the new one is ready, and Martlet
+follows the model and slots at the computer's next check. A model in Ollama on
+this PC chooses from Ollama's and Martlet's models (never Thinking's own); a
+cloud provider or server types its model ID. Its rules move to the new member
+key. Endpoints have a slot choice (`ThinkingPoolSlots-<n>`) and *Remove*
+(`ThinkingPoolRemove-<n>`). A card of a computer in the list without a
+Thinking pool model yet has a row with *Add a model*
+(`DeepThinkingAddCard-<host>-gpu<n>`). Each paired computer that isn't a
+member follows, with why it isn't in (`DeepThinkingHost-<host>`). *Add a
+machine*, at the end of the card, opens a form for another of your computers,
+a model in Ollama on this PC or a cloud provider or server; a provider already
+in the list with its own key uses that key again. Priorities are fixed (see the job board), so the
 page has no priority choices.
 
 **Migration.** The first time Martlet reads the pool and `thinking-pool.json`
@@ -1021,7 +1046,7 @@ spoken. Its message continues a reply's request (Companion › Prompts ›
 *Thinking longer: the task*); the picture or recording the message went with
 isn't sent again.
 
-**Where it thinks** (Companion › Thinking pool; this PC's own choice,
+**Where it thinks** (the machine list on Companion › Thinking pool; this PC's own choice,
 `thinking-pool.json` in the data folder, never shared, because which machine
 is free to think depends on the computer you talk to). A think runs on a pool
 member ticked for *Long jobs*:
@@ -1038,9 +1063,11 @@ member ticked for *Long jobs*:
   PC's pairing, or, on a computer without that role, its Ollama (its Thinking
   role). The page offers *Add the Thinking pool role* for a computer that lacks the role
   (`DeepThinkingAddRole-<host>`; its dialog asks which model it runs) and
-  adds it to the pool once it runs, and *Change model*
-  (`DeepThinkingChangeModel-<host>`) for one that has it: the role's settings
-  there, with its current model selected. The old model keeps thinking until the
+  adds it to the pool once it runs. A card in the list chooses its model in
+  its row (`ThinkingPoolModel-<n>`), which runs the role's change there; a
+  computer that isn't in the list has *Change model*
+  (`DeepThinkingChangeModel-<host>`): the role's settings there, with its
+  current model selected. The old model keeps thinking until the
   new one is downloaded and loaded; then this PC (and each of your computers, on
   its next check) thinks with the new one.
   The same dialog asks how many thinks it runs at once (*Thinks at once*, 1 to
@@ -1082,11 +1109,11 @@ member ticked for *Long jobs*:
   conversation that fits the model's context and the task go there, no tools.
 
 **Several computers at once.** Your paired computers with a Thinking model join
-the pool by themselves (see Members above); each one in the *Machines* list
-has *In the pool* (`DeepThinkingPool-<host>`): ticked, the pool thinks
+the pool by themselves (see Members above); each card in the *Machines* list
+has *On* (`ThinkingPoolOn-<n>`): ticked, the pool thinks
 there as well as on its other members, so several thinks run at once, one on
-each place (up to 8 places). Untick a computer to keep it out; tick it again to
-add it back. `think_longer` may then run several thinks at once: one fewer than the usable
+each place (up to 8 places). Untick a card to stop using it; tick it again to
+use it. `think_longer` may then run several thinks at once: one fewer than the usable
 slots in all of the members ticked for *Long jobs*. A long job never takes the
 last free slot that takes quick jobs while
 the pool has two or more slots, because that slot stays free for quick jobs

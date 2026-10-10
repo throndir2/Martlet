@@ -95,6 +95,72 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
     }
 
     [Fact]
+    public void A_member_turned_off_keeps_its_rules_across_a_save_and_turning_it_on_restores_it()
+    {
+        var pool = new ThinkingPoolSettings().Add(Role("diva")).Add(Role("ripley")).WithJobs("host:diva", quick: false)
+            .WithAnswers("host:diva", true).TakeOut("ripley").TurnOn("host:ripley");
+        Assert.Equal(["host:diva"], pool.Members.Select(m => m.Key));
+
+        var off = pool.TurnOff("host:diva");
+        Assert.Empty(off.Members);
+        Assert.Equal(["host:diva"], off.OffMembers.Select(m => m.Key));
+        Assert.Equal(["host:diva"], off.All.Select(m => m.Key));
+        Assert.True(off.IsOff("host:diva"));
+        // The rules stay on the key while it is off.
+        Assert.False(off.TakesQuickJobs("host:diva"));
+        Assert.True(off.Answers("host:diva"));
+        Assert.Same(off, off.TurnOff("host:diva"));
+
+        Assert.True(off.Save(directory));
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Equal(["host:diva"], loaded.OffMembers.Select(m => m.Key));
+        Assert.Empty(loaded.Members);
+
+        var on = loaded.TurnOn("host:diva");
+        Assert.Equal(["host:diva"], on.Members.Select(m => m.Key));
+        Assert.Empty(on.OffMembers);
+        Assert.False(on.TakesQuickJobs("host:diva"));
+        // Adding the same member again (or removing it) takes it off the off list too.
+        Assert.Empty(off.Add(Role("diva")).OffMembers);
+        Assert.Empty(off.Remove("host:diva").All);
+        Assert.Empty(off.TakeOut("diva").All);
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { Members = [Role("diva")], OffMembers = [Role("diva")] }.Validate());
+    }
+
+    [Fact]
+    public void Turning_a_member_on_needs_room_and_clears_its_computer_being_kept_out()
+    {
+        var full = Enumerable.Range(0, DeepThinkingSettings.MaxPlaces).Aggregate(new ThinkingPoolSettings(), (pool, i) => pool.Add(Role("gpu-" + i)));
+        var off = full.TurnOff("host:gpu-0").Add(Role("gpu-8"));
+        Assert.Throws<ContractException>(() => off.TurnOn("host:gpu-0"));
+        var kept = new ThinkingPoolSettings { OffMembers = [Role("diva")] }.KeepOut("diva", true);
+        Assert.False(kept.TurnOn("host:diva").Left("diva"));
+    }
+
+    [Fact]
+    public void An_endpoint_member_changes_its_model_in_place_and_its_rules_follow_the_new_key()
+    {
+        var local = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = Ollama, ModelId = "gemma4:e4b" };
+        var oldKey = local.Key;
+        var pool = new ThinkingPoolSettings().Add(local).Add(Role("diva")).WithJobs(oldKey, @long: false).WithSmarts(oldKey, ThinkingSmarts.Smart)
+            .WithRunsOn("check-in", ThinkingRunsOn.Only([oldKey]));
+
+        var next = pool.WithModel(oldKey, "gemma4:12b");
+        var newKey = next.Members[0].Key;
+        Assert.Equal("gemma4:12b", next.Members[0].ModelId);
+        Assert.Equal([newKey, "host:diva"], next.Members.Select(m => m.Key));
+        Assert.Equal([newKey], next.NoLongJobs);
+        Assert.Equal([newKey], next.RunsOn("check-in").Members);
+        Assert.False(next.Smarts.ContainsKey(oldKey));
+        Assert.Same(next, next.WithModel(newKey, "gemma4:12b"));
+        // Off members change too; a paired computer's model is set on that computer.
+        Assert.Equal("gemma4:12b", pool.TurnOff(oldKey).WithModel(oldKey, "gemma4:12b").OffMembers[0].ModelId);
+        Assert.Throws<ContractException>(() => pool.WithModel("host:diva", "qwen3:8b"));
+        Assert.Throws<ContractException>(() => pool.Add(local with { ModelId = "gemma4:12b" }).WithModel(oldKey, "gemma4:12b"));
+    }
+
+    [Fact]
     public void Quick_and_long_jobs_are_ticked_per_member_saved_and_cleared_when_it_leaves()
     {
         var pool = new ThinkingPoolSettings().Add(Role("diva")).Add(Role("ripley"));

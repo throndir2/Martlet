@@ -242,6 +242,23 @@ public sealed class HelperJobsTests
     }
 
     [Fact]
+    public void The_machine_list_is_the_pool_and_says_it_is_off_with_no_machine_on()
+    {
+        var local = new Martlet.Core.Settings.DeepThinkingSettings
+        {
+            Place = Martlet.Core.Settings.DeepThinkingPlace.Endpoint, Origin = MainWindow.LocalOllamaBaseUrl, ModelId = "gemma4:e4b"
+        };
+        var empty = new Martlet.Core.Settings.ThinkingPoolSettings();
+        Assert.Equal("The Thinking pool is off: no machine is on. Thinking longer and research use the conversation model meanwhile. " +
+            "Add a machine below.", MainWindow.PoolSummary(empty, 0));
+        var off = empty.Add(local).TurnOff(local.Key);
+        Assert.Equal("The Thinking pool is off: no machine is on. 1 machine is turned off. The conversation model isn't used either, " +
+            "so Martlet doesn't think in the background. Tick On to use one again.",
+            MainWindow.PoolSummary(off with { UseConversationModelWhenEmpty = false }, 0));
+        Assert.Equal("1 machine is on, with 2 usable slots in all.", MainWindow.PoolSummary(off.TurnOn(local.Key), 2));
+    }
+
+    [Fact]
     public void The_busy_pool_line_says_the_choices_and_counts()
     {
         var pool = new Martlet.Core.Settings.ThinkingPoolSettings();

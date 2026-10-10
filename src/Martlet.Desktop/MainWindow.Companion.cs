@@ -221,7 +221,7 @@ public partial class MainWindow
     internal static string TabIntro(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Martlet needs Thinking to answer you. Choose where it thinks and which model it uses. This PC keeps conversations local, free and with no account.",
-        CompanionTab.DeepThinking => Extra(section, "Other models work out hard tasks and background jobs, ideally on another computer, so Thinking keeps talking at full speed."),
+        CompanionTab.DeepThinking => Extra(section, "Other models work out hard tasks and background jobs, ideally on another computer, so Thinking keeps talking at full speed. The machine list is the pool: turn each machine on or off, and with none on, the pool is off."),
         CompanionTab.Singing => Extra(section, "Martlet sings songs you ask for, in the voice it speaks with, on an NVIDIA graphics card."),
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",

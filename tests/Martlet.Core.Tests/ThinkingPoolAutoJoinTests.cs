@@ -161,6 +161,37 @@ public sealed class ThinkingPoolAutoJoinTests
     }
 
     [Fact]
+    public void A_card_turned_off_stays_off_while_the_computers_other_card_keeps_working()
+    {
+        var card2 = new ThinkingPoolOffer(SelfHostSetup.DeepThinkingRouteIdFor(2), "qwen3:8b");
+        var both = ThinkingPoolAutoJoin.For(new(), Host("diva", Role, card2), null, now: Now).Pool;
+        var oneOff = both.TurnOff("host:diva#gpu2");
+
+        var again = ThinkingPoolAutoJoin.For(oneOff, Host("diva", Role with { MaximumConcurrency = 3 }, card2 with { MaximumConcurrency = 4 }), null, now: Now);
+        Assert.Equal(ThinkingPoolHostChange.SlotsChanged, again.Change);
+        Assert.Equal(["host:diva"], again.Pool.Members.Select(m => m.Key));
+        Assert.Equal(["host:diva#gpu2"], again.Pool.OffMembers.Select(m => m.Key));
+
+        var allOff = ThinkingPoolAutoJoin.For(oneOff.TurnOff("host:diva"), Host("diva", Role, card2), null, now: Now);
+        Assert.False(allOff.Changed);
+        Assert.Contains("turned diva off", allOff.Why, StringComparison.Ordinal);
+
+        // Card 1 off, card 2 newly set up: card 2 joins by itself, card 1 stays off.
+        var later = ThinkingPoolAutoJoin.For(ThinkingPoolAutoJoin.For(new(), Host("diva", Role), null, now: Now).Pool.TurnOff("host:diva"),
+            Host("diva", Role, card2), null, now: Now);
+        Assert.Equal(ThinkingPoolHostChange.Joined, later.Change);
+        Assert.Equal(["host:diva#gpu2"], later.Pool.Members.Select(m => m.Key));
+        Assert.True(later.Pool.IsOff("host:diva"));
+
+        // An Ollama-only member turned off doesn't join again either; a card turned off leaves once its role is gone.
+        var quiet = ThinkingPoolAutoJoin.For(new(), Host("quiet", Ollama), null, now: Now).Pool.TurnOff("host:quiet");
+        Assert.False(ThinkingPoolAutoJoin.For(quiet, Host("quiet", Ollama), null, now: Now).Changed);
+        var gone = ThinkingPoolAutoJoin.For(oneOff, Host("diva", Role), null, now: Now);
+        Assert.Equal(ThinkingPoolHostChange.CardRemoved, gone.Change);
+        Assert.Empty(gone.Pool.OffMembers);
+    }
+
+    [Fact]
     public void A_host_with_an_incomplete_pairing_does_not_join()
     {
         var plain = Host("diva", Role) with { Origin = "http://diva.local:9443" };
