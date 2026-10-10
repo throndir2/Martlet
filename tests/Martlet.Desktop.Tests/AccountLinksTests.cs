@@ -35,7 +35,7 @@ public sealed class AccountLinksTests : IDisposable
     }
 
     private AccountAttestation Attest(Guid account, string device, string user = "sam") => AccountAttestation.Issue(roster.NetworkId, "home-host",
-        account, device, new() { Kind = "martlet", Provider = "martlet", Subject = user }, Now, AccountAttestation.DefaultLifetime, host);
+        account, device, AccountLoginKey.ForPassword(user), Now, AccountAttestation.DefaultLifetime, host);
 
     // Sam's account, made on desktop-a with its Windows login.
     private AccountDirectory WithSam(out Account sam)

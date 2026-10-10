@@ -10,7 +10,7 @@ public sealed class AccountBindingRulesTests : IDisposable
     private const string SidA = "S-1-5-21-1004336348-1177238915-682003330-1001";
     private const string SidB = "S-1-5-21-1004336348-1177238915-682003330-1002";
     private static readonly DateTimeOffset Now = new(2026, 10, 10, 20, 0, 0, TimeSpan.Zero);
-    private static readonly AccountAttestationLogin Password = new() { Kind = "martlet", Provider = "martlet", Subject = "sam" };
+    private static readonly AccountLoginKey Password = AccountLoginKey.ForPassword("sam");
     private readonly NetworkKey a = NetworkKey.Create("desktop-a");
     private readonly NetworkKey b = NetworkKey.Create("desktop-b");
     private readonly X509Certificate2 host;

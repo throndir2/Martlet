@@ -10,8 +10,8 @@ namespace Martlet.Desktop;
 /// </summary>
 internal static class AccountLinks
 {
-    /// <summary>The directory login an attestation names.</summary>
-    internal static AccountLoginKey LoginOf(AccountAttestationLogin login) => login.Kind == AccountLoginKinds.Martlet
+    /// <summary>The directory login an attestation names (the same key, kept as the directory writes it).</summary>
+    internal static AccountLoginKey LoginOf(AccountLoginKey login) => login.Kind == AccountLoginKinds.Martlet
         ? AccountLoginKey.ForPassword(login.Subject)
         : AccountLoginKey.ForProvider(login.Kind, login.Provider, login.Subject);
 
