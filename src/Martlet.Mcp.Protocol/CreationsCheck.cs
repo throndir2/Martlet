@@ -10,27 +10,37 @@ namespace Martlet.Mcp;
 /// voice or personality: creations are the owner's own, like memories.</summary>
 internal static class CreationsCheck
 {
-    /// <summary>Where the creations of <paramref name="dataDirectory"/> are: the folder of the account they moved to
-    /// (creations-moved.json), or the data folder itself before that move.</summary>
+    /// <summary>Where the creations of <paramref name="dataDirectory"/> are: the folder of the account in use on this device
+    /// (accounts\session.json), else of the account they moved to (creations-moved.json), else the data folder itself.</summary>
     internal static string Folder(string dataDirectory) =>
-        CreationAccounts.Moved(dataDirectory) is { } moved ? CreationAccounts.Folder(dataDirectory, moved.Account) : dataDirectory;
+        (Signed(dataDirectory) ?? CreationAccounts.Moved(dataDirectory)?.Account) is { } account
+            ? CreationAccounts.Folder(dataDirectory, account)
+            : dataDirectory;
+
+    // The account in use on this device; null without a readable session.
+    private static Guid? Signed(string dataDirectory)
+    {
+        try { return Martlet.Core.Accounts.AccountSessionState.Load(dataDirectory)?.Current; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { return null; }
+    }
 
     /// <summary>Reads the creations of <paramref name="account"/> (32 hex digits or a GUID) in &lt;data&gt;\accounts\&lt;32 hex&gt;.
-    /// Without an account it reads the account the data folder's creations moved to (creations-moved.json), or the data folder
-    /// itself before that move. The answer names the account and the folder it read (docs/ACCOUNTS.md).</summary>
+    /// Without an account it reads the account in use on this device (accounts\session.json), else the account the data folder's
+    /// creations moved to (creations-moved.json), else the data folder itself. The answer names the account and the folder it read (docs/ACCOUNTS.md).</summary>
     internal static object Status(string dataDirectory, string? account = null)
     {
         Guid? accountId = null;
         if (account is not null)
             accountId = Guid.TryParse(account, out var parsed) ? parsed : throw new ArgumentException("account is an account ID (32 hex digits or a GUID).");
         var moved = CreationAccounts.Moved(dataDirectory);
-        accountId ??= moved?.Account;
+        var signedIn = Signed(dataDirectory);
+        accountId ??= signedIn ?? moved?.Account;
         var folder = accountId is { } id ? CreationAccounts.Folder(dataDirectory, id) : dataDirectory;
         var from = new
         {
             account = accountId?.ToString("N"),
             folder = accountId is { } shown ? Path.Combine(CreationAccounts.AccountsDirectoryName, shown.ToString("N")) : ".",
-            chosenBy = account is not null ? "argument" : moved is not null ? "moved" : "data folder (before accounts)",
+            chosenBy = account is not null ? "argument" : signedIn is not null ? "signed in" : moved is not null ? "moved" : "data folder (before accounts)",
             moved = moved is null ? null : new
             {
                 account = moved.Account.ToString("N"), movedAt = moved.MovedAt, creations = moved.Creations, assets = moved.Assets

@@ -10,8 +10,8 @@ using Martlet.Core.Creations;
 
 namespace Martlet.Desktop;
 
-/// <summary>Creations: everything Martlet made (songs now, other kinds later), kept the same on all the owner's Martlet
-/// computers through the paired hosts (docs/CREATIONS.md). The page lists them and shows each one's text and details, with
+/// <summary>Creations: everything Martlet made (songs now, other kinds later), kept in the signed-in account's folder and the
+/// same on every Martlet computer where that account is signed in, through the paired hosts (docs/CREATIONS.md, docs/ACCOUNTS.md). The page lists them and shows each one's text and details, with
 /// Rename and Delete. It has no Play, Show or Activate: Martlet performs its creations itself when asked in conversation
 /// (perform_creation).</summary>
 public partial class MainWindow
@@ -22,18 +22,52 @@ public partial class MainWindow
     private string creationStatus = "No other Martlet computers are paired yet, so your creations stay on this PC.";
     private string? selectedCreation;
 
-    /// <summary>Where the signed-in account keeps its creations (docs/ACCOUNTS.md); null until Martlet can use its data folder.</summary>
-    private string? CreationsFolder => store?.DataDirectory;
+    /// <summary>Where the signed-in account keeps its creations: its account folder (docs/ACCOUNTS.md); the data folder when this
+    /// PC's account session couldn't be opened; null until Martlet can use its data folder.</summary>
+    private string? CreationsFolder => accounts?.AccountFolder ?? store?.DataDirectory;
+
+    /// <summary>An account change step (at start and on every switch): the creations kept in the data folder before accounts move
+    /// once into the folder of the first account that signs in here (on an updated desktop, the owner), recorded in
+    /// accounts\creations-moved.json. A move that fails is logged and tried again at the next change; it never stops a switch.</summary>
+    internal static async Task MoveDataFolderCreationsAsync(AccountChange change, CancellationToken token)
+    {
+        if (CreationAccounts.Moved(change.HouseholdFolder) is not null) return;
+        try
+        {
+            var move = await Task.Run(() => CreationAccounts.MoveDataFolderCreationsOnceAsync(change.HouseholdFolder, change.To, change.ToFolder,
+                DateTimeOffset.UtcNow, token), token);
+            if (move.Creations + move.Assets > 0)
+                ErrorLog.Info($"Creations: moved {move.Creations} creation{(move.Creations == 1 ? "" : "s")} and {move.Assets} asset " +
+                    $"file{(move.Assets == 1 ? "" : "s")} from the data folder to account {AccountSession.Short(change.To)}.");
+        }
+        catch (Exception error) when (CreationStore.IsFailure(error))
+        {
+            ErrorLog.Warn("Creations: couldn't move the data folder's creations to the account; trying again at the next account change.", error);
+        }
+    }
 
     private void InitializeCreations()
     {
         creationTimer.Tick += (_, _) => SyncCreationsAsync().Forget();
+        if (conversation is not null) conversation.CreationsDirectory = CreationsFolder;
+        if (accounts is not null) accounts.AccountChanged += () => Dispatcher.BeginInvoke(CreationsAccountChanged);
         CreationStore.Changed += directory => Dispatcher.InvokeAsync(() =>
         {
             if (closing || CreationsFolder is not { } folder || !string.Equals(directory, folder, StringComparison.OrdinalIgnoreCase)) return;
             QueueCreationSync();
             if (CreationsPage.IsVisible) RenderCreations();
         });
+    }
+
+    /// <summary>Another account is in use: Martlet keeps and shares that account's creations from now on.</summary>
+    private void CreationsAccountChanged()
+    {
+        if (closing) return;
+        if (conversation is not null) conversation.CreationsDirectory = CreationsFolder;
+        selectedCreation = null;
+        creationStatus = "Checking your creations on your other computers…";
+        if (CreationsPage.IsVisible) RenderCreations();
+        QueueCreationSync();
     }
 
     private void StartCreations()
@@ -84,7 +118,12 @@ public partial class MainWindow
         var token = lifetime.Token;
         var digest = CreationStore.View(dataDirectory).Digest();
         var changed = false;
-        var peers = hosts.Select(host => new HostCreationPeer(host.HostId, () => ClusterSync.Connect(host.Pairing))).ToArray();
+        // The signed-in account's own list on each host; the owner's is joined with the old single list that desktops on an older
+        // Martlet use (docs/ACCOUNTS.md). Without an account session, the old list as before.
+        var account = accounts is { } session ? (Id: session.AccountId, Owner: session.OwnerId == session.AccountId) : ((Guid Id, bool Owner)?)null;
+        var peers = hosts.Select(host => account is { } signedIn
+            ? HostCreationPeer.ForAccount(host.HostId, () => ClusterSync.Connect(host.Pairing), signedIn.Id, signedIn.Owner)
+            : new HostCreationPeer(host.HostId, () => ClusterSync.Connect(host.Pairing))).ToArray();
         try
         {
             if (creationSync?.DataDirectory != dataDirectory) creationSync = new CreationSync(dataDirectory);
@@ -104,7 +143,7 @@ public partial class MainWindow
         }
         finally
         {
-            foreach (var peer in peers) peer.Dispose();
+            foreach (var peer in peers) (peer as IDisposable)?.Dispose();
             creationBusy = false;
             static string Gist(string text) => System.Text.RegularExpressions.Regex.Replace(text, @" at [^.]+\.", ".");
             if (!closing && CreationsPage.IsVisible && (changed || Gist(before) != Gist(creationStatus))) RenderCreations();

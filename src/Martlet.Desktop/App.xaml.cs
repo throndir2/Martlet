@@ -129,6 +129,7 @@ public partial class App : Application
                 // Who uses Martlet now (docs/ACCOUNTS.md): signs in for the first time when needed, then runs the account change
                 // steps (added here, before StartAsync) before the theme, character and conversation load.
                 Accounts = OpenAccounts(store.DataDirectory);
+                Accounts?.AddChangeStep(Martlet.Desktop.MainWindow.MoveDataFolderCreationsAsync);
                 if (Accounts is { } accounts) Task.Run(() => accounts.StartAsync(CancellationToken.None)).GetAwaiter().GetResult();
                 (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
                 ThemeColors = Appearance.LoadColors(store.DataDirectory, SelectedTheme);
