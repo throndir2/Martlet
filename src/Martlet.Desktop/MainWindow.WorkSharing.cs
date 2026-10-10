@@ -102,8 +102,9 @@ public partial class MainWindow
     {
         var list = WorkSharingRoster.Pool(store?.DataDirectory, area);
         var on = list?.Members.Where(m => !m.Off).ToArray() ?? [];
-        var detail = list is null ? "No list yet."
-            : on.Length == 0 ? (area.Required ? $"Nothing is on, so {area.WhenEmpty.ToLowerInvariant()} is used." : "Off: nothing in its list is on.")
+        var detail = list is null ? (area.ConversationFirst ? "Its own model only: a reply waits for it when it is busy." : "Nothing in its list yet.")
+            : on.Length == 0 ? (area.Required ? $"Nothing is on, so {area.WhenEmpty.ToLowerInvariant()} is used."
+                : area.ConversationFirst ? "Its own model only: a reply waits for it when it is busy." : "Off: nothing in its list is on.")
             : (area.ConversationFirst ? "Its own model first, then " : "In order: ") + string.Join(", ", on.Select(m => m.Name)) + ".";
         var row = NetworkRowFrame();
         if (PoolTab(area) is { } tab)

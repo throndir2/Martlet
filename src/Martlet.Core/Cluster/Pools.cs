@@ -498,8 +498,9 @@ public static class PoolRouting
     /// that run the engine (<paramref name="planned"/>, the route's own computer, or one of <paramref name="runs"/>), each
     /// computer once. This PC is this PC's own host service (<paramref name="own"/>); a card is its computer (a host runs one
     /// route per engine). An area whose conversation goes first (Thinking) puts <paramref name="planned"/> first. When no
-    /// member can take it, <paramref name="planned"/> still does (an area is turned off by turning its route off).</summary>
-    public static IReadOnlyList<string> Hosts(PoolArea area, PoolList list, string device, string planned, string? own, IReadOnlySet<string> runs)
+    /// member can take it, <paramref name="planned"/> still does (an area is turned off by turning its route off); without
+    /// one, nothing does.</summary>
+    public static IReadOnlyList<string> Hosts(PoolArea area, PoolList list, string device, string? planned, string? own, IReadOnlySet<string> runs)
     {
         ArgumentNullException.ThrowIfNull(area);
         ArgumentNullException.ThrowIfNull(runs);
@@ -514,9 +515,9 @@ public static class PoolRouting
             return id is not null && (id == planned || runs.Contains(id)) ? id : null;
         }
         var order = Order(area, list, device, m => Resolve(m) is not null).Members.Select(m => Resolve(m)!);
-        if (area.ConversationFirst) order = order.Prepend(planned);
+        if (area.ConversationFirst && planned is not null) order = order.Prepend(planned);
         var hosts = order.Distinct(StringComparer.Ordinal).ToList();
-        return hosts.Count == 0 ? [planned] : hosts;
+        return hosts.Count == 0 && planned is not null ? [planned] : hosts;
     }
 }
 

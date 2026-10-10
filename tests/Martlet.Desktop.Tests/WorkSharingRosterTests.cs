@@ -53,6 +53,41 @@ public sealed class WorkSharingRosterTests
     }
 
     [Fact]
+    public void Order_follows_the_pool_list_once_the_area_has_one()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-roster-pool-").FullName;
+        try
+        {
+            HostRegistry.Save(directory, [Paired("m1-host", 11), Paired("m3-host", 13), Paired("m4-host", 14)]);
+            var plan = ClusterPlan.Empty
+                .Observe("m1-host", null, [new() { Kind = "chatterbox", Model = "chatterbox-turbo" }, new() { Kind = "ollama", Model = "gemma4:12b" }], false, "desk-1", Now)
+                .Observe("m3-host", null, [new() { Kind = "chatterbox", Model = "chatterbox-turbo" }, new() { Kind = "ollama", Model = "gemma4:12b" }], false, "desk-1", Now)
+                .Observe("m4-host", null, [new() { Kind = "audio2face", Model = "a2f" }], false, "desk-1", Now);
+            ClusterSync.SavePlan(directory, plan);
+            // The list puts m3-host before the route's own m1-host, and m4-host (no voice) is skipped.
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Speaking, new PoolList
+            {
+                Area = PoolAreas.Speaking.Id, Members = [PoolMember.Computer("m4-host"), PoolMember.Computer("m3-host"), PoolMember.Computer("m1-host")]
+            }));
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Thinking, new PoolList { Area = PoolAreas.Thinking.Id, Members = [PoolMember.Computer("m3-host")] }));
+            WorkSharingRoster.Forget();
+            Assert.Equal(["m3-host", "m1-host"],
+                WorkSharingRoster.Order(directory, WorkSharingJobs.Speaking, "chatterbox", null, "m1-host").Select(p => p.Host!.HostId));
+            // Thinking: the conversation's own model first, then the list.
+            Assert.Equal(["m1-host", "m3-host"],
+                WorkSharingRoster.Order(directory, WorkSharingJobs.Thinking, "ollama", "gemma4:12b", "m1-host").Select(p => p.Host!.HostId));
+            // Every member off: the route's own computer still does it (the page turns the route off instead).
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Speaking, new PoolList
+            {
+                Area = PoolAreas.Speaking.Id, Members = [PoolMember.Computer("m3-host") with { Off = true }]
+            }));
+            WorkSharingRoster.Forget();
+            Assert.Equal(["m1-host"], WorkSharingRoster.Order(directory, WorkSharingJobs.Speaking, "chatterbox", null, "m1-host").Select(p => p.Host!.HostId));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void Busy_and_unreachable_refusals_move_on_and_others_fail()
     {
         Assert.Equal(WorkRefusal.Busy, WorkSharingRoster.Classify(new Audio2FaceHostException("job.busy", "busy")));

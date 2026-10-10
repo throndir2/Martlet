@@ -23,6 +23,6 @@ internal static partial class WorkSharingRoster
         PoolRouting.Order(area, Pool(DataDirectory, area), Device, usable);
 
     /// <summary>The paired computers a host request of <paramref name="area"/> tries (<see cref="PoolRouting.Hosts"/>).</summary>
-    internal static IReadOnlyList<string> PoolHosts(PoolArea area, PoolList list, string planned, string? own, IReadOnlySet<string> runs) =>
+    internal static IReadOnlyList<string> PoolHosts(PoolArea area, PoolList list, string? planned, string? own, IReadOnlySet<string> runs) =>
         PoolRouting.Hosts(area, list, Device, planned, own, runs);
 }

@@ -412,13 +412,13 @@ public partial class MainWindow
             var loaded = await setupService.LoadAsync(lifetime.Token);
             homeSettings = await LeaveRetiredVoiceAsync(loaded, lifetime.Token) ?? loaded.Settings;
             SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
-            // Speaking, Listening and Thinking get their pool lists once, from Devices › Sharing work and their routes.
-            EnsurePools();
             // No voice goes by the companion's own name: one learned by mistake is dropped (names the owner typed stay).
             localVoices.DropCompanionNames(Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name),
                 homeSettings?.Companion?.Personas.Select(p => p.Text)));
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
+            // Speaking, Listening and Thinking get their pool lists once, from Devices › Sharing work and their routes.
+            EnsurePools();
             // Touch zones saved before reaction lists get the list they play now (the active persona's temperament is known now).
             characterTouchZones.FillLists();
             // The talk window stays open while you change things in Companion: it picks up a saved change once Martlet is free.

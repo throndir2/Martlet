@@ -158,6 +158,24 @@ public sealed class PoolsTests
     }
 
     [Fact]
+    public void Hosts_resolve_members_to_computers_that_run_the_engine()
+    {
+        var runs = new HashSet<string>(["m3-host", "m7-host"], StringComparer.Ordinal);
+        var list = new PoolList
+        {
+            Area = PoolAreas.Speaking.Id,
+            Members = [PoolMember.Cloud("openai", "tts-1"), PoolMember.ThisPc(), PoolMember.Gpu("m3-host", 2), PoolMember.Computer("m3-host"),
+                PoolMember.Computer("m9-host"), PoolMember.Computer("m1-host")]
+        };
+        // A cloud member isn't a computer; this PC is its own host service; a card is its computer; m9-host doesn't run it.
+        Assert.Equal(["m7-host", "m3-host", "m1-host"], PoolRouting.Hosts(PoolAreas.Speaking, list, "desk-7", "m1-host", "m7-host", runs));
+        Assert.Equal(["m3-host", "m1-host"], PoolRouting.Hosts(PoolAreas.Speaking, list, "desk-2", "m1-host", null, runs));
+        Assert.Equal(["m1-host"], PoolRouting.Hosts(PoolAreas.Speaking, new PoolList { Area = "speaking" }, "desk-2", "m1-host", null, runs));
+        Assert.Equal(["m1-host", "m3-host"],
+            PoolRouting.Hosts(PoolAreas.Thinking, new PoolList { Area = "thinking", Members = [PoolMember.Computer("m3-host")] }, "desk-2", "m1-host", null, runs));
+    }
+
+    [Fact]
     public void Cloud_and_address_failures_map_to_queue_refusals()
     {
         Assert.Equal(WorkRefusal.Busy, PoolRefusals.Http(429));

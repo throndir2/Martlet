@@ -64,7 +64,9 @@ public partial class MainWindow
         if (options.Intro is not null) stack.Add(Note(options.Intro, new Thickness(0, 0, 0, 8)));
         var on = list.Members.Count(m => !m.Off);
         var summary = Note(on == 0
-                ? area.Required ? $"Nothing in the list is on, so {area.WhenEmpty.ToLowerInvariant()} is used." : "Off: nothing in the list is on."
+                ? area.Required ? $"Nothing in the list is on, so {area.WhenEmpty.ToLowerInvariant()} is used."
+                : area.ConversationFirst ? "Empty: a reply always waits for the conversation's own model."
+                : "Off: nothing in the list is on."
                 : area.ConversationFirst
                     ? $"The conversation's own model goes first. When it is busy, a reply goes to the first free one of {on} below."
                     : on == 1 ? "One member is on. Requests go to it."
@@ -264,16 +266,18 @@ public partial class MainWindow
 
     /// <summary>Makes the Speaking, Listening and Thinking lists once, from Devices › Sharing work and each job's route, so no
     /// order, never-use or kept-for choice is lost. An area that already has a list (made here or shared by another computer)
-    /// keeps it.</summary>
+    /// keeps it. Settings that couldn't be read make nothing: a list made without the route would lose it.</summary>
     private void EnsurePools()
     {
-        if (store is null || homeSettings is null) return;
+        if (store is null || homeSettings is null && homeSettingsState != SettingsLoadState.FirstRun) return;
         var made = false;
         foreach (var (area, role, job) in RoutePools)
         {
             if (WorkSharingRoster.Pool(store.DataDirectory, area) is not null) continue;
-            var route = homeSettings.Setup?.Routes.FirstOrDefault(r => r.Role == role);
+            var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role);
             var list = PoolMigration.FromWorkSharing(area, SharingSettings(), RouteMember(area, route), SharingPlaces(job));
+            // Nothing to keep: no list yet, so a new computer never shares an empty list over another computer's choices.
+            if (list.Members.Count == 0) continue;
             if (!PoolSettings.SaveFor(store.DataDirectory, area, list)) continue;
             made = true;
             ErrorLog.Info($"Pools: made the {area.Title} list from Sharing work: {(list.Members.Count == 0 ? "empty" : string.Join(", ", list.Members.Select(m => m.Key)))}.");

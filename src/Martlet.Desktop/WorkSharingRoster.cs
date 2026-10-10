@@ -79,8 +79,10 @@ internal static partial class WorkSharingRoster
             .ToDictionary(p => p.Node.HostId, p => p.Role!.Model, StringComparer.Ordinal);
         (PairedHost? Host, string? Model) Place(string id) => id == planned ? (hosts.FirstOrDefault(h => h.HostId == id), (string?)null)
             : (hosts.First(h => h.HostId == id), runs[id]);
-        // The area's pool list (Companion › Voice, Listening, Thinking), once it has one: its members in the owner's order.
-        if (PoolAreas.Find(job) is { } area && Pool(directory, area) is { } list)
+        // Speaking's, Listening's and Thinking's pool list (Companion › Voice, Listening, Thinking), once it has one: its members
+        // in the owner's order. The other pooled areas route their own lists.
+        if (PoolAreas.Find(job) is { } area && (area == PoolAreas.Speaking || area == PoolAreas.Listening || area == PoolAreas.Thinking) &&
+            Pool(directory, area) is { } list)
             return [.. PoolHosts(area, list, planned, own, runs.Keys.ToHashSet(StringComparer.Ordinal)).Select(Place)];
         var places = runs.Keys.Select(id => new WorkPlace(id, id == own,
             plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == id))).ToArray();
