@@ -3058,7 +3058,15 @@ is paired with hosts (`hosts.json`), it adds `paired` (Martlet.NodeLinkCheck's
 Singing card reads it (the pairing secret from Windows Credential Manager only
 signs the requests), `reachable`, `offersSinging`, `model` and `service` (the same
 status fields as above plus the models' count, total bytes and licences), or the
-`problem`; and `thisPcDocker`, what this PC's Docker shows of the role:
+`problem`; `pool`, the singing pool as the desktop's `SongClient` uses it
+(`SingingPool.Members`): `configured` (the `singing` area of `pools.json` has a
+list), `off` (that list has no member on), `saved`, `voiceMatch`, `order` (the
+computers songs try), `members` (each one's `position`, member `key`, `host`,
+`plannedSinger` (the shared plan says it runs Singing), `settings` and
+`verdict` now: `takes a song now`, `busy: N songs before a new one` or `passed
+over: ...`) and `nextSong` (`host`, `ahead`, `waitsInLine`: where the next
+song goes, `SingingPool.Pick`; null when no member can sing it); and
+`thisPcDocker`, what this PC's Docker shows of the role:
 `containers` (name, image, state, status), `images` (`martlet-singing` tags,
 sizes), `modelsVolume` (whether `martlet-singing-models` exists) and
 `setupRunning` with `setup` (a `martlet-host add singing` engine session running
@@ -3067,6 +3075,26 @@ in Docker listens only inside its gateway's network, so `paired` is how to read
 it from this PC. Read-only. As with `voice_engine_check`, a role service on a host
 listens only in the host's loopback, so `endpoint` reads it only there or through
 a forwarded port.
+
+`singing_pool_check` rehearses the singing pool
+([Singing](SINGING.md#the-singing-pool)) with the production code
+(`SingingPool` through `WorkQueue`, what `SongClient` runs) on simulated
+singing computers that answer the singing status (state, line, voice
+matches) and make a song as a host does (a full line refuses with
+`singing.busy`; a computer that is off doesn't answer). It returns `ok`,
+`fixture` (`simulated singing computers (NOT real hosts or models)`) and
+`steps`, each with `name`, `passed` and `detail`: the order without a list
+(the computer Martlet sings on, then the plan's singers, then the other
+paired computers), a `pools.json` list winning (this PC as its own host
+service, a card as its computer; off, unpaired and kept-for-others members
+left out; an empty list off), a free first computer taking the song with no
+other asked, a busy one passed over at once, a VevoSing song passing over a
+computer without VevoSing (and `singing.voice_match_unavailable` where none
+has it), computers that don't answer or don't sing passed over, every
+computer busy so the song waits on the shortest line, every line full
+(`singing.busy`), a failed song not made again elsewhere, and a computer that
+stops answering during the song replaced by the next. In-process; reads
+nothing.
 
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts

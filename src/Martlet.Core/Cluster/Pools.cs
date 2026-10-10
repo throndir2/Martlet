@@ -223,7 +223,7 @@ public static class PoolAreas
     };
     public static readonly PoolArea Singing = new()
     {
-        Id = "singing", Title = "Singing", Page = "Companion › Singing", Kinds = Local
+        Id = "singing", Title = "Singing", Page = "Companion › Singing", HostRole = "singing", Kinds = Local
     };
     public static readonly PoolArea Vision = new()
     {
