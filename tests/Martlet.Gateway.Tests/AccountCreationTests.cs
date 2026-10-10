@@ -77,6 +77,7 @@ public sealed class AccountCreationTests
     public async Task Each_account_keeps_its_own_creations_apart_from_the_others_and_from_the_old_list()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         var storage = new Storage();
         host.Server.AttachAccountCreationStorage(storage);
         host.Server.AttachCreationStorage(storage);
@@ -135,6 +136,7 @@ public sealed class AccountCreationTests
         var sha256 = creation.Assets!.Single().Chunks.Single();
         await using (var first = await GatewayTestHost.StartAsync())
         {
+            first.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
             first.Server.AttachAccountCreationStorage(storage);
             first.Server.AttachCreationStorage(storage);
             var member = await MemberAsync(first);
@@ -158,6 +160,7 @@ public sealed class AccountCreationTests
 
         storage.Lists[Alex] = Encoding.UTF8.GetBytes("not a creation list");
         await using var second = await GatewayTestHost.StartAsync();
+        second.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         second.Server.AttachAccountCreationStorage(storage);
         second.Server.AttachCreationStorage(storage);
         var again = await MemberAsync(second);
@@ -264,6 +267,7 @@ public sealed class AccountCreationTests
     public async Task A_host_keeps_lists_for_at_most_64_accounts()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         var member = await MemberAsync(host);
         for (var i = 0; i < 64; i++)
         {
