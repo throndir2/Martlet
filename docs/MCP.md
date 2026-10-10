@@ -7393,7 +7393,9 @@ Voice lists its engines per computer instead (`SpeakingHost-<host ID>` and
 `VoiceEngineUse-<key>`, above).
 
 Status fields include the talk window's `LiveStatus` (its status line),
-`LiveMic` (the Start listening / Stop listening button; its value starts with
+`LiveMic` (the Start listening / Stop listening icon button; like `LiveVision`
+and `LiveStop` it shows only an icon, and its tooltip starts with what it
+does; its value starts with
 the state: *Not listening* until it is pressed, then *Listening*, *Can't
 listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
 *Listening. Martlet listens for you, even while it speaks…* when echo

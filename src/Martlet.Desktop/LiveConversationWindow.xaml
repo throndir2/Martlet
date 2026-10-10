@@ -33,24 +33,30 @@
                             <TextBlock x:Name="TasksText" FontSize="13" TextWrapping="NoWrap" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="MicChip" Click="Mic_Click" Padding="14,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
+                    <!-- Icon buttons: the action ("Stop listening", "Start watching"...) is the first line of the tooltip (MicLabel,
+                         VisionLabel); the dot at the corner says how it is going. -->
+                    <Button x:Name="MicChip" Click="Mic_Click" Padding="8,6" MinHeight="34" MinWidth="40" Margin="0,0,8,0" Visibility="Collapsed"
                             ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="LiveMic">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="MicDot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"
-                                     Visibility="Collapsed"/>
-                            <TextBlock x:Name="MicText" FontSize="13" TextWrapping="NoWrap" VerticalAlignment="Center"/>
-                        </StackPanel>
+                        <Grid Width="22" Height="20">
+                            <TextBlock x:Name="MicGlyph" Style="{DynamicResource Icon}" Text="&#xE720;"/>
+                            <Ellipse x:Name="MicDot" Width="7" Height="7" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                     Fill="{DynamicResource MutedBrush}" Visibility="Collapsed"/>
+                        </Grid>
                     </Button>
-                    <Button x:Name="VisionChip" Click="Vision_Click" Padding="12,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
+                    <Button x:Name="VisionChip" Click="Vision_Click" Padding="8,6" MinHeight="34" MinWidth="40" Margin="0,0,8,0" Visibility="Collapsed"
                             ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="LiveVision">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="VisionDot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"/>
-                            <TextBlock x:Name="VisionText" FontSize="13" TextWrapping="NoWrap" VerticalAlignment="Center"/>
-                        </StackPanel>
+                        <Grid Width="22" Height="20">
+                            <TextBlock x:Name="VisionGlyph" Style="{DynamicResource Icon}" Text="&#xE890;"/>
+                            <Ellipse x:Name="VisionDot" Width="7" Height="7" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                     Fill="{DynamicResource MutedBrush}"/>
+                        </Grid>
                     </Button>
-                    <Button x:Name="StopButton" Content="Stop (Esc)" Click="Stop_Click" IsEnabled="False" Padding="14,6" MinHeight="34"
-                            AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
-                            AutomationProperties.HelpText="Stops the reply, recording and watching. Listening stays on." />
+                    <Button x:Name="StopButton" Click="Stop_Click" IsEnabled="False" Padding="8,6" MinHeight="34" MinWidth="40"
+                            ToolTip="Stop (Esc)&#x0a;Stops the reply, recording and watching. Listening stays on." ToolTipService.ShowOnDisabled="True"
+                            AutomationProperties.Name="Stop (Esc)" AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
+                            AutomationProperties.HelpText="Stops the reply, recording and watching. Listening stays on.">
+                        <TextBlock Style="{DynamicResource Icon}" Text="&#xE71A;"/>
+                    </Button>
                 </StackPanel>
                 <Image x:Name="TalkMascot" Style="{DynamicResource Mascot}" DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0"/>
                 <StackPanel VerticalAlignment="Center">
