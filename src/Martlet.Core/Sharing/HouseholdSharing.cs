@@ -61,10 +61,12 @@ public sealed record JoinedCharacter
 /// <summary>
 /// What one account shares with the household: the household shared-settings entry <c>sharing.&lt;account 32 hex&gt;</c>
 /// (<see cref="Key"/>). Only that account's devices write it, members as well as admins. It lists the characters the account
-/// shares (<see cref="Characters"/>, a snapshot its devices refresh after each change) and the characters of other accounts it
-/// talks to together (<see cref="Joined"/>). *Share new memories about me* is in the account directory entry
-/// (<c>Account.Sharing.MemoriesAboutMe</c>), not here. Other accounts' devices read this entry to show Household characters, to
-/// use a copy and to keep a character shared together the same as its owner's. Snake-case JSON, schema 1, at most
+/// shares (<see cref="Characters"/>, a snapshot its devices refresh after each change), the characters of other accounts it
+/// talks to together (<see cref="Joined"/>) and *Share new memories about me* (<see cref="NewFactsAboutMe"/>: new facts about
+/// this person go to the household memory space). The entry is the one place that holds this choice, because it works on every
+/// PC, also before the account reaches the account directory; its devices copy it to the directory entry's
+/// <c>sharing.memories_about_me</c> when the account is there. Other accounts' devices read this entry to show Household
+/// characters, to use a copy and to keep a character shared together the same as its owner's. Snake-case JSON, schema 1, at most
 /// <see cref="MaximumCharacters"/> characters, <see cref="MaximumJoined"/> joined characters and <see cref="MaximumBytes"/> bytes.
 /// </summary>
 public sealed record HouseholdSharing
@@ -85,6 +87,7 @@ public sealed record HouseholdSharing
 
     public int SchemaVersion { get; init; } = SchemaVersion1;
     public required Guid AccountId { get; init; }
+    public bool NewFactsAboutMe { get; init; }
     public IReadOnlyList<SharedCharacter> Characters { get; init; } = [];
     public IReadOnlyList<JoinedCharacter> Joined { get; init; } = [];
 
@@ -147,6 +150,8 @@ public sealed record HouseholdSharing
         };
         return Fits(next) ? next : this with { Characters = [.. Characters.Where(c => Present(c.Id) is not null)] };
     }
+
+    public HouseholdSharing WithNewFactsAboutMe(bool on) => this with { NewFactsAboutMe = on };
 
     /// <summary>Records that this account talks to <paramref name="character"/> of <paramref name="account"/> together.</summary>
     public HouseholdSharing WithJoined(Guid account, Guid character) => HasJoined(character) ? this
@@ -253,147 +258,3 @@ public sealed record HouseholdSharing
     }
 }
 
-/// <summary>What a person's own device does with another account's shared character, in that person's own account settings
-/// (only the receiving device can write them): <see cref="UseCopy"/> makes a copy with new IDs, <see cref="Join"/> adds or
-/// updates the mirror of a character shared together (the same IDs, so it uses that character's memory space) and
-/// <see cref="Leave"/> takes a mirror away.</summary>
-public static class SharedCharacters
-{
-    /// <summary>Adds a copy of <paramref name="shared"/>: a new personality, character profile and lorebooks with new IDs and
-    /// names made unique, so it is this account's own character with its own memories. Not yet switched to. Throws
-    /// <see cref="ContractException"/> when the account has no room for it.</summary>
-    public static (CompanionSettings Companion, LorebookLibrary Lorebooks, CharacterProfile Added) UseCopy(
-        CompanionSettings companion, LorebookLibrary lorebooks, SharedCharacter shared)
-    {
-        ArgumentNullException.ThrowIfNull(companion);
-        ArgumentNullException.ThrowIfNull(lorebooks);
-        ArgumentNullException.ThrowIfNull(shared);
-        ContractRules.Require(companion.Personas.Count < CompanionSettings.MaximumPersonas,
-            $"There is no room for another personality: an account keeps at most {CompanionSettings.MaximumPersonas}. Remove one first.");
-        ContractRules.Require(companion.CharacterList.Count < CompanionSettings.MaximumCharacters,
-            $"There is no room for another character: an account keeps at most {CompanionSettings.MaximumCharacters}. Remove one first.");
-        var persona = new PersonaProfile
-        {
-            Id = Guid.NewGuid(), ConfigurationRevision = Guid.NewGuid(),
-            Name = Unique(shared.Persona.Name, companion.Personas.Select(p => p.Name), PersonaProfile.MaximumNameCharacters),
-            Text = shared.Persona.Text, Breaks = SpeechBreaks.Normalize(shared.Persona.Breaks)
-        };
-        var profile = new CharacterProfile
-        {
-            Id = Guid.NewGuid(), PersonaId = persona.Id, ModelId = shared.ModelId, VoiceId = shared.VoiceId,
-            Name = Unique(shared.Name, companion.CharacterList.Select(c => c.Name), CharacterProfile.MaximumNameCharacters)
-        };
-        var next = companion with { Personas = [.. companion.Personas, persona], Characters = [.. companion.CharacterList, profile] };
-        next.Validate();
-        var books = lorebooks;
-        foreach (var book in shared.Lorebooks)
-            books = books with
-            {
-                Books = [.. books.Books, book with
-                {
-                    Id = Guid.NewGuid(), Name = books.UniqueName(book.Name), PersonaIds = [persona.Id], Activation = LorebookActivation.SelectedPersonas
-                }]
-            };
-        books.Validate();
-        return (next, books, profile);
-    }
-
-    /// <summary>Adds the mirror of <paramref name="shared"/> (a character shared together), or makes the mirror already here the
-    /// same as the owner's: the same profile, personality and lorebook IDs, with names made unique among this account's own.
-    /// Returns the same instances when nothing changes. Throws <see cref="ContractException"/> when there is no room.</summary>
-    public static (CompanionSettings Companion, LorebookLibrary Lorebooks) Join(CompanionSettings companion, LorebookLibrary lorebooks, SharedCharacter shared)
-    {
-        ArgumentNullException.ThrowIfNull(companion);
-        ArgumentNullException.ThrowIfNull(lorebooks);
-        ArgumentNullException.ThrowIfNull(shared);
-        var existingPersona = companion.Personas.FirstOrDefault(p => p.Id == shared.Persona.Id);
-        var personaName = Unique(shared.Persona.Name, companion.Personas.Where(p => p.Id != shared.Persona.Id).Select(p => p.Name),
-            PersonaProfile.MaximumNameCharacters);
-        var breaks = SpeechBreaks.Normalize(shared.Persona.Breaks);
-        var persona = existingPersona is not null && existingPersona.Name == personaName && existingPersona.Text == shared.Persona.Text &&
-            existingPersona.Breaks == breaks
-            ? existingPersona
-            : new PersonaProfile { Id = shared.Persona.Id, ConfigurationRevision = Guid.NewGuid(), Name = personaName, Text = shared.Persona.Text, Breaks = breaks };
-        var existingProfile = companion.CharacterList.FirstOrDefault(c => c.Id == shared.Id);
-        var profile = new CharacterProfile
-        {
-            Id = shared.Id, PersonaId = persona.Id, ModelId = shared.ModelId, VoiceId = shared.VoiceId,
-            Name = Unique(shared.Name, companion.CharacterList.Where(c => c.Id != shared.Id).Select(c => c.Name), CharacterProfile.MaximumNameCharacters)
-        };
-        var next = companion;
-        if (!ReferenceEquals(persona, existingPersona) || existingProfile != profile)
-        {
-            if (existingPersona is null)
-                ContractRules.Require(companion.Personas.Count < CompanionSettings.MaximumPersonas,
-                    $"There is no room for another personality: an account keeps at most {CompanionSettings.MaximumPersonas}. Remove one first.");
-            if (existingProfile is null)
-                ContractRules.Require(companion.CharacterList.Count < CompanionSettings.MaximumCharacters,
-                    $"There is no room for another character: an account keeps at most {CompanionSettings.MaximumCharacters}. Remove one first.");
-            PersonaProfile[] personas = existingPersona is null ? [.. companion.Personas, persona]
-                : [.. companion.Personas.Select(p => p.Id == persona.Id ? persona : p)];
-            CharacterProfile[] characters = existingProfile is null ? [.. companion.CharacterList, profile]
-                : [.. companion.CharacterList.Select(c => c.Id == profile.Id ? profile : c)];
-            next = companion with { Personas = personas, Characters = characters };
-            next.Validate();
-        }
-
-        // The mirror's lorebooks are exactly the owner's lorebooks for this personality.
-        var mine = lorebooks.Books.Where(b => IsOnlyFor(b, persona.Id)).ToArray();
-        var taken = lorebooks with { Books = [.. lorebooks.Books.Where(b => !IsOnlyFor(b, persona.Id))] };
-        var others = taken.Books;
-        var wanted = new List<Lorebook>();
-        foreach (var book in shared.Lorebooks)
-        {
-            var named = book with { Name = taken.UniqueName(book.Name), PersonaIds = [persona.Id], Activation = LorebookActivation.SelectedPersonas };
-            wanted.Add(named);
-            taken = taken with { Books = [.. taken.Books, named] };
-        }
-        if (mine.Length == wanted.Count && mine.OrderBy(b => b.Id).Zip(wanted.OrderBy(b => b.Id)).All(pair => Same(pair.First, pair.Second)))
-            return (next, lorebooks);
-        var books = lorebooks with { Books = [.. others, .. wanted] };
-        books.Validate();
-        return (next, books);
-    }
-
-    /// <summary>Takes away the mirror <paramref name="character"/>: its profile, its personality (unless it is the only one or
-    /// another profile uses it) and its lorebooks. When it was in use, the account's first personality is in use instead.</summary>
-    public static (CompanionSettings Companion, LorebookLibrary Lorebooks) Leave(CompanionSettings companion, LorebookLibrary lorebooks, Guid character)
-    {
-        ArgumentNullException.ThrowIfNull(companion);
-        ArgumentNullException.ThrowIfNull(lorebooks);
-        if (companion.CharacterList.FirstOrDefault(c => c.Id == character) is not { } profile) return (companion, lorebooks);
-        var next = companion.RemoveCharacter(character);
-        var personaGoes = next.Personas.Count > 1 && next.CharacterList.All(c => c.PersonaId != profile.PersonaId);
-        if (personaGoes) next = next.Remove(profile.PersonaId);
-        var books = personaGoes && lorebooks.Books.Any(b => IsOnlyFor(b, profile.PersonaId))
-            ? lorebooks with { Books = [.. lorebooks.Books.Where(b => !IsOnlyFor(b, profile.PersonaId))] }
-            : lorebooks;
-        return (next, books);
-    }
-
-    private static bool IsOnlyFor(Lorebook book, Guid persona) =>
-        book.Activation == LorebookActivation.SelectedPersonas && book.PersonaIds.Count == 1 && book.PersonaIds[0] == persona;
-
-    private static bool Same(Lorebook a, Lorebook b) =>
-        a.Id == b.Id && a.Name == b.Name && a.Description == b.Description && a.Activation == b.Activation &&
-        a.PersonaIds.SequenceEqual(b.PersonaIds) && a.Entries.Count == b.Entries.Count &&
-        a.Entries.Zip(b.Entries).All(pair => SameEntry(pair.First, pair.Second));
-
-    private static bool SameEntry(LorebookEntry a, LorebookEntry b) =>
-        a with { Keys = Array.Empty<string>(), SecondaryKeys = Array.Empty<string>() } ==
-        b with { Keys = Array.Empty<string>(), SecondaryKeys = Array.Empty<string>() } &&
-        a.Keys.SequenceEqual(b.Keys) && a.SecondaryKeys.SequenceEqual(b.SecondaryKeys);
-
-    /// <summary><paramref name="name"/>, or with " 2", " 3"... when one of <paramref name="taken"/> has it already.</summary>
-    internal static string Unique(string name, IEnumerable<string> taken, int maximum)
-    {
-        var used = new HashSet<string>(taken, StringComparer.OrdinalIgnoreCase);
-        if (!used.Contains(name)) return name;
-        for (var i = 2; ; i++)
-        {
-            var suffix = $" {i}";
-            var candidate = name[..Math.Min(name.Length, maximum - suffix.Length)].TrimEnd() + suffix;
-            if (!used.Contains(candidate)) return candidate;
-        }
-    }
-}

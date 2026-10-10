@@ -135,7 +135,8 @@ public sealed class HouseholdSharingTests
         alex = alex.AddCharacter("Aria", alex.ActivePersonaId, null, null, out _);
         var alexBooks = LorebookLibrary.Create() with { Books = [new Lorebook { Id = Guid.NewGuid(), Name = "Aria's stars" }] };
 
-        var (companion, lorebooks, added) = SharedCharacters.UseCopy(alex, alexBooks, shared);
+        var (companion, added) = SharedCharacters.UseCopy(alex, shared);
+        var lorebooks = SharedCharacters.CopyLorebooks(alexBooks, shared, added.PersonaId);
         Assert.NotEqual(aria.Id, added.Id);
         Assert.NotEqual(aria.PersonaId, added.PersonaId);
         Assert.Equal(("Aria 2", "model-aria", "voice-aria"), (added.Name, added.ModelId, added.VoiceId));
@@ -158,27 +159,31 @@ public sealed class HouseholdSharingTests
         var alex = CompanionSettings.Create();
         var alexBooks = LorebookLibrary.Create() with { Books = [new Lorebook { Id = Guid.NewGuid(), Name = "Alex's notes" }] };
 
-        var (joined, joinedBooks) = SharedCharacters.Join(alex, alexBooks, sharing.Characters[0]);
+        var joined = SharedCharacters.Join(alex, sharing.Characters[0]);
+        var joinedBooks = SharedCharacters.MirrorLorebooks(alexBooks, sharing.Characters[0]);
         var mirror = joined.CharacterList.Single();
         Assert.Equal((aria.Id, aria.PersonaId), (mirror.Id, mirror.PersonaId));
         Assert.Equal(sharing.Characters[0].Lorebooks[0].Id, joinedBooks.Books.Single(b => b.PersonaIds.Contains(aria.PersonaId)).Id);
 
         // Nothing changed: the same instances come back.
-        var (same, sameBooks) = SharedCharacters.Join(joined, joinedBooks, sharing.Characters[0]);
-        Assert.Same(joined, same);
-        Assert.Same(joinedBooks, sameBooks);
+        Assert.Same(joined, SharedCharacters.Join(joined, sharing.Characters[0]));
+        Assert.Same(joinedBooks, SharedCharacters.MirrorLorebooks(joinedBooks, sharing.Characters[0]));
 
         // The owner edits Aria and drops her lorebook; the mirror follows.
         var edited = samsCompanion.Update(aria.PersonaId, "Aria", "Aria now loves comets.");
         var noBooks = samsLorebooks with { Books = [.. samsLorebooks.Books.Where(b => !b.PersonaIds.Contains(aria.PersonaId))] };
-        var (followed, followedBooks) = SharedCharacters.Join(joined, joinedBooks, sharing.Refresh(edited, noBooks).Characters[0]);
+        var owners = sharing.Refresh(edited, noBooks).Characters[0];
+        var followed = SharedCharacters.Join(joined, owners);
+        var followedBooks = SharedCharacters.MirrorLorebooks(joinedBooks, owners);
         Assert.Equal("Aria now loves comets.", followed.Personas.Single(p => p.Id == aria.PersonaId).Text);
         Assert.DoesNotContain(followedBooks.Books, b => b.PersonaIds.Contains(aria.PersonaId));
         Assert.Contains(followedBooks.Books, b => b.Name == "Alex's notes");
 
         // Leaving while Alex talks to Aria: Alex's own personality is in use again, and Alex's things stay.
         var inUse = followed.SelectCharacter(aria.Id);
-        var (left, leftBooks) = SharedCharacters.Leave(inUse, joinedBooks, aria.Id);
+        var (left, persona) = SharedCharacters.Leave(inUse, aria.Id);
+        Assert.Equal(aria.PersonaId, persona);
+        var leftBooks = SharedCharacters.DropLorebooks(joinedBooks, persona!.Value);
         Assert.Null(left.Characters);
         Assert.Equal(alex.Personas.Single().Id, left.ActivePersonaId);
         Assert.DoesNotContain(left.Personas, p => p.Id == aria.PersonaId);
@@ -186,13 +191,15 @@ public sealed class HouseholdSharingTests
     }
 
     [Fact]
-    public void Joined_characters_are_kept_and_a_joined_character_cannot_be_shared_again()
+    public void Joined_characters_and_the_about_me_choice_are_kept_and_a_joined_character_cannot_be_shared_again()
     {
         var (companion, lorebooks, aria) = SamsCharacters();
-        var alexs = HouseholdSharing.Empty(Alex).WithJoined(Sam, aria.Id);
+        var alexs = HouseholdSharing.Empty(Alex).WithJoined(Sam, aria.Id).WithNewFactsAboutMe(true);
         Assert.Same(alexs, alexs.WithJoined(Sam, aria.Id));
         var read = HouseholdSharing.Read(alexs.Write())!;
         Assert.True(read.HasJoined(aria.Id));
+        Assert.True(read.NewFactsAboutMe);
+        Assert.Contains("\"new_facts_about_me\":true", alexs.Write());
         Assert.Throws<ContractException>(() => read.WithMode(aria.Id, CharacterShareMode.Copy, companion, lorebooks));
         Assert.False(read.WithoutJoined(aria.Id).HasJoined(aria.Id));
     }
