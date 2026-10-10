@@ -425,6 +425,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachSettingsStorage(storage);
     }
 
+    /// <summary>Keeps each account's settings (each person's, apart), which paired desktops share through this host, in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachAccountSettings(IGatewayAccountSettingsStorage storage)
+    {
+        RequireOpen();
+        server!.AttachAccountSettingsStorage(storage);
+    }
+
     /// <summary>Keeps everything Martlet remembers, which paired desktops share through this host, in <paramref name="storage"/>.</summary>
     public void AttachMemories(IGatewayMemoryStorage storage)
     {

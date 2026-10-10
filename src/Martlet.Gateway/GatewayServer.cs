@@ -73,6 +73,13 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachSettingsStorage(IGatewaySettingsStorage storage) => application.Settings.Attach(storage);
 
+    /// <summary>Keeps this host's copy of each account's settings (served at /martlet/v1/settings/accounts/{account}) in
+    /// <paramref name="storage"/> and loads the copies saved there.</summary>
+    public void AttachAccountSettingsStorage(IGatewayAccountSettingsStorage storage) => application.AccountSettings.Attach(storage);
+
+    /// <summary>The accounts (32 lowercase hex) this host keeps settings for.</summary>
+    public IReadOnlyList<string> AccountSettings => application.AccountSettings.Accounts;
+
     /// <summary>Keeps this host's copy of everything Martlet remembers (served at /martlet/v1/memories) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachMemoryStorage(IGatewayMemoryStorage storage) => application.Memories.Attach(storage);
