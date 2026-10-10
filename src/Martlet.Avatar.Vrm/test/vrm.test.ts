@@ -768,6 +768,41 @@ test("a VRM's eyes without iris or eye-white meshes come from vision, or are lef
   boneless.dispose();
 });
 
+test("cheeks and mouth measured by vision move a VRM's blush and mouth; without eye bones the eye line moves the middle", async () => {
+  const hint = { left: { iris: { x: -0.22, y: 0.12, r: 0.07 }, eye: { x: -0.22, y: 0.1, rx: 0.12, ry: 0.09 } },
+    right: { iris: { x: 0.22, y: 0.12, r: 0.07 }, eye: { x: 0.22, y: 0.1, rx: 0.12, ry: 0.09 } },
+    cheekLeft: { x: -0.3, y: 0.35, r: 0.1 }, cheekRight: { x: 0.3, y: 0.35, r: 0.12 }, mouth: { x: 0, y: 0.5, r: 0.05 } };
+  const close = (a: THREE.Vector3, b: THREE.Vector3) => a.distanceTo(b) < 1e-9;
+  const runtime = new VrmRuntime(); await runtime.load(fixture());
+  const before = runtime.faceGeometry()!;
+  assert.equal(before.cheekSize, undefined);
+  runtime.setEyeHint(hint);
+  const face = runtime.faceGeometry()!;
+  const at = (x: number, y: number, z: number) => face.center.clone().addScaledVector(face.side, x * face.width)
+    .addScaledVector(face.up, y * face.width).addScaledVector(face.forward, z * face.width);
+  assert.ok(close(face.cheekLeft, at(-0.3, -0.35, 0.08)) && close(face.cheekRight, at(0.3, -0.35, 0.08)), "the cheeks are where vision saw them");
+  assert.ok(close(face.mouth, at(0, -0.5, 0.1)));
+  assert.ok(Math.abs(face.cheekSize! - 0.11) < 1e-9);
+  assert.ok(close(face.middle, face.center), "the eye bones keep the middle");
+  runtime.setEyeHint(undefined);
+  assert.ok(close(runtime.faceGeometry()!.cheekLeft, before.cheekLeft), "clearing the hint puts the estimate back");
+  runtime.dispose();
+
+  const { document, bin } = fixtureDocument();
+  const bones = document.extensions.VRMC_vrm.humanoid.humanBones as Record<string, unknown>;
+  delete bones.leftEye; delete bones.rightEye;
+  const boneless = new VrmRuntime(); await boneless.load(encodeGlb(document, bin));
+  const estimate = boneless.faceGeometry()!;
+  boneless.setEyeHint(hint);
+  const moved = boneless.faceGeometry()!;
+  const shift = moved.middle.clone().sub(moved.center);
+  assert.ok(Math.abs(shift.length() - 0.1 * moved.width) < 1e-9 && shift.dot(moved.up) < 0, "the middle moves down to the eye line");
+  assert.ok(close(moved.top, estimate.top.clone().add(shift)), "the top of the head moves with it");
+  const { fields } = viewer(boneless);
+  assert.ok(fields().eyeLeft, "the hinted eyes still show");
+  boneless.dispose();
+});
+
 test("held gestures that move different parts layer, and one that shares a part lets the other go", async () => {
   const { document, bin } = fixtureDocument();
   (document.extensions.VRMC_vrm.expressions.custom as Record<string, unknown>).CheekRed = { morphTargetBinds: [{ node: 17, index: 7, weight: 1 }] };

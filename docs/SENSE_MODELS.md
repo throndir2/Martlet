@@ -398,7 +398,7 @@ jobs](MEMORY.md#helper-jobs-on-the-thinking-pool):
 3. Otherwise the Thinking model takes it after any reply, as before.
 
 Companion › Touch (`TouchZonesVision`) names the model that takes the
-pictures, and *Detect zones* and *Measure the eyes* stay on while an image
+pictures, and *Detect zones* and *Measure the face* stay on while an image
 model of its own takes them, also with a Thinking model that reads only text.
 
 ## Latency rules

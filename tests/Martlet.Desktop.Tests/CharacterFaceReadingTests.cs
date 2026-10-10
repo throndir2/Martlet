@@ -77,6 +77,15 @@ public sealed class CharacterFaceReadingTests
     }
 
     [Fact]
+    public void TheFaceReadingSaysTheMeasuredCheeksSize()
+    {
+        Assert.Equal(0.11, Json(CharacterFaceReading.From(Json("""{"id":8,"found":true,"cheekSize":0.11}"""), 8)).GetProperty("cheekSize").GetDouble());
+        foreach (var size in new[] { "null", "\"big\"", "0", "4" })
+            Assert.Equal(JsonValueKind.Null, Json(CharacterFaceReading.From(Json($$"""{"id":9,"found":true,"cheekSize":{{size}}}"""), 9))
+                .GetProperty("cheekSize").ValueKind);
+    }
+
+    [Fact]
     public void TheOverlaySurfaceReadsTheLastFaceWithTheLastTap()
     {
         Exception? failure = null;

@@ -192,7 +192,7 @@ public partial class MainWindow
         }
     }
 
-    // Pictures decoded once at about the size they show, kept while their file stays the same (Detect again and Measure the eyes
+    // Pictures decoded once at about the size they show, kept while their file stays the same (Detect again and Measure the face
     // write new pictures under the same names), so drawing a page again doesn't decode them again. On the UI thread.
     private static readonly Dictionary<(string Path, int Height, int Width), (DateTime Written, long Length, BitmapImage Picture)> decodedPictures = [];
 
