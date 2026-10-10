@@ -52,19 +52,19 @@ cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.66.0
+## 🆕 What's new in 0.66.1
 
 - 📋 **A list of machines for every job**: Voice, Listening, Thinking, Vision, Hearing, Pictures, Reading, Singing and Lip-sync each show the PCs, graphics cards and cloud providers that do the job, in your order, each with its own On box and settings.
 - 🤝 **Busy helpers hand off**: when the first machine is busy or doesn't answer, the next one speaks, listens, draws, sings, reads or looks instead, so jobs keep coming.
 - 🔎 **See what each Thinking request answered** on the Thinking requests page, beside its details.
 - 😊 **Emotes in the right place**: Martlet measures a new character's eyes, cheeks and mouth, so blushes and heart eyes land where they should.
-- 🎙️ **Always listening keeps listening** when Windows only reports a property change on your microphone, and the log says why a microphone stopped.
+- 🎙️ **Always listening keeps listening** when Windows only reports a property change on your microphone, and the log and diagnostics say clearly why a microphone stopped.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
 ## 🔮 Coming soon
 
-Everything finished so far shipped in 0.66.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
+Everything finished so far shipped in 0.66.1. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
 
 ## 💬 Things you can say
 
