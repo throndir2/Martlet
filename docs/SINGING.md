@@ -196,19 +196,27 @@ No path or URL is ever accepted. Host configuration kind: `singing`.
 
 **Companion > Singing** (an optional extra, on its own page) has the standard page order:
 
-1. **Now**: whether Martlet sings, where and with what, and any problem (no voice to sing with, a failed setup).
-2. **How Martlet sings**, an option picker: **Off** (Martlet doesn't sing; the role stays set up on your computers,
-   kept as `off` in `singing.json`) or **Martlet's Singing role**. The role's row compares its facts with the catalog's
-   numbers: an NVIDIA graphics card, about 5.1 GB of graphics memory and up to 7.2 GB (a 6 GB+ card), the download
-   (about 31 GB with the image), about 1 to 2 minutes for a 30-second song, free, the licences, and that the lyrics,
-   the style and the voice's recording go to the computer that sings. Its details choose the computer (this PC or one in
-   its pills), say where it stands there (not set up, setting up, ready with the voice matches set up there, failed with
-   the reason, or why that computer can't sing) and answer whether Singing needs a graphics card of its own
-   ([below](#does-singing-need-its-own-graphics-card)). Its button is **Set up** there, after a confirmation naming the
-   downloads, licences and terms, or **Sing on ...** once it is ready there. Setting it up or singing there turns Off off.
-3. **Song choices**: **Quality** (Fast, High quality) and **Voice match**, a second option picker that compares
+1. **Now**: whether Martlet sings, where and with what, and any problem (no voice to sing with).
+2. **Where Martlet sings**: the singing pool list ([below](#the-singing-pool)), the shared list control of every pooled
+   area. It holds the computers that make songs, in order: this PC, your paired computers (not hosts friends share, and
+   only those that can run Singing) and single graphics cards. There is no separate Off: with no computer in the list on,
+   Martlet doesn't sing, and the role stays set up on your computers. Each computer's **Settings** say where Singing
+   stands there (not set up, setting up, ready with the voice matches set up there, failed with the reason, or why that
+   computer can't sing), offer **Set up Singing here** (after a confirmation naming the downloads, licences and terms) or
+   **Add VevoSing here**, and choose that computer's own **Quality** (the song choice, Fast or High quality). A computer
+   added that doesn't sing yet opens its Settings. The list is `pools.json`, shared with your other computers.
+3. **What Singing is**: the role's facts compared with the catalog's numbers: an NVIDIA graphics card, about 5.1 GB of
+   graphics memory and up to 7.2 GB (a 6 GB+ card), the download (about 31 GB with the image), about 1 to 2 minutes for
+   a 30-second song, free, the licences, and that the lyrics, the style and the voice's recording go to the computer that
+   sings; and whether Singing needs a graphics card of its own ([below](#does-singing-need-its-own-graphics-card)).
+4. **Song choices**: **Quality** (Fast, High quality) and **Voice match**, a second option picker that compares
    SoulX-Singer (the default; Apache-2.0, any use) and VevoSing (closer to the voice but may drift off-key;
-   CC-BY-NC-ND-4.0, personal, non-commercial use only). Both are kept in `singing.json`.
+   CC-BY-NC-ND-4.0, personal, non-commercial use only). Both are kept in `singing.json` on this PC. A computer with its
+   own quality in the list uses that instead.
+
+The first time the page opens, it makes the list once from the older choice (the computer Martlet sang on, then your
+other computers that run Singing; all off when singing was off), so nothing chosen is lost. It does this only when this
+PC sang on one of your computers: an empty list made here would turn singing off on your other computers.
 
 There is no play button: Martlet performs its songs itself in conversation. The Devices map lists the role as "Singing"
 ("Ready. Martlet makes its songs here when you ask it to sing.").
@@ -217,19 +225,19 @@ There is no play button: Martlet performs its songs itself in conversation. The 
 
 Singing installs like every other role, through `martlet-host add singing`:
 
-- **Set up** (this PC) opens the same run window as a voice engine: Docker Desktop and the host service first when this
+- **Set up Singing here** (this PC) opens the same run window as a voice engine: Docker Desktop and the host service first when this
   PC has none, then the role. Its status line follows the role's own progress: building the singing image (its steps),
   starting the service, then each pinned model file's download ("Singing: downloading model-svc.pt, 45% of 2730 MiB...").
-  On another computer the run goes through Martlet there or SSH, as for any role. The card says *Setting up on ...* until
-  the gateway offers the song route and the singing service answers set up, then *Ready on this PC with SoulX-Singer.*;
-  a failed run says why and Set up tries again (downloads already verified are kept).
+  On another computer the run goes through Martlet there or SSH, as for any role. The computer's Settings say *Setting
+  Singing up here...* until the gateway offers the song route and the singing service answers set up, then *Singing is
+  ready here with SoulX-Singer.*; a failed run says why and Set up tries again (downloads already verified are kept).
 - A plain Set up installs **ACE-Step, Demucs and SoulX-Singer only** (`SINGING_VOICE_MATCHES=soulx`, about 16 GB). The
-  card reads the voice matches set up on the shown computer from its singing service, through the gateway.
-- **VevoSing is optional.** Using it under Voice match where only SoulX-Singer is set up says so ("Songs use
-  SoulX-Singer until you add it") and offers **Add VevoSing there**, with its own confirmation naming CC-BY-NC-ND-4.0
+  page reads the voice matches set up on each computer in the list from its singing service, through the gateway.
+- **VevoSing is optional.** Using it under Voice match while no computer in the list has it says so ("Songs use
+  SoulX-Singer until you add it"). A computer's Settings offer **Add VevoSing here**, with its own confirmation naming CC-BY-NC-ND-4.0
   (personal, non-commercial use only) and its downloads (Vevo1.5 and Whisper medium, about 4.5 GB), which happen only
-  then (`martlet-host add singing` again with `soulx-vevosing`; SoulX-Singer's files are kept). A song asked for with
-  VevoSing where it isn't set up is sung with SoulX-Singer instead.
+  then (`martlet-host add singing` again with `soulx-vevosing`; SoulX-Singer's files are kept). A VevoSing song goes to a
+  computer in the list with VevoSing; with none, it is sung with SoulX-Singer instead.
 - The Devices map's *Install Singing* and the Martlet hosts window's role cards run the same `martlet-host add singing`
   with the role's install dialog (`martlet-host describe singing`: its terms, the model and voice-match choices with
   SoulX-Singer preselected, and VevoSing's terms only when it is chosen). *Remove Singing* stops it and keeps the
@@ -279,8 +287,9 @@ Songs go to a pool of the owner's own computers that run the singing role, not t
 The song job holds the member that makes the song from background thinks (it starts with the computer Martlet sings on
 and moves when `SongProgress.Host` names another). The desktop log says where each song went
 (`Singing: m4-host makes the song (number 2 of 3 in the singing pool).`, and `Sharing work: singing went to host:m4-host
-(1 busy).` when the first member was passed over). Companion › Singing still chooses one computer; its pool list editor
-comes with the shared list control.
+(1 busy).` when the first member was passed over). A member with its own quality (`quality` in its settings: `fast` or
+`high_quality`, `SingingPool.Quality`) makes the song in that quality; without one, the song choice. Every member that
+sings is kept from background thinks (`BackgroundDuties`).
 
 ## Verification
 

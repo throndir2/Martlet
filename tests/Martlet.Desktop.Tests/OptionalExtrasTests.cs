@@ -242,8 +242,13 @@ public sealed class OptionalExtrasTests
             Assert.True(saved.Off);
             Assert.Equal("singer", saved.Host);
             Assert.False(SongClient.IsSetUp(directory));
-            Assert.StartsWith("Off. Martlet doesn't sing.", MainWindow.SingingNow(saved, active: false, "this-pc-host", readySomewhere: true));
-            Assert.StartsWith("Not set up yet.", MainWindow.SingingNow(new SingingPreferences(), active: false, null, readySomewhere: false));
+            Assert.StartsWith("Off. Martlet doesn't sing.", MainWindow.SingingNow(saved, active: false, [], listed: false, readySomewhere: true));
+            Assert.StartsWith("Not set up yet.", MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: false, readySomewhere: false));
+            // With the singing pool list, Off is a list with no computer on, and Martlet sings on the first free one.
+            Assert.Equal("Off. Martlet doesn't sing: no computer in the list is on.",
+                MainWindow.SingingNow(new SingingPreferences(), active: false, [], listed: true, readySomewhere: false));
+            Assert.Equal("Martlet sings on m3-host (or the first free one of 2 computers) with SoulX-Singer, fast.",
+                MainWindow.SingingNow(new SingingPreferences(), active: true, ["m3-host", "m4-host"], listed: true, readySomewhere: true));
         }
         finally
         {

@@ -54,6 +54,25 @@ public static class SingingPool
     /// <summary>The <see cref="WorkQueue"/> lane of songs: the singing pool area's ID.</summary>
     public static string Lane => PoolAreas.Singing.Id;
 
+    /// <summary>A member's own quality (<see cref="PoolMember.Settings"/>): "fast" or "high_quality"; missing: the song choice.</summary>
+    public const string QualitySetting = "quality";
+
+    /// <summary>The quality <paramref name="member"/> makes songs in, or null to use the song's own (Companion › Singing's choice).</summary>
+    public static SongQuality? Quality(PoolMember member) => member.Setting(QualitySetting) switch
+    {
+        "fast" => SongQuality.Fast,
+        "high_quality" => SongQuality.HighQuality,
+        _ => null
+    };
+
+    /// <summary><paramref name="member"/> with its own quality, or without one (null: the song choice).</summary>
+    public static PoolMember WithQuality(PoolMember member, SongQuality? quality) => member.WithSetting(QualitySetting, quality switch
+    {
+        SongQuality.Fast => "fast",
+        SongQuality.HighQuality => "high_quality",
+        _ => null
+    });
+
     /// <summary>The singing pool of companion PC <paramref name="device"/>, each member with the paired computer it sings on.
     /// With a pool list (<paramref name="list"/>, the <c>singing</c> area of pools.json): its members in the owner's order
     /// (<see cref="PoolRouting.Order"/>), this PC as its own host service (<paramref name="own"/>) and a card as its computer,

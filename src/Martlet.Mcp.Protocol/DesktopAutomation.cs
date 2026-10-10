@@ -190,12 +190,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
     /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit, and
-    /// Voice engine's computer pills ("SpeakingHost-gpu-pc") and Singing's ("SingingHost-this-pc") only show that computer's engines. Home's
+    /// Voice engine's computer pills ("SpeakingHost-gpu-pc") only show that computer's engines. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
     /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
     /// "LogPart-gateway") only filter the shown lines, and selecting a line ("LogEntry-0") only shows it in full. An MCP directory
     /// result ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "SingingHost-", "HealthCheck-", "HealthOpen-",
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "HealthCheck-", "HealthOpen-",
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // An option picker's choice ("Picker-VoiceEngine-chatterbox", "Picker-Pictures-Off") only shows that option's details
         // below the list, its Compare ("PickerCompare-VoiceEngine") only shows or hides the table, and its Show N more
@@ -242,7 +242,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // open the area's page. The list's On, Up, Down, Remove, Add and kept-for choices save pools.json and share it, so they
         // need --allow-ui-effects.
         "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
-        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "WorkSharingOpen-"];
+        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "WorkSharingOpen-",
+        // Companion › Singing's list: a member's Settings ("Pool-singing-Settings-0") only shows or hides its Singing state, Set up
+        // Singing here, Add VevoSing here and its own quality; those buttons and the quality save or install, so they need
+        // --allow-ui-effects.
+        "Pool-singing-Settings-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -453,16 +457,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("F5AddVoiceRecording", then "F5AddVoiceRecording-2" and so on in SafeValuePrefixes), and its intro, which names the
         // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
         // prefix below.
-        // Companion › Singing (under Optional extras): whether and where Martlet sings (SingingNow), and in the Singing role's
-        // details (Picker-Singing-Role) where it stands on the shown computer (not set up, setting up, ready with the voice
-        // matches set up there, failed with the reason, or why that computer can't sing), whether it needs a graphics card of
-        // its own (SingingGpu, fixed text) and the buttons' labels (Set up, Sing on <computer>, Turn singing off in the Off
-        // choice's details); the saved quality; with VevoSing chosen where it isn't set up (Picker-SingingVoiceMatch-VevoSing),
-        // that it isn't (or is being added) and the Add VevoSing there button's label. Set up, Sing on, Turn singing off, Use
-        // SoulX-Singer or VevoSing and Add VevoSing there need --allow-ui-effects. Songs are only performed in conversation
-        // (singing_check exercises them headlessly).
-        "SingingNow", "SingingState", "SingingSetUp", "SingingUse", "SingingTurnOff", "SingingGpu", "SingingQuality",
-        "SingingUseSoulX", "SingingUseVevoSing", "SingingVoiceMatchState", "SingingSetUpVevo",
+        // Companion › Singing (under Optional extras): whether and where Martlet sings (SingingNow: "Martlet sings on m3-host (or
+        // the first free one of 2 computers) with SoulX-Singer, fast." or "Off. ...: no computer in the list is on."); its list
+        // reads through the Pool- prefix below, and a member's Settings add where Singing stands there
+        // ("Pool-singing-State-host:m3-host": ready with the voice matches set up there, setting up, failed with the reason, or
+        // why that computer can't sing), the Set up Singing here and Add VevoSing here buttons' labels
+        // ("Pool-singing-SetUp-host:m3-host", "Pool-singing-AddVevo-host:m3-host") and its own quality
+        // ("Pool-singing-Quality-host:m3-host": The song choice below, Fast or High quality). What Singing is
+        // (Picker-Singing-Role) and whether it needs a graphics card of its own (SingingGpu, fixed text); the saved quality;
+        // with VevoSing chosen where no computer in the list has it (Picker-SingingVoiceMatch-VevoSing), that it isn't set up.
+        // Use SoulX-Singer or VevoSing need --allow-ui-effects. Songs are only performed in conversation (singing_check
+        // exercises them headlessly).
+        "SingingNow", "SingingGpu", "SingingQuality", "SingingUseSoulX", "SingingUseVevoSing", "SingingVoiceMatchState",
         // Every Companion page: its group in the side list ("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its fixed intro, which
         // starts with "Optional." on a page Martlet works without.
         "CompanionGroupTitle", "CompanionIntro",
@@ -938,7 +944,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
         "PickerFacts-", "PickerDetail-", "PickerFact-", "PickerState-", "PickerCell-", "PickerSummary-",
-        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
