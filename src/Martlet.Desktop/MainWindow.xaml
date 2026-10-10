@@ -25,6 +25,44 @@
                                    AutomationProperties.AutomationId="DeviceRoleSummary"/>
                     </StackPanel>
                 </StackPanel>
+                <!-- Who uses Martlet now (MainWindow.Accounts.cs): the account picker opens above it. -->
+                <Button x:Name="AccountButton" DockPanel.Dock="Bottom" Click="AccountButton_Click" Cursor="Hand" Margin="0,12,0,0"
+                        Foreground="{DynamicResource TextBrush}" HorizontalContentAlignment="Stretch"
+                        ToolTip="Switch account or add a person"
+                        AutomationProperties.AutomationId="AccountButton" AutomationProperties.Name="Account">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Chrome" Background="Transparent" CornerRadius="12" Padding="10,8">
+                                <ContentPresenter/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Chrome" Property="Opacity" Value="0.55"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="34" Height="34" CornerRadius="17" Background="{DynamicResource AccentBrush}"
+                                VerticalAlignment="Center" Margin="0,0,10,0">
+                            <TextBlock x:Name="AccountInitials" Text="?" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource OnAccentBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock DockPanel.Dock="Right" Text="&#xE70E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11"
+                                   VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{DynamicResource MutedBrush}"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="AccountName" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                       AutomationProperties.AutomationId="AccountCurrent"/>
+                            <TextBlock x:Name="AccountRole" FontSize="12" Style="{DynamicResource Muted}" TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Button>
                 <StackPanel AutomationProperties.Name="Sections">
                     <RadioButton x:Name="NavHome" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE80F;" Content="Home"
                                  IsChecked="True" Checked="Nav_Checked" AutomationProperties.AutomationId="NavHome"/>
@@ -536,6 +574,10 @@
                                     <TextBlock x:Name="MemorySyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
                                                Text="Memories: not synced yet."
                                                AutomationProperties.AutomationId="MemorySyncStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <!-- The household's accounts (MainWindow.Accounts.cs): always shared with your hosts, even while this is off. -->
+                                    <TextBlock x:Name="AccountsSyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
+                                               Text="Accounts: not synced yet."
+                                               AutomationProperties.AutomationId="AccountsSyncStatus" AutomationProperties.LiveSetting="Polite"/>
                                     <TextBlock x:Name="SettingsSyncWaitingText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
                                                Visibility="Collapsed" AutomationProperties.AutomationId="SettingsSyncWaiting"/>
                                     <Button x:Name="SettingsSyncClaimButton" Content="Use this PC's settings on all my computers" Margin="24,8,0,0"

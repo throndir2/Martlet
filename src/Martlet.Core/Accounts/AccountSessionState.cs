@@ -1,0 +1,141 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Martlet.Core.Contracts;
+
+namespace Martlet.Core.Accounts;
+
+/// <summary>An account made on this device that the household's account directory doesn't have yet: its name and role wait
+/// here until this PC is in a Martlet network and has read the directory from a host (docs/ACCOUNTS.md, "First start").</summary>
+public sealed record PendingAccount
+{
+    public required Guid Id { get; init; }
+    public required string Name { get; init; }
+    public required string Role { get; init; }
+    public required DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>
+/// Which accounts are signed in on this device and which one is in use now: accounts\session.json in the data folder (device
+/// scope, never synced). <see cref="WindowsSid"/> is the Windows login the accounts are bound to; every account in
+/// <see cref="SignedIn"/> unlocks with it, most recently used first. <see cref="Pending"/> holds the accounts the household
+/// directory doesn't have yet. IDs, names and roles only: never a password or key. JSON, snake case, schema 1.
+/// </summary>
+public sealed record AccountSessionState
+{
+    public const int SchemaVersion1 = 1;
+    public const string Folder = "accounts";
+    public const string FileName = "session.json";
+    public const int MaximumBytes = 64 * 1024;
+    public const int MaximumAccounts = 64;
+
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        RespectNullableAnnotations = true,
+        WriteIndented = true,
+        MaxDepth = 6
+    };
+    private static readonly object FileGate = new();
+
+    public required int SchemaVersion { get; init; }
+    public required string WindowsSid { get; init; }
+    public required Guid Current { get; init; }
+    public required IReadOnlyList<Guid> SignedIn { get; init; }
+    public IReadOnlyList<PendingAccount> Pending { get; init; } = [];
+
+    /// <summary>accounts\session.json in <paramref name="dataDirectory"/>.</summary>
+    public static string PathFor(string dataDirectory) => Path.Combine(dataDirectory, Folder, FileName);
+
+    /// <summary>A session signed in to <paramref name="account"/> only.</summary>
+    public static AccountSessionState For(string windowsSid, Guid account, PendingAccount? pending = null) => new()
+    {
+        SchemaVersion = SchemaVersion1, WindowsSid = windowsSid, Current = account, SignedIn = [account],
+        Pending = pending is null ? [] : [pending]
+    };
+
+    public PendingAccount? PendingFor(Guid id) => Pending.FirstOrDefault(p => p.Id == id);
+
+    /// <summary>This session with <paramref name="account"/> in use, first in <see cref="SignedIn"/>.</summary>
+    public AccountSessionState Use(Guid account) => this with { Current = account, SignedIn = [account, .. SignedIn.Where(id => id != account)] };
+
+    /// <summary>This session with <paramref name="account"/> signed in (after the current one) and, when given, pending.</summary>
+    public AccountSessionState Add(Guid account, PendingAccount? pending = null) => this with
+    {
+        SignedIn = [.. SignedIn.Where(id => id != account), account],
+        Pending = pending is null ? Pending : [.. Pending.Where(p => p.Id != account), pending]
+    };
+
+    /// <summary>This session without the pending entries the directory now has.</summary>
+    public AccountSessionState Written(IEnumerable<Guid> written)
+    {
+        var done = written.ToHashSet();
+        return Pending.Any(p => done.Contains(p.Id)) ? this with { Pending = Pending.Where(p => !done.Contains(p.Id)).ToArray() } : this;
+    }
+
+    public void Validate()
+    {
+        ContractRules.Require(SchemaVersion == SchemaVersion1, "This account session was written by a newer Martlet.", ErrorCode.UnsupportedVersion);
+        ContractRules.Require(AccountLoginKey.IsSid(WindowsSid), "The account session's Windows login is invalid.");
+        ContractRules.Require(SignedIn is { Count: > 0 and <= MaximumAccounts } && SignedIn.Distinct().Count() == SignedIn.Count &&
+            !SignedIn.Contains(Guid.Empty), "The account session's signed-in accounts are invalid.");
+        ContractRules.Require(SignedIn.Contains(Current), "The account in use is not signed in.");
+        ContractRules.Require(Pending is { Count: <= MaximumAccounts } && Pending.All(p => p is not null && SignedIn.Contains(p.Id) &&
+            Account.IsName(p.Name) && AccountRoles.IsRole(p.Role) && p.CreatedAt.Offset == TimeSpan.Zero) &&
+            Pending.Select(p => p.Id).Distinct().Count() == Pending.Count, "The account session's pending accounts are invalid.");
+    }
+
+    public byte[] Write()
+    {
+        Validate();
+        return JsonSerializer.SerializeToUtf8Bytes(this, Json);
+    }
+
+    public static AccountSessionState Parse(ReadOnlySpan<byte> bytes)
+    {
+        ContractRules.Require(bytes.Length is > 0 and <= MaximumBytes, "The account session is empty or too large.", ErrorCode.PayloadTooLarge);
+        AccountSessionState? state;
+        try { state = JsonSerializer.Deserialize<AccountSessionState>(bytes, Json); }
+        catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException or FormatException)
+        {
+            throw new ContractException(ErrorCode.InvalidContract, "The account session is malformed.");
+        }
+        ContractRules.Require(state is not null, "The account session is empty.");
+        state!.Validate();
+        return state;
+    }
+
+    /// <summary>The session saved in <paramref name="dataDirectory"/>, or null when there is none. Throws
+    /// <see cref="ContractException"/>, <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> when it can't be read.</summary>
+    public static AccountSessionState? Load(string dataDirectory)
+    {
+        lock (FileGate)
+        {
+            try { return Parse(File.ReadAllBytes(PathFor(dataDirectory))); }
+            catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return null; }
+        }
+    }
+
+    /// <summary>Saves this session in <paramref name="dataDirectory"/> (written whole, then moved over the old one).</summary>
+    public void Save(string dataDirectory)
+    {
+        var bytes = Write();
+        lock (FileGate)
+        {
+            var path = PathFor(dataDirectory);
+            var folder = Path.GetDirectoryName(path)!;
+            Directory.CreateDirectory(folder);
+            var temporary = Path.Combine(folder, $"session.{Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.WriteAllBytes(temporary, bytes);
+                File.Move(temporary, path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+        }
+    }
+}
