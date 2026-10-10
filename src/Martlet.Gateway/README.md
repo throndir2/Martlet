@@ -417,7 +417,8 @@ allowed, or no longer with the access it signed in with, are dropped and their
 credentials revoked whenever the settings are read (a friend's exactly the
 credential its sign-in issued, the owner's computers every credential of the
 device). A join request from a computer enrolled as one of the owner's carries
-`sign_in` in the network document (a friend's never). The host remembers the network key an enrolled device
+`sign_in` in the network document (a friend's never): `provider`, `subject`, `label`, `at` and `account_id`, the
+household account the sign-in proves (absent while the host is in no network). The host remembers the network key an enrolled device
 asks to join with (`/network/join`); when its sign-in is removed the network
 document lists it for member desktops (`sign_in_removals`: `device_id`, `key`,
 `provider`, `subject`, `label`, `at`; never a friend's computer, which never

@@ -52,4 +52,18 @@ public partial class MainWindow
         }
         finally { householdSignInBusy = false; }
     }
+
+    /// <summary>The name the household's account directory gives <paramref name="account"/> ("Sam"), or "a household account"
+    /// while this PC doesn't know it yet.</summary>
+    private static string AccountName(string directory, Guid account)
+    {
+        try
+        {
+            var path = Path.Combine(directory, Martlet.Core.Accounts.AccountDirectory.FileName);
+            if (File.Exists(path) && Martlet.Core.Accounts.AccountDirectory.Parse(File.ReadAllBytes(path)).Find(account) is { Removed: false } known)
+                return known.Name;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { }
+        return "a household account";
+    }
 }

@@ -80,7 +80,7 @@ Every setting, file and synced document has exactly one scope.
 | --- | --- | --- | --- |
 | Device | Microphone, speakers, cameras, screens, terminal, local engines, pairings, network key | That device | Nowhere |
 | PC | Companion or host PC, the host service on it, large downloaded models | Any Windows user of that PC | Nowhere (machine-wide folder) |
-| Household | Hosts, who does what, work sharing, Thinking, Listening and Speaking routes **and paid API keys**, Thinking fallback, Home Assistant, updates, model abilities, People and voiceprints, speaking voices, character models and their emotes, the account directory | Owner and admins | Every host and household device |
+| Household | Hosts, who does what, work sharing, Thinking, Listening and Speaking routes **and paid API keys**, Thinking fallback, Home Assistant, updates, model abilities, People and voiceprints, speaking voices, character models and their emotes, the account directory, sign-in providers (on every host; [W13](#provider-logins-and-household-providers)) | Owner and admins | Every host and household device |
 | Account | Characters, personalities, character profiles, prompts, reply style, lorebooks, the character shown, how you talk, speech display, theme, Voice ID filter, reminders, creations, conversations, memory on or off | That account | Every host; only devices where the account is signed in |
 | Memory space | Facts | See [Memory spaces](#memory-spaces) | Every host; only devices that may read the space |
 
@@ -349,6 +349,44 @@ tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
   a secret. Who may change them is unchanged: a member desktop of the network.
   Role checks (`AccountRoles.ManagesHousehold`) are W12's.
 
+## Provider logins and household providers
+
+Built by W13 (first part). Code: `src\Martlet.Avatar.Audio2Face\Remote\HouseholdSignIn.cs`
+(the household view, sending to every host, linking), the desktop's
+`SignInSettingsWindow`, `SignInJoinWindow`, `HouseholdSignInStore.cs`,
+`MainWindow.HouseholdSignIn.cs` and `JoinedAccount.cs`. The user guide is
+[NETWORK.md](NETWORK.md#household-sign-in-providers); the MCP tool
+`signin_lab` with `mode` `account` and `household` `true` rehearses it with the
+desktop ([MCP](MCP.md)).
+
+- **Household providers.** A provider (`oidc`, `discord`, `steam`) is the
+  household's: the PC that saves it sends the same `provider` change to every
+  host of the network. Hosts keep the client secret; that PC keeps a copy in
+  Windows Credential Manager (`Martlet/v3/signin-provider/<id>`) only to add
+  the provider to hosts that miss it. Allowed identities stay per host, so
+  friends stay friends.
+- **A provider login of an account** is an allowed member identity with
+  `account_id` (W4) on every host. Linking needs a fresh attestation of the
+  account from a Prove sign-in on this device (`signin.prove_first` without
+  one), then a Prove sign-in with the provider through one host: a login the
+  host doesn't allow yet comes back as `signin.not_allowed`, and the desktop
+  reads the identity from that host's `refused` list (its own device ID, this
+  attempt) and sends `allow` with `account_id` to every host. A login that
+  proves another account, or a friend's, is `signin.login_taken`. Unlinking
+  sends `disallow` to every host (the host revokes the computers the login
+  added, as for any removed sign-in); an account keeps at least one login that
+  proves it on another device (a `martlet` password or another provider login).
+- **Signing in with a linked provider** is W4's Prove sign-in
+  (`ProveInBrowserAsync`) and returns the account's attestation.
+- **Joining as an account's computer.** *Join with an invite* offers the
+  `martlet` login when the host lists `martlet_sign_in`. The host's join
+  answer to members carries `sign_in.account_id`, and a member desktop lets the
+  computer in by `ApproveSignedIn` as before and names the account. The new
+  computer keeps the account and the attestation text in `joined-account.json`
+  for its account session (W7) to sign in once it is a member.
+- **Still to come (after W12):** the Account page's *Link* / *Unlink* buttons and
+  provider choices in *Sign in as someone else*, which call these.
+
 ## Work plan
 
 Each workstream is one session, one branch and one PR into `main`. Merges are
@@ -371,7 +409,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W10 | Sharing: character copy and together, the household space, fact sharing | Characters page, Memory window | W8, W9 |
 | W11 | Voice-to-account links on People; Voice ID filter per account | People page, `voices.json` | W7 |
 | W12 | Account security: password and authenticator per account, PIN and Windows Hello lock, sign in as someone else, remember on this PC, merge accounts | Account page | W4, W7 |
-| W13 | Provider logins linked to accounts; new devices join by account sign-in | Sign-in windows | W4, W12 |
+| W13 | Provider logins linked to accounts; new devices join by account sign-in. **First part shipped** ([Provider logins](#provider-logins-and-household-providers)): household providers, linking, joining as an account's computer; the Account page buttons follow W12 | Sign-in windows, `HouseholdSignIn.cs` | W4, W12 |
 
 ```mermaid
 flowchart LR

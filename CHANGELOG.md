@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Set up a sign-in provider (Google, Microsoft, Authentik, Discord, Steam and others) once for your household: Martlet saves it on every host of your network and adds it to hosts that join later. A new computer can now join by signing in to your household account, and your other computers let it in as yours. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - A Martlet host can now keep a password sign-in for each person in your household, with an optional authenticator app, and link sign-ins from your identity provider to the right person. Signing in this way proves who you are on a computer, ready for accounts in Martlet. ([#747](https://github.com/throndir2/Martlet/pull/747))
 
 ### Changed

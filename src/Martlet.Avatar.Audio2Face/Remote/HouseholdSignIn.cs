@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Martlet.Core.Accounts;
 
 namespace Martlet.Avatar.Audio2Face.Remote;
 
@@ -63,6 +64,18 @@ public sealed record HouseholdChangeResult(string HostId, HostSignInSettings? Se
 {
     public bool Saved => Settings is not null;
 }
+
+/// <summary>A provider login of a household account (docs/ACCOUNTS.md): an identity at a household provider that the hosts in
+/// <see cref="Hosts"/> allow as that account's login. <see cref="Label"/> is for people (an e-mail or user name; never
+/// trusted).</summary>
+public sealed record HouseholdLogin(string Provider, string Subject, string? Label, IReadOnlyList<string> Hosts)
+{
+    public override string ToString() => Label is { Length: > 0 } ? $"{Label} ({Provider})" : $"{Subject} ({Provider})";
+}
+
+/// <summary>What linking a login did: the identity (with the account), whether a host already had it as that account's login,
+/// and what each host answered.</summary>
+public sealed record HouseholdLinkResult(HostSignInIdentity Identity, bool AlreadyLinked, IReadOnlyList<HouseholdChangeResult> Results);
 
 /// <summary>
 /// Sign-in providers for the whole household (docs/NETWORK.md): an admin sets a provider up once and the PC where it was set up
@@ -209,6 +222,111 @@ public static class HouseholdSignIn
         1 => hosts[0],
         _ => string.Join(", ", hosts.Take(hosts.Count - 1)) + " and " + hosts[^1]
     };
+
+    // ---------- provider logins linked to household accounts (docs/ACCOUNTS.md) ----------
+
+    /// <summary>The provider logins of <paramref name="account"/> as the hosts' allow lists hold them: member identities linked to
+    /// it (and, for the owner's account, member identities linked to no account, which prove the owner's), with the hosts that
+    /// have each. Friends are never an account's login.</summary>
+    public static IReadOnlyList<HouseholdLogin> Logins(IReadOnlyDictionary<string, HostSignInSettings> read, Guid account)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        return read.OrderBy(r => r.Key, StringComparer.Ordinal)
+            .SelectMany(r => r.Value.Allowed.Where(a => !a.Friend && (a.AccountId ?? r.Value.OwnerAccountId) == account).Select(a => (Host: r.Key, Allowed: a)))
+            .GroupBy(x => (x.Allowed.Provider, x.Allowed.Subject))
+            .Select(g => new HouseholdLogin(g.Key.Provider, g.Key.Subject, g.Select(x => x.Allowed.Label).FirstOrDefault(l => l is not null),
+                g.Select(x => x.Host).ToArray()))
+            .OrderBy(l => l.Provider, StringComparer.Ordinal).ThenBy(l => l.Label ?? l.Subject, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    /// <summary>Whether any host keeps a Martlet password login for <paramref name="account"/> (a household account's, or the owner
+    /// login for the owner's account), which can prove it on any computer.</summary>
+    public static bool HasPassword(IReadOnlyDictionary<string, HostSignInSettings> read, Guid account)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        return read.Values.Any(s => s.Accounts.Any(a => a.AccountId == account) || s.OwnerUser is not null && s.OwnerAccountId == account);
+    }
+
+    /// <summary>Why <paramref name="login"/> can't be unlinked from <paramref name="account"/>, or null: an account keeps at least
+    /// one login that proves it on another computer (a Martlet password or another provider login).</summary>
+    public static string? UnlinkRefusal(IReadOnlyDictionary<string, HostSignInSettings> read, Guid account, HouseholdLogin login) =>
+        HasPassword(read, account) || Logins(read, account).Any(l => (l.Provider, l.Subject) != (login.Provider, login.Subject))
+            ? null
+            : $"{login.Label ?? login.Subject} ({login.Provider}) is the only sign-in that proves this account on another computer. Add a " +
+              "password or link another sign-in first.";
+
+    /// <summary>The settings change that makes an identity a login of <paramref name="account"/> on a host (an allowed member
+    /// identity with that account; docs/ACCOUNTS.md).</summary>
+    public static JsonObject LinkChange(string provider, string subject, string? label, Guid account) => new()
+    {
+        ["action"] = "allow", ["provider"] = provider, ["subject"] = subject, ["label"] = label, ["account_id"] = account.ToString()
+    };
+
+    /// <summary>The settings change that removes a login from a host. As for any removed sign-in, the host revokes the computers it
+    /// added and your computers remove them from the network on their next sync (docs/NETWORK.md).</summary>
+    public static JsonObject UnlinkChange(string provider, string subject) => new()
+    {
+        ["action"] = "disallow", ["provider"] = provider, ["subject"] = subject
+    };
+
+    /// <summary>
+    /// Links a provider login to the account this computer proved (<paramref name="proved"/>, a fresh attestation from a Prove
+    /// sign-in on this computer, checked here against <paramref name="roster"/>): the person signs in with
+    /// <paramref name="provider"/> in the browser through the host of <paramref name="at"/>, which checks the identity with the
+    /// provider (a Prove sign-in, so it issues no credential), and every host in <paramref name="hosts"/> then allows that identity
+    /// as a login of the account. An identity the host doesn't allow yet is refused there and listed under the host's refused
+    /// sign-ins with this computer's device ID; that entry, read back over this computer's signed connection, names it. An
+    /// identity that already proves another account (or is a friend's) is refused with <c>signin.login_taken</c>.
+    /// </summary>
+    public static async Task<HouseholdLinkResult> LinkInBrowserAsync(Audio2FaceHostConnection at, AccountAttestation proved,
+        Martlet.Core.Network.NetworkRoster roster, string provider, Action<string> openBrowser, TimeSpan timeout, IEnumerable<string> hosts,
+        Func<string, Audio2FaceHostConnection> connect, int? redirectPort = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(at);
+        ArgumentNullException.ThrowIfNull(proved);
+        ArgumentNullException.ThrowIfNull(roster);
+        var device = at.Pairing.DeviceId;
+        var checkedAt = DateTimeOffset.UtcNow;
+        if (proved.DeviceId != device || proved.Check(roster, checkedAt) != Martlet.Core.Accounts.AccountAttestationCheck.Valid)
+            throw new Audio2FaceHostException("signin.prove_first", "Prove it's you first (your password, or a sign-in already linked), then link again.");
+        var started = DateTimeOffset.UtcNow;
+        HostSignInIdentity who;
+        var already = false;
+        try
+        {
+            var proof = await at.ProveInBrowserAsync(provider, openBrowser, timeout, redirectPort: redirectPort, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (proof.AccountId != proved.AccountId)
+                throw new Audio2FaceHostException("signin.login_taken", $"{proof.Identity} already signs in to another account of your household. " +
+                    "Unlink it there first.");
+            who = proof.Identity;
+            already = true;
+        }
+        catch (Audio2FaceHostException error) when (error.Code == "signin.no_account")
+        {
+            throw new Audio2FaceHostException("signin.login_taken", "That sign-in is a friend's on this host, so it can't be a login of your account.");
+        }
+        catch (Audio2FaceHostException error) when (error.Code == "signin.not_allowed")
+        {
+            // The host checked the identity with the provider and listed it as refused for this computer: read it back.
+            var settings = await at.ReadSignInSettingsAsync(cancellationToken).ConfigureAwait(false);
+            var refused = settings.Refused.Where(r => r.Provider == provider && r.DeviceId == device && r.EnrolledAt >= started.AddMinutes(-1))
+                .OrderByDescending(r => r.EnrolledAt).FirstOrDefault()
+                ?? throw new Audio2FaceHostException("response.invalid", "The host checked the sign-in but didn't say whose it was. Try again.");
+            who = new HostSignInIdentity(refused.Provider, refused.Subject, refused.Label);
+        }
+        var results = await SendAsync(hosts.Append(at.Pairing.HostId), connect, _ => LinkChange(who.Provider, who.Subject, who.Label, proved.AccountId),
+            cancellationToken).ConfigureAwait(false);
+        return new(who with { AccountId = proved.AccountId }, already, results);
+    }
+
+    /// <summary>Removes a login of an account from every host in <paramref name="hosts"/>.</summary>
+    public static Task<IReadOnlyList<HouseholdChangeResult>> UnlinkAsync(HouseholdLogin login, IEnumerable<string> hosts,
+        Func<string, Audio2FaceHostConnection> connect, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(login);
+        return SendAsync(hosts, connect, _ => UnlinkChange(login.Provider, login.Subject), cancellationToken);
+    }
 
     private static string Problem(Exception error) => error is Audio2FaceHostException { Code: "signin.unsupported" }
         ? "runs an older Martlet without sign-in; update it"

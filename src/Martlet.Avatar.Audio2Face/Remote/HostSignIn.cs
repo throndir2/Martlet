@@ -13,10 +13,13 @@ using Martlet.Core.Network;
 namespace Martlet.Avatar.Audio2Face.Remote;
 
 /// <summary>A way to sign in to a host, as the host lists it: "owner" (the owner account: name, password and authenticator
-/// code, typed into Martlet) or a provider that signs in in the browser ("oidc", "discord", "steam").</summary>
+/// code, typed into Martlet), "martlet" (a household account's Martlet password and authenticator code, when the host keeps
+/// household logins) or a provider that signs in in the browser ("oidc", "discord", "steam").</summary>
 public sealed record HostSignInProvider(string Id, string Kind, string Name)
 {
-    public bool InBrowser => Kind != "owner";
+    /// <summary>The household accounts' Martlet password, listed by hosts that keep household logins (docs/ACCOUNTS.md).</summary>
+    public const string Martlet = "martlet";
+    public bool InBrowser => Kind is not ("owner" or Martlet);
     /// <summary>The loopback port the browser must come back to (providers that only take registered redirect URIs, such as
     /// Discord); null for any free port.</summary>
     public int? RedirectPort { get; init; }
@@ -64,8 +67,12 @@ public sealed record HostSignInIdentity(string Provider, string Subject, string?
 /// signed in, the account it proved and the host's signed attestation for this computer.</summary>
 public sealed record HostAccountProof(HostSignInIdentity Identity, Guid AccountId, AccountAttestation Attestation);
 
-/// <summary>What a host said when it listed join requests: the identity a desktop signed in as to pair there.</summary>
-public sealed record HostSignInAttestation(string Provider, string Subject, string? Label, DateTimeOffset At);
+/// <summary>What a host said when it listed join requests: the identity a desktop signed in as to pair there and, when the host
+/// links it to a household account, that account (<see cref="AccountId"/>): the computer joins as one of that person's.</summary>
+public sealed record HostSignInAttestation(string Provider, string Subject, string? Label, DateTimeOffset At)
+{
+    public Guid? AccountId { get; init; }
+}
 
 /// <summary>A sign-in that <c>/signin/begin</c> started: send the proof for <see cref="AttemptId"/> within ten minutes. A
 /// browser provider gives <see cref="AuthorizeUrl"/> to open.</summary>
@@ -110,7 +117,11 @@ public static class HostSignInClient
                 {
                     RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) && number is >= 1024 and <= 65535
                         ? number : null
-                }).ToArray();
+                }).ToList();
+                // Household accounts' Martlet passwords aren't in the list (older desktops take it as browser providers).
+                if (root.TryGetProperty("martlet_sign_in", out var household) && household.ValueKind == JsonValueKind.True)
+                    providers.Insert(providers.Count(p => p.Kind == "owner"),
+                        new HostSignInProvider(HostSignInProvider.Martlet, HostSignInProvider.Martlet, "Your household account (Martlet password)"));
                 return (origin, providers);
             }
             // Not answering (or answering with another key) here: try the invite's next address.
@@ -203,10 +214,17 @@ public static class HostSignInClient
     }
 
     /// <summary>Signs in with the owner account (name, password, a current authenticator code or an unused recovery code).</summary>
-    public static async Task<(Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInAsOwnerAsync(NetworkInvite invite,
-        string origin, string user, string password, string code, string deviceId, string displayName, CancellationToken cancellationToken = default)
+    public static Task<(Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInAsOwnerAsync(NetworkInvite invite,
+        string origin, string user, string password, string code, string deviceId, string displayName, CancellationToken cancellationToken = default) =>
+        SignInWithPasswordAsync(invite, origin, "owner", user, password, code, deviceId, displayName, cancellationToken);
+
+    /// <summary>Signs in with a Martlet password: the owner login (<paramref name="provider"/> "owner") or a household account's
+    /// ("martlet"; docs/ACCOUNTS.md). Adding a computer always needs the login's authenticator code or an unused recovery code.</summary>
+    public static async Task<(Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInWithPasswordAsync(NetworkInvite invite,
+        string origin, string provider, string user, string password, string code, string deviceId, string displayName,
+        CancellationToken cancellationToken = default)
     {
-        var attempt = await BeginAsync(invite, origin, "owner", cancellationToken: cancellationToken).ConfigureAwait(false);
+        var attempt = await BeginAsync(invite, origin, provider, cancellationToken: cancellationToken).ConfigureAwait(false);
         return await CompleteAsync(invite, attempt, deviceId, displayName,
             new JsonObject { ["user"] = user, ["password"] = password, ["code"] = code }, cancellationToken).ConfigureAwait(false);
     }

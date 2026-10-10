@@ -202,7 +202,8 @@ public partial class MainWindow
                 {
                     pending = pending.Except(signedIn).ToArray();
                     networkJoins = networkJoins.Where(j => signedIn.All(s => s.DeviceId != j.DeviceId)).ToArray();
-                    var who = string.Join(" and ", signedIn.Select(j => $"{j.DisplayName} (signed in as {j.SignIn!.Label ?? j.SignIn.Subject})"));
+                    var who = string.Join(" and ", signedIn.Select(j => $"{j.DisplayName} (signed in as {j.SignIn!.Label ?? j.SignIn.Subject}" +
+                        (j.SignIn.AccountId is { } account ? $", {AccountName(directory, account)}'s computer" : "") + ")"));
                     ChangeNetwork((engine, current) => engine.ApproveSignedIn(current, signedIn).State,
                         $"{who} joined your Martlet network by itself: it signed in to {signedIn[0].HostId} with a sign-in you allowed, so it " +
                         "needs no check number. It pairs with your other hosts automatically.");

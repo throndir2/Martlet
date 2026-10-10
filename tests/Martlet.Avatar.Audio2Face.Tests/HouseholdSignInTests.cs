@@ -86,4 +86,45 @@ public sealed class HouseholdSignInTests
         Assert.StartsWith("Saved Google on gpu-box and this-pc. Not changed on linux-box (didn't answer in time).", text);
         Assert.Equal("No host to change.", HouseholdSignIn.Describe([], "Saved Google"));
     }
+
+    private static readonly Guid Owner = new("8a58da66-fddc-5c5b-9282-fb119c84915f");
+    private static readonly Guid Sam = new("5a6e0000-0000-4000-8000-00000000005a");
+
+    private static HostSignInSettings Household(string hostId, bool samPassword, params HostSignInAllowed[] allowed) =>
+        new(hostId, "owner", 10, [Google()], allowed, [], null)
+        {
+            OwnerAccountId = Owner,
+            Accounts = samPassword ? [new HostSignInAccount(Sam, "Sam", true, 10)] : []
+        };
+
+    [Fact]
+    public void An_accounts_provider_logins_are_the_member_identities_linked_to_it_on_any_host_never_a_friend()
+    {
+        var read = new Dictionary<string, HostSignInSettings>
+        {
+            ["gpu-box"] = Household("gpu-box", samPassword: false,
+                new HostSignInAllowed("google", "sam-1", "sam@example.net") { AccountId = Sam },
+                new HostSignInAllowed("google", "me-1", "me@example.net"),
+                new HostSignInAllowed("google", "ana-7", "ana@example.net") { Access = "friend" }),
+            ["this-pc"] = Household("this-pc", samPassword: false, new HostSignInAllowed("google", "sam-1", null) { AccountId = Sam })
+        };
+        var sams = Assert.Single(HouseholdSignIn.Logins(read, Sam));
+        Assert.Equal(("google", "sam-1", "sam@example.net"), (sams.Provider, sams.Subject, sams.Label));
+        Assert.Equal(["gpu-box", "this-pc"], sams.Hosts);
+        Assert.Equal("sam@example.net (google)", sams.ToString());
+        // A member identity linked to no account proves the owner's; a friend is nobody's login.
+        Assert.Equal(["me-1"], HouseholdSignIn.Logins(read, Owner).Select(l => l.Subject));
+
+        // Sam's only login that proves Sam elsewhere can't go; with a Martlet password (or another login) it can.
+        Assert.Contains("only sign-in", HouseholdSignIn.UnlinkRefusal(read, Sam, sams));
+        Assert.False(HouseholdSignIn.HasPassword(read, Sam));
+        Assert.True(HouseholdSignIn.HasPassword(read, Owner));
+        read["linux-box"] = Household("linux-box", samPassword: true);
+        Assert.Null(HouseholdSignIn.UnlinkRefusal(read, Sam, sams));
+
+        var link = HouseholdSignIn.LinkChange("google", "sam-1", "sam@example.net", Sam);
+        Assert.Equal(("allow", "google", "sam-1", Sam.ToString()), ((string?)link["action"], (string?)link["provider"], (string?)link["subject"], (string?)link["account_id"]));
+        Assert.False(link.ContainsKey("access"));
+        Assert.Equal("disallow", (string?)HouseholdSignIn.UnlinkChange("google", "sam-1")["action"]);
+    }
 }
