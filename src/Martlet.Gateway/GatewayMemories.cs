@@ -51,6 +51,19 @@ internal sealed class GatewayMemoryStore
         }
     }
 
+    /// <summary>Adds the live facts of <paramref name="given"/> whose IDs this copy doesn't have (not even as forgotten) and
+    /// returns how many.</summary>
+    internal int Give(SharedMemories given)
+    {
+        lock (gate)
+        {
+            var added = given.Live.Where(fact => memories.Find(fact.Id) is null).ToArray();
+            if (added.Length == 0) return 0;
+            Replace(SharedMemories.Merge(memories, new SharedMemories { SchemaVersion = SharedMemories.SchemaVersion1, Facts = added }), save: true);
+            return added.Count(fact => memories.Find(fact.Id) is not null);
+        }
+    }
+
     private void Replace(SharedMemories next, bool save)
     {
         var nextDigest = next.Digest();
