@@ -99,6 +99,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             replies = new { type = "integer", minimum = 1, maximum = LatencyReport.MaximumReplies },
             dataDirectory = new { type = "string" }
         }),
+        Tool("thinking_trace", "Read the desktop log's Thinking trace (docs/VOICE_LATENCY.md, Thinking trace) put back together: the " +
+            "newest conversation turns (replies, glances, background thinks, Thinking pool and sense jobs, Discord replies), newest " +
+            "first, each with its route and model, state, total, first words and first audio (ms from the turn's start), how many " +
+            "requests it sent, every still-waiting notice (what it waited for and how long) and its lines in order (started, prepared, " +
+            "each request with its authorization, send, response, hidden reasoning, first words and tokens, tool rounds, Backup " +
+            "Thinking, ended); and the newest requests for the Thinking pool's slots (tr-N) with how long each waited in line and ran " +
+            "and their lines. contains keeps only turns and requests with a line containing that text. Read-only; never what was said; " +
+            "starts no audio, network or provider request.", new
+        {
+            turns = new { type = "integer", minimum = 1, maximum = ThinkingTraceReport.MaximumTurns },
+            contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this interactive session.", new
         {
@@ -2150,6 +2163,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "logs_share_selftest" => await NodeLinkCheckAsync(cancellation, "logs"),
                 "host_connections_selftest" => await NodeLinkCheckAsync(cancellation, "host-connections"),
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
+                "thinking_trace" => ThinkingTraceReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "turns"),
+                    OptionalString(arguments, "contains")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),

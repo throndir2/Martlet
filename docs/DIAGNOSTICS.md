@@ -5,8 +5,10 @@
 **Diagnostics** (in the main window's navigation) shows every line Martlet's
 parts wrote on every computer of your [Martlet network](NETWORK.md), newest
 first, in one list: each desktop app (`desktop.log`, including each
-status-line message as `Status: ...`, hosts that stop or start answering again
-and failed provider requests), avatar renderer (`avatar-renderer.log`) and host
+status-line message as `Status: ...`, hosts that stop or start answering again,
+failed provider requests and the
+[Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step):
+each Thinking request step by step and what it waits for), avatar renderer (`avatar-renderer.log`) and host
 runs (`host-runs.log`), each with its rotated older copies, and every Martlet
 host's gateway. Filters choose the level (everything, warnings and errors,
 errors only), the part (app, character, host runs, host gateway) and the

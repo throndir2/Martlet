@@ -550,6 +550,12 @@ internal static class ThinkingPoolCheck
         // success, a retry on another member and a stale drop, each with plausible timings, and the totals by kind count them.
         {
             var places = new BackgroundPlaces();
+            // The requests' Thinking trace lines (docs/VOICE_LATENCY.md, Thinking trace), as the desktop log gets them.
+            var traced = new List<string>();
+            places.Requests.Trace = line =>
+            {
+                lock (traced) traced.Add(line);
+            };
             BackgroundPlace bad = new("host:bad", "bad") { Slots = 1, Model = "fixture-a" }, ok = new("host:ok", "ok") { Slots = 1, Rank = 1, Model = "fixture-b" };
             var board = new ThinkingJobBoard(places, () => [bad, ok], async (m, job, token) =>
             {
@@ -600,6 +606,15 @@ internal static class ThinkingPoolCheck
                 memoryTotals.MaxRan >= TimeSpan.FromMilliseconds(100),
                 string.Join("; ", totals.OrderBy(t => t.Key).Select(t => $"{ThinkingJobKinds.Name(t.Key)}: {t.Value.Count} ended, {t.Value.Succeeded} succeeded, " +
                     $"{t.Value.Problems} problems, {t.Value.Retries} retries, average wait {t.Value.AverageWait.TotalMilliseconds:0} ms, average run {t.Value.AverageRun.TotalMilliseconds:0} ms")));
+            string[] trace;
+            lock (traced) trace = [.. traced];
+            bool Says(ThinkingRequestInfo request, string words) =>
+                trace.Any(line => line.StartsWith($"Thinking request {request.Id} ", StringComparison.Ordinal) && line.Contains(words, StringComparison.Ordinal));
+            Check("requests: the Thinking trace says when each waited in line, started on a member, let it go and ended",
+                Says(ofDigest, "waits in line: a pool job") && Says(ofDigest, "started on bad (fixture-a) after") && Says(ofDigest, "Succeeded after") &&
+                Says(ofMemory, "let go of bad after") && Says(ofMemory, "busy: job.busy; it waits in line again.") && Says(ofMemory, "(try 2)") &&
+                Says(ofMemory, "2 tries (last on ok)") && Says(ofJudge, "Stale after") && !Says(ofJudge, "started on"),
+                string.Join(" | ", trace));
         }
 
         // 12 to 15. Priority on one member with one slot (a sequential local model): higher-priority work stops lower-priority work,
