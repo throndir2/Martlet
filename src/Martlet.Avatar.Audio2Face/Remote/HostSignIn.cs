@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Martlet.Core.Accounts;
 using Martlet.Core.Network;
 
 namespace Martlet.Avatar.Audio2Face.Remote;
@@ -49,9 +50,19 @@ public sealed record HostSignInIdentity(string Provider, string Subject, string?
     /// <summary>"member" (one of the owner's computers: it joins the network next) or "friend" (that host's engines only).</summary>
     public string Access { get; init; } = HostSignInAccess.Member;
     public bool Friend => Access == HostSignInAccess.Friend;
+    /// <summary>The household account the sign-in proved, when the host links the identity to one (hosts older than accounts
+    /// say nothing).</summary>
+    public Guid? AccountId { get; init; }
+    /// <summary>The host's signed statement that <see cref="AccountId"/> proved itself on this computer (check it with
+    /// <see cref="AccountAttestation.Check"/> against the roster); null when the host made none.</summary>
+    public AccountAttestation? Attestation { get; init; }
 
     public override string ToString() => Label is { Length: > 0 } ? $"{Label} ({Provider})" : $"{Subject} ({Provider})";
 }
+
+/// <summary>What a Prove sign-in on an already paired computer gave (<see cref="Audio2FaceHostConnection.ProveAsync"/>): who
+/// signed in, the account it proved and the host's signed attestation for this computer.</summary>
+public sealed record HostAccountProof(HostSignInIdentity Identity, Guid AccountId, AccountAttestation Attestation);
 
 /// <summary>What a host said when it listed join requests: the identity a desktop signed in as to pair there.</summary>
 public sealed record HostSignInAttestation(string Provider, string Subject, string? Label, DateTimeOffset At);
@@ -172,7 +183,10 @@ public static class HostSignInClient
                 signedIn.TryGetProperty("label", out var label) ? Clean(label.GetString()) : null)
             {
                 Access = HostSignInAccess.Normalize(root.TryGetProperty("access", out var access) && access.ValueKind == JsonValueKind.String
-                    ? access.GetString() : null)
+                    ? access.GetString() : null),
+                AccountId = root.TryGetProperty("account_id", out var account) && account.ValueKind == JsonValueKind.String &&
+                    account.TryGetGuid(out var accountId) ? accountId : null,
+                Attestation = ReadAttestation(root, invite.HostId, deviceId)
             };
             var pairing = new Audio2FaceHostPairing
             {
@@ -239,26 +253,7 @@ public static class HostSignInClient
         using (document)
         {
             var code = document.RootElement.TryGetProperty("code", out var value) ? value.GetString() : null;
-            throw code switch
-            {
-                "signin.invalid" => new Audio2FaceHostException(code,
-                    "That sign-in didn't work. Check the account name, password and authenticator code; several wrong tries lock sign-in for a while."),
-                "signin.not_allowed" => new Audio2FaceHostException(code,
-                    "You signed in, but the host doesn't allow that account yet. Its owner allows it in Martlet (Devices › Friends, or the " +
-                    "host's Sign-in from outside), then sign in again here."),
-                "signin.device_taken" => new Audio2FaceHostException(code,
-                    "The host already pairs this PC's device ID another way or with another account, so it refused this sign-in. Sign in " +
-                    "with the account you used before, or ask the host's owner to remove this PC there first."),
-                "signin.friends_full" => new Audio2FaceHostException(code,
-                    "The host already keeps as many friends' computers as it allows. Ask its owner to stop sharing it with a computer " +
-                    "that no longer uses it, then sign in again."),
-                "signin.unavailable" => new Audio2FaceHostException(code, "Signing in that way isn't set up on this host."),
-                "signin.expired" => new Audio2FaceHostException(code, "That sign-in took too long. Start again."),
-                "auth.throttled" or "auth.locked" or "auth.rate" => new Audio2FaceHostException(code,
-                    "Too many sign-in attempts. Wait a few minutes, then try again." +
-                    (response.Headers.RetryAfter?.Delta is { } wait ? $" (about {Math.Ceiling(wait.TotalMinutes)} min)" : "")),
-                _ => Audio2FaceHostClient.Remote(document.RootElement)
-            };
+            throw Failure(code, response, document.RootElement);
         }
     }
 
@@ -294,6 +289,46 @@ public static class HostSignInClient
 
     internal static string? Clean(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : new string(value.Trim().Take(128).Select(c => char.IsControl(c) ? ' ' : c).ToArray());
+
+    /// <summary>The answer's "attestation" when it is a well-formed one by <paramref name="hostId"/> for
+    /// <paramref name="deviceId"/>; its signature is checked against the roster by whoever relies on it.</summary>
+    internal static AccountAttestation? ReadAttestation(JsonElement root, string hostId, string deviceId)
+    {
+        if (!root.TryGetProperty("attestation", out var element) || element.ValueKind != JsonValueKind.Object) return null;
+        try
+        {
+            var attestation = AccountAttestation.Parse(element);
+            return attestation.HostId == hostId && attestation.DeviceId == deviceId ? attestation : null;
+        }
+        catch (FormatException) { return null; }
+    }
+
+    internal static Audio2FaceHostException Failure(string? code, HttpResponseMessage response, JsonElement root) => code switch
+    {
+        "signin.invalid" => new Audio2FaceHostException(code,
+            "That sign-in didn't work. Check the account name, password and authenticator code; several wrong tries lock sign-in for a while."),
+        "signin.not_allowed" => new Audio2FaceHostException(code,
+            "You signed in, but the host doesn't allow that account yet. Its owner allows it in Martlet (Devices › Friends, or the " +
+            "host's Sign-in from outside), then sign in again here."),
+        "signin.device_taken" => new Audio2FaceHostException(code,
+            "The host already pairs this PC's device ID another way or with another account, so it refused this sign-in. Sign in " +
+            "with the account you used before, or ask the host's owner to remove this PC there first."),
+        "signin.friends_full" => new Audio2FaceHostException(code,
+            "The host already keeps as many friends' computers as it allows. Ask its owner to stop sharing it with a computer " +
+            "that no longer uses it, then sign in again."),
+        "signin.needs_authenticator" => new Audio2FaceHostException(code,
+            "This account has no authenticator, so it can't add a computer by signing in. Add an authenticator app to it at home first."),
+        "signin.no_account" => new Audio2FaceHostException(code,
+            "That sign-in isn't linked to a Martlet account on the host. Sign in with a login of your own account."),
+        "signin.no_network" => new Audio2FaceHostException(code,
+            "The host isn't in your Martlet network yet, so it can't vouch for an account. Pair it with a computer in your network first."),
+        "signin.unavailable" => new Audio2FaceHostException(code, "Signing in that way isn't set up on this host."),
+        "signin.expired" => new Audio2FaceHostException(code, "That sign-in took too long. Start again."),
+        "auth.throttled" or "auth.locked" or "auth.rate" => new Audio2FaceHostException(code,
+            "Too many sign-in attempts. Wait a few minutes, then try again." +
+            (response.Headers.RetryAfter?.Delta is { } wait ? $" (about {Math.Ceiling(wait.TotalMinutes)} min)" : "")),
+        _ => Audio2FaceHostClient.Remote(root)
+    };
 }
 
 /// <summary>A host's sign-in settings as a member desktop sees them (never a secret).</summary>
@@ -310,6 +345,11 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
     /// can. Hosts older than this field report null. While it isn't null the host isn't reachable from outside home.</summary>
     public string? BlockedReason { get; init; }
     public bool Usable => BlockedReason is null;
+    /// <summary>The household owner's account the host uses (set by a desktop, or derived from its network); null on hosts
+    /// older than accounts.</summary>
+    public Guid? OwnerAccountId { get; init; }
+    /// <summary>Other household accounts' Martlet password logins on the host (never a secret).</summary>
+    public IReadOnlyList<HostSignInAccount> Accounts { get; init; } = [];
 
     /// <summary>Whether sign-in would still be usable after <paramref name="change"/> (a settings change as sent to the host):
     /// an owner account, or a provider with an allowed identity, would remain.</summary>
@@ -337,6 +377,8 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
         if (root.GetProperty("host_id").GetString() != hostId) throw new FormatException();
         string? Text(JsonElement element, string name) =>
             element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? HostSignInClient.Clean(item.GetString()) : null;
+        Guid? Id(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String && item.TryGetGuid(out var id) ? id : null;
         HostSignInEnrolled Enrolled(JsonElement e) => new(Text(e, "device_id")!, Text(e, "provider")!, e.GetProperty("subject").GetString()!,
             Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())
         {
@@ -351,12 +393,19 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
                 RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) ? number : null
             }).ToArray(),
             root.GetProperty("allowed").EnumerateArray().Take(64).Select(a => new HostSignInAllowed(Text(a, "provider")!, a.GetProperty("subject").GetString()!,
-                Text(a, "label")) { Access = HostSignInAccess.Normalize(Text(a, "access")) }).ToArray(),
+                Text(a, "label")) { Access = HostSignInAccess.Normalize(Text(a, "access")), AccountId = Id(a, "account_id") }).ToArray(),
             root.GetProperty("enrolled").EnumerateArray().Take(64).Select(Enrolled).ToArray(),
             root.TryGetProperty("recovery_codes", out var codes) && codes.ValueKind == JsonValueKind.Array
                 ? codes.EnumerateArray().Select(c => c.GetString()!).ToArray() : null)
         {
             BlockedReason = root.TryGetProperty("blocked_reason", out var blocked) && blocked.ValueKind == JsonValueKind.String ? blocked.GetString() : null,
+            OwnerAccountId = Id(root, "owner_account_id"),
+            Accounts = root.TryGetProperty("accounts", out var accounts) && accounts.ValueKind == JsonValueKind.Array
+                ? accounts.EnumerateArray().Take(32).Where(a => Id(a, "account_id") is not null && Text(a, "user") is not null)
+                    .Select(a => new HostSignInAccount(Id(a, "account_id")!.Value, Text(a, "user")!,
+                        a.TryGetProperty("has_authenticator", out var totp) && totp.ValueKind == JsonValueKind.True,
+                        a.TryGetProperty("recovery_codes_left", out var left) && left.TryGetInt32(out var count) ? count : 0)).ToArray()
+                : [],
             Refused = root.TryGetProperty("refused", out var refused) && refused.ValueKind == JsonValueKind.Array
                 ? refused.EnumerateArray().Take(16).Select(Enrolled).ToArray()
                 : [],
@@ -378,7 +427,13 @@ public sealed record HostSignInAllowed(string Provider, string Subject, string? 
 {
     public string Access { get; init; } = HostSignInAccess.Member;
     public bool Friend => Access == HostSignInAccess.Friend;
+    /// <summary>For a member: the household account it signs in as (null: the owner's).</summary>
+    public Guid? AccountId { get; init; }
 }
+
+/// <summary>A household account's Martlet password login on a host: its user name, whether it has an authenticator (needed to
+/// add a computer by signing in) and how many recovery codes are left.</summary>
+public sealed record HostSignInAccount(Guid AccountId, string User, bool HasAuthenticator, int RecoveryCodesLeft);
 
 /// <summary>A computer that signed in (or, in <see cref="HostSignInSettings.Refused"/>, an identity that tried), with the access
 /// its sign-in gave: "member", "friend", or null where the host lists none (refused identities, removals).</summary>
@@ -393,6 +448,126 @@ public sealed partial class Audio2FaceHostConnection
 {
     private const string SignInSettingsPath = "/martlet/v1/signin/settings";
 
+    /// <summary>Starts a Prove sign-in on this paired computer (<c>/signin/begin</c> over the pinned connection): provider
+    /// "martlet" for a household account's Martlet password, "owner" for the owner login, or a provider set up on the host
+    /// (then pass the PKCE challenge and this computer's loopback redirect).</summary>
+    public async Task<HostSignInAttempt> BeginProveAsync(string provider, string? codeChallenge = null, string? redirectUri = null,
+        CancellationToken cancellationToken = default)
+    {
+        var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object?>
+        {
+            ["protocol_version"] = new { major = 2, minor = 0 }, ["provider"] = provider, ["code_challenge"] = codeChallenge, ["redirect_uri"] = redirectUri
+        }.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value));
+        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + "/martlet/v1/signin/begin") { Content = Audio2FaceHostClient.JsonContent(body) };
+        using var document = await SendSignInAsync(request, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var root = document.RootElement;
+            var url = root.TryGetProperty("authorize_url", out var link) && link.ValueKind == JsonValueKind.String ? link.GetString() : null;
+            if (url is not null && (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)) throw new FormatException();
+            return new(pairing.Origin, root.GetProperty("attempt_id").GetString()!, root.GetProperty("provider").GetString()!,
+                root.GetProperty("state").GetString()!, root.GetProperty("nonce").GetString()!, url);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new Audio2FaceHostException("response.invalid", "The host's answer to the sign-in was invalid.");
+        }
+    }
+
+    /// <summary>Finishes a Prove sign-in on this paired computer (<c>POST /martlet/v1/signin/prove</c>, signed): the host checks
+    /// the proof and answers its signed attestation that the account proved itself on this computer, valid for
+    /// <paramref name="lifetime"/> (ten minutes when null; one minute to 30 days). Issues no new credential.</summary>
+    public async Task<HostAccountProof> ProveAsync(HostSignInAttempt attempt, JsonObject proof, TimeSpan? lifetime = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+        ArgumentNullException.ThrowIfNull(proof);
+        var change = new JsonObject
+        {
+            ["protocol_version"] = new JsonObject { ["major"] = 2, ["minor"] = 0 }, ["attempt_id"] = attempt.AttemptId, ["proof"] = proof.DeepClone()
+        };
+        if (lifetime is { } wanted) change["lifetime_seconds"] = (int)wanted.TotalSeconds;
+        var body = JsonSerializer.SerializeToUtf8Bytes(change);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + "/martlet/v1/signin/prove") { Content = Audio2FaceHostClient.JsonContent(body) };
+            Sign(request, body);
+            using var document = await SendSignInAsync(request, cancellationToken).ConfigureAwait(false);
+            var root = document.RootElement;
+            var signedIn = root.GetProperty("signed_in");
+            var accountId = root.GetProperty("account_id").GetGuid();
+            var attestation = HostSignInClient.ReadAttestation(root, pairing.HostId, pairing.DeviceId);
+            if (root.GetProperty("host_id").GetString() != pairing.HostId || attestation is null || attestation.AccountId != accountId)
+                throw new Audio2FaceHostException("response.invalid", "The host's account attestation was invalid.");
+            var who = new HostSignInIdentity(signedIn.GetProperty("provider").GetString()!, signedIn.GetProperty("subject").GetString()!,
+                signedIn.TryGetProperty("label", out var label) ? HostSignInClient.Clean(label.GetString()) : null)
+            {
+                AccountId = accountId, Attestation = attestation
+            };
+            return new(who, accountId, attestation);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new Audio2FaceHostException("response.invalid", "The host's account attestation was invalid.");
+        }
+        finally { CryptographicOperations.ZeroMemory(body); }
+    }
+
+    /// <summary>A Prove sign-in with a Martlet password login (user name, password and, when the login has an authenticator, its
+    /// current code or a recovery code).</summary>
+    public async Task<HostAccountProof> ProveWithPasswordAsync(string user, string password, string? code, TimeSpan? lifetime = null,
+        CancellationToken cancellationToken = default)
+    {
+        var attempt = await BeginProveAsync(GatewayMartletProvider, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var proof = new JsonObject { ["user"] = user, ["password"] = password };
+        if (code is { Length: > 0 }) proof["code"] = code;
+        return await ProveAsync(attempt, proof, lifetime, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>A Prove sign-in at a provider in the browser, as <see cref="HostSignInClient.SignInInBrowserAsync"/> does for
+    /// joining.</summary>
+    public async Task<HostAccountProof> ProveInBrowserAsync(string provider, Action<string> openBrowser, TimeSpan timeout, TimeSpan? lifetime = null,
+        int? redirectPort = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(openBrowser);
+        var (verifier, challenge) = HostSignInClient.NewPkce();
+        using var redirect = LoopbackRedirect.Start(redirectPort);
+        var attempt = await BeginProveAsync(provider, challenge, redirect.RedirectUri, cancellationToken).ConfigureAwait(false);
+        if (attempt.AuthorizeUrl is null) throw new Audio2FaceHostException("response.invalid", "The host didn't say where to sign in.");
+        openBrowser(attempt.AuthorizeUrl);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        wait.CancelAfter(timeout);
+        IReadOnlyDictionary<string, string> query;
+        try { query = await redirect.WaitAsync(wait.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new Audio2FaceHostException("signin.expired", "The browser didn't come back in time. Start the sign-in again.");
+        }
+        if (query.TryGetValue("error", out var error))
+            throw new Audio2FaceHostException("signin.invalid", $"The sign-in was canceled or refused in the browser ({HostSignInClient.Clean(error)}).");
+        var answer = new JsonObject();
+        foreach (var (name, value) in query) answer[name] = value;
+        return await ProveAsync(attempt, new JsonObject { ["query"] = answer, ["code_verifier"] = verifier }, lifetime, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>The provider ID of household Martlet password logins on a host.</summary>
+    public const string GatewayMartletProvider = "martlet";
+
+    private async Task<JsonDocument> SendSignInAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        using var response = await Audio2FaceHostClient.Send(http, request, timeout.Token).ConfigureAwait(false);
+        var document = await Audio2FaceHostClient.ReadJson(response, 16 * 1024, timeout.Token).ConfigureAwait(false);
+        if (response.IsSuccessStatusCode) return document;
+        using (document)
+        {
+            var code = document.RootElement.TryGetProperty("code", out var value) ? value.GetString() : null;
+            throw HostSignInClient.Failure(code, response, document.RootElement);
+        }
+    }
+
     public async Task<HostSignInSettings> ReadSignInSettingsAsync(CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + SignInSettingsPath);
@@ -405,7 +580,13 @@ public sealed partial class Audio2FaceHostConnection
     /// "member", the default, for the owner's own computers, or "friend" for that host's engines only; allowing an identity again
     /// replaces its entry, and a changed access revokes the computers it signed in with the old one),
     /// <c>{"action":"disallow","provider","subject"}</c>, <c>{"action":"provider","provider_config":{...}}</c> or
-    /// <c>{"action":"remove-provider","id"}</c>. The answer carries new recovery codes once, when the change made some.</summary>
+    /// <c>{"action":"remove-provider","id"}</c>. Household accounts (docs/ACCOUNTS.md): <c>{"action":"owner-account","account_id"}</c>,
+    /// <c>{"action":"account","account_id","user","password","totp_secret","code"}</c> (adds or changes another account's
+    /// Martlet password login; the password may be left out of a change, and an authenticator is added with its secret and a
+    /// current code), <c>{"action":"remove-account-authenticator","account_id"}</c>, <c>{"action":"remove-account","account_id"}</c>,
+    /// <c>"recovery-codes"</c> with an <c>account_id</c>, <c>"allow"</c> with an <c>account_id</c> and
+    /// <c>{"action":"link","provider","subject","account_id"}</c> (no account_id: the owner's account). The answer carries new
+    /// recovery codes once, when the change made some.</summary>
     public async Task<HostSignInSettings> ChangeSignInSettingsAsync(JsonObject change, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(change);

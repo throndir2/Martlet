@@ -94,4 +94,52 @@ public sealed class SignInCommandTests
         Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-allow", "--provider", "p", "--subject", "s", "--access", "owner")));
         Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-disallow", "--provider", "p", "--subject", "s", "--access", "friend")));
     }
+
+    [Fact]
+    public async Task Owner_sets_household_account_logins_from_the_host()
+    {
+        using var platform = new FixturePlatform();
+        platform.Terminal = new() { Interactive = false };
+        using (var init = new StringWriter()) Assert.Equal(0, await platform.Run("owner-init", init));
+        const string Sam = "5a6e0000-0000-4000-8000-00000000005a";
+        const string Alex = "a1e40000-0000-4000-8000-0000000000a1";
+
+        using var sam = new StringWriter();
+        platform.Input = new ComputedInput(() => "a long household passphrase",
+            () => Totp.Code(sam.ToString().Split('\n').Single(l => l.StartsWith("secret: ", StringComparison.Ordinal))["secret: ".Length..].Trim(),
+                DateTimeOffset.UtcNow));
+        var exit = await HostApplication.RunAsync(Args("owner-signin-account", "--user", "sam", "--account", Sam), sam, default, platform);
+        Assert.True(exit == 0, sam.ToString());
+        Assert.Contains($"Martlet login sam set for account {Sam}. Recovery codes", sam.ToString());
+
+        using var alex = new StringWriter();
+        platform.Input = new ComputedInput(() => "a long household passphrase");
+        exit = await HostApplication.RunAsync(Args("owner-signin-account", "--user", "alex", "--account", Alex, "--authenticator", "no"), alex, default, platform);
+        Assert.True(exit == 0, alex.ToString());
+        Assert.Contains("It has no authenticator", alex.ToString());
+        using (var allow = new StringWriter())
+            Assert.Equal(0, await HostApplication.RunAsync(Args("owner-signin-allow", "--provider", "google", "--subject", "1234", "--account", Sam),
+                allow, default, platform));
+
+        using (var status = new StringWriter())
+        {
+            Assert.Equal(0, await platform.Run("owner-signin-status", status));
+            Assert.Contains($"\"accountId\":\"{Sam}\",\"user\":\"sam\",\"hasAuthenticator\":true,\"recoveryCodesLeft\":10", status.ToString());
+            Assert.Contains($"\"accountId\":\"{Alex}\",\"user\":\"alex\",\"hasAuthenticator\":false", status.ToString());
+            Assert.Contains($"\"Access\":\"member\",\"AccountId\":\"{Sam}\"", status.ToString());
+        }
+        Assert.DoesNotContain("a long household passphrase", Encoding.UTF8.GetString(platform.Fs.Parent.Children["signin.json"].Bytes));
+        using (var remove = new StringWriter())
+        {
+            Assert.Equal(0, await HostApplication.RunAsync(Args("owner-signin-remove-account", "--account", Alex), remove, default, platform));
+            Assert.Contains("it signed in no computer here", remove.ToString());
+        }
+        Assert.DoesNotContain(Alex, Encoding.UTF8.GetString(platform.Fs.Parent.Children["signin.json"].Bytes));
+
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-account", "--user", "sam")));
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-account", "--user", "sam", "--account", "not-a-guid")));
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-allow", "--provider", "p", "--subject", "s", "--access", "friend",
+            "--account", Sam)));
+        Assert.Equal(new Guid(Sam), HostOptions.Parse(Args("owner-signin-owner", "--user", "owner", "--account", Sam))!.Account);
+    }
 }
