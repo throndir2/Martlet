@@ -111,6 +111,11 @@ over SSH also manages it.
   desktop's key. Each desktop keeps its copy in `network.json` beside its other
   preferences; each host keeps its copy in `network.json` beside `host.json`.
   It holds no secrets.
+- **Device ID.** Each Windows user's Martlet has its own device ID, kept in
+  `device.json` in Martlet's data folder so it never changes:
+  `desktop-<pc name>-<6 of [a-z0-9]>`, so two Windows users on one PC are two
+  desktops. A data folder that was already paired or in a network keeps the ID
+  its pairings use (an older Martlet's `desktop-<pc name>`).
 - **Accepting changes.** A host or desktop accepts an incoming entry only when
   its signer is an active member desktop in the roster it already accepted
   (removals first). Per computer the newest entry wins (hybrid millisecond

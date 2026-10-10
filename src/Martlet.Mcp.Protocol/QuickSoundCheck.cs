@@ -39,7 +39,7 @@ internal static class QuickSoundCheck
         var current = key is null ? null : sets.FirstOrDefault(s => s.Key == key);
         var logs = LocalLogs.Directory(dataDirectory);
         var lines = Directory.Exists(logs)
-            ? LocalLogs.Read(logs, LocalLogs.ThisDeviceId())
+            ? LocalLogs.Read(logs, LocalLogs.ThisDeviceId(dataDirectory))
                 .Where(r => r.Component == "desktop" && (r.Message.StartsWith("Quick sound", StringComparison.Ordinal) ||
                     r.Message.Contains("Quick sound at", StringComparison.Ordinal)))
                 .OrderBy(r => r.At).TakeLast(10).Select(r => new { at = r.At, message = r.Message }).ToArray()

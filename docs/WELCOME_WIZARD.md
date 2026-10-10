@@ -2,7 +2,10 @@
 
 The welcome wizard is the first thing Martlet shows after it is installed and
 started on a computer that hasn't chosen its role yet (no `device-role.txt` in
-the data folder). Settings › *This PC's role* › *Replay the welcome tour* shows it again.
+the [PC folder](ACCOUNTS.md#pc-scope), `%ProgramData%\Martlet`). It also shows
+for a Windows user who hasn't chosen yet on a companion PC that another Windows
+user set up; on a host PC that user lands on the host dashboard. Settings ›
+*This PC's role* › *Replay the welcome tour* shows it again.
 The code is in `src/Martlet.Desktop/MainWindow.Welcome.cs` (steps),
 `MainWindow.xaml` (the `Tour` overlay), `DefaultSetup.cs` (planning) and
 `MainWindow.DefaultSetup.cs` (applying).

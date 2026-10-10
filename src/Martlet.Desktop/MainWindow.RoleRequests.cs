@@ -28,7 +28,7 @@ public partial class MainWindow
     /// this PC's host dashboard reads or, on a host PC while Docker Desktop is stopped, the one Martlet saw set up here before.
     /// Null when this PC has none, so another computer can say that a host PC still needs one.</summary>
     private string? OwnHostServiceId() => ThisPcHost()?.HostId ?? hostState?.HostId ??
-        (Role == DeviceRole.Host && store is not null && ThisPcHostRoles.Load(store.DataDirectory) is not null
+        (Role == DeviceRole.Host && Pc is { } pc && ThisPcHostRoles.Load(pc.Directory) is not null
             ? HostSetupCommands.SuggestedHostId(Environment.MachineName) : null);
 
     /// <summary>The host service of another computer that this PC is paired with: the one that computer names, or the one Martlet

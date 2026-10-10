@@ -19,7 +19,7 @@ namespace Martlet.Desktop;
 /// the same engine (failover, per job) and pushes the result to every host with an older copy.</summary>
 public partial class MainWindow
 {
-    private static readonly string ClusterDevice = HostSetupCommands.SuggestedDeviceId();
+    private static string ClusterDevice => HostSetupCommands.SuggestedDeviceId();
     private readonly DispatcherTimer clusterTimer = new() { Interval = ClusterSync.Interval };
     private ClusterPlan clusterPlan = ClusterPlan.Empty;
     private bool clusterEnabled;

@@ -5,7 +5,6 @@ using Martlet.Core.Access;
 using Martlet.Core.Network;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
-using Martlet.Diagnostics;
 using Martlet.Gateway;
 
 namespace Martlet.NodeLinkCheck;
@@ -268,7 +267,7 @@ internal static class SignInLab
             // Without the desktop's window (a locked or headless session): the lab signs the desktop in as the friend itself,
             // under the device ID that desktop names itself by, through the same sign-in client Join with an invite uses, and keeps
             // the pairing as that window does: the secret in the lab credential folder, the host in hosts.json with access friend.
-            desktopDevice = LocalLogs.ThisDeviceId();
+            desktopDevice = DeviceIds.Ensure(dataDirectory).Id;
             var parsed = NetworkInvite.Parse(invite);
             var (origin, _) = await HostSignInClient.ReadProvidersAsync(parsed, token);
             var (pairing, pairingSecret, who) = await HostSignInClient.SignInInBrowserAsync(parsed, origin, "authentik", desktopDevice,
