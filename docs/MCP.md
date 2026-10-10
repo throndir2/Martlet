@@ -4039,6 +4039,60 @@ Image model and Audio model cards' `ImageModelTest` and `AudioModelTest` do the
 same for the model that takes pictures and for an audio model of its own
 ([Image and audio models](#image-and-audio-models)).
 
+`local_model_facts` says what an open-weight model needs to run locally
+([Resource footprints](RESOURCE_FOOTPRINTS.md#estimating-a-model-martlet-doesnt-list),
+[Model catalog](MODEL_CATALOG.md#memory-and-running-locally)), through the
+production `LocalModelFactsReader` and `LocalModelMemory`. `model` is a Hugging
+Face repository (`google/gemma-4-E2B-it`), `hf.co/{repo}:{quant}` or an Ollama
+tag (`gemma4:e2b`); or give `huggingFaceRepo` and `ollamaTag` together (the
+repository gives the shape and inputs, the tag its exact Ollama download).
+`quantization` picks one (default: the Ollama tag's, else Q4_K_M, else another
+4-bit one), `contextTokens` the context (default 8,192), and `card` (for
+example `"RTX 4070"`) or `bandwidthGbps` the memory bandwidth for the speed.
+
+- `facts`: `HuggingFaceRepo` (the model's own), `GgufRepo` (the GGUF repository
+  read: ggml-org, unsloth, lmstudio-community or bartowski first, else the most
+  downloaded), `OllamaTag`, `LocallyHostable`, `parametersBillions` (the maker's,
+  encoders included), `weightsParametersBillions` (in the weights file),
+  `activeParametersBillions` (less for a mixture-of-experts model), `License`,
+  `PipelineTag`, `MaxContext`, `Gated`, `inputs` (`Image`, `Audio`, `Video` and
+  their `Source`: `config.json`, or the Ollama registry's projector layer, which
+  says only that it sees), `architecture` (layers with a cache of their own:
+  `FullLayers`, `SlidingLayers`, `LinearLayers`, `SharedCacheLayers`; `KvHeads`,
+  `HeadSize`, `SlidingWindow`, `Experts`, `ActiveExperts`,
+  `fullAttentionKibPerToken`, `perLayerEmbeddingBillions`), `quantizations`
+  (each `Name`, `weightsGb`, `encoderGb`, `draftGb`, `InstallName` and
+  `Source`), `encoders` and `drafts` (the `mmproj` and `mtp` files),
+  `GgufRepos`, `Sources` (each address read) and `Problems` (what couldn't be
+  read, for example a gated `config.json` or no GGUF repository).
+- `estimate`: weights + encoder + draft + KV cache at the context + 0.5 GB
+  buffers: `totalGb`, `graphicsGb` and `systemMemoryGb` (Gemma's per-layer
+  embeddings, which Ollama keeps in system memory), `kvCacheGb` with
+  `KvCacheKnown` (false without a `config.json`: a tenth of the weights is
+  guessed), `gbReadPerToken` and `described`.
+- `speed`: `matched` card, `bandwidthGbps` and `maxTokensPerSecond`, an upper
+  bound (bandwidth divided by `gbReadPerToken`); real speed is often 50-70% of it.
+- `footprintCatalog`: Martlet's own entry for the Ollama tag (`vramGb`,
+  `evidence` Measured or Estimate). `measured`: what Ollama on this PC reported
+  once it loaded the model (`model-memory.json` in `dataDirectory`: `Host`,
+  `gb`, `graphicsGb`, `OnGraphicsCard`, `ContextTokens`, `measuredAt`).
+- `requests`: requests sent to Hugging Face and the Ollama registry. A lookup
+  sends at most five; each answer is kept for a day, and at most 100 go to each
+  source in five minutes (Hugging Face allows about 500). Martlet reads
+  `registry.ollama.ai`, never ollama.com, whose terms forbid automated access.
+
+`fixture: true` runs the same code on a FIXTURE transport shaped like Hugging
+Face and the Ollama registry (NOT the real services; the real sizes and config
+fields read on 2026-10-10). Without a `model` it checks the estimate against
+the measured Gemma 4 E2B, E4B and Qwen3.5 4B numbers (`calibration`, each
+`percentOff`, within 10%), Gemma 4's KV cache as Resource footprints works it
+out, the GGUF repository picked, the install name, E2B's audio and 26B A4B's
+none, 26B A4B's active parameters and the cache (`checks`), and `measured`: the
+production `OllamaMeasuredMemory` against a FIXTURE `/api/ps` (NOT Ollama) in a
+temporary folder of its own, deleted afterwards (`savedFirst` true,
+`savedAgain` false while nothing changed, `graphicsGb`, `ContextTokens`), with
+`ok`. Keyless; downloads no model; saves nothing.
+
 `local_model_servers` is Companion › Thinking › This PC › *A model app you
 already use* without the window ([Local model apps](LOCAL_MODEL_APPS.md)).
 `apps` lists the apps Martlet looks for, each with `Id`, `Name`, `BaseUrl`
@@ -8727,7 +8781,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

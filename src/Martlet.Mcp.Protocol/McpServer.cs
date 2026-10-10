@@ -1372,6 +1372,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             test = new { type = "boolean" },
             testVision = new { type = "boolean" }
         }),
+        Tool("local_model_facts", "What an open-weight model needs to run locally, through the production LocalModelFactsReader and " +
+            "LocalModelMemory: model (a Hugging Face repository such as google/gemma-4-E2B-it, hf.co/{repo}:{quant}, or an Ollama tag " +
+            "such as gemma4:e2b), or huggingFaceRepo and ollamaTag together (the repository gives the shape and inputs, the tag its exact " +
+            "Ollama download). Reads Hugging Face's model API (license, task, parameters, every file's size), config.json (layers, KV " +
+            "heads, head size, sliding window, experts; image, audio and video inputs) and its GGUF search (prefers ggml-org, unsloth, " +
+            "lmstudio-community, bartowski), and the Ollama registry's manifest and config blob (registry.ollama.ai, never ollama.com). " +
+            "Returns facts (parameters total, in the weights file and active; inputs; architecture; quantizations with weights, encoder " +
+            "and draft sizes and install names; sources; problems), estimate (weights + encoder + draft + KV cache at contextTokens, " +
+            "default 8,192, + 0.5 GB buffers; graphicsGb and systemMemoryGb, for Gemma's per-layer embeddings), speed (card such as " +
+            "\"RTX 4070\" or bandwidthGbps: at most bandwidth / bytes read for each token), footprintCatalog (Martlet's own entry for " +
+            "the Ollama tag) and measured (what Ollama reported on this PC, model-memory.json in dataDirectory). Keyless; at most five " +
+            "requests a lookup, each answer cached for a day, at most 100 requests to each source in five minutes. fixture=true uses " +
+            "a FIXTURE transport shaped like Hugging Face and the registry (NOT the real services); without a model it checks the " +
+            "estimate against the measured Gemma 4 E2B, E4B and Qwen3.5 4B numbers and rehearses keeping a FIXTURE /api/ps " +
+            "measurement in a temporary folder (ok). Downloads no model; saves nothing.", new
+        {
+            model = new { type = "string", maxLength = 256 },
+            huggingFaceRepo = new { type = "string", maxLength = 200 },
+            ollamaTag = new { type = "string", maxLength = 200 },
+            quantization = new { type = "string", maxLength = 64 },
+            contextTokens = new { type = "integer", minimum = 256, maximum = 1_048_576 },
+            card = new { type = "string", maxLength = 128 },
+            bandwidthGbps = new { type = "number", minimum = 1, maximum = 20_000 },
+            dataDirectory = new { type = "string" },
+            fixture = new { type = "boolean" }
+        }),
         Tool("model_lab", "A live OpenAI-compatible fixture endpoint on 127.0.0.1 for the desktop on a disposable data directory, so " +
             "Companion > Vision > Image model, Companion > Listening > Audio model and Thinking can choose and test models without a real " +
             "provider (NOT AI). action \"start\" (returns baseUrl, such as http://127.0.0.1:52341/v1, to type as a custom server's API base " +
@@ -2514,6 +2540,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "testVision") ?? false,
                     cancellation),
                 "model_lab" => await ModelLab.RunAsync(RequiredString(arguments, "action"), OptionalInt(arguments, "port"), cancellation),
+                "local_model_facts" => await LocalModelFactsCheck.RunAsync(OptionalString(arguments, "model"),
+                    OptionalString(arguments, "huggingFaceRepo"), OptionalString(arguments, "ollamaTag"), OptionalString(arguments, "quantization"),
+                    OptionalInt(arguments, "contextTokens"), OptionalString(arguments, "card"), OptionalDouble(arguments, "bandwidthGbps"),
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalBool(arguments, "fixture") ?? false,
+                    cancellation),
                 "local_model_servers" => await LocalModelServersCheck.RunAsync(OptionalString(arguments, "address"),
                     OptionalString(arguments, "model"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "fixture") ?? false,
                     cancellation),
