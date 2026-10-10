@@ -260,7 +260,7 @@ public static partial class VoiceUpdates
                         refused.Add(new(update.Line, "the owner named them differently"));
                         continue;
                     }
-                    var keep = new[] { voice, other }.OrderByDescending(v => v.Owner).ThenByDescending(v => v.Name is not null)
+                    var keep = new[] { voice, other }.OrderByDescending(v => v.Owner || v.Account is not null).ThenByDescending(v => v.Name is not null)
                         .ThenByDescending(v => v.Named).ThenByDescending(v => v.Heard).ThenBy(v => v.Number).First();
                     var away = keep.Id == voice.Id ? other : voice;
                     roster = roster.Join(away.Id, keep.Id, by, now);

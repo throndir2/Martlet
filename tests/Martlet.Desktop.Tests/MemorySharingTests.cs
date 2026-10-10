@@ -29,18 +29,23 @@ public sealed class MemorySharingTests
     }
 
     [Fact]
-    public void My_voices_are_the_account_links_else_the_voice_marked_this_is_me_following_merges()
+    public void My_voices_are_the_voices_linked_to_my_account_or_without_accounts_the_voice_marked_this_is_me()
     {
         var roster = VoiceRoster.Empty;
         (roster, var sam) = roster.Add(Print(1), 3, "desk", Start);
         (roster, var alex) = roster.Add(Print(2), 3, "desk", Start);
         (roster, var twin) = roster.Add(Print(3), 3, "desk", Start);
-        roster = roster.SetOwner(sam!.Id, true, "desk", Start).Join(twin!.Id, sam.Id, "desk", Start);
+        var samsAccount = Guid.NewGuid();
+        var alexsAccount = Guid.NewGuid();
+        roster = roster.SetOwner(sam!.Id, true, "desk", Start).SetAccount(sam.Id, samsAccount, true, "desk", Start)
+            .SetAccount(alex!.Id, alexsAccount, false, "desk", Start).Join(twin!.Id, sam.Id, "desk", Start);
 
+        Assert.Equal([sam.Id], MemorySharing.MyVoices(samsAccount, roster));
+        Assert.Equal([alex.Id], MemorySharing.MyVoices(alexsAccount, roster));
+        // Someone with no voice linked yet is never taken for the owner.
+        Assert.Empty(MemorySharing.MyVoices(Guid.NewGuid(), roster));
         Assert.Equal([sam.Id], MemorySharing.MyVoices(null, roster));
-        Assert.Equal([alex!.Id], MemorySharing.MyVoices([alex.Id], roster));
-        Assert.Equal([sam.Id], MemorySharing.MyVoices([twin.Id], roster));
-        Assert.Empty(MemorySharing.MyVoices(null, VoiceRoster.Empty));
+        Assert.Empty(MemorySharing.MyVoices(null, null));
     }
 
     [Fact]

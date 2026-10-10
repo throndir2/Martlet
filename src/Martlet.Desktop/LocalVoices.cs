@@ -7,8 +7,12 @@ using Martlet.Sherpa;
 namespace Martlet.Desktop;
 
 /// <summary>One voice heard in an utterance and what Martlet made of it. <see cref="Voice"/> is null when the voice could not
-/// be told apart (too little speech, or too close to call); <see cref="Added"/> means it was new and joined the list.</summary>
-internal sealed record HeardVoice(KnownVoice? Voice, VoiceMatchKind Kind, double Score, double Seconds, bool Added);
+/// be told apart (too little speech, or too close to call); <see cref="Added"/> means it was new and joined the list.
+/// <see cref="Mine"/>: the voice is the signed-in person's (<see cref="LocalVoices.IsYours"/>) as it was heard.</summary>
+internal sealed record HeardVoice(KnownVoice? Voice, VoiceMatchKind Kind, double Score, double Seconds, bool Added)
+{
+    internal bool Mine { get; init; }
+}
 
 /// <summary>Who spoke in one utterance: <see cref="Speaker"/> is the voice with the most speech (the one talking to Martlet),
 /// <see cref="Others"/> anyone else heard clearly enough.</summary>
@@ -171,7 +175,7 @@ internal sealed class LocalVoices : IDisposable
         KeepClips(samples, spans);
         if (repaired > 0) ErrorLog.Info($"A voice heard went by Martlet's own name or a placeholder, learned by mistake; dropped it from {repaired} voice(s).");
         if (heard.Any(h => h.Voice is not null)) Changed?.Invoke();
-        return new(heard, analysis.Overlap);
+        return Stamp(new(heard, analysis.Overlap));
     }
 
     /// <summary>Who spoke in one utterance as <see cref="Recognize"/> would say it, without changing anything: nothing is
@@ -206,7 +210,7 @@ internal sealed class LocalVoices : IDisposable
                     ? new(roster.Resolve(match.Voice!.Id), match.Kind, match.Score, analysis.SpeechSeconds, false)
                     : new(null, match.Kind, match.Score, analysis.SpeechSeconds, false));
             }
-            return new(heard, analysis.Overlap);
+            return Stamp(new(heard, analysis.Overlap));
         }
     }
 
@@ -272,6 +276,56 @@ internal sealed class LocalVoices : IDisposable
     }
 
     internal void SetOwner(string id, bool owner) => Change(r => r.SetOwner(id, owner, by, Now));
+
+    // ---------- whose voice: links to accounts (docs/ACCOUNTS.md, Voices) ----------
+
+    private Guid? account, ownerAccount;
+
+    /// <summary>The signed-in account: "your voice" is a voice linked to it. Null until the desktop knows its account; then a
+    /// voice marked as the owner's (<see cref="KnownVoice.Owner"/>) stands for yours, as before accounts.</summary>
+    internal Guid? Account { get { lock (gate) return account; } }
+
+    /// <summary>The household owner's account, when known.</summary>
+    internal Guid? OwnerAccount { get { lock (gate) return ownerAccount; } }
+
+    /// <summary>Sets the signed-in account and the household owner's (only between replies, when the account changes). With the
+    /// owner's account known, each voice an older Martlet marked "This is me" links to it.</summary>
+    internal void UseAccount(Guid? signedIn, Guid? owner)
+    {
+        bool changed;
+        lock (gate)
+        {
+            changed = account != signedIn || ownerAccount != owner;
+            account = signedIn;
+            ownerAccount = owner;
+        }
+        if (owner is { } id) Change(r => r.LinkOwnerVoices(id, by, Now));
+        if (changed) Changed?.Invoke();
+    }
+
+    /// <summary>Whether <paramref name="voice"/> is the signed-in person's: linked to their account.</summary>
+    internal bool IsYours(KnownVoice? voice)
+    {
+        if (voice is null || voice.Removed) return false;
+        lock (gate) return account is { } signedIn ? voice.Account == signedIn : voice.Owner;
+    }
+
+    /// <summary>The signed-in person's voices, most recently heard first.</summary>
+    internal IReadOnlyList<KnownVoice> Yours => Roster.Live.Where(IsYours).ToArray();
+
+    /// <summary>Links the voice to the signed-in account (<paramref name="yours"/>), or unlinks it. Without a known account it
+    /// marks the voice as the owner's, as before accounts.</summary>
+    internal void Link(string id, bool yours)
+    {
+        Guid? signedIn, owner;
+        lock (gate) (signedIn, owner) = (account, ownerAccount);
+        if (signedIn is null) SetOwner(id, yours);
+        else Change(r => yours || r.Resolve(id)?.Account == signedIn
+            ? r.SetAccount(id, yours ? signedIn : null, yours && signedIn == owner, by, Now) : r);
+    }
+
+    private HeardVoices Stamp(HeardVoices heard) =>
+        heard with { Voices = heard.Voices.Select(v => v.Voice is null ? v : v with { Mine = IsYours(v.Voice) }).ToArray() };
     internal void Join(string fromId, string intoId)
     {
         if (Roster.Resolve(fromId) is { } from && Roster.Resolve(intoId) is { } into && from.Id != into.Id) Clips.Move(from.Id, into.Id);
@@ -289,6 +343,7 @@ internal sealed class LocalVoices : IDisposable
         lock (gate)
         {
             var next = VoiceRoster.Merge(roster, incoming);
+            if (ownerAccount is { } owner) next = next.LinkOwnerVoices(owner, by, Now);
             if (next.Digest() != roster.Digest())
             {
                 roster = next;

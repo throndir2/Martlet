@@ -354,7 +354,7 @@ remember, correct, reassign or forget something:
 - `forget` (up to 50 ids) deletes those facts in one commit.
 
 `person` is a name or alias of a voice Martlet knows, its tag (`V3`), `me` (the
-one speaking, else your own voice) or `everyone` (about no one in particular).
+one speaking, else your own voice: one linked to the account signed in here) or `everyone` (about no one in particular).
 An unknown name or id is refused with what the model can use instead; nothing is
 guessed. Changes show in the conversation like remembering's (*Forgot: …*) and
 in the Tools page's log (`Martlet > manage_memories: forgot 2`, never a fact).
@@ -419,8 +419,8 @@ everyone's (about no one in particular), as every fact was before voices.
   the same store version changes nothing, and a refresh never changes the
   fact you are writing or changing, its *Belongs to* choice or the selection.
   *Belongs to* chooses whose a fact is when you add or update
-  it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice marked
-  *This is me* on People) unless *Show* lists one voice's facts; then it is
+  it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice linked
+  to your account with *This voice is ...* on People) unless *Show* lists one voice's facts; then it is
   that voice's. The details say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
   many belong to how many people and how many to forgotten voices, never a
   name or a fact.

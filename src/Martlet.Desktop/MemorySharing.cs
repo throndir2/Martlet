@@ -9,13 +9,14 @@ namespace Martlet.Desktop;
 /// this device may not read) through the hosts' give route.</summary>
 internal static class MemorySharing
 {
-    /// <summary>The voices that are the signed-in person: the voices the account directory links to the account, else the voice
-    /// marked *This is me* on People. Each as the live voice it stands for now (merged voices count as one person).</summary>
-    internal static IReadOnlySet<string> MyVoices(IEnumerable<string>? accountVoices, VoiceRoster? roster)
+    /// <summary>The voices that are the signed-in person: the voices People links to <paramref name="account"/> (the voice list
+    /// is the one place links live); without accounts, the voice marked *This is me*. Each as the live voice it stands for now
+    /// (merged voices count as one person).</summary>
+    internal static IReadOnlySet<string> MyVoices(Guid? account, VoiceRoster? roster)
     {
-        var linked = (accountVoices ?? []).ToArray();
-        var ids = linked.Length > 0 ? linked : roster?.Live.Where(v => v.Owner).Select(v => v.Id) ?? [];
-        return ids.Select(id => roster?.Resolve(id)?.Id ?? id).ToHashSet(StringComparer.Ordinal);
+        if (roster is null) return new HashSet<string>(StringComparer.Ordinal);
+        IEnumerable<KnownVoice> voices = account is { } id ? roster.LinkedTo(id) : roster.Live.Where(v => v.Owner);
+        return voices.Select(v => roster.Resolve(v.Id)?.Id ?? v.Id).ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>Where remembering saves a new fact: the household space when *Share new memories about me* is on and the fact is
