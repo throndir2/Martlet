@@ -335,7 +335,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
             "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
             "the Parakeet model that hears you on this PC's processor when that route (a paired host or OpenAI) fails, or why none " +
-            "(standIn), " +
+            "(standIn), sharing (the voice list always syncs with your paired hosts, whatever Keep Martlet the same on all my " +
+            "computers says: state, hosts, and friendHostsNeverUsed for hosts a friend shares), " +
             "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
             "(from the saved personas) or a placeholder such as \"no name yet\", and the most names one voice has; and clips: whether " +
             "People keeps the last few clips of voices not named yet (voice-clips.txt) and how many clips over how many voices (never " +
@@ -2514,8 +2515,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             recognition = Choice("voice-recognition.txt") ?? "on (default)",
-            // The voice list travels with the rest of Martlet while "Keep Martlet the same on all my computers" is on.
-            sharing = Choice("cluster-sync.txt") is "off" ? "off" : "on (Keep Martlet the same on all my computers)",
+            // People are always shared with the household: the voice list travels to every paired host of yours whatever
+            // "Keep Martlet the same on all my computers" says, and never to a host a friend shares.
+            sharing = VoiceSharing(directory),
             included = new
             {
                 found = File.Exists(Path.Combine(martlet, "Martlet.Desktop.exe")),
@@ -2536,6 +2538,29 @@ internal sealed class McpServer(DesktopAutomation desktop)
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { counts = []; }
             return new { keep = Choice("voice-clips.txt") ?? "on (default)", voices = counts.Length, clips = counts.Sum() };
         }
+    }
+
+    /// <summary>voices_status's sharing: the voice list syncs with every paired host of yours (hosts.json entries that aren't
+    /// a friend's), whatever cluster-sync.txt says; hosts a friend shares are counted but never used.</summary>
+    private static object VoiceSharing(string directory)
+    {
+        var path = Path.Combine(directory, "hosts.json");
+        int hosts = 0, friendHosts = 0;
+        if (File.Exists(path))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+                foreach (var host in document.RootElement.GetProperty("hosts").EnumerateArray())
+                    if (IsSharedHost(host)) friendHosts++;
+                    else hosts++;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                return new { state = "hosts unreadable", always = true };
+            }
+        }
+        return new { state = hosts > 0 ? "on" : "no paired hosts yet", always = true, hosts, friendHostsNeverUsed = friendHosts };
     }
 
     /// <summary>The optional absolute speechDirectory argument (where Parakeet is downloaded), or the current user's.</summary>
