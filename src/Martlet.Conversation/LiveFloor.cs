@@ -1,3 +1,4 @@
+using Martlet.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Providers;
 
@@ -75,8 +76,8 @@ public sealed class LiveFloor : IDisposable
     /// <summary>Raised for each change, in order, on the thread that caused it or the floor's timer.</summary>
     public event Action<LiveFloorChange>? Changed;
 
-    /// <summary>The microphone heard the user's voice now (a frame the speakers don't explain; never Martlet's own voice or what
-    /// this PC plays): Listening, unless it is Live already.</summary>
+    /// <summary>The microphone heard the user's voice now (<see cref="Voice"/>: speech the speakers don't explain; never Martlet's
+    /// own voice or what this PC plays): Listening, unless it is Live already.</summary>
     public void Heard()
     {
         lock (gate)
@@ -89,6 +90,16 @@ public sealed class LiveFloor : IDisposable
             Recompute(now, "your voice");
         }
         Pump();
+    }
+
+    /// <summary>Whether the microphone frame <paramref name="detector"/> processed last is the user's voice for <see cref="Heard"/>:
+    /// it is loud, the speakers don't explain it (<paramref name="speakers"/>: Martlet's own voice or what this PC plays), and the
+    /// detector hears speech now, that is at least its <see cref="VoiceActivitySettings.MinimumSpeech"/> (200 ms) of sound. A
+    /// click, a key press or a knock is shorter, so it never holds back background work.</summary>
+    public static bool Voice(EnergyVoiceActivityDetector detector, bool speakers)
+    {
+        ArgumentNullException.ThrowIfNull(detector);
+        return detector.LastFrameLoud && detector.Speaking && !speakers;
     }
 
     /// <summary>What was heard was only a sound or filler (a hum, a cough, laughter, "mm"): Listening ends at once. Live stays.</summary>

@@ -1,7 +1,9 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Core.Cluster;
 using Martlet.Core.Settings;
@@ -172,6 +174,42 @@ internal static class LiveFloorCheck
                 (listening, quiet, sound, live, during, grace, floor.Level) ==
                 (LiveFloorLevel.Listening, LiveFloorLevel.Idle, LiveFloorLevel.Idle, LiveFloorLevel.Live, LiveFloorLevel.Live, LiveFloorLevel.Live, LiveFloorLevel.Idle),
                 string.Join(" > ", seen));
+        }
+
+        // 2b. The microphone (the desktop's own test, LiveFloor.Voice, on the production detector): a click, a key press and
+        //     typing are shorter than speech (200 ms), so the floor stays Idle; Martlet's own voice from the speakers never counts;
+        //     a voice the speakers don't explain makes it Listening.
+        {
+            var clock = new ManualClock();
+            using var floor = new LiveFloor(clock);
+            var detector = new EnergyVoiceActivityDetector();
+            byte[] quiet = Tone(30), loud = Tone(8_000);
+            void Hear(byte[] frame, bool speakers = false)
+            {
+                detector.Process(frame);
+                if (LiveFloor.Voice(detector, speakers)) floor.Heard();
+                clock.Advance(TimeSpan.FromMilliseconds(20));
+            }
+            void Quiet(int frames) { for (var i = 0; i < frames; i++) Hear(quiet); }
+            Quiet(50);
+            Hear(loud);
+            Quiet(10);
+            var click = floor.Level;
+            for (var key = 0; key < 20; key++)
+            {
+                Hear(loud);
+                Hear(loud);
+                Quiet(5);
+            }
+            var typing = floor.Level;
+            for (var i = 0; i < 15; i++) Hear(loud, speakers: true);
+            var martlet = floor.Level;
+            Quiet(50);
+            for (var i = 0; i < 15; i++) Hear(loud);
+            var voice = floor.Level;
+            Check("microphone: a click, typing and Martlet's own voice stay Idle; 300 ms of your voice is Listening",
+                (click, typing, martlet, voice) == (LiveFloorLevel.Idle, LiveFloorLevel.Idle, LiveFloorLevel.Idle, LiveFloorLevel.Listening),
+                $"a 20 ms click: {click}; 20 key presses in 2.8 s: {typing}; 300 ms from the speakers: {martlet}; 300 ms of your voice: {voice}");
         }
 
         // 3. The board while Listening: no new work on a member that shares the conversation; running work goes on; judges run.
@@ -388,6 +426,15 @@ internal static class LiveFloorCheck
     }
 
     private static string Json(object value) => JsonSerializer.Serialize(value);
+
+    // One 20 ms microphone frame of a 220 Hz tone at amplitude (30: a quiet room; 8000: a voice or a click).
+    private static byte[] Tone(short amplitude)
+    {
+        var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
+        for (var i = 0; i < EnergyVoiceActivityDetector.FrameSamples; i++)
+            BinaryPrimitives.WriteInt16LittleEndian(frame.AsSpan(i * 2), (short)(amplitude * Math.Sin(2 * Math.PI * 220 * i / 16_000.0)));
+        return frame;
+    }
 
     private static async Task WaitAsync(Func<bool> done, CancellationToken token)
     {

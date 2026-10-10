@@ -677,7 +677,10 @@ your own to classify) rehearses the production `LiveFloor`, `LiveFloorRules`,
 `ThinkingJobBoard`, `BackgroundJobs` and `WorkQueue` with fixture inputs and
 simulated members (NOT models), and returns `passed`, each line's `realWords`
 and each step: which words go Live, the levels on a clock of their own (voice,
-quiet, a sound, words, a reply and its grace), the board at Listening (new work
+quiet, a sound, words, a reply and its grace), the microphone on the production
+detector (`LiveFloor.Voice`: a 20 ms click, 2.8 s of typing and Martlet's own
+voice from the speakers stay Idle; 300 ms of voice is Listening), the board at
+Listening (new work
 waits for the conversation, running work and judges go on) and at Live (a
 summary dropped as `Preempted`, remembering and naming stopped and queued again,
 touch zones going on, judges running), a member on another computer never held,
