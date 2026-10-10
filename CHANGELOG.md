@@ -28,7 +28,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Removed
 
-- The home screen no longer has the **Lock/Unlock character position** and **Turn on/off click-through** buttons. Use Companion › Character or the character's right-click menu instead; you can also turn click-through off from Martlet's icon in the notification area. ([#720](https://github.com/throndir2/Martlet/pull/720))
+- The home screen no longer has the **Lock/Unlock character position** and **Turn on/off click-through** buttons. Use Companion › Character or the character's right-click menu instead; you can also turn click-through off from Martlet's icon in the notification area. ([#719](https://github.com/throndir2/Martlet/pull/719))
 
 ## [0.65.0] - 2026-10-09
 
