@@ -411,6 +411,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachCreationStorage(storage);
     }
 
+    /// <summary>Keeps each account's creation list, which paired desktops share through this host, in <paramref name="storage"/>.
+    /// Attach it before <see cref="AttachCreations"/>.</summary>
+    public void AttachAccountCreations(IGatewayAccountCreationStorage storage)
+    {
+        RequireOpen();
+        server!.AttachAccountCreationStorage(storage);
+    }
+
     /// <summary>Keeps the shared Home Assistant connection paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachHomeAssistant(IGatewayHomeAssistantStorage storage)
     {

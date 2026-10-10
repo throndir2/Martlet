@@ -442,6 +442,32 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void Account_creation_lists_are_kept_beside_host_json_one_file_each()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        WriteConfig(fs, Config());
+        using var dir = new LinuxControlDirectory("/srv/martlet/host.json", fs);
+        var storage = new ControlAccountCreationStorage(dir);
+        var sam = Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7");
+        var alex = Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0");
+        Assert.Empty(storage.List());
+        Assert.Null(storage.Load(sam));
+        var list = Encoding.UTF8.GetBytes("{\"schema_version\":1,\"creations\":[]}");
+        storage.Save(sam, list);
+        storage.Save(alex, list);
+        new ControlCreationStorage(dir).SaveLibrary(list);
+        Assert.Equal([alex, sam], storage.List());
+        Assert.Equal(list, storage.Load(sam));
+        Assert.Equal(0x8180, fs.Parent.Children["creations-account-5a3f0c9e8b7d4e21a6c3b2f1d0e9a8b7.json"].Identity.Mode);
+        Assert.DoesNotContain(fs.Parent.Children.Keys, name => name.EndsWith(".staging", StringComparison.Ordinal));
+        Assert.Throws<GatewayPersistenceException>(() => storage.Save(sam, new byte[LinuxControlDirectory.MaximumCreationsBytes + 1]));
+        Assert.Null(LinuxControlDirectory.CreationAccountOf("creations-account-5A3F0C9E8B7D4E21A6C3B2F1D0E9A8B7.json"));
+        Assert.Null(LinuxControlDirectory.CreationAccountOf("creations-account-../x.json"));
+        Assert.Equal(["creations-account-0b1c2d3e4f5061728394a5b6c7d8e9f0.json", "creations-account-5a3f0c9e8b7d4e21a6c3b2f1d0e9a8b7.json",
+            "creations.json", "host.json"], fs.Parent.Children.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void Memory_spaces_are_kept_beside_host_json_one_file_each()
     {
         using var fs = new FakeLinuxFileSystem();

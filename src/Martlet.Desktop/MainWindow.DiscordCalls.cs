@@ -196,8 +196,8 @@ public partial class MainWindow
 
         var file = PageButton("Choose a picture file...", ChooseCallPicture, id: "DiscordCallCameraFile");
 
-        var pictures = dataDirectory is null ? [] : CreationStore.View(dataDirectory).Live
-            .Where(c => c.Kind == Martlet.Conversation.PictureCreations.KindName && CreationStore.IsComplete(dataDirectory, c)).ToArray();
+        var pictures = CreationsFolder is not { } kept ? [] : CreationStore.View(kept).Live
+            .Where(c => c.Kind == Martlet.Conversation.PictureCreations.KindName && CreationStore.IsComplete(kept, c)).ToArray();
         ComboBox? creations = null;
         if (pictures.Length > 0)
         {
@@ -281,7 +281,7 @@ public partial class MainWindow
         if (store is null || closing) return;
         try
         {
-            var bytes = await CreationStore.Assets(store.DataDirectory, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, lifetime.Token);
+            var bytes = await CreationStore.Assets(CreationsFolder!, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, lifetime.Token);
             UsedCallPicture(bytes is null ? "That picture hasn't reached this PC yet." : discordCalls.UsePicture(bytes, DiscordCameraPictureSource.Creation),
                 "a picture from Creations");
         }
@@ -327,7 +327,7 @@ public partial class MainWindow
                 var about = Martlet.Conversation.PictureTools.Label(text);
                 try
                 {
-                    await CreationStore.AddAsync(dataDirectory, Martlet.Conversation.PictureCreations.Draft(result, "Camera background: " + about, about, request, author),
+                    await CreationStore.AddAsync(CreationsFolder ?? dataDirectory, Martlet.Conversation.PictureCreations.Draft(result, "Camera background: " + about, about, request, author),
                         Martlet.Core.Creations.CreationRegistry.Shared, DateTimeOffset.UtcNow, lifetime.Token);
                 }
                 catch (Exception error) when (CreationStore.IsFailure(error)) { ErrorLog.Info($"Pictures: couldn't keep the camera background ({error.Message})."); }
@@ -480,10 +480,10 @@ public partial class MainWindow
         }
         else
         {
-            if (store is null || Martlet.Conversation.PictureCreations.Find(store.DataDirectory, picture) is not { Removed: false } creation)
+            if (CreationsFolder is not { } kept || Martlet.Conversation.PictureCreations.Find(kept, picture) is not { Removed: false } creation)
                 return "There's no picture with that id. Use list_creations to find one, or draw a new one.";
             byte[]? bytes = null;
-            try { bytes = await CreationStore.Assets(store.DataDirectory, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, token); }
+            try { bytes = await CreationStore.Assets(kept, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, token); }
             catch (Exception error) when (CreationStore.IsFailure(error)) { ErrorLog.Info($"Discord call: couldn't read a picture ({error.Message})."); }
             if (bytes is null) return "That picture hasn't reached this computer yet. Tell the user you'll try again in a moment.";
             problem = discordCalls.UsePicture(bytes, drawn ? DiscordCameraPictureSource.Drawn : DiscordCameraPictureSource.Creation);

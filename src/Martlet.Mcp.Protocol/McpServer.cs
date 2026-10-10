@@ -941,9 +941,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "version, size, length, when and on which device it was made, whether Martlet may clean it up, its assets (name, media " +
             "type, size, pieces), whether this PC holds all of it and on how many hosts it is complete; the asset files here (unused " +
             "ones and copies in progress); the last sync (when, its summary, each paired host's state and how many creations it " +
-            "holds); and the limits. Never a title, text, voice or personality. Read-only; contacts nothing.", new
+            "holds); and the limits. Never a title, text, voice or personality. Each account keeps its own creations " +
+            "(docs/ACCOUNTS.md) in accounts\\<32 hex>; with account (32 hex digits or a GUID) it reads that account's, else the " +
+            "account the data folder's creations moved to (creations-moved.json), or the data folder itself before that move. " +
+            "from names the account, the folder read, why it was chosen and the recorded move. Read-only; contacts nothing.", new
         {
-            dataDirectory = new { type = "string" }
+            dataDirectory = new { type = "string" },
+            account = new { type = "string", maxLength = 36 }
         }),
         Tool("creations_check", "Rehearse Martlet's creations end to end with the production code: list_creations and " +
             "perform_creation (Martlet.Conversation.CreationTools) on a disposable folder with the production store and the FIXTURE - " +
@@ -954,7 +958,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "desktop's paired client. Checks FLAC sizes, sharing every 3 MiB piece, skipping unchanged hosts, a new desktop and a " +
             "relay host, resuming an interrupted copy, performing on another computer, an unknown kind passing through, rename, " +
             "delete everywhere (pieces and files deleted), stale copies, a host restart, piece checks, an unsigned request refused, " +
-            "a kind's rules and the per-host sync record. Loopback only; folders are deleted and the credential vault is untouched. " +
+            "a kind's rules and the per-host sync record; then two accounts (docs/ACCOUNTS.md) on one host: each syncs through its " +
+            "own list, the host keeps one pool of pieces (a piece goes only when no list uses it), the owner's sync joins the old " +
+            "single list both ways for desktops on an older Martlet (the owner bridge) and skips an unchanged host, the other " +
+            "account never sees the old list or the owner's creations, and a restart keeps every list. Loopback only; folders are " +
+            "deleted and the credential vault is untouched. " +
             "With seedDataDirectory (a disposable folder under the temporary folder, never Martlet's own), it instead writes two " +
             "FIXTURE - NOT AI test tones there, so the Creations page can be checked with a desktop on that folder.", new
         {
@@ -2374,7 +2382,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
-                "creations_status" => CreationsCheck.Status(DataDirectory(arguments)),
+                "creations_status" => CreationsCheck.Status(DataDirectory(arguments), OptionalString(arguments, "account")),
                 "creations_check" => OptionalString(arguments, "seedDataDirectory") is { } seed
                     ? await CreationsCheck.SeedAsync(seed, cancellation)
                     : await CreationsCheck.RunAsync(() => NodeLinkCheckAsync(cancellation, "creations"), cancellation),
