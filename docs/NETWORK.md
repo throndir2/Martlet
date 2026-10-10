@@ -153,7 +153,8 @@ over SSH also manages it.
   same `voice` credential pairing does and remembers which identity enrolled
   that device; its answer to members (`GET /martlet/v1/network`) marks that
   device's join request with the identity (`sign_in`: provider, subject,
-  label, when). A member desktop lets such a request in by itself
+  label, when, and `account_id`, the household account the sign-in proves). A
+  member desktop lets such a request in by itself
   (`NetworkSyncEngine.ApproveSignedIn`) when the attesting host is an active
   host of its roster: the owner set the sign-in up at home (the owner account
   with its authenticator, or an identity the owner allowed on that host), so
@@ -503,11 +504,22 @@ verified email, the user name or the name is its label.
    *Create credentials* › *OAuth client ID* › *Desktop app* (configure the
    consent screen first, and add your Google account as a test user while the
    app is in testing). Google's desktop clients take any loopback port and
-   come with a client secret.
-2. At home: **Sign-in from outside** › *Sign-in providers*: choose *OpenID
-   Connect* (an ID such as `authentik`, a name, the issuer URL such as
-   `https://auth.example.net/application/o/martlet/`) or *Google* (filled in:
-   `https://accounts.google.com`), the client ID and secret, **Save provider**.
+   come with a client secret. For **Microsoft** (personal Microsoft accounts:
+   Outlook.com, Xbox, Windows): Microsoft Entra admin center › *App
+   registrations* › *New registration* (*Personal Microsoft accounts only*),
+   then *Authentication* › *Add a platform* › *Mobile and desktop
+   applications* with the redirect `http://127.0.0.1` (any port). It is a
+   public client: no secret. A work or school account uses its own tenant's
+   issuer (`https://login.microsoftonline.com/<tenant ID>/v2.0`) under *OpenID
+   Connect*.
+2. At home: **Sign-in from outside** › *Sign-in providers for your household*:
+   choose *OpenID Connect* (an ID such as `authentik`, a name, the issuer URL
+   such as `https://auth.example.net/application/o/martlet/`), *Google*
+   (filled in: `https://accounts.google.com`) or *Microsoft (personal
+   accounts)* (filled in:
+   `https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0`),
+   the client ID and secret, **Save provider**. Martlet saves it on every host
+   of your network at once ([household providers](#household-sign-in-providers)).
 3. Sign in with it once from the computer you want to let in (from home or
    away): the host refuses (`signin.not_allowed`) and lists the identity under
    *Signed in but not allowed yet*; **Allow the newest** (or type the provider
@@ -536,9 +548,92 @@ verified email, the user name or the name is its label.
 Allow either the same way: sign in once, then **Allow the newest** at home (or
 type the Discord user ID or SteamID64 under *Other allowed sign-ins*).
 
-Limits, for now: sign-in is per host (set it up on the host the laptop reaches
-from outside); the laptop reaches the network's other hosts only where they
-have outside addresses ([above](#reaching-your-network-from-outside-home)).
+Limits, for now: allowed identities are per host (allow one on the host the
+laptop reaches from outside); the laptop reaches the network's other hosts
+only where they have outside addresses
+([above](#reaching-your-network-from-outside-home)). Providers are the
+household's: set up once, they are on every host.
+
+### Household sign-in providers
+
+You set a sign-in provider up once for the whole household, and every host of
+your network has it, so a person or a computer can sign in with it through any
+host.
+
+- **Save provider** and **Remove provider** in any host's **Sign-in from
+  outside** change every host of your network at once (every paired host of
+  yours while this PC is in no network). Once your household has accounts, only
+  a PC signed in as an owner or admin may change them (`signin.denied`
+  otherwise). The status line names the hosts that
+  saved it and why the others didn't (*Not changed on linux-box (didn't answer
+  in time)*). Removing asks first: computers and friends that sign in with it
+  lose access to those hosts.
+- **Where it is.** The window shows each provider and its hosts
+  (`SignInHouseholdProviders`, for example *Google (google): on gpu-box and
+  this PC's host; missing on linux-box.*), including hosts with other settings
+  under the same ID and hosts without the client secret it needs.
+- **The secret.** Hosts keep the client secret, as before; the desktop never
+  reads it back. The PC where you saved the provider also keeps a copy in
+  Windows Credential Manager (`Martlet/v3/signin-provider/<id>`), only to add
+  the provider to a host that misses it.
+- **New hosts.** When Devices › Friends reads your hosts' sign-in settings (the
+  Devices page shows, **Check now**, at most every two minutes) and after a
+  network sync pairs this PC with a new host, your PC adds the household's
+  providers to the hosts that miss them: the configuration most hosts have,
+  with the kept secret when the provider needs one (Discord, or a confidential
+  OpenID Connect client) and this PC kept it for that client ID. Other PCs add
+  only providers that need no secret (Steam, public clients). A provider
+  removed from every host is never added back. **Add to the other hosts**
+  (`SignInProvidersPush`) does it now and says which provider still needs its
+  secret typed. This never runs on a reply's path.
+- **Friends stay friends.** Allowed identities (yours and friends') stay per
+  host; the household push never adds, changes or removes one.
+- **What this PC knows.** `household-signin.json` in the data folder keeps the
+  providers this PC set up (no secret) and what it last read of every host;
+  MCP `network_status` shows it as `householdSignIn`.
+
+### Signing in to your household account
+
+A computer can join as one of a person's computers by signing in to their
+household account ([accounts](ACCOUNTS.md)) instead of as one of the owner's.
+
+- **Join with an invite** lists *Your household account (Martlet password)*
+  when the host keeps household logins (`martlet_sign_in`), the owner account
+  and the household's providers. A provider identity that is a login of an
+  account (`account_id` on the host's allow list) signs in as that account.
+- The host pairs the computer as before and answers the account and its
+  attestation. The computer keeps them in `joined-account.json` (no secret).
+  Once it is a member of the network, it signs that account in with the
+  attestation (`AccountSession.SignIn`), reads the household's account
+  directory and switches to the account between replies (*Hi, Sam*). The
+  attestation lasts ten minutes; when it can no longer be used, the person
+  signs in from the account button instead.
+- The host's network answer to member desktops names the account
+  (`sign_in.account_id` with the join request). A member desktop lets the
+  computer in by itself, as for any attested sign-in, and says whose it is:
+  *LAB-NEW-PC (signed in as sam@example.net, Sam's computer) joined your Martlet
+  network by itself*.
+- A new Windows user on a PC that is already in the network joins the same
+  way: an admin makes an invite (**Make invite**) and the new user pastes it.
+  Joining at home without an invite is not offered: a host found on the network
+  has no pinned key yet, so a password or code could go to the wrong computer.
+- **Link and unlink on the Account page.** *Sign-ins from your household's
+  providers* (on the Account page) lists the account's provider logins, with
+  **Link** for each household provider and **Unlink** for each login. Martlet
+  asks you to prove it's you first (your password or a sign-in already linked;
+  an account that so far only has Windows logins is checked by this PC), then
+  you sign in with the provider in the browser through one of your hosts. That
+  host checks the identity with the provider and, when nobody has it yet,
+  allows it as your account's login and vouches for it (a Prove sign-in with
+  `link_account_id`); every other host takes that host's attestation
+  (`link-login`). A login that is already another account's, or a friend's, is
+  refused (`signin.login_taken`). A computer signed in only as a member may link
+  and unlink its own account's logins; owners and admins may change everyone's.
+  Unlinking removes the login from every host like any removed sign-in, and
+  Martlet keeps at least one login on the account.
+- **Signing in with a linked provider.** *Sign in as someone else* (and every
+  other Prove sign-in) offers each household provider beside the Martlet
+  password; the host's attestation signs the account in on this PC.
 
 ### Household accounts on a host
 

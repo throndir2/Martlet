@@ -402,7 +402,20 @@ also takes `access`: `member`, the default, for the owner's own computers, or
 `provider` (`provider_config`: `id`, `kind` `oidc`|`discord`|`steam`, `name`,
 `issuer`, `client_id`, `client_secret`, `scopes`, `redirect_port` for a
 provider that only takes registered redirects; an omitted secret keeps the
-saved one) and `remove-provider`; the answer never contains a secret
+saved one) and `remove-provider`; and (W13, provider logins of household
+accounts) `link-login` (`attestation`: another host's account attestation that
+a provider identity proved an account on the calling computer, checked against
+this host's roster, `signin.invalid` when it doesn't check or names another
+computer; optional `label`): allows that identity as the account's login,
+`signin.login_taken` (409) when it proves another account here or is a
+friend's. `POST /martlet/v1/signin/prove` takes `link_account_id`: a provider
+identity the host allows for nobody yet becomes that account's login and the
+answer attests it; the caller must be bound to that account (or to an owner or
+admin account) in the host's account directory, else `signin.denied`. Once the
+directory has accounts, a desktop bound only to member accounts may change
+only those accounts' own logins (`GatewaySignInRoles`: their `account`
+password actions, `link-login` for them and `disallow` of identities linked to
+them); the answer never contains a secret
 (`has_client_secret` only), lists `access` for each `allowed` identity and
 `enrolled` computer, and also carries `usable` and `blocked_reason`
 (`GatewaySignInSettings.BlockedReason`, `GatewayServer.SignInBlockedReason`:
@@ -417,7 +430,8 @@ allowed, or no longer with the access it signed in with, are dropped and their
 credentials revoked whenever the settings are read (a friend's exactly the
 credential its sign-in issued, the owner's computers every credential of the
 device). A join request from a computer enrolled as one of the owner's carries
-`sign_in` in the network document (a friend's never). The host remembers the network key an enrolled device
+`sign_in` in the network document (a friend's never): `provider`, `subject`, `label`, `at` and `account_id`, the
+household account the sign-in proves (absent while the host is in no network). The host remembers the network key an enrolled device
 asks to join with (`/network/join`); when its sign-in is removed the network
 document lists it for member desktops (`sign_in_removals`: `device_id`, `key`,
 `provider`, `subject`, `label`, `at`; never a friend's computer, which never

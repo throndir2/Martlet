@@ -9,6 +9,9 @@ wizard uses it for its *get a free key* guidance and the placement engine
 (`src/Martlet.Core/Planning`, its `FootprintCatalog` hosted options) for its
 external options.
 
+[Model catalog](MODEL_CATALOG.md) lists the public sources that say what each
+model takes and where they disagree, for a catalog that keeps itself up to date.
+
 Checked on **2026-10-06**. Providers change models and quotas often; recheck
 before relying on a number. Each fact is marked:
 

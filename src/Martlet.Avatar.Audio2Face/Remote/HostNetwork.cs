@@ -131,7 +131,11 @@ public sealed partial class Audio2FaceHostConnection
                     if (join.TryGetProperty("sign_in", out var attested) && attested.ValueKind == JsonValueKind.Object)
                         signIn = new(attested.GetProperty("provider").GetString()!, attested.GetProperty("subject").GetString()!,
                             HostSignInClient.Clean(attested.TryGetProperty("label", out var label) ? label.GetString() : null),
-                            attested.GetProperty("at").GetDateTimeOffset());
+                            attested.GetProperty("at").GetDateTimeOffset())
+                        {
+                            AccountId = attested.TryGetProperty("account_id", out var account) && account.ValueKind == JsonValueKind.String &&
+                                account.TryGetGuid(out var id) && id != Guid.Empty ? id : null
+                        };
                     joins.Add(new(pairing.HostId, device, NetworkRoster.CleanName(join.GetProperty("display_name").GetString(), device), key,
                         join.GetProperty("check_number").GetString()!, join.GetProperty("requested_at").GetDateTimeOffset()) { SignIn = signIn });
                 }

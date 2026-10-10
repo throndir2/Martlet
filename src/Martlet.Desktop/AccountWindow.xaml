@@ -61,6 +61,16 @@
                 </WrapPanel>
                 </StackPanel>
 
+                <StackPanel x:Name="ProviderSection">
+                <TextBlock Text="Sign-ins from your household's providers" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
+                           Text="Link Google, Microsoft, Authentik or another provider your household set up on its hosts. Then you can sign in to this account with it on any of your computers, and a new computer joins as yours when you sign in with it."/>
+                <TextBlock x:Name="ProviderLoginsText" TextWrapping="Wrap" Margin="0,6,0,0" Text="Reading your hosts..."
+                           AutomationProperties.AutomationId="AccountProviderLogins"/>
+                <StackPanel x:Name="ProviderLoginRows" Margin="0,4,0,0"/>
+                <WrapPanel x:Name="ProviderLinkButtons" Margin="0,6,0,0"/>
+                </StackPanel>
+
                 <TextBlock Text="On this PC" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
                 <CheckBox x:Name="AskCheck" Content="Ask for my _password on this PC (this Windows login no longer unlocks me by itself)"
                           Checked="Ask_Click" Unchecked="Ask_Click" AutomationProperties.AutomationId="AccountAskPassword"/>

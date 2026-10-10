@@ -16,17 +16,19 @@ namespace Martlet.Desktop;
 public partial class SignInJoinWindow : ThemedWindow
 {
     private readonly string deviceId;
+    private readonly string dataDirectory;
     private readonly Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep;
     private readonly CancellationTokenSource lifetime = new();
     private NetworkInvite? invite;
     private string? origin;
     private HostSignInProvider? provider;
 
-    internal SignInJoinWindow(string deviceId, Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep,
+    internal SignInJoinWindow(string deviceId, string dataDirectory, Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep,
         string? invite = null)
     {
         InitializeComponent();
         this.deviceId = deviceId;
+        this.dataDirectory = dataDirectory;
         this.keep = keep;
         InviteText.Text = invite ?? "";
         Closed += (_, _) => lifetime.Cancel();
@@ -75,7 +77,7 @@ public partial class SignInJoinWindow : ThemedWindow
     private void Choose(HostSignInProvider chosen)
     {
         provider = chosen;
-        OwnerPanel.Visibility = chosen.Kind == "owner" ? Visibility.Visible : Visibility.Collapsed;
+        OwnerPanel.Visibility = chosen.InBrowser ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private async void SignIn_Click(object sender, RoutedEventArgs e)
@@ -86,9 +88,9 @@ public partial class SignInJoinWindow : ThemedWindow
         {
             StatusText.Text = "Signing in...";
             (Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity) result;
-            if (provider.Kind == "owner")
-                result = await HostSignInClient.SignInAsOwnerAsync(invite, origin, UserText.Text.Trim(), PasswordText.Password, CodeText.Text.Trim(),
-                    deviceId, Environment.MachineName, lifetime.Token);
+            if (!provider.InBrowser)
+                result = await HostSignInClient.SignInWithPasswordAsync(invite, origin, provider.Id, UserText.Text.Trim(), PasswordText.Password,
+                    CodeText.Text.Trim(), deviceId, Environment.MachineName, lifetime.Token);
             else
             {
                 StatusText.Text = $"Finish signing in with {provider.Name} in your browser, then come back here.";
@@ -113,6 +115,19 @@ public partial class SignInJoinWindow : ThemedWindow
             }
             StatusText.Text = $"Signed in as {result.Identity}. This PC is paired with {result.Pairing.HostId} and joins your Martlet network by " +
                 "itself as soon as one of your computers at home syncs (no check number needed).";
+            if (result.Identity.AccountId is { } account && result.Identity.Attestation is { } attestation)
+            {
+                // The host vouched for the household account this sign-in proves: this PC becomes one of that person's computers.
+                try { JoinedAccount.Save(dataDirectory, result.Pairing.HostId, account, attestation); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    ErrorLog.Warn("Sign-in: couldn't keep the account this PC signed in to: " + error.Message);
+                }
+                StatusText.Text += $" You signed in to your household account ({result.Identity.Label ?? result.Identity.Subject}): this PC joins as one " +
+                    "of your computers, and Martlet signs that account in here once it has joined.";
+                ErrorLog.Info($"Sign-in: paired with {result.Pairing.HostId} as {result.Identity.Provider}, proving household account {account:N}.");
+                return;
+            }
             ErrorLog.Info($"Sign-in: paired with {result.Pairing.HostId} as {result.Identity.Provider}.");
         }
         catch (OperationCanceledException) { }

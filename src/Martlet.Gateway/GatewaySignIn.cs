@@ -367,12 +367,32 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     /// account it proves and the login, for the host's attestation. Issues no credential. Throws what CompleteAsync throws,
     /// and <c>signin.no_account</c> when the identity is a friend's or is linked to no account here.</summary>
     internal async ValueTask<(GatewaySignInIdentity Identity, Guid AccountId, AccountLoginKey Login)> ProveAsync(string attemptId,
-        string deviceId, JsonElement proof, CancellationToken cancellationToken)
+        string deviceId, JsonElement proof, CancellationToken cancellationToken, Guid? linkAccount = null)
     {
         var who = await VerifyAttemptAsync(attemptId, proof, enroll: false, cancellationToken).ConfigureAwait(false);
         lock (gate)
         {
             var current = document = LoadLocked();
+            // Linking (W13): a provider identity that this host doesn't allow yet becomes a login of linkAccount, which the caller
+            // (checked by the gateway) may act for; one that already proves another account, or is a friend's, can't be.
+            if (linkAccount is { } link && who.Provider is not (OwnerProvider or MartletProvider))
+            {
+                var existing = current.Allowed.LastOrDefault(a => a.Provider == who.Provider && a.Subject == who.Subject);
+                if (existing is null)
+                {
+                    var next = current.Clone();
+                    GatewayRules.Require(next.Allowed.Count < GatewaySignInSettings.MaximumAllowed, "request.invalid");
+                    next.Allowed.Add(new() { Provider = who.Provider, Subject = who.Subject, Label = who.Label, AddedAt = clock.GetUtcNow(), AccountId = link });
+                    SaveLocked(next);
+                    current = next;
+                    log(LogLevels.Info, $"{deviceId} linked {Display(who)} to account {link:N} as one of its logins.");
+                }
+                else if (existing.Access is not null || current.AccountOf(who.Provider, who.Subject, DefaultOwnerAccount?.Invoke()) != link)
+                {
+                    log(LogLevels.Warn, $"{deviceId} tried to link {Display(who)} to account {link:N}, but it is a friend's or another account's login.");
+                    throw new GatewayProtocolException("signin.login_taken");
+                }
+            }
             RequireAllowedLocked(current, who, deviceId);
             if (current.AccountOf(who.Provider, who.Subject, DefaultOwnerAccount?.Invoke()) is not { } account)
             {
@@ -685,6 +705,31 @@ internal static class GatewaySignInSettings
                 next.Allowed.RemoveAll(a => a.Provider == change.Provider && a.Subject == change.Subject);
                 return null;
             }
+            case "link-login":
+            {
+                // W13: another host checked this provider identity and attested that it proves the account (the gateway checked
+                // the attestation against the roster and the caller before this): allow it here as that account's login.
+                var attested = ParseAttestation(change.Attestation);
+                var login = attested.Login;
+                GatewayRules.Require(login.Kind is "oidc" or "discord" or "steam" &&
+                    next.Providers.Any(p => p.Id == login.Provider && p.Kind == login.Kind), "signin.unavailable");
+                GatewayRules.Require(change.Label is null || change.Label.Length <= 128 && change.Label.All(c => !char.IsControl(c)), "request.invalid");
+                var existing = next.Allowed.LastOrDefault(a => a.Provider == login.Provider && a.Subject == login.Subject);
+                if (existing is not null)
+                {
+                    GatewayRules.Require(existing.Access is null && (existing.AccountId ?? attested.AccountId) == attested.AccountId, "signin.login_taken");
+                    // A member identity linked to no account proves the owner's: the gateway checked that the attested account is the
+                    // owner's (signin.login_taken otherwise), so it stays as it is.
+                    if (existing.AccountId is null) return null;
+                }
+                next.Allowed.RemoveAll(a => a.Provider == login.Provider && a.Subject == login.Subject);
+                GatewayRules.Require(next.Allowed.Count < MaximumAllowed, "request.invalid");
+                next.Allowed.Add(new()
+                {
+                    Provider = login.Provider, Subject = login.Subject, Label = change.Label ?? existing?.Label, AddedAt = now, AccountId = attested.AccountId
+                });
+                return null;
+            }
             case "provider":
             {
                 var provider = change.ProviderConfig ?? throw new GatewayProtocolException("request.invalid");
@@ -721,6 +766,15 @@ internal static class GatewaySignInSettings
 
     private static bool SameUser(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>The account attestation a <c>link-login</c> change carries; <c>request.invalid</c> when there is none or it is
+    /// malformed. Its signature and lifetime are checked by the gateway against the roster, not here.</summary>
+    internal static AccountAttestation ParseAttestation(JsonElement? element)
+    {
+        GatewayRules.Require(element is { ValueKind: JsonValueKind.Object }, "request.invalid");
+        try { return AccountAttestation.Parse(element!.Value); }
+        catch (FormatException) { throw new GatewayProtocolException("request.invalid"); }
+    }
+
     // The household owner's account (docs/ACCOUNTS.md): the owner login and every member identity without an account of its
     // own sign in as it. Another account's password login can't hold that ID.
     private static void SetOwnerAccount(GatewaySignInDocument next, Guid account)
@@ -750,6 +804,9 @@ internal sealed record GatewaySignInChange
     public Guid? AccountId { get; init; }
     [JsonPropertyName("provider_config")]
     public GatewaySignInProviderConfig? ProviderConfig { get; init; }
+    /// <summary>For <c>link-login</c> (W13): another host's <see cref="AccountAttestation"/> that a provider identity proves an
+    /// account on the calling computer.</summary>
+    public JsonElement? Attestation { get; init; }
 }
 
 /// <summary>A configured sign-in provider. <see cref="Kind"/> is "oidc" (any OpenID Connect issuer: Authentik, Authelia,

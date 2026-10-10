@@ -1670,9 +1670,12 @@ changes or proves something, so it needs `--allow-ui-effects`: the password
 `AccountAuthenticatorRemove`), `AccountLinkWindows`, `AccountUnlinkWindows`,
 `AccountAskPassword`, `AccountPin`, `AccountPinSet`, `AccountPinRemove`,
 `AccountHello`, `AccountEncrypt`, `AccountRemember`, `AccountLockNow`,
-`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`; Unlock's `UnlockPin`,
+`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`, and (W13) each
+household provider's **Link** (`AccountLinkProvider-<provider ID>`) and each
+linked login's **Unlink** (`AccountUnlinkLogin-<provider>-<subject>`); Unlock's `UnlockPin`,
 `UnlockPassword`, `UnlockSubmit`, `UnlockHello`, `UnlockSignIn`; Prove's
-`ProveHost`, `ProveMethod-martlet`, `ProveUser`, `ProvePassword`, `ProveCode`,
+`ProveHost`, `ProveMethod-martlet`, each household provider
+(`ProveMethod-<provider ID>`, signed in in the browser), `ProveUser`, `ProvePassword`, `ProveCode`,
 `ProveRemember`, `ProveSubmit`; the account menu's `AccountSignInOther`
 and `AccountLock`; *Continue as ...?* (`ContinueAsDialog`: `ContinueAsYes`,
 `ContinueAsNo`) and *Choose an account* (`AccountChooseDialog`:
@@ -1681,7 +1684,9 @@ while one of these windows shows at start, before the main window (Unlock,
 *Continue as*, *Choose an account*, Prove). `ui_snapshot` returns these values: `AccountName`,
 `AccountLogins`, `AccountLockState`, `AccountUnlockMethods`,
 `AccountPasswordState`, `AccountWindowsState`, `AccountHelloState`,
-`AccountEncryptState`, `AccountStatus`, `UnlockAccountName`, `UnlockStatus`,
+`AccountEncryptState`, `AccountStatus`, `AccountProviderLogins` (the linked
+provider logins, *Linked: Authentik (lab) as me@example.net.*, and the result
+of the last Link or Unlink), `UnlockAccountName`, `UnlockStatus`,
 `ProveTitle` and `ProveStatus`; never the user name, the authenticator key
 (`AccountAuthenticatorSecret`) or the recovery codes (`AccountRecoveryCodes`).
 
@@ -1700,7 +1705,13 @@ a friend shares with this PC: its engines only, never in this PC's network);
 and `friends`, what **Devices › Friends** last read from each of your hosts
 (`friends.json`: `checkedAt`, and per host `hostId`, `read`, `problem`, each
 friend's `label`, `provider` and `computers`, and how many are `asking`), or
-null before it read anything. `device` is this data folder's device ID (`id`
+null before it read anything. `householdSignIn` is the household's sign-in
+providers as the desktop last read them from its hosts
+(`household-signin.json`: `kept`, the providers this PC set up with their
+configuration and whether it keeps the client secret, never the secret;
+`checkedAt`; `providers`, each with `id`, `kind`, `name`, the hosts it is `on`,
+`missing`, with `different` settings or `withoutSecret`, and `keptHere`; and
+`problems` per host), or null before it read anything. `device` is this data folder's device ID (`id`
 and `source`): `saved` in `device.json` (one per Windows user, so two Windows
 users on one PC never share one); `pairings` or `legacy` when the desktop hasn't
 saved one yet and keeps the ID its pairings use or an older Martlet's
@@ -1984,7 +1995,88 @@ changed attestation (`BadSignature`), an expired one (`Expired`) and another key
 than the roster's pin (`KeyNotPinned`) must fail. The start answer and `status`
 carry `ok`, the 14 `checks` (`name`, `ok`, `detail`) and the `attestations`
 (account, device, login, algorithm, times, check, text length). Example: start
-with `mode` `account`, then check `"ok":true`. It needs
+with `mode` `account`, then check `"ok":true`. With `household` `true` (mode
+`account`; `SignInAccountLab.cs`) the lab involves the desktop of the data
+directory instead and rehearses [household sign-in
+providers](NETWORK.md#household-sign-in-providers) and [signing in to your
+household account](NETWORK.md#signing-in-to-your-household-account): two
+gateways (`lab-host-a`, `lab-host-b`, ECDSA keys, both routed to the lab
+issuer) paired with that desktop (`hosts.json`, secrets in the lab credential
+folder). Before the desktop binds them, the lab's admin desktop sets the
+household provider `authentik` up on `lab-host-a` only, as a public client, so
+the desktop adds it to `lab-host-b` by itself when **Devices › Friends** reads
+its hosts. Once both are bound, the lab acts with the desktop's own pairings:
+it gives Sam a Martlet password with an authenticator on both hosts, proves
+Sam on `lab-host-a` and links `lab-user-42` (`me@example.net`) to Sam on every
+host with `HouseholdSignIn.LinkInBrowserAsync`. When `lab-host-b` has the
+provider, it proves Sam there with that login and a new computer
+(`lab-new-pc`) signs in to Sam's account through `lab-host-b`, gets Sam's
+attestation and asks to join; a second computer (`lab-sam-pc`) reads what
+**Join with an invite** offers there (`joinChoices`, with `martlet`) and joins
+with Sam's Martlet password and a recovery code (`SignInWithPasswordAsync`,
+the window's call). The desktop lets both in by itself and its log says whose
+computer each is. `status` returns `phase` (`done` once both are members), `failure`, `network`,
+`providers` (per host: `Id`, `Kind`, `Name`, `HasClientSecret`; never the
+secret), `providerOnHosts`, `clientSecretOnHosts`, `linkedLogins` (per host:
+`provider`, `subject`, `account`), `link` (`account`, `provedWith`,
+`identity`, `savedOn`, `problems`), `providerProve`,
+`accountSignIn` and `passwordSignIn` (`account`, `check` or `attestation`,
+`verified`), `joinChoices`, `joinAttested` (the join request's `sign_in` as the
+desktop's client read it, with `account`), `newDeviceMember`,
+`newDeviceWasMember`, `newDeviceWaiting`, `secondDeviceMember`, `browsedAs`
+(whom the lab's simulated browser signed in as for the desktop) and `events`.
+The desktop hands its browser sign-in pages to the lab (`MARTLET_LAB_BROWSER`):
+the first one signs in as the desktop's own person (`lab-desktop-7`,
+`owner@example.net`), the next ones as Sam (`lab-user-42`). Example (with `-Desktop -LabCredentials -AllowUiEffects`): start
+with `mode` `account` and `household` `true`, click `TourSkip`, `NavDevices`
+and `RefreshDevices` (the desktop reads `hosts.json` again), poll
+`network_status` until `"state":"member"` and `signin_lab status` until
+`"link":{`, click `FriendsCheck`, poll `signin_lab status` until
+`"providerOnHosts":["lab-host-a","lab-host-b"]` and then until
+`"newDeviceMember":true` (the desktop syncs every 20 seconds). In the window:
+open Add a computer › `HostsStepRoles` › `HostSignInSettings`, poll
+`ui_snapshot` until `SignInHouseholdProviders` reads *Authentik (lab)
+(authentik): on lab-host-a and lab-host-b.*, `ui_set_text`
+`SignInProviderId` `authentik`, `SignInProviderName` `Authentik (lab)`,
+`SignInProviderIssuer` `https://idp.lab.invalid`, `SignInProviderClientId`
+`martlet-lab` and `SignInProviderSecret` `lab-client-secret`, click
+`SignInProviderSave`, poll `SignInSettingsStatus` until *Saved Authentik (lab)
+on lab-host-a and lab-host-b.*, `signin_lab status` until
+`"clientSecretOnHosts":["lab-host-a","lab-host-b"]` and `network_status` until
+`"keptHere":true`. The Account page: once `accounts_status` reads
+`"pending":0`, click `AccountButton` and `AccountOpen`, poll `ui_snapshot` until
+`AccountProviderLogins` reads *No sign-in from a provider is linked*, click
+`AccountLinkProvider-authentik` (the desktop's account has only its Windows
+login, so no Prove first; the lab browser signs in as `owner@example.net`),
+poll until *Linked owner@example.net (authentik) on lab-host-a and lab-host-b.*,
+`signin_lab status` until `lab-desktop-7` is in `linkedLogins` and
+`accounts_status` until the account's `logins` list `oidc`; click
+`AccountUnlinkLogin-authentik-lab-desktop-7` and `ConfirmationYes`, poll until
+*Unlinked owner@example.net ...* and `"logins":["windows"]`. Signing in with a
+provider: click `AccountClose`, `AccountButton`, wait for and click
+`AccountSignInOther`, then `ProveMethod-authentik` and `ProveSubmit` (the lab
+browser signs in as Sam) and poll `accounts_status` until `current` is Sam
+(`5a6e…005a`). With `joinDesktop` `true` (mode `account`, not with
+`household`; `SignInAccountLab.RunJoinAsync`) the desktop of the data
+directory is a new computer that joins a household as Sam's: the gateway
+(`lab-home-host`, ECDSA) belongs to a simulated owner (`lab-owner`) who started
+the network with it, set the lab provider up with its client secret, gave Sam a
+Martlet password with an authenticator, linked `lab-user-42`
+(`sam@example.net`) to Sam and wrote Sam (with both logins) to the account
+directory. The lab does for the desktop what **Join with an invite** does,
+under the device ID that desktop names itself by (`device.json`): it signs in
+through the lab provider as Sam and keeps the pairing (`hosts.json`, the secret
+in the lab credential folder) and the account the host vouched for
+(`joined-account.json`). `status` returns `desktop`, `account`, `signedInAs`,
+`choices` (what the window offers: `martlet` and `authentik`), `askedToJoin`,
+`joinRequest` (the host's `sign_in` with `account`), `desktopMember` and
+`joinedAccountWaiting`. Example (with `-Desktop -LabCredentials
+-AllowUiEffects`): start with `mode` `account` and `joinDesktop` `true`, click
+`TourSkip`, `NavDevices` and `RefreshDevices`, poll `signin_lab status` until
+`"desktopMember":true`, `network_status` until `"state":"member"` and
+`accounts_status` until `current` is Sam (`5a6e…005a`, `"name":"Sam"`); the
+desktop log says *Accounts: this PC joined the network as account 5a6e0000's
+computer; signed it in here* and *Hi, Sam*. It needs
 `Invoke-MartletMcp.ps1 -LabCredentials`, which points `MARTLET_LAB_CREDENTIALS`
 of the desktop and MCP server at a `lab-credentials` folder in the data
 directory, so pairing secrets go there (plaintext, thrown away with the folder)
@@ -2041,7 +2133,9 @@ until *Host PC*.
 
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
-`SignInConnect`, provider choices `SignInProvider-<id>`, `SignInUser`,
+`SignInConnect`, provider choices `SignInProvider-<id>`, with
+`SignInProvider-martlet` for *Your household account (Martlet password)* when
+the host keeps household logins, `SignInUser`,
 `SignInPassword`, `SignInCode`, `SignInSubmit`, status `SignInJoinStatus`, the
 checked host `SignInHost`, `SignInJoinClose`); a paired host's **Sign-in from
 outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
@@ -2049,10 +2143,12 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
 `SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
 `SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
-`SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
+`SignInHouseholdProviders` (where each household provider is set up; a safe
+value), `SignInProvidersPush` (**Add to the other hosts**), `SignInProviderKind`
+(with *Microsoft (personal accounts)*), `SignInProviderId`, `SignInProviderName`,
 `SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
-`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`,
-`SignInProviderRemove`, `SignInRefusedList`, `SignInRefusedAllow` (allow the
+`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave` and
+`SignInProviderRemove` (both on every host of your network), `SignInRefusedList`, `SignInRefusedAllow` (allow the
 newest as one of your computers), `SignInRefusedAllowFriend` (as a friend),
 `SignInRemovedList` (computers your member PCs still have to remove from the
 network), `SignInOutsideWarning` (outside access paused or about to be),
@@ -4082,6 +4178,60 @@ gets it through that computer's paired, pinned gateway), so it needs
 Image model and Audio model cards' `ImageModelTest` and `AudioModelTest` do the
 same for the model that takes pictures and for an audio model of its own
 ([Image and audio models](#image-and-audio-models)).
+
+`local_model_facts` says what an open-weight model needs to run locally
+([Resource footprints](RESOURCE_FOOTPRINTS.md#estimating-a-model-martlet-doesnt-list),
+[Model catalog](MODEL_CATALOG.md#memory-and-running-locally)), through the
+production `LocalModelFactsReader` and `LocalModelMemory`. `model` is a Hugging
+Face repository (`google/gemma-4-E2B-it`), `hf.co/{repo}:{quant}` or an Ollama
+tag (`gemma4:e2b`); or give `huggingFaceRepo` and `ollamaTag` together (the
+repository gives the shape and inputs, the tag its exact Ollama download).
+`quantization` picks one (default: the Ollama tag's, else Q4_K_M, else another
+4-bit one), `contextTokens` the context (default 8,192), and `card` (for
+example `"RTX 4070"`) or `bandwidthGbps` the memory bandwidth for the speed.
+
+- `facts`: `HuggingFaceRepo` (the model's own), `GgufRepo` (the GGUF repository
+  read: ggml-org, unsloth, lmstudio-community or bartowski first, else the most
+  downloaded), `OllamaTag`, `LocallyHostable`, `parametersBillions` (the maker's,
+  encoders included), `weightsParametersBillions` (in the weights file),
+  `activeParametersBillions` (less for a mixture-of-experts model), `License`,
+  `PipelineTag`, `MaxContext`, `Gated`, `inputs` (`Image`, `Audio`, `Video` and
+  their `Source`: `config.json`, or the Ollama registry's projector layer, which
+  says only that it sees), `architecture` (layers with a cache of their own:
+  `FullLayers`, `SlidingLayers`, `LinearLayers`, `SharedCacheLayers`; `KvHeads`,
+  `HeadSize`, `SlidingWindow`, `Experts`, `ActiveExperts`,
+  `fullAttentionKibPerToken`, `perLayerEmbeddingBillions`), `quantizations`
+  (each `Name`, `weightsGb`, `encoderGb`, `draftGb`, `InstallName` and
+  `Source`), `encoders` and `drafts` (the `mmproj` and `mtp` files),
+  `GgufRepos`, `Sources` (each address read) and `Problems` (what couldn't be
+  read, for example a gated `config.json` or no GGUF repository).
+- `estimate`: weights + encoder + draft + KV cache at the context + 0.5 GB
+  buffers: `totalGb`, `graphicsGb` and `systemMemoryGb` (Gemma's per-layer
+  embeddings, which Ollama keeps in system memory), `kvCacheGb` with
+  `KvCacheKnown` (false without a `config.json`: a tenth of the weights is
+  guessed), `gbReadPerToken` and `described`.
+- `speed`: `matched` card, `bandwidthGbps` and `maxTokensPerSecond`, an upper
+  bound (bandwidth divided by `gbReadPerToken`); real speed is often 50-70% of it.
+- `footprintCatalog`: Martlet's own entry for the Ollama tag (`vramGb`,
+  `evidence` Measured or Estimate). `measured`: what Ollama on this PC reported
+  once it loaded the model (`model-memory.json` in `dataDirectory`: `Host`,
+  `gb`, `graphicsGb`, `OnGraphicsCard`, `ContextTokens`, `measuredAt`).
+- `requests`: requests sent to Hugging Face and the Ollama registry. A lookup
+  sends at most five; each answer is kept for a day, and at most 100 go to each
+  source in five minutes (Hugging Face allows about 500). Martlet reads
+  `registry.ollama.ai`, never ollama.com, whose terms forbid automated access.
+
+`fixture: true` runs the same code on a FIXTURE transport shaped like Hugging
+Face and the Ollama registry (NOT the real services; the real sizes and config
+fields read on 2026-10-10). Without a `model` it checks the estimate against
+the measured Gemma 4 E2B, E4B and Qwen3.5 4B numbers (`calibration`, each
+`percentOff`, within 10%), Gemma 4's KV cache as Resource footprints works it
+out, the GGUF repository picked, the install name, E2B's audio and 26B A4B's
+none, 26B A4B's active parameters and the cache (`checks`), and `measured`: the
+production `OllamaMeasuredMemory` against a FIXTURE `/api/ps` (NOT Ollama) in a
+temporary folder of its own, deleted afterwards (`savedFirst` true,
+`savedAgain` false while nothing changed, `graphicsGb`, `ContextTokens`), with
+`ok`. Keyless; downloads no model; saves nothing.
 
 `local_model_servers` is Companion › Thinking › This PC › *A model app you
 already use* without the window ([Local model apps](LOCAL_MODEL_APPS.md)).
@@ -8772,7 +8922,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
