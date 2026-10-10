@@ -22,12 +22,15 @@ public partial class MainWindow
     private string creationStatus = "No other Martlet computers are paired yet, so your creations stay on this PC.";
     private string? selectedCreation;
 
+    /// <summary>Where the signed-in account keeps its creations (docs/ACCOUNTS.md); null until Martlet can use its data folder.</summary>
+    private string? CreationsFolder => store?.DataDirectory;
+
     private void InitializeCreations()
     {
         creationTimer.Tick += (_, _) => SyncCreationsAsync().Forget();
         CreationStore.Changed += directory => Dispatcher.InvokeAsync(() =>
         {
-            if (closing || store is null || !string.Equals(directory, store.DataDirectory, StringComparison.OrdinalIgnoreCase)) return;
+            if (closing || CreationsFolder is not { } folder || !string.Equals(directory, folder, StringComparison.OrdinalIgnoreCase)) return;
             QueueCreationSync();
             if (CreationsPage.IsVisible) RenderCreations();
         });
@@ -77,14 +80,14 @@ public partial class MainWindow
             return;
         }
         creationBusy = true;
-        var dataDirectory = store.DataDirectory;
+        var dataDirectory = CreationsFolder!;
         var token = lifetime.Token;
         var digest = CreationStore.View(dataDirectory).Digest();
         var changed = false;
         var peers = hosts.Select(host => new HostCreationPeer(host.HostId, () => ClusterSync.Connect(host.Pairing))).ToArray();
         try
         {
-            creationSync ??= new CreationSync(dataDirectory);
+            if (creationSync?.DataDirectory != dataDirectory) creationSync = new CreationSync(dataDirectory);
             var sync = creationSync;
             var result = await Task.Run(() => sync.RunAsync(peers, token), token);
             changed = result.Added > 0 || result.Removed > 0 || result.Library.Digest() != digest;
@@ -110,12 +113,11 @@ public partial class MainWindow
 
     private void RenderCreations()
     {
-        if (store is null)
+        if (CreationsFolder is not { } dataDirectory)
         {
             CreationsStatusText.Text = "Creations are unavailable until Martlet can use its data folder.";
             return;
         }
-        var dataDirectory = store.DataDirectory;
         var library = CreationStore.View(dataDirectory);
         var live = library.Live;
         var sync = CreationSyncState.Load(dataDirectory);
@@ -255,7 +257,7 @@ public partial class MainWindow
         if (title == creation.Title) return;
         try
         {
-            await CreationStore.RenameAsync(store.DataDirectory, creation.Id, title, ClusterDevice, DateTimeOffset.UtcNow, lifetime.Token);
+            await CreationStore.RenameAsync(CreationsFolder!, creation.Id, title, ClusterDevice, DateTimeOffset.UtcNow, lifetime.Token);
             ActionText.Text = $"Renamed to '{title}' on all your computers.";
         }
         catch (OperationCanceledException) { }
@@ -271,7 +273,7 @@ public partial class MainWindow
             return;
         try
         {
-            await CreationStore.RemoveAsync(store.DataDirectory, creation.Id, ClusterDevice, DateTimeOffset.UtcNow, lifetime.Token);
+            await CreationStore.RemoveAsync(CreationsFolder!, creation.Id, ClusterDevice, DateTimeOffset.UtcNow, lifetime.Token);
             selectedCreation = null;
             ActionText.Text = $"'{creation.Title}' was deleted on all your computers.";
         }

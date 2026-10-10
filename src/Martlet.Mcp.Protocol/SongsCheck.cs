@@ -32,7 +32,8 @@ internal static class SongsCheck
     {
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
         var thinkLonger = ThinkLongerSettings.Of(loaded.Settings?.Generation);
-        var songs = SongCreations.List(dataDirectory);
+        var creations = CreationsCheck.Folder(dataDirectory);
+        var songs = SongCreations.List(creations);
         return new
         {
             backgroundWork = thinkLonger.On,
@@ -50,7 +51,7 @@ internal static class SongsCheck
                         converter = metadata?.Converter, quality = metadata?.Quality, voiceMatch = metadata?.VoiceMatch, fixture = metadata?.Fixture,
                         mouthSource = metadata?.MouthSource, mouthNote = metadata?.MouthNote,
                         assets = song.Assets?.Select(asset => new { name = asset.Name, mediaType = asset.MediaType, bytes = asset.Bytes }).ToArray(),
-                        here = CreationStore.IsComplete(dataDirectory, song), createdBy = song.CreatedBy?.Computer, createdAt = song.CreatedAt
+                        here = CreationStore.IsComplete(creations, song), createdBy = song.CreatedBy?.Computer, createdAt = song.CreatedAt
                     };
                 }).ToArray()
             },
@@ -103,7 +104,7 @@ internal static class SongsCheck
         if (songId is not null)
         {
             if (dataDirectory is null) throw new ArgumentException("songId needs the dataDirectory it is stored in.");
-            var (found, sound, mouth, problem) = await SongCreations.LoadAsync(dataDirectory, songId, cancellation);
+            var (found, sound, mouth, problem) = await SongCreations.LoadAsync(CreationsCheck.Folder(dataDirectory), songId, cancellation);
             song = found ?? throw new ArgumentException(problem ?? $"There's no song '{songId}' in that data directory.");
             audio = sound!;
             stored = mouth;

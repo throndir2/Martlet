@@ -10,6 +10,11 @@ namespace Martlet.Mcp;
 /// voice or personality: creations are the owner's own, like memories.</summary>
 internal static class CreationsCheck
 {
+    /// <summary>Where the creations of <paramref name="dataDirectory"/> are: the folder of the account they moved to
+    /// (creations-moved.json), or the data folder itself before that move.</summary>
+    internal static string Folder(string dataDirectory) =>
+        CreationAccounts.Moved(dataDirectory) is { } moved ? CreationAccounts.Folder(dataDirectory, moved.Account) : dataDirectory;
+
     /// <summary>Reads the creations of <paramref name="account"/> (32 hex digits or a GUID) in &lt;data&gt;\accounts\&lt;32 hex&gt;.
     /// Without an account it reads the account the data folder's creations moved to (creations-moved.json), or the data folder
     /// itself before that move. The answer names the account and the folder it read (docs/ACCOUNTS.md).</summary>
