@@ -40,7 +40,9 @@ Voice ID is separate from People. Voice ID filters who Martlet answers before up
 
 ## Sharing
 
-With **Devices › Settings for all devices › Keep Martlet the same on all my computers** on, recognized voices and Voice ID settings sync through your paired hosts.
+With **Devices › Settings for all devices › Keep Martlet the same on all my computers** on, Voice ID settings and whether Martlet recognizes voices sync through your paired hosts.
+
+Recognized voices and their names are always shared with all your computers, so Martlet learns everyone's voice. They sync through your own paired hosts even while that switch is off. Hosts a friend shares with you never get them. Companion › People › **Your computers** shows when they last synced.
 
 ## Privacy
 

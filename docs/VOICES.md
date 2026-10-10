@@ -25,8 +25,9 @@ are recognized and learned only from the microphone, never from
   build downloads the models once and keeps each only if it matches its pinned
   SHA-256; packaging checks the shipped bytes again. If the files are missing
   (a damaged installation), People says so and asks you to reinstall Martlet.
-- **Your computers.** The list is the same on all your computers while **Keep
-  Martlet the same on all my computers** is on. See
+- **Your computers.** The list is always the same on all your computers, so
+  Martlet learns everyone's voice everywhere. It doesn't depend on **Keep
+  Martlet the same on all my computers**. See
   [sharing](#sharing-between-your-computers).
 - **Keep the last 5 clips of voices you haven't named.** On unless you turn it
   off (`voice-clips.txt`, this PC only; turning it off deletes every clip). See
@@ -152,18 +153,21 @@ Unticking **Keep the last 5 clips** deletes every clip and keeps no more.
 ## Sharing between your computers
 
 The list is part of [one Martlet on all your computers](CLUSTER.md), through your paired
-Martlet hosts:
+Martlet hosts. People are always shared in the household (see
+[ACCOUNTS](ACCOUNTS.md)), so it syncs even while **Keep Martlet the same on all
+my computers** is off:
 
 - Each host keeps a copy in `voices.json` beside `host.json` (0600, gateway
   service owner; not part of the approved configuration) and serves
   `GET /martlet/v1/voices` and `POST /martlet/v1/voices` (merge a copy in,
   return the merged result) to paired devices over the pinned, signed
   connection. Hosts never use the list.
-- While Martlet runs and **Keep Martlet the same on all my computers** is on
-  (Devices › Settings for all devices; there is no separate People switch),
-  every 30 seconds and a few seconds after any change, the desktop reads each
-  paired host's copy, merges it into its own and posts the merged list to every
-  host whose copy differs.
+- While Martlet runs and this PC has paired hosts of your own, every 30 seconds
+  and a few seconds after any change, the desktop reads each paired host's
+  copy, merges it into its own and posts the merged list to every host whose
+  copy differs. There is no switch for it: **Keep Martlet the same on all my
+  computers** (Devices › Settings for all devices) does not change it. Hosts a
+  friend shares with this PC are never used for it.
 - Each voice is a last-writer-wins entry stamped with the same hybrid revision
   as the cluster plan; forgetting and merging leave tombstones so a voice does
   not come back from an older copy. The merge is commutative, associative and
@@ -172,15 +176,16 @@ Martlet hosts:
   same people and their names. Sync runs whichever role this PC has.
 - Whether Martlet recognizes voices at all (`voice-recognition.txt`) and Voice
   ID with the owner's voiceprint (`voice-id.json`) are
-  [shared settings](CLUSTER.md#one-martlet-on-every-computer), the same on
-  every computer.
+  [shared settings](CLUSTER.md#one-martlet-on-every-computer): they are the
+  same on every computer only while **Keep Martlet the same on all my
+  computers** is on.
 
 Hosts older than this version answer that they don't know the list; the
-People page names them and suggests **Update host**. Turning the switch off
-stops all voice sync; copies already on your hosts stay there until you forget
-the voices (which syncs tombstones) or remove the host. Older Martlet versions
-had their own *Sync across my computers* switch (`voice-sharing.txt`); it is no
-longer read.
+People page names them and suggests **Update host**. Copies already on your
+hosts stay there until you forget the voices (which syncs tombstones) or remove
+the host. Before people were always shared, turning the switch off stopped all
+voice sync. Older Martlet versions had their own *Sync across my computers*
+switch (`voice-sharing.txt`); it is no longer read.
 
 ## Parakeet on this PC (Listening)
 

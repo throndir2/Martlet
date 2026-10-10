@@ -432,6 +432,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachMemoryStorage(storage);
     }
 
+    /// <summary>Keeps the memory spaces (every account's memories, apart), which paired desktops share through this host, in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachMemorySpaces(IGatewayMemorySpaceStorage storage)
+    {
+        RequireOpen();
+        server!.AttachMemorySpaceStorage(storage);
+    }
+
     /// <summary>Keeps the network's API keys paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachApiKeys(IGatewayApiKeyStorage storage)
     {

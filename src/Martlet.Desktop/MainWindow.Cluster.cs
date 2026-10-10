@@ -94,7 +94,7 @@ public partial class MainWindow
             SyncHomeShareAsync().Forget();
         }
         ActionText.Text = on ? "Martlet is now the same on all your computers: who does what, its settings, memories, people, voices, characters, creations and Home Assistant stay in sync."
-            : "Sync is off. This PC keeps its own choices, settings and memories.";
+            : "Sync is off. This PC keeps its own choices, settings and memories. The people Martlet recognizes by voice stay shared with your computers.";
         ShowClusterStatus();
         ShowSettingsStatus();
         ShowMemorySyncStatus();

@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- The people Martlet recognizes by voice are now always shared with all your computers, even while **Keep Martlet the same on all my computers** is off, so Martlet learns everyone's voice everywhere. ([#742](https://github.com/throndir2/Martlet/pull/742))
+
 ### Fixed
 
 - Two people with their own Windows sign-ins on one PC are now two separate computers to your hosts, so pairing Martlet for one no longer replaces the other's pairing. Computers that are already paired keep their ID. ([#744](https://github.com/throndir2/Martlet/pull/744))

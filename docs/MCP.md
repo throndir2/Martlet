@@ -1068,8 +1068,11 @@ type*.
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
 recognition choice (`on (default)` until it is turned off; a shared setting) and
-`sharing` (the voice list travels while *Keep Martlet the same on all my
-computers* is on, from `cluster-sync.txt`),
+`sharing` (people are always shared: the voice list syncs with every paired
+host of yours whatever *Keep Martlet the same on all my computers* says;
+`state` *on*, *no paired hosts yet* or *hosts unreadable*, `always: true`,
+`hosts` from `hosts.json` and `friendHostsNeverUsed`, the hosts a friend shares,
+which never get the list),
 whether a Martlet folder (optional absolute `martletDirectory`, default the
 installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
@@ -1392,7 +1395,13 @@ shares its fact; a fact expiring in two seconds is forgotten everywhere once
 expired; a newer Martlet's fact passes through hosts and desktops without
 entering this version's stores; a new memory folder takes everything again and
 forgets nothing; 600 old conversation facts from two computers end as the same
-512 everywhere (oldest conversation facts forgotten, typed facts kept); no fact
+512 everywhere (oldest conversation facts forgotten, typed facts kept); memory
+spaces ([accounts](ACCOUNTS.md#memory-spaces)): A merges a fact into Sam's
+`account-<id>` space on both hosts with `MergeMemorySpaceAsync`, B reads it
+there (`ReadMemorySpaceAsync`) with the same digest
+(`ReadMemorySpaceDigestAsync`), Alex's space, `household` and the old document
+stay without it, it survives a host restart, a bad space ID is refused before
+anything is sent, and the step names the spaces the host keeps; no fact
 in any desktop data folder while the hosts' copy holds them; and an unsigned
 request refused (HTTP 401). Synthetic facts, loopback only; the folder is
 deleted.
@@ -5920,7 +5929,8 @@ and use* asks one confirmation, `ConfirmationYes`, then downloads that model
 and switches Listening to it; *Use it* switches to a downloaded model at once),
 they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). While Listening uses a paired
+switch: the list always syncs with your paired hosts, whatever `ClusterSync`
+says, and `PeopleSyncStatus` shows the last sync). While Listening uses a paired
 host or OpenAI, Listening's *Now* card has `SetupJobStandIn-Listening` (a passive
 value): what hears you on this PC's processor when that route can't (*If OpenAI
 can't hear you, Parakeet TDT 110M (English) hears you on this PC's processor
