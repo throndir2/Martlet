@@ -82,8 +82,6 @@ public partial class MainWindow
                     _ => "not checked yet"
                 });
         }
-        if (member.Kind == PoolMemberKind.Gpu)
-            parts.Add(LipSyncPool.Serves(member) ? "its computer runs one Audio2Face for all its cards" : "its Audio2Face runs on another card, so this PC skips it");
         return string.Join("; ", parts);
     }
 
@@ -235,7 +233,15 @@ public partial class MainWindow
     private PoolList? EnsureLipSyncPool()
     {
         if (store is null) return null;
-        if (WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.LipSync) is { } list) return list;
+        if (WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.LipSync) is { } list)
+        {
+            // A graphics card of a computer is one row for its computer here: a host runs one Audio2Face relay.
+            var rows = LipSyncSharing.OneRowPerComputer(list);
+            if (rows == list || !PoolSettings.SaveFor(store.DataDirectory, PoolAreas.LipSync, rows)) return list;
+            WorkSharingRoster.Forget();
+            QueueSettingsSync();
+            return rows;
+        }
         var made = LipSyncPool.Migrate(homeAvatar, store.DataDirectory);
         // A host a friend shares with this PC stays this PC's own choice.
         made = made with { Members = [.. made.Members.Where(m => m.HostId is null || FindHost(m.HostId) is not null)] };
@@ -266,8 +272,9 @@ public partial class MainWindow
         {
             var member = key == "this-pc" ? PoolMember.ThisPc() : PoolMember.Computer(key[5..]);
             if (member.HostId is { } id && FindHost(id) is null) return;
+            list = LipSyncSharing.OneRowPerComputer(list);
             var lead = list.Members.FirstOrDefault(m => !m.Off);
-            if (lead is not null && (lead.Key == member.Key || member.HostId is not null && lead.HostId == member.HostId)) return;
+            if (lead is not null && lead.Key == member.Key) return;
             next = list.With((list.Find(member.Key) ?? member) with { Off = false }).Move(member.Key, -PoolSettings.MaximumMembers);
         }
         if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.LipSync, next)) return;

@@ -84,7 +84,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
         var preferences = SingingPreferences.Load(dataDirectory);
         if (preferences.Off) return false;
         if (Environment.GetEnvironmentVariable(FixtureVariable) == "1") return true;
-        if (PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing) is not null) return Members(dataDirectory).Count > 0;
+        if (WorkSharingRoster.Pool(dataDirectory, PoolAreas.Singing) is not null) return Members(dataDirectory).Count > 0;
         if (preferences.Host is not { } host) return false;
         try { return HostRegistry.Load(dataDirectory).Any(h => h.HostId == host && !h.Shared); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
@@ -102,7 +102,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
         PairedHost[] hosts;
         try { hosts = [.. HostRegistry.Load(dataDirectory).Where(h => !h.Shared)]; }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return []; }
-        var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing);
+        var list = WorkSharingRoster.Pool(dataDirectory, PoolAreas.Singing);
         WorkPlace[] singers = [];
         if (list is null)
         {
@@ -200,7 +200,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
         try
         {
             var sung = await SingingPool.RunAsync(WorkQueue.Shared, members, m => m.Member.Key, (m, t) => LookAsync(m.Host, t),
-                (m, t) => SingAsync(m.Host, t), request.VoiceMatch, WorkSharingRoster.Classify, null, cancellationToken,
+                (m, t) => SingAsync(m.Host, m.Member, t), request.VoiceMatch, WorkSharingRoster.Classify, null, cancellationToken,
                 m => m.Host.HostId).ConfigureAwait(false);
             return sung.Result;
         }
@@ -214,8 +214,10 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
             throw new SongException(SongErrorCodes.Unavailable, $"Singing isn't reachable ({error.Message}).", error);
         }
 
-        async Task<SongResult> SingAsync(PairedHost host, CancellationToken token)
+        async Task<SongResult> SingAsync(PairedHost host, PoolMember member, CancellationToken token)
         {
+            // A member with its own quality (Companion › Singing, its Settings) makes the song in that quality.
+            var song = SingingPool.Quality(member) is { } quality ? request with { Quality = quality } : request;
             Audio2FaceHostConnection connection;
             HostRoute route;
             try
@@ -245,7 +247,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
                 progress?.Report(new SongProgress(SongStage.Queued, 0) { Host = host.HostId });
                 try
                 {
-                    return await connection.MakeSongAsync(route, request, RecordingAsync, progress, token).ConfigureAwait(false);
+                    return await connection.MakeSongAsync(route, song, RecordingAsync, progress, token).ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is HttpRequestException or IOException)
                 {

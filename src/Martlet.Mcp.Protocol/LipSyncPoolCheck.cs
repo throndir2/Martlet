@@ -34,7 +34,7 @@ internal static class LipSyncPoolCheck
         var saved = PoolSettings.LoadFor(dataDirectory, PoolAreas.LipSync);
         var list = saved ?? LipSyncSharing.FromOlderChoices(mode == "loudness",
             auto ? WorkSharing.Order(settings, WorkSharingJobs.LipSync, device, assigned, places) : []);
-        var order = PoolRouting.Order(PoolAreas.LipSync, list, device,
+        var order = PoolRouting.Order(PoolAreas.LipSync, LipSyncSharing.OneRowPerComputer(list), device,
             m => m.Kind == PoolMemberKind.ThisPc || m.OnHost && (paired.Contains(m.HostId) || m.HostId == assigned));
         return new
         {
@@ -232,16 +232,16 @@ internal static class LipSyncPoolCheck
         Step("A computer kept for another companion PC, or never used for lip-sync, is left out",
             keptOrder.SequenceEqual(["m4-host"]) && neverOrder.SequenceEqual(["m5-host"]), new { keptOrder, neverOrder });
 
-        // The pool contract (pools.json): the list's order, a member turned off, one kept for another companion PC, a card member
-        // and this PC's own Audio2Face service with its endpoint.
+        // The pool contract (pools.json): the list's order, a member turned off, one kept for another companion PC, a card row
+        // saved before (one row per computer now: a host runs one Audio2Face relay) and this PC's own service with its endpoint.
         var saved = new PoolList { Area = PoolAreas.LipSync.Id }
             .With(PoolMember.Gpu("m5-host", 2))
             .With(PoolMember.Computer("m4-host") with { Off = true })
             .With(PoolMember.Computer("m6-host") with { OnlyFor = ["desk-3"] })
             .With(PoolMember.ThisPc().WithSetting(PoolSettingKeys.Endpoint, "http://127.0.0.1:52010/"));
-        var tries = PoolRouting.Order(PoolAreas.LipSync, saved, "desk-2").Members.Select(m => m.Key).ToArray();
-        Step("A saved list decides: its order, without members turned off or kept for another companion PC",
-            tries.SequenceEqual(["host:m5-host#gpu2", "this-pc"]) && saved.Find("this-pc")?.Setting(PoolSettingKeys.Endpoint) == "http://127.0.0.1:52010/",
+        var tries = PoolRouting.Order(PoolAreas.LipSync, LipSyncSharing.OneRowPerComputer(saved), "desk-2").Members.Select(m => m.Key).ToArray();
+        Step("A saved list decides: its order, one row per computer, without members turned off or kept for another companion PC",
+            tries.SequenceEqual(["host:m5-host", "this-pc"]) && saved.Find("this-pc")?.Setting(PoolSettingKeys.Endpoint) == "http://127.0.0.1:52010/",
             new { tries });
         var empty = PoolRouting.Order(PoolAreas.LipSync, new PoolList { Area = PoolAreas.LipSync.Id }, "desk-2");
         Step("An empty list means the voice's loudness on this PC", empty.Fallback && PoolAreas.LipSync.WhenEmpty == "Voice loudness on this PC",

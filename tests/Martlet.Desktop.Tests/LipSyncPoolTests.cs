@@ -130,7 +130,7 @@ public sealed class LipSyncPoolTests
     }
 
     [Fact]
-    public void A_saved_list_gives_each_computer_once_this_pc_with_its_endpoint_and_skips_what_this_pc_cannot_use()
+    public void A_saved_list_gives_one_row_per_computer_this_pc_with_its_endpoint_and_skips_what_this_pc_cannot_use()
     {
         var paired = new Dictionary<string, AvatarRemoteHost>(StringComparer.Ordinal)
         {
@@ -143,8 +143,12 @@ public sealed class LipSyncPoolTests
             .With(PoolMember.Computer("list-unpaired"))
             .With(PoolMember.Computer("list-b5") with { Off = true })
             .With(PoolMember.Computer("list-kept") with { OnlyFor = ["another-desk"] });
-        var places = LipSyncPool.Resolve(PoolRouting.Order(PoolAreas.LipSync, list, "desktop-test", m => LipSyncPool.Usable(m, paired)), paired);
-        Assert.Equal(["host:list-a4#gpu2", "this-pc"], places.Select(p => p.Key));
+        // A card row (from a list saved before) is its computer's row: a host runs one Audio2Face relay.
+        Assert.Equal(["host:list-a4", "this-pc", "host:list-unpaired", "host:list-b5", "host:list-kept"],
+            LipSyncSharing.OneRowPerComputer(list).Members.Select(m => m.Key));
+        Assert.False(PoolAreas.LipSync.Takes(PoolMemberKind.Gpu));
+        var places = LipSyncPool.FromList(list, paired);
+        Assert.Equal(["host:list-a4", "this-pc"], places.Select(p => p.Key));
         Assert.Equal("list-a4", places[0].Host!.HostId);
         Assert.Equal("http://127.0.0.1:52010/", places[1].Endpoint);
 
@@ -166,22 +170,6 @@ public sealed class LipSyncPoolTests
         Assert.Equal(["host:friend-f1"], LipSyncPool.FromList(off, paired, friend).Select(p => p.Key));
         Assert.Single(LipSyncPool.FromList(list.With(PoolMember.Computer("friend-f1")), paired, friend), p => p.Host?.HostId == "friend-f1");
     }
-
-    [Fact]
-    public void A_card_member_needs_the_relay_on_that_card_when_the_computer_said_which()
-    {
-        Assert.True(LipSyncPool.Serves(PoolMember.Gpu("cards-unknown", 2)));
-        HostRouteGpus.Note("cards-a4", [Route(["1"])]);
-        Assert.True(LipSyncPool.Serves(PoolMember.Gpu("cards-a4", 2)));
-        Assert.False(LipSyncPool.Serves(PoolMember.Gpu("cards-a4", 1)));
-        Assert.True(LipSyncPool.Serves(PoolMember.Computer("cards-a4")));
-        HostRouteGpus.Note("cards-b5", [Route(["GPU-0b9a"])]);
-        Assert.True(LipSyncPool.Serves(PoolMember.Gpu("cards-b5", 3)));
-    }
-
-    private static HostRoute Route(string[] gpus) => new(Audio2FaceHostClient.RouteId, "/martlet/v1/inference/audio2face",
-        "martlet.audio2face-relay", "1.0", "d", "w", "a", "m", "r", "s", "i", 1, 1, 1, 1, 1, 1, TimeSpan.FromSeconds(15), "c")
-    { Gpus = gpus };
 
     // A minimal automatic-lip-sync profile.
     private sealed class AvatarProfileStub

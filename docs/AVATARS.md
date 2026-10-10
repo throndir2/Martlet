@@ -1256,10 +1256,10 @@ Automatic lip-sync sends its requests through a pool: an ordered list of the
 places that run Audio2Face (`PoolAreas.LipSync` in the
 [pool contract](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A
 member is *This PC* (this PC's own Audio2Face service, at its `endpoint`
-setting or the character's endpoint), one of your computers that runs the
-`audio2face` host role, or one card of such a computer. A computer runs one
-Audio2Face relay, so a card member uses its computer's relay when the relay
-runs on that card (or the computer did not say which card).
+setting or the character's endpoint) or one of your computers that runs the
+`audio2face` host role. There is one row per computer: a computer runs one
+Audio2Face relay, whichever graphics card it uses. A card row saved before
+reads as its computer's row (`LipSyncSharing.OneRowPerComputer`).
 
 1. Martlet reads lip-sync's list from `pools.json` (the `pools` shared setting)
    before each sentence. It reads the file again only when the file changed,
@@ -1305,9 +1305,9 @@ choice.
    (`Pool-lip-sync-Endpoint`, saved as the member's `endpoint` setting). A
    computer's settings have *Install Audio2Face* or *Change model* (when this
    PC changes that computer's roles) and *Check it*.
-3. *Add to the list* adds *This PC*, a paired computer that runs Audio2Face
-   or can install it, or one card of a computer with two or more NVIDIA cards.
-   A host a friend shares with this PC is never added: your list is shared.
+3. *Add to the list* adds *This PC*, or a paired computer that runs Audio2Face
+   or can install it. A host a friend shares with this PC is never added: your
+   list is shared.
 4. *Audio2Face on this PC*, under the list, says what this PC's graphics card
    means for Audio2Face (`LipSyncDockerAbout`). It sets up Martlet's host
    service with Audio2Face (`SetupLipSyncHostThisPc`) or installs Audio2Face

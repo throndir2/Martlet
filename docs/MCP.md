@@ -4516,7 +4516,9 @@ Sharing work's choices moved into the Speaking list (`PoolMigration`); the
 list's order on machines 2 and 3; a member turned off; Thinking's own model
 first; an empty list off for Speaking and voice loudness for lip-sync; a
 rate-limited cloud member (HTTP 429, `PoolRefusals`) passed over by its member
-key; and the `pools` shared setting's round trip. `ok` is true when every step
+key; a cloud member in the list taking a segment only when the computer before
+it is busy (a free first computer speaks at once and the cloud member is never
+asked); and the `pools` shared setting's round trip. `ok` is true when every step
 passed. On the desktop, `ui_snapshot` reads `WorkSharingStatus` (how many of
 this PC's requests another computer took since Martlet started), each area's
 `WorkSharingPool-<area>` line ("Speaking. In order: This PC, m3-host.") with
@@ -7382,27 +7384,33 @@ voice engine there, or says one would share the card before one is set up.
 
 Companion › Singing (`CompanionTab-Singing`, under *Optional extras*;
 [Singing](SINGING.md)) has the standard order. `SingingNow` says whether and
-where Martlet sings ("Off. Martlet doesn't sing. Singing stays set up on your
-computers.", "Not set up yet. ...", "Martlet sings on gpu-pc with SoulX-Singer,
-fast."). The main choice is an option picker: `Picker-Singing-Off` and
-`Picker-Singing-Role` only show that option's details (passive). The role's row
-reads its facts (`PickerFacts-Singing-Role`: "NVIDIA GPU · 7.2 GB VRAM · 1-2 min
-a song"; `PickerFact-Singing-<fact>` in its details: `vram`, `download`, `song`,
-`license`, `cost`, `data`). Off's details have `SingingTurnOff` (*Turn singing
-off*, while Martlet sings; it keeps the role set up and saves `singing.json`).
-In the role's details, `SingingState` says where it stands on the shown computer ("Not set up on
-this PC yet.", "Setting up on gpu-pc...", "Ready on gpu-pc with SoulX-Singer.",
-"Ready on this PC with SoulX-Singer and VevoSing.", "Adding VevoSing on this
-PC...", "Setup failed on this PC: ..." or why that computer can't sing, such as
-"Needs an NVIDIA graphics card with 6 GB+; this PC has ..."; the voice matches come
-from that computer's singing service, read through its gateway once the card shows
-it), `SingingSetUp` its button while it isn't ready there ("Set up", "Setting
-up..."; disabled with the reason as help text when the computer can't sing) and
-`SingingUse` (*Sing on gpu-pc*, once it is ready there and Martlet doesn't sing
-there yet; it saves `singing.json`, so it needs `--allow-ui-effects`). `SingingGpu` (fixed
-text: its first sentence, with all of it in `help`) answers whether Singing needs a graphics card of its own. With another
-computer paired, the pills `SingingHost-this-pc` and `SingingHost-<host ID>` only
-choose the shown computer (passive). Under *Song choices*, `SingingQuality` ("Fast
+where Martlet sings ("Off. Martlet doesn't sing: no computer in the list is on.
+Singing stays set up on your computers.", "Not set up yet. ...", "Martlet sings
+on gpu-pc (or the first free one of 2 computers) with SoulX-Singer, fast.").
+There is no Off choice and no single-computer choice: *Where Martlet sings* is
+the shared pool list ([the singing pool](SINGING.md#the-singing-pool)) with the
+`Pool-singing-...` IDs below (summary, each member's line with its state, such
+as "1. gpu-pc. A paired computer; runs Singing with SoulX-Singer and VevoSing;
+high quality.", On, Up, Down, Remove, Settings, kept-for and the Add buttons;
+only computers that aren't shared by friends and can run Singing can be added).
+A member's Settings (`Pool-singing-Settings-<i>`, passive) shows
+`Pool-singing-State-<member key>` ("Singing is ready here with SoulX-Singer.",
+"Setting Singing up here...", "Singing isn't set up here yet.", "Setting Singing
+up failed: ..." or why that computer can't sing, such as "Needs an NVIDIA
+graphics card with 6 GB+; this PC has ..."; the voice matches come from that
+computer's singing service, read through its gateway once the page shows it),
+`Pool-singing-SetUp-<member key>` (*Set up Singing here* while it isn't ready
+there; disabled with the reason as help text when the computer can't sing),
+`Pool-singing-AddVevo-<member key>` (*Add VevoSing here* where it runs without
+VevoSing) and `Pool-singing-Quality-<member key>` (*The song choice below*,
+*Fast* or *High quality*: that computer's own quality, saved in the list). A
+computer added that doesn't sing yet opens its Settings. The list, the quality
+and both buttons save `pools.json` or install, so they need
+`--allow-ui-effects`. *What Singing is* shows the role's details only
+(`Picker-Singing-Role`): its facts (`PickerFact-Singing-<fact>`: `vram`,
+`download`, `song`, `license`, `cost`, `data`) and `SingingGpu` (fixed text: its
+first sentence, with all of it in `help`), which answers whether Singing needs a
+graphics card of its own. Under *Song choices*, `SingingQuality` ("Fast
 (recommended)", "High quality ...") reports the saved quality (`ui_select` on it
 saves `singing.json`, so it needs `--allow-ui-effects`), and the voice match is a
 second option picker: `Picker-SingingVoiceMatch-SoulX` and
@@ -7410,19 +7418,17 @@ second option picker: `Picker-SingingVoiceMatch-SoulX` and
 compare their footprint and license (`PickerFact-SingingVoiceMatch-license`:
 VevoSing is "CC-BY-NC-ND-4.0: personal, non-commercial use only ..."), and
 `SingingUseSoulX` or `SingingUseVevoSing` saves the choice (needs
-`--allow-ui-effects`). With VevoSing chosen
-on a ready computer whose service doesn't list it, `SingingVoiceMatchState` says
-so ("VevoSing isn't set up on this PC. Songs use SoulX-Singer until you add it.",
-or "Adding VevoSing on this PC...") and `SingingSetUpVevo` (*Add VevoSing there*,
-"Adding VevoSing..." while it runs) asks its own confirmation naming VevoSing's
-CC-BY-NC-ND-4.0 terms and downloads only then. `SingingSetUp` asks one
-confirmation naming the downloads, licences and terms and sets the role up through
-`martlet-host add singing` (a run window on this PC whose `HostRunStatus` follows
-the image build, the service starting and each model file's download, for example
-"Singing: downloading model-svc.pt, 45% of 2730 MiB..."); both need
-`--allow-ui-effects`. There is no play button: songs are only performed by Martlet
-in conversation, so make and inspect real songs headlessly with `singing_check`.
-
+`--allow-ui-effects`). With VevoSing chosen while no computer in the list that
+sings has it, `SingingVoiceMatchState` says so ("VevoSing isn't set up on any
+computer in the list. Songs use SoulX-Singer until you add it: ..."). *Set up
+Singing here* asks one confirmation naming the downloads, licences and terms and
+sets the role up through `martlet-host add singing` (a run window on this PC
+whose `HostRunStatus` follows the image build, the service starting and each
+model file's download, for example "Singing: downloading model-svc.pt, 45% of
+2730 MiB..."); *Add VevoSing here* asks its own confirmation naming VevoSing's
+CC-BY-NC-ND-4.0 terms and downloads. There is no play button: songs are only
+performed by Martlet in conversation, so make and inspect real songs headlessly
+with `singing_check`.
 On Companion › Tools (`CompanionTab-Tools`), the Now line `ToolsNow` comes first, then the Terminal card with
 the page's main choice: the radio buttons `ToolsTerminalOn` (*Let Martlet run terminal commands*) and
 `ToolsTerminalOff` (*Off*, the default) report which one is `selected`, and

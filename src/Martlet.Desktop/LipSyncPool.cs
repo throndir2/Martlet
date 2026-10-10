@@ -20,8 +20,8 @@ internal sealed record LipSyncMember(string Key, string HostId, IAvatarHostLink 
 /// lip-sync's list in pools.json (<see cref="PoolSettings"/>), read again only when the file changed; until the owner saves
 /// one, the list made from the older choices (<see cref="Migrate"/>): the computer assigned to lip-sync, the other paired
 /// computers the shared plan says run Audio2Face, then this PC's own Audio2Face service. <see cref="PoolRouting.Order"/> keeps
-/// the members that are on, kept for this PC and paired here; a card member uses its computer's Audio2Face relay when the relay
-/// runs on that card (or the computer didn't say which). Each chunk of a sentence goes through <see cref="WorkQueue.Shared"/>
+/// the members that are on, kept for this PC and paired here (one row per computer: a host runs one Audio2Face relay). Each
+/// chunk of a sentence goes through <see cref="WorkQueue.Shared"/>
 /// at live priority (<see cref="LipSyncSharing"/>): a busy computer is passed over for the next, one reply stays on one
 /// computer while it is free, and a chunk that finds every computer busy too long is skipped, so the voice's loudness moves the
 /// mouth for it. An empty list means the voice's loudness on this PC. The assigned computer's link belongs to
@@ -74,12 +74,13 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
     internal static IReadOnlyList<LipSyncPlace> FromList(PoolList list, IReadOnlyDictionary<string, AvatarRemoteHost> paired,
         AvatarRemoteHost? friend = null)
     {
-        var places = Resolve(PoolRouting.Order(PoolAreas.LipSync, list, WorkSharingRoster.Device, m => Usable(m, paired)), paired);
+        var places = Resolve(PoolRouting.Order(PoolAreas.LipSync, LipSyncSharing.OneRowPerComputer(list), WorkSharingRoster.Device,
+            m => Usable(m, paired)), paired);
         return friend is null || places.Any(p => p.Host?.HostId == friend.HostId) ? places : [new("host:" + friend.HostId, friend), .. places];
     }
 
-    /// <summary>The places for <paramref name="order"/>: each computer once (at its first member: a computer runs one Audio2Face
-    /// relay, whichever of its cards a member names), this PC's own service with its endpoint setting.</summary>
+    /// <summary>The places for <paramref name="order"/>: each computer once (a computer runs one Audio2Face relay), this PC's own
+    /// service with its endpoint setting.</summary>
     internal static IReadOnlyList<LipSyncPlace> Resolve(PoolOrder order, IReadOnlyDictionary<string, AvatarRemoteHost> paired)
     {
         List<LipSyncPlace> list = [];
@@ -94,18 +95,9 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
     }
 
     /// <summary>Whether lip-sync can use <paramref name="member"/> on this PC now: this PC's own service, or a computer paired
-    /// here whose Audio2Face relay runs on the card the member names (<see cref="Serves"/>).</summary>
+    /// here.</summary>
     internal static bool Usable(PoolMember member, IReadOnlyDictionary<string, AvatarRemoteHost> paired) =>
-        member.Kind == PoolMemberKind.ThisPc || member.OnHost && member.HostId is { } id && paired.ContainsKey(id) && Serves(member);
-
-    /// <summary>A card member's computer runs its Audio2Face relay on that card: the relay's cards (as the computer last said)
-    /// include CUDA index card − 1, or the computer named none by index (unknown, or only by UUID).</summary>
-    internal static bool Serves(PoolMember member)
-    {
-        if (member.Kind != PoolMemberKind.Gpu || member.HostId is not { } id || member.Card is not { } card) return true;
-        var indexes = HostRouteGpus.For(id, Audio2FaceHostClient.RouteId).Where(g => g.Length > 0 && g.All(char.IsAsciiDigit)).ToArray();
-        return indexes.Length == 0 || indexes.Contains((card - 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
-    }
+        member.Kind == PoolMemberKind.ThisPc || member.Kind == PoolMemberKind.Computer && member.HostId is { } id && paired.ContainsKey(id);
 
     /// <summary>Lip-sync's list made from the older choices, used until lip-sync's page saves one: empty (the voice's loudness)
     /// when lip-sync was off; otherwise the computer assigned to it with the other paired computers the shared plan says run

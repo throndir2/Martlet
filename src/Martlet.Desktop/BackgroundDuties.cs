@@ -23,15 +23,22 @@ internal static class BackgroundDuties
             if (!kept.TryGetValue(host, out var duties)) kept[host] = duties = [];
             duties.Add(duty);
         }
-        Add(SingingPreferences.Load(dataDirectory).Host, Singing);
+        foreach (var host in Singers(dataDirectory)) Add(host, Singing);
         Add(PainterHost(dataDirectory), Pictures);
         return kept.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value, StringComparer.Ordinal);
     }
 
-    /// <summary>The computer that sings, as the place a think on it would use (Deep thinking's place key for a paired computer),
-    /// so a song holds it while it is made; null when no paired computer sings.</summary>
+    /// <summary>The computer a song goes to first, as the place a think on it would use (Deep thinking's place key for a paired
+    /// computer), so a song holds it while it is made; null when no paired computer sings.</summary>
     internal static BackgroundPlace? Singer(string? dataDirectory) =>
-        dataDirectory is null ? null : Computer(SingingPreferences.Load(dataDirectory).Host, Singing);
+        dataDirectory is null ? null : Computer(Singers(dataDirectory).FirstOrDefault(), Singing);
+
+    /// <summary>The computers that sing: the singing pool's members that are on and paired here (Companion › Singing's list),
+    /// or, before the list, the computer Martlet sings on (singing.json).</summary>
+    private static IReadOnlyList<string> Singers(string dataDirectory) =>
+        WorkSharingRoster.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
+            ? [.. SongClient.Members(dataDirectory).Select(m => m.Host.HostId).Distinct(StringComparer.Ordinal)]
+            : SingingPreferences.Load(dataDirectory).Host is { } host ? [host] : [];
 
     /// <summary>Paired computer <paramref name="host"/> as the place of a song it makes (the singing pool gave it the song).</summary>
     internal static BackgroundPlace? SingerOn(string host) => Computer(host, Singing);

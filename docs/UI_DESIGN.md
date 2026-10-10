@@ -630,7 +630,7 @@ window ends it unless Martlet is listening or watching, which only hides it.
 
   Lip-sync on its own page uses the shared pool list instead of the **Where it
   runs** chooser: an ordered list of *This PC* (your own Audio2Face service at
-  a loopback address), your computers that run Audio2Face and their cards
+  a loopback address) and your computers that run Audio2Face, one row each
   ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)). There is no cloud
   provider. The first member that is on and free moves the mouth; with none
   on, the mouth follows the voice's loudness, so there is no separate *off*.

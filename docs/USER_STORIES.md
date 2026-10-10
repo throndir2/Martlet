@@ -1028,7 +1028,7 @@ next to it, so the Character page stays short and opens at once.
 - **Entry points**: Companion › Lip-sync; Devices › device doing
   lip-sync › *Done by*; Home's Now line when lip-sync isn't working.
 - **Flow**: the page's ordered list of places that run Audio2Face (*This
-  PC*'s own service, your computers and their cards). Add, turn on or off and
+  PC*'s own service and your computers). Add, turn on or off and
   move them with *Up* and *Down*; with none on, the mouth follows voice
   loudness. A computer without Audio2Face shows **Install Audio2Face** in its
   *Settings* (P5); *Audio2Face on this PC* under the list sets it up here with
