@@ -116,7 +116,8 @@ public partial class MemoryWindow
             : move && moved > 0 ? $"Moved {facts} to {label}."
             : move ? $"Copied {facts} to {label}; the facts here stay, because not all of them were taken."
             : $"Copied {facts} to {label}.";
-        ErrorLog.Info($"Memory: {(move && moved > 0 ? "moved" : "copied")} {shared} of {chosen.Length} fact(s) to {label}.");
+        if (shared > 0)
+            ErrorLog.Info($"Memory: {(move && moved > 0 ? "moved" : "copied")} {shared} of {chosen.Length} fact(s) to {label}.");
         RenderShare();
     }
 
