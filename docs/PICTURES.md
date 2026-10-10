@@ -7,17 +7,24 @@ full size), keeps it in **Creations** on all your Martlet computers, and shows i
 
 ## Where it draws
 
-Companion › Pictures › *Where it draws* is this PC's own choice (`pictures.json` in the data folder; never shared, since
-which machine is free to draw depends on the computer you talk to). Martlet makes the Pictures list from it
-([More than one picture computer](#more-than-one-picture-computer)). The pictures themselves are shared.
+Companion › Pictures › *Where it draws* is this PC's own list of places that draw, in order (the Pictures list,
+`pools-local.json` in the data folder; never shared, since which machine is free to draw depends on the computer you talk
+to). The pictures themselves are shared.
 
 The page has the standard order: **Now** (where Martlet draws, with **Check** and **Draw a test picture**), then *Where
-it draws* as an option picker: **Off** (Martlet doesn't draw pictures; pictures it drew stay in Creations) and the
-places below. Each place's row shows its key facts, and **Compare them** shows them side by side: where it runs, the
-graphics memory and download (from the footprint catalog for the Pictures role), how long a picture takes, the picture
-size, the cost and where the description goes. Choosing a row shows its details: the computer and **Set up** for the
-role, the address and workflow for your own ComfyUI, the model ID, key and consent for a cloud provider, and the button
-that uses it.
+it draws*, the shared pool list ([More than one picture computer](#more-than-one-picture-computer)). Each place in the
+list has **On**, **Up**, **Down**, **Remove** and **Settings**. Add a place with **This PC**, one of your computers, an
+address (your own ComfyUI) or **A cloud provider** (OpenRouter or NVIDIA Build: the model ID, a key, and a box to agree that
+descriptions go there and each picture may cost money). With nothing in the list on, pictures are off; pictures Martlet drew
+before stay in Creations.
+
+A place's **Settings** hold what it needs:
+
+- Martlet's Pictures role on this PC or a computer: where the role stands there and **Set up** when it isn't set up yet,
+  then its workflow.
+- A ComfyUI place (the role or your own): its workflow, its checkpoint and its own Export (API) file
+  ([ComfyUI workflows](#comfyui-workflows)), **Connect** (what that ComfyUI has) and **Save**.
+- A cloud provider: its key. Its model is part of the place; to use another model, add the provider again with that model.
 
 | Place | What it is | Cost and privacy |
 | --- | --- | --- |
@@ -26,13 +33,15 @@ that uses it.
 | **OpenRouter** | Any model on [OpenRouter](https://openrouter.ai/models?output_modalities=image) that draws, through its image API (`POST /api/v1/images`, one picture at the 1K tier in the chosen aspect ratio). Default `google/gemini-3.1-flash-image`. | Each picture costs money. The description goes to OpenRouter and the model's provider. |
 | **NVIDIA Build** | NVIDIA's FLUX models (`POST https://ai.api.nvidia.com/v1/genai/<model>`). Default `black-forest-labs/flux.1-schnell`. | Uses your `nvapi-` key; the description goes to NVIDIA. |
 
-A cloud provider uses Pictures' own key (saved in Windows Credential Manager, bound to that provider) or, without one,
-Thinking's key for the same provider (NVIDIA Build's chat and image models share one key). The key is read for each
-picture and sent only to that provider.
+A cloud provider uses its own key (saved in Windows Credential Manager, bound to that provider; `pool-keys.json` keeps its
+reference on this PC) or, without one, Thinking's key for the same provider (NVIDIA Build's chat and image models share one
+key). The key is read for each picture and sent only to that provider. Removing the provider from the list deletes its own
+key.
 
 ### ComfyUI workflows
 
-With your own ComfyUI, choose what it runs:
+With each ComfyUI place (your own, or Martlet's Pictures role), choose in its **Settings** what it runs. Each place
+keeps its own choice:
 
 - **Z-Image Turbo**: ComfyUI's own Z-Image Turbo example (9 steps, cfg 1), when ComfyUI has its three files
   (`diffusion_models/z_image_turbo_bf16.safetensors`, `text_encoders/qwen_3_4b.safetensors`, `vae/ae.safetensors` from
@@ -56,12 +65,11 @@ PC's host service or on one of your paired computers, a ComfyUI you run at an ad
 place keeps its own settings: the workflow, the checkpoint and a custom workflow file for ComfyUI, the model for a cloud
 provider. An empty list means pictures are off.
 
-The first time it needs the list, Martlet makes it from the choice in Companion › Pictures. The chosen place goes first.
+The first time it needs the list, Martlet makes it from the older choice in `pictures.json`. The chosen place goes first.
 For Martlet's Pictures role, the other computers that run the role follow, with the same workflow: this PC's own host
 service first, then the others (fewest jobs first). A host a friend shares and a computer kept for another companion PC
-(Devices › Sharing work) are left out. A cloud provider you chose before keeps your agreement to pay. Until the Pictures
-page edits the list directly, choosing a place there makes the list again in the same way, and *Now* names the places that
-draw when the first is busy.
+(Devices › Sharing work) are left out. A cloud provider you chose before keeps your agreement to pay. After that, the page
+edits the list, and *Now* names the places that draw when the first is busy.
 
 Each picture tries the places in order and draws on the first that is free:
 
@@ -104,10 +112,11 @@ busy, the hourly limit) is brought up by Martlet on its own.
 
 ## Check and test
 
-Companion › Pictures › **Check** asks the saved place whether it can draw now (for a cloud provider, only whether a key is
-there). **Draw a test picture** draws one picture there and shows it on the page (a cloud provider asks first, since it
-costs money). After a picture on Martlet's Pictures role, the desktop frees that computer's graphics card three minutes
-after the last picture, so the voice, listening and a local Thinking model get it back.
+Companion › Pictures › **Check** asks each place in the list that is on whether it can draw now (for a cloud provider, only
+whether a key is there). **Draw a test picture** draws one picture where the list sends it and shows it on the page (when
+the list has a cloud provider on, it asks first, since a picture there costs money). After a picture on Martlet's Pictures
+role, the desktop frees that computer's graphics card three minutes after its last picture, so the voice, listening and a
+local Thinking model get it back.
 
 `MARTLET_PICTURES_FIXTURE=1` before Martlet starts makes it draw with the FIXTURE - NOT AI gradient maker (automated
 checks). MCP: `pictures_status` (with the Pictures list and the places a picture tries now) and `pictures_check` (with
@@ -142,5 +151,8 @@ Verified on 2026-10-06 on Windows with no usable NVIDIA GPU in that session:
 
 The Pictures list (2026-10-09) is checked locally: `PicturePoolTests`, `PicturePoolMembersTests` and
 `PicturePoolDesktopTests`, MCP `pictures_check` with `place` `pool` (simulated ComfyUI computers, FIXTURE) and
-`pictures_status`, and Companion › Pictures' *Now* through `-Desktop`. Pictures drawn on real computers through the list
-are **NOT RUN**: this PC had no computer with the Pictures role.
+`pictures_status`. Companion › Pictures' list was driven through `-Desktop` on a disposable data folder: the list made from
+`pictures.json`, Down, On, Add address, Remove, a place's workflow saved, Connect and Check reporting each place, and the
+cloud provider form refusing to add a provider without the agreement or a key. Pictures drawn on real computers through
+the list, and a cloud provider added with a real key, are **NOT RUN**: this PC had no computer with the Pictures role, and
+a real key would be used.

@@ -65,4 +65,31 @@ public sealed class PicturePoolDesktopTests
         }
         finally { Directory.Delete(directory, true); }
     }
+
+    [Fact]
+    public void A_cloud_place_needs_the_owners_agreement_and_is_named_before_a_paid_picture()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-picture-pool-").FullName;
+        try
+        {
+            var cloud = PoolMember.Cloud(PicturePoolMembers.OpenRouter, "google/gemini-3.1-flash-image");
+            var address = PoolMember.Service("http://lab:8188/").WithSetting(PoolSettingKeys.Workflow, PicturePoolMembers.ZImageTurbo);
+            Assert.True(PictureClient.SaveList(directory, new PoolList { Area = PoolAreas.Pictures.Id, Members = [address, cloud] }));
+            // Without the agreement the provider takes no pictures, so nothing paid is named.
+            Assert.Null(PictureClient.FirstPaid(directory));
+            Assert.IsType<ComfyPictureMaker>(PictureClient.For(directory, Guid.Empty, null));
+
+            Assert.True(PictureClient.SaveList(directory, PictureClient.List(directory).With(cloud.WithConsent(PoolAreas.Pictures.Id, Now))));
+            Assert.Equal("OpenRouter (google/gemini-3.1-flash-image)", PictureClient.FirstPaid(directory));
+            using (var pool = Assert.IsType<PicturePool>(PictureClient.For(directory, Guid.Empty, null)))
+                Assert.Equal(["address:http://lab:8188/", "cloud:openrouter/google/gemini-3.1-flash-image"], pool.Members.Select(m => m.Id));
+
+            // Its own key's reference is read from pool-keys.json.
+            var id = Guid.NewGuid();
+            Assert.True(PoolKeys.Load(directory).With(PoolAreas.Pictures.Id, cloud.Key, id).Save(directory));
+            Assert.Equal(id, PictureClient.CloudPlace(directory, cloud)!.CredentialId);
+            Assert.Null(PictureClient.CloudPlace(directory, address));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
 }
