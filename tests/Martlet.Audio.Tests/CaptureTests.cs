@@ -655,4 +655,17 @@ public sealed class CaptureTests
         Assert.Equal(7, (int)Stage.Provider);
         Assert.Equal(8, (int)Stage.Capture);
     }
+
+    [Theory]
+    [InlineData(ErrorCode.AudioDeviceLost)]
+    [InlineData(ErrorCode.AudioDeviceChanged)]
+    public void DeviceChangeSummariesFitListeningThatOpensTheMicrophoneAgain(ErrorCode code)
+    {
+        // Always listening opens the microphone again by itself, and a Windows reset after a format change is AudioDeviceLost.
+        var error = CaptureErrors.Create(code);
+        error.Validate();
+        Assert.Contains("This recording was discarded", error.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("will not restart", error.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("press again", error.Summary, StringComparison.Ordinal);
+    }
 }
