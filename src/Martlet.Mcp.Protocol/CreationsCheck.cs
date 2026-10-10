@@ -10,8 +10,29 @@ namespace Martlet.Mcp;
 /// voice or personality: creations are the owner's own, like memories.</summary>
 internal static class CreationsCheck
 {
-    internal static object Status(string dataDirectory)
+    /// <summary>Reads the creations of <paramref name="account"/> (32 hex digits or a GUID) in &lt;data&gt;\accounts\&lt;32 hex&gt;.
+    /// Without an account it reads the account the data folder's creations moved to (creations-moved.json), or the data folder
+    /// itself before that move. The answer names the account and the folder it read (docs/ACCOUNTS.md).</summary>
+    internal static object Status(string dataDirectory, string? account = null)
     {
+        Guid? accountId = null;
+        if (account is not null)
+            accountId = Guid.TryParse(account, out var parsed) ? parsed : throw new ArgumentException("account is an account ID (32 hex digits or a GUID).");
+        var moved = CreationAccounts.Moved(dataDirectory);
+        accountId ??= moved?.Account;
+        var folder = accountId is { } id ? CreationAccounts.Folder(dataDirectory, id) : dataDirectory;
+        var from = new
+        {
+            account = accountId?.ToString("N"),
+            folder = accountId is { } shown ? Path.Combine(CreationAccounts.AccountsDirectoryName, shown.ToString("N")) : ".",
+            chosenBy = account is not null ? "argument" : moved is not null ? "moved" : "data folder (before accounts)",
+            moved = moved is null ? null : new
+            {
+                account = moved.Account.ToString("N"), movedAt = moved.MovedAt, creations = moved.Creations, assets = moved.Assets
+            },
+            leftInDataFolder = moved is not null && File.Exists(Path.Combine(dataDirectory, CreationStore.LibraryFile))
+        };
+        dataDirectory = folder;
         var path = Path.Combine(dataDirectory, CreationStore.LibraryFile);
         CreationLibrary? library = null;
         string state;
@@ -29,6 +50,7 @@ internal static class CreationsCheck
         var incoming = Path.Combine(dataDirectory, CreationStore.IncomingDirectoryName);
         return new
         {
+            from,
             state,
             live = library.Live.Count,
             tombstones = library.Creations.Count(c => c.Removed),

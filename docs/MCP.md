@@ -2035,8 +2035,15 @@ device-independent pixels and `screen`, or null), `gaze` (`personality`,
 nothing.
 
 `creations_status` reads [Martlet's creations](CREATIONS.md) from a data
-directory (optional absolute `dataDirectory`; the script gives a disposable one):
-`state` (`none`, `loaded` or `unreadable` for `creations.json`), `live`,
+directory (optional absolute `dataDirectory`; the script gives a disposable one).
+Each [account](ACCOUNTS.md) keeps its own creations in `accounts\<32 hex>`: with
+`account` (32 hex digits or a GUID) it reads that account's; without it, the
+account the data folder's creations moved to (`accounts\creations-moved.json`),
+or the data folder itself before that move. `from` names the `account` (null
+before the move), the `folder` it read, `chosenBy` (`argument`, `moved` or `data
+folder (before accounts)`), the recorded `moved` (account, `movedAt`,
+`creations`, `assets`) and `leftInDataFolder` (a list still in the data folder
+after the move, such as one that couldn't be read). Then `state` (`none`, `loaded` or `unreadable` for `creations.json`), `live`,
 `tombstones`, `totalBytes`, `revision`, `digest` (its first 16 hex digits),
 `kinds` (count and bytes per kind), and per live creation its `key` (the short id
 the tools and `Creation-<key>` use), `kind`, `kindVersion`, `bytes`,
@@ -2071,7 +2078,14 @@ everyone; a delete reaching both hosts and every desktop (pieces and files
 deleted); a stale copy not bringing it back; a host restart; a wrong SHA-256, a
 piece no creation has and an oversized piece refused (`request.invalid`); an
 unsigned request refused; a kind's rules (unregistered kind, missing part, part
-too large); and the per-host record in `creations-sync.json`. With
+too large); the per-host record in `creations-sync.json`; and two accounts
+(Sam, the owner, and Alex) on one host with their own desktops, which use
+`HostCreationPeer.ForAccount`: each syncs through its own list (the second sends
+no piece the pool already holds), the owner's sync joins the old single list both
+ways with desktop A (`CreationOwnerBridge`) and reads only digests when nothing
+changed, Alex never gets the old list or Sam's creations, a piece goes only when
+no list uses it, and a restart keeps both lists. The access hook that refuses
+other accounts' devices is covered by the gateway tests. With
 `seedDataDirectory` (an absolute folder under the temporary folder, never
 Martlet's own) it instead writes two FIXTURE - NOT AI test tones there and
 returns their keys, so the Creations page can be checked with `-Desktop

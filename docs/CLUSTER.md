@@ -899,11 +899,21 @@ from any host.
 | `POST /martlet/v1/creations` | Merge a desktop's list in; returns the merged list and `present` |
 | `GET /martlet/v1/creations/chunks/<sha256>` | One piece (`chunk.missing` when the host has none) |
 | `POST /martlet/v1/creations/chunks/<sha256>` | Send a piece of a live creation; refused (`request.invalid`) for a wrong SHA-256 or length, or a piece no live creation has |
+| `/martlet/v1/creations/accounts/<32 hex>` (with `/digest` and `/chunks/<sha256>`) | The same for one [account's](ACCOUNTS.md) own list, for paired member devices that may use that account (`creations.account_denied` otherwise); at most 64 account lists (`creations.accounts_full`) |
+
+Each account has its own creations: a host keeps one list per account
+(`creations-account-<32 hex>.json`), the old single list for desktops on an older
+Martlet, and one pool of pieces for all of them, deleting a piece only when no
+list's live creation uses it. A desktop syncs the signed-in account's list from
+its folder `accounts\<32 hex>\`; the owner's desktop also joins the old list both
+ways, so older desktops keep the owner's creations
+([each account's own creations](CREATIONS.md#each-accounts-own-creations)).
 
 Desktops sync every 30 seconds while any host is paired and Martlet is the same on
 all your computers (and two seconds after a change), with the same engine MCP's
-`creations_check` rehearses on loopback. The desktop's sync with real paired
-hosts, the Linux host's files and two real computers are **NOT RUN**.
+`creations_check` rehearses on loopback, two accounts included. The desktop's sync
+with real paired hosts, the Linux host's files and two real computers are **NOT
+RUN**.
 
 ## The shared Home Assistant connection
 
