@@ -324,6 +324,17 @@ internal sealed class LocalVoices : IDisposable
             ? r.SetAccount(id, yours ? signedIn : null, yours && signedIn == owner, by, Now) : r);
     }
 
+    /// <summary>W12, *Merge another account into this one*: every voice linked to <paramref name="from"/> links to
+    /// <paramref name="into"/>. Returns how many moved.</summary>
+    internal int MoveLinks(Guid from, Guid into)
+    {
+        Guid? owner;
+        lock (gate) owner = ownerAccount;
+        var moving = Roster.LinkedTo(from);
+        if (moving.Count > 0) Change(r => moving.Aggregate(r, (current, voice) => current.SetAccount(voice.Id, into, into == owner, by, Now)));
+        return moving.Count;
+    }
+
     private HeardVoices Stamp(HeardVoices heard) =>
         heard with { Voices = heard.Voices.Select(v => v.Voice is null ? v : v with { Mine = IsYours(v.Voice) }).ToArray() };
     internal void Join(string fromId, string intoId)

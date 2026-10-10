@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Access;
 using Martlet.Core.Accounts;
+using Martlet.Core.Contracts;
 
 namespace Martlet.Desktop;
 
@@ -412,7 +413,7 @@ public partial class AccountWindow : ThemedWindow
         // Prove both: the other account always, this one too when it has a Martlet password.
         var proveOther = new AccountProveWindow(host.Hosts, host.DataDirectory, $"Sign in as {other.Name}",
             $"To merge {other.Name} into {account.Name}, sign in as {other.Name}.", other.Id, offerRemember: false) { Owner = this };
-        if (proveOther.ShowDialog() != true) return;
+        if (proveOther.ShowDialog() != true || proveOther.Proof is not { } otherProof) return;
         proveOther.Forget();
         if (account.Logins.Any(l => l.Kind == AccountLoginKinds.Martlet))
         {
@@ -424,21 +425,24 @@ public partial class AccountWindow : ThemedWindow
         MergeButton.IsEnabled = false;
         try
         {
-            foreach (var step in host.MergeSteps)
+            Status($"Signing this PC in as {other.Name} on your hosts...");
+            await host.PrepareMergeAsync(otherProof, lifetime.Token);
+            var steps = host.MergeSteps;
+            foreach (var step in steps)
             {
                 Status($"Moving {other.Name}'s {step.Name}...");
                 await step.MergeAsync(account.Id, other.Id, lifetime.Token);
             }
             await host.ChangeDirectoryAsync((directory, signer, now) => AccountLinks.Merge(directory, signer, account.Id, other.Id, now), lifetime.Token);
             host.Locks.Delete(other.Id);
-            ErrorLog.Info($"Account {other.Key} merged into {account.Key} on this PC ({host.MergeSteps.Count} data step(s)).");
-            Status($"{other.Name} is merged into {account.Name}.");
+            ErrorLog.Info($"Account {other.Key} merged into {account.Key} on this PC ({steps.Count} data step(s)).");
+            Status($"{other.Name} is merged into {account.Name}: characters, memories, voices and logins are {account.Name}'s now.");
             Refresh();
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is InvalidOperationException || ClusterSync.IsHostFailure(error))
+        catch (Exception error) when (error is InvalidOperationException or ContractException || ClusterSync.IsHostFailure(error))
         {
-            Status($"The merge stopped: {error.Message} Nothing was removed; try again.");
+            Status($"The merge stopped: {error.Message} {other.Name} wasn't removed; try again.");
         }
         finally { MergeButton.IsEnabled = true; }
     }

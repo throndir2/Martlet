@@ -560,11 +560,18 @@ desktop shows household sign-in only to an owner or admin.
 
 1. Choose the other account. Sign in as it (Prove), and as this account too
    when it has a Martlet password.
-2. Each `IAccountMergeStep` moves the other account's data into this one
-   through its own store and sync: today the account's folder files that this
-   one lacks; W8, W9 and W11 add their steps for characters and account
-   settings, memories (`account-<id>` space) and voice links. A step that
-   fails stops the merge before anything is removed.
+2. This PC signs in as the other account on the hosts (its Prove attestation
+   in the directory, given to every host at once), so they let it read that
+   account's memory space and settings. Then each `IAccountMergeStep` moves
+   the other account's data into this one through its own store and sync:
+   the files of its folder on this PC that this one lacks; its memories (its
+   `account-<id>` space merged into this one's on every host; facts keep their
+   IDs and `voice_id`); its personalities and character profiles (from its
+   account settings, with the same IDs, so each character keeps its own
+   memories; a name already used gets a number); and its voice links (each
+   voice linked to it links to this account). Its other account settings
+   (lorebooks, replies, look) stay with it. A step that fails stops the merge
+   before anything is removed.
 3. `AccountLinks.Merge` gives this account the other's logins, device
    bindings, voices, e-mail hints and the higher role, and removes the other
    with `merged_into` (both signed by this PC). A PC where the merged account
@@ -592,6 +599,10 @@ here):
   copies exist, the plain one wins. A file another program has open stays
   plain and is logged. **Lock now** shows Unlock without encrypting (the
   account's files are in use).
+- Only the account's folder is encrypted. The settings of the account in use
+  are also in the data folder's own files (the working copy of
+  [account settings](#shared-contracts)); they stay plain there until another
+  account becomes active, also after Martlet closes.
 - It keeps people on one Windows login apart. It is not secret from an
   administrator or from someone who guesses a short PIN. Forgetting the PIN
   (when the password didn't wrap the key) loses this PC's copy; the hosts keep

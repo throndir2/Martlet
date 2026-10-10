@@ -212,6 +212,16 @@ public partial class MainWindow
 
         public Task LockNowAsync() => main.LockNowAsync();
         public Task SignOutAsync(Guid accountId) => main.SignOutAccountAsync(accountId);
-        public IReadOnlyList<IAccountMergeStep> MergeSteps => [new AccountFolderMergeStep(DataDirectory)];
+        public Task PrepareMergeAsync(Martlet.Avatar.Audio2Face.Remote.HostAccountProof other, CancellationToken token) =>
+            Security.PrepareMergeAsync(other, token);
+
+        public IReadOnlyList<IAccountMergeStep> MergeSteps =>
+        [
+            new AccountFolderMergeStep(DataDirectory),
+            new AccountMemoryMergeStep(Security.Hosts),
+            new AccountCharactersMergeStep(Security.Hosts,
+                async change => await main.ChangeCompanionAsync(change, "Characters moved here from a merged account.") is not null),
+            new AccountVoiceMergeStep(main.localVoices)
+        ];
     }
 }

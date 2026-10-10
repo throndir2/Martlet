@@ -290,6 +290,31 @@ internal sealed class AccountSecurityService(AccountSession session, string data
         finally { prove.Forget(); }
     }
 
+    /// <summary>*Merge another account into this one*, before its data steps: binds this PC to the merged account with its Prove
+    /// attestation and gives the directory to the hosts at once, so they let this PC read that account's memories and settings.</summary>
+    internal async Task PrepareMergeAsync(Martlet.Avatar.Audio2Face.Remote.HostAccountProof other, CancellationToken token)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var directory = ChangeDirectory((d, key, at) => d.Find(other.AccountId) is { Removed: false } account
+            ? d.Put(key, AccountLinks.SignedIn(account, session.DeviceId, other.Attestation, now), at)
+            : throw new InvalidOperationException("The other account isn't in your household's directory."));
+        var given = 0;
+        foreach (var choice in Hosts())
+        {
+            try
+            {
+                using var connection = ClusterSync.Connect(choice.Host);
+                if ((await connection.MergeAccountsAsync(directory, token)).Rejected == 0) given++;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception error) when (ClusterSync.IsHostFailure(error) || error is OperationCanceledException)
+            {
+                ErrorLog.Warn($"Accounts: {choice.Host.HostId} didn't take this PC's sign-in for the merge", error);
+            }
+        }
+        if (given == 0) throw new InvalidOperationException("No host took this PC's sign-in as the other account, so its data can't be read for the merge.");
+    }
+
     /// <summary>*Sign out of this PC* for <paramref name="id"/>, which isn't in use: this device's binding leaves the directory
     /// (when this PC can change it), the account leaves this device's session and its unlock file goes. Its folder stays.</summary>
     internal void SignOut(Guid id)

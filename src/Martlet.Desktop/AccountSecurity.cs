@@ -39,6 +39,9 @@ internal interface IAccountPageHost
     Task SignOutAsync(Guid accountId);
     /// <summary>The steps that move another account's data into one (<see cref="IAccountMergeStep"/>), in order.</summary>
     IReadOnlyList<IAccountMergeStep> MergeSteps { get; }
+    /// <summary>Before the merge steps: this PC signs in as the merged account (its Prove sign-in) on the hosts, so they let it
+    /// read that account's data.</summary>
+    Task PrepareMergeAsync(Martlet.Avatar.Audio2Face.Remote.HostAccountProof other, CancellationToken token);
 }
 
 /// <summary>
