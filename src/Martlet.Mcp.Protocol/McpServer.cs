@@ -1755,7 +1755,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             new { }),
         Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
-            "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
+            "(on by default, Off from Thinking longer's own box; effort, time limit, hourly limit, when it shares the result) and whether any " +
             "was chosen, the Thinking route (whether it does function calling, whether the model turned tools down, whether " +
             "think_longer is offered), Companion > Deep thinking (this PC's deep-thinking.json: same as Thinking, an endpoint or a " +
             "paired computer, never a key; whether a think can run there alongside the conversation and why: Deep thinking needs a " +
@@ -1791,7 +1791,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("thinking_pool_status", "Companion > Thinking pool from a data directory: thinking-pool.json (or what Martlet would make " +
             "from the older deep-thinking.json, without writing it): each member (a paired computer's Thinking pool role or Ollama, " +
             "a model in Ollama on this PC or an OpenAI-compatible endpoint; never a key) with its slots, whether it sees pictures " +
-            "or hears recordings, whether it can run and why, and its Quick jobs and Long jobs boxes; whether thinking longer " +
+            "or hears recordings, whether it can run and why, and its Quick jobs and Long jobs boxes; the machines the owner turned " +
+            "off (offMembers: each one's key, where, model, graphics card and boxes; they take no jobs, and with no member on the " +
+            "pool is off: poolOff); whether thinking longer " +
             "and research use the conversation model when no member takes long jobs; the usable slots " +
             "and whether one is kept free for fast jobs (judges and summaries); each job kind's priority, whether it is fast and " +
             "whether a member that takes that kind can run it (the cheap CanRun answer); guidance (such as 1 slot: long thinking can delay screen and " +
@@ -1810,7 +1812,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "that sees and a recording finding none, two slots where a second long job waits while a judge takes the last free " +
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
             "over for the next, a stale judge dropped, deep-thinking.json read once into thinking-pool.json, paired hosts joining " +
-            "the pool by themselves (ThinkingPoolAutoJoin, sample hosts), and presence: a " +
+            "the pool by themselves (ThinkingPoolAutoJoin, sample hosts), a graphics card the owner turned off staying off while the " +
+            "computer's other card keeps working, and presence: a " +
             "member's computer going offline (its slots leave the pool, jobs go to the others and wait for it, the last-free-slot " +
             "rule counts only computers that answer, every computer offline lets the conversation model stand in) and answering " +
             "again (its slots come back and a job waiting in line starts there), while the think_longer tool text stays " +

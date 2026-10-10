@@ -9,7 +9,9 @@ namespace Martlet.Core.Settings;
 /// longer, research, screen and sound summaries, judges and helpers. Each member is one place (<see cref="DeepThinkingSettings"/>,
 /// a single place without its own pool): a paired Martlet host with a Thinking model, which joins by itself
 /// (<see cref="ThinkingPoolAutoJoin"/>; its Thinking pool role, or its Ollama) unless the owner took it out
-/// (<see cref="LeftByOwner"/>), a model in Ollama on this PC, or an OpenAI-compatible endpoint, each with its slot count. The live conversation keeps
+/// (<see cref="LeftByOwner"/>), a model in Ollama on this PC, or an OpenAI-compatible endpoint, each with its slot count. The page
+/// is that list: each member (one per graphics card of a paired computer) is on or off (<see cref="OffMembers"/>), and with no
+/// member on, the pool is off. The live conversation keeps
 /// its own Thinking route; pool work never uses it, except that thinking longer and research use the conversation model while
 /// the pool is empty when <see cref="UseConversationModelWhenEmpty"/> is on (the default). Martlet writes this file from the
 /// older deep-thinking.json once, the first time it reads the pool.</summary>
@@ -19,8 +21,69 @@ public sealed record ThinkingPoolSettings
     private const int MaxFileBytes = 128 * 1024;
 
     public int SchemaVersion { get; init; } = 1;
-    /// <summary>The members, in the order they were added; at most <see cref="DeepThinkingSettings.MaxPlaces"/>.</summary>
+    /// <summary>The members that are on, in the order they were added; at most <see cref="DeepThinkingSettings.MaxPlaces"/>. Only
+    /// these take jobs: with none, the pool is off.</summary>
     public IReadOnlyList<DeepThinkingSettings> Members { get; init; } = [];
+
+    /// <summary>The members the owner turned off (On unticked in the machine list): they keep their settings and rules (by key)
+    /// and stay in the list, but take no job. A paired computer's graphics card here never joins again by itself; turning it on
+    /// moves it back to <see cref="Members"/>. At most <see cref="DeepThinkingSettings.MaxPlaces"/>. A file saved before this list
+    /// existed reads as empty.</summary>
+    public IReadOnlyList<DeepThinkingSettings> OffMembers { get => offMembers; init => offMembers = value ?? []; }
+    private readonly IReadOnlyList<DeepThinkingSettings> offMembers = [];
+
+    /// <summary>Every member in the machine list: those that are on, then those that are off.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<DeepThinkingSettings> All => [.. Members, .. OffMembers];
+
+    /// <summary>Whether the member with <paramref name="key"/> is turned off.</summary>
+    public bool IsOff(string key) => OffMembers.Any(m => m.Key == key);
+
+    /// <summary>The pool with the member with <paramref name="key"/> turned off: it moves to <see cref="OffMembers"/> with its
+    /// rules kept. No change when no member that is on has that key.</summary>
+    public ThinkingPoolSettings TurnOff(string key)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        if (Members.FirstOrDefault(m => m.Key == key) is not { } member) return this;
+        return this with { Members = [.. Members.Where(m => m.Key != key)], OffMembers = [.. OffMembers.Where(m => m.Key != key), member] };
+    }
+
+    /// <summary>The pool with the member with <paramref name="key"/> turned on again: it moves back to <see cref="Members"/>, and its
+    /// computer is no longer kept out. No change when no member that is off has that key.</summary>
+    public ThinkingPoolSettings TurnOn(string key)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        if (OffMembers.FirstOrDefault(m => m.Key == key) is not { } member) return this;
+        ContractRules.Require(Members.Count < DeepThinkingSettings.MaxPlaces,
+            $"The Thinking pool has at most {DeepThinkingSettings.MaxPlaces} machines on. Turn one off first.");
+        var next = this with { Members = [.. Members, member], OffMembers = [.. OffMembers.Where(m => m.Key != key)] };
+        return member is { Place: DeepThinkingPlace.Host, HostId: { } host } && Left(host) ? next.KeepOut(host, false) : next;
+    }
+
+    /// <summary>The pool with the endpoint member with <paramref name="key"/> (on or off) using <paramref name="model"/>, in the
+    /// same place in the list. Its rules move to its new key; its smarts go back to Martlet's guess for the new model.</summary>
+    public ThinkingPoolSettings WithModel(string key, string model)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        var member = All.FirstOrDefault(m => m.Key == key) ??
+            throw new ContractException(ErrorCode.InvalidContract, "That machine isn't in the Thinking pool any more.");
+        ContractRules.Require(member.Place == DeepThinkingPlace.Endpoint, "Only an endpoint's model is chosen here; a paired computer's is set on that computer.");
+        ChatCompletionsSetup.ModelId(model);
+        var next = member with { ModelId = model };
+        var to = next.Key;
+        if (to == key) return this;
+        ContractRules.Require(All.All(m => m.Key != to), $"{next.Describe()} is in the Thinking pool already.");
+        IReadOnlyList<string> Move(IReadOnlyList<string> keys) => [.. keys.Select(k => k == key ? to : k)];
+        return this with
+        {
+            Members = [.. Members.Select(m => m.Key == key ? next : m)], OffMembers = [.. OffMembers.Select(m => m.Key == key ? next : m)],
+            AnswersForConversation = Move(AnswersForConversation), NoQuickJobs = Move(NoQuickJobs), NoLongJobs = Move(NoLongJobs),
+            MediaAllowed = Move(MediaAllowed),
+            Smarts = Smarts.Where(s => s.Key != key).ToDictionary(s => s.Key, s => s.Value, StringComparer.Ordinal),
+            RunsOnByKind = RunsOnByKind.ToDictionary(r => r.Key, r => r.Value.Members.Contains(key, StringComparer.Ordinal)
+                ? r.Value with { Members = Move(r.Value.Members) } : r.Value, StringComparer.Ordinal)
+        };
+    }
     /// <summary>Use the conversation model when the pool is empty: thinking longer and research then run on the conversation's own
     /// Thinking route (as Deep thinking's Same as Thinking did). Other job kinds get "no member" and use their own fallback.</summary>
     public bool UseConversationModelWhenEmpty { get; init; } = true;
@@ -218,7 +281,7 @@ public sealed record ThinkingPoolSettings
     /// <summary>The pool without <paramref name="hostId"/>'s members (one for each of its graphics cards with a Thinking pool
     /// model), with the computer kept out so it doesn't join again by itself (the owner unticked In the Thinking pool).</summary>
     public ThinkingPoolSettings TakeOut(string hostId) =>
-        Members.Where(m => m.Place == DeepThinkingPlace.Host && m.HostId == hostId).Select(m => m.Key).Append(DeepThinkingSettings.KeyOf(hostId))
+        All.Where(m => m.Place == DeepThinkingPlace.Host && m.HostId == hostId).Select(m => m.Key).Append(DeepThinkingSettings.KeyOf(hostId))
             .Distinct(StringComparer.Ordinal).Aggregate(this, (pool, key) => pool.Remove(key)).KeepOut(hostId, true);
 
     /// <summary>The members as one place with its pool (the first member and the others), as Martlet's planner reads them. An
@@ -226,26 +289,33 @@ public sealed record ThinkingPoolSettings
     [JsonIgnore]
     public DeepThinkingSettings Places => Members.Count == 0 ? new() : Members[0].Single.WithPool(Members.Skip(1));
 
-    /// <summary>The pool with <paramref name="places"/>' places as members (the conversation model is never a member).</summary>
-    public ThinkingPoolSettings With(DeepThinkingSettings places) =>
-        this with { Members = [.. places.Places.Where(p => p.Separate).Select(p => p.Single).DistinctBy(p => p.Key).Take(DeepThinkingSettings.MaxPlaces)] };
+    /// <summary>The pool with <paramref name="places"/>' places as members (the conversation model is never a member). A member
+    /// that was off and is one of them is on again.</summary>
+    public ThinkingPoolSettings With(DeepThinkingSettings places)
+    {
+        DeepThinkingSettings[] members = [.. places.Places.Where(p => p.Separate).Select(p => p.Single).DistinctBy(p => p.Key).Take(DeepThinkingSettings.MaxPlaces)];
+        return this with { Members = members, OffMembers = [.. OffMembers.Where(o => members.All(m => m.Key != o.Key))] };
+    }
 
-    /// <summary>The pool with <paramref name="member"/> added (or replaced: the same computer, or the same endpoint and model).</summary>
+    /// <summary>The pool with <paramref name="member"/> added and on (or replaced: the same computer, or the same endpoint and
+    /// model; one that was off is on again).</summary>
     public ThinkingPoolSettings Add(DeepThinkingSettings member)
     {
         ArgumentNullException.ThrowIfNull(member);
         var single = member.Single;
         ContractRules.Require(single.Separate, "The conversation model isn't a pool member.");
+        var off = OffMembers.Where(m => m.Key != single.Key).ToArray();
         var index = Members.ToList().FindIndex(m => m.Key == single.Key);
-        if (index >= 0) return this with { Members = [.. Members.Select((m, i) => i == index ? single : m)] };
+        if (index >= 0) return this with { Members = [.. Members.Select((m, i) => i == index ? single : m)], OffMembers = off };
         ContractRules.Require(Members.Count < DeepThinkingSettings.MaxPlaces, $"The Thinking pool has at most {DeepThinkingSettings.MaxPlaces} members.");
-        return this with { Members = [.. Members, single] };
+        return this with { Members = [.. Members, single], OffMembers = off };
     }
 
-    /// <summary>The pool without the member whose key is <paramref name="key"/>, and without its rules.</summary>
+    /// <summary>The pool without the member whose key is <paramref name="key"/> (on or off), and without its rules.</summary>
     public ThinkingPoolSettings Remove(string key) => this with
     {
-        Members = [.. Members.Where(m => m.Key != key)], AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)],
+        Members = [.. Members.Where(m => m.Key != key)], OffMembers = [.. OffMembers.Where(m => m.Key != key)],
+        AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)],
         NoQuickJobs = [.. NoQuickJobs.Where(k => k != key)], NoLongJobs = [.. NoLongJobs.Where(k => k != key)],
         MediaAllowed = [.. MediaAllowed.Where(k => k != key)],
         Smarts = Smarts.Where(s => s.Key != key).ToDictionary(s => s.Key, s => s.Value, StringComparer.Ordinal),
@@ -262,8 +332,8 @@ public sealed record ThinkingPoolSettings
         IReadOnlyCollection<string>? offline = null)
     {
         if (Members.Count == 0 && !UseConversationModelWhenEmpty)
-            return new([new DeepThinkingSpot(new(), new(false, "The Thinking pool has no member, and Use the conversation model when " +
-                "the pool is empty is off. Add a member on Companion › Thinking pool."), "no member")]);
+            return new([new DeepThinkingSpot(new(), new(false, "The Thinking pool has no member that is on, and Use the conversation model when " +
+                "the pool is empty is off. Add a machine or turn one on in Companion › Thinking pool."), "no member")]);
         var pool = DeepThinkingPool.For(Places, routes, sharing, device, offline);
         if (Members.Count == 0 || !UseConversationModelWhenEmpty || pool.Plan is not { Available: false, Offline: true } gone) return pool;
         // The members that would run are all offline: the conversation model stands in, as for an empty pool, until one answers.
@@ -281,6 +351,9 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(Members is { Count: <= DeepThinkingSettings.MaxPlaces } && Members.All(m => m is { Pool: null } && m.Separate) &&
             Members.Select(m => m.Key).Distinct(StringComparer.Ordinal).Count() == Members.Count,
             $"The Thinking pool has at most {DeepThinkingSettings.MaxPlaces} different members, each a paired computer or an endpoint.");
+        ContractRules.Require(OffMembers.Count <= DeepThinkingSettings.MaxPlaces && OffMembers.All(m => m is { Pool: null } && m.Separate) &&
+            All.Select(m => m.Key).Distinct(StringComparer.Ordinal).Count() == All.Count,
+            $"The Thinking pool has at most {DeepThinkingSettings.MaxPlaces} different machines turned off, none of them also on.");
         ContractRules.Require(BackupDelayMs is null || BackupDelayChoices.Contains(BackupDelayMs.Value),
             $"Backup Thinking waits one of {string.Join(", ", BackupDelayChoices)} ms, or automatic.");
         ContractRules.Require(AnswersForConversation.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
@@ -305,7 +378,7 @@ public sealed record ThinkingPoolSettings
             LeftByOwner.All(h => h is { Length: > 0 and <= 128 } && !h.Any(char.IsControl)) &&
             LeftByOwner.Distinct(StringComparer.Ordinal).Count() == LeftByOwner.Count,
             $"The computers kept out of the Thinking pool are at most {MaxLeftByOwner} different computer names.");
-        foreach (var member in Members) member.Validate();
+        foreach (var member in All) member.Validate();
     }
 
     public static ThinkingPoolSettings Load(string? directory) => Read(directory).Settings;

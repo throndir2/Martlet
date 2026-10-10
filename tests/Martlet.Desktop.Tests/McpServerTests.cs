@@ -51,7 +51,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
             "priority raise: a job of the raised priority no longer stops it",
             "retries: a failed job is tried again at its priority; with 0 retries it fails",
             "retries: a timed-out job is tried again",
-            "retries: a raised job is tried again at the priority it was left at"
+            "retries: a raised job is tried again at the priority it was left at",
+            "per GPU: a card turned off stays off while the computer's other card keeps working, and comes back with its boxes"
         })
             Assert.True(steps[name].Passed, $"{name}: {steps[name].Detail}");
         var priority = result.GetProperty("priority");

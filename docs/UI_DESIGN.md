@@ -436,7 +436,8 @@ window ends it unless Martlet is listening or watching, which only hides it.
     intro starts with "Optional.", says what the part does and ends with
     *Off:* and what Off means, in the priority list's words
     (`OptionalExtras.OffMeans`). Each page has the standard order: **Now**,
-    then the main choice as an option picker whose first option is **Off**,
+    then the main choice as an option picker whose first option is **Off**
+    (the Thinking pool is the exception: its machine list is the main choice),
     then configuration:
     5. *Vision*: Now (on or off, what Martlet looks at, whether it can see,
        the image model's lines and *Test vision*), then **How Martlet sees**:
@@ -460,11 +461,16 @@ window ends it unless Martlet is listening or watching, which only hides it.
        it*: the consent check box (on while the recording stays on this PC,
        else off until you tick it), the voice path and *Test hearing*.
        Listening links here.
-    8. *Thinking pool*: Now, then **Where it thinks**: Off, one of your
-       computers, Ollama on this PC or a cloud provider (each option's
-       details add machines there), then the machine list (Quick jobs, Long
-       jobs and Backup for slow replies on each machine), Thinking longer, Web
-       research and Backup for slow replies.
+    8. *Thinking pool*: Now, then the machine list instead of an option
+       picker, because the list is the pool: one row for each graphics card
+       of a paired computer, each model in Ollama on this PC and each cloud
+       provider or server, each with **On**, its model, slots, Quick jobs,
+       Long jobs and Backup for slow replies. A machine that is off keeps its
+       settings; with no machine on, the pool is off. A card without a
+       Thinking pool model yet has *Add a model*, and *Add a machine* (another
+       of your computers, a model in Ollama on this PC, a cloud provider or
+       server) ends the list. Then Runs on, Thinking longer (its own on/off),
+       Web research, Backup for slow replies and Busy pool.
     9. *Smart home*: Now, then Home Assistant or Off in an option picker,
        then connecting and installing Home Assistant, then what Martlet may
        do, the devices and sharing.
