@@ -123,11 +123,17 @@ internal static class SpokenReplyCheck
             var acting = ReadCuesAsync(cueFeed, posted, clock, stop.Token);
             await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice, spokenText: captions,
                 characterCues: cueFeed);
+            // The reply's Thinking trace, as the desktop log gets it (docs/VOICE_LATENCY.md, Thinking trace).
+            var traced = new List<string>();
+            runtime.Trace = line =>
+            {
+                lock (traced) traced.Add(line);
+            };
             // As the desktop counts a typed message: from sending it, through building the request, to the first audio.
             var timeline = new ReplyTimeline(TimeProvider.System, ReplyTimeline.YouSent);
             var startedAt = TimeProvider.System.GetTimestamp();
             timeline.Mark("building the request", startedAt);
-            var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation);
+            var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation, "spoken reply check");
             voice.Turn.TrySetResult(turn);
             var holding = failure == "paused" ? HoldAsync(turn, voice, speakers, clock, cancellation) : null;
             var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
@@ -244,10 +250,16 @@ internal static class SpokenReplyCheck
                 Plain(text).StartsWith(Plain(saidAloud), StringComparison.Ordinal) &&
                 Plain(saidAloud + " " + cutUnsaid) == Plain(text) &&
                 (cutUnsaid is null) == (CutOffReply.Note(null, cutUnsaid) is null);
+            // The Thinking trace: the turn's start, its first request's line and its end with the state it ended in.
+            string[] trace;
+            lock (traced) trace = [.. traced];
+            var traceOk = trace.Any(line => line.Contains(" started: Chat Completions ", StringComparison.Ordinal)) &&
+                trace.Any(line => line.Contains(": request 1 (first) ", StringComparison.Ordinal)) &&
+                trace.Any(line => line.Contains($" ended at ", StringComparison.Ordinal) && line.Contains($" ms: {terminal.State}", StringComparison.Ordinal));
             return new
             {
                 ok = (stopped || terminal.State == ConversationState.Completed && terminal.TextComplete && full && captionsComplete) &&
-                    voiceOk && latencyOk && thinkingOk && tagsHidden && characterOk && cutOk,
+                    voiceOk && latencyOk && thinkingOk && tagsHidden && characterOk && cutOk && traceOk,
                 voiceFailure = failure,
                 failAt = everyPiece || failure == "text-only" ? (int?)null : at,
                 endpoint = baseUrl,
@@ -307,6 +319,8 @@ internal static class SpokenReplyCheck
                     firstAudioMs = terminal.FirstAudioAfter?.TotalMilliseconds,
                     timings = terminal.Timings
                 },
+                // The reply's Thinking trace lines, as the desktop log has them (docs/VOICE_LATENCY.md, Thinking trace).
+                thinkingTrace = new { ok = traceOk, lines = trace },
                 reply = new
                 {
                     state = terminal.State.ToString(),

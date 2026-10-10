@@ -71,17 +71,23 @@ public interface ITextGenerationStream : IAsyncEnumerable<ProviderEvent>
     /// <summary>How long after the stream was created the provider's response headers arrived; null until then or when the
     /// route doesn't report it. Diagnostics only.</summary>
     TimeSpan? ResponseAfter => null;
+    /// <summary>How long after the stream was created its request was sent (once its key was read and its body made); null
+    /// until then or when the route doesn't report it. Diagnostics only (the Thinking trace).</summary>
+    TimeSpan? SentAfter => null;
     /// <summary>How long after the stream was created the first hidden reasoning (thinking) arrived; null when none did or the
     /// route doesn't report it. Diagnostics only.</summary>
     TimeSpan? FirstReasoningAfter => null;
 }
 
-// When a text stream's response and first reasoning arrived, in ticks of elapsed time from the stream's creation (0 = not yet).
+// When a text stream's request was sent, its response and first reasoning arrived, in ticks of elapsed time from the stream's
+// creation (0 = not yet).
 internal sealed class TextStreamTimings
 {
-    private long response, reasoning;
+    private long sent, response, reasoning;
+    internal TimeSpan? Sent => Read(ref sent);
     internal TimeSpan? Response => Read(ref response);
     internal TimeSpan? Reasoning => Read(ref reasoning);
+    internal void MarkSent(TimeSpan elapsed) => Mark(ref sent, elapsed);
     internal void MarkResponse(TimeSpan elapsed) => Mark(ref response, elapsed);
     internal void MarkReasoning(TimeSpan elapsed) => Mark(ref reasoning, elapsed);
     private static TimeSpan? Read(ref long field) => Interlocked.Read(ref field) is var ticks and > 0 ? TimeSpan.FromTicks(ticks) : null;
@@ -111,6 +117,7 @@ public sealed class TextGenerationStream : ITextGenerationStream
     public TextGenerationResult? Result { get; private set; }
     public ProviderCapabilities Capabilities { get; }
     public TimeSpan? ResponseAfter => timings.Response;
+    public TimeSpan? SentAfter => timings.Sent;
     public TimeSpan? FirstReasoningAfter => timings.Reasoning;
 
     internal TextGenerationStream(HttpClient client, IProviderCredentialSource? credentials, TimeProvider clock,
@@ -343,6 +350,7 @@ internal sealed class TextGenerationOperation(
         EnsureActive();
         request.Content = new SingleSendContent(CreateJson(), EnsureActive);
         EnsureActive();
+        timings?.MarkSent(clock.GetElapsedTime(startedAt));
         response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, Token).ConfigureAwait(false);
         timings?.MarkResponse(clock.GetElapsedTime(startedAt));
         EnsureActive();

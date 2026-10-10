@@ -10,7 +10,7 @@ using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
-public sealed class ConversationTurn
+public sealed partial class ConversationTurn
 {
     internal ConversationRuntime Owner { get; }
     private object Sync => Owner.Sync;
@@ -136,9 +136,10 @@ public sealed class ConversationTurn
 
     internal ConversationTurn(ConversationRuntime owner, ConversationRequest request,
         IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech, bool early = false,
-        bool prepareVoice = true)
+        bool prepareVoice = true, string? purpose = null)
     {
         Owner = owner;
+        (trace, traceName) = TraceFor(owner, purpose);
         cueClock = new(Clock);
         this.request = request;
         this.authorization = authorization;
@@ -264,6 +265,20 @@ public sealed class ConversationTurn
     // Waits while the turn is held (started early and not released yet); a stopped turn ends the wait.
     private Task WhileHeldAsync() => hold is { Task.IsCompleted: false } held ? held.Task.WaitAsync(stop.Token) : Task.CompletedTask;
 
+    // WhileHeldAsync, which the Thinking trace says it waits for.
+    private async Task HeldAsync()
+    {
+        var held = WhileHeldAsync();
+        if (held.IsCompleted)
+        {
+            await held.ConfigureAwait(false);
+            return;
+        }
+        TraceWaiting("the talk window to take this reply (it started early)");
+        try { await held.ConfigureAwait(false); }
+        finally { TraceWaiting(null); }
+    }
+
     /// <summary>Pauses what Martlet says aloud, at once, without losing anything: the sentence playing stops reading audio
     /// and keeps what is buffered, and a sentence that starts meanwhile starts paused. The Thinking text and the voice's
     /// synthesis go on and buffer, so <see cref="Resume"/> plays on from the same sample with no new synthesis. Returns
@@ -350,6 +365,7 @@ public sealed class ConversationTurn
 
     private async Task WorkAsync()
     {
+        TraceStart();
         var writing = GuardStageAsync(GenerateAsync);
         // A reply that isn't spoken has nothing more to make once its text is written.
         if (request.Speech is null) _ = writing.ContinueWith(_ => synthesized.TrySetResult(), CancellationToken.None,
@@ -488,6 +504,7 @@ public sealed class ConversationTurn
         if (request.SpokenWords is not { } words) return input.WithoutAudio();
         if (spokenWords is null)
         {
+            TraceWaiting("speech-to-text's words for the recording");
             try
             {
                 var heard = await words(stop.Token).WaitAsync(whole.Remaining > TimeSpan.Zero ? whole.Remaining : TimeSpan.Zero, Clock,
@@ -496,6 +513,7 @@ public sealed class ConversationTurn
                 spokenWords = heard.Trim();
             }
             catch (TimeoutException) { return null; }
+            finally { TraceWaiting(null); }
             lock (Sync) CheckActive();
         }
         try { return input.WithTranscript(spokenWords); }
@@ -515,6 +533,8 @@ public sealed class ConversationTurn
             var input = request.Input;
             var rounds = new List<TextToolRound>();
             bool retried = false, fallback = false, audioDropped = false, imageDropped = false, reasoningDropped = false;
+            // Why the next request is sent, for the Thinking trace.
+            var why = "first";
             for (var attempt = 0; ; attempt++)
             {
                 int before;
@@ -535,9 +555,9 @@ public sealed class ConversationTurn
                 try
                 {
                     // A reply started early asks the Thinking fallback (it may be a paid cloud model) only once it is taken.
-                    if (fallback) await WhileHeldAsync().ConfigureAwait(false);
+                    if (fallback) await HeldAsync().ConfigureAwait(false);
                     result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
-                        attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped, hedged: attempt == 0).ConfigureAwait(false);
+                        attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped, hedged: attempt == 0, why: why).ConfigureAwait(false);
                 }
                 // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback.
                 catch (Exception error) when (error is ConversationException { Failure: ConversationFailure.DeadlineExceeded or
@@ -545,6 +565,7 @@ public sealed class ConversationTurn
                     !fallback && FallBack(before, error is ConversationException failed ? failed.Failure.ToString() : nameof(ConversationFailure.InvalidStream)))
                 {
                     fallback = true;
+                    why = $"the Thinking fallback, after {fellBackAfter}";
                     continue;
                 }
                 if (result.End is RoundEnd.Failed or RoundEnd.Invalid)
@@ -560,6 +581,7 @@ public sealed class ConversationTurn
                             CheckActive();
                             audioRejected = true;
                         }
+                        why = "again without the recording, which the model refused";
                         continue;
                     }
                     // A model that can't take the picture of the user's screen sent along with their words rejects the request
@@ -575,6 +597,7 @@ public sealed class ConversationTurn
                             // Only the selected Thinking model is reported as rejecting the picture.
                             if (!fallback) imageRejected = true;
                         }
+                        why = "again without the picture, which the model refused";
                         continue;
                     }
                     // A model without tool support (many local models) rejects the request before answering; ask once more
@@ -593,6 +616,7 @@ public sealed class ConversationTurn
                             if (imageDropped) imageRejected = false;
                         }
                         input = request.Input.WithoutTools();
+                        why = "again without tools, which the model refused";
                         continue;
                     }
                     // A model that always thinks refuses Thinking steps Off (and a strict server may refuse the control
@@ -610,6 +634,7 @@ public sealed class ConversationTurn
                             if (imageDropped) imageRejected = false;
                             if (retried) toolsRejected = false;
                         }
+                        why = "again without the Thinking steps choice, which the model refused";
                         continue;
                     }
                     // Nothing of this answer arrived yet, so the fallback can give it instead.
@@ -617,6 +642,7 @@ public sealed class ConversationTurn
                         FallBack(before, result.Failure?.ToString() ?? result.Issue?.ToString() ?? result.End.ToString()))
                     {
                         fallback = true;
+                        why = $"the Thinking fallback, after {fellBackAfter}";
                         continue;
                     }
                     Fail(result.End == RoundEnd.Failed ? ConversationFailure.ProviderFailed : ConversationFailure.InvalidStream,
@@ -653,6 +679,7 @@ public sealed class ConversationTurn
                     var results = await CallToolsAsync(tools, result.Calls, rounds).ConfigureAwait(false);
                     rounds.Add(new(result.Text, result.Calls, results));
                     input = request.Input.WithToolRounds(rounds, callsAllowed: rounds.Count < request.Limits.MaxToolRounds);
+                    why = $"after tool round {rounds.Count}";
                     continue;
                 }
                 // Calls the model makes when no more are allowed are ignored; it still has to have answered in text, in this
@@ -698,8 +725,25 @@ public sealed class ConversationTurn
         }
     }
 
+    // One request of the reply, with its line in the Thinking trace once it ended (why: what led to it).
     private async Task<RoundResult> RequestAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter,
-        bool fallback = false, bool withoutReasoning = false, bool hedged = false)
+        bool fallback = false, bool withoutReasoning = false, bool hedged = false, string why = "first")
+    {
+        var traced = TraceRequest(why);
+        if (traced is null) return await RequestCoreAsync(input, ids, segmenter, fallback, withoutReasoning, hedged).ConfigureAwait(false);
+        RoundResult result;
+        try { result = await RequestCoreAsync(input, ids, segmenter, fallback, withoutReasoning, hedged).ConfigureAwait(false); }
+        catch (Exception error)
+        {
+            TraceRequestEnded(traced, null, error);
+            throw;
+        }
+        TraceRequestEnded(traced, result, null);
+        return result;
+    }
+
+    private async Task<RoundResult> RequestCoreAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter,
+        bool fallback, bool withoutReasoning, bool hedged)
     {
         var model = fallback ? request.Fallback!.Model : request.Model;
         var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
@@ -719,7 +763,11 @@ public sealed class ConversationTurn
         // Clamp to remaining ORIGINAL stage/turn budgets after a potentially slow authorization callback.
         context = context with { Deadline = Deadline(window) };
         var requestedAfter = Clock.GetElapsedTime(startedAt);
-        lock (Sync) textRequestAfter ??= requestedAfter;
+        lock (Sync)
+        {
+            textRequestAfter ??= requestedAfter;
+            TraceAuthorized(requestedAfter);
+        }
         // Backup Thinking races the reply's first request only. That request then has a stop of its own, so the stream that
         // loses is stopped alone.
         var backup = hedged && !fallback ? request.Backup : null;
@@ -744,6 +792,7 @@ public sealed class ConversationTurn
                 textProvenance = run.Stream.Capabilities.Provenance;
                 openStream = run.Stream;
                 openStreamAfter = requestedAfter;
+                TraceStream(run.Stream, requestedAfter);
                 SetState(ConversationState.Generating);
             }
             if (backup is not null) run = await RaceAsync(run, backup, input).ConfigureAwait(false);
@@ -776,6 +825,7 @@ public sealed class ConversationTurn
                     {
                         CheckActive();
                         firstTextAfter ??= Clock.GetElapsedTime(startedAt);
+                        TraceWords(chunk!.Text.Length);
                         // The chat and the saved conversation show words only; the voice gets its tags from the segmenter.
                         if (shown.Push(chunk!.Text) is { Length: > 0 } visible)
                         {
@@ -785,7 +835,12 @@ public sealed class ConversationTurn
                     }
                     said.Append(chunk.Text);
                     Caption(captions => captions.Push(chunk.Text));
-                    if (segmenter is not null) await StageAsync(segmenter.Push(chunk.Text), window).ConfigureAwait(false);
+                    if (segmenter is not null)
+                    {
+                        TraceStaging(true);
+                        try { await StageAsync(segmenter.Push(chunk.Text), window).ConfigureAwait(false); }
+                        finally { TraceStaging(false); }
+                    }
                 }
             }
             Check(window);
@@ -970,6 +1025,7 @@ public sealed class ConversationTurn
                     textProvenance = second.Stream.Capabilities.Provenance;
                     openStream = second.Stream;
                     openStreamAfter = askedAfter;
+                    TraceStream(second.Stream, askedAfter, backup: true);
                 }
                 second = null;
                 Decided(backup, new(ThinkingBackupOutcome.Won, delay, opened.Name, askedAfter, firstWords));
@@ -1033,6 +1089,7 @@ public sealed class ConversationTurn
     private void Decided(IThinkingBackup backup, ThinkingBackupResult result)
     {
         lock (Sync) backupResult = result;
+        TraceBackup(result);
         try { backup.Ended(result); }
         catch (Exception error) when (error is not OutOfMemoryException) { }
     }
@@ -1057,10 +1114,13 @@ public sealed class ConversationTurn
     private async Task<IReadOnlyList<TextToolResult>> CallToolsAsync(IConversationToolHost tools, IReadOnlyList<TextToolCall> calls,
         IReadOnlyList<TextToolRound> earlier)
     {
-        await WhileHeldAsync().ConfigureAwait(false);
+        await HeldAsync().ConfigureAwait(false);
         var available = BoundedTextInput.RemainingToolExchangeBytes(earlier) - calls.Sum(c => c.Utf8Bytes) - 4096;
         var share = Math.Max(256, available / calls.Count);
         var results = new List<TextToolResult>(calls.Count);
+        // Each call and how long it took, for the Thinking trace.
+        var began = Clock.GetElapsedTime(startedAt);
+        var took = trace is null ? null : new List<(string Name, TimeSpan Took, bool Failed)>(calls.Count);
         foreach (var call in calls)
         {
             lock (Sync)
@@ -1071,11 +1131,15 @@ public sealed class ConversationTurn
                 toolCalls++;
                 Emit(ConversationEventKind.State);
             }
+            TraceWaiting($"tool {call.Name}");
+            var called = Clock.GetTimestamp();
             ConversationToolResult outcome;
             try { outcome = await tools.CallAsync(call, stop.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { throw; }
             // A tool host boundary can fail arbitrarily; the model hears that the tool failed, never the exception text.
             catch (Exception) { outcome = new("The tool failed on this PC.", true); }
+            finally { TraceWaiting(null); }
+            took?.Add((call.Name, Clock.GetElapsedTime(called), outcome.IsError));
             lock (Sync) CheckActive();
             results.Add(new(call.CallId, TextToolResult.Bound((outcome.IsError ? "Error: " : "") + outcome.Output, share)));
         }
@@ -1084,6 +1148,7 @@ public sealed class ConversationTurn
             activeTool = null;
             Emit(ConversationEventKind.State);
         }
+        if (took is not null) TraceTools(earlier.Count + 1, took, began);
         return results;
     }
     private async Task StageAsync(IEnumerable<SpeechPiece> pieces, MonotonicWindow window)
@@ -1666,6 +1731,7 @@ public sealed class ConversationTurn
         using var ticks = new CancellationTokenSource();
         while (!release.Task.IsCompleted && !stopSignal.Task.IsCompleted)
         {
+            string? notice = null;
             lock (Sync)
             {
                 if (originalCaller.IsCancellationRequested) CancelByUser();
@@ -1694,7 +1760,9 @@ public sealed class ConversationTurn
                 // A sentence that takes too long to synthesize or play ends the voice, not the reply.
                 else if (speechWindow?.Expired == true) StopSpeaking(speechWindow.ExpiryFailure);
                 else if (playWindow?.Expired == true) StopSpeaking(playWindow.ExpiryFailure);
+                if (trace is not null) notice = DueNotice();
             }
+            if (notice is not null) TraceLine(notice);
             if (stopSignal.Task.IsCompleted) break;
             await Task.WhenAny(release.Task, stopSignal.Task,
                 Task.Delay(TimeSpan.FromMilliseconds(10), Clock, ticks.Token)).ConfigureAwait(false);
@@ -1709,7 +1777,10 @@ public sealed class ConversationTurn
                 failure != ConversationFailure.None ? text.Length > 0 ? ConversationState.Partial : ConversationState.Failed :
                 refused ? ConversationState.Refused : ConversationState.Completed;
             Emit(ConversationEventKind.State);
-            completion.TrySetResult(GetSnapshot());
+            var final = GetSnapshot();
+            // The trace's end line is written before anyone hears the turn ended (its listener never blocks).
+            TraceEnd(final);
+            completion.TrySetResult(final);
             synthesized.TrySetResult();
             if (released) events.Writer.TryComplete();
         }

@@ -129,6 +129,10 @@ public sealed class ThinkingRequests
     /// <summary>The companion that posts requests now (its name), when a request doesn't say.</summary>
     public Func<string?>? Origin { get; set; }
 
+    /// <summary>Where each request's Thinking trace lines go (<see cref="ThinkingTrace"/>: when it waits in line, starts on a
+    /// member, lets it go, what it waits for and how it ended); null: to the trace's listeners. It must never block.</summary>
+    public Action<string>? Trace { get; set; }
+
     /// <summary>Raised on any thread when a request is posted, changes or ends.</summary>
     public event Action? Changed;
 
@@ -149,8 +153,25 @@ public sealed class ThinkingRequests
             requests.Add(request);
             Trim();
         }
+        Log(request, posted => $"waits in line: {posted.Source switch
+        {
+            ThinkingRequestSource.Conversation => "the conversation's background work",
+            ThinkingRequestSource.Simulated => "simulated",
+            _ => "a pool job"
+        }}{(posted.Task is { } task ? $" ({task})" : "")}, priority {posted.Priority ?? (int)ThinkingJobKinds.Priority(posted.Kind)}, " +
+            $"needs {posted.Needs}{(posted.Timeout is { } timeout ? $", within {ThinkingTrace.Ms(timeout)} ms" : "")}" +
+            $"{(posted.DropWhenStale ? ", dropped when stale" : "")}.");
         Notify();
         return request;
+    }
+
+    // One line of the Thinking trace about request (its ID, kind and holder, then what words(start) says), when anything listens.
+    internal void Log(ThinkingRequest request, Func<ThinkingRequestStart, string> words)
+    {
+        var write = Trace ?? (ThinkingTrace.Enabled ? ThinkingTrace.Write : null);
+        if (write is null) return;
+        try { write($"Thinking request {request.Id} ({ThinkingJobKinds.Name(request.Start.Kind)}, {request.Start.Holder}): {words(request.Start)}"); }
+        catch (Exception error) when (error is not OutOfMemoryException) { }
     }
 
     /// <summary>Every request kept: the ones not ended first (oldest first), then the ended ones (newest first). With
@@ -251,6 +272,7 @@ public sealed class ThinkingRequest
     }
 
     public string Id => $"tr-{number}";
+    internal ThinkingRequestStart Start => start;
     internal bool Ended { get { lock (gate) return finished is not null; } }
 
     /// <summary>A member took it: a try starts there.</summary>
@@ -258,14 +280,20 @@ public sealed class ThinkingRequest
     {
         ArgumentNullException.ThrowIfNull(member);
         var now = owner.Clock.GetUtcNow();
+        TimeSpan waited;
+        int tries;
         lock (gate)
         {
             if (finished is not null) return;
             Close(now, "let go");
+            waited = now - (attempts.Count == 0 ? posted : attempts[^1].Ended ?? now);
             attempts.Add(new(member.Id, member.Name, member.Model, now));
+            tries = attempts.Count;
             state = ThinkingRequestState.Running;
             note = null;
         }
+        owner.Log(this, _ => $"started on {member.Name}{(member.Model is { } model ? $" ({model})" : "")} after " +
+            $"{ThinkingTrace.Ms(waited)} ms {(tries == 1 ? "in line" : "waiting again")}{(tries == 1 ? "" : $" (try {tries})")}.");
         owner.Notify();
     }
 
@@ -274,14 +302,18 @@ public sealed class ThinkingRequest
     public void End(string ending, bool paused = false, bool preempted = false)
     {
         var now = owner.Clock.GetUtcNow();
+        ThinkingRequestAttempt? closed;
         lock (gate)
         {
             if (finished is not null) return;
             Close(now, ending);
+            closed = attempts.Count > 0 ? attempts[^1] : null;
             state = paused ? ThinkingRequestState.Paused : ThinkingRequestState.Waiting;
             note = ending;
             if (preempted) preemptions++;
         }
+        owner.Log(this, _ => (closed is null ? "" : $"let go of {closed.Member} after {ThinkingTrace.Ms(closed.Duration(now))} ms: ") +
+            $"{ending}; it waits {(paused ? "(paused)" : "in line")} again.");
         owner.Notify();
     }
 
@@ -293,6 +325,7 @@ public sealed class ThinkingRequest
             if (finished is not null || note == words) return;
             note = words;
         }
+        if (words is not null) owner.Log(this, _ => $"waits: {words}.");
         owner.Notify();
     }
 
@@ -330,6 +363,12 @@ public sealed class ThinkingRequest
             if (stops is { } count) preemptions = Math.Max(preemptions, count);
             info = InfoLocked(now);
         }
+        owner.Log(this, _ => $"{info.State} after {ThinkingTrace.Ms(info.Total)} ms: waited {ThinkingTrace.Ms(info.Waited)} ms, " +
+            $"ran {ThinkingTrace.Ms(info.Ran)} ms, {info.Attempts.Count} {(info.Attempts.Count == 1 ? "try" : "tries")}" +
+            (info.Last is { } last ? $" (last on {last.Member})" : "") +
+            (info.Preemptions > 0 ? $", stopped {info.Preemptions} time{(info.Preemptions == 1 ? "" : "s")} for other work" : "") +
+            (info.AnswerLength is { } length ? $", an answer of {length} characters" + (info.Cut ? " (cut short)" : "") : "") +
+            (info.Note is { } problem ? $": {problem}." : "."));
         owner.Ended(info);
         owner.Notify();
     }
