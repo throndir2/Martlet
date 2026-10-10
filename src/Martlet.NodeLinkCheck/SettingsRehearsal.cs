@@ -667,7 +667,8 @@ internal static class SettingsRehearsal
         {
             var folder = AccountWorkingCopy.Folder(Directory, id);
             var sections = new AppSettingsSections(Setup, Vault, Directory, new LorebookStore(folder));
-            return new SharedSettingsNode(folder, DeviceId, [.. sections.Sections.Where(s => SettingScopes.IsAccountKey(s.Key))], sections.Invalidate);
+            return new SharedSettingsNode(folder, DeviceId, [.. sections.Sections.Where(s => SettingScopes.IsAccountKey(s.Key))], sections.Invalidate,
+                account: true);
         }
 
         /// <summary>What a switch does: record the files into the outgoing account's copy, read the incoming account's copies

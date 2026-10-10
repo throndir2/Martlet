@@ -102,7 +102,7 @@ public partial class MainWindow
         var folder = AccountWorkingCopy.Folder(store!.DataDirectory, account);
         var sections = new AppSettingsSections(setupService!, settingsVault, store.DataDirectory, new LorebookStore(folder));
         return new SharedSettingsNode(folder, ClusterDevice, [.. sections.Sections.Where(s => SettingScopes.IsAccountKey(s.Key)), .. accountDesktopSections],
-            sections.Invalidate);
+            sections.Invalidate, account: true);
     }
 
     /// <summary>The account change step: on a switch, gives this PC's settings files the incoming account's settings, on the

@@ -1,3 +1,5 @@
+using Martlet.Core.Lorebooks;
+using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 
 namespace Martlet.Core.Tests;
@@ -329,6 +331,92 @@ public sealed class AccountSettingsTests : IDisposable
         Assert.False(section.OffWindow);
     }
 
+    private sealed class NoVault : ICredentialStore
+    {
+        public CredentialError Write(CredentialBinding binding, SecretLease secret) => CredentialError.None;
+        public CredentialReadResult Read(CredentialBinding binding) => new(CredentialError.Missing, null);
+        public CredentialError Delete(CredentialBinding binding) => CredentialError.Missing;
+    }
+
+    private static async Task EditAsync(SetupService setup, Func<AppSettings, AppSettings> change)
+    {
+        var loaded = await setup.LoadAsync();
+        var settings = SetupSettings.Begin(loaded.Settings);
+        settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api } };
+        var saved = await setup.SaveAsync(change(settings), loaded.Revision);
+        Assert.True(saved.Save.Saved, saved.Summary);
+    }
+
+    // The sequence W10 found losing data: the first person makes character profiles (their personality still Martlet's
+    // default), adds a second person before the next sync, then switches back.
+    [Fact]
+    public async Task A_new_person_gets_defaults_and_the_first_persons_character_profiles_come_back()
+    {
+        var data = Path.Combine(root, "profiles");
+        Directory.CreateDirectory(data);
+        var setup = new SetupService(new SettingsStore(data), new NoVault());
+        SharedSettingsNode NodeFor(Guid id)
+        {
+            var folder = AccountWorkingCopy.Folder(data, id);
+            var sections = new AppSettingsSections(setup, new NoVault(), data, new LorebookStore(folder));
+            return new SharedSettingsNode(folder, "desktop-a", [.. sections.Sections.Where(s => SettingScopes.IsAccountKey(s.Key))],
+                sections.Invalidate, account: true);
+        }
+        async Task<CompanionSettings> CompanionAsync() => (await setup.LoadAsync()).Settings!.Companion!;
+
+        // Sam is the first person on a new data folder (the files are Sam's); the start sync runs before Martlet has settings.
+        AccountWorkingCopy.Save(data, Sam, Start);
+        var household = new SharedSettingsNode(data, "desktop-a", []);
+        var sam = NodeFor(Sam);
+        await AccountSettingsSync.SyncAsync(household, sam, true, [], [], false, Start, CancellationToken.None);
+        await EditAsync(setup, s =>
+        {
+            var companion = s.Companion!.AddCharacter("Miko", s.Companion.ActivePersonaId, null, null, out _);
+            return s with { Companion = companion.AddCharacter("Rin", companion.ActivePersonaId, null, null, out _) };
+        });
+
+        // About 25 seconds later, before the next sync, Sam adds Alex, which switches to Alex.
+        var alex = NodeFor(Alex);
+        await AccountSettingsSync.SwitchAsync(sam, alex, [], data, Alex, Start.AddSeconds(25), CancellationToken.None);
+        var alexs = await CompanionAsync();
+        Assert.Empty(alexs.CharacterList);
+        Assert.Equal(CompanionSettings.Create().Personas[0].Text, alexs.ActivePersona.Text);
+        var samCopy = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Sam), "desktop-a", []).Document;
+        Assert.Contains("Miko", samCopy.Find(AppSettingsSections.Companion)!.Value, StringComparison.Ordinal);
+        // Every setting Sam had is in Sam's copy; Alex's copy holds what Alex starts with.
+        Assert.Equal(["companion", "lorebooks", "memory", "prompts", "replies"], samCopy.Settings.Select(s => s.Key));
+        Assert.Equal(alexs.ActivePersonaId.ToString(), System.Text.Json.JsonDocument.Parse(
+            alex.Document.Find(AppSettingsSections.Companion)!.Value).RootElement.GetProperty("active_persona_id").GetString());
+
+        // Back to Sam: both profiles return.
+        var samAgain = NodeFor(Sam);
+        await AccountSettingsSync.SwitchAsync(alex, samAgain, [], data, Sam, Start.AddSeconds(40), CancellationToken.None);
+        Assert.Equal(["Miko", "Rin"], (await CompanionAsync()).CharacterList.Select(c => c.Name));
+
+        // Alex again: the same personality as before (not a new default), still without Sam's profiles.
+        var alexAgain = NodeFor(Alex);
+        await AccountSettingsSync.SwitchAsync(samAgain, alexAgain, [], data, Alex, Start.AddSeconds(50), CancellationToken.None);
+        var alexsAgain = await CompanionAsync();
+        Assert.Equal(alexs.ActivePersonaId, alexsAgain.ActivePersonaId);
+        Assert.Empty(alexsAgain.CharacterList);
+    }
+
+    [Fact]
+    public async Task An_accounts_copy_keeps_its_defaults_at_the_lowest_revision_and_a_household_copy_does_not()
+    {
+        var theme = new FileSetting();
+        var accountNode = new SharedSettingsNode(AccountWorkingCopy.Folder(root, Sam), "desktop-a", [new Section("appearance", theme)], account: true);
+        var householdNode = new SharedSettingsNode(Path.Combine(root, "household"), "desktop-a", [new Section("appearance", theme)]);
+
+        Assert.Equal(["appearance"], (await accountNode.SyncAsync([], true, Start, CancellationToken.None)).Recorded);
+        Assert.Equal(SharedSettingsNode.KeptRevision, accountNode.Document.Find("appearance")!.Revision);
+        Assert.Empty((await householdNode.SyncAsync([], true, Start, CancellationToken.None)).Recorded);
+
+        // Any choice made anywhere wins over a kept default.
+        var chosen = SharedSettings.Empty.Put("appearance", "\"dark\"", null, "desktop-b", Start.AddDays(-30));
+        await accountNode.SyncAsync([chosen], true, Start.AddMinutes(1), CancellationToken.None);
+        Assert.Equal("\"dark\"", theme.Value);
+    }
     [Fact]
     public void The_working_copy_marker_names_the_account_whose_settings_the_files_hold()
     {
