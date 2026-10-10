@@ -8,7 +8,8 @@ using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
-/// <summary>character_eyes: Companion › Eyes › Where the eyes are as Martlet.Avatar.Hosting's CharacterEyes measures them,
+/// <summary>character_eyes: Companion › Eyes › Where the face is as Martlet.Avatar.Hosting's CharacterEyes measures the eyes,
+/// cheeks and mouth,
 /// with NO vision request: the request the vision model gets, what the production parser, checks and conversion make of a
 /// simulated vision answer about the close-up (and of a second answer when the first fails, as the measurement asks once
 /// more), and the eye hint the renderer gets. With snapshotPath and face, the production close-up is composed from a real
@@ -62,7 +63,9 @@ internal static class CharacterEyesCheck
                 requestCount = result.Requests, result.Steps, asked,
                 boxes = result.Boxes is { } boxes ? new
                 {
-                    leftIris = Box(boxes.LeftIris), leftEye = Box(boxes.LeftEye), rightIris = Box(boxes.RightIris), rightEye = Box(boxes.RightEye)
+                    leftIris = Box(boxes.LeftIris), leftEye = Box(boxes.LeftEye), rightIris = Box(boxes.RightIris), rightEye = Box(boxes.RightEye),
+                    leftCheek = boxes.LeftCheek is { } leftCheek ? Box(leftCheek) : null, rightCheek = boxes.RightCheek is { } rightCheek ? Box(rightCheek) : null,
+                    mouth = boxes.Mouth is { } mouth ? Box(mouth) : null
                 } : null,
                 result.Problems, hint = Hint(result.Hint), result.Failure
             };
@@ -83,9 +86,9 @@ internal static class CharacterEyesCheck
             foreach (var (sent, bytes) in pictures) await File.WriteAllBytesAsync(Path.Combine(folder, sent.File), bytes, cancellation);
             if (closeUp.Picture(CharacterEyes.Marks(result.Boxes!)) is { } marked)
                 await File.WriteAllBytesAsync(Path.Combine(folder, CharacterEyes.BoxesFile), TouchZoneImages.Encode(marked).Content.ToArray(), cancellation);
-            await CharacterEyes.SaveAsync(dataDirectory, new CharacterEyeMeasurement
+            await CharacterEyes.SaveAsync(dataDirectory, CharacterEyeMeasurement.From(model, hint) with
             {
-                ModelId = model, Left = hint.Left!, Right = hint.Right!, By = CharacterEyeMeasurement.ByFixture, MeasuredAt = DateTimeOffset.Now,
+                By = CharacterEyeMeasurement.ByFixture, MeasuredAt = DateTimeOffset.Now,
                 Requests = result.Requests, Boxes = result.Boxes, Pictures = [.. pictures.Select(p => p.Sent)], Steps = result.Steps
             }, cancellation);
             wrote = $"Saved the measurement for the model in {CharacterEyes.FileName}" + (pictures.Count > 0 ? " with the pictures sent and the picture of its boxes." : ".");
@@ -123,7 +126,9 @@ internal static class CharacterEyesCheck
             {
                 eyeWidth = new[] { CharacterEyes.MinimumEyeWidth, CharacterEyes.MaximumEyeWidth }, eyeHeight = new[] { CharacterEyes.MinimumEyeHeight, CharacterEyes.MaximumEyeHeight },
                 iris = new[] { CharacterEyes.MinimumIris, CharacterEyes.MaximumIris }, mostlyInside = CharacterEyes.MostlyInside, open = CharacterEyes.MinimumOpen,
-                apart = CharacterEyes.MinimumApart, tilt = CharacterEyes.MaximumTilt
+                apart = CharacterEyes.MinimumApart, tilt = CharacterEyes.MaximumTilt,
+                cheekWidth = new[] { CharacterEyes.MinimumCheek, CharacterEyes.MaximumCheek }, cheekDrop = CharacterEyes.MaximumCheekDrop,
+                mouthWidth = new[] { CharacterEyes.MinimumMouth, CharacterEyes.MaximumMouth }
             }
         };
     }

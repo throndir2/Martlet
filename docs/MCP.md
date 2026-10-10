@@ -2314,7 +2314,7 @@ again from the personality when Martlet isn't replying; *Everything* does the
 last two. Choosing a level, Reset and its `ConfirmationYes` need
 `--allow-ui-effects`.
 
-`character_eyes` rehearses Companion › Eyes › [Where the eyes are](AVATARS.md#eyes)
+`character_eyes` rehearses Companion › Eyes › [Where the face is](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
 width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
 `check` message that goes with the boxes drawn and numbered, and the `again`
@@ -2322,15 +2322,20 @@ message after an answer Martlet couldn't use), `closeUp` (the picture's
 `width` and `height`, the `area` it cuts from the snapshot and the `face` in
 the snapshot's pixels with its `rollDegrees`), `measurement` (with `answer`, a
 simulated vision reply about the close-up such as
-`{"left":{"iris":{"left":0.34,"top":0.46,"right":0.41,"bottom":0.52},"eye":{...}},"right":{...}}`,
-as fractions, pixels or the 0..1000 grid, or flat keys such as `left_iris`;
+`{"left":{"iris":{"left":0.34,"top":0.46,"right":0.41,"bottom":0.52},"eye":{...},"cheek":{...}},"right":{...},"mouth":{...}}`,
+as fractions, pixels or the 0..1000 grid, or flat keys such as `left_iris`,
+`left_cheek` and `mouth`;
 and `second`, the answer to the second request when the first can't be read
 or fails Martlet's checks: the `steps`, each request `asked` (its `step`,
 `kind` `Eyes`, `Check` or `Again`, picture, `marks`, message and answer), the
-four `boxes` as fractions of the close-up, the `problems` the checks found,
-the `failure`, and the `hint` the renderer gets: each eye's `iris` (`x`, `y`,
-`r`) and opening (`eye`: `x`, `y`, `rx`, `ry`) in face widths from the face's
-middle, roll removed), `checks` (the limits the checks use, in face widths),
+`boxes` as fractions of the close-up (`leftIris`, `leftEye`, `rightIris`,
+`rightEye`, and `leftCheek`, `rightCheek` and `mouth` when given), the
+`problems` the checks found (for a measurement that saved, the cheeks or mouth
+it left out and why), the `failure`, and the `hint` the renderer gets: each
+eye's `iris` (`x`, `y`, `r`) and opening (`eye`: `x`, `y`, `rx`, `ry`), and
+`cheekLeft`, `cheekRight` and `mouth` (`x`, `y`, `r`) when they pass, in face
+widths from the face's middle, roll removed), `checks` (the limits the checks
+use, in face widths, with `cheekWidth`, `cheekDrop` and `mouthWidth`),
 `saved` (the model's measurement in `character-eyes.json`: who measured it,
 when, the `hint`, the pictures kept, whether the picture of its boxes is kept
 and its plain `line`) and, with `eyesFrom` (`mesh`, `bones`, `vision` or
@@ -2343,38 +2348,47 @@ composed and encoded as the desktop sends it (`previewDirectory` keeps the
 pictures). `save` (an explicit, disposable `dataDirectory` only) writes the
 measurement for the model (`modelPath`, `modelId` or the one the
 `dataDirectory`'s `avatar.json` shows) with its pictures, marked FIXTURE - NOT
-AI, as *Measure the eyes* would; `forget` removes it. Never the model's path;
+AI, as *Measure the face* would; `forget` removes it. Never the model's path;
 it contacts nothing.
 
-Companion › Eyes › *Where the eyes are* (`CompanionTab-Eyes`) reads through `CharacterEyesStatus`
+Companion › Eyes › *Where the face is* (`CompanionTab-Eyes`) reads through `CharacterEyesStatus`
 (where the shown model's eyes come from: *From the model's own meshes.*,
 *From the model's own eye bones and meshes.*, *Measured with vision at 3:12
 PM.* or *Estimated: Martlet guesses where the eyes are from the face...*; while
 the character is hidden, the saved measurement or *Show the character to see
-where its eyes come from.*), `CharacterEyesProgress` (how measuring goes or
+where its eyes come from.*; with a measurement, then *The blush goes on the
+measured cheeks.* or *The cheeks weren't measured, so the blush uses an
+estimate. Measure the face to place it.*), `CharacterEyesProgress` (how measuring goes or
 went: each step while it runs, the result or why it failed, such as *Couldn't
 ask the Thinking model (...)* or *The Thinking model's eyes didn't pass
 Martlet's checks: ...*) and `CharacterEyesNote` (shown only when no model can
-see pictures: *Measure the eyes is off: ...*). `CharacterEyesMeasure` (*Measure
-the eyes*) sends a close-up of the character's face to Thinking and
+see pictures: *Measure the face is off: ...*). `CharacterEyesMeasure` (*Measure
+the face*, or *Measure the face again* once a measurement is saved) sends a
+close-up of the character's face to Thinking and
 `CharacterEyesForget` (*Forget the measurement*) deletes it, so both need
 `--allow-ui-effects`; `CharacterEyesPicture` is the close-up Thinking saw with
-its four numbered boxes. The measurement uses the same off-screen still
-renderer as *Detect zones*, whose picture now also carries the face anchor; the
+its numbered boxes (1 to 4 the eyes, 5 and 6 the cheeks, 7 the mouth). The measurement uses the same off-screen still
+renderer as *Detect zones*, whose picture now also carries the face anchor (that
+renderer never gets the hint, so a new measurement is always relative to
+Martlet's own anchor); the
 desktop log records *Measuring the eyes: a ... picture of the character in its
 rest pose, drawn off screen, with its face ... pixels wide*, each picture sent
-and each step. When a renderer reports `eyesFrom` `estimate` and a model that
+and each step. When a new model shows (one with no measurement of its cheeks
+saved, which includes one measured before Martlet measured cheeks) and a model that
 can see is set up, the desktop measures the model once on its own (once per
 model each time Martlet starts, and never again after *Forget the
 measurement* until it starts again). The hint goes to the renderer (`eyes`)
 after each model load and after each measurement; the desktop log records
-*The character's eyes got Martlet's vision measurement; they use ...*.
+*The character's eyes got Martlet's vision measurement; they use ...*. With
+the hint, `character_face` shows the cheeks and the mouth where vision saw them
+(and, on a Live2D model or a VRM without eye bones, the face's middle on the
+measured eye line).
 Setting `MARTLET_EYES_FIXTURE` to a text file before launching the desktop
 makes a FIXTURE - NOT AI stand-in answer every request of the measurement with
 that file's text (JSON about the close-up, as `answer` above; shown in
 `CharacterEyesProgress` and `CharacterEyesStatus`, and saved with `by`
 `fixture`) after taking the real snapshot and composing and keeping every
-picture, so the whole path runs with no vision request (and *Measure the eyes*
+picture, so the whole path runs with no vision request (and *Measure the face*
 is on without a model that can see).
 
 Touch temperament (on Companion › Touch, below Touch zones) reads through `TouchTemperamentStatus`
@@ -6559,7 +6573,9 @@ clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 (`x`, `y`: the eye and mouth points the overlay emotes such as `tears` or
 `tongue_out` are drawn from, and the top of the head; left out when the
 renderer has none; an eye with a known iris has its point at the eye's
-middle), `overlays` (the overlays showing, such as
+middle; with a face measured by vision the cheeks and mouth are where vision
+saw them), `cheekSize` (the measured cheeks' radius in face widths, which
+sizes the blush; `null` without a measurement), `overlays` (the overlays showing, such as
 `["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
 `skin`, the ID of the face's skin drawable when they are its vertices, or
@@ -7385,7 +7401,9 @@ Voice lists its engines per computer instead (`SpeakingHost-<host ID>` and
 `VoiceEngineUse-<key>`, above).
 
 Status fields include the talk window's `LiveStatus` (its status line),
-`LiveMic` (the Start listening / Stop listening button; its value starts with
+`LiveMic` (the Start listening / Stop listening icon button; like `LiveVision`
+and `LiveStop` it shows only an icon, and its tooltip starts with what it
+does; its value starts with
 the state: *Not listening* until it is pressed, then *Listening*, *Can't
 listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
 *Listening. Martlet listens for you, even while it speaks…* when echo

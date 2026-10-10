@@ -11,9 +11,11 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - The **Thinking requests** page now shows what each request answered: select a request to see its output beside its details, so you can see what each one adds to the conversation. The output stays on this PC and never goes in logs. ([#717](https://github.com/throndir2/Martlet/pull/717))
+- When you add a new character model, Martlet now measures where its eyes, cheeks and mouth are (once, with a model that can see), so the blush lands on the cheeks instead of over the eyes, and heart eyes, star eyes and other emotes sit on the right spots. Press **Measure the face again** on Companion › Eyes to redo it any time. ([#716](https://github.com/throndir2/Martlet/pull/716))
 
 ### Changed
 
+- The talk window's listening, watching and Stop buttons are now small icons; hover over one to see what it does. ([#715](https://github.com/throndir2/Martlet/pull/715))
 - The Lingering emotes check-in now runs every minute by default instead of every 5 minutes, so emotes that no longer fit turn off sooner. ([#714](https://github.com/throndir2/Martlet/pull/714))
 - Martlet now treats background sounds and voices as context instead of ignoring them, and answers someone in your call or room who clearly talks to it. ([#711](https://github.com/throndir2/Martlet/pull/711))
 

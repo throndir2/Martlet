@@ -129,6 +129,33 @@ export function faceFeatures(face: Face): FaceFeatures {
     mouth: at(0, -0.36), top: at(0, 0.62) };
 }
 
+/** Where vision measured the face's parts, in face widths from a face's middle (x toward the viewer's right, y DOWN, in the
+ *  face's own frame before its roll), as the eye hint gives them. */
+export interface FeatureOffsets {
+  readonly eyeLeft?: Point | undefined; readonly eyeRight?: Point | undefined;
+  readonly cheekLeft?: Point | undefined; readonly cheekRight?: Point | undefined; readonly mouth?: Point | undefined;
+}
+
+/**
+ * The features around `face` with what vision measured: with both eyes, the face's middle moves to the middle between them
+ * (the eye line) and the parts it didn't measure (the top of the head, and the cheeks or mouth when they weren't measured)
+ * move with it; each measured part goes where vision saw it. The face keeps its width and roll.
+ */
+export function measuredFeatures(face: Face, offsets: FeatureOffsets): FaceFeatures {
+  const c = Math.cos(face.roll), s = Math.sin(face.roll), w = face.width;
+  const at = (p: Point): Point => ({ x: face.x + (p.x * c + p.y * s) * w, y: face.y + (p.x * s - p.y * c) * w });
+  const base = faceFeatures(face);
+  const eyeLeft = offsets.eyeLeft && at(offsets.eyeLeft), eyeRight = offsets.eyeRight && at(offsets.eyeRight);
+  const middle = eyeLeft && eyeRight ? { x: (eyeLeft.x + eyeRight.x) / 2, y: (eyeLeft.y + eyeRight.y) / 2 } : { x: face.x, y: face.y };
+  const dx = middle.x - face.x, dy = middle.y - face.y;
+  const moved = (p: Point): Point => ({ x: p.x + dx, y: p.y + dy });
+  const cheeks = offsets.cheekLeft && offsets.cheekRight;
+  return { x: middle.x, y: middle.y, width: face.width, roll: face.roll,
+    eyeLeft: eyeLeft ?? moved(base.eyeLeft), eyeRight: eyeRight ?? moved(base.eyeRight),
+    cheekLeft: cheeks ? at(offsets.cheekLeft!) : moved(base.cheekLeft), cheekRight: cheeks ? at(offsets.cheekRight!) : moved(base.cheekRight),
+    mouth: offsets.mouth ? at(offsets.mouth) : moved(base.mouth), top: moved(base.top) };
+}
+
 // ---------- following the face on the model's own meshes ----------
 
 /** The head and body angles: what turns, tilts and sways the whole face. Every other parameter only changes its shape. */
@@ -284,21 +311,24 @@ export interface CheekFrame { readonly right: Point; readonly down: Point }
 
 export interface TrackedFace extends FaceFeatures { readonly cheekLeftFrame: CheekFrame; readonly cheekRightFrame: CheekFrame }
 
-/** Pins `face` (at rest) to the carriers within reach of it; undefined when too few are near. */
-export function pinFace(face: Face, carriers: readonly Carrier[]): PinnedFace | undefined {
+/** Pins `face` (at rest) to the carriers within reach of it; undefined when too few are near. With `features` (around the
+ *  face at rest, such as measuredFeatures gives) those points are pinned instead of faceFeatures(face), and the pinned face's
+ *  middle is theirs. */
+export function pinFace(face: Face, carriers: readonly Carrier[], measured?: FaceFeatures): PinnedFace | undefined {
   if (![face.x, face.y, face.width, face.roll].every(Number.isFinite) || !(face.width > 0)) return undefined;
   const reach = (1.5 * face.width) ** 2;
   const near = carriers.filter(c => (c.x - face.x) ** 2 + (c.y - face.y) ** 2 <= reach);
-  const features = faceFeatures(face);
+  const features = measured ?? faceFeatures(face);
   const points: Record<FacePoint, Point> = { middle: features, eyeLeft: features.eyeLeft, eyeRight: features.eyeRight,
     cheekLeft: features.cheekLeft, cheekRight: features.cheekRight, mouth: features.mouth, top: features.top };
+  if (!Object.values(points).every(p => Number.isFinite(p.x) && Number.isFinite(p.y))) return undefined;
   const pins = {} as Record<FacePoint, Pin>;
   for (const name of FACE_POINTS) {
     const pin = pinPoint(points[name].x, points[name].y, near, 0.05 * face.width);
     if (!pin) return undefined;
     pins[name] = pin;
   }
-  return { face, pins };
+  return { face: measured ? { x: measured.x, y: measured.y, width: face.width, roll: face.roll } : face, pins };
 }
 
 /** The pinned face as the model posed it last (`at` as for `trackPin`): its middle, width and roll from the meshes around

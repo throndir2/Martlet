@@ -1,8 +1,8 @@
 /** Each eye's iris and visible opening, for Martlet's drawings over the eyes (heart eyes, star eyes, dizzy swirls). A Live2D
  *  model draws its eyes from its own meshes: the irises (with their highlights) are the drawables the eyeball parameters
  *  move, and each iris is clipped by its eye white, so the eye white's triangles are the eye's opening as drawn, closing as
- *  the model blinks. For an eye the meshes can't give, a hint from vision (`EyeHint`) gives a sized iris that follows the
- *  gaze and an opening that closes with the eye's open parameter. */
+ *  the model blinks. For an eye the meshes can't give (or give clearly away from the eye vision saw), a hint from vision
+ *  (`EyeHint`) gives a sized iris that follows the gaze and an opening that closes with the eye's open parameter. */
 
 import { type Carrier, type Face, type Pin, pinPoint, type Point, trackPin, type Tracked } from "./face.js";
 
@@ -34,12 +34,20 @@ export interface EyeHintEye {
   readonly eye: { readonly x: number; readonly y: number; readonly rx: number; readonly ry: number };
 }
 
-/** The eyes measured by vision (`left` and `right` as the viewer sees them), in face widths from the face anchor's middle (x
- *  toward the viewer's right, y down, in the face's own frame before its roll), in the rest pose: the eyes open and looking
- *  straight ahead. The iris is its middle and radius, the eye the middle and radii of the opening between the eyelids. */
-export interface EyeHint { readonly left?: EyeHintEye; readonly right?: EyeHintEye }
+/** A cheek (where a blush goes) or the mouth measured by vision: its middle and its radius, in face widths. */
+export interface FeatureHint { readonly x: number; readonly y: number; readonly r: number }
 
-/** The hint's usable eyes (finite numbers, middles within 2 face widths, radii above 0 and at most 1), or undefined. */
+/** The face measured by vision (`left` and `right` as the viewer sees them), in face widths from the face anchor's middle (x
+ *  toward the viewer's right, y down, in the face's own frame before its roll), in the rest pose: the eyes open and looking
+ *  straight ahead. The iris is its middle and radius, the eye the middle and radii of the opening between the eyelids. The
+ *  cheeks (both or none) and the mouth are optional. */
+export interface EyeHint {
+  readonly left?: EyeHintEye; readonly right?: EyeHintEye;
+  readonly cheekLeft?: FeatureHint; readonly cheekRight?: FeatureHint; readonly mouth?: FeatureHint;
+}
+
+/** The hint's usable eyes, cheeks (both or none) and mouth (finite numbers, middles within 2 face widths, radii above 0 and
+ *  at most 1), or undefined without an eye. */
 export function readEyeHint(value: unknown): EyeHint | undefined {
   if (!value || typeof value !== "object") return undefined;
   const place = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 2;
@@ -51,9 +59,16 @@ export function readEyeHint(value: unknown): EyeHint | undefined {
     return Object.freeze({ iris: Object.freeze({ x: iris.x as number, y: iris.y as number, r: iris.r as number }),
       eye: Object.freeze({ x: eye.x as number, y: eye.y as number, rx: eye.rx as number, ry: eye.ry as number }) });
   };
-  const { left, right } = value as { left?: unknown; right?: unknown };
+  const feature = (candidate: unknown): FeatureHint | undefined => {
+    const { x, y, r } = (candidate ?? {}) as Record<string, unknown>;
+    return place(x) && place(y) && size(r) ? Object.freeze({ x: x as number, y: y as number, r: r as number }) : undefined;
+  };
+  const { left, right, cheekLeft, cheekRight, mouth } = value as Record<string, unknown>;
   const l = eye(left), r = eye(right);
-  return l || r ? Object.freeze({ ...(l ? { left: l } : {}), ...(r ? { right: r } : {}) }) : undefined;
+  if (!l && !r) return undefined;
+  const cl = feature(cheekLeft), cr = feature(cheekRight), m = feature(mouth);
+  return Object.freeze({ ...(l ? { left: l } : {}), ...(r ? { right: r } : {}),
+    ...(cl && cr ? { cheekLeft: cl, cheekRight: cr } : {}), ...(m ? { mouth: m } : {}) });
 }
 
 /** A part of an eye white (one of the iris's clipping masks) that belongs to one eye: its vertices in that eye and its
@@ -227,6 +242,15 @@ export function eyeFrame(point: Point, pin: Pin | undefined, at: (drawable: numb
 export function hintMiddle(eye: EyeHintEye, face: Face): Point {
   const c = Math.cos(face.roll), s = Math.sin(face.roll), x = eye.eye.x * face.width, y = eye.eye.y * face.width;
   return { x: face.x + x * c + y * s, y: face.y + x * s - y * c };
+}
+
+/** Whether a mesh eye clearly misses the eye vision measured on the same face at rest: its opening's middle lies farther from
+ *  the measured opening's middle than that opening's larger radius (at least 6% of the face's width). The meshes then found
+ *  something else (a hair ornament, a highlight), and the measured eye takes its place. */
+export function meshMisses(mesh: MeshEye, hint: EyeHintEye, face: Face): boolean {
+  const seen = hintMiddle(hint, face);
+  const apart = Math.hypot(mesh.middle.x - seen.x, mesh.middle.y - seen.y) / face.width;
+  return Number.isFinite(apart) && apart > Math.max(hint.eye.rx, hint.eye.ry, 0.06);
 }
 
 /** The outline's points around an eye's opening: 24 around an ellipse, closing toward its lower part as `open` goes to 0. */

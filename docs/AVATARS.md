@@ -357,7 +357,9 @@ what each one is.
   cheek turns away; the fierce flush's band over the nose fades toward that
   cheek too. The Live2D adapter's
   `setFaceHint` lets a face found by vision refine the estimate, pinned the
-  same way. Martlet's MCP `character_face` reads where they are drawn.
+  same way. A face measured by vision (see [Eyes](#eyes)) puts the cheeks and
+  the mouth where vision saw them and sizes the blush to the cheeks. Martlet's
+  MCP `character_face` reads where they are drawn.
 
   **The eyes.** Drawings over the eyes (such as heart eyes) cover only each
   iris and stay inside the eye. For them the face also has each eye's iris (its
@@ -370,7 +372,8 @@ what each one is.
   eye, and the iris turns with its bone. The model's iris and eye-white meshes
   give the iris's size and the opening: VRoid's `EyeIris` and `EyeWhite`
   materials, or names with iris, pupil, hitomi, 瞳 or 白目. For an eye the model
-  can't give, eyes measured by vision give a sized iris that follows the gaze
+  can't give (or a Live2D mesh eye that lies clearly outside the eye vision
+  measured), eyes measured by vision give a sized iris that follows the gaze
   and an outline that closes on a blink. `eyesFrom` says where they came from:
   `mesh` (Live2D meshes), `bones` (VRM bones and meshes), `vision`, or
   `estimate` while an eye has neither. Then that eye's iris and opening are left
@@ -950,43 +953,66 @@ zones list sounds and the last one played or skipped and why.
 
 Some overlay emotes are drawn over the eyes (heart eyes, star eyes, the dizzy
 swirls). They should cover only the iris and never go outside the eye, so the
-renderer must know where each eye is. A model's own data says so when it can:
-a Live2D model's iris meshes, or a VRM's eye bones and meshes. For a model
-without that data, the Thinking model measures the eyes once with its vision.
-Companion › Eyes › **Where the eyes are** says where the shown model's
+renderer must know where each eye is. Martlet's blush levels go on the cheeks,
+and the emotes around the face (tears, sweat, a tongue) start from the eyes,
+the mouth and the face's middle. A model's own data says where the eyes are
+when it can: a Live2D model's iris meshes, or a VRM's eye bones and meshes.
+Nothing in a model says where its cheeks are, so Martlet guesses them from the
+face, and on some models that guess puts the blush over the eyes. So when a new
+model shows, the Thinking model measures its face once with its vision: the
+eyes, both cheeks and the mouth.
+Companion › Eyes › **Where the face is** says where the shown model's
 eyes come from: *From the model's own meshes.*, *From the model's own eye
-bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*.
+bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*,
+and then *The blush goes on the measured cheeks.* when they were measured.
 
-- **Measure the eyes** draws the character off screen in its rest pose, in the
+- **Measure the face** (or **Measure the face again**) measures it at any
+  time. It draws the character off screen in its rest pose, in the
   same still renderer as **Detect zones** (no idle motion, so no blink: the
   eyes are open and look straight ahead, and no emote shows). The renderer
-  also says where its face anchor puts the face in that picture. Martlet cuts a
+  also says where its face anchor puts the face in that picture. That renderer
+  never gets a measurement, so the anchor is always Martlet's own. Martlet cuts a
   square about 1.6 face widths wide around the face, enlarges it to about 768
   pixels on a plain backdrop with a grid of tenths, and asks the Thinking model
-  for two boxes per eye, as the viewer sees them: the iris (the colored part
-  with the pupil) and the eye's opening (the white and the iris between the
-  eyelids). The picture goes to a free Thinking pool member that can see, else
+  for seven boxes, as the viewer sees them: for each eye, the iris (the colored
+  part with the pupil) and the eye's opening (the white and the iris between the
+  eyelids); each cheek, where an anime blush is painted; and the mouth. The
+  picture goes to a free Thinking pool member that can see, else
   to the image model of its own while pictures go to it ([Image and audio
   models](SENSE_MODELS.md#helper-jobs-with-a-picture)), else to the Thinking
   model after any reply, as a low-priority
   [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool). It is never on a
   reply's path, and nothing is sent until a model that can see is set up.
 - Martlet then checks the boxes: both eyes are there, each iris lies mostly
-  inside its eye, the sizes fit the face, the eyes are open, apart and level.
-  It puts left and right back the right way round by where the eyes are. When
-  the first answer can't be read or fails a check, Martlet asks once more: with
-  the four boxes drawn and numbered on the close-up and the problems listed, or
-  with the question again. Two failed answers save nothing.
-- The boxes become the eye hint: each iris's middle and radius, and each
-  opening's middle, half width and half height, in face widths from the face
-  anchor's middle (x toward the viewer's right, y down, with the face's roll
-  taken out). It is saved per model in `character-eyes.json`, with the pictures
-  sent and the close-up with its boxes in `character-eyes\<model>\` (shown
-  under the buttons). The renderer gets it after each model load and after each
-  measurement, and replies with what the eyes use. The model's own data always
-  comes first.
+  inside its eye, the sizes fit the face, the eyes are open, apart and level;
+  each cheek is about a cheek's size, on its eye's side and below that eye but
+  not on it; the mouth is below the eyes and between them. It puts left and
+  right back the right way round by where they are. When the first answer can't
+  be read or fails a check (a missing cheek too), Martlet asks once more: with
+  the boxes drawn and numbered on the close-up and the problems listed, or
+  with the question again. The eyes must pass, or nothing is saved. Cheeks or a
+  mouth that still fail are left out (the blush then keeps its estimate), and
+  good eyes from the first answer are kept when only the second answer's eyes
+  fail.
+- The boxes become the face hint: each iris's middle and radius, each
+  opening's middle, half width and half height, and each cheek's and the
+  mouth's middle and radius, in face widths from the face anchor's middle (x
+  toward the viewer's right, y down, with the face's roll taken out). It is
+  saved per model in `character-eyes.json`, with the pictures sent and the
+  close-up with its boxes in `character-eyes\<model>\` (shown under the
+  buttons). The renderer gets it after each model load and after each
+  measurement, and replies with what the eyes use.
+- With the hint, the renderer puts the cheeks (and so every blush level) and
+  the mouth where vision saw them, pinned to the model like the rest of the
+  face so they follow the head, and sizes the blush to the measured cheeks. On
+  a Live2D model, and on a VRM without eye bones, the face's middle moves to the
+  measured eye line, and the top of the head moves with it. The model's own eye
+  data comes first, except that a Live2D mesh eye that lies clearly outside the
+  measured eye (farther than the eye's own size) gives way to the measured eye:
+  the meshes then found something else, such as a hair ornament.
 - Martlet measures a model on its own, once each time it starts, when the
-  renderer says its eyes are only estimated and a model that can see is set up.
+  model has no measurement of its cheeks (a new model, or one measured before
+  Martlet measured cheeks) and a model that can see is set up.
   **Forget the measurement** deletes the measurement and its pictures; Martlet
   then doesn't measure that model on its own until it starts again.
 

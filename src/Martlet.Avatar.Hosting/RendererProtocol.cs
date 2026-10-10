@@ -211,15 +211,27 @@ public sealed record RendererEye(RendererIris Iris, RendererEyeShape Eye)
         new[] { Iris.X, Iris.Y, Eye.X, Eye.Y }.All(v => double.IsFinite(v) && Math.Abs(v) <= RendererEyes.Farthest) &&
         new[] { Iris.R, Eye.Rx, Eye.Ry }.All(v => double.IsFinite(v) && v is > 0 and <= RendererEyes.Largest);
 }
+/// <summary>A cheek or the mouth of the face hint: its middle and its radius (half its size).</summary>
+public sealed record RendererFeature(double X, double Y, double R)
+{
+    [JsonIgnore]
+    public bool IsValid => new[] { X, Y }.All(v => double.IsFinite(v) && Math.Abs(v) <= RendererEyes.Farthest) &&
+        double.IsFinite(R) && R is > 0 and <= RendererEyes.Largest;
+}
 /// <summary>
-/// The eye hint ("eyes"): where vision measured the character's eyes in its rest pose (eyes open, looking straight ahead),
-/// so that drawings over the eyes (heart_eyes, star_eyes, the dizzy swirls) cover only the iris and stay inside the eye. Each
-/// eye is in face widths from the face anchor's middle, x toward the viewer's right and y down, in the face's own frame before
-/// its roll; <paramref name="Left"/> and <paramref name="Right"/> are as the viewer sees them. Without both eyes it clears the
-/// hint (the page gets <c>data: null</c>). The model's own data (Live2D iris meshes, VRM eye bones and meshes) comes before
-/// the hint. Replied to with <see cref="RendererEyesFrom"/>.
+/// The face hint ("eyes"): where vision measured the character's eyes, cheeks and mouth in its rest pose (eyes open, looking
+/// straight ahead), so that drawings over the eyes (heart_eyes, star_eyes, the dizzy swirls) cover only the iris and stay
+/// inside the eye, and a blush lies on the cheeks. Each part is in face widths from the face anchor's middle, x toward the
+/// viewer's right and y down, in the face's own frame before its roll; <paramref name="Left"/>, <paramref name="Right"/>,
+/// <paramref name="CheekLeft"/> and <paramref name="CheekRight"/> are as the viewer sees them. The cheeks (where a blush goes)
+/// and the mouth are optional. Without both eyes it clears the hint (the page gets <c>data: null</c>). The model's own eye
+/// data (Live2D iris meshes, VRM eye bones and meshes) comes before the hint unless a Live2D mesh eye lies clearly outside
+/// the measured eye. Replied to with <see cref="RendererEyesFrom"/>.
 /// </summary>
-public sealed record RendererEyes(RendererEye? Left = null, RendererEye? Right = null)
+public sealed record RendererEyes(RendererEye? Left = null, RendererEye? Right = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RendererFeature? CheekLeft = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RendererFeature? CheekRight = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RendererFeature? Mouth = null)
 {
     /// <summary>The farthest an eye's middle may be from the face's middle, and the largest radius, in face widths.</summary>
     public const double Farthest = 2, Largest = 1;
@@ -227,7 +239,11 @@ public sealed record RendererEyes(RendererEye? Left = null, RendererEye? Right =
     /// <summary>Whether this clears the hint (it doesn't give both eyes).</summary>
     [JsonIgnore] public bool Clears => Left is null || Right is null;
 
-    [JsonIgnore] public bool IsValid => (Left is null || Left.IsValid) && (Right is null || Right.IsValid);
+    /// <summary>Whether it gives both cheeks (where a blush goes).</summary>
+    [JsonIgnore] public bool HasCheeks => CheekLeft is not null && CheekRight is not null;
+
+    [JsonIgnore] public bool IsValid => (Left is null || Left.IsValid) && (Right is null || Right.IsValid) &&
+        (CheekLeft is null || CheekLeft.IsValid) && (CheekRight is null || CheekRight.IsValid) && (Mouth is null || Mouth.IsValid);
 }
 /// <summary>What the showing character's eyes use now, after an eye hint: <see cref="Mesh"/> (a Live2D model's own iris
 /// meshes), <see cref="Bones"/> (a VRM's own eye bones and meshes), <see cref="Vision"/> (the hint fills what the model lacks)

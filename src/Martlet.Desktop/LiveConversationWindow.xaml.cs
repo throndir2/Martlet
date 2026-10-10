@@ -2103,6 +2103,11 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>Start listening / Stop listening, as the window's own button.</summary>
     internal void ToggleListening() => Mic_Click(this, new RoutedEventArgs());
 
+    /// <summary>What the listening icon button does now ("Start listening", "Stop listening" or "Can't listen"); its tooltip's first line.</summary>
+    internal string MicLabel { get; private set; } = "";
+    /// <summary>What the watching icon button does now ("Start watching", "Stop watching" or "Can't see"); its tooltip's first line.</summary>
+    internal string VisionLabel { get; private set; } = "";
+
     /// <summary>Vision is on in Companion (the window's Start watching / Stop watching button shows).</summary>
     internal bool VisionOn => preferences.Watch;
     /// <summary>Start watching was pressed and watching hasn't been stopped since (it may still be getting ready).</summary>
@@ -2319,7 +2324,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var cantListen = started ? !listening || listenProblem is not null : !micUsable;
         MicChip.IsEnabled = true;
         var micState = micDown ? "Mic unavailable" : cantListen ? "Can't listen" : listening ? "Listening" : "Not listening";
-        MicText.Text = started ? "Stop listening" : micUsable ? "Start listening" : "Can't listen";
+        MicLabel = started ? "Stop listening" : micUsable ? "Start listening" : "Can't listen";
+        MicGlyph.Text = started && !micDown && !cantListen ? "\uE720" : "\uEC54";
         var offer = !started && micUsable;
         if (offer != micOffer)
         {
@@ -2329,7 +2335,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         MicDot.Visibility = offer ? Visibility.Collapsed : Visibility.Visible;
         MicDot.SetResourceReference(Shape.FillProperty, micDown || cantListen ? "WarningBrush" : "SuccessBrush");
-        MicChip.ToolTip = micDown ? $"{micProblem} Martlet will try again soon. Click to stop listening."
+        var micDetail = micDown ? $"{micProblem} Martlet will try again soon. Click to stop listening."
             : started && listenProblem is not null ? $"{listenProblem} Martlet will listen when it can. Click to stop listening."
             : started && !listening ? $"{ListeningProblem()} Martlet will listen when it can. Click to stop listening."
             : listening ? (listener is { Held: true }
@@ -2339,7 +2345,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 : "Martlet listens for you and answers when you pause. Click to stop listening.")
             : micUsable ? "Click to have Martlet listen and answer when you pause. You can keep using the rest of Martlet."
             : ListeningProblem();
-        AutomationProperties.SetName(MicChip, micState + ". " + MicChip.ToolTip);
+        MicChip.ToolTip = MicLabel + "\n" + micDetail;
+        AutomationProperties.SetName(MicChip, micState + ". " + micDetail);
 
         // Watching starts and stops here too (it is off when the window opens); the dot and the name say how it is going.
         VisionChip.Visibility = available && preferences.Watch ? Visibility.Visible : Visibility.Collapsed;
@@ -2347,7 +2354,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var watchStarted = !watchPaused;
         var looking = watching && commentary is { OwnershipReleased: false };
         var visionState = looking ? "Looking" : watching ? "Watching" : visionProblem is not null ? "Can't see" : "Not watching";
-        VisionText.Text = watchStarted ? "Stop watching" : visionProblem is not null ? "Can't see" : "Start watching";
+        VisionLabel = watchStarted ? "Stop watching" : visionProblem is not null ? "Can't see" : "Start watching";
+        VisionGlyph.Text = watchStarted ? "\uE890" : "\uED1A";
         VisionDot.SetResourceReference(Shape.FillProperty, watching ? "SuccessBrush"
             : visionProblem is not null || watchStarted ? "WarningBrush" : "MutedBrush");
         if (looking != twinkling)
@@ -2360,7 +2368,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 VisionDot.Opacity = 1;
             }
         }
-        VisionChip.ToolTip = watching
+        var visionDetail = watching
             ? WatchingTip() +
               (noticing ? " It looks right away when a notification pops up or a taskbar button flashes." : "") +
               (lastCheck is { } checkedAt ? $" Last checked at {checkedAt:T}." : "") +
@@ -2369,7 +2377,8 @@ public partial class LiveConversationWindow : ThemedWindow
             : watchStarted ? "Martlet watches once it's ready. Click to stop watching."
             : visionProblem is { } problem ? problem + " Click to try again."
             : $"Click to have Martlet watch {SavedSource().Label} and now and then say something about it. You can keep using the rest of Martlet.";
-        AutomationProperties.SetName(VisionChip, visionState + ". " + VisionChip.ToolTip);
+        VisionChip.ToolTip = VisionLabel + "\n" + visionDetail;
+        AutomationProperties.SetName(VisionChip, visionState + ". " + visionDetail);
         var visionLine = VisionLine();
         VisionStatusText.Text = visionLine;
         SetDetail(VisionStatusText, VisionDetail());

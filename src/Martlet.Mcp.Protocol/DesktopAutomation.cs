@@ -531,12 +531,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // character's reasons (ReactionChangeWhy-<n>, ReactionChangeEndedWhy-<n>) come from the conversation and aren't values.
         // Undo (ReactionChangeUndo-<n>) and Undo all (ReactionChangesUndoAll) end changes, so they need --allow-ui-effects.
         "ReactionChangesStatus", "ReactionChangesState",
-        // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
-        // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
-        // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
-        // Measure the eyes (CharacterEyesMeasure) sends a close-up of the character's face to Thinking and Forget the measurement
-        // (CharacterEyesForget) deletes it, so they need --allow-ui-effects; CharacterEyesPicture (the close-up with its boxes)
-        // isn't a value.
+        // Companion › Eyes › Where the face is: where the shown model's eyes come from (the model's own meshes or eye bones,
+        // the vision measurement and when it was taken, or an estimate) and whether the blush uses measured cheeks, how measuring
+        // went (each step while it runs, or why it failed) and, only when no model can see pictures, why Measure the face is off.
+        // Fixed text, times and counts only. Measure the face (CharacterEyesMeasure) sends a close-up of the character's face to
+        // Thinking and Forget the measurement (CharacterEyesForget) deletes it, so they need --allow-ui-effects;
+        // CharacterEyesPicture (the close-up with its boxes) isn't a value.
         "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote",
         // Companion › Touch › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the

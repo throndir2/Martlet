@@ -21,12 +21,20 @@ export interface EyeHintEye {
   readonly eye: { readonly x: number; readonly y: number; readonly rx: number; readonly ry: number };
 }
 
-/** The eyes measured by vision (`left` and `right` as the viewer sees them), in face widths from the face anchor's middle (x
- *  toward the viewer's right, y down, in the face's own frame before its roll), in the rest pose: the eyes open and looking
- *  straight ahead. The iris is its middle and radius, the eye the middle and radii of the opening between the eyelids. */
-export interface EyeHint { readonly left?: EyeHintEye; readonly right?: EyeHintEye }
+/** A cheek (where a blush goes) or the mouth measured by vision: its middle and its radius, in face widths. */
+export interface FeatureHint { readonly x: number; readonly y: number; readonly r: number }
 
-/** The hint's usable eyes (finite numbers, middles within 2 face widths, radii above 0 and at most 1), or undefined. */
+/** The face measured by vision (`left` and `right` as the viewer sees them), in face widths from the face anchor's middle (x
+ *  toward the viewer's right, y down, in the face's own frame before its roll), in the rest pose: the eyes open and looking
+ *  straight ahead. The iris is its middle and radius, the eye the middle and radii of the opening between the eyelids. The
+ *  cheeks (both or none) and the mouth are optional. */
+export interface EyeHint {
+  readonly left?: EyeHintEye; readonly right?: EyeHintEye;
+  readonly cheekLeft?: FeatureHint; readonly cheekRight?: FeatureHint; readonly mouth?: FeatureHint;
+}
+
+/** The hint's usable eyes, cheeks (both or none) and mouth (finite numbers, middles within 2 face widths, radii above 0 and
+ *  at most 1), or undefined without an eye. */
 export function readEyeHint(value: unknown): EyeHint | undefined {
   if (!value || typeof value !== "object") return undefined;
   const place = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 2;
@@ -38,9 +46,16 @@ export function readEyeHint(value: unknown): EyeHint | undefined {
     return Object.freeze({ iris: Object.freeze({ x: iris.x as number, y: iris.y as number, r: iris.r as number }),
       eye: Object.freeze({ x: eye.x as number, y: eye.y as number, rx: eye.rx as number, ry: eye.ry as number }) });
   };
-  const { left, right } = value as { left?: unknown; right?: unknown };
+  const feature = (candidate: unknown): FeatureHint | undefined => {
+    const { x, y, r } = (candidate ?? {}) as Record<string, unknown>;
+    return place(x) && place(y) && size(r) ? Object.freeze({ x: x as number, y: y as number, r: r as number }) : undefined;
+  };
+  const { left, right, cheekLeft, cheekRight, mouth } = value as Record<string, unknown>;
   const l = eye(left), r = eye(right);
-  return l || r ? Object.freeze({ ...(l ? { left: l } : {}), ...(r ? { right: r } : {}) }) : undefined;
+  if (!l && !r) return undefined;
+  const cl = feature(cheekLeft), cr = feature(cheekRight), m = feature(mouth);
+  return Object.freeze({ ...(l ? { left: l } : {}), ...(r ? { right: r } : {}),
+    ...(cl && cr ? { cheekLeft: cl, cheekRight: cr } : {}), ...(m ? { mouth: m } : {}) });
 }
 
 interface Point { x: number; y: number }
