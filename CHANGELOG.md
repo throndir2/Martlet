@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-10-10
+
 ### Added
 
 - Set up a sign-in provider (Google, Microsoft, Authentik, Discord, Steam and others) once for your household: Martlet saves it on every host of your network and adds it to hosts that join later. On your Account page you can link it to your account and sign in with it on any of your computers, and a new computer joins as yours when you sign in to your household account through **Join with an invite**. ([#757](https://github.com/throndir2/Martlet/pull/757))
@@ -15,8 +17,8 @@ Each release's section here is also its notes on GitHub.
 - Share a character with the people in your home: on Companion › Profiles, choose **Share a copy** so others can make their own copy, or **Share together** so everyone talks to the same character, which remembers each of you. Others find them under **Household characters**. In the Memory window you can copy or move facts to the household or to another person, and **Share new memories about me** lets every character in your home remember new things about you. ([#753](https://github.com/throndir2/Martlet/pull/753))
 - Each person who uses Martlet now has their own personalities and character profiles, replies, prompts, lorebooks, the character shown, how they talk, the theme, Voice ID and reminders. Switching to another person brings back theirs, and they go only to the computers where that person is signed in. How Martlet thinks, listens and speaks, and the paid API keys, stay shared by the whole household. ([#751](https://github.com/throndir2/Martlet/pull/751), [#754](https://github.com/throndir2/Martlet/pull/754))
 - On Companion › People, **This voice is <your name>** links a voice to your own account, so Martlet knows it's you talking, and anyone else in your home who speaks is answered by your character and remembered by their own voice. A voice never signs anyone in. ([#749](https://github.com/throndir2/Martlet/pull/749))
-- Martlet now signs you in with your Windows account and shows who is using it at the bottom left. Click it to switch to another person on this PC or to **Add a person**, who gets an account of their own with no password, and your household's accounts are kept the same on all your computers. Each person's own characters and memories come in a following update. ([#748](https://github.com/throndir2/Martlet/pull/748))
-- A Martlet host can now keep a password sign-in for each person in your household, with an optional authenticator app, and link sign-ins from your identity provider to the right person. Signing in this way proves who you are on a computer, ready for accounts in Martlet. ([#747](https://github.com/throndir2/Martlet/pull/747))
+- Martlet now signs you in with your Windows account and shows who is using it at the bottom left. Click it to switch to another person on this PC or to **Add a person**, who gets an account of their own with no password, and your household's accounts are kept the same on all your computers. ([#748](https://github.com/throndir2/Martlet/pull/748))
+- A Martlet host can now keep a password sign-in for each person in your household, with an optional authenticator app, and link sign-ins from your identity provider to the right person. Signing in this way proves who you are on a computer. ([#747](https://github.com/throndir2/Martlet/pull/747))
 
 ### Changed
 
