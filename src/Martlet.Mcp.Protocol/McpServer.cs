@@ -472,8 +472,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "each paired host in hosts.json with how many outside addresses are kept with its pairing and its access (pairedHosts: " +
             "\"member\" for your own, \"friend\" for a host a friend shares with this PC, used for its engines only and never in this " +
             "PC's network); and who your hosts are shared with as Devices › Friends last read it (friends: per host, each friend's " +
-            "label, provider and how many of their computers signed in, and how many asked; friends.json). Read-only; contacts " +
-            "nothing and returns no keys or addresses.", new
+            "label, provider and how many of their computers signed in, and how many asked; friends.json); and the household's sign-in " +
+            "providers as the desktop last read them from its hosts (householdSignIn: each provider's ID, kind and name, the hosts that " +
+            "have it, miss it, have other settings or lack its client secret, and whether that desktop keeps its secret to add it to " +
+            "new hosts; household-signin.json). Read-only; contacts " +
+            "nothing and returns no keys, secrets or addresses.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -509,10 +512,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the refusals elsewhere; friend mode: whether the desktop signed in as a friend, its access, whether it ever asked to " +
             "join or was refused anything (access.friend), and its Thinking requests). With shareWithFriend true (owner mode, for a " +
             "session without the window) the lab's own admin desktop shares the host with the simulated friend from the start, so the " +
-            "running desktop meets a friend's computer in its network sync. \"stop\": ends it (it also ends with this server).", new
+            "running desktop meets a friend's computer in its network sync. mode \"account\": two real gateways (lab-host-a and " +
+            "lab-host-b, both routed to the lab issuer) paired with the desktop of dataDirectory; the lab's admin desktop set the " +
+            "household provider authentik up on lab-host-a only (a public client), so the desktop adds it to lab-host-b by itself when " +
+            "it reads its hosts' sign-in settings, and Save provider in Sign-in from outside saves it on both; status says which hosts " +
+            "have it (providerOnHosts) and keep a client secret (clientSecretOnHosts), never the secret. \"stop\": ends it (it also " +
+            "ends with this server).", new
         {
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
-            mode = new { type = "string", @enum = new[] { "owner", "friend" } },
+            mode = new { type = "string", @enum = new[] { "owner", "friend", "account" } },
             signInDesktop = new { type = "boolean" },
             shareWithFriend = new { type = "boolean" },
             dataDirectory = new { type = "string" }
@@ -2907,7 +2915,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 if (signInLab is { HasExited: false }) throw new InvalidOperationException("The sign-in lab is already running; stop it first.");
                 var mode = OptionalString(arguments, "mode") ?? "owner";
-                if (mode is not ("owner" or "friend")) throw new ArgumentException("mode is owner or friend.");
+                if (mode is not ("owner" or "friend" or "account")) throw new ArgumentException("mode is owner, friend or account.");
                 var extra = new List<string> { "--mode", mode };
                 if (OptionalBool(arguments, "signInDesktop") == true)
                     extra.Add(mode == "friend" ? "--sign-in-desktop" : throw new ArgumentException("signInDesktop goes with mode friend."));
@@ -2918,8 +2926,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 return ready;
             }
             case "status":
-                return File.Exists(status) ? JsonSerializer.Deserialize<JsonElement>(await File.ReadAllBytesAsync(status, cancellation))
-                    : new { ready = false, running = signInLab is { HasExited: false } };
+                return await ReadLabStatusAsync(status, signInLab, cancellation);
             case "stop":
                 StopLab(signInLab);
                 signInLab = null;
@@ -4072,7 +4079,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
         var pairedHosts = PairedHostsSummary(directory);
         var friends = FriendsSummary(directory);
-        if (!File.Exists(path)) return new { state = "none", key, pairedHosts, friends };
+        var householdSignIn = HouseholdSignInSummary(directory);
+        if (!File.Exists(path)) return new { state = "none", key, pairedHosts, friends, householdSignIn };
         Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
         try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
@@ -4094,8 +4102,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ignored = local.Ignored,
             removedFrom = local.RemovedFrom,
             pairedHosts,
-            friends
+            friends,
+            householdSignIn
         };
+    }
+
+    /// <summary>household-signin.json: the household's sign-in providers as the desktop last read them from its hosts (each
+    /// provider's ID, kind, name, the hosts that have it, miss it, have other settings or lack its client secret, and whether that
+    /// desktop keeps its secret to add it to new hosts) and the providers that desktop set up; never a secret. Null when the
+    /// desktop hasn't read it.</summary>
+    private static object? HouseholdSignInSummary(string directory)
+    {
+        try
+        {
+            var path = Path.Combine(directory, "household-signin.json");
+            return File.Exists(path) ? JsonSerializer.Deserialize<JsonElement>(File.ReadAllBytes(path)) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
     }
 
     /// <summary>hosts.json in short: each paired host's ID, how many outside addresses are kept with its pairing and its access

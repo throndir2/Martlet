@@ -269,4 +269,52 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
     private static bool MessagingApp(string app) => app is { Length: > 0 and <= 32 } && app.All(char.IsAsciiLetterLower);
 
     private static string MessagingTarget(string app, Guid credentialId) => $"Martlet/v3/messaging/{app}/{credentialId:N}";
+
+    // A household sign-in provider's client secret (docs/NETWORK.md), kept on the PC that set the provider up only so it can add
+    // the provider to a host of the network that misses it; hosts keep their own copy for sign-in. Base64url-encoded like MCP
+    // secrets, because client secrets may hold any printable character.
+    public CredentialError WriteSignInProviderSecret(string providerId, string value)
+    {
+        if (!SignInProviderId(providerId) || value.Length == 0 || System.Text.Encoding.UTF8.GetByteCount(value) > MaxMcpSecretBytes)
+            return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        var encoded = System.Buffers.Text.Base64Url.EncodeToChars(bytes);
+        try { return Map(native.Write(SignInProviderTarget(providerId), encoded)); }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+            Array.Clear(encoded);
+        }
+    }
+
+    public CredentialError ReadSignInProviderSecret(string providerId, out string? value)
+    {
+        value = null;
+        if (!SignInProviderId(providerId)) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var result = Map(native.Read(SignInProviderTarget(providerId), out var secret));
+        using (secret)
+        {
+            if (result != CredentialError.None) return result;
+            if (secret is null) return CredentialError.Unavailable;
+            string? decoded = null;
+            secret.Use(chars =>
+            {
+                try { decoded = System.Text.Encoding.UTF8.GetString(System.Buffers.Text.Base64Url.DecodeFromChars(chars)); }
+                catch (FormatException) { decoded = null; }
+            });
+            value = decoded;
+            return decoded is null ? CredentialError.Unavailable : CredentialError.None;
+        }
+    }
+
+    public CredentialError DeleteSignInProviderSecret(string providerId) =>
+        !SignInProviderId(providerId) ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(SignInProviderTarget(providerId))) : CredentialError.UnsupportedPlatform;
+
+    private static bool SignInProviderId(string id) =>
+        id is { Length: > 0 and <= 32 } && id.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-');
+
+    private static string SignInProviderTarget(string providerId) => $"Martlet/v3/signin-provider/{providerId}";
 }

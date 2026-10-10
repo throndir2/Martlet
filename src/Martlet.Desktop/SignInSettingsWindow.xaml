@@ -90,12 +90,18 @@
 
                 <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
                     <StackPanel>
-                        <TextBlock Text="Sign-in providers" FontWeight="SemiBold" FontSize="15"/>
+                        <TextBlock Text="Sign-in providers for your household" FontWeight="SemiBold" FontSize="15"/>
                         <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="Sign in in the browser with your own identity provider (Authentik, Authelia, Keycloak, Pocket ID or any OpenID Connect issuer), Google, Discord or Steam. Register a client for Martlet there (Google: Cloud console › APIs &amp; Services › Credentials › OAuth client ID › Desktop app; Discord: Developer Portal › your application › OAuth2, with the redirect http://127.0.0.1:&lt;port&gt;/; Steam needs nothing) and enter its ID and secret here; they stay on this host. Then sign in once from the computer you want to allow and allow it below."/>
+                                   Text="Sign in in the browser with your own identity provider (Authentik, Authelia, Keycloak, Pocket ID or any OpenID Connect issuer), Google, Microsoft, Discord or Steam. Register a client for Martlet there (Google: Cloud console › APIs &amp; Services › Credentials › OAuth client ID › Desktop app; Microsoft: Entra admin center › App registrations, a Mobile and desktop application with the redirect http://127.0.0.1; Discord: Developer Portal › your application › OAuth2, with the redirect http://127.0.0.1:&lt;port&gt;/; Steam needs nothing) and enter its ID and secret here. Martlet saves the provider on every host of your Martlet network, so you set it up once; the hosts keep the secret, and this PC keeps a copy only to add it to a host that joins later. Then sign in once from the computer you want to allow and allow it below."/>
+                        <TextBlock x:Name="HouseholdProvidersText" TextWrapping="Wrap" Margin="0,0,0,6" Text="Reading your hosts' providers..."
+                                   AutomationProperties.AutomationId="SignInHouseholdProviders"/>
+                        <Button Content="Add to the other hosts" Click="PushProviders_Click" HorizontalAlignment="Left" Margin="0,0,0,10"
+                                AutomationProperties.AutomationId="SignInProvidersPush"
+                                ToolTip="Adds each household provider to the hosts of your network that miss it (a provider that needs a client secret only when this PC keeps it)"/>
                         <ComboBox x:Name="ProviderKindBox" SelectionChanged="ProviderKind_Changed" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInProviderKind">
                             <ComboBoxItem Content="OpenID Connect (Authentik, Authelia, Keycloak, Pocket ID...)" Tag="oidc" IsSelected="True"/>
                             <ComboBoxItem Content="Google" Tag="google"/>
+                            <ComboBoxItem Content="Microsoft (personal accounts)" Tag="microsoft"/>
                             <ComboBoxItem Content="Discord" Tag="discord"/>
                             <ComboBoxItem Content="Steam" Tag="steam"/>
                         </ComboBox>

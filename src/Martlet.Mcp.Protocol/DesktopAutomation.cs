@@ -163,11 +163,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // may-call boxes and Update picture now change things or contact Discord, so they need --allow-ui-effects.
         "DiscordFriendsAbout",
         // Sign-in from outside: Add a computer's Join with an invite and a paired host's Sign-in from outside only open their
-        // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
-        // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
-        // Save, recovery codes, Remove, Allow (SignInAllow, SignInRefusedAllow, SignInRefusedAllowFriend), Make a friend or
-        // Make one of my computers (SignInAccess-<key>), Remove (SignInRemove-<key>) and Make invite change or reveal things,
-        // so they need --allow-ui-effects.
+        // windows (the settings window reads the sign-in settings of that host and of every host of your network, never a secret,
+        // and keeps the non-secret household-signin.json), and Close closes them. Connect contacts the host named in a pasted
+        // invite, Sign in pairs, and the settings window's Make an authenticator secret, Save, recovery codes, Remove, Allow
+        // (SignInAllow, SignInRefusedAllow, SignInRefusedAllowFriend), Make a friend or Make one of my computers
+        // (SignInAccess-<key>), Remove (SignInRemove-<key>), Save provider and Remove provider (SignInProviderSave,
+        // SignInProviderRemove: on every host of your network), Add to the other hosts (SignInProvidersPush) and Make invite change
+        // or reveal things, so they need --allow-ui-effects.
         "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose",
         // Devices › Friends' Check now only reads each of your hosts' sign-in settings (never a secret) and keeps the non-secret
         // summary in friends.json; Share and Stop sharing (FriendShare-<host>-<key>, FriendStop-<host>-<key>) change who may use
@@ -276,9 +278,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Sign-in from outside: the join window's status line and the host it checked ("home-host at name:port, key checked"),
         // and the settings window's status, owner account state (name and recovery codes left), allowed identities (each one of
         // your computers or a friend's), providers and computers that signed in (device IDs, provider, subject and whether a
-        // friend's; never a password, secret or recovery code).
+        // friend's; never a password, secret or recovery code), and where each household provider is set up ("Google (google): on
+        // gpu-box and lab-host-b; missing on linux-box."; provider names and host IDs only).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
-        "SignInEnrolledList", "SignInRefusedList", "SignInRemovedList", "SignInOutsideWarning",
+        "SignInEnrolledList", "SignInRefusedList", "SignInRemovedList", "SignInOutsideWarning", "SignInHouseholdProviders",
         // Devices › Friends: how many hosts are shared with how many friends and who asked ("You share 1 host with 1 friend. ...
         // Checked 14:02."), and Hosts shared with this PC: how many hosts friends share with this PC. Counts and fixed wording.
         "FriendsStatus", "SharedHostsStatus",

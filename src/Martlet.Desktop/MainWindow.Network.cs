@@ -245,6 +245,8 @@ public partial class MainWindow
                     await RefreshHomeAsync();
                     QueueClusterSync();
                     QueueApiKeySync();
+                    // A host new to this PC gets the household's sign-in providers (docs/NETWORK.md).
+                    QueueHouseholdSignIn();
                 }
                 RenderNetwork();
                 // Whether this PC's own host service serves another computer, and so whether this PC stays awake, follows each sync.
