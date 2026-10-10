@@ -54,6 +54,7 @@ public sealed class AccountSettingsRouteTests
     public async Task Each_account_keeps_its_own_settings_apart_from_the_others_and_from_the_household()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         var storage = new AccountStorage();
         host.Server.AttachAccountSettingsStorage(storage);
         var member = await MemberAsync(host);
@@ -104,6 +105,7 @@ public sealed class AccountSettingsRouteTests
         var dark = Theme("dark");
         await using (var first = await GatewayTestHost.StartAsync())
         {
+            first.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
             first.Server.AttachAccountSettingsStorage(storage);
             var member = await MemberAsync(first);
             using var response = await first.Client.SendAsync(first.SignedPost(Accounts + Sam, GatewayRole.Voice, member, dark.Write()));
@@ -112,6 +114,7 @@ public sealed class AccountSettingsRouteTests
         storage.Saved["5A3F0C9E8B7D4E21A6C3B2F1D0E9A8B7"] = dark.Write();
 
         await using var second = await GatewayTestHost.StartAsync();
+        second.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         second.Server.AttachAccountSettingsStorage(storage);
         Assert.Equal([Sam], second.Server.AccountSettings);
         Assert.Equal((Sam, dark.Digest()), await DigestAsync(second, await MemberAsync(second), Sam));
@@ -152,6 +155,7 @@ public sealed class AccountSettingsRouteTests
     public async Task An_accounts_settings_never_carry_an_API_key()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         var member = await MemberAsync(host);
         var keyed = SharedSettings.Empty.Put(SettingScopes.Appearance, "\"dark\"", "sk-not-for-an-account", "sams-pc", At);
 
@@ -239,6 +243,7 @@ public sealed class AccountSettingsRouteTests
     public async Task A_host_keeps_the_settings_of_at_most_64_accounts()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         var member = await MemberAsync(host);
         for (var i = 0; i < 64; i++)
         {

@@ -4,8 +4,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
+using Martlet.Core.Network;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Gateway;
@@ -42,6 +44,16 @@ internal static class SettingsRehearsal
         var steps = new List<(string Name, bool Ok, string Detail)>();
         var started = DateTimeOffset.UtcNow;
         var root = Path.Combine(Path.GetTempPath(), "martlet-settings-rehearsal-" + Guid.NewGuid().ToString("N"));
+        // The household's account directory on the hosts: a host serves an account's settings only to a device where that account
+        // is signed in (GatewayMemorySpaceAccess.cs). Sam, the owner, and Alex are both signed in on lab-desktop-d.
+        using (var founder = NetworkKey.Create("lab-desktop-d"))
+        {
+            var login = AccountLoginKey.ForWindows("lab-desktop-d", "S-1-5-21-1-2-3-1001");
+            LabHost.Accounts = AccountDirectory.Empty
+                .Put(founder, Account.Create("Sam", AccountRoles.Owner, SamAccount).WithDevice(AccountDevice.For("lab-desktop-d", login, started)), started)
+                .Put(founder, Account.Create("Alex", AccountRoles.Member, AlexAccount).WithDevice(AccountDevice.For("lab-desktop-d", login, started)), started)
+                .Write();
+        }
         await using var h1 = await LabHost.StartAsync("lab-settings-1");
         await using var h2 = await LabHost.StartAsync("lab-settings-2");
         LabHost[] hosts = [h1, h2];
@@ -742,6 +754,7 @@ internal static class SettingsRehearsal
             var origin = new GatewayOrigin(Origin);
             Server = new GatewayServer(Identity, origin, [], this);
             Server.AttachSettingsStorage(this);
+            if (Accounts is { } accounts) Server.AttachAccountStorage(new AccountFile(accounts));
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
 
@@ -749,6 +762,15 @@ internal static class SettingsRehearsal
         {
             if (listener is not null) await listener.DisposeAsync();
             listener = null;
+        }
+
+        /// <summary>The household's account directory every lab host starts with (accounts.json).</summary>
+        internal static byte[]? Accounts { get; set; }
+
+        private sealed class AccountFile(byte[] bytes) : IGatewayAccountStorage
+        {
+            public byte[]? Load() => bytes;
+            public void Save(byte[] value) { }
         }
 
         public byte[]? Load() => saved;
