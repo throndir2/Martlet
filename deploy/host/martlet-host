@@ -2520,25 +2520,42 @@ cmd_add() {
   done
   [[ ${ready} == 1 ]] || fail "${role} did not start. Inspect: martlet-host status (or docker compose -p martlet-${role} logs)"
 
+  local model_from model="${role}" previous="" slots_from slots=1 retired=0
+  model_from="$(conf_value "${conf}" model_from)"
+  if [[ -n "${kind}" ]]; then
+    if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
+    if [[ -f "$(installed_file "${role}")" ]]; then previous="$(conf_value "$(installed_file "${role}")" model)"; fi
+  fi
+
   # Post-start steps: post_start=<service>|<command> runs inside that service once it listens ({VAR} uses a choice), then the
   # warm steps (warm=<service>|<command>, loading the model), which "martlet-host warm" runs again after a restart.
-  local service step words safe='^[A-Za-z0-9 ._:/=-]+$'
-  while IFS= read -r line <&3; do
+  # A model switch keeps the previous model loaded until the new one answers. When both don't fit in the graphics card's
+  # memory, loading the new one can fail (Ollama's gemma4:12b does when one layer doesn't fit), so a failed warm step
+  # retires the previous model first and runs once more.
+  local service step words section safe='^[A-Za-z0-9 ._:/=-]+$'
+  while IFS='|' read -r section line <&3; do
     [[ -n "${line}" ]] || continue
     service="${line%%|*}"; step="${line#*|}"
     for key in "${!chosen[@]}"; do step="${step//\{${key}\}/${chosen[${key}]}}"; done
-    [[ "${service}" =~ ^[a-z0-9][a-z0-9_-]*$ && "${step}" =~ ${safe} ]] || fail "Unsafe post_start entry in role.conf."
+    [[ "${service}" =~ ^[a-z0-9][a-z0-9_-]*$ && "${step}" =~ ${safe} ]] || fail "Unsafe ${section} entry in role.conf."
     read -r -a words <<< "${step}"
     say "Running in ${service}: ${step}"
     tries=0
     until role_compose "${role}" exec -T "${service}" "${words[@]}"; do
+      if [[ "${section}" == warm ]]; then
+        if (( ! retired )) && [[ -n "${previous}" && "${previous}" != "${model}" && -n "$(conf_values "${conf}" retire)" ]]; then
+          note "Loading ${model} failed while ${previous} still uses the graphics card's memory. Unloading ${previous} and trying again..."
+          retire_previous "${role}" "${conf}" "${previous}" "${model}"
+          retired=1
+          continue
+        fi
+        fail "'${step}' failed in ${role}: the model didn't load (the output above shows why). Choose a smaller model or close programs that use the graphics card, then run 'martlet-host add ${role}' again."
+      fi
       (( ++tries < 3 )) && recover_role_dns "${role}" "${role_network}" ||
         fail "'${step}' failed in ${role}. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
     done
-  done 3< <(conf_values "${conf}" post_start; conf_values "${conf}" warm)
+  done 3< <(conf_values "${conf}" post_start | sed 's/^/post_start|/'; conf_values "${conf}" warm | sed 's/^/warm|/')
 
-  local model_from model="${role}" previous="" slots_from slots=1
-  model_from="$(conf_value "${conf}" model_from)"
   # slots_from=VAR: the choice saying how many requests the role runs at once (the deep-thinking role's thinks at once).
   slots_from="$(conf_value "${conf}" slots_from)"
   if [[ -n "${slots_from}" ]]; then
@@ -2546,10 +2563,8 @@ cmd_add() {
     [[ "${slots}" =~ ^[1-9]$ ]] || fail "Invalid ${slots_from}."
   fi
   if [[ -n "${kind}" ]]; then
-    if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
-    if [[ -f "$(installed_file "${role}")" ]]; then previous="$(conf_value "$(installed_file "${role}")" model)"; fi
     with_gateway publish_role "${role}" "${kind}" "${port}" "${model}" "" "${slots}"
-    retire_previous "${role}" "${conf}" "${previous}" "${model}"
+    if (( ! retired )); then retire_previous "${role}" "${conf}" "${previous}" "${model}"; fi
     say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
   else
     [[ -n "${role_feature}" ]] || fail "role.conf declares no gateway_kind or feature."
