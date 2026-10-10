@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-10-09
+
 ### Added
 
 - Companion › Thinking pool now shows how smart each machine's model is (**Fast**, **Standard** or **Smart**, guessed from the model name, and you can change it), and a new **Runs on** card lets you send each kind of job to any machine, the smartest free one, only smart ones or the machines you pick. Each check-in can choose its own on its card, so a small local model can keep the conversation fast while a bigger one does the thinking. ([#708](https://github.com/throndir2/Martlet/pull/708))
