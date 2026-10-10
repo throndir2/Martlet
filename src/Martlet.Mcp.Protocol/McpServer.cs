@@ -335,7 +335,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
             "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
             "the Parakeet model that hears you on this PC's processor when that route (a paired host or OpenAI) fails, or why none " +
-            "(standIn), " +
+            "(standIn), sharing (the voice list always syncs with your paired hosts, whatever Keep Martlet the same on all my " +
+            "computers says: state, hosts, and friendHostsNeverUsed for hosts a friend shares), " +
             "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
             "(from the saved personas) or a placeholder such as \"no name yet\", and the most names one voice has; and clips: whether " +
             "People keeps the last few clips of voices not named yet (voice-clips.txt) and how many clips over how many voices (never " +
@@ -472,8 +473,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "each paired host in hosts.json with how many outside addresses are kept with its pairing and its access (pairedHosts: " +
             "\"member\" for your own, \"friend\" for a host a friend shares with this PC, used for its engines only and never in this " +
             "PC's network); and who your hosts are shared with as Devices › Friends last read it (friends: per host, each friend's " +
-            "label, provider and how many of their computers signed in, and how many asked; friends.json). Read-only; contacts " +
-            "nothing and returns no keys or addresses.", new
+            "label, provider and how many of their computers signed in, and how many asked; friends.json). Also this PC's device " +
+            "ID (device: id and source, saved in device.json, one per Windows user; source pairings or legacy is the ID the desktop " +
+            "keeps on its next start, new means it picks desktop-<pc name>-<6 characters>) and the Windows login it runs under " +
+            "(windowsLogin: kind microsoft, work or local, and whether it has an e-mail hint; never the e-mail, name or SID). " +
+            "Read-only; contacts nothing and returns no keys or addresses.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -967,7 +971,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
             "Walks saving on one computer and recalling on another, an edit, a deletion reaching every computer (and never coming back), " +
             "offline edits on two computers, a host that missed changes, a new computer taking everything, an expired fact, a full store " +
-            "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder and " +
+            "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder, " +
+            "memory spaces (a fact in one account's space stays apart from other spaces and the old document, and survives a host restart) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
         Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
@@ -2524,8 +2529,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             recognition = Choice("voice-recognition.txt") ?? "on (default)",
-            // The voice list travels with the rest of Martlet while "Keep Martlet the same on all my computers" is on.
-            sharing = Choice("cluster-sync.txt") is "off" ? "off" : "on (Keep Martlet the same on all my computers)",
+            // People are always shared with the household: the voice list travels to every paired host of yours whatever
+            // "Keep Martlet the same on all my computers" says, and never to a host a friend shares.
+            sharing = VoiceSharing(directory),
             included = new
             {
                 found = File.Exists(Path.Combine(martlet, "Martlet.Desktop.exe")),
@@ -2546,6 +2552,29 @@ internal sealed class McpServer(DesktopAutomation desktop)
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { counts = []; }
             return new { keep = Choice("voice-clips.txt") ?? "on (default)", voices = counts.Length, clips = counts.Sum() };
         }
+    }
+
+    /// <summary>voices_status's sharing: the voice list syncs with every paired host of yours (hosts.json entries that aren't
+    /// a friend's), whatever cluster-sync.txt says; hosts a friend shares are counted but never used.</summary>
+    private static object VoiceSharing(string directory)
+    {
+        var path = Path.Combine(directory, "hosts.json");
+        int hosts = 0, friendHosts = 0;
+        if (File.Exists(path))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+                foreach (var host in document.RootElement.GetProperty("hosts").EnumerateArray())
+                    if (IsSharedHost(host)) friendHosts++;
+                    else hosts++;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                return new { state = "hosts unreadable", always = true };
+            }
+        }
+        return new { state = hosts > 0 ? "on" : "no paired hosts yet", always = true, hosts, friendHostsNeverUsed = friendHosts };
     }
 
     /// <summary>The optional absolute speechDirectory argument (where Parakeet is downloaded), or the current user's.</summary>
@@ -4121,7 +4150,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the
-    /// names Martlet.Desktop's NetworkIdentity uses). No keys, signatures or addresses are returned.</summary>
+    /// names Martlet.Desktop's NetworkIdentity uses), this data folder's device ID (device.json) and the Windows login's kind.
+    /// No keys, signatures, addresses, e-mail or names of the Windows login are returned.</summary>
     private static object NetworkStatus(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
@@ -4129,18 +4159,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
         var pairedHosts = PairedHostsSummary(directory);
         var friends = FriendsSummary(directory);
-        if (!File.Exists(path)) return new { state = "none", key, pairedHosts, friends };
+        var device = DeviceSummary(directory);
+        var login = Martlet.Mcp.Shared.WindowsLogin.Current;
+        var windowsLogin = new { kind = login.Kind, hasEmailHint = login.HasEmailHint, hasSid = login.Sid.Length > 0 };
+        if (!File.Exists(path)) return new { state = "none", key, device, windowsLogin, pairedHosts, friends };
         Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
         try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
         {
-            return new { state = "unreadable", key };
+            return new { state = "unreadable", key, device, windowsLogin };
         }
         var roster = local.Roster;
         return new
         {
             state = roster is not null ? "member" : local.Waiting is not null ? "waiting" : "none",
             key,
+            device,
+            windowsLogin,
             networkId = roster?.NetworkId ?? local.Waiting?.NetworkId,
             revision = roster?.Revision,
             founder = roster?.Founder?.Id,
@@ -4154,6 +4189,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             friends
         };
     }
+
+    /// <summary>This data folder's device ID, read-only (Martlet.Core's DeviceIds): saved in device.json ("saved"), or the one the
+    /// desktop will keep from its pairings ("pairings") or an older Martlet's desktop-&lt;pc name&gt; ("legacy"); null with "new"
+    /// when the desktop picks a new desktop-&lt;pc name&gt;-&lt;6 of [a-z0-9]&gt; one on its next start.</summary>
+    private static object DeviceSummary(string directory) => Martlet.Core.Network.DeviceIds.Peek(directory) is { } choice
+        ? new { id = (string?)choice.Id, source = choice.Source.ToString().ToLowerInvariant() }
+        : new { id = (string?)null, source = "new" };
 
     /// <summary>hosts.json in short: each paired host's ID, how many outside addresses are kept with its pairing and its access
     /// ("friend" for a host a friend shares with this PC: its engines only, never in this PC's network; "member" for your own).</summary>

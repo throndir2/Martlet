@@ -130,7 +130,7 @@ internal static partial class HearingCheck
     {
         var directory = Martlet.Diagnostics.LocalLogs.Directory(dataDirectory);
         if (!Directory.Exists(directory)) return null;
-        var lines = Martlet.Diagnostics.LocalLogs.Read(directory, Martlet.Diagnostics.LocalLogs.ThisDeviceId())
+        var lines = Martlet.Diagnostics.LocalLogs.Read(directory, Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory))
             .Where(r => r.Component == "desktop").OrderBy(r => r.At).ToArray();
         var path = lines.LastOrDefault(r => r.Message.StartsWith("Voice path: ", StringComparison.Ordinal));
         if (path is null) return null;

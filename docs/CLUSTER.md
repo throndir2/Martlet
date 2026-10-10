@@ -25,15 +25,17 @@ Hosts never talk to each other, so desktops carry changes between them. It is
 **on by default**; one switch, **Devices > Settings for all devices > Keep
 Martlet the same on all my computers**, turns all of it off (each computer then
 keeps its own choices and memories, and a change made meanwhile is shared, with
-its time, when you turn it on again). Failover stays a per-job **Fail over to
-another host** choice.
+its time, when you turn it on again). The people Martlet recognizes by voice
+are the exception: they are always shared, so Martlet learns everyone's voice
+([The shared voice list](#the-shared-voice-list)). Failover stays a per-job
+**Fail over to another host** choice.
 
 | The same on every computer | How it travels | Details |
 | --- | --- | --- |
 | Who does each job (thinking, listening, speaking, lip-sync) | The cluster plan | [Model](#model) |
 | How Martlet thinks, listens and speaks with the API keys, the Thinking fallback, the personality, replies, prompts, memory on or off, lorebooks, the character and its emotes and motions, how you talk, speech bubbles and subtitles, the theme, recognizing voices, Voice ID, what Martlet may do with Home Assistant, app updates | Shared settings | [One Martlet on every computer](#one-martlet-on-every-computer) |
 | What Martlet remembers | Shared memories | [MEMORY](MEMORY.md#one-memory-on-every-computer) |
-| The people and voices Martlet recognizes | The shared voice list | [The shared voice list](#the-shared-voice-list) |
+| The people and voices Martlet recognizes | The shared voice list, always on (not changed by the switch) | [The shared voice list](#the-shared-voice-list) |
 | The voices Martlet speaks with and their recordings | Shared speaking voices | [The shared speaking voices](#the-shared-speaking-voices) |
 | Your characters (Live2D and VRM models) | Shared character models | [The shared character models](#the-shared-character-models) |
 | The Home Assistant connection | Shared Home Assistant | [The shared Home Assistant connection](#the-shared-home-assistant-connection) |
@@ -718,9 +720,12 @@ computers. See [MEMORY](MEMORY.md#one-memory-on-every-computer).
 
 The voices Martlet recognizes (Companion › People) travel the same way, in
 their own document: each host keeps `voices.json` beside `cluster.json` and
-serves `GET`/`POST /martlet/v1/voices`; desktops merge every 30 seconds while
-Martlet is the same on all your computers (the one switch above; whether
-Martlet recognizes voices at all is the `voice-recognition` shared setting).
+serves `GET`/`POST /martlet/v1/voices`; desktops merge every 30 seconds with
+every paired host of their own. People are always shared in the household
+([ACCOUNTS](ACCOUNTS.md)), so this runs even while *Keep Martlet the same on
+all my computers* is off; hosts a friend shares never take part. Whether
+Martlet recognizes voices at all is the `voice-recognition` shared setting,
+which follows the switch.
 Each voice is a last-writer-wins entry with the same hybrid revisions;
 forgotten and merged voices leave tombstones. See [VOICES](VOICES.md#sharing-between-your-computers).
 

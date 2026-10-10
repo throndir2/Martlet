@@ -323,7 +323,7 @@ internal static class ImageModelCheck
     {
         var directory = Martlet.Diagnostics.LocalLogs.Directory(dataDirectory);
         if (!Directory.Exists(directory)) return null;
-        var lines = Martlet.Diagnostics.LocalLogs.Read(directory, Martlet.Diagnostics.LocalLogs.ThisDeviceId())
+        var lines = Martlet.Diagnostics.LocalLogs.Read(directory, Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory))
             .Where(r => r.Component == "desktop").OrderBy(r => r.At).ToArray();
         var path = lines.LastOrDefault(r => r.Message.StartsWith("Picture path: ", StringComparison.Ordinal));
         var made = lines.LastOrDefault(r => r.Message.StartsWith("Image model: ", StringComparison.Ordinal));

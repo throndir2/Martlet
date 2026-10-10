@@ -77,6 +77,20 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachMemoryStorage(IGatewayMemoryStorage storage) => application.Memories.Attach(storage);
 
+    /// <summary>Keeps this host's memory spaces (served at /martlet/v1/memories/spaces/{space}) in <paramref name="storage"/>
+    /// and loads the spaces saved there.</summary>
+    public void AttachMemorySpaceStorage(IGatewayMemorySpaceStorage storage) => application.MemorySpaces.Attach(storage);
+
+    /// <summary>The IDs of the memory spaces this host keeps.</summary>
+    public IReadOnlyList<string> MemorySpaces => application.MemorySpaces.Spaces;
+
+    /// <summary>Decides which paired device may read or write which memory space (default: every member device).</summary>
+    internal GatewayMemorySpaceAccess MemorySpaceAccess
+    {
+        get => application.MemorySpaces.Access;
+        set => application.MemorySpaces.Access = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
     /// <summary>Keeps this host's copy of the network's API keys (served to paired desktops at /martlet/v1/api-keys and
     /// checked for every Authorization: Bearer request) in <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachApiKeyStorage(IGatewayApiKeyStorage storage) => application.ApiKeys.Attach(storage);
