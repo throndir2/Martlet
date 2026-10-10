@@ -7816,19 +7816,20 @@ field will do; never a key or typed base URL). `DeepThinkingUseLocal`
 `thinking-pool.json` and need `--allow-ui-effects`; an open conversation's
 next think uses it.
 Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
-and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
-PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
-*Another of your computers*; under *This PC*, the ways are an option picker:
-`Picker-LipSync-Audio2Face` (Audio2Face on this PC, with *in use*,
-*recommended* or *chosen, not installed yet*), `Picker-LipSync-Loudness`
-(voice loudness: advanced lip-sync off) and `Picker-LipSync-Own` (your own
-Audio2Face service, with *in use*, *not running* or *checking* while it is the
-setting in effect, Martlet's default). In the shown way's details,
-`LipSyncDockerAbout` says what this PC's graphics card means for Audio2Face and
-`LipSyncOwnState` what your own service does now. Voice loudness reads *in use*
-while the default's own service doesn't answer.
-`SetupLipSyncLoudness`, `SetupLipSyncOwnService` and the Audio2Face buttons
-change lip-sync and need `--allow-ui-effects`.
+and Companion › Lip-sync's `LipSyncNow` (what moves the mouth for the next
+sentence: the first member that is on in lip-sync's list, or voice loudness)
+and `LipSyncNowProblem`. Lip-sync's places are its pool list
+(`Pool-lip-sync-*`, the shared list control above; there is no other on/off
+switch). `Pool-lip-sync-Settings-<i>` is a safe click: it shows *This PC*'s
+address box `Pool-lip-sync-Endpoint` (saved by `Pool-lip-sync-SaveEndpoint`)
+or a computer's `Pool-lip-sync-Install-<host>`,
+`Pool-lip-sync-Change-<member key>` and `Pool-lip-sync-Check-<host>`. Under
+the list, *Audio2Face on this PC* reads `LipSyncDockerAbout` (what this PC's
+graphics card means for Audio2Face) with `SetupLipSyncHostThisPc` (no host
+service yet) or `SetupLipSyncUseLocal` and `SetupLipSyncCheckLocal`. Saving
+the address, On, Up, Down, Remove, Add and the set-up buttons change lip-sync
+and need `--allow-ui-effects`; `lip_sync_pool_status` then shows the list and
+the profile's `lipSync` and `assigned` following its first member that is on.
 When Thinking runs in Ollama on this PC, the talk window has Ollama load the
 model as it opens (and again on activity after a few quiet minutes), and
 `LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,

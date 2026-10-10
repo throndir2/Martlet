@@ -215,10 +215,12 @@ public static class PoolAreas
         Id = ClusterJobs.Thinking, Title = "Thinking", Page = "Companion › Thinking", HostRole = "ollama", ConversationFirst = true,
         Kinds = [PoolMemberKind.Computer]
     };
+    /// <summary>Lip-sync: this PC's own Audio2Face service and each paired computer (one row each: a host runs one Audio2Face
+    /// relay, so a graphics card isn't a member of its own here; <see cref="LipSyncSharing.OneRowPerComputer"/>).</summary>
     public static readonly PoolArea LipSync = new()
     {
-        Id = ClusterJobs.LipSync, Title = "Lip-sync", Page = "Companion › Lip-sync", HostRole = "audio2face", Kinds = Local,
-        Required = true, Fallback = "Voice loudness on this PC"
+        Id = ClusterJobs.LipSync, Title = "Lip-sync", Page = "Companion › Lip-sync", HostRole = "audio2face",
+        Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer], Required = true, Fallback = "Voice loudness on this PC"
     };
     /// <summary>Pictures: Martlet's pictures role on this PC's host service or a paired computer (one ComfyUI per computer, so
     /// no card members), a ComfyUI the owner runs at an address, or a cloud provider ("openrouter", "nvidia-build"). Each PC

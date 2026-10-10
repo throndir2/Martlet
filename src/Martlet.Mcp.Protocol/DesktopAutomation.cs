@@ -240,9 +240,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // below ("Pool-speaking-Show-host:diva-host") and A cloud provider ("Pool-speaking-AddCloud") only show that place's own
         // card under the list, whose own button commits. Devices › Sharing work's Open buttons ("WorkSharingOpen-speaking") only
         // open the area's page. The list's On, Up, Down, Remove, Add and kept-for choices save pools.json and share it, so they
-        // need --allow-ui-effects.
+        // need --allow-ui-effects. Lip-sync's Settings ("Pool-lip-sync-Settings-0") shows This PC's address box
+        // ("Pool-lip-sync-Endpoint", saved by Pool-lip-sync-SaveEndpoint) or a computer's Install, Change model and Check it buttons.
         "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-reading-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
-        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "WorkSharingOpen-",
+        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "Pool-lip-sync-Settings-", "WorkSharingOpen-",
         // Companion › Singing's list: a member's Settings ("Pool-singing-Settings-0") only shows or hides its Singing state, Set up
         // Singing here, Add VevoSing here and its own quality; those buttons and the quality save or install, so they need
         // --allow-ui-effects.
@@ -339,10 +340,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The character overlay's drag surface reads as its last tap's hit test (zone, hit areas, drawables, bone; model-authored
         // names only, never paths); character_touch taps it.
         "MoveAvatar",
-        // Companion › Lip-sync › This PC: its ways are an option picker (Picker-LipSync-Audio2Face, -Loudness, -Own); the shown
-        // way's details read what this PC's graphics card means for Audio2Face (LipSyncDockerAbout) and where your own service
-        // stands (LipSyncOwnState).
-        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnState", "LipSyncDockerAbout",
+        // Companion › Lip-sync: what moves the mouth now (LipSyncNow, LipSyncNowProblem) and, under its pool list (Pool-lip-sync-*),
+        // what this PC's graphics card means for Audio2Face (LipSyncDockerAbout).
+        "LipSyncNow", "LipSyncNowProblem", "LipSyncDockerAbout",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.

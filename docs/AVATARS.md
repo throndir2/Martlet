@@ -1226,8 +1226,9 @@ it joins your characters as soon as it is saved or shown),
 the lip-sync mode (Automatic, voice loudness only, or Audio2Face only) and
 whether the character shows automatically at launch. There is no Save button:
 each choice saves on its own in the avatar-only sidecar (a typed path once it
-names an existing model file), keeping the lip-sync host chosen on the
-Lip-sync page, the Devices map or another computer through who-does-what sync,
+names an existing model file), keeping the lip-sync places chosen in
+lip-sync's list ([the lip-sync pool](#the-lip-sync-pool)), the Devices map or
+another computer,
 and a showing character switches to a new model or lip-sync mode right away.
 The window's footer says *All changes saved.* or why a choice isn't saved yet.
 Opening Setup temporarily hides the character and restores it afterwards.
@@ -1255,10 +1256,10 @@ Automatic lip-sync sends its requests through a pool: an ordered list of the
 places that run Audio2Face (`PoolAreas.LipSync` in the
 [pool contract](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A
 member is *This PC* (this PC's own Audio2Face service, at its `endpoint`
-setting or the character's endpoint), one of your computers that runs the
-`audio2face` host role, or one card of such a computer. A computer runs one
-Audio2Face relay, so a card member uses its computer's relay when the relay
-runs on that card (or the computer did not say which card).
+setting or the character's endpoint) or one of your computers that runs the
+`audio2face` host role. There is one row per computer: a computer runs one
+Audio2Face relay, whichever graphics card it uses. A card row saved before
+reads as its computer's row (`LipSyncSharing.OneRowPerComputer`).
 
 1. Martlet reads lip-sync's list from `pools.json` (the `pools` shared setting)
    before each sentence. It reads the file again only when the file changed,
@@ -1291,10 +1292,45 @@ Before the pool, a second companion PC whose lip-sync computer was busy got
 `job.busy` and used voice loudness for 30 seconds. MCP `lip_sync_pool_status`
 shows the list, its source and the member keys this PC tries.
 `lip_sync_pool_check` rehearses the production pool and queue with simulated
-computers. **Qualification:** `LipSyncSharingTests`, `LipSyncPoolTests`,
-`AvatarIntegrationTests` and the two MCP tools run locally. Lip-sync between
-real Audio2Face hosts is **NOT RUN**. The list on Companion › Lip-sync comes in
-a later change; until then the list changes only through `pools.json`.
+computers.
+
+**Companion › Lip-sync** shows the list with the shared list control
+(`Pool-lip-sync-*`). There is no other on/off switch and no single-computer
+choice.
+
+1. The *Now* line (`LipSyncNow`) says what moves the mouth for the next
+   sentence: the first member that is on, or voice loudness when none is on.
+2. Each member has *On*, *Up*, *Down*, *Remove* and *Settings*. *This PC*'s
+   settings hold the address of your own Audio2Face service
+   (`Pool-lip-sync-Endpoint`, saved as the member's `endpoint` setting). A
+   computer's settings have *Install Audio2Face* or *Change model* (when this
+   PC changes that computer's roles) and *Check it*.
+3. *Add to the list* adds *This PC*, or a paired computer that runs Audio2Face
+   or can install it. A host a friend shares with this PC is never added: your
+   list is shared.
+4. *Audio2Face on this PC*, under the list, says what this PC's graphics card
+   means for Audio2Face (`LipSyncDockerAbout`). It sets up Martlet's host
+   service with Audio2Face (`SetupLipSyncHostThisPc`) or installs Audio2Face
+   in it (`SetupLipSyncUseLocal`); that host service then goes first in the
+   list.
+5. When the page first opens and lip-sync has no list yet, Martlet makes it
+   from the older choice and saves it. It never saves an empty list there, so
+   a new computer never shares an empty list over your other computers' lists.
+
+The list and the older "who does lip-sync" choice (the character's profile and
+the shared plan's lip-sync job, which Home, Devices and the coverage checks
+show) stay in step. A change in the list makes the first member that is on,
+and paired here, the choice; with none on, the choice is voice loudness. A
+choice made elsewhere (Devices' *Handled by*, a coverage fix, setup) puts that
+place first in the list and turns it on; voice loudness turns every member
+off, and each keeps its settings. A host a friend shares, chosen on this PC,
+stays this PC's own choice: it goes first on this PC only and never into the
+list.
+
+**Qualification:** `LipSyncSharingTests`, `LipSyncPoolTests`,
+`AvatarIntegrationTests` and the two MCP tools run locally. The page was
+driven through MCP `-Desktop` on a disposable data directory. Lip-sync between
+real Audio2Face hosts is **NOT RUN**.
 
 ## 3. Per-model capability and mapping checklist
 

@@ -38,7 +38,7 @@ internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection,
         try
         {
             var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
-            // Which cards serve the relay, so a lip-sync pool member that names a card can be matched to it.
+            // Which cards serve the relay, for the live floor (HostRouteGpus).
             HostRouteGpus.Note(connection.Pairing.HostId, routes);
             Volatile.Write(ref route, Audio2FaceHostConnection.Audio2FaceRoute(routes));
         }
