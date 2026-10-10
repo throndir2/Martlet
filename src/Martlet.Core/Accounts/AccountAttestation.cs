@@ -7,18 +7,6 @@ using B64 = System.Buffers.Text.Base64Url;
 
 namespace Martlet.Core.Accounts;
 
-/// <summary>The login an <see cref="AccountAttestation"/> names: the Login contract of docs/ACCOUNTS.md. Kind is "martlet",
-/// "oidc", "discord" or "steam" (hosts never attest "windows"); provider is "martlet" for a Martlet password, else the household
-/// provider ID; subject is the lowercase user name for "martlet", else the provider's subject.</summary>
-public sealed record AccountAttestationLogin
-{
-    public required string Kind { get; init; }
-    public required string Provider { get; init; }
-    public required string Subject { get; init; }
-
-    public override string ToString() => $"{Kind}:{Provider}:{Subject}";
-}
-
 /// <summary>Why an <see cref="AccountAttestation"/> was or wasn't accepted (<see cref="AccountAttestation.Check"/>).</summary>
 public enum AccountAttestationCheck
 {
@@ -79,7 +67,9 @@ public sealed record AccountAttestation
     public required string HostId { get; init; }
     public required Guid AccountId { get; init; }
     public required string DeviceId { get; init; }
-    public required AccountAttestationLogin Login { get; init; }
+    /// <summary>The login it was proved with (docs/ACCOUNTS.md, Login): "martlet" (a Martlet password), "oidc", "discord" or
+    /// "steam". Hosts never attest a "windows" login; only the device that made one can prove it.</summary>
+    public required AccountLoginKey Login { get; init; }
     public required DateTimeOffset IssuedAt { get; init; }
     public required DateTimeOffset ExpiresAt { get; init; }
     public required string Algorithm { get; init; }
@@ -94,7 +84,7 @@ public sealed record AccountAttestation
     /// <summary>The host's statement, signed with the private key of <paramref name="hostCertificate"/> (the host's TLS
     /// certificate). Times are kept to whole seconds. Throws <see cref="ArgumentException"/> when a field is malformed or the
     /// certificate has no usable private key.</summary>
-    public static AccountAttestation Issue(string networkId, string hostId, Guid accountId, string deviceId, AccountAttestationLogin login,
+    public static AccountAttestation Issue(string networkId, string hostId, Guid accountId, string deviceId, AccountLoginKey login,
         DateTimeOffset issuedAt, TimeSpan lifetime, X509Certificate2 hostCertificate)
     {
         ArgumentNullException.ThrowIfNull(login);
@@ -177,11 +167,19 @@ public sealed record AccountAttestation
     private bool WellFormed() =>
         SchemaVersion == 1 && TryDecode(NetworkId, 16, out var network) && network.Length == 16 &&
         Contracts.ContractRules.IsIdentifier(HostId) && Contracts.ContractRules.IsIdentifier(DeviceId) && AccountId != Guid.Empty &&
-        Login is { Kind: "martlet" or "oidc" or "discord" or "steam", Provider: not null, Subject: { Length: > 0 and <= 256 } } &&
-        Contracts.ContractRules.IsIdentifier(Login.Provider) && !Login.Subject.Any(char.IsControl) &&
-        (Login.Kind != "martlet" || Login.Provider == "martlet" && Login.Subject == Login.Subject.ToLowerInvariant()) &&
+        Login is { Kind: not AccountLoginKinds.Windows, Provider: not null, Subject: not null } && LoginValid(Login) &&
         ExpiresAt > IssuedAt && ExpiresAt - IssuedAt <= MaximumLifetime && Algorithm is EcdsaP256 or RsaPss &&
         TryDecode(HostKey, 2048, out _) && Signature is not null && (Signature.Length == 0 || TryDecode(Signature, 1024, out _));
+
+    private static bool LoginValid(AccountLoginKey login)
+    {
+        try
+        {
+            login.Validate();
+            return true;
+        }
+        catch (Contracts.ContractException) { return false; }
+    }
 
     private bool SignatureMatches(byte[] key)
     {

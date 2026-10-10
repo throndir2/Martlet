@@ -9,7 +9,7 @@ public sealed class AccountAttestationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 10, 20, 0, 0, TimeSpan.Zero);
     private static readonly Guid Sam = new("5a6e0000-0000-4000-8000-00000000005a");
-    private static readonly AccountAttestationLogin Password = new() { Kind = "martlet", Provider = "martlet", Subject = "sam" };
+    private static readonly AccountLoginKey Password = AccountLoginKey.ForPassword("Sam");
 
     private static X509Certificate2 HostCertificate(bool ecdsa)
     {
@@ -83,7 +83,7 @@ public sealed class AccountAttestationTests
         var (roster, founder) = Household(Pin(certificate));
         using (founder)
         {
-            var login = new AccountAttestationLogin { Kind = "oidc", Provider = "authentik", Subject = "user-é-42" };
+            var login = AccountLoginKey.ForProvider("oidc", "authentik", "user-é-42");
             var attestation = AccountAttestation.Issue(roster.NetworkId, "home-host", Sam, "desktop-laptop-ab12cd", login, Now,
                 AccountAttestation.MaximumLifetime, certificate);
             var text = attestation.ToText();

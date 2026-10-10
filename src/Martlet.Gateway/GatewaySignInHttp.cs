@@ -53,8 +53,7 @@ internal sealed partial class GatewayHttpApplication
         {
             Providers = providers.Create,
             IsMember = deviceId => Network.Roster?.Desktop(deviceId) is { Removed: false },
-            DefaultOwnerAccount = () => Network.State == "bound" && Network.Roster is { } roster
-                ? GatewaySignInService.OwnerAccountIdFor(roster.NetworkId) : null
+            DefaultOwnerAccount = () => Network.State == "bound" && Network.Roster is { } roster ? OwnerAccount.IdFor(roster.NetworkId) : null
         };
         authenticator.FriendAllowed = principal => SignIn.FriendAllowed(principal.CredentialId);
     }
@@ -189,7 +188,7 @@ internal sealed partial class GatewayHttpApplication
     }
 
     /// <summary>The signed attestation as JSON, or null when this host can't make one now (no network, no key yet).</summary>
-    private JsonElement? TryAttest(Guid accountId, string deviceId, AccountAttestationLogin login, TimeSpan lifetime)
+    private JsonElement? TryAttest(Guid accountId, string deviceId, AccountLoginKey login, TimeSpan lifetime)
     {
         try
         {

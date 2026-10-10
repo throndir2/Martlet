@@ -52,18 +52,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
 {
     internal const string OwnerProvider = "owner";
     /// <summary>Any Martlet password login on this host (the owner's or another household account's), by user name.</summary>
-    internal const string MartletProvider = "martlet";
-    /// <summary>The household owner's account ID of a network (docs/ACCOUNTS.md: <c>OwnerAccount.IdFor</c>, UUID version 5 of
-    /// "martlet-household-owner\n&lt;network ID&gt;"), used when signin.json names no owner account.</summary>
-    // Until Martlet.Core.Accounts.OwnerAccount.IdFor (W2) is on main: RFC 9562 version 5 over the fixed Martlet namespace.
-    internal static Guid OwnerAccountIdFor(string networkId)
-    {
-        var name = System.Text.Encoding.UTF8.GetBytes("martlet-household-owner\n" + networkId);
-        var hash = System.Security.Cryptography.SHA1.HashData([.. new Guid("e44b5fc7-4473-46d2-9844-25457de2bfa8").ToByteArray(bigEndian: true), .. name]);
-        hash[6] = (byte)(hash[6] & 0x0F | 0x50);
-        hash[8] = (byte)(hash[8] & 0x3F | 0x80);
-        return new Guid(hash.AsSpan(0, 16), bigEndian: true);
-    }
+    internal const string MartletProvider = AccountLoginKinds.MartletProvider;
     internal static readonly TimeSpan AttemptLifetime = TimeSpan.FromMinutes(10);
     internal const int MaximumAttempts = 32;
     internal const int MaximumEnrolled = 64;
@@ -377,7 +366,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     /// like <see cref="CompleteAsync"/> (a Martlet password login needs its authenticator only when it has one) and returns the
     /// account it proves and the login, for the host's attestation. Issues no credential. Throws what CompleteAsync throws,
     /// and <c>signin.no_account</c> when the identity is a friend's or is linked to no account here.</summary>
-    internal async ValueTask<(GatewaySignInIdentity Identity, Guid AccountId, AccountAttestationLogin Login)> ProveAsync(string attemptId,
+    internal async ValueTask<(GatewaySignInIdentity Identity, Guid AccountId, AccountLoginKey Login)> ProveAsync(string attemptId,
         string deviceId, JsonElement proof, CancellationToken cancellationToken)
     {
         var who = await VerifyAttemptAsync(attemptId, proof, enroll: false, cancellationToken).ConfigureAwait(false);
@@ -397,7 +386,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
 
     /// <summary>The account <paramref name="who"/> signs in as here and its login (null for a friend, or an identity linked to no
     /// account yet).</summary>
-    internal (Guid AccountId, AccountAttestationLogin Login)? AccountFor(GatewaySignInIdentity who)
+    internal (Guid AccountId, AccountLoginKey Login)? AccountFor(GatewaySignInIdentity who)
     {
         lock (gate)
         {
@@ -953,9 +942,9 @@ internal sealed class GatewaySignInDocument
 
     /// <summary>The login of docs/ACCOUNTS.md an identity signed in with: "martlet" for a password login (the owner's too), else
     /// the provider's kind and ID.</summary>
-    internal AccountAttestationLogin LoginOf(GatewaySignInIdentity who) => who.Provider is GatewaySignInService.OwnerProvider or GatewaySignInService.MartletProvider
-        ? new() { Kind = "martlet", Provider = "martlet", Subject = MartletSubject(who.Label ?? who.Subject) }
-        : new() { Kind = Providers.FirstOrDefault(p => p.Id == who.Provider)?.Kind ?? "oidc", Provider = who.Provider, Subject = who.Subject };
+    internal AccountLoginKey LoginOf(GatewaySignInIdentity who) => who.Provider is GatewaySignInService.OwnerProvider or GatewaySignInService.MartletProvider
+        ? AccountLoginKey.ForPassword(who.Label ?? who.Subject)
+        : AccountLoginKey.ForProvider(Providers.FirstOrDefault(p => p.Id == who.Provider)?.Kind ?? AccountLoginKinds.Oidc, who.Provider, who.Subject);
 
     /// <summary>The password logins: the owner's first, then the other accounts'.</summary>
     internal IEnumerable<IGatewayPasswordLogin> PasswordLogins() => Owner is null ? Accounts : Accounts.Prepend<IGatewayPasswordLogin>(Owner);
