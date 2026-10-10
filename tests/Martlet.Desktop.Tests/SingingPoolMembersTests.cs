@@ -1,6 +1,7 @@
 using System.IO;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
+using Martlet.Core.Singing;
 using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
@@ -41,13 +42,23 @@ public sealed class SingingPoolMembersTests
             {
                 Area = PoolAreas.Singing.Id,
                 Members = [PoolMember.Computer("m4-host"), PoolMember.Computer("m1-host") with { Off = true }, PoolMember.Computer("friend-host"),
-                    PoolMember.Computer("gone-host"), PoolMember.Computer("m3-host")]
+                    PoolMember.Computer("gone-host"), SingingPool.WithQuality(PoolMember.Computer("m3-host"), SongQuality.HighQuality)]
             }));
+            WorkSharingRoster.Forget();
             Assert.Equal(["m4-host", "m3-host"], SongClient.Members(directory).Select(m => m.Host.HostId));
+            Assert.Equal(SongQuality.HighQuality, SingingPool.Quality(SongClient.Members(directory)[1].Member));
+            Assert.Null(SingingPool.Quality(SongClient.Members(directory)[0].Member));
             Assert.True(SongClient.IsSetUp(directory));
+            // Every member that sings is kept from background thinks; a song holds the first.
+            Assert.Equal(["m3-host", "m4-host"], BackgroundDuties.Of(directory).Keys.Order(StringComparer.Ordinal));
+            Assert.Equal("host:m4-host", BackgroundDuties.Singer(directory)!.Id);
+            // An empty list is off, whatever singing.json says.
             Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Singing, new PoolList { Area = PoolAreas.Singing.Id }));
+            WorkSharingRoster.Forget();
             Assert.Empty(SongClient.Members(directory));
             Assert.False(SongClient.IsSetUp(directory));
+            Assert.Null(BackgroundDuties.Singer(directory));
+            Assert.Equal("singing is off: no computer in Companion › Singing's list is on.", new DesktopSongSource(directory).Current().Problem);
         }
         finally { Directory.Delete(directory, true); }
     }
