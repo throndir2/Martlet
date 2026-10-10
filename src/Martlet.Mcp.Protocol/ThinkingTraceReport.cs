@@ -72,7 +72,7 @@ internal static partial class ThinkingTraceReport
         var root = dataDirectory ?? SettingsStore.DefaultDataDirectory();
         if (!Path.IsPathFullyQualified(root)) throw new ArgumentException("dataDirectory must be an absolute path.");
         var directory = LocalLogs.Directory(root);
-        var records = Directory.Exists(directory) ? LocalLogs.Read(directory, LocalLogs.ThisDeviceId()) : [];
+        var records = Directory.Exists(directory) ? LocalLogs.Read(directory, LocalLogs.ThisDeviceId(root)) : [];
         return Summarize(records.Where(r => r.Component == "desktop").Select(r => (r.At, r.Message)), count, contains, Directory.Exists(directory));
     }
 

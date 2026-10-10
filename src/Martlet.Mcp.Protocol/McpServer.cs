@@ -473,8 +473,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "each paired host in hosts.json with how many outside addresses are kept with its pairing and its access (pairedHosts: " +
             "\"member\" for your own, \"friend\" for a host a friend shares with this PC, used for its engines only and never in this " +
             "PC's network); and who your hosts are shared with as Devices › Friends last read it (friends: per host, each friend's " +
-            "label, provider and how many of their computers signed in, and how many asked; friends.json). Read-only; contacts " +
-            "nothing and returns no keys or addresses.", new
+            "label, provider and how many of their computers signed in, and how many asked; friends.json). Also this PC's device " +
+            "ID (device: id and source, saved in device.json, one per Windows user; source pairings or legacy is the ID the desktop " +
+            "keeps on its next start, new means it picks desktop-<pc name>-<6 characters>) and the Windows login it runs under " +
+            "(windowsLogin: kind microsoft, work or local, and whether it has an e-mail hint; never the e-mail, name or SID). " +
+            "Read-only; contacts nothing and returns no keys or addresses.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -4090,7 +4093,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the
-    /// names Martlet.Desktop's NetworkIdentity uses). No keys, signatures or addresses are returned.</summary>
+    /// names Martlet.Desktop's NetworkIdentity uses), this data folder's device ID (device.json) and the Windows login's kind.
+    /// No keys, signatures, addresses, e-mail or names of the Windows login are returned.</summary>
     private static object NetworkStatus(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
@@ -4098,18 +4102,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
         var pairedHosts = PairedHostsSummary(directory);
         var friends = FriendsSummary(directory);
-        if (!File.Exists(path)) return new { state = "none", key, pairedHosts, friends };
+        var device = DeviceSummary(directory);
+        var login = Martlet.Mcp.Shared.WindowsLogin.Current;
+        var windowsLogin = new { kind = login.Kind, hasEmailHint = login.HasEmailHint, hasSid = login.Sid.Length > 0 };
+        if (!File.Exists(path)) return new { state = "none", key, device, windowsLogin, pairedHosts, friends };
         Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
         try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
         {
-            return new { state = "unreadable", key };
+            return new { state = "unreadable", key, device, windowsLogin };
         }
         var roster = local.Roster;
         return new
         {
             state = roster is not null ? "member" : local.Waiting is not null ? "waiting" : "none",
             key,
+            device,
+            windowsLogin,
             networkId = roster?.NetworkId ?? local.Waiting?.NetworkId,
             revision = roster?.Revision,
             founder = roster?.Founder?.Id,
@@ -4123,6 +4132,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             friends
         };
     }
+
+    /// <summary>This data folder's device ID, read-only (Martlet.Core's DeviceIds): saved in device.json ("saved"), or the one the
+    /// desktop will keep from its pairings ("pairings") or an older Martlet's desktop-&lt;pc name&gt; ("legacy"); null with "new"
+    /// when the desktop picks a new desktop-&lt;pc name&gt;-&lt;6 of [a-z0-9]&gt; one on its next start.</summary>
+    private static object DeviceSummary(string directory) => Martlet.Core.Network.DeviceIds.Peek(directory) is { } choice
+        ? new { id = (string?)choice.Id, source = choice.Source.ToString().ToLowerInvariant() }
+        : new { id = (string?)null, source = "new" };
 
     /// <summary>hosts.json in short: each paired host's ID, how many outside addresses are kept with its pairing and its access
     /// ("friend" for a host a friend shares with this PC: its engines only, never in this PC's network; "member" for your own).</summary>

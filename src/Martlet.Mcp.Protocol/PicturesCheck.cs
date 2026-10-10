@@ -72,7 +72,7 @@ internal static class PicturesCheck
     private static object Pool(string dataDirectory, PicturesSettings settings)
     {
         var area = PoolAreas.Pictures;
-        var device = Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+        var device = Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory);
         var (paired, own) = PairedHosts(dataDirectory);
         var saved = PoolSettings.LoadFor(dataDirectory, area);
         var list = saved ?? MigrationPreview(dataDirectory, settings, paired, own, device);

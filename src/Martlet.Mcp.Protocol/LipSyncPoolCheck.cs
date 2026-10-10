@@ -21,7 +21,7 @@ internal static class LipSyncPoolCheck
 
     internal static object Status(string dataDirectory, string? device)
     {
-        device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+        device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory);
         var (avatar, mode, assigned) = Avatar(dataDirectory);
         var plan = Plan(dataDirectory);
         var (paired, own) = Paired(dataDirectory);
