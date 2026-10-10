@@ -1618,7 +1618,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
-            "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
+            "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget), " +
+            "and how much room a screen glance has (look: the persona's and the picture's estimated tokens, the room left for " +
+            "Martlet's instructions, message and notes, what a look leaves out when it doesn't fit, and a problem when the picture " +
+            "and the persona alone don't fit). " +
             "Then rehearses the production model-limit check (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like " +
             "OpenRouter, vLLM, Groq, llama.cpp and Ollama (NOT the real services; a fixture key goes only to its own base URL and " +
             "redirects aren't followed) and the production history fit of a 1,000-exchange synthetic conversation into a cloud " +

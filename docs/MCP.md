@@ -4301,7 +4301,14 @@ model: `ContextTokens`, `ModelMaximum`, `Source`, `checkedAt`) and
 `modelLimitsKept`, and `context` (the production `ContextBudget`: `Tokens`,
 `source` such as `Saved`, `Default`, `ModelLimit`, `HostDefault`, `Ollama` or
 `OllamaAssumed`, `ReplyTokens`, `InputTokens`, `ModelTokens` and `described`,
-the words the Replies page shows). Its `probe` rehearses the production model
+the words the Replies page shows), and `look` (how much room a screen glance
+or camera look has: `personaTokens` and `pictureTokens` estimated as the
+desktop estimates them, `textTokens`, `maxTextBytes` on a paired host (16 KiB),
+`roomForTheRest` for Martlet's instructions, the glance message and its notes,
+`leavesOut` (what a look goes without when it doesn't fit, in order) and a
+`problem` when the picture and the persona alone don't fit, so vision stops;
+see [When a look is too long for Thinking](SCREEN_COMMENTARY.md#when-a-look-is-too-long-for-thinking)).
+Its `probe` rehearses the production model
 limit check against fixture servers on 127.0.0.1 shaped like OpenRouter (the
 smaller of `context_length` and the top provider's), vLLM, Groq and llama.cpp
 model lists, an unlisted model, a redirect (never followed; the fixture key
@@ -7487,7 +7494,9 @@ or a look that failed; its `help` (the tooltip) says how many monitors the
 whole screen spans (*Your whole screen is 2 monitors.*), the program in front
 as the Thinking model is told it (*Active app: Google Chrome (full screen).*),
 how the last look went
-(*Last look 10:17 PM (a flashing taskbar button): nothing to say.*) and what
+(*Last look 10:17 PM (a flashing taskbar button): nothing to say.*, followed by
+*To fit Thinking's context size, it went without the text read on the screen.*
+when the look had to leave something out) and what
 wanted your attention but wasn't looked at (*Noticed a notification at 10:17 PM
 but didn't look: you seem away.*); whether a message went with the picture is
 the note on its bubble (*Ivy saw your whole screen.*, by the persona's name); neither contains

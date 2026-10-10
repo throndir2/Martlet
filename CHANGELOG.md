@@ -22,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Vision no longer stops often with "That's too long for Martlet's Thinking model": when a look doesn't fit Thinking's context size, Martlet now leaves out the text it read on the screen and other extras so the look still goes. If even the picture and your persona don't fit, it tells you to shorten the persona or raise the context size. ([#721](https://github.com/throndir2/Martlet/pull/721))
 - Check-ins, remembering and other Thinking pool jobs no longer wait "for the conversation" because of clicks, key presses or typing near your microphone: only your voice holds them back now. ([#718](https://github.com/throndir2/Martlet/pull/718))
 - A computer in the Thinking pool whose model also answers you now says why pool jobs stay off it (your replies would wait), and no longer shows a wrong "shares the graphics card" warning. ([#713](https://github.com/throndir2/Martlet/pull/713))
 - Changing a host's conversation model to a bigger one (such as `gemma4:12b` on a 16 GB graphics card) no longer stops with "Check the host's disk space and network": if the new model doesn't load beside the old one, the host unloads the old one and tries again. ([#712](https://github.com/throndir2/Martlet/pull/712))
