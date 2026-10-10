@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- The people Martlet recognizes by voice are now always shared with all your computers, even while **Keep Martlet the same on all my computers** is off, so Martlet learns everyone's voice everywhere. ([#742](https://github.com/throndir2/Martlet/pull/742))
+
 ## [0.66.1] - 2026-10-10
 
 ### Fixed
