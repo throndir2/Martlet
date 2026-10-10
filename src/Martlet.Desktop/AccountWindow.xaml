@@ -20,6 +20,7 @@
                 <TextBlock x:Name="MethodsText" TextWrapping="Wrap" Margin="0,2,0,0" Style="{DynamicResource Muted}"
                            AutomationProperties.AutomationId="AccountUnlockMethods"/>
 
+                <StackPanel x:Name="PasswordSection">
                 <TextBlock Text="Martlet password" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
                 <TextBlock x:Name="PasswordStateText" TextWrapping="Wrap" Style="{DynamicResource Muted}" AutomationProperties.AutomationId="AccountPasswordState"/>
                 <TextBlock Text="User name" Margin="0,8,0,0"/>
@@ -48,7 +49,9 @@
                 </WrapPanel>
                 <TextBox x:Name="RecoveryText" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,8,0,0"
                          AutomationProperties.AutomationId="AccountRecoveryCodes"/>
+                </StackPanel>
 
+                <StackPanel x:Name="WindowsSection">
                 <TextBlock Text="This Windows login" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
                 <TextBlock x:Name="WindowsStateText" TextWrapping="Wrap" Style="{DynamicResource Muted}" AutomationProperties.AutomationId="AccountWindowsState"/>
                 <WrapPanel Margin="0,6,0,0">
@@ -56,31 +59,33 @@
                             AutomationProperties.AutomationId="AccountLinkWindows"/>
                     <Button x:Name="UnlinkWindowsButton" Content="_Unlink" Click="UnlinkWindows_Click" AutomationProperties.AutomationId="AccountUnlinkWindows"/>
                 </WrapPanel>
+                </StackPanel>
 
                 <TextBlock Text="On this PC" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
                 <CheckBox x:Name="AskCheck" Content="Ask for my _password on this PC (this Windows login no longer unlocks me by itself)"
-                          Click="Ask_Click" AutomationProperties.AutomationId="AccountAskPassword"/>
+                          Checked="Ask_Click" Unchecked="Ask_Click" AutomationProperties.AutomationId="AccountAskPassword"/>
                 <TextBlock Text="PIN (4 to 12 digits, for this PC only)" Margin="0,8,0,0"/>
                 <WrapPanel Margin="0,4,0,0">
                     <PasswordBox x:Name="PinText" MaxLength="12" Width="140" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountPin"/>
                     <Button x:Name="PinSetButton" Content="Set _PIN" Click="PinSet_Click" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountPinSet"/>
                     <Button x:Name="PinRemoveButton" Content="Remove PIN" Click="PinRemove_Click" AutomationProperties.AutomationId="AccountPinRemove"/>
                 </WrapPanel>
-                <CheckBox x:Name="HelloCheck" Content="Unlock with _Windows Hello" Click="Hello_Click" Margin="0,8,0,0"
+                <CheckBox x:Name="HelloCheck" Content="Unlock with _Windows Hello" Checked="Hello_Click" Unchecked="Hello_Click" Margin="0,8,0,0"
                           AutomationProperties.AutomationId="AccountHello"/>
                 <TextBlock x:Name="HelloText" TextWrapping="Wrap" Margin="22,2,0,0" Style="{DynamicResource Muted}"
                            AutomationProperties.AutomationId="AccountHelloState"/>
-                <CheckBox x:Name="EncryptCheck" Content="_Encrypt my files on this PC while locked" Click="Encrypt_Click" Margin="0,8,0,0"
+                <CheckBox x:Name="EncryptCheck" Content="_Encrypt my files on this PC while locked" Checked="Encrypt_Click" Unchecked="Encrypt_Click" Margin="0,8,0,0"
                           AutomationProperties.AutomationId="AccountEncrypt"/>
                 <TextBlock x:Name="EncryptText" TextWrapping="Wrap" Margin="22,2,0,0" Style="{DynamicResource Muted}"
                            AutomationProperties.AutomationId="AccountEncryptState"/>
-                <CheckBox x:Name="RememberCheck" Content="_Remember me on this PC" Click="Remember_Click" Margin="0,8,0,0"
+                <CheckBox x:Name="RememberCheck" Content="_Remember me on this PC" Checked="Remember_Click" Unchecked="Remember_Click" Margin="0,8,0,0"
                           AutomationProperties.AutomationId="AccountRemember"/>
                 <WrapPanel Margin="0,10,0,0">
                     <Button x:Name="LockNowButton" Content="_Lock now" Click="LockNow_Click" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountLockNow"/>
                     <Button x:Name="SignOutButton" Content="Sign _out of this PC" Click="SignOut_Click" AutomationProperties.AutomationId="AccountSignOut"/>
                 </WrapPanel>
 
+                <StackPanel x:Name="MergeSection">
                 <TextBlock Text="Merge another account into this one" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
                 <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
                            Text="For one person with two accounts: its characters, memories, conversations and voices move into this account, its logins sign in here, and it goes away. You sign in as the other account first."/>
@@ -88,6 +93,7 @@
                     <ComboBox x:Name="MergeChoice" MinWidth="220" DisplayMemberPath="Name" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountMergeChoice"/>
                     <Button x:Name="MergeButton" Content="_Merge into this account" Click="Merge_Click" AutomationProperties.AutomationId="AccountMerge"/>
                 </WrapPanel>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

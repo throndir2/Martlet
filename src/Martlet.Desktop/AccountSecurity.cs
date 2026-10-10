@@ -12,8 +12,11 @@ internal interface IAccountPageHost
     string WindowsSid { get; }
     /// <summary>The Windows login's kind (microsoft, work or local), to show.</summary>
     string WindowsKind { get; }
-    /// <summary>The active account as this PC's account directory has it now.</summary>
+    /// <summary>The active account as this PC's account directory has it now; null while it waits to reach the directory.</summary>
     Account? Active { get; }
+    /// <summary>The active account's ID and name (also while it waits to reach the directory).</summary>
+    Guid ActiveId { get; }
+    string ActiveName { get; }
     /// <summary>Whether the active account signed in here with a Prove sign-in (not this Windows login).</summary>
     bool SignedInWithProve { get; }
     AccountDirectory Directory { get; }

@@ -1161,7 +1161,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         var windows = Windows(pid);
         // A Martlet in the notification area (closed to it, or started with Windows) has no visible window but its icon's window;
         // one that couldn't start shows only its problem dialog.
-        if (!MainWindowVisible(windows) && !ProblemShown(windows) && TrayWindow(pid) == 0)
+        if (!MainWindowVisible(windows) && !ProblemShown(windows) && !AccountStartShown(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet desktop window is not visible in this interactive session.");
         processId = pid;
         return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows) };
@@ -2000,7 +2000,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
             !string.Equals(process.ProcessName, "Martlet.Companion", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The attached Martlet process exited.");
         var windows = Windows(pid);
-        if (!MainWindowVisible(windows) && !ProblemShown(windows) && TrayWindow(pid) == 0)
+        if (!MainWindowVisible(windows) && !ProblemShown(windows) && !AccountStartShown(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet window is no longer visible.");
         return windows;
     }
@@ -2011,6 +2011,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// <summary>Martlet's problem dialog ("Martlet couldn't start" or an unexpected error) is open.</summary>
     private static bool ProblemShown(AutomationElement[] windows) =>
         windows.Any(window => window.Current.AutomationId == "ProblemDialog");
+
+    /// <summary>An account window that shows at start, before the main window (docs/ACCOUNTS.md: Unlock, Continue as ...?, Choose
+    /// an account, the Prove sign-in).</summary>
+    private static bool AccountStartShown(AutomationElement[] windows) =>
+        windows.Any(window => window.Current.AutomationId is "UnlockWindow" or "ContinueAsDialog" or "AccountChooseDialog" or "ProveWindow");
 
     // ---------- the notification-area icon (Martlet.Desktop's TrayIcon) ----------
 

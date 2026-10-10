@@ -175,6 +175,8 @@ public partial class MainWindow
         public string WindowsKind => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(AccountSession.SimulatedLoginVariable))
             ? WindowsLogin.Current.Kind : "simulated";
         public Account? Active => Session.Directory.Find(Session.AccountId) is { Removed: false } account ? account : null;
+        public Guid ActiveId => Session.AccountId;
+        public string ActiveName => Session.Current.Name;
         public bool SignedInWithProve => !Security.UnlocksWithWindows(Session.AccountId);
         public AccountDirectory Directory => Session.Directory;
         public NetworkRoster? Roster => Security.Roster;

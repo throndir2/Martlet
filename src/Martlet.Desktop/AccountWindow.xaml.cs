@@ -19,6 +19,7 @@ public partial class AccountWindow : ThemedWindow
     private readonly IAccountPageHost host;
     private readonly CancellationTokenSource lifetime = new();
     private string? secret;
+    private bool refreshing;
 
     internal AccountWindow(IAccountPageHost host)
     {
@@ -41,16 +42,22 @@ public partial class AccountWindow : ThemedWindow
 
     private void Refresh()
     {
-        if (Active is not { } account)
-        {
-            NameText.Text = "This account isn't in your household's account directory yet. It gets there when this PC syncs with your hosts.";
-            IsEnabled = false;
-            return;
-        }
-        var locks = host.Locks.Load(account.Id);
-        var windows = account.Login(ThisWindowsLogin) is not null && !host.SignedInWithProve;
-        NameText.Text = $"{account.Name} ({account.Role})";
-        LoginsText.Text = "Logins: " + Describe(account);
+        refreshing = true;
+        try { RefreshNow(); }
+        finally { refreshing = false; }
+    }
+
+    private void RefreshNow()
+    {
+        var id = host.ActiveId;
+        var account = Active;
+        var locks = host.Locks.Load(id);
+        var windows = !host.SignedInWithProve && (account is null || account.Login(ThisWindowsLogin) is not null);
+        NameText.Text = $"{host.ActiveName} ({account?.Role ?? "not in your household's directory yet"})";
+        LoginsText.Text = account is null
+            ? "Logins: this Windows login. The account reaches your household's directory once this PC is in your Martlet network."
+            : "Logins: " + Describe(account);
+        PasswordSection.IsEnabled = WindowsSection.IsEnabled = MergeSection.IsEnabled = account is not null;
         LockStateText.Text = locks.NeedsUnlock(windows)
             ? "Martlet asks you to unlock this account on this PC."
             : "This Windows login unlocks this account by itself on this PC.";
@@ -58,8 +65,8 @@ public partial class AccountWindow : ThemedWindow
             ? "Unlocks on this PC with: nothing yet."
             : "Unlocks on this PC with: " + string.Join(", ", locks.Methods.Select(m => m switch { "pin" => "PIN", "hello" => "Windows Hello", _ => "password" })) + ".";
         WindowsStateText.Text = windows
-            ? $"This Windows login ({host.WindowsKind}) signs in as {account.Name}."
-            : $"This Windows login ({host.WindowsKind}) doesn't sign in as {account.Name} by itself.";
+            ? $"This Windows login ({host.WindowsKind}) signs in as {host.ActiveName}."
+            : $"This Windows login ({host.WindowsKind}) doesn't sign in as {host.ActiveName} by itself.";
         LinkWindowsButton.IsEnabled = !windows;
         UnlinkWindowsButton.IsEnabled = windows;
         AskCheck.IsChecked = locks.AskOnThisPc;
@@ -73,13 +80,13 @@ public partial class AccountWindow : ThemedWindow
         RememberCheck.IsChecked = locks.Remember;
         RememberCheck.Visibility = host.SignedInWithProve ? Visibility.Visible : Visibility.Collapsed;
         PinRemoveButton.IsEnabled = locks.HasPin;
-        if (IsOwnersAccount(account))
+        if (account is not null && IsOwnersAccount(account))
         {
             AuthenticatorCheck.IsChecked = true;
             AuthenticatorCheck.IsEnabled = false;
             AuthenticatorRemoveButton.IsEnabled = false;
         }
-        MergeChoice.ItemsSource = host.Directory.Live.Where(a => a.Id != account.Id).OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        MergeChoice.ItemsSource = host.Directory.Live.Where(a => a.Id != id).OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
     }
 
     private string Describe(Account account)
@@ -266,10 +273,11 @@ public partial class AccountWindow : ThemedWindow
 
     private void Ask_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
+        if (refreshing) return;
+        var accountId = host.ActiveId;
         try
         {
-            host.Locks.Change(account.Id, l => l with { AskOnThisPc = AskCheck.IsChecked == true });
+            host.Locks.Change(accountId, l => l with { AskOnThisPc = AskCheck.IsChecked == true });
             Status(AskCheck.IsChecked == true ? "This PC asks to unlock you from now on." : "This Windows login unlocks you by itself again.");
         }
         catch (InvalidOperationException error) { Status(error.Message); }
@@ -278,11 +286,11 @@ public partial class AccountWindow : ThemedWindow
 
     private void PinSet_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
+        var accountId = host.ActiveId;
         if (!AccountLockStore.IsPin(PinText.Password)) { Status("A PIN is 4 to 12 digits."); return; }
         try
         {
-            host.Locks.SetPin(account.Id, PinText.Password, host.FileKey);
+            host.Locks.SetPin(accountId, PinText.Password, host.FileKey);
             PinText.Clear();
             Status("PIN set for this PC.");
         }
@@ -292,10 +300,10 @@ public partial class AccountWindow : ThemedWindow
 
     private void PinRemove_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
+        var accountId = host.ActiveId;
         try
         {
-            host.Locks.RemovePin(account.Id);
+            host.Locks.RemovePin(accountId);
             Status("PIN removed from this PC.");
         }
         catch (InvalidOperationException error) { Status(error.Message); }
@@ -304,7 +312,8 @@ public partial class AccountWindow : ThemedWindow
 
     private async void Hello_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
+        if (refreshing) return;
+        var accountId = host.ActiveId;
         try
         {
             if (HelloCheck.IsChecked == true)
@@ -316,7 +325,7 @@ public partial class AccountWindow : ThemedWindow
                     Refresh();
                     return;
                 }
-                var verified = await WindowsHello.VerifyAsync(new WindowInteropHelper(this).Handle, $"Use Windows Hello to unlock {account.Name} in Martlet");
+                var verified = await WindowsHello.VerifyAsync(new WindowInteropHelper(this).Handle, $"Use Windows Hello to unlock {host.ActiveName} in Martlet");
                 if (verified != WindowsHelloResult.Verified)
                 {
                     Status(WindowsHello.Describe(verified));
@@ -324,7 +333,7 @@ public partial class AccountWindow : ThemedWindow
                     return;
                 }
             }
-            host.Locks.SetHello(account.Id, HelloCheck.IsChecked == true);
+            host.Locks.SetHello(accountId, HelloCheck.IsChecked == true);
             Status(HelloCheck.IsChecked == true ? "Windows Hello unlocks you on this PC." : "Windows Hello no longer unlocks you here.");
         }
         catch (InvalidOperationException error) { Status(error.Message); }
@@ -333,13 +342,14 @@ public partial class AccountWindow : ThemedWindow
 
     private void Encrypt_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
+        if (refreshing) return;
+        var accountId = host.ActiveId;
         try
         {
             if (EncryptCheck.IsChecked == true)
             {
-                if (!host.Locks.Load(account.Id).HasPin) throw new InvalidOperationException("Set a PIN first: it opens your encrypted files.");
-                var (_, key) = host.Locks.TurnOnEncryption(account.Id, PinText.Password,
+                if (!host.Locks.Load(accountId).HasPin) throw new InvalidOperationException("Set a PIN first: it opens your encrypted files.");
+                var (_, key) = host.Locks.TurnOnEncryption(accountId, PinText.Password,
                     PasswordText.Password.Length > 0 ? PasswordText.Password : null);
                 host.FileKey = key;
                 PinText.Clear();
@@ -348,7 +358,7 @@ public partial class AccountWindow : ThemedWindow
             }
             else
             {
-                host.Locks.TurnOffEncryption(account.Id);
+                host.Locks.TurnOffEncryption(accountId);
                 host.FileKey = null;
                 Status("Your files on this PC are no longer encrypted when you lock.");
             }
@@ -359,16 +369,17 @@ public partial class AccountWindow : ThemedWindow
 
     private void Remember_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
-        host.Locks.Change(account.Id, l => l with { Remember = RememberCheck.IsChecked == true });
+        if (refreshing) return;
+        var accountId = host.ActiveId;
+        host.Locks.Change(accountId, l => l with { Remember = RememberCheck.IsChecked == true });
         Status(RememberCheck.IsChecked == true ? "This PC remembers you." : "You are signed out of this PC when Martlet closes.");
         Refresh();
     }
 
     private async void LockNow_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
-        if (host.Locks.Load(account.Id).Methods.Count == 0)
+        var accountId = host.ActiveId;
+        if (host.Locks.Load(accountId).Methods.Count == 0)
         {
             Status("Set a PIN, Windows Hello or a password first, so you can unlock again.");
             return;
