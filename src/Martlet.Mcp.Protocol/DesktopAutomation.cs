@@ -296,6 +296,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
         "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
         "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        // People's link line: how many voices link to people's accounts and how many are the signed-in person's (counts only).
+        "PeopleLinkStatus",
         // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
         // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
         // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed

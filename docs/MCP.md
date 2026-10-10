@@ -1089,7 +1089,9 @@ downloaded in speechDirectory*); `displayLanguage` and the `recommended` model f
 `parakeet-tdt-110m-en` for English and `parakeet-tdt-0.6b-v3-int8` otherwise;
 and `models`, each with `id`, `name`, `languages`, `englishOnly`,
 `downloadMb`, `revision`, `downloaded`, `notice` (its NOTICE file is there),
-`recommended` and `inUse`), and counts from `voices.json` (voices, named, owner, with
+`recommended` and `inUse`), and counts from `voices.json` (voices, named, owner
+(the legacy *This is me* flag, kept for older desktops), `linked`: voices linked
+to a person's account, `accounts`: how many accounts they link to, never which, with
 learned names, `withCompanionName`: voices that learned one of the companion's
 own names from the saved personas, which Martlet drops when it next hears them,
 `withPlaceholderName`: voices that learned a placeholder such as "no name
@@ -1331,7 +1333,8 @@ user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
 `loaded` or `unreadable`), `voiceList` (`voices.json`: `none`, `loaded` or
 `unreadable`), `facts`, `typed`, `fromConversation`, `expiring` and `whose`:
 `everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
-by its tag such as `V3`, with `named`, `owner` and `facts`) and
+by its tag such as `V3`, with `named`, `owner`, `linked` (to a person's
+account) and `facts`) and
 `forgottenVoices`. It reads the store's file as JSON without opening or
 locking the store (the desktop can keep running), and never returns a fact's
 text, a name, a voice ID or a path. It contacts nothing.
@@ -5894,8 +5897,9 @@ saves `recommended-setup.json` and asks again, so it needs
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleNow` (its Now line: *Voice recognition on: 3 voices known, 2 with a name.*,
 *Off: Martlet doesn't check who is talking.*) and `PeopleNowProblem` (the
-installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus` and
-`PeopleVoiceCount`, and Listening › This PC shows its speech recognizers as an
+installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus`,
+`PeopleVoiceCount` and `PeopleLinkStatus` (counts only: *1 of 3 voices is linked to people's accounts. Your
+account has 1 voice. ...*, or before this PC knows its account whether a voice is marked as yours), and Listening › This PC shows its speech recognizers as an
 option picker: `Picker-Listening-<model ID>` for each Parakeet model (inside
 Martlet, no Docker), `Picker-Listening-whisper-gpu` and
 `Picker-Listening-whisper-cpu`. Each row's `PickerFacts-Listening-<key>` reads
@@ -5910,7 +5914,10 @@ these status texts, as does the talk window's `LiveStatus` (the line under "Mart
 `PeopleNameShow-3-<i>` (make name *i* the one shown; the first is the one
 shown) and `PeopleNameRemove-3-<i>`, the box `PeopleAddName-3` with
 `PeopleAddNameButton-3` (Add; Enter also adds), `PeopleClip-3-<i>` (plays
-clip *i*, newest first), `PeopleOwner-3` (*This is me*),
+clip *i*, newest first), `PeopleLink-3` (*This voice is <name>*: ticked links
+voice 3 to the signed-in account, unticked unlinks it; moving a voice linked to
+someone else's account asks one confirmation, `ConfirmationYes`; its
+accessible name is *This voice is mine*, never an account name),
 `PeopleMergeTarget-3` with `PeopleMerge-3` (enabled once a voice is chosen)
 and `PeopleForget-3`; names save at once, then sync. `PeopleClips-3` reads
 *Hear them (N):* while voice 3 has clips (a passive value). Like

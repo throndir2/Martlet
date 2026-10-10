@@ -1555,7 +1555,7 @@ check-in waits:
   | A taskbar button flashed or a notification showed (`Attention`) | until a taskbar button flashed or a pop-up notification showed since it last ran |
   | A song ended (`SongEnded`) | until a song Martlet sang played to its end since it last ran |
   | The script's output changed (`ScriptChanged`) | while it has no script. Its script runs at its pace, and when it prints the same as last time (the same hash), the run ends there without asking the Thinking pool (not for *Check now*) |
-  | Someone else spoke (`SomeoneElse`) | until Martlet heard a voice that isn't yours in the last 10 minutes, since it last ran (Voice ID; with no voice marked as yours, two different voices) |
+  | Someone else spoke (`SomeoneElse`) | until Martlet heard a voice that isn't yours (not linked to the account signed in here) in the last 10 minutes, since it last ran (Voice ID; with no voice linked to your account, two different voices) |
 
   For a check-in's first run, "since it last ran" means in the last 5 minutes
   (`CheckIns.SignalWindow`). *Check now* skips the waits for a new signal, the

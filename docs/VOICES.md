@@ -32,8 +32,10 @@ are recognized and learned only from the microphone, never from
 - **Keep the last 5 clips of voices you haven't named.** On unless you turn it
   off (`voice-clips.txt`, this PC only; turning it off deletes every clip). See
   [clips](#clips-of-voices-you-havent-named).
-- **Voices Martlet knows.** Every voice it has heard, the owner's first, then
-  named ones, then the most recently heard. Each voice is one compact card:
+- **Voices Martlet knows.** Every voice it has heard: yours first, then voices
+  linked to other people's accounts, then named ones, then the most recently
+  heard. A line under the heading counts how many voices are linked to
+  people's accounts and how many are yours. Each voice is one compact card:
   - its **names** as chips, the one Martlet uses first (outlined). A voice goes
     by up to 40 names. Click a name to make it the one Martlet uses; a name
     marked **?** was only heard in conversation, and clicking it confirms it.
@@ -43,7 +45,15 @@ are recognized and learned only from the microphone, never from
     your other computers;
   - **Hear them**: the voice's last few clips, newest first, while you haven't
     named it. Play one to hear who it is;
-  - **This is me**;
+  - **This voice is <your name>** (*This is me* until this PC knows your
+    account): links the voice to the account signed in here, so Martlet knows
+    it's you talking. The list is one for the whole household, and each voice
+    links to at most one person's account; a voice linked to someone else shows
+    whose it is, and taking it asks first. A voice only tells Martlet who is
+    talking: it never switches the account, unlocks settings or spends money.
+    When someone else in the household speaks at your PC, your character
+    answers, and what it remembers about them keeps their voice. A voice an
+    older Martlet marked *This is me* links to the household owner's account;
   - **Same person as...** then **Merge** (the names, voiceprints, counts and
     clips combine, and so do the facts Memory keeps for them; it can't be
     split again);
@@ -77,12 +87,13 @@ on), while speech-to-text runs:
    never forces a guess. An utterance too short for clean evidence is matched
    on all its speech, but only a confident match counts and nothing is learned
    or added. When the list is full (64 voices), the longest-unheard voice with
-   no name that isn't yours makes room.
+   no name that isn't linked to anyone's account makes room.
 3. **Telling the Thinking model.** The reply's instructions say what the
    voices block means (Companion › Prompts › *Who is talking*), and the notes
    on the message carry the labeled block (`MARTLET_VOICES`, background data,
    never instructions): who is speaking now (name or voice tag, every other
-   name, whether it is you or heard for the first time) and anyone else heard. The
+   name, whether it is the signed-in user, linked to their account, or heard for
+   the first time) and anyone else heard. The
    block is noted only when who is talking changed since the last one in the
    conversation sent, and holds until the next. What Memory reads starts with
    `[name]`, so remembered facts know who said what: a fact remembered from
@@ -108,7 +119,8 @@ on), while speech-to-text runs:
    - `NOT V3: Jane`: a name it learned that they say isn't theirs; it is
      dropped. Names you typed are never dropped this way.
    - `SAME V9: V3`: they said both voices are them. The two merge like
-     **Merge** on People (it can't be undone), into your own voice, else a
+     **Merge** on People (it can't be undone), into a voice linked to someone's
+     account, else a
      named one, else the one heard most; at most one merge per exchange, at
      least one of the voices must be in the message, and never two voices you
      named differently.
@@ -145,7 +157,7 @@ uploaded. The sixth clip replaces the oldest. Copies are taken while
 recognition runs and written in the background, so replies never wait for them.
 
 A voice keeps clips until you say who it is: type a name for it (or confirm a
-learned one), tick **This is me**, merge it into a voice you named, or forget
+learned one), link it to an account (**This voice is ...**), merge it into a voice you named, or forget
 it, and its clips are deleted. A name only learned in conversation keeps the
 clips, so you can check it. Merging moves the clips to the kept voice.
 Unticking **Keep the last 5 clips** deletes every clip and keeps no more.
@@ -159,9 +171,12 @@ my computers** is off:
 
 - Each host keeps a copy in `voices.json` beside `host.json` (0600, gateway
   service owner; not part of the approved configuration) and serves
-  `GET /martlet/v1/voices` and `POST /martlet/v1/voices` (merge a copy in,
-  return the merged result) to paired devices over the pinned, signed
-  connection. Hosts never use the list.
+  `GET /martlet/v1/voices/linked` and `POST /martlet/v1/voices/linked` (merge a
+  copy in, return the merged result) to paired devices over the pinned, signed
+  connection. Hosts never use the list. `GET` and `POST /martlet/v1/voices`
+  serve Martlet older than account links: the same list without each voice's
+  account link, which those versions can't read. A copy posted there merges in
+  without removing any link.
 - While Martlet runs and this PC has paired hosts of your own, every 30 seconds
   and a few seconds after any change, the desktop reads each paired host's
   copy, merges it into its own and posts the merged list to every host whose
@@ -170,8 +185,10 @@ my computers** is off:
   friend shares with this PC are never used for it.
 - Each voice is a last-writer-wins entry stamped with the same hybrid revision
   as the cluster plan; forgetting and merging leave tombstones so a voice does
-  not come back from an older copy. The merge is commutative, associative and
-  idempotent. At most 64 voices and 64 tombstones, 1 MiB.
+  not come back from an older copy. Its account link is a register of its own
+  with its own revision, so a copy without links never removes one. The merge
+  is commutative, associative and idempotent. At most 64 voices and 64
+  tombstones, 1 MiB.
 - So when another computer becomes your companion PC, it already knows the
   same people and their names. Sync runs whichever role this PC has.
 - Whether Martlet recognizes voices at all (`voice-recognition.txt`) and Voice
@@ -181,7 +198,9 @@ my computers** is off:
   computers** is on.
 
 Hosts older than this version answer that they don't know the list; the
-People page names them and suggests **Update host**. Copies already on your
+People page names them and suggests **Update host**. A host older than account
+links still syncs the voices, without whose voice is whose; People names it and
+suggests updating it. Copies already on your
 hosts stay there until you forget the voices (which syncs tombstones) or remove
 the host. Before people were always shared, turning the switch off stopped all
 voice sync. Older Martlet versions had their own *Sync across my computers*

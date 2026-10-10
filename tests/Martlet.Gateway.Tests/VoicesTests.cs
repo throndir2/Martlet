@@ -58,4 +58,45 @@ public sealed class VoicesTests
         using var rejected = await host.Client.SendAsync(anonymous);
         Assert.NotEqual(HttpStatusCode.OK, rejected.StatusCode);
     }
+
+    [Fact]
+    public async Task Account_links_travel_on_the_linked_route_and_survive_older_desktops()
+    {
+        await using var host = await GatewayTestHost.StartAsync();
+        var now = host.Clock.GetUtcNow();
+        var account = Guid.NewGuid();
+        var (roster, sam) = VoiceRoster.Empty.Add(Print(1), 3, "desktop-a", now.AddMinutes(-10));
+        roster = roster.SetAccount(sam!.Id, account, owner: true, "desktop-a", now.AddMinutes(-9));
+        var storage = new MemoryStorage();
+        host.Server.AttachVoiceStorage(storage);
+        var credential = await host.PairAsync(GatewayRole.Voice);
+        var signer = new GatewayRequestSigner(host.Identity, credential, host.Clock);
+
+        using (var post = host.SignedPost("/martlet/v1/voices/linked", GatewayRole.Voice, signer, roster.Write()))
+        using (var response = await host.Client.SendAsync(post))
+            Assert.Equal(account, (await RosterAsync(response)).Resolve(sam.Id)!.Account);
+        Assert.Equal(account, VoiceRoster.Parse(storage.Saved!).Resolve(sam.Id)!.Account);
+
+        // An older desktop reads the list without links (it refuses fields it doesn't know) but still sees the owner's voice.
+        using (var read = host.SignedGet("/martlet/v1/voices", GatewayRole.Voice, signer))
+        using (var response = await host.Client.SendAsync(read))
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.DoesNotContain("\"link\"", document.RootElement.GetProperty("roster").GetRawText());
+            Assert.True((await RosterAsync(response)).Resolve(sam.Id)!.Owner);
+        }
+
+        // Its newer copy, without links, merges in without removing the link.
+        var legacy = roster.WithoutLinks().Learn(sam.Id, Print(1), 2, "desktop-old", now);
+        using (var post = host.SignedPost("/martlet/v1/voices", GatewayRole.Voice, signer, legacy.Write()))
+        using (var response = await host.Client.SendAsync(post))
+            Assert.Null((await RosterAsync(response)).Resolve(sam.Id)!.Account);
+        using (var read = host.SignedGet("/martlet/v1/voices/linked", GatewayRole.Voice, signer))
+        using (var response = await host.Client.SendAsync(read))
+        {
+            var linked = await RosterAsync(response);
+            Assert.Equal(account, linked.Resolve(sam.Id)!.Account);
+            Assert.Equal(2, linked.Resolve(sam.Id)!.Heard);
+        }
+    }
 }

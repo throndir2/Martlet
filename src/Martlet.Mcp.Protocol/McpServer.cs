@@ -2496,6 +2496,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 roster = new
                 {
                     state = "loaded", voices = list.Live.Count, named = list.Live.Count(v => v.Named), owner = list.Live.Count(v => v.Owner),
+                    // Voices linked to a person's account (docs/ACCOUNTS.md, Voices) and how many accounts they link to.
+                    linked = list.Live.Count(v => v.Account is not null),
+                    accounts = list.Live.Select(v => v.Account).OfType<Guid>().Distinct().Count(),
                     withLearnedNames = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation)),
                     // Voices that learned one of the companion's own names; Martlet drops it when it next hears them.
                     withCompanionName = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation &&
@@ -4083,7 +4086,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 everyone = facts.Count(f => f.Voice is null),
                 voices = owned.OfType<Martlet.Core.Speakers.KnownVoice>().GroupBy(v => v.Id, StringComparer.Ordinal)
                     .OrderBy(g => g.First().Number)
-                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, facts = g.Count() }).ToArray(),
+                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, linked = g.First().Account is not null, facts = g.Count() }).ToArray(),
                 forgottenVoices = owned.Count(v => v is null)
             }
         };

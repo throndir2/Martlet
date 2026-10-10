@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- On Companion › People, **This voice is <your name>** links a voice to your own account, so Martlet knows it's you talking, and anyone else in your home who speaks is answered by your character and remembered by their own voice. A voice never signs anyone in. ([#PRNUMBER](https://github.com/throndir2/Martlet/pull/PRNUMBER))
+
 ### Changed
 
 - The people Martlet recognizes by voice are now always shared with all your computers, even while **Keep Martlet the same on all my computers** is off, so Martlet learns everyone's voice everywhere. ([#742](https://github.com/throndir2/Martlet/pull/742))
