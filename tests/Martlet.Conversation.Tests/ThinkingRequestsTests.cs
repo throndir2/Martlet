@@ -49,6 +49,7 @@ public sealed class ThinkingRequestsTests
         Assert.Equal(("host:a", "a", "qwen3:8b", "answered"), (attempt.MemberId, attempt.Member, attempt.Model, attempt.Ending));
         Assert.Equal(0, request.Retries);
         Assert.Equal(3, request.AnswerLength);
+        Assert.Equal("abc", request.Output);
         Assert.Equal(0, request.Position);
         Assert.Equal(TimeSpan.FromSeconds(2), request.FirstWait);
         Assert.Equal(TimeSpan.FromSeconds(2), request.Waited);
@@ -177,6 +178,33 @@ public sealed class ThinkingRequestsTests
     }
 
     [Fact]
+    public void ThinkingRequests_keep_the_output_up_to_its_limit_and_its_full_length()
+    {
+        var requests = new ThinkingRequests(new RuntimeClock());
+        BackgroundPlace member = new("host:a", "a");
+        var shortOne = requests.Post(new(ThinkingJobKind.Memory, ThinkingRequestSource.Pool, "memory-1"));
+        shortOne.Begin(member);
+        shortOne.Finish(ThinkingRequestState.Succeeded, text: "Remember: the user likes tea.\nAnd biscuits.");
+        var longText = new string('x', ThinkingRequests.OutputKept + 500);
+        var longOne = requests.Post(new(ThinkingJobKind.ThinkLonger, ThinkingRequestSource.Conversation, "think-1"));
+        longOne.Begin(member);
+        longOne.Finish(ThinkingRequestState.Succeeded, wasCut: true, text: longText);
+        var failed = requests.Post(new(ThinkingJobKind.Digest, ThinkingRequestSource.Pool, "digest-1"));
+        failed.Finish(ThinkingRequestState.Failed, "it broke", text: "");
+
+        var list = requests.List();
+        var memory = list.Single(r => r.Kind == ThinkingJobKind.Memory);
+        Assert.Equal(("Remember: the user likes tea.\nAnd biscuits.", 43), (memory.Output, memory.AnswerLength));
+        var think = list.Single(r => r.Kind == ThinkingJobKind.ThinkLonger);
+        Assert.Equal(ThinkingRequests.OutputKept, think.Output!.Length);
+        Assert.Equal(longText.Length, think.AnswerLength);
+        Assert.True(think.Cut);
+        var digest = list.Single(r => r.Kind == ThinkingJobKind.Digest);
+        Assert.Null(digest.Output);
+        Assert.Null(digest.AnswerLength);
+    }
+
+    [Fact]
     public void ThinkingRequests_totals_count_average_and_max_by_kind()
     {
         var clock = new RuntimeClock();
@@ -252,6 +280,7 @@ public sealed class ThinkingRequestsTests
             (request.Attempts[0].MemberId, request.Attempts[0].Model, request.Attempts[0].Ending));
         Assert.Equal("answered", request.Attempts[1].Ending);
         Assert.Equal("thought".Length, request.AnswerLength);
+        Assert.Equal("thought", request.Output);
         lock (seen) Assert.Contains(ThinkingRequestState.Paused, seen);
         Assert.Equal(1, requests.Totals[ThinkingJobKind.ThinkLonger].Preemptions);
     }

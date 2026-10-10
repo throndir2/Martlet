@@ -863,11 +863,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // question Cancel task asks first (the task's title, which is a run window's title).
         "TasksSummary", "TasksEmpty", "NavTasksCount", "HostRunHideHint", "CancelTaskQuestion",
         // Thinking requests: how many run and wait and the averages (ThinkingRequestsSummary), the pool's slots now
-        // (ThinkingRequestsPool), the empty state, the navigation rail's count of waiting and running requests, Timing by type
-        // and the selected request in full (type, task, companion, member, tries and timings; never its text or answer).
-        // ThinkingRequestTopic is what the conversation asked for (private): it is never returned.
+        // (ThinkingRequestsPool), the empty state, the navigation rail's count of waiting and running requests, Timing by type,
+        // the selected request in full (type, task, companion, member, tries and timings; never its text or answer) and the line
+        // over its output (ThinkingRequestOutputState: how many characters, or why there is none). ThinkingRequestTopic (what the
+        // conversation asked for) and ThinkingRequestOutput (what the request answered) are private: they are never returned.
         "ThinkingRequestsSummary", "ThinkingRequestsPool", "ThinkingRequestsEmpty", "NavThinkingRequestsCount", "ThinkingRequestDetail",
-        "ThinkingRequestsTiming"
+        "ThinkingRequestsTiming", "ThinkingRequestOutputState"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'

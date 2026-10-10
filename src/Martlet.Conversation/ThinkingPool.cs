@@ -494,7 +494,7 @@ public sealed class ThinkingJobBoard
                 ThinkingJobOutcome.TimedOut => ThinkingRequestState.TimedOut,
                 ThinkingJobOutcome.Preempted => ThinkingRequestState.Preempted,
                 _ => ThinkingRequestState.Failed
-            }, result.Problem, result.Text?.Length, result.Cut, result.Preemptions);
+            }, result.Problem, result.Text?.Length, result.Cut, result.Preemptions, result.Text);
             return result;
         }
         catch (OperationCanceledException)

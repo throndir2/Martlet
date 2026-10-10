@@ -362,8 +362,10 @@ pool jobs (the judges, summaries, check-ins, memory, naming and touch zones)
 and the conversation's background work on the same slots (thinking longer and
 research). The requests that wait or run come first, then the newest ended
 ones. The journal (`ThinkingRequests`) keeps every request that has not ended
-and the last 200 that ended, plus totals by kind. It keeps no request's text
-or answer.
+and the last 200 that ended, plus totals by kind. It keeps no request's text.
+It keeps each ended request's output (what it answered, its first 16,000
+characters) for this PC's page only. The output never goes in a log, a status
+file or an MCP result.
 
 `thinking_requests` (`dataDirectory`, and the optional filters `state`, `kind`
 and `limit`) reads the desktop's `thinking-requests.json` in that data
@@ -396,7 +398,13 @@ and ran 2.0 s on average.* `ThinkingRequestsPool` gives the pool's slots now,
 many requests wait or run (shown only when some do). Each row
 `ThinkingRequest-tr-<n>` is a safe click: it only selects the request, and
 `ThinkingRequestDetail` then gives the request in full (type, task, companion,
-needs, times, timings, tries, limits and the answer's length). The filters
+needs, times, timings, tries, limits and the answer's length). Beside it,
+`ThinkingRequestOutput` shows what the request answered. The output is private:
+MCP never returns it. `ThinkingRequestOutputState` (a safe value) gives only
+its length, for example *Output: 98 characters.*, or why there is none
+(*Output: none yet. It shows here when the request ends.*, *Output: none. It
+ended: failed.*). A long output reads *Output: the first 16,000 of 40,000
+characters*. The filters
 `ThinkingRequestsFilter-all`, `-active` and `-problems`, the
 `ThinkingRequestsTimingExpander` (*Timing by type*) and `ThinkingRequestsKind`
 (it only opens) are safe clicks. `ThinkingRequestsTiming` is a safe value.
@@ -409,16 +417,16 @@ for (private): MCP never returns it.
 Setting `MARTLET_SIMULATE_THINKING_REQUESTS` to a number (1-50) before you
 launch the desktop posts that number of simulated requests once the window
 shows. They wait, run on made-up members (*gpu-box (simulated)* and *laptop
-(simulated)*), retry, fail and end over about half a minute. No model is asked
-and nothing is sent. The desktop log says *Posting N simulated Thinking
-requests*.
+(simulated)*), retry, fail and end over about half a minute. Each one that
+succeeds has a made-up output. No model is asked and nothing is sent. The
+desktop log says *Posting N simulated Thinking requests*.
 
 The `requests` steps of `thinking_pool_check` run the production job board with
 simulated members (NOT models). They check that the journal records a success
-(one try, with its run time), a retry (a failed member, then a member that
-answers: two tries) and a stale judge dropped after its wait (no try), each
-with plausible timings. They also check that `Requests.Totals` counts the
-three by kind.
+(one try, with its run time and its output), a retry (a failed member, then a
+member that answers: two tries) and a stale judge dropped after its wait (no
+try and no output), each with plausible timings. They also check that
+`Requests.Totals` counts the three by kind.
 
 ```powershell
 $env:MARTLET_SIMULATE_THINKING_REQUESTS = '6'
