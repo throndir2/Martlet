@@ -316,8 +316,8 @@ public static class SetupExecutor
         if (change.Kind is SetupChangeKind.JoinPool or SetupChangeKind.LeavePool)
             return change.Job is WorkSharingJobs.Thinking or WorkSharingJobs.Listening or WorkSharingJobs.Speaking
                 ? Item(SetupStepVerdict.Ready, change.Kind == SetupChangeKind.JoinPool
-                    ? $"Devices › Sharing work: {machine} takes {Job(change.Job)} when the computer doing it is busy."
-                    : $"Devices › Sharing work: {machine} no longer takes {Job(change.Job)}.")
+                    ? $"The {Job(change.Job)} list: {machine} takes {Job(change.Job)} when the ones before it are busy."
+                    : $"The {Job(change.Job)} list: {machine} no longer takes {Job(change.Job)}.")
                 : Item(SetupStepVerdict.CannotApply, $"Martlet doesn't share \"{change.Job}\" between computers.");
         if (change.Kind == SetupChangeKind.AssignJob)
         {

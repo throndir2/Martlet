@@ -1975,7 +1975,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the order chosen (this-pc being each companion PC's own host service) and the computers never used; which computers " +
             "are kept for one companion PC), the paired computers the shared plan says run each job's engine, the computer each " +
             "job uses now, and the order this PC (or deviceId) tries them in with the production planner (WorkSharing.Order). " +
-            "Host and device IDs only. Read-only.", new
+            "Also the pool lists (pools.json, the pools shared setting, and pools-local.json): for each area its members in order " +
+            "(key, kind, name, on, kept for, nonsecret settings, whether this PC may use it, whether a cloud member is agreed to), " +
+            "whether it is off or uses its fallback, and for Speaking, Listening and Thinking the computers this PC tries " +
+            "(PoolRouting.Hosts). Host and device IDs, provider and model names only; never a key. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             deviceId = new { type = "string" }
@@ -1987,7 +1990,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "unshared, a busy voice passed over at once, machine 2 waiting while both voices are busy and taken by whichever frees " +
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
-            "In-process; reads nothing.", new { }),
+            "Then pools: Sharing work's choices moved into the Speaking list, the list's order per companion PC, a member turned " +
+            "off, Thinking's own model first, an empty list off for Speaking and voice loudness for lip-sync, a rate-limited cloud " +
+            "member passed over by its member key, and the pools shared setting's round trip. In-process; reads nothing.", new { }),
         Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
             "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
             "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +

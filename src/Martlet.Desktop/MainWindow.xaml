@@ -477,7 +477,7 @@
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Sharing work" FontSize="18" FontWeight="SemiBold"/>
                                     <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                               Text="When the computer doing a job is busy, your companion PCs use another that runs it. The same on all your computers."/>
+                                               Text="Each job's page lists the machines that do it, in order: when the first is busy, the next one takes it. The lists are the same on all your computers."/>
                                 </StackPanel>
                             </StackPanel>
                             <TextBlock x:Name="WorkSharingStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"

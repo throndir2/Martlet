@@ -49,11 +49,38 @@ internal static class WorkSharingCheck
                 tries = job == WorkSharingJobs.DeepThinking ? null : WorkSharing.Order(settings, job, device, planned, places)
             };
         }).ToArray();
+        // The pool lists (pools.json and pools-local.json): each area's members in order, and for Speaking, Listening and Thinking
+        // the computers this PC (or deviceId) tries with the production planner (PoolRouting.Hosts).
+        var shared = PoolSettings.Load(dataDirectory);
+        var local = PoolSettings.Load(dataDirectory, shared: false);
+        var pools = PoolAreas.All.Select(area =>
+        {
+            var file = area.Shared ? shared : local;
+            if (!file.Has(area.Id)) return null;
+            var list = file.Pool(area.Id);
+            var order = PoolRouting.Order(area, list, device);
+            var job = jobs.FirstOrDefault(j => j.job == area.Id);
+            return (object)new
+            {
+                area = area.Id, title = area.Title, page = area.Page, shared = area.Shared, required = area.Required, whenEmpty = area.WhenEmpty,
+                off = order.Off, fallback = order.Fallback,
+                members = list.Members.Select(m => new
+                {
+                    key = m.Key, kind = m.Kind.ToString(), name = m.Name, on = !m.Off, onlyFor = m.OnlyFor, settings = m.Settings,
+                    usableHere = m.Allows(device), agreed = m.Consented(area.Id)
+                }),
+                tries = job?.planned is { } planned
+                    ? PoolRouting.Hosts(area, list, device, planned, own, job.runs.ToHashSet(StringComparer.Ordinal)) : null
+            };
+        }).OfType<object>().ToArray();
         return new
         {
             file = File.Exists(path) ? "loaded" : "none", shared = settings.Share(), isDefault = settings.IsDefault, device, ownHost = own,
             paired, planHosts = plan.Nodes.Count(n => !n.Removed), jobs,
-            kept = settings.Hosts.Select(h => new { hostId = h.HostId, onlyFor = h.OnlyFor, usableHere = settings.Allows(h.HostId, device) })
+            kept = settings.Hosts.Select(h => new { hostId = h.HostId, onlyFor = h.OnlyFor, usableHere = settings.Allows(h.HostId, device) }),
+            poolsFile = File.Exists(Path.Combine(dataDirectory, PoolSettings.FileName)) ? "loaded" : "none",
+            poolsLocalFile = File.Exists(Path.Combine(dataDirectory, PoolSettings.LocalFileName)) ? "loaded" : "none",
+            pools
         };
     }
 
@@ -84,11 +111,14 @@ internal static class WorkSharingCheck
 
     private sealed class Busy : Exception;
     private sealed class Gone : Exception;
+    /// <summary>A cloud provider's rate limit (HTTP 429).</summary>
+    private sealed class Limited : Exception;
 
     private static WorkRefusal Classify(Exception error) => error switch
     {
         Busy => WorkRefusal.Busy,
         Gone => WorkRefusal.Unavailable,
+        Limited => PoolRefusals.Http(429),
         _ => WorkRefusal.None
     };
 
@@ -100,11 +130,13 @@ internal static class WorkSharingCheck
         public string Id { get; } = id;
         public TimeSpan Work { get; } = work;
         public bool Down { get; set; }
+        public bool RateLimited { get; set; }
         public List<string> Served { get; } = [];
 
         public async IAsyncEnumerable<string> Speak(string who, [EnumeratorCancellation] CancellationToken token)
         {
             if (Down) throw new Gone();
+            if (RateLimited) throw new Limited();
             if (Interlocked.CompareExchange(ref running, 1, 0) != 0) throw new Busy();
             try
             {
@@ -205,6 +237,35 @@ internal static class WorkSharingCheck
         var shared = ownFirst.With(new WorkSharingHost { HostId = "m3-host", OnlyFor = ["desk-3"] }).Share();
         Step("The choices travel as the work-sharing shared setting and read back the same",
             WorkSharingSettings.Parse(shared)?.Share() == shared && Martlet.Core.Sync.SharedSettings.IsKey(WorkSharingSettings.SharedKey), new { shared });
+
+        // Pools: the same network as lists on Companion › Voice (docs/CLUSTER.md#pools-one-ordered-list-of-members-per-area).
+        var migrated = PoolMigration.FromWorkSharing(PoolAreas.Speaking, ownFirst.With(new WorkSharingHost { HostId = "m3-host", OnlyFor = ["desk-3"] }),
+            PoolMember.Computer("m1-host"), Voices("m2-host"));
+        Step("Sharing work's order and kept-for choices move into the Speaking list",
+            migrated.Members.Select(m => m.Key).SequenceEqual(["this-pc", "host:m1-host", "host:m3-host"]) &&
+            migrated.Find("host:m3-host")!.OnlyFor.SequenceEqual(["desk-3"]), new { members = migrated.Members.Select(m => m.Key) });
+        var runs = new HashSet<string>(["m1-host", "m3-host"], StringComparer.Ordinal);
+        var poolDesk2 = PoolRouting.Hosts(PoolAreas.Speaking, migrated, "desk-2", "m1-host", null, runs);
+        var poolDesk3 = PoolRouting.Hosts(PoolAreas.Speaking, migrated, "desk-3", "m1-host", "m3-host", runs);
+        Step("The list's order: machine 3 first on its own companion PC, kept from machine 2",
+            poolDesk2.SequenceEqual(["m1-host"]) && poolDesk3.SequenceEqual(["m3-host", "m1-host"]), new { desk2 = poolDesk2, desk3 = poolDesk3 });
+        var offList = migrated.With(migrated.Find("host:m1-host")! with { Off = true });
+        var thinkingList = new PoolList { Area = PoolAreas.Thinking.Id, Members = [PoolMember.Computer("m3-host")] };
+        Step("A member turned off takes no work; Thinking's own model always goes first",
+            PoolRouting.Hosts(PoolAreas.Speaking, offList, "desk-3", "m1-host", "m3-host", runs).SequenceEqual(["m3-host"]) &&
+            PoolRouting.Hosts(PoolAreas.Thinking, thinkingList, "desk-2", "m1-host", null, runs).SequenceEqual(["m1-host", "m3-host"]),
+            new { speaking = PoolRouting.Hosts(PoolAreas.Speaking, offList, "desk-3", "m1-host", "m3-host", runs) });
+        var empty = PoolRouting.Order(PoolAreas.Speaking, new PoolList { Area = PoolAreas.Speaking.Id }, "desk-2");
+        var lipSync = PoolRouting.Order(PoolAreas.LipSync, new PoolList { Area = PoolAreas.LipSync.Id }, "desk-2");
+        Step("An empty list is off for Speaking and voice loudness for lip-sync", empty.Off && !lipSync.Off && lipSync.Fallback,
+            new { speakingOff = empty.Off, lipSyncFallback = lipSync.Fallback, lipSync = PoolAreas.LipSync.WhenEmpty });
+        var cloud = PoolMember.Cloud("openai", "gpt-4o-mini-tts").WithConsent(PoolAreas.Speaking.Id, DateTimeOffset.UnixEpoch);
+        var limited = new Voice(cloud.Key, TimeSpan.FromMilliseconds(10)) { RateLimited = true };
+        var byCloud = await SpeakAsync(new WorkQueue(), "desk-2", [limited, new Voice("m3-host", TimeSpan.FromMilliseconds(10))]);
+        Step("A cloud member at its rate limit is passed over like a busy computer (by its member key)", byCloud.By == "m3-host", byCloud);
+        var poolsShared = new PoolSettings().With(migrated).Share();
+        Step("The lists travel as the pools shared setting and read back the same",
+            PoolSettings.Parse(poolsShared)?.Share() == poolsShared && Martlet.Core.Sync.SharedSettings.IsKey(PoolSettings.SharedKey), new { poolsShared });
 
         return new { ok, fixture = "simulated computers (NOT real hosts or models)", steps };
     }

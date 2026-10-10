@@ -412,6 +412,8 @@ public partial class MainWindow
             var loaded = await setupService.LoadAsync(lifetime.Token);
             homeSettings = await LeaveRetiredVoiceAsync(loaded, lifetime.Token) ?? loaded.Settings;
             SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
+            // Speaking, Listening and Thinking get their pool lists once, from Devices › Sharing work and their routes.
+            EnsurePools();
             // No voice goes by the companion's own name: one learned by mistake is dropped (names the owner typed stay).
             localVoices.DropCompanionNames(Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name),
                 homeSettings?.Companion?.Personas.Select(p => p.Text)));

@@ -11,7 +11,7 @@ namespace Martlet.Desktop;
 /// tries them in (<see cref="WorkSharing.Order"/>). Every file is read again only when it changed, so asking costs a few file
 /// times per request and never the network. Requests then go through <see cref="WorkQueue.Shared"/>: a busy computer is passed
 /// over for the next, and when every one is busy the request waits for whichever frees first.</summary>
-internal static class WorkSharingRoster
+internal static partial class WorkSharingRoster
 {
     private static readonly object Gate = new();
     private static readonly Dictionary<string, (DateTime Written, long Checked, object Value)> Files = new(StringComparer.OrdinalIgnoreCase);
@@ -76,11 +76,15 @@ internal static class WorkSharingRoster
             .Select(n => (Node: n, Role: n.Roles.FirstOrDefault(r => r.Kind == roleKind && (model is null || r.Model == model))))
             .Where(p => p.Role is not null)
             .ToDictionary(p => p.Node.HostId, p => p.Role!.Model, StringComparer.Ordinal);
+        (PairedHost? Host, string? Model) Place(string id) => id == planned ? (hosts.FirstOrDefault(h => h.HostId == id), (string?)null)
+            : (hosts.First(h => h.HostId == id), runs[id]);
+        // The area's pool list (Companion › Voice, Listening, Thinking), once it has one: its members in the owner's order.
+        if (PoolAreas.Find(job) is { } area && Pool(directory, area) is { } list)
+            return [.. PoolHosts(area, list, planned, own, runs.Keys.ToHashSet(StringComparer.Ordinal)).Select(Place)];
         var places = runs.Keys.Select(id => new WorkPlace(id, id == own,
             plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == id))).ToArray();
         var order = WorkSharing.Order(Settings(directory), job, Device, planned, places);
-        return [.. order.Select(id => id == planned ? (hosts.FirstOrDefault(h => h.HostId == id), (string?)null)
-            : (hosts.First(h => h.HostId == id), runs[id]))];
+        return [.. order.Select(Place)];
     }
 
     private static IReadOnlyList<PairedHost> Hosts(string directory) => Cached(Path.Combine(directory, HostRegistry.FileName), () =>

@@ -499,7 +499,9 @@ public partial class MainWindow
 
         page.Children.Add(JobNowCard(section, job, route));
 
-        page.Children.Add(WhereItRunsCard(section, section.ToString(), "Where it runs", null, route is null ? null : current, place,
+        // Speaking and Listening: the pool list replaces the single place; the chosen member's own card shows below it.
+        if (role != SetupRole.Llm) page.Children.Add(JobPoolCard(section, role, route));
+        else page.Children.Add(WhereItRunsCard(section, section.ToString(), "Where it runs", null, route is null ? null : current, place,
             (JobPlace.ThisPc, "This PC (recommended)", role switch
             {
                 SetupRole.Llm => "Ollama or your own model app, on this PC's graphics card. Private and free.",
@@ -533,6 +535,9 @@ public partial class MainWindow
                 JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
                 _ => CloudCard(section, job, route)
             });
+
+        // Thinking: the computers a reply may go to when the conversation's own model is busy (none by default).
+        if (role == SetupRole.Llm) page.Children.Add(JobPoolCard(section, role, route));
 
 
         // Chatterbox Original's General and Expressive style, while it speaks or is the chosen engine.

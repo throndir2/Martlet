@@ -488,6 +488,31 @@ public static class PoolRouting
             .ToArray();
         return new(area, order, list is not null, members.All(m => m.Off));
     }
+
+    /// <summary>The paired computers (host IDs) a host request of <paramref name="area"/> tries, first to last: the list's members
+    /// that run the engine (<paramref name="planned"/>, the route's own computer, or one of <paramref name="runs"/>), each
+    /// computer once. This PC is this PC's own host service (<paramref name="own"/>); a card is its computer (a host runs one
+    /// route per engine). An area whose conversation goes first (Thinking) puts <paramref name="planned"/> first. When no
+    /// member can take it, <paramref name="planned"/> still does (an area is turned off by turning its route off).</summary>
+    public static IReadOnlyList<string> Hosts(PoolArea area, PoolList list, string device, string planned, string? own, IReadOnlySet<string> runs)
+    {
+        ArgumentNullException.ThrowIfNull(area);
+        ArgumentNullException.ThrowIfNull(runs);
+        string? Resolve(PoolMember member)
+        {
+            var id = member.Kind switch
+            {
+                PoolMemberKind.ThisPc => own,
+                PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
+                _ => null
+            };
+            return id is not null && (id == planned || runs.Contains(id)) ? id : null;
+        }
+        var order = Order(area, list, device, m => Resolve(m) is not null).Members.Select(m => Resolve(m)!);
+        if (area.ConversationFirst) order = order.Prepend(planned);
+        var hosts = order.Distinct(StringComparer.Ordinal).ToList();
+        return hosts.Count == 0 ? [planned] : hosts;
+    }
 }
 
 /// <summary>What a cloud or address member's failure before its first answer means in <see cref="WorkQueue"/>: a rate limit
