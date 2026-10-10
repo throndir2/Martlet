@@ -51,7 +51,7 @@ internal sealed class AccountSession
     internal const string SimulatedSid = "S-1-5-21-1000-1000-1000-1001";
     private const string FallbackName = "Me";
     private readonly List<Func<AccountChange, CancellationToken, Task>> steps = [];
-    private readonly bool startNew;
+    private bool startNew;
     private AccountSessionState state;
     private bool started;
 
@@ -240,7 +240,7 @@ internal sealed class AccountSession
     /// picker (it doesn't unlock with this Windows login) and the directory sync writes its device binding with the attestation.
     /// The caller switches to it with <see cref="SwitchToAsync"/>. Throws <see cref="ArgumentException"/> when the statement
     /// can't be used here.</summary>
-    internal void SignIn(AccountAttestation attestation, NetworkRoster roster, DateTimeOffset now)
+    internal void SignIn(AccountAttestation attestation, NetworkRoster roster, DateTimeOffset now, AccountLoginKey? bindWith = null)
     {
         ArgumentNullException.ThrowIfNull(attestation);
         ArgumentNullException.ThrowIfNull(roster);
@@ -251,12 +251,66 @@ internal sealed class AccountSession
             throw new ArgumentException("This PC has as many people as it can keep.");
         var next = state.Add(new AccountProof
         {
-            Id = attestation.AccountId, Login = attestation.Login, Attestation = attestation.ToText(), SignedInAt = now.ToUniversalTime()
+            Id = attestation.AccountId, Login = bindWith ?? attestation.Login, Attestation = attestation.ToText(), SignedInAt = now.ToUniversalTime()
         });
         next.Save(HouseholdFolder);
         state = next;
         ErrorLog.Info($"Accounts: account {Short(attestation.AccountId)} signed in on this PC with a {attestation.Login.Kind} login.");
         Changed?.Invoke();
+    }
+
+    /// <summary>W12, *Link this Windows login*: this device's binding of <paramref name="accountId"/>, signed in with a Prove
+    /// sign-in, uses <paramref name="login"/> from now on (keeping the attestation), so the directory sync writes it that way.</summary>
+    internal void BindWith(Guid accountId, AccountLoginKey login)
+    {
+        if (state.ProofFor(accountId) is not { } proof || proof.Login == login) return;
+        var next = state.Add(proof with { Login = login });
+        next.Save(HouseholdFolder);
+        state = next;
+    }
+
+    /// <summary>W12, *Sign out of this PC*: <paramref name="accountId"/> leaves this device's signed-in accounts (switch away from
+    /// it first). The caller removes this device's binding from the directory.</summary>
+    internal void SignOut(Guid accountId)
+    {
+        if (!state.SignedIn.Contains(accountId)) return;
+        var next = state.Without(accountId);
+        next.Save(HouseholdFolder);
+        state = next;
+        ErrorLog.Info($"Accounts: account {Short(accountId)} signed out of this PC.");
+        Changed?.Invoke();
+    }
+
+    /// <summary>W12: while Martlet closes, makes <paramref name="accountId"/> the account in use at the next start (no change
+    /// steps run: nothing loads it now).</summary>
+    internal void UseOnExit(Guid accountId)
+    {
+        if (!state.SignedIn.Contains(accountId) || accountId == state.Current) return;
+        var next = state.Use(accountId);
+        next.Save(HouseholdFolder);
+        state = next;
+    }
+
+    /// <summary>W12: before <see cref="StartAsync"/>, uses <paramref name="accountId"/>, signed in on this device, instead of the
+    /// account first chosen. <paramref name="replaceNew"/> (*Continue as ...?*): the new account first start made for this Windows
+    /// login is dropped while it was never written to the directory.</summary>
+    internal void UseAtStart(Guid accountId, bool replaceNew = false)
+    {
+        if (started) throw new InvalidOperationException("The session has started already.");
+        if (!state.SignedIn.Contains(accountId)) throw new InvalidOperationException("That account isn't signed in on this PC.");
+        var made = state.Current;
+        var next = state.Use(accountId);
+        if (replaceNew && made != accountId && next.PendingFor(made) is not null && Directory.Find(made) is null)
+        {
+            next = next.Without(made);
+            try { System.IO.Directory.Delete(FolderFor(HouseholdFolder, made)); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+        next.Save(HouseholdFolder);
+        state = next;
+        startNew = !System.IO.Directory.Exists(AccountFolder);
+        System.IO.Directory.CreateDirectory(AccountFolder);
+        ErrorLog.Info($"Accounts: continuing as account {Short(accountId)} on this Windows login.");
     }
 
     /// <summary>Takes the directory the sync merged and wrote: saves accounts.json and the session without the pending accounts
@@ -275,7 +329,7 @@ internal sealed class AccountSession
         if (Signature() != before) Changed?.Invoke();
     }
 
-    private string Signature() => string.Join('|', SignedIn.Select(a => $"{a.Key}:{a.Name}:{a.Role}:{a.Pending}"));
+    private string Signature() => string.Join('|', SignedIn.Select(a => $"{a.Key}:{a.Name}:{a.Role}:{a.Pending}:{Directory.Find(a.Id)?.Removed == true}"));
 
     private AccountView View(Guid id) =>
         Directory.Find(id) is { } entry ? new(id, entry.Name, entry.Role, false)

@@ -8,9 +8,14 @@ internal interface IAccountPageHost
 {
     string DataDirectory { get; }
     string DeviceId { get; }
-    WindowsLogin Windows { get; }
+    /// <summary>The SID of the Windows login the session is bound to (the subject of this PC's <c>windows</c> login).</summary>
+    string WindowsSid { get; }
+    /// <summary>The Windows login's kind (microsoft, work or local), to show.</summary>
+    string WindowsKind { get; }
     /// <summary>The active account as this PC's account directory has it now.</summary>
     Account? Active { get; }
+    /// <summary>Whether the active account signed in here with a Prove sign-in (not this Windows login).</summary>
+    bool SignedInWithProve { get; }
     AccountDirectory Directory { get; }
     NetworkRoster? Roster { get; }
     /// <summary>The hosts of this PC's own network it is paired with, to check sign-ins and keep password logins.</summary>
@@ -20,6 +25,11 @@ internal interface IAccountPageHost
     byte[]? FileKey { get; set; }
     /// <summary>Changes this PC's account directory (signed by this PC's network key), saves it and syncs it to the hosts.</summary>
     Task<AccountDirectory> ChangeDirectoryAsync(Func<AccountDirectory, INetworkSigner, DateTimeOffset, AccountDirectory> change, CancellationToken token);
+    /// <summary>*Link this Windows login* to the active account.</summary>
+    Task LinkWindowsLoginAsync(CancellationToken token);
+    /// <summary>*Unlink*: the active account keeps signing in here with its Martlet password (after a Prove sign-in); returns what
+    /// happened, to show.</summary>
+    Task<string> UnlinkWindowsLoginAsync(System.Windows.Window owner, CancellationToken token);
     /// <summary>Locks the active account (encrypting its files when that is on) and shows Unlock.</summary>
     Task LockNowAsync();
     /// <summary>Signs <paramref name="accountId"/> out of this PC: removes this PC's binding and its unlock file.</summary>

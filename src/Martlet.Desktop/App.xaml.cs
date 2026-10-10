@@ -129,6 +129,21 @@ public partial class App : Application
                 // Who uses Martlet now (docs/ACCOUNTS.md): signs in for the first time when needed, then runs the account change
                 // steps (added here, before StartAsync) before the theme, character and conversation load.
                 Accounts = OpenAccounts(store.DataDirectory);
+                if (Accounts is { } opened)
+                {
+                    // Continue as ...? at first start and the Unlock of the account in use, before it loads (W12). Closing
+                    // these windows must not end Martlet: none is the main window.
+                    AccountSecurityService.Current = new AccountSecurityService(opened, store.DataDirectory);
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                    var unlocked = AccountSecurityService.Current.AtStart();
+                    ShutdownMode = ShutdownMode.OnMainWindowClose;
+                    if (!unlocked)
+                    {
+                        ErrorLog.Info("Accounts: nobody unlocked at start, so Martlet closes.");
+                        Shutdown(0);
+                        return;
+                    }
+                }
                 if (Accounts is { } accounts) Task.Run(() => accounts.StartAsync(CancellationToken.None)).GetAwaiter().GetResult();
                 (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
                 ThemeColors = Appearance.LoadColors(store.DataDirectory, SelectedTheme);
@@ -177,6 +192,9 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         SystemParameters.StaticPropertyChanged -= SystemAppearanceChanged;
+        // Remember me off signs out; encrypted accounts are encrypted again (W12).
+        try { AccountSecurityService.Current?.OnExit(); }
+        catch (Exception error) when (!ErrorLog.IsFatal(error)) { ErrorLog.Warn("Accounts: closing account security didn't finish", error); }
         instance?.Dispose();
         ErrorLog.MarkCleanExit();
         base.OnExit(e);

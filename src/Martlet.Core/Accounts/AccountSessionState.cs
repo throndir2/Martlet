@@ -83,6 +83,16 @@ public sealed record AccountSessionState
     /// <summary>This session with <paramref name="account"/> in use, first in <see cref="SignedIn"/>.</summary>
     public AccountSessionState Use(Guid account) => this with { Current = account, SignedIn = [account, .. SignedIn.Where(id => id != account)] };
 
+    /// <summary>This session without <paramref name="account"/> (signed out of this device; W12). It can't be the one in use.</summary>
+    public AccountSessionState Without(Guid account) => account == Current
+        ? throw new InvalidOperationException("The account in use can't be signed out; switch to another one first.")
+        : this with
+        {
+            SignedIn = SignedIn.Where(id => id != account).ToArray(),
+            Pending = Pending.Where(p => p.Id != account).ToArray(),
+            Proofs = Proofs.Where(p => p.Id != account).ToArray()
+        };
+
     /// <summary>This session with <paramref name="account"/> signed in (after the current one) and, when given, pending.</summary>
     public AccountSessionState Add(Guid account, PendingAccount? pending = null) => this with
     {

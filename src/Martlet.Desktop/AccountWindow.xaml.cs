@@ -34,7 +34,7 @@ public partial class AccountWindow : ThemedWindow
     }
 
     private Account? Active => host.Active;
-    private AccountLoginKey ThisWindowsLogin => AccountLoginKey.ForWindows(host.DeviceId, host.Windows.Sid);
+    private AccountLoginKey ThisWindowsLogin => AccountLoginKey.ForWindows(host.DeviceId, host.WindowsSid);
 
     private bool IsOwnersAccount(Account account, HostSignInSettings? settings = null) =>
         account.Id == (settings?.OwnerAccountId ?? (host.Roster is { } roster ? OwnerAccount.IdFor(roster.NetworkId) : Guid.Empty));
@@ -43,12 +43,12 @@ public partial class AccountWindow : ThemedWindow
     {
         if (Active is not { } account)
         {
-            NameText.Text = "No account is active on this PC.";
+            NameText.Text = "This account isn't in your household's account directory yet. It gets there when this PC syncs with your hosts.";
             IsEnabled = false;
             return;
         }
         var locks = host.Locks.Load(account.Id);
-        var windows = account.Login(ThisWindowsLogin) is not null;
+        var windows = account.Login(ThisWindowsLogin) is not null && !host.SignedInWithProve;
         NameText.Text = $"{account.Name} ({account.Role})";
         LoginsText.Text = "Logins: " + Describe(account);
         LockStateText.Text = locks.NeedsUnlock(windows)
@@ -58,11 +58,12 @@ public partial class AccountWindow : ThemedWindow
             ? "Unlocks on this PC with: nothing yet."
             : "Unlocks on this PC with: " + string.Join(", ", locks.Methods.Select(m => m switch { "pin" => "PIN", "hello" => "Windows Hello", _ => "password" })) + ".";
         WindowsStateText.Text = windows
-            ? $"This Windows login ({host.Windows.Kind}) signs in as {account.Name}."
-            : $"This Windows login ({host.Windows.Kind}) is not one of {account.Name}'s logins.";
+            ? $"This Windows login ({host.WindowsKind}) signs in as {account.Name}."
+            : $"This Windows login ({host.WindowsKind}) doesn't sign in as {account.Name} by itself.";
         LinkWindowsButton.IsEnabled = !windows;
         UnlinkWindowsButton.IsEnabled = windows;
         AskCheck.IsChecked = locks.AskOnThisPc;
+        AskCheck.IsEnabled = windows;
         HelloCheck.IsChecked = locks.Hello;
         HelloCheck.IsEnabled = !locks.Encrypt;
         EncryptCheck.IsChecked = locks.Encrypt;
@@ -70,6 +71,7 @@ public partial class AccountWindow : ThemedWindow
             ? "Your files on this PC are encrypted whenever you switch to another account or close Martlet. Your PIN" + (locks.Methods.Contains("password") ? " or password" : "") + " opens them."
             : "Needs a PIN on this PC. Type it in the PIN box, then turn this on. Windows Hello can't open encrypted files.";
         RememberCheck.IsChecked = locks.Remember;
+        RememberCheck.Visibility = host.SignedInWithProve ? Visibility.Visible : Visibility.Collapsed;
         PinRemoveButton.IsEnabled = locks.HasPin;
         if (IsOwnersAccount(account))
         {
@@ -244,9 +246,7 @@ public partial class AccountWindow : ThemedWindow
         if (Active is not { } account) return;
         try
         {
-            await host.ChangeDirectoryAsync((directory, signer, now) => directory.Find(account.Id) is { Removed: false } current
-                ? directory.Put(signer, AccountLinks.WithWindowsLogin(current, host.DeviceId, host.Windows.Sid, host.Windows.DisplayName, now), now)
-                : directory, lifetime.Token);
+            await host.LinkWindowsLoginAsync(lifetime.Token);
             Status($"This Windows login now signs in as {account.Name}.");
             Refresh();
         }
@@ -255,41 +255,11 @@ public partial class AccountWindow : ThemedWindow
 
     private async void UnlinkWindows_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account) return;
-        var locks = host.Locks.Load(account.Id);
-        var stays = false;
+        if (Active is null) return;
         try
         {
-            await host.ChangeDirectoryAsync((directory, signer, now) =>
-            {
-                if (directory.Find(account.Id) is not { Removed: false } current) return directory;
-                var binding = current.Device(host.DeviceId);
-                var next = AccountLinks.WithoutWindowsLogin(current, host.DeviceId, host.Windows.Sid);
-                // With a password remembered here, this PC stays signed in with the password and asks for it from now on.
-                if (locks.HasPassword && binding is not null && next.Logins.FirstOrDefault(l => l.Kind == AccountLoginKinds.Martlet) is { } password &&
-                    host.Roster is { } roster)
-                {
-                    var kept = next.WithDevice(binding with { Login = password.Key });
-                    if (AccountBindingRules.Proof(current, kept, kept.Device(host.DeviceId)!, roster) is not null)
-                    {
-                        next = kept;
-                        stays = true;
-                    }
-                }
-                return directory.Put(signer, next, now);
-            }, lifetime.Token);
-            if (stays)
-            {
-                host.Locks.Change(account.Id, l => l with { AskOnThisPc = true });
-                Status($"This Windows login no longer signs in as {account.Name}. This PC asks for your password from now on.");
-                Refresh();
-            }
-            else
-            {
-                Status($"This Windows login no longer signs in as {account.Name}, so {account.Name} is signed out of this PC.");
-                await host.SignOutAsync(account.Id);
-                Close();
-            }
+            Status(await host.UnlinkWindowsLoginAsync(this, lifetime.Token));
+            Refresh();
         }
         catch (InvalidOperationException error) { Status(error.Message); }
     }
@@ -398,9 +368,9 @@ public partial class AccountWindow : ThemedWindow
     private async void LockNow_Click(object sender, RoutedEventArgs e)
     {
         if (Active is not { } account) return;
-        if (host.Locks.Load(account.Id).Methods.Count == 0 && account.Login(ThisWindowsLogin) is null)
+        if (host.Locks.Load(account.Id).Methods.Count == 0)
         {
-            Status("Set a PIN or a password first, so you can unlock again.");
+            Status("Set a PIN, Windows Hello or a password first, so you can unlock again.");
             return;
         }
         Close();

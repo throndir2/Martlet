@@ -131,6 +131,7 @@ public partial class MainWindow
             menu.Items.Add(note);
         }
         menu.Items.Add(new Separator());
+        AddAccountSecurityItems(menu);
         var add = new MenuItem { Header = "_Add a person…" };
         AutomationProperties.SetAutomationId(add, "AccountAddPerson");
         add.Click += (_, _) =>
@@ -155,6 +156,8 @@ public partial class MainWindow
         }
         var to = accounts.SignedIn.FirstOrDefault(a => a.Id == id);
         if (to is null) return;
+        // W12: an account that needs an Unlock here (PIN, password or Windows Hello) is unlocked, and its files decrypted, first.
+        if (!UnlockBeforeSwitch(id)) return;
         var talking = openConversation is not null;
         openConversation?.End();
         AccountButton.IsEnabled = false;
