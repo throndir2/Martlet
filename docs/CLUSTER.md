@@ -238,7 +238,8 @@ machine 3 on its own, and machine 2 on machine 1, or machine 3 when machine 1
 is busy, or whichever of the two finishes first when both are. Keeping machine
 3 for itself leaves machine 2 only machine 1.
 
-Lip-sync is not shared yet: it stays on its one computer.
+Lip-sync goes to a pool of the places that run Audio2Face through the same
+queue, without a card here ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)).
 Pictures go through each PC's Pictures list (`PicturePool`, lane `pictures`): a
 computer whose ComfyUI already draws a picture is passed over for a free one,
 and when all are busy the picture waits in the shortest queue

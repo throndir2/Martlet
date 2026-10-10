@@ -2013,6 +2013,25 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("lip_sync_pool_status", "Lip-sync's pool (the pool contract's lip-sync area) from a data directory: who does lip-sync " +
+            "(avatar.json: its mode and the assigned host), lip-sync's list (pools.json, or the list made from the older choices " +
+            "until one is saved: the assigned computer, the other paired computers the shared plan says run the audio2face role in " +
+            "Devices > Sharing work's order, then this PC's own Audio2Face service; empty when lip-sync was off), each member's " +
+            "key, kind, off, onlyFor and settings, the member keys this PC (or deviceId) tries for each chunk with the production " +
+            "router (PoolRouting.Order), and the fallback when none can (voice loudness on this PC). Host and device IDs only. " +
+            "Read-only.", new
+        {
+            dataDirectory = new { type = "string" },
+            deviceId = new { type = "string" }
+        }),
+        Tool("lip_sync_pool_check", "Rehearse lip-sync's pool with the production pool (LipSyncSharing) and queue (WorkQueue) on " +
+            "simulated Audio2Face computers that animate one chunk at a time and turn another away at once, as a host's gateway does " +
+            "(job.busy), NOT real hosts or models: shared by default with the assigned computer first, a free first computer taking " +
+            "a chunk with no wait, two companion PCs at once each kept on its own computer, the next reply choosing again, every " +
+            "computer busy past half a chunk so the voice's loudness moves the mouth, a computer freeing within the wait, an " +
+            "unanswering computer skipped, a kept or never-used computer left out, a saved list's order without members turned " +
+            "off or kept for another companion PC, an empty list meaning voice loudness, and the list made from the older choices. " +
+            "In-process; reads nothing.", new { }),
         Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
             "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
             "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +
@@ -2403,6 +2422,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "lip_sync_pool_status" => LipSyncPoolCheck.Status(DataDirectory(arguments), OptionalString(arguments, "deviceId")),
+                "lip_sync_pool_check" => await LipSyncPoolCheck.RunAsync(cancellation),
                 "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
                     ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation)
                     : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation,

@@ -4488,6 +4488,35 @@ and every `WorkSharing*` control on the Devices page: `WorkSharingJob-<job>`,
 `WorkSharingUp/Down-<job>-<host>` and `WorkSharingKeep-<host>` controls, which
 save `work-sharing.json` and so need `--allow-ui-effects`.
 
+`lip_sync_pool_status` shows lip-sync's pool (optional absolute
+`dataDirectory`, default the current user's; the script gives a disposable
+one; optional `deviceId`, default this PC's): `avatar` (`loaded`, `none` or
+`unreadable`), `lipSync` (the mode in `avatar.json`), `assigned` (the host it
+names), `paired` and `ownHost` (`hosts.json`), `area` (the pool contract's
+lip-sync area: `id`, `page`, `required`, `kinds`, `whenEmpty`), `list`
+(`source`: `pools.json`, or `older choices (not saved yet)`; and each member's
+`key`, `name`, `kind`, `off`, `onlyFor` and `settings`), `tries` (the member
+keys this PC tries for each chunk with the production `PoolRouting.Order`),
+`fallback` ("Voice loudness on this PC" when no member can take a sentence),
+`sharingWork` (lip-sync's `shares`, `order`, `never` and the plan's `runs`,
+which make the list from the older choices) and `planHost` (the shared plan's
+lip-sync host). Host and device IDs only. Read-only.
+
+`lip_sync_pool_check` rehearses the production lip-sync pool
+(`LipSyncSharing` on `WorkQueue`) with simulated Audio2Face computers that
+animate one chunk at a time and turn another away at once as a host's gateway
+does (`job.busy`), **NOT real hosts or models**. Each step reports `passed`
+and its detail: shared by default with the assigned computer first and no
+Devices card; a free first computer taking a chunk with no wait; two companion
+PCs at once, the second moved to the next computer once and each reply kept on
+its computer; the next reply choosing again; every computer busy, so a
+one-second chunk waits about half a second and is skipped (the voice's
+loudness moves the mouth); a computer freeing within the wait; an unanswering
+computer passed over at once; a kept or never-used computer left out; a saved
+list's order without a member turned off or kept for another companion PC; an
+empty list meaning voice loudness; and the list made from the older choices.
+`ok` is true when every step passed. In-process; reads nothing.
+
 `recommended_setup_status` shows Home's **Recommended setup** without the
 desktop. It builds the network recommender's request with the desktop's own
 builder (`RecommendedSetupInputs`) and runs the production recommender
@@ -8210,7 +8239,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
