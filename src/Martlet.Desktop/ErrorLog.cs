@@ -147,6 +147,8 @@ internal static class ErrorLog
 
     internal static void MarkCleanExit()
     {
+        // The lines still queued to be written later go first.
+        while (later.Reader.TryRead(out var message)) Write("INFO", message, null);
         Info($"{component} exited cleanly.");
         lock (gate)
         {
@@ -158,6 +160,33 @@ internal static class ErrorLog
     internal static void Info(string message) => Write("INFO", message, null);
     internal static void Warn(string message, Exception? exception = null) => Write("WARN", message, exception);
     internal static void Error(string message, Exception? exception = null) => Write("ERROR", message, exception);
+
+    // INFO lines written on a background thread (InfoLater), oldest first; a full queue drops new lines rather than wait.
+    private static readonly System.Threading.Channels.Channel<string> later =
+        System.Threading.Channels.Channel.CreateBounded<string>(new System.Threading.Channels.BoundedChannelOptions(4096)
+        {
+            FullMode = System.Threading.Channels.BoundedChannelFullMode.DropWrite, SingleReader = false, SingleWriter = false
+        });
+    private static int writingLater;
+
+    /// <summary>An INFO line written on a background thread, so the caller never waits for the disk: for lines on a reply's
+    /// path (the Thinking trace). Lines keep their order; each has the time it was written, a moment after it was queued.</summary>
+    internal static void InfoLater(string message)
+    {
+        if (!later.Writer.TryWrite(message)) return;
+        if (Interlocked.CompareExchange(ref writingLater, 1, 0) == 0) ThreadPool.UnsafeQueueUserWorkItem(_ => WriteLater(), null);
+    }
+
+    private static void WriteLater()
+    {
+        while (true)
+        {
+            while (later.Reader.TryRead(out var message)) Write("INFO", message, null);
+            Volatile.Write(ref writingLater, 0);
+            // A line queued after the last read but before the flag was cleared started no writer of its own: write it now.
+            if (!later.Reader.TryPeek(out _) || Interlocked.CompareExchange(ref writingLater, 1, 0) != 0) return;
+        }
+    }
 
     /// <summary>Attaches to a fire-and-forget task so a failure is logged rather than silently dropped.</summary>
     internal static void Observe(Task task, string operation)

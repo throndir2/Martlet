@@ -99,6 +99,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             replies = new { type = "integer", minimum = 1, maximum = LatencyReport.MaximumReplies },
             dataDirectory = new { type = "string" }
         }),
+        Tool("thinking_trace", "Read the desktop log's Thinking trace (docs/VOICE_LATENCY.md, Thinking trace) put back together: the " +
+            "newest conversation turns (replies, glances, background thinks, Thinking pool and sense jobs, Discord replies), newest " +
+            "first, each with its route and model, state, total, first words and first audio (ms from the turn's start), how many " +
+            "requests it sent, every still-waiting notice (what it waited for and how long) and its lines in order (started, prepared, " +
+            "each request with its authorization, send, response, hidden reasoning, first words and tokens, tool rounds, Backup " +
+            "Thinking, ended); and the newest requests for the Thinking pool's slots (tr-N) with how long each waited in line and ran " +
+            "and their lines. contains keeps only turns and requests with a line containing that text. Read-only; never what was said; " +
+            "starts no audio, network or provider request.", new
+        {
+            turns = new { type = "integer", minimum = 1, maximum = ThinkingTraceReport.MaximumTurns },
+            contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this interactive session.", new
         {
@@ -1608,7 +1621,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
-            "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
+            "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget), " +
+            "and how much room a screen glance has (look: the persona's and the picture's estimated tokens, the room left for " +
+            "Martlet's instructions, message and notes, what a look leaves out when it doesn't fit, and a problem when the picture " +
+            "and the persona alone don't fit). " +
             "Then rehearses the production model-limit check (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like " +
             "OpenRouter, vLLM, Groq, llama.cpp and Ollama (NOT the real services; a fixture key goes only to its own base URL and " +
             "redirects aren't followed) and the production history fit of a 1,000-exchange synthetic conversation into a cloud " +
@@ -2157,6 +2173,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "logs_share_selftest" => await NodeLinkCheckAsync(cancellation, "logs"),
                 "host_connections_selftest" => await NodeLinkCheckAsync(cancellation, "host-connections"),
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
+                "thinking_trace" => ThinkingTraceReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "turns"),
+                    OptionalString(arguments, "contains")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),

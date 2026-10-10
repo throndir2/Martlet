@@ -426,7 +426,11 @@ simulated members (NOT models). They check that the journal records a success
 (one try, with its run time and its output), a retry (a failed member, then a
 member that answers: two tries) and a stale judge dropped after its wait (no
 try and no output), each with plausible timings. They also check that
-`Requests.Totals` counts the three by kind.
+`Requests.Totals` counts the three by kind, and that each request's
+[Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
+lines say when it waited in line, started on a member, let it go and ended
+(`thinking_trace` reads them from the desktop log; simulated requests write
+them too).
 
 ```powershell
 $env:MARTLET_SIMULATE_THINKING_REQUESTS = '6'
@@ -3788,6 +3792,15 @@ apart, which adds about that much to *first sentence* here (a real model's
 next words come within tens of milliseconds); `"breaks":{"shortEndingWords":0}`
 measures without that wait.
 
+`thinkingTrace` returns the reply's
+[Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
+lines as the desktop log gets them (`lines`), and `ok` also needs its start, its
+first request's line and its end with the state the reply ended in. With
+`reasoningMs` of 2000 or more, it also has a *still waiting* line. For example,
+`{"voiceFailure":"none","reasoningMs":2500}` returned *still waiting at 2018 ms
+for request 1's answer (2010 ms so far; sent at 34 ms, response at 51 ms,
+hidden reasoning since 56 ms)*.
+
 With `thinkingSteps` (`off` or `on`) the reply carries Companion › Replies ›
 Thinking steps (a loopback server gets the chat template's `enable_thinking`);
 with `refuseThinking` the fixture endpoint answers a request carrying it with
@@ -4105,6 +4118,27 @@ audio.*; left out below 100 ms), and the model IDs
 (`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
 is in [Voice latency](VOICE_LATENCY.md#measure-first-the-reply-latency-line).
 
+`thinking_trace` reads the desktop log's
+[Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
+(optional absolute `dataDirectory`, default the current user's) and puts it
+back together. `newest` holds the newest `turns` (1-200, default 10)
+conversation turns, newest first. Each turn has its `name` (*Thinking turn 12
+(reply)*), `purpose`, `route`, `model`, `state` (null while it has no end
+line), `totalMs`, `firstWordsMs`, `firstAudioMs`, the number of `requests`,
+`waits` (each *still waiting* notice: `atMs`, `what` and `waitedMs`) and its
+`lines` in order. `newestPoolRequests` holds the newest requests for the
+Thinking pool's slots (`id` such as `tr-3`, `kind`, `holder`, `state`,
+`totalMs`, `waitedMs`, `ranMs` and `lines`). The counts are `turns`,
+`unfinishedTurns`, `stillWaitingLines` and `poolRequests`. Turn numbers and
+request IDs start again each time Martlet starts, so a *started* or *waits in
+line* line begins a new one. With `contains`, only the turns and requests that
+have a line with that text are kept. It is read-only, never shows what was
+said, and starts no audio, network or provider request:
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_trace","arguments":{"turns":5,"contains":"still waiting","dataDirectory":"C:\\Users\\me\\AppData\\Local\\Martlet"}}]'
+```
+
 `latency_report` reads those lines from a data directory's desktop log (with
 its rotated copies; optional absolute `dataDirectory`, default the current
 user's) for the newest `replies` (1-500, default 20) and returns `measured`
@@ -4288,7 +4322,14 @@ model: `ContextTokens`, `ModelMaximum`, `Source`, `checkedAt`) and
 `modelLimitsKept`, and `context` (the production `ContextBudget`: `Tokens`,
 `source` such as `Saved`, `Default`, `ModelLimit`, `HostDefault`, `Ollama` or
 `OllamaAssumed`, `ReplyTokens`, `InputTokens`, `ModelTokens` and `described`,
-the words the Replies page shows). Its `probe` rehearses the production model
+the words the Replies page shows), and `look` (how much room a screen glance
+or camera look has: `personaTokens` and `pictureTokens` estimated as the
+desktop estimates them, `textTokens`, `maxTextBytes` on a paired host (16 KiB),
+`roomForTheRest` for Martlet's instructions, the glance message and its notes,
+`leavesOut` (what a look goes without when it doesn't fit, in order) and a
+`problem` when the picture and the persona alone don't fit, so vision stops;
+see [When a look is too long for Thinking](SCREEN_COMMENTARY.md#when-a-look-is-too-long-for-thinking)).
+Its `probe` rehearses the production model
 limit check against fixture servers on 127.0.0.1 shaped like OpenRouter (the
 smaller of `context_length` and the top provider's), vLLM, Groq and llama.cpp
 model lists, an unlisted model, a redirect (never followed; the fixture key
@@ -7474,7 +7515,9 @@ or a look that failed; its `help` (the tooltip) says how many monitors the
 whole screen spans (*Your whole screen is 2 monitors.*), the program in front
 as the Thinking model is told it (*Active app: Google Chrome (full screen).*),
 how the last look went
-(*Last look 10:17 PM (a flashing taskbar button): nothing to say.*) and what
+(*Last look 10:17 PM (a flashing taskbar button): nothing to say.*, followed by
+*To fit Thinking's context size, it went without the text read on the screen.*
+when the look had to leave something out) and what
 wanted your attention but wasn't looked at (*Noticed a notification at 10:17 PM
 but didn't look: you seem away.*); whether a message went with the picture is
 the note on its bubble (*Ivy saw your whole screen.*, by the persona's name); neither contains
@@ -8109,7 +8152,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
