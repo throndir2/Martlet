@@ -35,6 +35,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Always listening no longer stops about a second into each try with "the microphone failed (AudioDeviceChanged)" when Windows only reports a property change on your microphone, and Martlet's log now says why a microphone stopped. ([#737](https://github.com/throndir2/Martlet/pull/737))
 - Vision no longer stops often with "That's too long for Martlet's Thinking model": when a look doesn't fit Thinking's context size, Martlet now leaves out the text it read on the screen and other extras so the look still goes. If even the picture and your persona don't fit, it tells you to shorten the persona or raise the context size. ([#721](https://github.com/throndir2/Martlet/pull/721))
 - Check-ins, remembering and other Thinking pool jobs no longer wait "for the conversation" because of clicks, key presses or typing near your microphone: only your voice holds them back now. ([#718](https://github.com/throndir2/Martlet/pull/718))
 - A computer in the Thinking pool whose model also answers you now says why pool jobs stay off it (your replies would wait), and no longer shows a wrong "shares the graphics card" warning. ([#713](https://github.com/throndir2/Martlet/pull/713))

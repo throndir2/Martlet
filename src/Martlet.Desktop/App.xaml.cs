@@ -78,6 +78,8 @@ public partial class App : Application
             ProblemDialog.Show(MainWindow, title, heading, report, () => ErrorLog.OpenFolder()));
         // Failed provider requests record their HTTP status and the provider's own short explanation locally.
         Martlet.Providers.ProviderDiagnostics.SetSink(line => ErrorLog.Warn(line));
+        // Device notices the microphone code chose not to act on, written off the capture's thread.
+        Martlet.Audio.AudioDiagnostics.SetSink(ErrorLog.InfoLater);
         // Each Thinking request step by step, and what it waits for (docs/VOICE_LATENCY.md, Thinking trace), written off the
         // reply's path.
         Martlet.Conversation.ThinkingTrace.Listen(ErrorLog.InfoLater);

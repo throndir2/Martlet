@@ -430,11 +430,10 @@ public sealed class CaptureReviewTests
 
 #if WINDOWS
     [Theory]
-    [InlineData("default", ErrorCode.AudioDeviceChanged)]
-    [InlineData("properties", ErrorCode.AudioDeviceChanged)]
-    [InlineData("removed", ErrorCode.AudioDeviceLost)]
-    [InlineData("state", ErrorCode.AudioDeviceLost)]
-    public async Task RecordedNotificationIsObservedByActualNativeStopBeforeAnotherRead(string change, ErrorCode expected)
+    [InlineData("default", ErrorCode.AudioDeviceChanged, "Windows' default microphone changed")]
+    [InlineData("removed", ErrorCode.AudioDeviceLost, "Windows removed it")]
+    [InlineData("state", ErrorCode.AudioDeviceLost, "Windows set it to Unplugged")]
+    public async Task RecordedNotificationIsObservedByActualNativeStopBeforeAnotherRead(string change, ErrorCode expected, string why)
     {
         var clock = new CaptureClock();
         using var allowRead = new ManualResetEventSlim();
@@ -454,6 +453,7 @@ public sealed class CaptureReviewTests
             Assert.Null(utterance);
             Assert.Equal(CaptureState.Failed, result.State);
             Assert.Equal(expected, result.Error!.Code);
+            Assert.Equal(why, result.FailureDetail);
             Assert.Equal(0, result.RetainedPcmBytes);
             Assert.Equal(2, device.Reads);
             Assert.Equal(1, device.NativeDisposals);
@@ -510,7 +510,6 @@ public sealed class CaptureReviewTests
             {
                 "default" => ("DefaultChanged", (object)new NAudio.CoreAudioApi.DefaultDeviceChangedEventArgs(
                     NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.Role.Console, "replacement")),
-                "properties" => ("PropertyChanged", new NAudio.CoreAudioApi.DevicePropertyChangedEventArgs("selected-input", default)),
                 "removed" => ("Removed", new NAudio.CoreAudioApi.DeviceNotificationEventArgs("selected-input")),
                 "state" => ("StateChanged", new NAudio.CoreAudioApi.DeviceStateChangedEventArgs("selected-input", NAudio.CoreAudioApi.DeviceState.Unplugged)),
                 _ => throw new ArgumentOutOfRangeException(nameof(change))

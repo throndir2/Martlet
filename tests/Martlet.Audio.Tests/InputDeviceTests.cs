@@ -229,10 +229,46 @@ public sealed class InputDeviceTests
     {
         var normalize = typeof(Windows.WasapiCaptureDeviceFactory).GetMethod("Normalize", BindingFlags.NonPublic | BindingFlags.Static)!;
         var exception = new System.Runtime.InteropServices.COMException("endpoint-id and private-native-message", hresult);
-        var failure = Assert.IsType<CaptureDeviceException>(normalize.Invoke(null, new object[] { exception }));
+        var failure = Assert.IsType<CaptureDeviceException>(normalize.Invoke(null, new object?[] { exception, null }));
         Assert.Equal(expected, failure.Code);
         Assert.DoesNotContain("private-native-message", failure.Message);
+        Assert.Equal($"Windows error 0x{hresult:X8}", failure.Detail);
         Assert.Null(failure.InnerException);
+    }
+
+    [Fact]
+    public void PropertyChangesAloneNeverStopCaptureButAreKeptForTheLog()
+    {
+        // Some drivers rewrite properties (even the format) whenever a stream starts; that stopped always listening every try.
+        var type = typeof(Windows.WasapiCaptureDeviceFactory).Assembly.GetType("Martlet.Audio.Windows.NativeInputNotifications")!;
+        var lines = new List<string>();
+        AudioDiagnostics.SetSink(line => { lock (lines) lines.Add(line); });
+        try
+        {
+            var state = (IDisposable)Activator.CreateInstance(type)!;
+            type.GetField("active", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(state, 1);
+            void Notify(string device, NAudio.CoreAudioApi.PropertyKey key) => type.GetMethod("PropertyChanged", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(state, new object?[] { null, new NAudio.CoreAudioApi.DevicePropertyChangedEventArgs(device, key) });
+            var unknown = new NAudio.CoreAudioApi.PropertyKey(Guid.NewGuid(), 7);
+            // Before the input is bound, a property change doesn't count as the inputs changing.
+            Notify("selected-input", NAudio.CoreAudioApi.PropertyKeys.PKEY_AudioEngine_DeviceFormat);
+            type.GetMethod("Bind")!.Invoke(state, new object[] { "selected-input", InputPolicy.FixedEndpoint });
+            Notify("selected-input", NAudio.CoreAudioApi.PropertyKeys.PKEY_AudioEngine_DeviceFormat);
+            Notify("selected-input", unknown);
+            Notify("another-input", NAudio.CoreAudioApi.PropertyKeys.PKEY_AudioEndpoint_JackSubType);
+            type.GetMethod("CheckSelected")!.Invoke(state, null);
+            var summary = Assert.IsType<string>(type.GetProperty("PropertyChanges")!.GetValue(state));
+            Assert.Contains("2 property changes", summary);
+            Assert.Contains("PKEY_AudioEngine_DeviceFormat", summary);
+            Assert.Contains(unknown.formatId.ToString("B") + ",7", summary);
+            Assert.DoesNotContain("JackSubType", summary);
+            Assert.DoesNotContain("selected-input", summary);
+            state.Dispose();
+            string line;
+            lock (lines) line = Assert.Single(lines, entry => entry.Contains(unknown.formatId.ToString("B"), StringComparison.Ordinal));
+            Assert.DoesNotContain("selected-input", line);
+        }
+        finally { AudioDiagnostics.SetSink(null); }
     }
 #endif
 }
