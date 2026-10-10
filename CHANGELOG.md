@@ -12,6 +12,16 @@ Each release's section here is also its notes on GitHub.
 
 - When you add a new character model, Martlet now measures where its eyes, cheeks and mouth are (once, with a model that can see), so the blush lands on the cheeks instead of over the eyes, and heart eyes, star eyes and other emotes sit on the right spots. Press **Measure the face again** on Companion › Eyes to redo it any time. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 
+### Changed
+
+- The Lingering emotes check-in now runs every minute by default instead of every 5 minutes, so emotes that no longer fit turn off sooner. ([#714](https://github.com/throndir2/Martlet/pull/714))
+- Martlet now treats background sounds and voices as context instead of ignoring them, and answers someone in your call or room who clearly talks to it. ([#711](https://github.com/throndir2/Martlet/pull/711))
+
+### Fixed
+
+- A computer in the Thinking pool whose model also answers you now says why pool jobs stay off it (your replies would wait), and no longer shows a wrong "shares the graphics card" warning. ([#713](https://github.com/throndir2/Martlet/pull/713))
+- Changing a host's conversation model to a bigger one (such as `gemma4:12b` on a 16 GB graphics card) no longer stops with "Check the host's disk space and network": if the new model doesn't load beside the old one, the host unloads the old one and tries again. ([#712](https://github.com/throndir2/Martlet/pull/712))
+
 ## [0.65.0] - 2026-10-09
 
 ### Added

@@ -330,7 +330,7 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
         var plain = Role("diva") with { HostRouteId = null };
         var live = new ThinkingPoolSettings().Add(plain).Plan(routes, offline: ["diva"]);
         Assert.False(live.Plan.Offline);
-        Assert.Contains("also does Thinking", live.Plan.Why, StringComparison.Ordinal);
+        Assert.Contains("also answers you", live.Plan.Why, StringComparison.Ordinal);
     }
 
     [Theory]

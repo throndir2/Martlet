@@ -90,7 +90,8 @@ internal static class DeepThinkingFit
     /// <see cref="SharedCard(string, HostHardware?, IReadOnlyDictionary{string, string}?)"/> does.</summary>
     internal static string? SharedCard(Martlet.Core.Settings.DeepThinkingSettings member, HostHardware? hardware, HostCheck? check)
     {
-        if (member is not { Place: Martlet.Core.Settings.DeepThinkingPlace.Host, HostId: { } host } || check?.Offers is not { } offers) return null;
+        // A member on the host's Ollama role is Thinking's own model, not a second one beside it, so nothing shares the card.
+        if (member is not { OnHostRole: true, HostId: { } host } || check?.Offers is not { } offers) return null;
         if (offers.GetValueOrDefault(HostRoles.Ollama) is not { } alias) return null;
         var routes = check.Routes ?? [];
         var mine = routes.FirstOrDefault(r => r.RouteId == member.HostRoute)?.Gpus ?? [];

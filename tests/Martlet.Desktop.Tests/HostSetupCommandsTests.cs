@@ -633,6 +633,22 @@ public sealed class HostSetupCommandsTests
     }
 
     [Fact]
+    public void A_pool_member_on_the_hosts_own_thinking_model_gets_no_shared_card_warning()
+    {
+        var hardware = new Martlet.Core.Installation.HostHardware("gpu-a", "https://192.168.1.30:9443", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, "docker", "Ubuntu 24.04", null, "Ryzen 9", 32, 64, "docker", "yes",
+            [new Martlet.Core.Installation.HostGpu("NVIDIA GeForce RTX 4090", "nvidia", 24_564, "590.1")]);
+        var check = new HostCheck(true, "", new Dictionary<string, string> { [HostRoles.Ollama] = "gemma4-12b" });
+        var onOllama = new Martlet.Core.Settings.DeepThinkingSettings
+            { Place = Martlet.Core.Settings.DeepThinkingPlace.Host, HostId = "gpu-a", ModelId = "gemma4-12b" };
+        // The member is Thinking's own model, not a second model beside it: no "shares the card" warning.
+        Assert.Null(DeepThinkingFit.SharedCard(onOllama, hardware, check));
+        // A Thinking pool role beside it on the same card still warns.
+        var onRole = onOllama with { HostRouteId = Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId };
+        Assert.Contains("gpu-a already runs a Thinking model (gemma4:12b)", DeepThinkingFit.SharedCard(onRole, hardware, check));
+    }
+
+    [Fact]
     public void A_host_check_reports_how_many_thinks_its_deep_thinking_role_runs_at_once()
     {
         static Martlet.Avatar.Audio2Face.Remote.HostRoute Route(string id, int slots) => new(id, "/p", "c", "1.0", "d", "w", "1.0", "m",

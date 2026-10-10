@@ -307,9 +307,12 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
                         : new(true, $"{deep.HostId}'s Thinking pool role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
                             "alongside the conversation and shares its graphics card.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
                     : new(true, $"{deep.HostId}'s Thinking pool role does none of the conversation's jobs, so a think runs there alongside the conversation.");
+            // A member on the computer's Ollama role uses the model that answers you. That server answers one request at a time and
+            // keeps one conversation in its prompt cache, so a pool job there would make replies wait and start them from scratch.
             if (shared.Any(r => r.Role == SetupRole.Llm))
-                return new(false, $"{deep.HostId} also does Thinking for the conversation, and its model can't think something over while " +
-                    "it answers you. Add the Thinking pool role there, or add another member to the Thinking pool.");
+                return new(false, $"{deep.HostId} also answers you with this model (Thinking for the conversation), so Martlet keeps pool " +
+                    "jobs off it: it answers one request at a time, and a pool job there would make your replies wait. To think on " +
+                    $"{deep.HostId} too, add the Thinking pool role there (a second model beside it); otherwise untick In the pool.");
             return shared.Length > 0
                 ? new(true, $"{deep.HostId} also does {Jobs(shared)} for the conversation; a think runs there alongside it and shares its graphics card.", Rank: 1)
                 : new(true, $"{deep.HostId} does none of the conversation's jobs, so a think runs there alongside the conversation.");

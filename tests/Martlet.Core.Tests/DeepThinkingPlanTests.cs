@@ -108,10 +108,14 @@ public sealed class DeepThinkingPlanTests
         Assert.False(beside.ChecksFit);
         Assert.Contains("beside Thinking there", beside.Why, StringComparison.Ordinal);
         Assert.True(DeepThinkingPlan.For(role, [LocalThinking]).Available);
-        // Without the role, the computer's Ollama is Thinking's own model: the plan says to add the role.
+        // Without the role, the computer's Ollama is Thinking's own model: the plan says why pool jobs stay off it (replies
+        // would wait) and to add the role or untick the computer.
         var ollama = DeepThinkingPlan.For(Host("diva"), [diva]);
         Assert.False(ollama.Available);
-        Assert.Contains("Add the Thinking pool role there", ollama.Why, StringComparison.Ordinal);
+        Assert.Contains("also answers you with this model", ollama.Why, StringComparison.Ordinal);
+        Assert.Contains("would make your replies wait", ollama.Why, StringComparison.Ordinal);
+        Assert.Contains("add the Thinking pool role there", ollama.Why, StringComparison.Ordinal);
+        Assert.Contains("untick In the pool", ollama.Why, StringComparison.Ordinal);
         Assert.Equal(SelfHostSetup.OllamaRouteId, Host("diva").HostRoute);
         Assert.False(Host("diva").OnHostRole);
 
