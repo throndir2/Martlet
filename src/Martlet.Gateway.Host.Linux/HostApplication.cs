@@ -341,6 +341,23 @@ internal sealed class ControlMemoryStorage(LinuxControlDirectory directory) : IG
     }
 }
 
+/// <summary>Keeps the household's account directory in accounts.json beside host.json (0600, service owner). It holds public
+/// facts only and is not part of the approved configuration.</summary>
+internal sealed class ControlAccountStorage(LinuxControlDirectory directory) : IGatewayAccountStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Accounts, LinuxControlDirectory.MaximumAccountsBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteAccounts(bytes);
+    }
+}
+
 /// <summary>Keeps every memory space (every account's memories, apart) in memories-&lt;space&gt;.json beside host.json (0600,
 /// service owner). Not part of the approved configuration.</summary>
 internal sealed class ControlMemorySpaceStorage(LinuxControlDirectory directory) : IGatewayMemorySpaceStorage
@@ -507,6 +524,7 @@ internal static class HostApplication
                     owner.AttachSettings(new ControlSettingsStorage(directory));
                     owner.AttachAccountSettings(new ControlAccountSettingsStorage(directory));
                     owner.AttachMemories(new ControlMemoryStorage(directory));
+                    owner.AttachAccounts(new ControlAccountStorage(directory));
                     owner.AttachMemorySpaces(new ControlMemorySpaceStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));

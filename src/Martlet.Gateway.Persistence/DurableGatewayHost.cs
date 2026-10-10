@@ -440,6 +440,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachMemoryStorage(storage);
     }
 
+    /// <summary>Keeps the household's account directory, which paired member desktops share through this host, in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachAccounts(IGatewayAccountStorage storage)
+    {
+        RequireOpen();
+        server!.AttachAccountStorage(storage);
+    }
+
     /// <summary>Keeps the memory spaces (every account's memories, apart), which paired desktops share through this host, in
     /// <paramref name="storage"/>.</summary>
     public void AttachMemorySpaces(IGatewayMemorySpaceStorage storage)
