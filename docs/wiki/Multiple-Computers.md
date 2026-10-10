@@ -18,7 +18,7 @@ Pair a host once and other member desktops can pair with it automatically. A new
 
 ## Shared state
 
-**Devices › Settings for all devices › Keep Martlet the same on all my computers** shares job placement, settings, API key references, memories, recognized voices, speaking voices, characters, Home Assistant and logs through paired hosts. Device-specific microphones, screens, local tools and startup choices stay local.
+**Devices › Settings for all devices › Keep Martlet the same on all my computers** shares job placement, settings, API key references, memories, speaking voices, characters, Home Assistant and logs through paired hosts. Recognized voices (Companion › People) are always shared with your paired hosts, even while that switch is off, so Martlet learns everyone's voice. Device-specific microphones, screens, local tools and startup choices stay local.
 
 ## Failover and sharing work
 

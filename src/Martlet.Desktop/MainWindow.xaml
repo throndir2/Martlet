@@ -527,7 +527,7 @@
                                 <StackPanel>
                                     <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
                                               Content="Keep Martlet the same on all my computers"
-                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, the people and voices it knows, your characters, what it makes (Creations) and Home Assistant travel through your paired hosts. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
+                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, your characters, what it makes (Creations) and Home Assistant travel through your paired hosts. The people Martlet recognizes by voice are always shared with your computers, even while this is off. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
                                               AutomationProperties.AutomationId="ClusterSync"/>
                                     <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
                                                AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
@@ -1009,6 +1009,9 @@
                         <StackPanel>
                             <TextBlock Text="What this PC is for" Style="{DynamicResource SectionHeading}"/>
                             <TextBlock x:Name="RoleText" Style="{DynamicResource Muted}" Margin="0,0,0,10" AutomationProperties.AutomationId="DeviceRoleText"/>
+                            <!-- Where the choice is kept and who shares it (MainWindow.PcScope.cs): every Windows user of this PC -->
+                            <TextBlock x:Name="RoleWhereText" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="DeviceRoleWhere" AutomationProperties.LiveSetting="Polite"/>
                             <WrapPanel>
                                 <Button x:Name="UseCompanionButton" Content="Use as my companion PC" Click="UseCompanion_Click" Margin="0,0,10,6"
                                         AutomationProperties.AutomationId="UseAsCompanion"/>

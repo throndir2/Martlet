@@ -441,6 +441,38 @@ public sealed class McpServerTests(ITestOutputHelper output)
         jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = tool, arguments = new { dataDirectory } }
     });
 
+    [Fact]
+    public async Task VoicesStatusSharesPeopleWithYourHostsWhateverTheSyncSwitchSays()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.VoiceSharing." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var none = ToolResult((await SendAsync(DataCall("voices_status", directory)))[0]).GetProperty("sharing");
+            Assert.Equal("no paired hosts yet", none.GetProperty("state").GetString());
+            Assert.True(none.GetProperty("always").GetBoolean());
+
+            File.WriteAllText(Path.Combine(directory, "cluster-sync.txt"), "off");
+            File.WriteAllText(Path.Combine(directory, "hosts.json"), JsonSerializer.Serialize(new
+            {
+                version = 1,
+                hosts = new object[]
+                {
+                    new { pairing = new { hostId = "home-host" } },
+                    new { pairing = new { hostId = "friends-host" }, access = "friend" }
+                }
+            }));
+            var sharing = ToolResult((await SendAsync(DataCall("voices_status", directory)))[0]).GetProperty("sharing");
+            Assert.Equal("on", sharing.GetProperty("state").GetString());
+            Assert.Equal(1, sharing.GetProperty("hosts").GetInt32());
+            Assert.Equal(1, sharing.GetProperty("friendHostsNeverUsed").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

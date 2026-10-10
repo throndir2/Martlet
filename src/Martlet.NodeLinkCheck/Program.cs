@@ -31,20 +31,22 @@ if (args is ["exposure"])
     Console.WriteLine(JsonSerializer.Serialize(exposureReport));
     return exposureOk ? 0 : 1;
 }
-// With "signin-lab <data directory> [--mode owner|friend|account] [--sign-in-desktop] [--share-with-friend]" it runs a live sign-in lab for
-// the desktop on that data directory (SignInLab): the desktop as the host's owner (the default), as a friend the host is shared
-// with, or (account, SignInAccountLab) with two hosts and household sign-in providers. For a session without the desktop's window,
-// --sign-in-desktop (friend) has the lab sign the desktop in as the friend, and
-// --share-with-friend (owner) shares the host with the simulated friend from the start.
+// With "signin-lab <data directory> [--mode owner|friend|account] [--sign-in-desktop] [--share-with-friend] [--household]" it runs a live
+// sign-in lab for the desktop on that data directory (SignInLab): the desktop as the host's owner (the default) or as a friend the
+// host is shared with, or (account) household account sign-in and host attestations, headless (with --household: two hosts paired with
+// the desktop and household sign-in providers, SignInAccountLab). For a session without the
+// desktop's window, --sign-in-desktop (friend) has the lab sign the desktop in as the friend, and --share-with-friend (owner)
+// shares the host with the simulated friend from the start.
 if (args is ["signin-lab", var labDirectory])
     return await Martlet.NodeLinkCheck.SignInLab.RunAsync(labDirectory);
 if (args is ["signin-lab", var friendLabDirectory, "--mode", var labMode, .. var labOptions] &&
-    labOptions.All(o => o is "--sign-in-desktop" or "--share-with-friend"))
+    labOptions.All(o => o is "--sign-in-desktop" or "--share-with-friend" or "--household"))
     return labMode switch
     {
         "owner" => await Martlet.NodeLinkCheck.SignInLab.RunAsync(friendLabDirectory, labOptions.Contains("--share-with-friend")),
         "friend" => await Martlet.NodeLinkCheck.SignInLab.RunFriendAsync(friendLabDirectory, labOptions.Contains("--sign-in-desktop")),
-        "account" when labOptions.Length == 0 => await Martlet.NodeLinkCheck.SignInAccountLab.RunAsync(friendLabDirectory),
+        "account" when labOptions is ["--household"] => await Martlet.NodeLinkCheck.SignInAccountLab.RunAsync(friendLabDirectory),
+        "account" when labOptions.Length == 0 => await Martlet.NodeLinkCheck.SignInLab.RunAccountAsync(friendLabDirectory),
         _ => 2
     };
 // With "role-lab <data directory>" it runs a live lab for switching computers between companion and host PC (RoleLab).
@@ -112,6 +114,13 @@ if (args is ["memories"])
     var (memoriesOk, memoriesReport) = await Martlet.NodeLinkCheck.MemoryRehearsal.RunAsync(CancellationToken.None);
     Console.WriteLine(JsonSerializer.Serialize(memoriesReport));
     return memoriesOk ? 0 : 1;
+}
+// With "accounts" it rehearses the household's account directory kept the same through the hosts (AccountRehearsal).
+if (args is ["accounts"])
+{
+    var (accountsOk, accountsReport) = await Martlet.NodeLinkCheck.AccountRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(accountsReport));
+    return accountsOk ? 0 : 1;
 }
 // With "logs" it rehearses shared logs: every computer's log lines reaching every host and desktop (LogRehearsal).
 if (args is ["logs"])

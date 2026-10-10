@@ -37,7 +37,7 @@ internal static class VoiceSoundCheck
         var supported = VoiceSounds.Supported(engine);
         var logs = LocalLogs.Directory(dataDirectory);
         var lines = Directory.Exists(logs)
-            ? LocalLogs.Read(logs, LocalLogs.ThisDeviceId())
+            ? LocalLogs.Read(logs, LocalLogs.ThisDeviceId(dataDirectory))
                 .Where(r => r.Component == "desktop" && r.Message.StartsWith("Voice sound", StringComparison.Ordinal))
                 .OrderBy(r => r.At).TakeLast(10).Select(r => new { at = r.At, message = r.Message }).ToArray()
             : [];

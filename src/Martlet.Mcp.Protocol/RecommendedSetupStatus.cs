@@ -173,7 +173,7 @@ internal static class RecommendedSetupStatus
 
     private static async Task<SetupSources> FromDataDirectoryAsync(string directory, CancellationToken cancellation)
     {
-        var device = Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+        var device = Martlet.Diagnostics.LocalLogs.ThisDeviceId(directory);
         var hardware = new HostHardwareStore(directory).Load();
         var plan = Plan(directory);
         var hosts = PairedHosts(directory);

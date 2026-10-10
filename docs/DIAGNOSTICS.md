@@ -13,7 +13,8 @@ runs (`host-runs.log`), each with its rotated older copies, and every Martlet
 host's gateway. Filters choose the level (everything, warnings and errors,
 errors only), the part (app, character, host runs, host gateway) and the
 computer, and a search box matches the text. A PC writes under two IDs: its
-desktop app's device ID (`desktop-<name>`) and, when it runs Martlet's host
+desktop app's device ID (`desktop-<name>-<6 characters>`, or `desktop-<name>` on
+a PC that was paired before Martlet gave each Windows user its own) and, when it runs Martlet's host
 service, that gateway's host ID (such as `diva-host`). Both are shown as *This
 PC* and the *This PC* filter covers both; other computers show their ID.
 Selecting a line shows it in full (with the ID it came from, who passed it on,

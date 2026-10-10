@@ -39,7 +39,7 @@ internal static partial class WorkSharingRoster
     }
 
     /// <summary>This PC's device ID, as the companion PCs a computer is kept for name it.</summary>
-    internal static string Device { get; } = HostSetupCommands.SuggestedDeviceId();
+    internal static string Device => HostSetupCommands.SuggestedDeviceId();
 
     /// <summary>The host service Martlet runs on this PC (set by the main window as it learns it); null falls back to a pairing
     /// saved as this PC's own.</summary>

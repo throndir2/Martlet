@@ -38,14 +38,35 @@ public static class HostAutoStart
     }
 }
 
-/// <summary>The roles the last read of this PC's own host service found (this-pc-host-roles.txt in Martlet's data folder),
-/// so a host PC knows what to start before Docker Desktop runs and the host service can be read.</summary>
+/// <summary>The roles the last read of this PC's own host service found (this-pc-host-roles.txt in the PC folder,
+/// <see cref="PcFolder"/>), so a host PC knows what to start before Docker Desktop runs and the host service can be read. The
+/// file can name the Windows user (by SID) whose Docker Desktop Martlet read it in: Docker Desktop keeps its containers for
+/// the Windows user who runs it, so another Windows user of this PC doesn't start or forget them.</summary>
 public static partial class ThisPcHostRoles
 {
     public const string FileName = "this-pc-host-roles.txt";
+    private const string UserLine = "# windows user: ";
 
     [GeneratedRegex(@"\A[a-z0-9][a-z0-9-]{0,31}\z")]
     private static partial Regex RolePattern();
+
+    [GeneratedRegex(@"\AS-1-[0-9]{1,14}(-[0-9]{1,10}){1,15}\z")]
+    private static partial Regex SidPattern();
+
+    /// <summary>The Windows user (SID) whose Docker Desktop Martlet last read the roles in, or null when the file names none.</summary>
+    public static string? WindowsUser(string directory)
+    {
+        try
+        {
+            var first = File.ReadLines(Path.Combine(directory, FileName)).FirstOrDefault();
+            var user = first is not null && first.StartsWith(UserLine, StringComparison.Ordinal) ? first[UserLine.Length..].Trim() : null;
+            return user is not null && SidPattern().IsMatch(user) ? user : null;
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>The remembered roles, or null when Martlet never read this PC's host service (or forgot it).</summary>
     public static IReadOnlyList<string>? Load(string directory)
@@ -61,15 +82,17 @@ public static partial class ThisPcHostRoles
         }
     }
 
-    public static void Save(string directory, IReadOnlyList<string> roles)
+    /// <summary>Saves the roles, and the Windows user (SID) whose Docker Desktop runs them when given.</summary>
+    public static void Save(string directory, IReadOnlyList<string> roles, string? windowsUser = null)
     {
         var valid = roles.Where(role => RolePattern().IsMatch(role)).Order(StringComparer.Ordinal).ToArray();
-        if (Load(directory) is { } now && now.SequenceEqual(valid, StringComparer.Ordinal)) return;
+        var user = windowsUser is not null && SidPattern().IsMatch(windowsUser) ? windowsUser : null;
+        if (Load(directory) is { } now && now.SequenceEqual(valid, StringComparer.Ordinal) && WindowsUser(directory) == user) return;
         Directory.CreateDirectory(directory);
         var temporary = Path.Combine(directory, $"this-pc-host-roles.{Guid.NewGuid():N}.tmp");
         try
         {
-            File.WriteAllLines(temporary, valid);
+            File.WriteAllLines(temporary, user is null ? valid : [UserLine + user, .. valid]);
             File.Move(temporary, Path.Combine(directory, FileName), overwrite: true);
         }
         finally

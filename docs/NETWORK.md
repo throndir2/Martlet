@@ -111,6 +111,11 @@ over SSH also manages it.
   desktop's key. Each desktop keeps its copy in `network.json` beside its other
   preferences; each host keeps its copy in `network.json` beside `host.json`.
   It holds no secrets.
+- **Device ID.** Each Windows user's Martlet has its own device ID, kept in
+  `device.json` in Martlet's data folder so it never changes:
+  `desktop-<pc name>-<6 of [a-z0-9]>`, so two Windows users on one PC are two
+  desktops. A data folder that was already paired or in a network keeps the ID
+  its pairings use (an older Martlet's `desktop-<pc name>`).
 - **Accepting changes.** A host or desktop accepts an incoming entry only when
   its signer is an active member desktop in the roster it already accepted
   (removals first). Per computer the newest entry wins (hybrid millisecond
@@ -535,6 +540,78 @@ Limits, for now: sign-in is per host (set it up on the host the laptop reaches
 from outside); the laptop reaches the network's other hosts only where they
 have outside addresses ([above](#reaching-your-network-from-outside-home)).
 
+### Household accounts on a host
+
+A host also keeps sign-ins for the other people of the household
+([accounts and households](ACCOUNTS.md)). Each one belongs to an account ID.
+
+- **The owner's account.** The owner login and every allowed identity that is
+  one of yours (`member`) sign in as the household owner's account. A desktop
+  can name it (`owner_account_id`, change `owner-account`, or `account_id` with
+  `owner`). Until then the host uses the account derived from its network ID
+  (`OwnerAccount.IdFor`: UUID version 5 of `martlet-household-owner\n<network
+  ID>`), so existing owner logins keep working with no change.
+- **Martlet password logins** for other accounts (`accounts` in `signin.json`):
+  a user name that is unique on the host whatever its case, a password kept as
+  the same PBKDF2 verifier and, optionally, an authenticator with ten recovery
+  codes. They sign in with provider `martlet` (`/signin/begin`), which also
+  takes the owner login. Without an authenticator a login proves its account
+  on a computer that is already paired, but it never adds a computer
+  (`signin.needs_authenticator`).
+- **Provider identities** can name the account they sign in as (`account_id`
+  with `allow`, or change `link`). A friend never has an account.
+- Outside access rules don't change: a host is usable from outside only with an
+  owner login (always with an authenticator) or a provider with an allowed
+  identity. Household password logins alone don't open it.
+
+The sign-in settings changes (from a member desktop, `POST
+/martlet/v1/signin/settings`):
+
+| Action | Fields | Does |
+| --- | --- | --- |
+| `owner-account` | `account_id` | Names the owner's account |
+| `account` | `account_id`, `user`, `password`, optional `totp_secret` and `code` | Adds another account's login, or changes it (the password may be left out of a change). An authenticator needs a current code; the answer carries new recovery codes once |
+| `remove-account-authenticator` | `account_id` | Removes that login's authenticator and recovery codes |
+| `remove-account` | `account_id` | Removes the login; the host revokes the computers it added and your member computers remove them from the network |
+| `recovery-codes` | optional `account_id` | New recovery codes for the owner, or for that account's login |
+| `allow` | optional `account_id` | Allows an identity as that account's (members only); allowing again without one keeps the link |
+| `link` | `provider`, `subject`, optional `account_id` | Links an allowed identity to an account, or (no `account_id`) back to the owner's |
+
+On a Linux host: `martlet-host owner-signin-account --config ... --user sam
+--account <account ID> [--authenticator yes|no]` (password on the first stdin
+line, then the code), `owner-signin-remove-account --account <account ID>`,
+and `--account` on `owner-signin-owner` and `owner-signin-allow`.
+`owner-signin-status` lists the logins.
+
+### Proving an account: host attestations
+
+A **Prove** sign-in ([accounts](ACCOUNTS.md#logins)) on a computer that is
+already paired with the host: `POST /martlet/v1/signin/begin` (provider
+`martlet`, `owner` or a provider ID), then `POST /martlet/v1/signin/prove`,
+signed by that computer's credential, with `attempt_id`, `proof` (the same
+proof as `/complete`) and optional `lifetime_seconds` (60 to 2,592,000; 600
+when absent). A friend's computer gets `access.friend`. The host answers
+`account_id`, `signed_in` and an `attestation`, and issues no new credential.
+`/signin/complete` also answers `account_id` and an `attestation` for the
+computer that just signed in, when the identity has an account.
+
+The attestation (`AccountAttestation` in `Martlet.Core`) says that the account
+proved itself on that device: network ID, host ID, account ID, device ID, the
+login (`kind`, `provider`, `subject`), the issue and expiry times, and a
+signature. The host signs it with its **TLS key**, the key whose SPKI
+fingerprint the network roster pins for that host, so no new key is handed
+out: ECDSA P-256 (`ES256`, every Martlet host) or RSA-PSS (`PS256`). It also
+carries the public key; a checker hashes it and compares the hash with the
+pin. Any member desktop or host checks it with `AccountAttestation.Check`
+against the roster it already accepted. The check refuses another network, a
+host that isn't an active member, a key that isn't the pin, a changed field, a
+statement more than five minutes in the checker's future and an expired one.
+The signed bytes start with `martlet-account-attestation-v1`, so they can't be
+taken for a TLS signature. `ToText()` gives one line of base64url (at most
+4,096 characters) for the account directory. A host in no network attests
+nothing (`signin.no_network`); an identity with no account gets
+`signin.no_account`.
+
 ## Sharing a host with friends
 
 A friend with their own Martlet can use one of your hosts for its thinking,
@@ -662,7 +739,7 @@ to join through it.
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
-| Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/settings`); `Martlet.Core` `Access/Totp.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs`, `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest` |
+| Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`, household account logins), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/prove`, `/settings`); `Martlet.Core` `Access/Totp.cs`, `Accounts/AccountAttestation.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs` (`ProveAsync`, `ProveWithPasswordAsync`, `ProveInBrowserAsync`), `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest`, `signin_lab` mode `account` |
 | Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Devices › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
 | Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`) |
 

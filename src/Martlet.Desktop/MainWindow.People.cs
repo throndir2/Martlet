@@ -10,7 +10,9 @@ namespace Martlet.Desktop;
 
 /// <summary>Companion › People: the voices Martlet recognizes and the names each goes by, and keeping that list the same on
 /// all of the owner's computers. The list travels through the paired Martlet hosts (each keeps a copy, like the shared
-/// who-does-what plan), so whichever computer becomes the companion recognizes the same people.</summary>
+/// who-does-what plan), so whichever computer becomes the companion recognizes the same people. People are always shared with
+/// the household: the list syncs whatever "Keep Martlet the same on all my computers" says, and never with hosts a friend
+/// shares.</summary>
 public partial class MainWindow
 {
     private readonly DispatcherTimer voiceSyncTimer = new() { Interval = TimeSpan.FromSeconds(30) };
@@ -51,7 +53,7 @@ public partial class MainWindow
     /// <summary>Pushes a change soon (debounced), so another computer that becomes the companion sees it.</summary>
     private void QueueVoiceSync()
     {
-        if (voiceSyncQueued || !clusterEnabled || closing) return;
+        if (voiceSyncQueued || closing) return;
         voiceSyncQueued = true;
         SyncSoonAsync().Forget();
 
@@ -65,10 +67,12 @@ public partial class MainWindow
     }
 
     /// <summary>Reads every paired host's copy of the voice list, merges it here and gives each host whose copy differs the
-    /// merged list, while "Keep Martlet the same on all my computers" is on. Hosts older than voice sharing are skipped.</summary>
+    /// merged list. It runs whatever "Keep Martlet the same on all my computers" says, so Martlet learns everyone's voice on
+    /// every computer. Only your own hosts take part (<see cref="NetworkMap.Hosts"/> leaves out hosts a friend shares). Hosts
+    /// older than voice sharing are skipped.</summary>
     private async Task SyncVoicesAsync()
     {
-        if (voiceSyncBusy || closing || store is null || !clusterEnabled) return;
+        if (voiceSyncBusy || closing || store is null) return;
         var hosts = NetworkMap.Hosts(Inputs());
         if (hosts.Count == 0)
         {
@@ -184,13 +188,13 @@ public partial class MainWindow
     private Border SharingCard()
     {
         var sync = PageButton(voiceSyncBusy ? "Syncing..." : "Sync now", () => SyncVoicesAsync().Forget(), link: true, id: "PeopleSync");
-        sync.IsEnabled = clusterEnabled && !voiceSyncBusy;
-        var syncStatus = Note(clusterEnabled ? voiceSyncStatus
-            : "Off: Keep Martlet the same on all my computers (Settings) is off, so this list stays on this PC.", new Thickness(0, 6, 0, 0));
+        sync.IsEnabled = !voiceSyncBusy;
+        var syncStatus = Note(voiceSyncStatus, new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(syncStatus, "PeopleSyncStatus");
         return Card(Heading("Your computers"),
-            Note("While Martlet is the same on all your computers (Settings › Settings for all devices), every computer knows the " +
-                "same people and voices, and whether Martlet recognizes them.", new Thickness(0, 0, 0, 0)),
+            Note("The people Martlet recognizes by voice, and their names, are always shared with all your computers, so Martlet " +
+                "learns everyone's voice everywhere. This doesn't depend on Keep Martlet the same on all my computers, and hosts a " +
+                "friend shares never get them. Whether Martlet recognizes voices is shared with your other settings.", new Thickness(0, 0, 0, 0)),
             syncStatus,
             Row(sync));
     }
