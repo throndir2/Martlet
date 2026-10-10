@@ -1068,8 +1068,11 @@ type*.
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
 recognition choice (`on (default)` until it is turned off; a shared setting) and
-`sharing` (the voice list travels while *Keep Martlet the same on all my
-computers* is on, from `cluster-sync.txt`),
+`sharing` (people are always shared: the voice list syncs with every paired
+host of yours whatever *Keep Martlet the same on all my computers* says;
+`state` *on*, *no paired hosts yet* or *hosts unreadable*, `always: true`,
+`hosts` from `hosts.json` and `friendHostsNeverUsed`, the hosts a friend shares,
+which never get the list),
 whether a Martlet folder (optional absolute `martletDirectory`, default the
 installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
@@ -5919,7 +5922,8 @@ and use* asks one confirmation, `ConfirmationYes`, then downloads that model
 and switches Listening to it; *Use it* switches to a downloaded model at once),
 they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). While Listening uses a paired
+switch: the list always syncs with your paired hosts, whatever `ClusterSync`
+says, and `PeopleSyncStatus` shows the last sync). While Listening uses a paired
 host or OpenAI, Listening's *Now* card has `SetupJobStandIn-Listening` (a passive
 value): what hears you on this PC's processor when that route can't (*If OpenAI
 can't hear you, Parakeet TDT 110M (English) hears you on this PC's processor
