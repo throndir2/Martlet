@@ -222,6 +222,7 @@ public sealed class ModelCatalog
         public HashSet<string> AnsweredBy { get; } = new(StringComparer.Ordinal);
         public double? AnalysisRank, ArenaRank, Rating, VisionRating;
         public int? Votes;
+        public LocalModelFacts? Local;
 
         public void Add(string source, CatalogObservation item, string? note = null)
         {
@@ -356,6 +357,22 @@ public sealed class ModelCatalog
             route.Add(CatalogSources.ModelsDevRows, row);
         }
 
+        foreach (var item in Items(CatalogSources.HuggingFace))
+        {
+            if (item.HuggingFace is null) continue;
+            var draft = Get(item.HuggingFace, item.HuggingFace, item.Local?.HuggingFaceRepo);
+            draft.Local ??= item.Local;
+            foreach (var tag in item.Ollama ?? []) if (!draft.Ollama.Contains(tag, StringComparer.OrdinalIgnoreCase)) draft.Ollama.Add(tag);
+            if (item.Facts is null || !draft.AnsweredBy.Add(CatalogSources.HuggingFace)) continue;
+            foreach (var (key, value) in item.Facts)
+            {
+                var input = key.StartsWith("input.", StringComparison.Ordinal);
+                var source = !input ? CatalogSources.HuggingFace
+                    : item.Notes?.ContainsKey(key) == true ? CatalogSources.OllamaRegistry : CatalogSources.ConfigJson;
+                draft.Add(key, new() { Source = source, Value = value, Note = item.Notes?.GetValueOrDefault(key) });
+            }
+        }
+
         JoinVllm(drafts.Values, Items(CatalogSources.Vllm), architectures);
         JoinArena(drafts.Values, Items(CatalogSources.LmArenaText), vision: false);
         JoinArena(drafts.Values, Items(CatalogSources.LmArenaVision), vision: true);
@@ -384,7 +401,7 @@ public sealed class ModelCatalog
                     LmArena = draft.Arena, LmArenaVision = draft.ArenaVision, Ollama = draft.Ollama.ToList()
                 },
                 Family = CatalogNaming.CompactFamily(naming), Size = CatalogNaming.Size(naming), Facts = facts,
-                Rating = draft.Rating, RatingVotes = draft.Votes, VisionRating = draft.VisionRating,
+                Rating = draft.Rating, RatingVotes = draft.Votes, VisionRating = draft.VisionRating, Local = draft.Local,
                 Rank = ranks.Any(r => r is not null) ? Math.Round(ranks.Where(r => r is not null).Average()!.Value, 1) : null
             };
             if (!keys.Add(model.Key)) model = model with { Key = draft.Key };
@@ -456,6 +473,7 @@ public sealed class ModelCatalog
                 (matched, how) = (family, "by family name");
             else continue;
             var architecturesText = string.Join(", ", matched.Select(r => r.Id).Distinct(StringComparer.Ordinal));
+            var source = how == "by family name" ? CatalogSources.VllmFamily : CatalogSources.Vllm;
             foreach (var key in new[] { CatalogFacts.InputText, CatalogFacts.InputImage, CatalogFacts.InputVideo, CatalogFacts.InputAudio })
             {
                 var values = matched.Select(r => r.Fact(key)).Where(v => v is not null).Distinct(StringComparer.Ordinal).ToList();
@@ -463,7 +481,7 @@ public sealed class ModelCatalog
                 var note = values.Count > 1 ? $"{architecturesText} ({how}) differ"
                     : matched.Select(r => r.Notes?.GetValueOrDefault(key)).FirstOrDefault(n => n is not null) is { } footnote
                         ? $"{architecturesText} ({how}): {footnote}" : $"{architecturesText} ({how})";
-                draft.Add(key, new() { Source = CatalogSources.Vllm, Value = values.Count == 1 ? values[0]! : CatalogValues.Some, Note = note });
+                draft.Add(key, new() { Source = source, Value = values.Count == 1 ? values[0]! : CatalogValues.Some, Note = note });
             }
         }
     }

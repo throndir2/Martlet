@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using Martlet.Core.Planning;
+using Martlet.Providers.LocalModels;
 
 namespace Martlet.Providers.ModelCatalogs;
 
@@ -38,14 +39,25 @@ public sealed class ModelCatalogRefresh
     private readonly ModelCatalogEndpoints endpoints;
     private readonly Func<bool> busy;
     private readonly TimeProvider clock;
+    private readonly LocalModelFactsReader? local;
 
-    public ModelCatalogRefresh(HttpClient client, ModelCatalogEndpoints? endpoints = null, Func<bool>? busy = null, TimeProvider? clock = null)
+    /// <param name="local">Reads local model facts from Hugging Face and the Ollama registry; null uses
+    /// <see cref="LocalModelFactsReader.Shared"/>.</param>
+    public ModelCatalogRefresh(HttpClient client, ModelCatalogEndpoints? endpoints = null, Func<bool>? busy = null, TimeProvider? clock = null,
+        LocalModelFactsReader? local = null)
     {
         this.client = client ?? throw new ArgumentNullException(nameof(client));
         this.endpoints = endpoints ?? ModelCatalogEndpoints.Public;
         this.busy = busy ?? (() => false);
         this.clock = clock ?? TimeProvider.System;
+        this.local = local;
     }
+
+    /// <summary>How many open-weight models one refresh looks up on Hugging Face (Martlet's own first, then those never looked
+    /// up, then the oldest): at most five requests each, within the reader's budget. The rest wait for the next day.</summary>
+    public int LocalLookups { get; init; } = 16;
+    /// <summary>Models larger than this (billions of parameters) aren't looked up for running locally.</summary>
+    public double LocalLargest { get; init; } = 130;
 
     /// <summary>The time limit for one request (a NVIDIA model page has <see cref="PageTimeout"/>).</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(90);
@@ -92,7 +104,7 @@ public sealed class ModelCatalogRefresh
             var previous = sources.GetValueOrDefault(source) ?? new();
             try
             {
-                var (items, bytes, url) = await ReadAsync(source, data.Block(source), token).ConfigureAwait(false);
+                var (items, bytes, url) = await ReadAsync(source, data, token).ConfigureAwait(false);
                 if (items.Count == 0) throw new InvalidDataException("it listed no models");
                 data = data.With(source, new() { Read = clock.GetUtcNow(), Url = url, Items = items });
                 sources[source] = new()
@@ -137,9 +149,10 @@ public sealed class ModelCatalogRefresh
         return new(data, status, saved, catalog.Models.Count, catalog.Routes.Count, saveProblem);
     }
 
-    private async Task<(IReadOnlyList<CatalogObservation> Items, long Bytes, string Url)> ReadAsync(string source, CatalogSourceBlock? previous,
+    private async Task<(IReadOnlyList<CatalogObservation> Items, long Bytes, string Url)> ReadAsync(string source, ModelCatalogData data,
         CancellationToken token)
     {
+        var previous = data.Block(source);
         switch (source)
         {
             case CatalogSources.OpenRouter:
@@ -166,9 +179,42 @@ public sealed class ModelCatalogRefresh
             }
             case CatalogSources.LmArenaText or CatalogSources.LmArenaVision:
                 return await LmArenaAsync(source == CatalogSources.LmArenaText ? "text" : "vision", token).ConfigureAwait(false);
+            case CatalogSources.HuggingFace:
+                return await LocalAsync(data, previous, token).ConfigureAwait(false);
             default:
                 throw new InvalidDataException("unknown source");
         }
+    }
+
+    /// <summary>Local model facts for open-weight models the other sources list: <see cref="LocalLookups"/> a day, Martlet's own
+    /// local models first, then those never looked up, then the oldest. The others keep what was read before.</summary>
+    private async Task<(IReadOnlyList<CatalogObservation>, long, string)> LocalAsync(ModelCatalogData data, CatalogSourceBlock? previous,
+        CancellationToken token)
+    {
+        var reader = local ?? LocalModelFactsReader.Shared;
+        var catalog = ModelCatalog.Build(data);
+        var kept = (previous?.Items ?? []).Where(i => i.HuggingFace is not null).GroupBy(i => i.HuggingFace!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var candidates = catalog.Models
+            .Where(m => m.HuggingFaceRepo is not null && m.OpenWeights != false &&
+                (m.Fact(CatalogFacts.ParametersTotal).Number ?? m.Fact(CatalogFacts.ParametersActive).Number ?? 0) <= LocalLargest)
+            .OrderByDescending(m => m.Names.Ollama.Count > 0)
+            .ThenBy(m => kept.TryGetValue(m.HuggingFaceRepo!, out var old) ? old.Local?.CheckedAt ?? DateTimeOffset.MinValue : DateTimeOffset.MinValue)
+            .ThenByDescending(m => m.Rank ?? -1)
+            .Take(LocalLookups).ToList();
+        var looked = 0;
+        foreach (var model in candidates)
+        {
+            await WaitWhileBusyAsync(token).ConfigureAwait(false);
+            var facts = await reader.LookupAsync(model.HuggingFaceRepo, model.Names.Ollama.FirstOrDefault(), token).ConfigureAwait(false);
+            // Out of the reader's request budget: the rest wait for the next refresh, and this half answer isn't kept.
+            if (facts.Problems.Any(p => p.Contains("five minutes", StringComparison.Ordinal) || p.Contains("slow down", StringComparison.Ordinal))) break;
+            if (CatalogReaders.Local(facts) is not { } item) continue;
+            kept[model.HuggingFaceRepo!] = item with { Id = model.HuggingFaceRepo!, HuggingFace = model.HuggingFaceRepo };
+            looked++;
+        }
+        if (looked == 0 && candidates.Count > 0) throw new InvalidDataException("Hugging Face answered none of the lookups");
+        return (kept.Values.OrderBy(i => i.Id, StringComparer.OrdinalIgnoreCase).ToList(), 0, "https://huggingface.co");
     }
 
     private async Task<(IReadOnlyList<CatalogObservation>, long, string)> NvidiaAsync(CatalogSourceBlock? previous, CancellationToken token)

@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Martlet.Core.Planning;
+using Martlet.Providers.LocalModels;
 using Martlet.Providers.ModelCatalogs;
 
 namespace Martlet.Mcp;
@@ -81,7 +82,8 @@ internal static class ModelCatalogCheck
                 audio = Word(model.Fact(CatalogFacts.InputAudio)), video = Word(model.Fact(CatalogFacts.InputVideo)),
                 videoAsFrames = Word(model.Fact(CatalogFacts.InputVideoFrames))
             },
-            openWeights = Word(model.Fact(CatalogFacts.OpenWeights)),
+            openWeights = Word(model.Fact(CatalogFacts.OpenWeights)), locallyHostable = model.LocallyHostable,
+            local = Local(model),
             facts = CatalogFacts.ModelFacts.Where(model.Facts.ContainsKey).ToDictionary(k => k, k => Fact(catalog, model.Fact(k))),
             // The rank stays inside Martlet (it may come from Artificial Analysis's index): words, the tier and LMArena's rating only.
             smartness = new
@@ -89,6 +91,26 @@ internal static class ModelCatalogCheck
                 smart.Words, smart.Tier, smart.From, lmArenaText = smart.Rating, lmArenaVision = smart.VisionRating, smart.Credit,
                 lmArenaName = model.Names.LmArena
             }
+        };
+    }
+
+    /// <summary>What running the model locally takes, when the catalog looked it up: the default quantization's install name,
+    /// download and memory at Martlet's 8,192-token context, and the other quantizations.</summary>
+    private static object? Local(CatalogModel model)
+    {
+        if (model.Local is not { } local) return null;
+        var chosen = local.Quantization();
+        var memory = model.Memory();
+        return new
+        {
+            local.OllamaTag, local.GgufRepo, local.CheckedAt, local.Gated,
+            installName = chosen?.InstallName, quantization = chosen?.Name,
+            downloadGb = chosen is null ? (double?)null : Math.Round(chosen.DownloadBytes / 1e9, 2),
+            memoryAt8192 = memory?.Describe(),
+            graphicsGb = memory is null ? (double?)null : Math.Round(memory.GraphicsBytes / 1e9, 2),
+            systemMemoryGb = memory is null ? (double?)null : Math.Round(memory.SystemMemoryBytes / 1e9, 2),
+            quantizations = local.Quantizations.Take(12).Select(q => new { q.Name, q.InstallName, gb = Math.Round(q.DownloadBytes / 1e9, 2) }),
+            local.Problems
         };
     }
 
@@ -204,7 +226,8 @@ internal static class ModelCatalogCheck
         {
             var store = new ModelCatalogStore(folder);
             using var client = ModelCatalogRefresh.CreateClient();
-            var first = await new ModelCatalogRefresh(client, endpoints).RunAsync(store, cancellation);
+            var localFacts = LocalModelFactsFixture.Reader();
+            var first = await new ModelCatalogRefresh(client, endpoints, local: localFacts).RunAsync(store, cancellation);
             Step("reads-every-source", first.Saved && first.Status.Problem is null &&
                     CatalogSources.Fetched.All(s => first.Status.Sources.GetValueOrDefault(s) is { Problem: null, Items: > 0 }),
                 $"saved {first.Saved}; {string.Join(", ", CatalogSources.Fetched.Select(s => $"{s}: {first.Status.Sources.GetValueOrDefault(s)?.Items} items" +
@@ -219,12 +242,12 @@ internal static class ModelCatalogCheck
             var catalog = store.Load();
             var gemma26 = catalog.Find("google/gemma-4-26b-a4b-it")?.Model;
             var video = gemma26?.Fact(CatalogFacts.InputVideo);
-            Step("gemma-4-26b-video", video is { Value: CatalogValues.Yes, From: CatalogSources.Vllm } &&
+            Step("gemma-4-26b-video", video is { Value: CatalogValues.Yes, From: CatalogSources.ConfigJson or CatalogSources.Vllm or CatalogSources.VllmFamily } &&
                     video.Answers.Any(a => a.Source == CatalogSources.ModelsDev && a.Value == CatalogValues.No),
                 $"video: {video?.Value ?? "unknown"} from {video?.From}; answers: {Answers(video)}");
             var qwen = catalog.Find("qwen/qwen3.5-122b-a10b")?.Model;
             var audio = qwen?.Fact(CatalogFacts.InputAudio);
-            Step("qwen3.5-122b-audio", audio is { Value: CatalogValues.No, From: CatalogSources.Vllm } &&
+            Step("qwen3.5-122b-audio", audio is { Value: CatalogValues.No, From: CatalogSources.ConfigJson or CatalogSources.Vllm or CatalogSources.VllmFamily } &&
                     audio.Answers.Any(a => a.Source == CatalogSources.ModelsDev && a.Value == CatalogValues.Yes),
                 $"audio: {audio?.Value ?? "unknown"} from {audio?.From}; answers: {Answers(audio)}");
             var gemma31 = catalog.Find("google/gemma-4-31b-it")?.Model;
@@ -259,10 +282,22 @@ internal static class ModelCatalogCheck
             Step("smartness", smart is { Credit: CatalogSources.LmArenaCredit, Rating: not null, From: "its own scores" } && fallback is not null,
                 $"Gemma 4 26B A4B: {smart?.Words} (tier {smart?.Tier}, from {smart?.From}; LMArena {smart?.Rating} with credit \"{smart?.Credit}\"); " +
                 $"Gemma 4 E2B, which nothing scores: {fallback?.Words} (from {fallback?.From})");
+            var e2bAudio = e2b?.Fact(CatalogFacts.InputAudio);
+            var gemma26Audio = gemma26?.Fact(CatalogFacts.InputAudio);
+            Step("config-json-decides-by-size", e2bAudio is { Value: CatalogValues.Yes, From: CatalogSources.ConfigJson } &&
+                    gemma26Audio is { Value: CatalogValues.No, From: CatalogSources.ConfigJson },
+                $"Gemma 4 E2B audio: {e2bAudio?.Value} from {e2bAudio?.From} ({Answers(e2bAudio)}); Gemma 4 26B A4B audio: {gemma26Audio?.Value} " +
+                $"from {gemma26Audio?.From} ({Answers(gemma26Audio)})");
+            var memory = e2b?.Memory();
+            var measured = LocalModelFactsFixture.MeasuredGraphicsGb["gemma4:e2b"];
+            Step("local-memory", e2b is { LocallyHostable: true } && memory is not null &&
+                    Math.Abs(memory.GraphicsBytes / 1e9 - measured) / measured <= 0.15 && e2b.Local?.Quantization()?.InstallName is { Length: > 0 },
+                $"Gemma 4 E2B: locally hostable {e2b?.LocallyHostable}; installs as {e2b?.Local?.Quantization()?.InstallName}; {memory?.Describe()} " +
+                $"(measured {measured} GB on an RTX 4070)");
 
             failOpenRouter = true;
             hugeVllm = true;
-            var second = await new ModelCatalogRefresh(client, endpoints).RunAsync(store, cancellation);
+            var second = await new ModelCatalogRefresh(client, endpoints, local: localFacts).RunAsync(store, cancellation);
             var kept = store.Cached();
             Step("keeps-last-good", second.Saved && second.Status.Sources[CatalogSources.OpenRouter].Problem is { } orProblem &&
                     orProblem.Contains("500", StringComparison.Ordinal) && second.Status.Sources[CatalogSources.Vllm].Problem is { } vProblem &&
@@ -276,7 +311,8 @@ internal static class ModelCatalogCheck
 
             var holdUntil = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
             lock (arrivals) arrivals.Clear();
-            var third = await new ModelCatalogRefresh(client, endpoints, busy: () => DateTimeOffset.UtcNow < holdUntil).RunAsync(store, cancellation);
+            var third = await new ModelCatalogRefresh(client, endpoints, busy: () => DateTimeOffset.UtcNow < holdUntil, local: localFacts)
+                .RunAsync(store, cancellation);
             List<(DateTimeOffset At, string Path)> asked;
             lock (arrivals) asked = arrivals.ToList();
             Step("waits-while-replying", third.Status.Problem is null && asked.Count > 0 && asked.All(a => a.At >= holdUntil),

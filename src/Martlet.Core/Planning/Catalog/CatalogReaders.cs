@@ -284,6 +284,34 @@ public static partial class CatalogReaders
         return items;
     }
 
+    /// <summary>What Hugging Face and the Ollama registry say about running a model locally (<see cref="LocalModelFacts"/>, read
+    /// by Martlet.Providers' LocalModelFactsReader), as an observation: config.json's inputs (image, audio, and video when it
+    /// has video tokens), the maker's parameters, the active parameters, the context and the license.</summary>
+    public static CatalogObservation? Local(LocalModelFacts facts)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        if (facts.HuggingFaceRepo is not { } repo) return null;
+        var answers = new Dictionary<string, string>(StringComparer.Ordinal) { [CatalogFacts.OpenWeights] = CatalogValues.Yes };
+        if (facts.Inputs is { } inputs)
+        {
+            if (inputs.Image is { } image) answers[CatalogFacts.InputImage] = CatalogValues.Of(image);
+            if (inputs.Audio is { } audio) answers[CatalogFacts.InputAudio] = CatalogValues.Of(audio);
+            if (inputs.Video is { } video) answers[CatalogFacts.InputVideo] = CatalogValues.Of(video);
+        }
+        if ((facts.Parameters ?? facts.WeightsParameters) is { } total and > 0)
+            answers[CatalogFacts.ParametersTotal] = CatalogValues.Of(Math.Round(total / 1e9, 2));
+        if (facts.ActiveParameters is { } active and > 0) answers[CatalogFacts.ParametersActive] = CatalogValues.Of(Math.Round(active / 1e9, 2));
+        if (facts.MaxContext is { } context and > 0) answers[CatalogFacts.Context] = context.ToString(CultureInfo.InvariantCulture);
+        if (facts.License is { Length: > 0 } license) answers[CatalogFacts.License] = license;
+        return new()
+        {
+            Id = repo, HuggingFace = repo, Facts = answers, Local = facts,
+            Ollama = facts.OllamaTag is { } tag ? [tag] : null,
+            Notes = facts.Inputs is { Source: { } from } && from != "config.json"
+                ? new(StringComparer.Ordinal) { [CatalogFacts.InputImage] = from } : null
+        };
+    }
+
     /// <summary>The "owner/name" of a Hugging Face model link, or null for any other link (a dataset, a space, a file).</summary>
     public static string? HuggingFaceRepo(string? url)
     {

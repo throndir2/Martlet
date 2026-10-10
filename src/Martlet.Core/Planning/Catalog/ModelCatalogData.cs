@@ -56,6 +56,9 @@ public sealed record CatalogObservation
     /// <summary>NVIDIA Build: the page it came from ("/qc69jvmznzxy/gemma-4-31b-it.md").</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Page { get; init; }
+    /// <summary>Hugging Face: what running the model locally takes (sizes for each quantization, config.json, install names).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public LocalModelFacts? Local { get; init; }
 
     public string? Fact(string key) => Facts is not null && Facts.TryGetValue(key, out var value) ? value : null;
 }

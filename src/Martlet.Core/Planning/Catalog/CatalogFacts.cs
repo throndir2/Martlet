@@ -72,6 +72,10 @@ public static class CatalogSources
     /// <summary>The model's Hugging Face repository (license, parameter count).</summary>
     public const string HuggingFace = "huggingface";
     public const string Vllm = "vllm";
+    /// <summary>vLLM's table joined by family name (no exact architecture): below the maker's own facts.</summary>
+    public const string VllmFamily = "vllm-family";
+    /// <summary>An Ollama registry tag's projector layer (the packaged model sees).</summary>
+    public const string OllamaRegistry = "ollama-registry";
     public const string OpenRouter = "openrouter";
     /// <summary>models.dev's own model records (models.json).</summary>
     public const string ModelsDev = "models.dev";
@@ -88,16 +92,19 @@ public static class CatalogSources
     /// <summary>The credit LMArena's CC-BY-4.0 license asks for wherever a rating is shown.</summary>
     public const string LmArenaCredit = "LMArena (CC-BY-4.0)";
 
-    /// <summary>The sources the daily refresh reads, in the order it reads them.</summary>
+    /// <summary>The sources the daily refresh reads, in the order it reads them. Hugging Face comes last: it looks up local
+    /// model facts (<see cref="LocalModelFacts"/>) for open-weight models the other sources list.</summary>
     public static IReadOnlyList<string> Fetched { get; } =
-        Array.AsReadOnly([OpenRouter, ModelsDev, ModelsDevRows, NvidiaBuild, Vllm, LmArenaText, LmArenaVision]);
+        Array.AsReadOnly([OpenRouter, ModelsDev, ModelsDevRows, NvidiaBuild, Vllm, LmArenaText, LmArenaVision, HuggingFace]);
 
     public static string Describe(string source) => source switch
     {
         MartletTest => "a Martlet test on this route",
         ConfigJson => "the model's config.json",
-        HuggingFace => "the model's Hugging Face page",
+        HuggingFace => "the model's Hugging Face files",
+        OllamaRegistry => "the Ollama registry",
         Vllm => "vLLM's supported models",
+        VllmFamily => "vLLM's supported models (by family name)",
         OpenRouter => "OpenRouter's model list",
         ModelsDev => "models.dev's model record",
         ModelsDevRows => "models.dev's provider list",
@@ -109,13 +116,15 @@ public static class CatalogSources
     };
 
     /// <summary>How far a source is trusted for a model fact (what the weights take), 1 first: the maker (config.json, the
-    /// Hugging Face repository, vLLM by architecture), then catalogs and servers that describe the model, then the name.</summary>
+    /// Hugging Face repository, the Ollama registry's layers, vLLM by exact architecture or example), then vLLM by family name,
+    /// then catalogs and servers that describe the model, then the name.</summary>
     public static int ModelLevel(string source) => source switch
     {
-        ConfigJson or HuggingFace or Vllm => 1,
-        OpenRouter or ModelsDev or NvidiaBuild => 2,
-        Name => 3,
-        _ => 4
+        ConfigJson or HuggingFace or OllamaRegistry or Vllm => 1,
+        VllmFamily => 2,
+        OpenRouter or ModelsDev or NvidiaBuild => 3,
+        Name => 4,
+        _ => 5
     };
 }
 

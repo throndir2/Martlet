@@ -35,8 +35,20 @@ public sealed record CatalogModel
     public double? VisionRating { get; init; }
     /// <summary>Where the model's own scores place it among scored models, 0 to 100; null when nothing scored it.</summary>
     public double? Rank { get; init; }
+    /// <summary>What running it locally takes, when the catalog looked it up (Hugging Face and the Ollama registry): each
+    /// quantization's install name and download size, the encoder, and config.json's shape for the memory estimate.</summary>
+    public LocalModelFacts? Local { get; init; }
 
     public string? HuggingFaceRepo => Names.HuggingFace;
+
+    /// <summary>Whether it can run on the owner's own computers: a quantization to install was found, or its weights are
+    /// published; false when its weights are not published; null when nothing says.</summary>
+    public bool? LocallyHostable => Local?.LocallyHostable == true || OpenWeights == true ? true : OpenWeights == false ? false : null;
+
+    /// <summary>The memory it takes in Ollama or llama.cpp at <paramref name="contextTokens"/> (Martlet's 8,192 by default), for
+    /// <paramref name="quantization"/> (else Q4_K_M or the Ollama tag's); null when the catalog has no local facts for it.</summary>
+    public LocalMemoryEstimate? Memory(string? quantization = null, int contextTokens = LocalModelMemory.DefaultContextTokens) =>
+        Local?.Estimate(quantization, contextTokens);
 
     public CatalogFact Fact(string key) => Facts.TryGetValue(key, out var fact) ? fact : CatalogFact.Unknown;
 
