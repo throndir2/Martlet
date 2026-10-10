@@ -4522,10 +4522,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
 
-        var lore = await new Martlet.Core.Lorebooks.LorebookStore(directory).LoadAsync(cancellation);
+        // Lorebooks live in the folder of the account whose settings the data folder holds (docs/ACCOUNTS.md); a data folder from
+        // before accounts keeps them itself.
+        var loreFolder = Martlet.Core.Sync.AccountWorkingCopy.Load(directory) is { } signedIn
+            ? Martlet.Core.Sync.AccountWorkingCopy.Folder(directory, signedIn.Account) : directory;
+        var lore = await new Martlet.Core.Lorebooks.LorebookStore(loreFolder).LoadAsync(cancellation);
         object lorebooks = new
         {
-            state = lore.Loaded ? File.Exists(Path.Combine(directory, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            state = lore.Loaded ? File.Exists(Path.Combine(loreFolder, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            account = loreFolder == directory ? null : Path.GetFileName(loreFolder),
             books = lore.Library.Books.Count,
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)
