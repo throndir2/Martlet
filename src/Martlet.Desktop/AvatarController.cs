@@ -10,6 +10,7 @@ using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Conversation;
+using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 
 namespace Martlet.Desktop;
@@ -27,6 +28,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
     private readonly Func<IAvatarRenderer> createStillRenderer;
     private readonly Func<AvatarRemoteHost, IAvatarHostLink?> openHost;
     private IAvatarHostLink? hostLink;
+    // The other computers that run Audio2Face share lip-sync with the assigned one (hostLink).
+    private readonly LipSyncPool lipSyncPool;
     private AvatarProfile? profile;
     private CancellationTokenSource? activation;
     private CancellationTokenSource? pending;
@@ -48,17 +51,21 @@ internal sealed partial class AvatarController : IAsyncDisposable
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
         Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null,
-        Func<IAvatarRenderer>? createStillRenderer = null)
+        Func<IAvatarRenderer>? createStillRenderer = null, Func<AvatarRemoteHost, IReadOnlyList<AvatarRemoteHost>>? lipSyncPool = null)
     {
         this.createRenderer = createRenderer ?? SimulatedRendererFailure.Wrap(() => new AvatarRendererProcess(),
             Environment.GetEnvironmentVariable(SimulatedRendererFailure.Variable));
         this.createStillRenderer = createStillRenderer ?? (() => new AvatarRendererProcess(still: true));
         this.allowControlledClock = allowControlledClock;
         this.openHost = openHost ?? GatewayAvatarHostLink.Open;
+        this.lipSyncPool = new(this.openHost, lipSyncPool);
         Gaze = new(this, gazeClock);
         _ = Task.Run(ActOnCuesAsync);
     }
     private void Publish(string value) => Volatile.Write(ref status, value);
+
+    /// <summary>Where lip-sync's chunks went on the pool of computers that run Audio2Face (<see cref="LipSyncPool"/>).</summary>
+    internal LipSyncSharing LipSyncSharing => lipSyncPool.Sharing;
 
     // ---------- pictures of the character ----------
 
@@ -646,6 +653,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 {
                     try { Volatile.Write(ref hostLink, openHost(remote)); }
                     catch (Exception error) when (error is Audio2FaceHostException or ContractException) { }
+                    if (hostLink is { } opened) lipSyncPool.Warm(remote, opened);
                 }
             }
             StartCharacter(current, automatic);
@@ -803,8 +811,11 @@ internal sealed partial class AvatarController : IAsyncDisposable
         GeneratedSpeechStream? stream = null;
         PcmAccumulator? relay = null;
         var host = Volatile.Read(ref hostLink);
-        // The host assigned to lip-sync goes first; this PC's own Audio2Face service is the fallback.
-        if (mono && host is not null && await host.ReadyAsync(token))
+        IReadOnlyList<LipSyncMember> pool = [];
+        // The host assigned to lip-sync and the other computers of its pool go first; this PC's own Audio2Face service is the
+        // fallback.
+        if (mono && host is not null && profile?.RemoteHost is { } assigned &&
+            (pool = await lipSyncPool.ReadyAsync(assigned, host, token)).Count > 0)
             relay = new PcmAccumulator();
         else if (mono && await Audio2FaceProbe.IsListeningAsync(automatic!.Options, TimeSpan.FromMilliseconds(250), token))
             stream = new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128);
@@ -817,12 +828,13 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 level => target.SendAsync("mouth", new { level }, token), () => Audio2FaceAnimating, token);
             if (automatic is not null && (stream is not null || relay is not null))
             {
-                var where = stream is not null ? automatic.Options.Endpoint.Authority : "Martlet host " + host!.Authority;
+                var where = stream is not null ? automatic.Options.Endpoint.Authority
+                    : "Martlet host " + string.Join(", ", pool.Select(m => m.Link.Authority));
                 try
                 {
                     var frames = stream is not null
                         ? LocalFramesAsync(stream, automatic.Options, token)
-                        : RemoteFramesAsync(segment, relay!, host!, token);
+                        : RemoteFramesAsync(segment, relay!, lipSyncPool, pool, token);
                     await ApplyFramesAsync(segment, frames, automatic, target, where, token);
                 }
                 catch (CharacterRendererException failure) when (!token.IsCancellationRequested)
@@ -833,9 +845,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 }
                 catch (Exception error) when (!token.IsCancellationRequested && error is Audio2FaceException or
                     Audio2FaceHostException or ContractException or IOException or InvalidOperationException or
-                    OperationCanceledException or TimeoutException)
+                    OperationCanceledException or TimeoutException or System.Net.Http.HttpRequestException)
                 {
-                    if (error is Audio2FaceHostException) host?.Invalidate();
+                    // The pool already left out (for 30 s) each computer that failed or didn't answer; a busy one stays in.
                     Publish($"Audio2Face wasn't available: {(error is Audio2FaceException a ? a.Failure.ToString() :
                         error is Audio2FaceHostException h ? h.Message : error is AvatarOperationException reason ? reason.Message :
                         "service or mapping failure")}. Mouth movement follows Martlet's voice.");
@@ -886,9 +898,10 @@ internal sealed partial class AvatarController : IAsyncDisposable
             yield return frame;
     }
 
-    /// <summary>Relays the sentence in short chunks to the paired host so animation starts before the sentence ends.</summary>
+    /// <summary>Relays the sentence in short chunks to lip-sync's pool so animation starts before the sentence ends: each chunk
+    /// goes to the first computer of <paramref name="members"/> that takes it (<see cref="LipSyncPool"/>).</summary>
     private static async IAsyncEnumerable<AvatarFrame> RemoteFramesAsync(GeneratedSpeechObservation segment, PcmAccumulator pcm,
-        IAvatarHostLink host, [EnumeratorCancellation] CancellationToken token)
+        LipSyncPool pool, IReadOnlyList<LipSyncMember> members, [EnumeratorCancellation] CancellationToken token)
     {
         var snapshot = segment.Playback.Snapshot;
         var rate = segment.Format.SampleRate;
@@ -896,13 +909,16 @@ internal sealed partial class AvatarController : IAsyncDisposable
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         var producer = Task.Run(async () =>
         {
+            int chunks = 0, empty = 0;
             try
             {
                 long sequence = 0, last = -1;
                 await foreach (var (from, start, end) in RemoteChunks.PlanAsync(pcm, rate, stop.Token))
                 {
                     var ids = new CorrelationIds { SessionId = snapshot.Ids.SessionId, TurnId = snapshot.Ids.TurnId, RequestId = Guid.NewGuid() };
-                    await foreach (var face in host.AnimateAsync(ids, snapshot.Epoch, rate, pcm.Slice(from, end), stop.Token))
+                    var skipped = pool.Sharing.Skipped;
+                    chunks++;
+                    await foreach (var face in pool.AnimateAsync(members, ids, snapshot.Epoch, rate, pcm.Slice(from, end), end - start, stop.Token))
                     {
                         var offset = from + face.SampleOffset;
                         if (offset < start || offset <= last) continue;
@@ -916,10 +932,17 @@ internal sealed partial class AvatarController : IAsyncDisposable
                             Sequence = sequence++, SampleRate = rate, SampleOffset = offset, Blendshapes = values, Semantics = []
                         }, stop.Token);
                     }
+                    if (pool.Sharing.Skipped > skipped) empty++;
                 }
                 frames.Writer.TryComplete();
             }
             catch (Exception error) { frames.Writer.TryComplete(error); }
+            finally
+            {
+                if (empty > 0)
+                    ErrorLog.Info($"Lip-sync: every computer of the lip-sync pool was busy for {empty} of a sentence's {chunks} chunks; " +
+                        "the voice's loudness moved the mouth for them.");
+            }
         }, CancellationToken.None);
         try
         {
@@ -1391,6 +1414,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 try { next = openHost(remote); }
                 catch (Exception error) when (error is Audio2FaceHostException or ContractException) { }
             Interlocked.Exchange(ref hostLink, next)?.Dispose();
+            lipSyncPool.Clear();
+            if (remote is not null && next is not null) lipSyncPool.Warm(remote, next);
             if (profile is not null) profile = profile with { RemoteHost = remote };
             if (!IsShowing) return;
             if (next is not null)
@@ -1410,6 +1435,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
         await StopLoudnessAsync();
         observer.Disable();
         Interlocked.Exchange(ref hostLink, null)?.Dispose();
+        lipSyncPool.Clear();
         if (renderer is not null)
         {
             await renderer.DisposeAsync();

@@ -11,12 +11,15 @@ public static class WorkSharingJobs
     public const string Listening = ClusterJobs.Listening;
     public const string Speaking = ClusterJobs.Speaking;
     public const string DeepThinking = "deep-thinking";
+    /// <summary>Lip-sync's lane in <see cref="WorkQueue"/> (<see cref="LipSyncSharing"/>). Its pool list lives on its own page,
+    /// so it is not one of <see cref="All"/> (the Devices › Sharing work cards).</summary>
+    public const string LipSync = ClusterJobs.LipSync;
     public static readonly IReadOnlyList<string> All = [Speaking, Thinking, Listening, DeepThinking];
 
-    /// <summary>Speaking and Listening are shared unless turned off: each request stands alone. Thinking is shared only when
-    /// chosen: another computer's model starts your conversation without its prompt cache (a slower first word) and pushes that
-    /// computer's own conversation out of its cache. Deep thinking always thinks on the places chosen for it.</summary>
-    public static bool SharedByDefault(string job) => job is Speaking or Listening;
+    /// <summary>Speaking, Listening and Lip-sync are shared unless turned off: each request stands alone. Thinking is shared only
+    /// when chosen: another computer's model starts your conversation without its prompt cache (a slower first word) and pushes
+    /// that computer's own conversation out of its cache. Deep thinking always thinks on the places chosen for it.</summary>
+    public static bool SharedByDefault(string job) => job is Speaking or Listening or LipSync;
 
     public static string Title(string job) => job switch
     {
@@ -24,6 +27,7 @@ public static class WorkSharingJobs
         Thinking => "Thinking",
         Listening => "Listening",
         DeepThinking => "Thinking pool",
+        LipSync => "Lip-sync",
         _ => job
     };
 }
