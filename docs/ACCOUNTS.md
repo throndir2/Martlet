@@ -361,14 +361,19 @@ Built by W12. Code: `src\Martlet.Core\Accounts\AccountBindingRules.cs`,
 `src\Martlet.Gateway\GatewaySignInRoles.cs` and, in Martlet.Desktop,
 `AccountWindow` (the Account page), `AccountUnlockWindow`,
 `AccountProveWindow`, `AccountLocks.cs`, `AccountProtection.cs`,
-`AccountVault.cs`, `WindowsHello.cs`, `AccountLinks.cs` and
-`MainWindow.AccountSecurity.cs`. MCP: `account_security_status` and the
-account windows' automation IDs ([MCP](MCP.md)).
+`AccountVault.cs`, `WindowsHello.cs`, `AccountLinks.cs`,
+`AccountSecurityService.cs`, `AccountChoiceDialog.cs` and
+`MainWindow.AccountSecurity.cs`, with small hooks in W7's `AccountSession`
+(`SignIn` with a binding login, `BindWith`, `SignOut`, `UseAtStart`,
+`UseOnExit`), the account menu and `App` (Unlock at start, exit). MCP:
+`account_security_status` and the account windows' automation IDs
+([MCP](MCP.md)).
 
 ### The Account page
 
 Open it from the account menu (**Account…**). It shows the account's logins
-and how it unlocks on this PC, and has:
+and how it unlocks on this PC, and has (while the account waits to reach the
+household's directory, only *On this PC* works):
 
 - **Martlet password**: a user name, a password (12 or more characters) and,
   optionally, an authenticator app (a key, an `otpauth` link and a current
@@ -400,8 +405,9 @@ Switching to an account that is signed in on this PC needs an **Unlock** when:
 
 The Unlock window takes the PIN, the password or Windows Hello, offline. It
 shows at start before the account loads and before every switch, never during
-a reply. **Choose another account** goes back to the account picker, **Sign in
-as someone else** to Prove.
+a reply. **Choose another account** lists the other accounts signed in here
+(*Choose an account*), **Sign in as someone else** opens Prove. Closing the
+Unlock window at start closes Martlet; during **Lock** it shows again.
 
 `<data>\account-locks\<32 hex>.json` (device scope, never synced, written with
 an ACL for this Windows user only) keeps how the account unlocks here:
@@ -488,9 +494,10 @@ desktop shows household sign-in only to an owner or admin.
    fails stops the merge before anything is removed.
 3. `AccountLinks.Merge` gives this account the other's logins, device
    bindings, voices, e-mail hints and the higher role, and removes the other
-   with `merged_into` (both signed by this PC). Devices bound to the merged
-   account follow `merged_into`. The owner's account can't be merged into
-   another; merge the other way.
+   with `merged_into` (both signed by this PC). A PC where the merged account
+   is signed in signs it out, and switches to the kept account when that one
+   is signed in there too. The owner's account can't be merged into another;
+   merge the other way.
 
 The merged account's password logins stay on the hosts: they prove the merged
 account, and its `merged_into` leads to this one.
@@ -591,7 +598,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W9 | Desktop memory spaces: a store per space, recall over spaces, space sync, host access checks | `DesktopMemoryService`, `MainWindow.MemorySync.cs`, `MemorySyncNode` | W3, W7 |
 | W10 | Sharing: character copy and together, the household space, fact sharing | Characters page, Memory window | W8, W9 |
 | W11 | Voice-to-account links on People; Voice ID filter per account | People page, `voices.json` | W7 |
-| W12 | Account security: password and authenticator per account, PIN and Windows Hello lock, sign in as someone else, remember on this PC, merge accounts | Account page | W4, W7 |
+| W12 | Account security: password and authenticator per account, PIN and Windows Hello lock, sign in as someone else, remember on this PC, merge accounts. **Shipped** ([Account security](#account-security)) | Account page | W4, W7 |
 | W13 | Provider logins linked to accounts; new devices join by account sign-in | Sign-in windows | W4, W12 |
 
 ```mermaid

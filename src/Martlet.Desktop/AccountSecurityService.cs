@@ -257,7 +257,10 @@ internal sealed class AccountSecurityService(AccountSession session, string data
     {
         var state = session.State;
         if (state.SignedIn.Count != 1 || state.PendingFor(state.Current) is null || session.Directory.Find(state.Current) is not null) return;
-        if (Roster is not { } roster || WindowsLogin.Current.EmailHint is not { } email) return;
+        if (Roster is not { } roster) return;
+        // A simulated Windows login (MCP checks on a disposable folder) has no e-mail: never the real one of this PC.
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(AccountSession.SimulatedLoginVariable))) return;
+        if (WindowsLogin.Current.EmailHint is not { } email) return;
         var account = session.Directory.Live.FirstOrDefault(a => a.HasEmail(roster.NetworkId, email) && a.Logins.Any(l => l.Kind == AccountLoginKinds.Martlet));
         if (account is null) return;
         ErrorLog.Info($"Accounts: this Windows login's e-mail hint matches account {AccountSession.Short(account.Id)}; asking Continue as.");

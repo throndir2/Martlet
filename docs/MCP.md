@@ -1483,8 +1483,12 @@ changes or proves something, so it needs `--allow-ui-effects`: the password
 `AccountSignOut`, `AccountMergeChoice`, `AccountMerge`; Unlock's `UnlockPin`,
 `UnlockPassword`, `UnlockSubmit`, `UnlockHello`, `UnlockSignIn`; Prove's
 `ProveHost`, `ProveMethod-martlet`, `ProveUser`, `ProvePassword`, `ProveCode`,
-`ProveRemember`, `ProveSubmit`; and the account menu's `AccountSignInOther`
-and `AccountLock`. `ui_snapshot` returns these values: `AccountName`,
+`ProveRemember`, `ProveSubmit`; the account menu's `AccountSignInOther`
+and `AccountLock`; *Continue as ...?* (`ContinueAsDialog`: `ContinueAsYes`,
+`ContinueAsNo`) and *Choose an account* (`AccountChooseDialog`:
+`UnlockChoose-<32 hex>`, `UnlockChooseSignIn`). `ui_connect` also attaches
+while one of these windows shows at start, before the main window (Unlock,
+*Continue as*, *Choose an account*, Prove). `ui_snapshot` returns these values: `AccountName`,
 `AccountLogins`, `AccountLockState`, `AccountUnlockMethods`,
 `AccountPasswordState`, `AccountWindowsState`, `AccountHelloState`,
 `AccountEncryptState`, `AccountStatus`, `UnlockAccountName`, `UnlockStatus`,
@@ -1739,7 +1743,9 @@ be driven against a real host. Mode `owner`: `src\Martlet.NodeLinkCheck` mode
 `signin-lab` (`SignInLab.cs`) starts a gateway on 127.0.0.1 with an owner
 account, an OpenID Connect provider (an issuer in that process), an allowed
 identity and an outside address set on the host; it pairs the desktop of the
-data directory (`hosts.json` there, the secret in the lab credential folder), a
+data directory (`hosts.json` there, the secret in the lab credential folder,
+under the device ID that desktop already named itself by in `device.json`, so
+its account bindings match its roster entry), a
 simulated laptop signs in and keeps syncing, and a simulated friend's computer
 (`lab-friend-pc`, identity `ana@example.net`, `authentik` subject
 `lab-friend-7`) signs in once and is refused, so it waits under *Signed in but

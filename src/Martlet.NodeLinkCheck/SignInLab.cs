@@ -77,9 +77,11 @@ internal static class SignInLab
                 ["action"] = "allow", ["provider"] = "authentik", ["subject"] = FriendSubject, ["label"] = FriendEmail, ["access"] = "friend"
             }, token);
 
-        // The desktop on the data directory: paired by a code, its secret in the lab folder, the host in its hosts.json.
+        // The desktop on the data directory: paired by a code under the device ID it already named itself by (device.json, when
+        // it ran first), as a real pairing would be, its secret in the lab folder, the host in its hosts.json.
         var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
-        var (pairing, pairingSecret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), DesktopDevice, "LAB-DESKTOP", token);
+        var desktopDevice = DeviceIds.Peek(dataDirectory) is { Id: { } named } ? named : DesktopDevice;
+        var (pairing, pairingSecret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice, "LAB-DESKTOP", token);
         using (var lease = new SecretLease(pairingSecret))
         {
             var stored = new WindowsCredentialStore().WriteAvatarHostSecret(pairing.HostId, pairing.CredentialId, lease);

@@ -86,7 +86,8 @@ public partial class AccountWindow : ThemedWindow
             AuthenticatorCheck.IsEnabled = false;
             AuthenticatorRemoveButton.IsEnabled = false;
         }
-        MergeChoice.ItemsSource = host.Directory.Live.Where(a => a.Id != id).OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        MergeChoice.ItemsSource = host.Directory.Live.Where(a => a.Id != id).OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(a => new MergeItem(a)).ToArray();
     }
 
     private string Describe(Account account)
@@ -208,10 +209,14 @@ public partial class AccountWindow : ThemedWindow
             {
                 host.Locks.RememberPassword(account.Id, password, host.FileKey);
                 var key = AccountLoginKey.ForPassword(user);
-                await host.ChangeDirectoryAsync((directory, signer, now) => directory.Find(account.Id) is { Removed: false } current
-                    ? directory.Put(signer, (current with { Logins = current.Logins.Where(l => l.Kind != AccountLoginKinds.Martlet || l.Key == key).ToArray() })
-                        .WithLogin(AccountLogin.For(key, user, now)), now)
-                    : directory, lifetime.Token);
+                try
+                {
+                    await host.ChangeDirectoryAsync((directory, signer, now) => directory.Find(account.Id) is { Removed: false } current
+                        ? directory.Put(signer, (current with { Logins = current.Logins.Where(l => l.Kind != AccountLoginKinds.Martlet || l.Key == key).ToArray() })
+                            .WithLogin(AccountLogin.For(key, user, now)), now)
+                        : directory, lifetime.Token);
+                }
+                catch (InvalidOperationException error) { failed.Add("your household's directory (" + error.Message + ")"); }
                 PasswordText.Clear();
                 RepeatText.Clear();
                 CodeText.Clear();
@@ -402,7 +407,7 @@ public partial class AccountWindow : ThemedWindow
 
     private async void Merge_Click(object sender, RoutedEventArgs e)
     {
-        if (Active is not { } account || MergeChoice.SelectedItem is not Account other) { Status("Choose the account to merge into this one."); return; }
+        if (Active is not { } account || MergeChoice.SelectedItem is not MergeItem { Account: var other }) { Status("Choose the account to merge into this one."); return; }
         if (other.Role == AccountRoles.Owner) { Status($"{other.Name} is the household owner's account. Merge this account into it instead (sign in as {other.Name})."); return; }
         // Prove both: the other account always, this one too when it has a Martlet password.
         var proveOther = new AccountProveWindow(host.Hosts, host.DataDirectory, $"Sign in as {other.Name}",
@@ -441,4 +446,10 @@ public partial class AccountWindow : ThemedWindow
     private void Status(string text) => StatusText.Text = text;
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>An account in the merge list, read by its name (screen readers and MCP's ui_select).</summary>
+    private sealed record MergeItem(Account Account)
+    {
+        public override string ToString() => Account.Name;
+    }
 }

@@ -90,7 +90,7 @@
                 <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
                            Text="For one person with two accounts: its characters, memories, conversations and voices move into this account, its logins sign in here, and it goes away. You sign in as the other account first."/>
                 <WrapPanel Margin="0,6,0,0">
-                    <ComboBox x:Name="MergeChoice" MinWidth="220" DisplayMemberPath="Name" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountMergeChoice"/>
+                    <ComboBox x:Name="MergeChoice" MinWidth="220" Margin="0,0,8,0" AutomationProperties.AutomationId="AccountMergeChoice"/>
                     <Button x:Name="MergeButton" Content="_Merge into this account" Click="Merge_Click" AutomationProperties.AutomationId="AccountMerge"/>
                 </WrapPanel>
                 </StackPanel>
