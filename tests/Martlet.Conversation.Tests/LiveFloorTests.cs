@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using Martlet.Audio;
 using Martlet.Core.Settings;
 using Martlet.Providers;
 
@@ -6,6 +8,58 @@ namespace Martlet.Conversation.Tests;
 public sealed class LiveFloorTests
 {
     private static LiveFloor Floor(RuntimeClock clock) => new(clock);
+
+    // One 20 ms microphone frame of a 220 Hz tone (30: a quiet room; 8000: a voice or a click).
+    private static byte[] Tone(short amplitude)
+    {
+        var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
+        for (var i = 0; i < EnergyVoiceActivityDetector.FrameSamples; i++)
+            BinaryPrimitives.WriteInt16LittleEndian(frame.AsSpan(i * 2), (short)(amplitude * Math.Sin(2 * Math.PI * 220 * i / 16_000.0)));
+        return frame;
+    }
+
+    // Feeds frames to the detector the way the desktop's microphone loop does and counts the frames that are the user's voice.
+    private static int Voiced(EnergyVoiceActivityDetector detector, IEnumerable<(byte[] Frame, bool Speakers)> frames)
+    {
+        var voiced = 0;
+        foreach (var (frame, speakers) in frames)
+        {
+            detector.Process(frame);
+            if (LiveFloor.Voice(detector, speakers)) voiced++;
+        }
+        return voiced;
+    }
+
+    private static IEnumerable<(byte[], bool)> Frames(byte[] frame, int count, bool speakers = false) =>
+        Enumerable.Repeat((frame, speakers), count);
+
+    [Fact]
+    public void A_click_or_typing_is_not_the_users_voice()
+    {
+        var detector = new EnergyVoiceActivityDetector();
+        byte[] quiet = Tone(30), loud = Tone(8_000);
+        Assert.Equal(0, Voiced(detector, Frames(quiet, 50)));
+        Assert.Equal(0, Voiced(detector, [.. Frames(loud, 1), .. Frames(quiet, 10)]));
+        // Twenty key presses in 2.8 s: each is loud for 40 ms, never the 200 ms speech needs.
+        Assert.Equal(0, Voiced(detector, Enumerable.Range(0, 20).SelectMany(_ => Frames(loud, 2).Concat(Frames(quiet, 5)))));
+        Assert.False(detector.Speaking);
+    }
+
+    [Fact]
+    public void Speech_is_the_users_voice_once_the_detector_hears_it_but_the_speakers_sound_never_is()
+    {
+        var detector = new EnergyVoiceActivityDetector();
+        byte[] quiet = Tone(30), loud = Tone(8_000);
+        Voiced(detector, Frames(quiet, 50));
+        // Martlet's own voice from the speakers: the detector hears speech, but it is never the user's.
+        Assert.Equal(0, Voiced(detector, Frames(loud, 15, speakers: true)));
+        Voiced(detector, Frames(quiet, 50));
+        Assert.False(detector.Speaking);
+        // 300 ms of the user's voice: from the detector's 200 ms on (the 10th frame), every loud frame is the user's voice.
+        Assert.Equal(6, Voiced(detector, Frames(loud, 15)));
+        Assert.True(detector.Speaking);
+        Assert.Throws<ArgumentNullException>(() => LiveFloor.Voice(null!, false));
+    }
 
     [Fact]
     public void The_users_voice_is_listening_until_words_or_six_quiet_seconds()

@@ -115,13 +115,6 @@
                                         <Button x:Name="ResetCharacterZoomButton" Content="Reset character zoom" Click="ResetCharacterZoom_Click" Padding="16,12" Margin="0,0,12,8"
                                                 Visibility="Collapsed" ToolTip="Return the character to its default zoom"
                                                 AutomationProperties.AutomationId="ResetCharacterZoom" AutomationProperties.Name="Reset character zoom"/>
-                                        <!-- Locks the character where it is; only this window (here or Companion › Character) unlocks it. -->
-                                        <Button x:Name="LockCharacterButton" Content="Lock character position" Click="LockCharacter_Click" Padding="16,12" Margin="0,0,12,8"
-                                                Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterLock"/>
-                                        <!-- Lets clicks pass through the character; the character can't turn it off itself, so it is turned off here,
-                                             in Companion › Character or from the notification-area icon. -->
-                                        <Button x:Name="ClickThroughCharacterButton" Content="Turn on click-through" Click="ClickThroughCharacter_Click" Padding="16,12" Margin="0,0,12,8"
-                                                Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterClickThrough"/>
                                     </WrapPanel>
                                     <!-- Character profiles (MainWindow.CharacterProfiles.cs): switch look, voice and personality at once -->
                                     <WrapPanel x:Name="HomeCharacterRow" Margin="0,0,0,8" Visibility="Collapsed">
@@ -667,7 +660,7 @@
                     <StackPanel>
                         <TextBlock Text="Thinking requests" Style="{DynamicResource PageTitle}"/>
                         <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
-                                   Text="Everything your companions ask the Thinking pool to do: what it is for, where it runs, and how long it waits and runs."/>
+                                   Text="Everything your companions ask the Thinking pool to do: what it is for, where it runs, how long it waits and runs, and what it answers."/>
                     </StackPanel>
                 </DockPanel>
                 <StackPanel Grid.Row="1" Margin="0,0,0,10">
@@ -771,13 +764,32 @@
                         </StackPanel>
                     </Border>
                 </Grid>
-                <StackPanel Grid.Row="5" x:Name="ThinkingRequestDetailPanel" Visibility="Collapsed" Margin="0,8,0,0">
-                    <TextBlock x:Name="ThinkingRequestTopic" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed"
+                <!-- The selected request: everything known about it (left) and what it answered (right). The output is private,
+                     as the topic: it shows here only, never in a log, a status file or MCP (ThinkingRequestOutputState gives its
+                     length only). -->
+                <Grid Grid.Row="5" x:Name="ThinkingRequestDetailPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="210"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="ThinkingRequestTopic" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed"
                                AutomationProperties.AutomationId="ThinkingRequestTopic"/>
-                    <TextBox x:Name="ThinkingRequestDetail" IsReadOnly="True" TextWrapping="Wrap" Height="190"
+                    <TextBlock Grid.Row="1" Text="Details" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" x:Name="ThinkingRequestOutputState" FontWeight="SemiBold" Margin="0,0,0,4"
+                               TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="ThinkingRequestOutputState"/>
+                    <TextBox Grid.Row="2" x:Name="ThinkingRequestDetail" IsReadOnly="True" TextWrapping="Wrap"
                              VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"
                              AutomationProperties.AutomationId="ThinkingRequestDetail" AutomationProperties.Name="The selected request in full"/>
-                </StackPanel>
+                    <TextBox Grid.Row="2" Grid.Column="2" x:Name="ThinkingRequestOutput" IsReadOnly="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" FontSize="12.5"
+                             AutomationProperties.AutomationId="ThinkingRequestOutput" AutomationProperties.Name="What the selected request answered"/>
+                </Grid>
             </Grid>
 
             <!-- Diagnostics: every part's activity, warnings and errors from every computer of the owner's Martlet network, shared between them all (MainWindow.Logs.cs) -->

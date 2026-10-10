@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRM, type VRMExpression, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
-import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, VrmEyes } from "./eyes.js";
+import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, readEyeHint, VrmEyes } from "./eyes.js";
 import { capturePose, hitTestVrm, type RestPose, type VrmHit } from "./touch.js";
 
 type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
@@ -514,6 +514,8 @@ export class VrmRuntime {
   private hipsRest: number | undefined;
   private faceWidth = 0.14;
   private eyes: VrmEyes | undefined;
+  /** The face vision measured (see setEyeHint), or undefined. */
+  private featureHint: EyeHint | undefined;
   // Each new pose (update, reset, load) counts up; a hit test measures the skinned meshes' bounds again only in a new pose.
   private poses = 0;
   private measured = -1;
@@ -711,12 +713,15 @@ export class VrmRuntime {
    * right when it faces the camera) and the face's width. From the eye bones when the model has them, otherwise estimated
    * from the head bone and the model's height. Each cheek is a surface turned out to its side (CHEEK_TURN): `...Across` runs
    * one unit along it toward the viewer's right (as wide as `side` from the front) and `...Normal` points out of it, so a
-   * turned head shows the near cheek wider and the far one narrower, and hides it. Undefined without a head bone.
+   * turned head shows the near cheek wider and the far one narrower, and hides it. With a face measured by vision (see
+   * setEyeHint) the cheeks and mouth are where vision saw them (`cheekSize` their radius in face widths), and on a model
+   * without eye bones `middle` (where drawings center on the face) moves to the measured eye line; `center` stays the face
+   * the measurement is relative to. Undefined without a head bone.
    */
-  faceGeometry(): { center: THREE.Vector3; side: THREE.Vector3; up: THREE.Vector3; forward: THREE.Vector3; width: number;
-    eyeLeft: THREE.Vector3; eyeRight: THREE.Vector3; mouth: THREE.Vector3; top: THREE.Vector3;
+  faceGeometry(): { center: THREE.Vector3; middle: THREE.Vector3; side: THREE.Vector3; up: THREE.Vector3; forward: THREE.Vector3;
+    width: number; eyeLeft: THREE.Vector3; eyeRight: THREE.Vector3; mouth: THREE.Vector3; top: THREE.Vector3;
     cheekLeft: THREE.Vector3; cheekRight: THREE.Vector3; cheekLeftAcross: THREE.Vector3; cheekRightAcross: THREE.Vector3;
-    cheekLeftNormal: THREE.Vector3; cheekRightNormal: THREE.Vector3 } | undefined {
+    cheekLeftNormal: THREE.Vector3; cheekRightNormal: THREE.Vector3; cheekSize?: number } | undefined {
     const model = this.model;
     const head = model?.humanoid.getNormalizedBoneNode("head");
     if (!model || !head) return undefined;
@@ -739,22 +744,35 @@ export class VrmRuntime {
     } else center = at(head)!.addScaledVector(up, 0.45 * width).addScaledVector(forward, 0.45 * width);
     const point = (x: number, y: number, z: number) => center.clone().addScaledVector(side, x * width)
       .addScaledVector(up, y * width).addScaledVector(forward, z * width);
+    // What vision measured (face widths from `center`, y down); without eye bones the eye line it saw moves the middle.
+    const hint = this.featureHint, measured = (p: { x: number; y: number }, z: number) => point(p.x, -p.y, z);
+    const bones = !!(viewerRight && viewerLeft && viewerRight.distanceTo(viewerLeft) > 1e-4);
+    const middle = !bones && hint?.left && hint.right
+      ? measured({ x: (hint.left.eye.x + hint.right.eye.x) / 2, y: (hint.left.eye.y + hint.right.eye.y) / 2 }, 0) : center.clone();
+    const shift = middle.clone().sub(center);
+    const moved = (x: number, y: number, z: number) => point(x, y, z).add(shift);
+    const cheeks = hint?.cheekLeft && hint.cheekRight ? { left: hint.cheekLeft, right: hint.cheekRight } : undefined;
     // The viewer's left cheek (the character's right) turns out toward -side, the viewer's right one toward +side.
     const tan = Math.tan(CHEEK_TURN), cos = Math.cos(CHEEK_TURN), sin = Math.sin(CHEEK_TURN);
-    return { center, side, up, forward, width,
-      eyeLeft: viewerLeft ?? point(-0.2, 0, 0), eyeRight: viewerRight ?? point(0.2, 0, 0),
-      cheekLeft: point(-0.28, -0.22, 0.08), cheekRight: point(0.28, -0.22, 0.08),
+    return { center, middle, side, up, forward, width,
+      eyeLeft: viewerLeft ?? (hint?.left ? measured(hint.left.eye, 0) : moved(-0.2, 0, 0)),
+      eyeRight: viewerRight ?? (hint?.right ? measured(hint.right.eye, 0) : moved(0.2, 0, 0)),
+      cheekLeft: cheeks ? measured(cheeks.left, 0.08) : moved(-0.28, -0.22, 0.08),
+      cheekRight: cheeks ? measured(cheeks.right, 0.08) : moved(0.28, -0.22, 0.08),
       cheekLeftAcross: side.clone().addScaledVector(forward, tan), cheekRightAcross: side.clone().addScaledVector(forward, -tan),
       cheekLeftNormal: forward.clone().multiplyScalar(cos).addScaledVector(side, -sin),
       cheekRightNormal: forward.clone().multiplyScalar(cos).addScaledVector(side, sin),
-      mouth: point(0, -0.42, 0.1), top: point(0, 0.75, -0.1) };
+      mouth: hint?.mouth ? measured(hint.mouth, 0.1) : moved(0, -0.42, 0.1), top: moved(0, 0.75, -0.1),
+      ...(cheeks ? { cheekSize: (cheeks.left.r + cheeks.right.r) / 2 } : {}) };
   }
 
-  /** Uses eyes measured by vision (see EyeHint in eyes.ts) for what the model's eye bones and meshes can't give; undefined
-   *  clears them. Returns where the eyes come from now. */
+  /** Uses the face measured by vision (see EyeHint in eyes.ts): its eyes for what the model's eye bones and meshes can't give,
+   *  and its cheeks and mouth (and, without eye bones, its eye line) for the face (see faceGeometry); undefined clears it.
+   *  Returns where the eyes come from now. */
   setEyeHint(hint: EyeHint | undefined): EyesFrom {
     this.loaded();
-    return this.eyes?.setHint(hint) ?? "estimate";
+    this.featureHint = readEyeHint(hint);
+    return this.eyes?.setHint(this.featureHint) ?? "estimate";
   }
 
   /** Where the eyes' irises and openings come from (see EyesFrom in eyes.ts). */
@@ -950,6 +968,7 @@ export class VrmRuntime {
       this.faceWidth = box.isEmpty() ? 0.14 : Math.max(0.01, 0.09 * (box.max.y - box.min.y));
       // Measured now, while the model is at rest; a model that breaks it only gets no eyes from its bones and meshes.
       try { this.eyes = new VrmEyes(result.vrm); } catch { this.eyes = undefined; }
+      this.featureHint = undefined;
       return result.capabilities;
     } finally { this.pending = false; }
   }
@@ -1187,6 +1206,7 @@ export class VrmRuntime {
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
     this.eyes = undefined;
+    this.featureHint = undefined;
     this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
     this.rest = undefined;
     this.talk = 0; this.speaking = false; this.heldMouth = 0;

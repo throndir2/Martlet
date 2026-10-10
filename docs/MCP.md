@@ -362,8 +362,10 @@ pool jobs (the judges, summaries, check-ins, memory, naming and touch zones)
 and the conversation's background work on the same slots (thinking longer and
 research). The requests that wait or run come first, then the newest ended
 ones. The journal (`ThinkingRequests`) keeps every request that has not ended
-and the last 200 that ended, plus totals by kind. It keeps no request's text
-or answer.
+and the last 200 that ended, plus totals by kind. It keeps no request's text.
+It keeps each ended request's output (what it answered, its first 16,000
+characters) for this PC's page only. The output never goes in a log, a status
+file or an MCP result.
 
 `thinking_requests` (`dataDirectory`, and the optional filters `state`, `kind`
 and `limit`) reads the desktop's `thinking-requests.json` in that data
@@ -396,7 +398,13 @@ and ran 2.0 s on average.* `ThinkingRequestsPool` gives the pool's slots now,
 many requests wait or run (shown only when some do). Each row
 `ThinkingRequest-tr-<n>` is a safe click: it only selects the request, and
 `ThinkingRequestDetail` then gives the request in full (type, task, companion,
-needs, times, timings, tries, limits and the answer's length). The filters
+needs, times, timings, tries, limits and the answer's length). Beside it,
+`ThinkingRequestOutput` shows what the request answered. The output is private:
+MCP never returns it. `ThinkingRequestOutputState` (a safe value) gives only
+its length, for example *Output: 98 characters.*, or why there is none
+(*Output: none yet. It shows here when the request ends.*, *Output: none. It
+ended: failed.*). A long output reads *Output: the first 16,000 of 40,000
+characters*. The filters
 `ThinkingRequestsFilter-all`, `-active` and `-problems`, the
 `ThinkingRequestsTimingExpander` (*Timing by type*) and `ThinkingRequestsKind`
 (it only opens) are safe clicks. `ThinkingRequestsTiming` is a safe value.
@@ -409,16 +417,16 @@ for (private): MCP never returns it.
 Setting `MARTLET_SIMULATE_THINKING_REQUESTS` to a number (1-50) before you
 launch the desktop posts that number of simulated requests once the window
 shows. They wait, run on made-up members (*gpu-box (simulated)* and *laptop
-(simulated)*), retry, fail and end over about half a minute. No model is asked
-and nothing is sent. The desktop log says *Posting N simulated Thinking
-requests*.
+(simulated)*), retry, fail and end over about half a minute. Each one that
+succeeds has a made-up output. No model is asked and nothing is sent. The
+desktop log says *Posting N simulated Thinking requests*.
 
 The `requests` steps of `thinking_pool_check` run the production job board with
 simulated members (NOT models). They check that the journal records a success
-(one try, with its run time), a retry (a failed member, then a member that
-answers: two tries) and a stale judge dropped after its wait (no try), each
-with plausible timings. They also check that `Requests.Totals` counts the
-three by kind, and that each request's
+(one try, with its run time and its output), a retry (a failed member, then a
+member that answers: two tries) and a stale judge dropped after its wait (no
+try and no output), each with plausible timings. They also check that
+`Requests.Totals` counts the three by kind, and that each request's
 [Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
 lines say when it waited in line, started on a member, let it go and ended
 (`thinking_trace` reads them from the desktop log; simulated requests write
@@ -673,7 +681,10 @@ your own to classify) rehearses the production `LiveFloor`, `LiveFloorRules`,
 `ThinkingJobBoard`, `BackgroundJobs` and `WorkQueue` with fixture inputs and
 simulated members (NOT models), and returns `passed`, each line's `realWords`
 and each step: which words go Live, the levels on a clock of their own (voice,
-quiet, a sound, words, a reply and its grace), the board at Listening (new work
+quiet, a sound, words, a reply and its grace), the microphone on the production
+detector (`LiveFloor.Voice`: a 20 ms click, 2.8 s of typing and Martlet's own
+voice from the speakers stay Idle; 300 ms of voice is Listening), the board at
+Listening (new work
 waits for the conversation, running work and judges go on) and at Live (a
 summary dropped as `Preempted`, remembering and naming stopped and queued again,
 touch zones going on, judges running), a member on another computer never held,
@@ -2310,7 +2321,7 @@ again from the personality when Martlet isn't replying; *Everything* does the
 last two. Choosing a level, Reset and its `ConfirmationYes` need
 `--allow-ui-effects`.
 
-`character_eyes` rehearses Companion › Eyes › [Where the eyes are](AVATARS.md#eyes)
+`character_eyes` rehearses Companion › Eyes › [Where the face is](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
 width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
 `check` message that goes with the boxes drawn and numbered, and the `again`
@@ -2318,15 +2329,20 @@ message after an answer Martlet couldn't use), `closeUp` (the picture's
 `width` and `height`, the `area` it cuts from the snapshot and the `face` in
 the snapshot's pixels with its `rollDegrees`), `measurement` (with `answer`, a
 simulated vision reply about the close-up such as
-`{"left":{"iris":{"left":0.34,"top":0.46,"right":0.41,"bottom":0.52},"eye":{...}},"right":{...}}`,
-as fractions, pixels or the 0..1000 grid, or flat keys such as `left_iris`;
+`{"left":{"iris":{"left":0.34,"top":0.46,"right":0.41,"bottom":0.52},"eye":{...},"cheek":{...}},"right":{...},"mouth":{...}}`,
+as fractions, pixels or the 0..1000 grid, or flat keys such as `left_iris`,
+`left_cheek` and `mouth`;
 and `second`, the answer to the second request when the first can't be read
 or fails Martlet's checks: the `steps`, each request `asked` (its `step`,
 `kind` `Eyes`, `Check` or `Again`, picture, `marks`, message and answer), the
-four `boxes` as fractions of the close-up, the `problems` the checks found,
-the `failure`, and the `hint` the renderer gets: each eye's `iris` (`x`, `y`,
-`r`) and opening (`eye`: `x`, `y`, `rx`, `ry`) in face widths from the face's
-middle, roll removed), `checks` (the limits the checks use, in face widths),
+`boxes` as fractions of the close-up (`leftIris`, `leftEye`, `rightIris`,
+`rightEye`, and `leftCheek`, `rightCheek` and `mouth` when given), the
+`problems` the checks found (for a measurement that saved, the cheeks or mouth
+it left out and why), the `failure`, and the `hint` the renderer gets: each
+eye's `iris` (`x`, `y`, `r`) and opening (`eye`: `x`, `y`, `rx`, `ry`), and
+`cheekLeft`, `cheekRight` and `mouth` (`x`, `y`, `r`) when they pass, in face
+widths from the face's middle, roll removed), `checks` (the limits the checks
+use, in face widths, with `cheekWidth`, `cheekDrop` and `mouthWidth`),
 `saved` (the model's measurement in `character-eyes.json`: who measured it,
 when, the `hint`, the pictures kept, whether the picture of its boxes is kept
 and its plain `line`) and, with `eyesFrom` (`mesh`, `bones`, `vision` or
@@ -2339,38 +2355,47 @@ composed and encoded as the desktop sends it (`previewDirectory` keeps the
 pictures). `save` (an explicit, disposable `dataDirectory` only) writes the
 measurement for the model (`modelPath`, `modelId` or the one the
 `dataDirectory`'s `avatar.json` shows) with its pictures, marked FIXTURE - NOT
-AI, as *Measure the eyes* would; `forget` removes it. Never the model's path;
+AI, as *Measure the face* would; `forget` removes it. Never the model's path;
 it contacts nothing.
 
-Companion › Eyes › *Where the eyes are* (`CompanionTab-Eyes`) reads through `CharacterEyesStatus`
+Companion › Eyes › *Where the face is* (`CompanionTab-Eyes`) reads through `CharacterEyesStatus`
 (where the shown model's eyes come from: *From the model's own meshes.*,
 *From the model's own eye bones and meshes.*, *Measured with vision at 3:12
 PM.* or *Estimated: Martlet guesses where the eyes are from the face...*; while
 the character is hidden, the saved measurement or *Show the character to see
-where its eyes come from.*), `CharacterEyesProgress` (how measuring goes or
+where its eyes come from.*; with a measurement, then *The blush goes on the
+measured cheeks.* or *The cheeks weren't measured, so the blush uses an
+estimate. Measure the face to place it.*), `CharacterEyesProgress` (how measuring goes or
 went: each step while it runs, the result or why it failed, such as *Couldn't
 ask the Thinking model (...)* or *The Thinking model's eyes didn't pass
 Martlet's checks: ...*) and `CharacterEyesNote` (shown only when no model can
-see pictures: *Measure the eyes is off: ...*). `CharacterEyesMeasure` (*Measure
-the eyes*) sends a close-up of the character's face to Thinking and
+see pictures: *Measure the face is off: ...*). `CharacterEyesMeasure` (*Measure
+the face*, or *Measure the face again* once a measurement is saved) sends a
+close-up of the character's face to Thinking and
 `CharacterEyesForget` (*Forget the measurement*) deletes it, so both need
 `--allow-ui-effects`; `CharacterEyesPicture` is the close-up Thinking saw with
-its four numbered boxes. The measurement uses the same off-screen still
-renderer as *Detect zones*, whose picture now also carries the face anchor; the
+its numbered boxes (1 to 4 the eyes, 5 and 6 the cheeks, 7 the mouth). The measurement uses the same off-screen still
+renderer as *Detect zones*, whose picture now also carries the face anchor (that
+renderer never gets the hint, so a new measurement is always relative to
+Martlet's own anchor); the
 desktop log records *Measuring the eyes: a ... picture of the character in its
 rest pose, drawn off screen, with its face ... pixels wide*, each picture sent
-and each step. When a renderer reports `eyesFrom` `estimate` and a model that
+and each step. When a new model shows (one with no measurement of its cheeks
+saved, which includes one measured before Martlet measured cheeks) and a model that
 can see is set up, the desktop measures the model once on its own (once per
 model each time Martlet starts, and never again after *Forget the
 measurement* until it starts again). The hint goes to the renderer (`eyes`)
 after each model load and after each measurement; the desktop log records
-*The character's eyes got Martlet's vision measurement; they use ...*.
+*The character's eyes got Martlet's vision measurement; they use ...*. With
+the hint, `character_face` shows the cheeks and the mouth where vision saw them
+(and, on a Live2D model or a VRM without eye bones, the face's middle on the
+measured eye line).
 Setting `MARTLET_EYES_FIXTURE` to a text file before launching the desktop
 makes a FIXTURE - NOT AI stand-in answer every request of the measurement with
 that file's text (JSON about the close-up, as `answer` above; shown in
 `CharacterEyesProgress` and `CharacterEyesStatus`, and saved with `by`
 `fixture`) after taking the real snapshot and composing and keeping every
-picture, so the whole path runs with no vision request (and *Measure the eyes*
+picture, so the whole path runs with no vision request (and *Measure the face*
 is on without a model that can see).
 
 Touch temperament (on Companion › Touch, below Touch zones) reads through `TouchTemperamentStatus`
@@ -6445,7 +6470,7 @@ the same `dataDirectory` sends it.
 `MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
 returns its bounds before and after, and `ui_snapshot` reports `movable` for
-it. **Locking the character's position**: Home's `ToggleCharacterLock`
+it.
 
 **Tapping the character**: a left click on the character that doesn't drag
 it (it comes up within Windows' drag distance, within 0.7 seconds; also when
@@ -6585,7 +6610,9 @@ clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 (`x`, `y`: the eye and mouth points the overlay emotes such as `tears` or
 `tongue_out` are drawn from, and the top of the head; left out when the
 renderer has none; an eye with a known iris has its point at the eye's
-middle), `overlays` (the overlays showing, such as
+middle; with a face measured by vision the cheeks and mouth are where vision
+saw them), `cheekSize` (the measured cheeks' radius in face widths, which
+sizes the blush; `null` without a measurement), `overlays` (the overlays showing, such as
 `["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
 `skin`, the ID of the face's skin drawable when they are its vertices, or
@@ -6769,21 +6796,20 @@ cutting you off* when a touch stopped Martlet), `message` (a touch-only
 reply's whole message, Companion › Prompts › *Touched*) and `notes` (*Touched,
 with your message*), with the prompts saved in the data directory.
 
-**Locking the character's position**: Home's `ToggleCharacterLock`
-(*Lock character position*, shown while the character shows or is locked),
-Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
-menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The
-character's menu chose 'lock'.*) lock it where it is; all need
-`--allow-ui-effects` because they save `character-placement.json` (see
-`character_status`'s `placement`). Locked, `movable` is false and `ui_move` is
+**Locking the character's position**: Companion › Character's
+`SetupCharacterLock` (*Lock position*, shown while the character shows or is
+locked) and the overlay menu's `CharacterLockPosition` (*Lock position*,
+carried out by Martlet: *The character's menu chose 'lock'.*) lock it where it
+is; both need `--allow-ui-effects` because they save
+`character-placement.json` (see `character_status`'s `placement`). Home has
+no lock button. Locked, `movable` is false and `ui_move` is
 refused; the overlay ignores dragging, the arrow keys and Home, and its own
 `CharacterResetPosition` is disabled; and zoom (the wheel, the menu or
 `SetupCharacterZoomIn`) only zooms the camera, keeping the overlay's bounds.
-The same `ToggleCharacterLock` and `SetupCharacterLock` then read *Unlock
-character position* and *Unlock position* (also while the character is
-hidden), and the overlay menu's `CharacterLockPosition` reads *Unlock
-position* (carried out by Martlet: *The character's menu chose 'unlock'.*);
-each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
+The same `SetupCharacterLock` then reads *Unlock position* (also while the
+character is hidden), and the overlay menu's `CharacterLockPosition` reads
+*Unlock position* (carried out by Martlet: *The character's menu chose
+'unlock'.*); each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
 where (device-independent pixels and the monitor), and `SetupCharacterView` ends with
 *Position locked.* when the overlay reports it. A locked character shows at
 its locked place again after Hide/Show or a Martlet restart (at its default
@@ -6793,22 +6819,22 @@ and `avatar-renderer` *The character's position is locked.*
 
 **Letting clicks pass through the character**: the overlay menu's
 `CharacterClickThrough` (*Let clicks pass through*, carried out by Martlet:
-*The character's menu chose 'click-through-on'.*), Home's
-`ToggleCharacterClickThrough` (*Turn on click-through*, shown while the
-character shows or click-through is on), Companion › Character's
-`SetupCharacterClickThrough` (*Turn on click-through*) and the notification-area
+*The character's menu chose 'click-through-on'.*), Companion › Character's
+`SetupCharacterClickThrough` (*Turn on click-through*, shown while the
+character shows or click-through is on) and the notification-area
 menu's checkable `TrayCharacterClickThrough` (*Let clicks pass through the
 character*, listed while the character shows or click-through is on) turn it
 on; all need `--allow-ui-effects` because they save
 `character-click-through.json` on this PC (`character_status`'s
-`clickThrough`; never shared, and Reset position leaves it alone). On, the
+`clickThrough`; never shared, and Reset position leaves it alone). Home has no
+click-through button. On, the
 overlay window (and its speech bubble) gets `WS_EX_TRANSPARENT`, so every
 click, the wheel and right-click go to the window under it: `ui_snapshot`'s
 `windowStates` reads `clickThrough` true for *Martlet character overlay*, and
 the character can't be dragged, zoomed, tapped, stroked or right-clicked with
 the mouse (its eyes still follow the mouse, and it still talks and moves).
 The mouse can't reach the character's menu then, so it is turned off in
-Martlet: `ToggleCharacterClickThrough` and `SetupCharacterClickThrough` read
+Martlet: `SetupCharacterClickThrough` reads
 *Turn off click-through* (also while the character is hidden),
 `TrayCharacterClickThrough`'s `checkedState` is `On`, and clicking any of them
 turns it off (opened through UI Automation, the overlay menu's
@@ -6857,7 +6883,7 @@ way a broken pipe does (*Renderer message length is invalid (simulated by
 MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
 the character shows (*FIXTURE: the character renderer fails its ... commands*).
 The renderer still starts, draws and closes normally. Commands include `where`
-(saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
+(saving its place after `ui_move`), `lock` (`SetupCharacterLock`), `zoom`
 (`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `place` (a character
 profile's place when you switch profiles), `mouth` (the
 loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`

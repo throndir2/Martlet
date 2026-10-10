@@ -56,8 +56,12 @@ public sealed record ThinkingRequestInfo(long Number, ThinkingRequestStart Start
     public DateTimeOffset? Finished { get; init; }
     public int Preemptions { get; init; }
     public bool Cut { get; init; }
-    /// <summary>How many characters its answer had (never the answer itself).</summary>
+    /// <summary>How many characters its answer had.</summary>
     public int? AnswerLength { get; init; }
+    /// <summary>What it answered (its first <see cref="ThinkingRequests.OutputKept"/> characters), so the owner sees what it adds
+    /// to the conversation. Private, as <see cref="ThinkingRequestStart.Topic"/>: it shows on this PC's Thinking requests page
+    /// only, never in logs, status files or MCP.</summary>
+    public string? Output { get; init; }
     /// <summary>Its place in line (1 is next), or 0 when it isn't in line.</summary>
     public int Position { get; init; }
     /// <summary>A slot is free, but the live conversation needs it while the user talks.</summary>
@@ -103,13 +107,16 @@ public sealed record ThinkingRequestTotals(int Count, int Succeeded, int Problem
 /// <summary>Every request for the Thinking pool's slots, with its timings: Thinking pool jobs (the judges, summaries, check-ins,
 /// memory, naming, touch zones) and the conversation's background work on the same slots (think_longer, research). It keeps every
 /// request that hasn't ended and the last <see cref="Kept"/> that ended, plus totals by kind since Martlet started. It keeps no
-/// request's text or answer: <see cref="ThinkingRequestStart.Topic"/> is the only private part, for this PC's page.
+/// request's text. The private parts, for this PC's page only, are <see cref="ThinkingRequestStart.Topic"/> and each ended
+/// request's <see cref="ThinkingRequestInfo.Output"/> (its first <see cref="OutputKept"/> characters).
 /// Recording is cheap (a lock and a list), so it never adds time to a reply. Thread-safe; <see cref="Changed"/> is raised on
 /// any thread, outside the lock.</summary>
 public sealed class ThinkingRequests
 {
     /// <summary>How many ended requests are kept.</summary>
     public const int Kept = 200;
+    /// <summary>How many characters of each request's output are kept (the rest is cut off).</summary>
+    public const int OutputKept = 16_000;
     private readonly object gate = new();
     private readonly List<ThinkingRequest> requests = [];
     private readonly Dictionary<ThinkingJobKind, ThinkingRequestTotals> totals = [];
@@ -253,6 +260,7 @@ public sealed class ThinkingRequest
     private int preemptions;
     private bool cut;
     private int? answerLength;
+    private string? output;
 
     internal ThinkingRequest(ThinkingRequests owner, long number, ThinkingRequestStart start, string? origin, DateTimeOffset posted)
     {
@@ -322,11 +330,17 @@ public sealed class ThinkingRequest
     }
 
     /// <summary>It ended (<paramref name="end"/>, an ended state) with <paramref name="why"/>, the problem in a few words, if
-    /// any. A try still open ends with it.</summary>
-    public void Finish(ThinkingRequestState end, string? why = null, int? answer = null, bool wasCut = false, int? stops = null)
+    /// any, and <paramref name="text"/>, what it answered (private: <see cref="ThinkingRequestInfo.Output"/>; its length is the
+    /// answer's when <paramref name="answer"/> is null). A try still open ends with it.</summary>
+    public void Finish(ThinkingRequestState end, string? why = null, int? answer = null, bool wasCut = false, int? stops = null,
+        string? text = null)
     {
         ContractRules.Require(end is not (ThinkingRequestState.Waiting or ThinkingRequestState.Running or ThinkingRequestState.Paused),
             "A Thinking request finishes with how it ended.");
+        if (string.IsNullOrEmpty(text)) text = null;
+        answer ??= text?.Length;
+        // A reference when it fits, so the reply's path pays nothing for it.
+        if (text is { Length: > ThinkingRequests.OutputKept }) text = text[..ThinkingRequests.OutputKept];
         var now = owner.Clock.GetUtcNow();
         ThinkingRequestInfo info;
         lock (gate)
@@ -344,6 +358,7 @@ public sealed class ThinkingRequest
             finished = now;
             note = why;
             answerLength = answer;
+            output = text;
             cut = wasCut;
             if (stops is { } count) preemptions = Math.Max(preemptions, count);
             info = InfoLocked(now);
@@ -365,7 +380,7 @@ public sealed class ThinkingRequest
 
     private ThinkingRequestInfo InfoLocked(DateTimeOffset now) => new(number, start, state, posted, [.. attempts], now)
     {
-        Origin = origin, Note = note, Finished = finished, Preemptions = preemptions, Cut = cut, AnswerLength = answerLength
+        Origin = origin, Note = note, Finished = finished, Preemptions = preemptions, Cut = cut, AnswerLength = answerLength, Output = output
     };
 
     // Under the gate: ends a try still open.

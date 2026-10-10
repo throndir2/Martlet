@@ -291,17 +291,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and the profile form's problem ("Give the profile a name."). Never a profile's name.
         "CharacterProfilesStatus", "CharacterProfileEditorProblem",
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
-        // lock buttons' labels, which carry the state: Home's ToggleCharacterLock ("Lock character position" / "Unlock
-        // character position"), Companion's SetupCharacterLock ("Lock position" / "Unlock position") and the overlay menu's
-        // CharacterLockPosition ("Lock position" / "Unlock position"). Clicking any of them saves
+        // lock buttons' labels, which carry the state: Companion's SetupCharacterLock ("Lock position" / "Unlock position") and
+        // the overlay menu's CharacterLockPosition ("Lock position" / "Unlock position"). Clicking either of them saves
         // character-placement.json, so it needs --allow-ui-effects.
-        "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
+        "SetupCharacterPlacement", "SetupCharacterLock", "CharacterLockPosition",
         // Whether clicks pass through the character (Companion › Character's note), and the click-through buttons' labels, which
-        // carry the state: Home's ToggleCharacterClickThrough and Companion's SetupCharacterClickThrough ("Turn on click-through" /
-        // "Turn off click-through") and the overlay menu's CharacterClickThrough ("Let clicks pass through" / "Stop letting clicks
-        // pass through"). Clicking any of them (or the icon menu's TrayCharacterClickThrough) saves character-click-through.json,
-        // so it needs --allow-ui-effects.
-        "SetupCharacterClickThroughNote", "ToggleCharacterClickThrough", "SetupCharacterClickThrough", "CharacterClickThrough",
+        // carry the state: Companion's SetupCharacterClickThrough ("Turn on click-through" / "Turn off click-through") and the
+        // overlay menu's CharacterClickThrough ("Let clicks pass through" / "Stop letting clicks pass through"). Clicking any of
+        // them (or the icon menu's TrayCharacterClickThrough) saves character-click-through.json, so it needs --allow-ui-effects.
+        "SetupCharacterClickThroughNote", "SetupCharacterClickThrough", "CharacterClickThrough",
         // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
         // voice"). Clicking it saves talk-preferences.json (Speak Martlet's replies aloud), so it needs --allow-ui-effects.
         "CharacterMuteVoice",
@@ -531,12 +529,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // character's reasons (ReactionChangeWhy-<n>, ReactionChangeEndedWhy-<n>) come from the conversation and aren't values.
         // Undo (ReactionChangeUndo-<n>) and Undo all (ReactionChangesUndoAll) end changes, so they need --allow-ui-effects.
         "ReactionChangesStatus", "ReactionChangesState",
-        // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
-        // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
-        // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
-        // Measure the eyes (CharacterEyesMeasure) sends a close-up of the character's face to Thinking and Forget the measurement
-        // (CharacterEyesForget) deletes it, so they need --allow-ui-effects; CharacterEyesPicture (the close-up with its boxes)
-        // isn't a value.
+        // Companion › Eyes › Where the face is: where the shown model's eyes come from (the model's own meshes or eye bones,
+        // the vision measurement and when it was taken, or an estimate) and whether the blush uses measured cheeks, how measuring
+        // went (each step while it runs, or why it failed) and, only when no model can see pictures, why Measure the face is off.
+        // Fixed text, times and counts only. Measure the face (CharacterEyesMeasure) sends a close-up of the character's face to
+        // Thinking and Forget the measurement (CharacterEyesForget) deletes it, so they need --allow-ui-effects;
+        // CharacterEyesPicture (the close-up with its boxes) isn't a value.
         "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote",
         // Companion › Touch › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
@@ -863,11 +861,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // question Cancel task asks first (the task's title, which is a run window's title).
         "TasksSummary", "TasksEmpty", "NavTasksCount", "HostRunHideHint", "CancelTaskQuestion",
         // Thinking requests: how many run and wait and the averages (ThinkingRequestsSummary), the pool's slots now
-        // (ThinkingRequestsPool), the empty state, the navigation rail's count of waiting and running requests, Timing by type
-        // and the selected request in full (type, task, companion, member, tries and timings; never its text or answer).
-        // ThinkingRequestTopic is what the conversation asked for (private): it is never returned.
+        // (ThinkingRequestsPool), the empty state, the navigation rail's count of waiting and running requests, Timing by type,
+        // the selected request in full (type, task, companion, member, tries and timings; never its text or answer) and the line
+        // over its output (ThinkingRequestOutputState: how many characters, or why there is none). ThinkingRequestTopic (what the
+        // conversation asked for) and ThinkingRequestOutput (what the request answered) are private: they are never returned.
         "ThinkingRequestsSummary", "ThinkingRequestsPool", "ThinkingRequestsEmpty", "NavThinkingRequestsCount", "ThinkingRequestDetail",
-        "ThinkingRequestsTiming"
+        "ThinkingRequestsTiming", "ThinkingRequestOutputState"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'

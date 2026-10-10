@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- The **Thinking requests** page now shows what each request answered: select a request to see its output beside its details, so you can see what each one adds to the conversation. The output stays on this PC and never goes in logs. ([#717](https://github.com/throndir2/Martlet/pull/717))
+- When you add a new character model, Martlet now measures where its eyes, cheeks and mouth are (once, with a model that can see), so the blush lands on the cheeks instead of over the eyes, and heart eyes, star eyes and other emotes sit on the right spots. Press **Measure the face again** on Companion › Eyes to redo it any time. ([#716](https://github.com/throndir2/Martlet/pull/716))
+
 ### Changed
 
 - Martlet's log now follows each Thinking request step by step: where it went, when each step happened, what it waits for while it waits, and how it ended, so a slow or stuck reply is easier to understand on the Diagnostics page. ([#719](https://github.com/throndir2/Martlet/pull/719))
@@ -17,8 +22,13 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Check-ins, remembering and other Thinking pool jobs no longer wait "for the conversation" because of clicks, key presses or typing near your microphone: only your voice holds them back now. ([#718](https://github.com/throndir2/Martlet/pull/718))
 - A computer in the Thinking pool whose model also answers you now says why pool jobs stay off it (your replies would wait), and no longer shows a wrong "shares the graphics card" warning. ([#713](https://github.com/throndir2/Martlet/pull/713))
 - Changing a host's conversation model to a bigger one (such as `gemma4:12b` on a 16 GB graphics card) no longer stops with "Check the host's disk space and network": if the new model doesn't load beside the old one, the host unloads the old one and tries again. ([#712](https://github.com/throndir2/Martlet/pull/712))
+
+### Removed
+
+- The home screen no longer has the **Lock/Unlock character position** and **Turn on/off click-through** buttons. Use Companion › Character or the character's right-click menu instead; you can also turn click-through off from Martlet's icon in the notification area. ([#719](https://github.com/throndir2/Martlet/pull/719))
 
 ## [0.65.0] - 2026-10-09
 

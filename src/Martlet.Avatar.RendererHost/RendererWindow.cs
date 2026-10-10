@@ -1797,9 +1797,9 @@ internal sealed partial class RendererWindow : Window
         return result;
     }
 
-    /// <summary>Gives the page the eye hint (<see cref="RendererEyes"/>; without both eyes it clears it) and says what the eyes
-    /// use now. The page takes it beside the touch and face readings, so a hint it can't use never fails the character; a
-    /// hint that isn't valid clears it.</summary>
+    /// <summary>Gives the page the face hint (<see cref="RendererEyes"/>: the eyes, and the cheeks and mouth when measured;
+    /// without both eyes it clears it) and says what the eyes use now. The page takes it beside the touch and face readings, so
+    /// a hint it can't use never fails the character; a hint that isn't valid clears it.</summary>
     private async Task<RendererEyesFrom> EyesAsync(RendererMessage message)
     {
         var hint = message.Data.ValueKind == JsonValueKind.Object ? RendererProtocol.Data<RendererEyes>(message) : new RendererEyes();
@@ -1808,7 +1808,8 @@ internal sealed partial class RendererWindow : Window
             ErrorLog.Warn("Martlet sent an eye hint that isn't valid; the character's eyes use the model's own data or an estimate.");
             hint = new();
         }
-        var answer = await BrowserAsync<object?>("eyes", hint.Clears ? null : new { left = hint.Left, right = hint.Right });
+        var answer = await BrowserAsync<object?>("eyes", hint.Clears ? null
+            : new { left = hint.Left, right = hint.Right, cheekLeft = hint.CheekLeft, cheekRight = hint.CheekRight, mouth = hint.Mouth });
         return new(answer.TryGetProperty("eyesFrom", out var from) && from.ValueKind == JsonValueKind.String ? RendererEyesFrom.Read(from.GetString()) : null);
     }
 

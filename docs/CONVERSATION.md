@@ -858,7 +858,7 @@ three levels:
 | Level | Starts when | Ends when |
 | --- | --- | --- |
 | Idle | Nothing below holds the floor. | |
-| Listening | The microphone hears your voice (a frame the speakers don't explain: never Martlet's own voice and never what this PC plays). | 6 seconds without your voice, or at once when the speech was only a sound or filler (the word check dropped it). |
+| Listening | The microphone hears your voice: speech (at least the detector's 200 ms of sound, so a click, a key press or typing never counts) that the speakers don't explain (never Martlet's own voice and never what this PC plays; `LiveFloor.Voice`). | 6 seconds without your voice, or at once when the speech was only a sound or filler (the word check dropped it). |
 | Live | A quick transcript has real words (`LiveFloor.RealWords`: the word check keeps them and they are more than backchannel words such as "yeah" or "mm-hmm"), or you say Martlet's name; the talk button; a reply to you starts (said, typed, a touch, a paired chat, people in your Discord call). | The reply's voice is all made (`ConversationTurn.Synthesized`) or the reply stops, then a 2-second grace for a fast answer; 8 seconds after words that no reply followed. Real words said over Martlet make it Live again. |
 
 In a participation mode that answers only when addressed, words make the
@@ -956,7 +956,7 @@ what was said). MCP's `live_floor_status` reads it with the settings, and
 LiveFloor floor = conversation.LiveFloor;          // LiveConversationController.LiveFloor (the desktop's)
 LiveFloorLevel level = floor.Level;                // Idle, Listening or Live (lock-free)
 floor.Changed += change => { /* change.From, change.To, change.Why, change.At; raised in order */ };
-floor.Heard();                                     // the user's voice (call per frame; cheap)
+if (LiveFloor.Voice(detector, speakers)) floor.Heard(); // the user's voice: speech, not a click (call per frame; cheap)
 floor.NotWords("a sound, not words");             // the speech was only a sound or filler: Listening ends
 floor.Words("real words");                         // Live for 8 s, or until a reply takes over
 LiveFloorReply reply = floor.BeginReply("a reply to what you typed started");

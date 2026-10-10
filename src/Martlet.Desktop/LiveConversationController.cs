@@ -4805,8 +4805,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     speakerSum.Add(speakerSum[^1] + (loud && speakers ? 1 : 0));
                     explainedSum.Add(explainedSum[^1] + (speakers ? 1 : 0));
                     talkOver?.Process(loud, speakers);
-                    // The user's own voice (never the speakers' sound or what this PC plays) puts the live floor at Listening.
-                    if (loud && !speakers && !operation.Listening.Pc) floor.Heard();
+                    // The user's own voice (speech, not a click or a key press; never the speakers' sound or what this PC plays)
+                    // puts the live floor at Listening.
+                    if (!operation.Listening.Pc && LiveFloor.Voice(detector, speakers)) floor.Heard();
                     // Paused for what was said over Martlet: how long the user talks on decides too (BargeInHold).
                     operation.Held?.Hold.Frame(loud && !speakers);
                     // Talking over Martlet: once the voice has gone on long enough (or a short word just ended), what was said so

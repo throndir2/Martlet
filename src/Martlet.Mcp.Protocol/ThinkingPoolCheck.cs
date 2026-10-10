@@ -577,12 +577,13 @@ internal static class ThinkingPoolCheck
                 $"{r.Id} {r.KindName} {r.State}: {r.Attempts.Count} tries ({string.Join(", ", r.Attempts.Select(a => $"{a.Member} {a.Duration(r.Finished ?? r.Now).TotalMilliseconds:0} ms: {a.Ending}"))}), " +
                 $"waited {r.Waited.TotalMilliseconds:0} ms, ran {r.Ran.TotalMilliseconds:0} ms, total {r.Total.TotalMilliseconds:0} ms";
             var second = TimeSpan.FromSeconds(1);
-            Check("requests: a success is recorded with one try and its timings",
+            Check("requests: a success is recorded with one try, its timings and its output (private, for this PC's page)",
                 success.Succeeded && ofDigest is { State: ThinkingRequestState.Succeeded, Attempts.Count: 1, Retries: 0, Start.Source: ThinkingRequestSource.Pool } &&
                 ofDigest.Attempts[0].Member == "bad" && ofDigest.Attempts[0].Model == "fixture-a" && ofDigest.Attempts[0].Ending == "answered" &&
                 ofDigest.Ran >= TimeSpan.FromMilliseconds(50) && ofDigest.Ran < 5 * second && ofDigest.Waited < second &&
-                ofDigest.Total >= ofDigest.Ran && ofDigest.AnswerLength == "fixture answer".Length && ofDigest.Finished is not null,
-                Timing(ofDigest));
+                ofDigest.Total >= ofDigest.Ran && ofDigest.AnswerLength == "fixture answer".Length && ofDigest.Finished is not null &&
+                ofDigest.Output == "fixture answer",
+                $"{Timing(ofDigest)}; output kept: {ofDigest.Output?.Length ?? 0} characters");
             Check("requests: a retry is recorded as two tries, the failed member then the one that answered",
                 retry.Succeeded && retry.Attempts == 2 && ofMemory is { State: ThinkingRequestState.Succeeded, Attempts.Count: 2, Retries: 1 } &&
                 ofMemory.Attempts[0].Member == "bad" && ofMemory.Attempts[0].Ending == "busy: job.busy" &&
@@ -593,7 +594,7 @@ internal static class ThinkingPoolCheck
             Check("requests: a stale judge is recorded as dropped after its wait, with no try",
                 stale.Outcome == ThinkingJobOutcome.Stale && ofJudge is { State: ThinkingRequestState.Stale, Attempts.Count: 0, Fast: true } &&
                 ofJudge.Ran == TimeSpan.Zero && ofJudge.Waited >= TimeSpan.FromMilliseconds(250) && ofJudge.Waited < 5 * second &&
-                ofJudge.Start.DropWhenStale && ofJudge.Note == stale.Problem,
+                ofJudge.Start.DropWhenStale && ofJudge.Note == stale.Problem && ofJudge.Output is null,
                 $"{Timing(ofJudge)}; note: {ofJudge.Note}");
             var totals = places.Requests.Totals;
             var digestTotals = totals.GetValueOrDefault(ThinkingJobKind.Digest, ThinkingRequestTotals.Empty);

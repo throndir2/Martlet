@@ -227,7 +227,7 @@ public sealed class BackgroundJob
             BackgroundJobState.Canceled => ThinkingRequestState.Canceled,
             _ => ThinkingRequestState.Failed
         }, end == BackgroundJobState.Canceled ? $"stopped by {by ?? CanceledByYou}" : outcome?.Problem, outcome?.Result?.Length,
-            outcome?.Cut == true, Preemptions);
+            outcome?.Cut == true, Preemptions, outcome?.Result);
         // Its place is free for the next job.
         Volatile.Read(ref lease)?.Dispose();
     }

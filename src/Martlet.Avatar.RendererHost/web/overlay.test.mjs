@@ -76,6 +76,23 @@ test("the blush paints a pink glow on both cheeks and adapter pixels become CSS 
   clearOverlays();
 });
 
+test("measured cheeks size the blush: cheekSize scales every level and is kept within its bounds", () => {
+  const radii = anchorFor => {
+    const { ctx, log } = recorder();
+    drawBlush(ctx, anchorFor, 0, 1);
+    return log.fills.map(f => f.radius);
+  };
+  const plain = radii(anchor);
+  assert.ok(plain.every(r => Math.abs(r - 80 * 0.17) < 1e-9), JSON.stringify(plain));
+  const measured = radii({ ...anchor, cheekSize: 0.07 });
+  assert.ok(measured.every(r => Math.abs(r - 80 * 0.17 * 0.5) < 1e-9), `half the size for cheeks half as big: ${JSON.stringify(measured)}`);
+  assert.equal(toCssAnchor({ ...anchor, cheekSize: 0.12 }, 0.5, 0.5).cheekSize, 0.12, "a share of the face's width needs no scaling");
+  assert.equal(toCssAnchor({ ...anchor, cheekSize: 3 }, 1, 1).cheekSize, 0.4);
+  assert.equal(toCssAnchor({ ...anchor, cheekSize: 0.001 }, 1, 1).cheekSize, 0.05);
+  assert.equal(toCssAnchor({ ...anchor, cheekSize: Number.NaN }, 1, 1).cheekSize, undefined);
+  assert.equal(toCssAnchor(anchor, 1, 1).cheekSize, undefined);
+});
+
 test("the blush lies on each cheek's surface: wider on a turned head's near cheek, squashed and fading on the far one", () => {
   const transforms = [], fills = [];
   const ctx = new Proxy({}, { get: (target, key) => key in target ? target[key]
