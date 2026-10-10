@@ -169,11 +169,11 @@ also has **Zoom in** and **Zoom out** and shows the overlay's current size,
 camera zoom and where the top of the head sits. The overlay does not take
 keyboard focus on opening.
 
-**Lock character position** (home screen), **Lock position** (Companion >
-Character) or **Lock position** on the character's right-click menu keeps it
+**Lock position** (Companion > Character) or **Lock position** on the
+character's right-click menu keeps it
 where it is: it can't be dragged, nudged with the arrow keys, sent home or
 resized from the overlay, and zoom only zooms the camera within its frame.
-**Unlock character position** on the home screen, **Unlock position** on
+**Unlock position** on
 Companion > Character (also while the character is hidden) or **Unlock
 position** on the locked character's right-click menu unlocks it. The locked place and size are saved on this PC
 (`character-placement.json`, never shared with other computers), so a locked
@@ -182,14 +182,13 @@ default spot, still locked, if that place is no longer on a screen). Unlocked,
 position is session-only.
 
 **Let clicks pass through** on the character's right-click menu, **Turn on
-click-through** (home screen, shown while the character is visible), **Turn on
 click-through** on Companion > Character or **Let clicks pass through the
 character** on the notification-area menu makes the overlay ignore the mouse
 (`RendererClickThrough`, Windows' `WS_EX_TRANSPARENT` on the overlay and its
 speech bubble): clicks, the wheel and right-clicks go to the window under it,
 for example a game. The character still follows the mouse with its eyes, talks
 and moves. The mouse can't reach its menu then, so **Turn off click-through**
-(home screen or Companion > Character, also while the character is hidden) or
+(Companion > Character, also while the character is hidden) or
 the notification-area menu turns it off. The choice is saved on this PC
 (`character-click-through.json`, never shared with other computers), so a
 character shows click-through again after it is hidden or Martlet restarts;
