@@ -15,6 +15,10 @@ public sealed record HostTextTarget(string Origin, string HostId, string SpkiFin
     /// turn: a live request of this PC that needs the computer stops it (<see cref="Martlet.Core.Cluster.WorkPriority"/>).</summary>
     public bool Background { get; init; }
 
+    /// <summary>The request's own pool chose this computer (the image or audio model's members, docs/SENSE_MODELS.md): it goes
+    /// straight there, and that pool passes a busy computer over, instead of Thinking's work sharing.</summary>
+    public bool Pooled { get; init; }
+
     public override string ToString() => nameof(HostTextTarget);
 }
 

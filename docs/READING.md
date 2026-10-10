@@ -23,7 +23,7 @@ that computer, **Switch to** changes it.
 | Choice | What it uses | Where it runs | Data |
 | --- | --- | --- | --- |
 | **Windows OCR on this PC** (default, recommended) | Windows' own text recognition (`Windows.Media.Ocr`) in your Windows languages | This PC's processor, about 140 ms for a full-size 1920 x 1080 screenshot | Nothing leaves this PC |
-| **Martlet's Reading role** | PaddleOCR's PP-OCRv5 models with RapidOCR 3.10.0, or RapidOCR 1.4.4 with its PP-OCRv4 models, in Docker | This PC or another of your computers: the processor, or an NVIDIA graphics card for PP-OCRv5 server | Screenshots go to that computer. It reads them in memory and does not keep them |
+| **Martlet's Reading role** | PaddleOCR's PP-OCRv5 models with RapidOCR 3.10.0, or RapidOCR 1.4.4 with its PP-OCRv4 models, in Docker | This PC or another of your computers: the processor, or an NVIDIA graphics card for PP-OCRv5 server | Screenshots go to that computer, or to another of your computers that runs the role when that one is busy ([the Reading pool](#the-reading-pool)). It reads them in memory and does not keep them |
 | **Off** | Nothing | | |
 
 Windows OCR is fast and free. It needs a Windows language that has text
@@ -47,6 +47,36 @@ Set it up from **Companion › Reading › Martlet's Reading role**. Choose the
 computer and the model, then **Set up**. That uses the same `martlet-host add
 ocr` flow as every other role. The role is described in
 [Reading host role](OCR_HOST.md).
+
+## The Reading pool
+
+With the Reading role, reads go to a pool of your computers that run it, not
+only to one computer. Each read goes through Martlet's work queue (`WorkQueue`,
+see [Sharing work between your computers](CLUSTER.md#sharing-work-between-your-computers))
+at background priority:
+
+1. The read goes to the computer named in Companion › Reading first. While that
+   computer is free, nothing changes: no extra request.
+2. When it is busy (it reads for another computer), does not answer or no
+   longer runs the Reading role, the read goes at once to the next of your
+   computers that the shared plan says run the Reading role: this PC's own
+   host service first, then the computer with the fewest other jobs.
+3. When every one is busy, the read waits up to 3 seconds and goes to the
+   first that frees. After that it gives up quietly, and the next screenshot
+   tries again.
+4. A computer kept for another companion PC (Devices › Sharing work) is never
+   used.
+5. A host that a friend shares with you reads only when you named it in
+   Companion › Reading. When its owner needs it, the read goes to your own
+   computers, or waits for a later screenshot.
+
+Martlet keeps the connection to each computer open between reads, and drops it
+when that computer fails. The pool has no Devices › Sharing work card. The
+desktop log (`Sharing work: Reading went to m3-host (1 busy).`) and the Devices
+card's status line say when a read went to another computer. **Qualification:**
+the order and queue are checked locally (`ReadingPoolTests`, MCP
+`reading_check` `pool` and `poolCheck`); reads between real hosts are
+**NOT RUN**.
 
 ## What Martlet does with the text
 

@@ -64,9 +64,10 @@ internal static partial class WorkSharingRoster
 
     /// <summary>The paired computers to try for <paramref name="job"/>, first to last, each with the model its role runs (from the
     /// shared plan; null for <paramref name="planned"/>, which keeps the route's own). <paramref name="roleKind"/> is the host role
-    /// that does it there; <paramref name="model"/>, when given, the model it must run.</summary>
+    /// that does it there; <paramref name="model"/>, when given, the model it must run. Without <paramref name="planned"/>, only
+    /// the computers the plan says run it.</summary>
     internal static IReadOnlyList<(PairedHost? Host, string? Model)> Order(string? directory, string job, string roleKind, string? model,
-        string planned)
+        string? planned)
     {
         if (directory is null) return [(null, null)];
         var hosts = Hosts(directory);

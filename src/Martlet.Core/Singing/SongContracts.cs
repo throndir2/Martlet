@@ -117,6 +117,9 @@ public enum SongStage
 /// ahead.</summary>
 public sealed record SongProgress(SongStage Stage, double Fraction, int? QueuePosition = null)
 {
+    /// <summary>Set once the singing pool gives the song to a computer: that computer's host ID (null on other reports).</summary>
+    public string? Host { get; init; }
+
     /// <summary>A short owner-facing description such as "Writing the music".</summary>
     public string Describe() => Stage switch
     {
