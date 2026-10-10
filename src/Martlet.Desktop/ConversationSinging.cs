@@ -139,6 +139,15 @@ internal sealed class ConversationSinging : IAsyncDisposable
     /// <summary>The data directory songs are kept in (as creations), or null where they can't be.</summary>
     internal string? DataDirectory => dataDirectory;
 
+    /// <summary>Where the signed-in account keeps its songs (its account folder; the data folder until the desktop sets it).</summary>
+    internal string? CreationsDirectory
+    {
+        get => Volatile.Read(ref creationsDirectory) ?? dataDirectory;
+        set => Volatile.Write(ref creationsDirectory, value);
+    }
+
+    private string? creationsDirectory;
+
     private double voiceVolume = PcmGain.Full;
     /// <summary>Companion › Voice › Voice volume (0 to 1): songs play at it, and one playing now follows a change at once.</summary>
     internal double VoiceVolume
@@ -413,7 +422,7 @@ internal sealed class ConversationSinging : IAsyncDisposable
         }
         return JsonSerializer.Serialize(new
         {
-            updatedAt = clock.GetUtcNow(), offered = Offered, songs = dataDirectory is null ? 0 : SongCreations.List(dataDirectory).Count,
+            updatedAt = clock.GetUtcNow(), offered = Offered, songs = CreationsDirectory is not { } folder ? 0 : SongCreations.List(folder).Count,
             output = devices is SilentSongOutput ? "silent fixture output (MARTLET_SINGING_FIXTURE)" : devices is null ? "none" : "Martlet's voice output",
             playing = current is null ? null : Playing(current),
             lastStop = stopped is null ? null : new
