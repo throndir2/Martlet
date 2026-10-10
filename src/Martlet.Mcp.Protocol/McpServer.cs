@@ -481,6 +481,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("accounts_status", "Read who uses Martlet on a desktop's data directory (docs/ACCOUNTS.md): this device's ID; the " +
+            "account session (accounts\\session.json: none, loaded or unreadable; whether its Windows login is the " +
+            "MARTLET_SIMULATE_WINDOWS_LOGIN fixture), the account in use and each account signed in on this device (ID as 32 hex " +
+            "digits, display name, role, whether it still waits to reach the household's directory, whether its folder " +
+            "accounts\\<id> exists), the household's owner account; and this PC's copy of the account directory (accounts.json: " +
+            "how many accounts, removed and owners, its revision, and per account its ID, name, role, login kinds, how many devices " +
+            "it is signed in on, whether this device is one, who created and last changed it, and when). Never a SID, e-mail, " +
+            "signature or attestation. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("outside_reachability_check", "Check how each host in this PC's Martlet network (network.json in a data directory) can " +
             "be reached: its home address and each owner-set outside address (overlay or port forward), each dialed directly, checked " +
             "against the host key pinned in the roster and asked GET /health/live (no credential, nothing else). Returns per host which " +
@@ -513,10 +524,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the refusals elsewhere; friend mode: whether the desktop signed in as a friend, its access, whether it ever asked to " +
             "join or was refused anything (access.friend), and its Thinking requests). With shareWithFriend true (owner mode, for a " +
             "session without the window) the lab's own admin desktop shares the host with the simulated friend from the start, so the " +
-            "running desktop meets a friend's computer in its network sync. \"stop\": ends it (it also ends with this server).", new
+            "running desktop meets a friend's computer in its network sync. mode \"account\" (headless, no desktop needed): household " +
+            "account sign-in on a host with an ECDSA key; its owner starts a network and sets up the owner login, " +
+            "Sam's (password and authenticator), Alex's (password only) and a provider identity linked to Sam, then every Prove " +
+            "sign-in (POST /martlet/v1/signin/prove) and a laptop's sign-in as Sam must give a host attestation that " +
+            "Martlet.Core's AccountAttestation.Check accepts against the roster, and a changed or expired attestation, another key, " +
+            "a friend's identity (signin.no_account), a wrong password and Alex adding a computer (signin.needs_authenticator) are " +
+            "refused; status has ok, checks and attestations. \"stop\": ends it (it also ends with this server).", new
         {
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
-            mode = new { type = "string", @enum = new[] { "owner", "friend" } },
+            mode = new { type = "string", @enum = new[] { "owner", "friend", "account" } },
             signInDesktop = new { type = "boolean" },
             shareWithFriend = new { type = "boolean" },
             dataDirectory = new { type = "string" }
@@ -2302,6 +2319,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
+                "accounts_status" => AccountsStatus.Read(DataDirectory(arguments)),
                 "outside_reachability_check" => await OutsideReachabilityAsync(arguments, cancellation),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
             "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
@@ -2969,7 +2987,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 if (signInLab is { HasExited: false }) throw new InvalidOperationException("The sign-in lab is already running; stop it first.");
                 var mode = OptionalString(arguments, "mode") ?? "owner";
-                if (mode is not ("owner" or "friend")) throw new ArgumentException("mode is owner or friend.");
+                if (mode is not ("owner" or "friend" or "account")) throw new ArgumentException("mode is owner, friend or account.");
                 var extra = new List<string> { "--mode", mode };
                 if (OptionalBool(arguments, "signInDesktop") == true)
                     extra.Add(mode == "friend" ? "--sign-in-desktop" : throw new ArgumentException("signInDesktop goes with mode friend."));

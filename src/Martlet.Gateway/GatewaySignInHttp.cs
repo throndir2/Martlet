@@ -1,5 +1,7 @@
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Martlet.Core.Accounts;
 using Martlet.Core.Logs;
 using Microsoft.AspNetCore.Http;
 
@@ -14,17 +16,22 @@ namespace Martlet.Gateway;
 /// <item><c>POST /martlet/v1/signin/begin</c>: starts an attempt (state, nonce and, for a provider, the browser URL built
 /// from the computer's PKCE challenge and loopback redirect).</item>
 /// <item><c>POST /martlet/v1/signin/complete</c>: the proof (owner account: user, password, authenticator or recovery code;
-/// a provider: what the browser brought back) for a device ID and name; answers 201 with a device credential like pairing.</item>
+/// a provider: what the browser brought back) for a device ID and name; answers 201 with a device credential like pairing,
+/// and an account attestation when the identity is linked to an account and this host is in a network.</item>
 /// </list>
-/// <c>GET</c>/<c>POST /martlet/v1/signin/settings</c> read and change the owner account, providers and allow list; they need
-/// a signed request from a member desktop of this host's network (any paired desktop while the host is in no network) and
-/// never return a secret.
+/// <c>POST /martlet/v1/signin/prove</c> is a Prove sign-in (docs/ACCOUNTS.md) by a paired computer that is already in: a
+/// signed request with the attempt and its proof (a Martlet password login, "martlet" or "owner", or a provider); it answers
+/// 200 with the host's signed <see cref="AccountAttestation"/> for that computer and issues no credential.
+/// <c>GET</c>/<c>POST /martlet/v1/signin/settings</c> read and change the owner account, household account logins, providers
+/// and allow list; they need a signed request from a member desktop of this host's network (any paired desktop while the host
+/// is in no network) and never return a secret.
 /// </summary>
 internal sealed partial class GatewayHttpApplication
 {
     internal const string SignInPath = "/martlet/v1/signin";
     internal const string SignInBeginPath = "/martlet/v1/signin/begin";
     internal const string SignInCompletePath = "/martlet/v1/signin/complete";
+    internal const string SignInProvePath = "/martlet/v1/signin/prove";
     internal const string SignInSettingsPath = "/martlet/v1/signin/settings";
     internal const string SignInRouteClass = "signin";
     private const int MaximumSignInRequestBytes = 16_384;
@@ -32,6 +39,10 @@ internal sealed partial class GatewayHttpApplication
     private GatewaySignInService? signIn;
 
     internal TimeProvider Clock => clock;
+
+    /// <summary>The host's current TLS certificate with its private key, which signs account attestations (its key is the one
+    /// the roster pins). Set when the listener starts; null before.</summary>
+    internal Func<X509Certificate2>? SigningCertificate { get; set; }
 
     internal GatewaySignInService SignIn => signIn ?? throw new InvalidOperationException("Sign-in is not initialized.");
 
@@ -41,13 +52,14 @@ internal sealed partial class GatewayHttpApplication
         signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message))
         {
             Providers = providers.Create,
-            IsMember = deviceId => Network.Roster?.Desktop(deviceId) is { Removed: false }
+            IsMember = deviceId => Network.Roster?.Desktop(deviceId) is { Removed: false },
+            DefaultOwnerAccount = () => Network.State == "bound" && Network.Roster is { } roster ? OwnerAccount.IdFor(roster.NetworkId) : null
         };
         authenticator.FriendAllowed = principal => SignIn.FriendAllowed(principal.CredentialId);
     }
 
     private static bool IsSignInTarget(string rawTarget) =>
-        rawTarget is SignInPath or SignInBeginPath or SignInCompletePath or SignInSettingsPath;
+        rawTarget is SignInPath or SignInBeginPath or SignInCompletePath or SignInProvePath or SignInSettingsPath;
 
     private async ValueTask InvokeSignInAsync(HttpContext context, string rawTarget)
     {
@@ -56,14 +68,20 @@ internal sealed partial class GatewayHttpApplication
             await InvokeSignInSettingsAsync(context).ConfigureAwait(false);
             return;
         }
+        if (rawTarget == SignInProvePath)
+        {
+            await InvokeSignInProveAsync(context).ConfigureAwait(false);
+            return;
+        }
         if (rawTarget == SignInPath)
         {
             GatewayRules.Require(context.Request.Method == HttpMethods.Get, "request.invalid");
             EnsureEmptyRequest(context.Request);
+            var providers = SignIn.Available().Select(p => new SignInProviderDocument { Id = p.Id, Kind = p.Kind, Name = p.Name, RedirectPort = p.RedirectPort }).ToArray();
             await WriteJsonAsync(context, StatusCodes.Status200OK, new SignInProvidersDocument
             {
-                ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId,
-                Providers = SignIn.Available().Select(p => new SignInProviderDocument { Id = p.Id, Kind = p.Kind, Name = p.Name, RedirectPort = p.RedirectPort }).ToArray()
+                ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, Providers = providers,
+                MartletSignIn = SignIn.MartletAvailable()
             }).ConfigureAwait(false);
             return;
         }
@@ -89,27 +107,100 @@ internal sealed partial class GatewayHttpApplication
         GatewayRules.Token(complete.DisplayName, 64);
         GatewayRules.Require(Base64Url.TryDecode(complete.AttemptId, 16, out _), "request.invalid");
         // The claimed account name (owner account) counts toward lockout per identity as well as per address.
-        var claimed = complete.Proof.ValueKind == JsonValueKind.Object && complete.Proof.TryGetProperty("user", out var user) &&
-            user.ValueKind == JsonValueKind.String ? "owner:" + user.GetString()?.Trim().ToLowerInvariant() : null;
+        var claimed = Claimed(complete.Proof);
         var request = Admit(context, claimed);
         try
         {
             var (credential, who) = await SignIn.CompleteAsync(complete.AttemptId, complete.DeviceId, complete.DisplayName, complete.Proof,
                 context.RequestAborted).ConfigureAwait(false);
             Guard.Record(request with { Subject = Subject(who) }, GatewayGuardOutcome.Success, "signin.ok", Subject(who));
+            // The computer that just signed in also gets the account it proved, attested, when this host can say so.
+            var account = credential.Access == GatewayAccess.Friend ? null : SignIn.AccountFor(who);
             await WriteJsonAsync(context, StatusCodes.Status201Created, new SignInResponseDocument
             {
                 ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, CredentialId = credential.CredentialId,
                 CredentialSecret = credential.Secret.Reveal(), DeviceId = credential.DeviceId, Roles = credential.Roles,
                 Lifetime = credential.Lifetime,
                 SignedIn = new() { Provider = who.Provider, Subject = who.Subject, Label = who.Label },
-                Access = credential.Access == GatewayAccess.Friend ? GatewaySignInDocument.FriendAccess : "member"
+                Access = credential.Access == GatewayAccess.Friend ? GatewaySignInDocument.FriendAccess : "member",
+                AccountId = account?.AccountId,
+                Attestation = account is { } proved ? TryAttest(proved.AccountId, credential.DeviceId, proved.Login, AccountAttestation.DefaultLifetime) : null
             }).ConfigureAwait(false);
         }
         catch (GatewayProtocolException error) when (error.Failure.Code.StartsWith("signin.", StringComparison.Ordinal))
         {
             Guard.Record(request, GatewayGuardOutcome.Failure, error.Failure.Code, claimed);
             throw;
+        }
+    }
+
+    private static string? Claimed(JsonElement proof) =>
+        proof.ValueKind == JsonValueKind.Object && proof.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.String
+            ? "owner:" + user.GetString()?.Trim().ToLowerInvariant() : null;
+
+    /// <summary>A Prove sign-in by a paired computer that is already in (not a friend's): verifies the attempt's proof and
+    /// answers the host's signed statement that the account proved itself on that computer.</summary>
+    private async ValueTask InvokeSignInProveAsync(HttpContext context)
+    {
+        GatewayRules.Require(context.Request.Method == HttpMethods.Post, "request.invalid");
+        var body = await ReadInferenceBodyAsync(context.Request, MaximumSignInRequestBytes, context.RequestAborted).ConfigureAwait(false);
+        var caller = authenticator.Authenticate(context.Request, crypto.Sha256(body));
+        var prove = ParseNetworkBody<SignInProveBody>(body);
+        prove.ProtocolVersion.Validate();
+        GatewayRules.Require(Base64Url.TryDecode(prove.AttemptId, 16, out _), "request.invalid");
+        var lifetime = prove.LifetimeSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : AccountAttestation.DefaultLifetime;
+        GatewayRules.Require(lifetime >= AccountAttestation.MinimumLifetime && lifetime <= AccountAttestation.MaximumLifetime, "request.invalid");
+        // Before the proof is checked (and the attempt used up): this host must be able to sign at all.
+        _ = AttestationKey();
+        var claimed = Claimed(prove.Proof);
+        var request = Admit(context, claimed);
+        try
+        {
+            var (who, accountId, login) = await SignIn.ProveAsync(prove.AttemptId, caller.DeviceId, prove.Proof, context.RequestAborted)
+                .ConfigureAwait(false);
+            var attestation = TryAttest(accountId, caller.DeviceId, login, lifetime) ?? throw new GatewayProtocolException("signin.unavailable");
+            Guard.Record(request with { Subject = Subject(who) }, GatewayGuardOutcome.Success, "signin.proved", Subject(who));
+            await WriteJsonAsync(context, StatusCodes.Status200OK, new SignInProofDocument
+            {
+                ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, DeviceId = caller.DeviceId,
+                SignedIn = new() { Provider = who.Provider, Subject = who.Subject, Label = who.Label }, AccountId = accountId,
+                Attestation = attestation
+            }).ConfigureAwait(false);
+        }
+        catch (GatewayProtocolException error) when (error.Failure.Code.StartsWith("signin.", StringComparison.Ordinal))
+        {
+            Guard.Record(request, GatewayGuardOutcome.Failure, error.Failure.Code, claimed);
+            throw;
+        }
+    }
+
+    /// <summary>The network this host vouches in and the certificate it signs with: <c>signin.no_network</c> while the host is
+    /// in no network (nobody could check the statement), <c>signin.unavailable</c> before its listener started.</summary>
+    private (string NetworkId, X509Certificate2 Certificate) AttestationKey()
+    {
+        var roster = Network.State == "bound" ? Network.Roster : null;
+        GatewayRules.Require(roster?.Host(identity.HostId) is { Removed: false }, "signin.no_network");
+        X509Certificate2? certificate;
+        try { certificate = SigningCertificate?.Invoke(); }
+        catch (Exception error) when (error is not OperationCanceledException) { certificate = null; }
+        GatewayRules.Require(certificate is not null, "signin.unavailable");
+        return (roster!.NetworkId, certificate!);
+    }
+
+    /// <summary>The signed attestation as JSON, or null when this host can't make one now (no network, no key yet).</summary>
+    private JsonElement? TryAttest(Guid accountId, string deviceId, AccountLoginKey login, TimeSpan lifetime)
+    {
+        try
+        {
+            var (networkId, certificate) = AttestationKey();
+            var attestation = AccountAttestation.Issue(networkId, identity.HostId, accountId, deviceId, login, clock.GetUtcNow(), lifetime, certificate);
+            if (AccountAttestation.KeyFingerprint(attestation.HostKey) != identity.SpkiFingerprint) return null;
+            using var document = JsonDocument.Parse(attestation.Write());
+            return document.RootElement.Clone();
+        }
+        catch (Exception error) when (error is GatewayProtocolException or ArgumentException or System.Security.Cryptography.CryptographicException)
+        {
+            return null;
         }
     }
 
@@ -147,7 +238,13 @@ internal sealed partial class GatewayHttpApplication
         {
             ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, Attached = SignIn.Attached,
             BlockedReason = SignIn.Attached ? GatewaySignInSettings.BlockedReason(current) : "signin.not_set_up",
+            OwnerAccountId = current.OwnerAccountId ?? SignIn.DefaultOwnerAccount?.Invoke(),
             Owner = current.Owner is { } owner ? new() { User = owner.User, RecoveryCodesLeft = owner.RecoveryCodes.Count, CreatedAt = owner.CreatedAt } : null,
+            Accounts = current.Accounts.Select(a => new SignInAccountDocument
+            {
+                AccountId = a.AccountId, User = a.User, HasAuthenticator = a.TotpSecret is not null, RecoveryCodesLeft = a.RecoveryCodes.Count,
+                CreatedAt = a.CreatedAt
+            }).ToArray(),
             Providers = current.Providers.Select(p => new SignInProviderSettingsDocument
             {
                 Id = p.Id, Kind = p.Kind, Name = p.Name, Issuer = p.Issuer, ClientId = p.ClientId, Scopes = p.Scopes,
@@ -155,7 +252,8 @@ internal sealed partial class GatewayHttpApplication
             }).ToArray(),
             Allowed = current.Allowed.Select(a => new SignInAllowedDocument
             {
-                Provider = a.Provider, Subject = a.Subject, Label = a.Label, AddedAt = a.AddedAt, Access = a.Access ?? "member"
+                Provider = a.Provider, Subject = a.Subject, Label = a.Label, AddedAt = a.AddedAt, Access = a.Access ?? "member",
+                AccountId = a.AccountId
             }).ToArray(),
             Enrolled = current.Enrolled.Select(e => new SignInEnrolledDocument
             {
@@ -206,11 +304,34 @@ internal sealed partial class GatewayHttpApplication
         public required JsonElement Proof { get; init; }
     }
 
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    private sealed record SignInProveBody
+    {
+        public required GatewayProtocolVersion ProtocolVersion { get; init; }
+        public required string AttemptId { get; init; }
+        public required JsonElement Proof { get; init; }
+        /// <summary>How long the attestation lasts, 60 seconds to 30 days; ten minutes when absent.</summary>
+        public int? LifetimeSeconds { get; init; }
+    }
+
+    private sealed record SignInProofDocument
+    {
+        public required GatewayProtocolVersion ProtocolVersion { get; init; }
+        public required string HostId { get; init; }
+        public required string DeviceId { get; init; }
+        public required SignedInDocument SignedIn { get; init; }
+        public required Guid AccountId { get; init; }
+        /// <summary>The <see cref="AccountAttestation"/> JSON, signed with this host's TLS key.</summary>
+        public required JsonElement Attestation { get; init; }
+    }
+
     private sealed record SignInProvidersDocument
     {
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
         public required SignInProviderDocument[] Providers { get; init; }
+        /// <summary>Whether household accounts sign in here with a Martlet password (provider "martlet", not in the list).</summary>
+        public bool MartletSignIn { get; init; }
     }
 
     private sealed record SignInProviderDocument
@@ -245,6 +366,11 @@ internal sealed partial class GatewayHttpApplication
         public required SignedInDocument SignedIn { get; init; }
         /// <summary>"member": one of the owner's computers (it joins the network next). "friend": this host's engines only.</summary>
         public required string Access { get; init; }
+        /// <summary>The household account the sign-in proves (null for a friend, or an identity linked to no account yet).</summary>
+        public Guid? AccountId { get; init; }
+        /// <summary>The host's <see cref="AccountAttestation"/> for this computer and that account, when this host is in a
+        /// network.</summary>
+        public JsonElement? Attestation { get; init; }
     }
 
     private sealed record SignedInDocument
@@ -262,7 +388,11 @@ internal sealed partial class GatewayHttpApplication
         /// <summary>Whether someone can sign in here now; while not, the host isn't reachable from outside home.</summary>
         public bool Usable => BlockedReason is null;
         public string? BlockedReason { get; init; }
+        /// <summary>The household owner's account ID, when a member desktop set it.</summary>
+        public Guid? OwnerAccountId { get; init; }
         public SignInOwnerDocument? Owner { get; init; }
+        /// <summary>Other household accounts' Martlet password logins (never a verifier or secret).</summary>
+        public required SignInAccountDocument[] Accounts { get; init; }
         public required SignInProviderSettingsDocument[] Providers { get; init; }
         public required SignInAllowedDocument[] Allowed { get; init; }
         public required SignInEnrolledDocument[] Enrolled { get; init; }
@@ -278,6 +408,15 @@ internal sealed partial class GatewayHttpApplication
     private sealed record SignInOwnerDocument
     {
         public required string User { get; init; }
+        public required int RecoveryCodesLeft { get; init; }
+        public DateTimeOffset CreatedAt { get; init; }
+    }
+
+    private sealed record SignInAccountDocument
+    {
+        public required Guid AccountId { get; init; }
+        public required string User { get; init; }
+        public required bool HasAuthenticator { get; init; }
         public required int RecoveryCodesLeft { get; init; }
         public DateTimeOffset CreatedAt { get; init; }
     }
@@ -302,6 +441,8 @@ internal sealed partial class GatewayHttpApplication
         public DateTimeOffset AddedAt { get; init; }
         /// <summary>"member" (the owner's computers, which join the network) or "friend" (this host's engines only).</summary>
         public string? Access { get; init; }
+        /// <summary>For a member: the account it signs in as; absent means the owner's.</summary>
+        public Guid? AccountId { get; init; }
     }
 
     private sealed record SignInEnrolledDocument

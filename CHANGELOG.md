@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Martlet now signs you in with your Windows account and shows who is using it at the bottom left. Click it to switch to another person on this PC or to **Add a person**, who gets an account of their own with no password, and your household's accounts are kept the same on all your computers. Each person's own characters and memories come in a following update. ([#748](https://github.com/throndir2/Martlet/pull/748))
+- A Martlet host can now keep a password sign-in for each person in your household, with an optional authenticator app, and link sign-ins from your identity provider to the right person. Signing in this way proves who you are on a computer, ready for accounts in Martlet. ([#747](https://github.com/throndir2/Martlet/pull/747))
+
 ### Changed
 
 - When several people use Martlet on one PC with their own Windows accounts, the PC is now a companion PC or a Martlet host for all of them: a switch made by one person (or from another of your computers) applies to everyone, and the choice you made before this update carries over. ([#745](https://github.com/throndir2/Martlet/pull/745))

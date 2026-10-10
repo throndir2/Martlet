@@ -64,6 +64,8 @@ public partial class MainWindow : ThemedWindow
     {
         InitializeComponent();
         this.store = store;
+        // Who uses Martlet now (MainWindow.Accounts.cs), before anything loads that belongs to an account.
+        accounts = OpenAccounts(store);
         ThemeChoice.SelectedIndex = (int)((Application.Current as App)?.SelectedTheme ?? AppearanceTheme.Light);
         AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
             ?? "Choose a palette. Your choice is saved on this PC.";
@@ -198,6 +200,7 @@ public partial class MainWindow : ThemedWindow
         InitializeRecommendedSetup();
         InitializeConfiguring();
         InitializeMemorySync();
+        InitializeAccounts();
         InitializeNetwork();
         InitializeApiKeys();
         InitializeFriends();
@@ -259,6 +262,7 @@ public partial class MainWindow : ThemedWindow
         StartCheckIns();
         StartMemorySync();
         StartNetwork();
+        StartAccounts();
         StartApiKeys();
         StartFriends();
         StartVoiceSync();
