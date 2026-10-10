@@ -26,12 +26,31 @@ public partial class MainWindow
     /// changed. The key is the host ID and the space (or <see cref="OldMemoryDocument"/>).</summary>
     private readonly Dictionary<(string Host, string Space), (string Digest, SharedMemories Copy)> memoryCopies = [];
     private string memorySyncStatus = "Memories: not synced yet.";
+    /// <summary>The spaces of the account signed in before a switch, kept by the switch's change step for one more sync.</summary>
+    private (MemorySpaceSet Spaces, MemoryAccount? Account)? memoryLeaving;
 
     private void InitializeMemorySync()
     {
         memorySyncTimer.Tick += (_, _) => SyncMemoriesAsync().Forget();
+        if (memory is not null && accounts is not null)
+        {
+            // The account signed in now, before anything recalls or remembers; then each switch, between replies.
+            memory.UseAccount(MemoryAccountFor(accounts.AccountId, accounts.AccountFolder, accounts.HouseholdFolder));
+            accounts.AddChangeStep(async (change, token) =>
+            {
+                var leaving = memory.Account;
+                memoryLeaving = leaving is not null && await memory.SpacesAsync(token) is { } set ? (set, leaving) : null;
+                memory.UseAccount(MemoryAccountFor(change.To, change.ToFolder, change.HouseholdFolder));
+            });
+            accounts.AccountChanged += () => MemoryAccountChangedAsync().Forget();
+        }
         ShowMemorySyncStatus();
     }
+
+    /// <summary>The memories of <paramref name="id"/>: its folder, the household folder and whether it is the household's owner
+    /// (whose space takes this PC's memories from before accounts and keeps the old single memory document the same).</summary>
+    private MemoryAccount MemoryAccountFor(Guid id, string folder, string household) =>
+        new(id, folder, household, Owner: accounts?.OwnerId == id);
 
     private void StartMemorySync()
     {
@@ -41,19 +60,19 @@ public partial class MainWindow
         SyncMemoriesAsync().Forget();
     }
 
-    /// <summary>Uses <paramref name="next"/>'s memories from now on (sign-in or a switch, between replies): the spaces of the
-    /// account signed in before get one more sync in the background (it stays signed in on this device), then the new account's
-    /// other spaces are loaded for recall and synced.</summary>
-    private async Task UseMemoryAccountAsync(MemoryAccount? next)
+    /// <summary>After a switch (the change step already uses the new account's memories): the spaces of the account signed in
+    /// before get one more sync (it stays signed in on this device), then the new account's other spaces are loaded for recall
+    /// and synced.</summary>
+    private async Task MemoryAccountChangedAsync()
     {
-        if (memory is null || closing || Equals(memory.Account, next)) return;
-        var before = memory.Account;
-        var leaving = before is null ? null : await memory.SpacesAsync(lifetime.Token);
-        memory.UseAccount(next);
+        if (memory is null || closing) return;
+        var leaving = memoryLeaving;
+        memoryLeaving = null;
         memoryCopies.Clear();
         memoryNodes.Clear();
-        if (leaving is not null)
-            await SyncMemoriesAsync([.. leaving.Readable.Where(s => s.Id != MemorySpaceId.Household)], before!.Owner ? before.Space : null);
+        if (leaving is { } before)
+            await SyncMemoriesAsync([.. before.Spaces.Readable.Where(s => s.Id != MemorySpaceId.Household)],
+                before.Account is { Owner: true } owner ? owner.Space : null);
         await LoadMemorySpacesAsync();
         QueueMemorySync();
     }
