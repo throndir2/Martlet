@@ -2,12 +2,13 @@ using System.Runtime.CompilerServices;
 
 namespace Martlet.Core.Cluster;
 
-/// <summary>Lip-sync's pool: the computers that run Audio2Face, in order, share the character's lip-sync. Each chunk of a
-/// sentence (half a second, then one second of the voice) goes through <see cref="WorkQueue"/> at live priority: to the first
-/// computer that takes it, so a free first computer costs nothing extra. One reply stays on the computer that took its last
-/// chunk while that computer is free; the next reply chooses again from the order. A chunk waits for a busy computer at most
-/// half its own length (<see cref="Wait"/>); after that its frames would come too late, so it is skipped and the voice's
-/// loudness moves the mouth for it. Speech never waits for lip-sync. Thread-safe; one per companion PC.</summary>
+/// <summary>Lip-sync's pool (<see cref="PoolAreas.LipSync"/>): the members that run Audio2Face, in order, share the character's
+/// lip-sync. Each chunk of a sentence (half a second, then one second of the voice) goes through <see cref="WorkQueue"/> at live
+/// priority, lane <c>lip-sync</c>, each member's key as its computer: to the first member that takes it, so a free first member
+/// costs nothing extra. One reply stays on the member that took its last chunk while that member is free; the next reply chooses
+/// again from the order. A chunk waits for a busy member at most half its own length (<see cref="Wait"/>); after that its frames
+/// would come too late, so it is skipped and the voice's loudness moves the mouth for it. Speech never waits for lip-sync.
+/// Thread-safe; one per companion PC.</summary>
 public sealed class LipSyncSharing
 {
     private readonly object gate = new();
@@ -19,6 +20,19 @@ public sealed class LipSyncSharing
     /// half its length, at least 100 ms.</summary>
     public static TimeSpan Wait(long samples, int sampleRate) =>
         TimeSpan.FromMilliseconds(Math.Max(100, samples * 500.0 / Math.Max(1, sampleRate)));
+
+    /// <summary>Lip-sync's list made from its older choices, used until its page saves one: empty (the voice's loudness on this
+    /// PC) when lip-sync was <paramref name="off"/>; otherwise <paramref name="computers"/> (the computer assigned to lip-sync,
+    /// then the others that run Audio2Face, in Devices › Sharing work's order) and then this PC's own Audio2Face service.</summary>
+    public static PoolList FromOlderChoices(bool off, IReadOnlyList<string> computers)
+    {
+        ArgumentNullException.ThrowIfNull(computers);
+        return new()
+        {
+            Area = PoolAreas.LipSync.Id,
+            Members = off ? [] : [.. computers.Distinct(StringComparer.Ordinal).Select(PoolMember.Computer), PoolMember.ThisPc()]
+        };
+    }
 
     /// <summary>The computer that took the last chunk (null before the first).</summary>
     public string? LastHost
@@ -65,7 +79,7 @@ public sealed class LipSyncSharing
         var order = Order(members, hostOf, turnId);
         var first = hostOf(order[0]);
         var time = clock ?? TimeProvider.System;
-        await using var items = queue.StreamAsync(WorkSharingJobs.LipSync, order, hostOf,
+        await using var items = queue.StreamAsync(PoolAreas.LipSync.Id, order, hostOf,
                 (target, t) => Noted(target, hostOf, turnId, first, start(target, t)), classify, time.GetUtcNow() + wait, clock, token)
             .GetAsyncEnumerator(token);
         var started = false;

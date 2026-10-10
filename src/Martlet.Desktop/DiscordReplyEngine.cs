@@ -211,7 +211,7 @@ internal sealed class DiscordReplyEngine : IDiscordReplyEngine, IAsyncDisposable
                 () => !stop.IsCancellationRequested, settings.LoadAsync, vault, stop.Token);
             authorization.BindInput(request.Input, request.Limits.MaxToolRounds);
             lane.Authorization = authorization;
-            var run = Runtime(lane).Start(request, authorization, stop.Token);
+            var run = Runtime(lane).Start(request, authorization, stop.Token, "Discord reply");
             var terminal = await run.Completion.ConfigureAwait(false);
             await run.OwnershipRelease.ConfigureAwait(false);
             if (run.Snapshot.Quarantined) lane.Retire();

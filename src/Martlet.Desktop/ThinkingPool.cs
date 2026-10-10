@@ -307,7 +307,7 @@ internal sealed partial class LiveConversationController
                 clock.GetUtcNow() + job.Timeout + TimeSpan.FromSeconds(5), media: true, toolRounds: toolRounds);
             Volatile.Write(ref slot.Authorization, own);
             var began = System.Diagnostics.Stopwatch.GetTimestamp();
-            var started = ThinkRuntime(slot).Start(request, own, token);
+            var started = ThinkRuntime(slot).Start(request, own, token, $"{ThinkingJobKinds.Name(job.Kind)} pool job on {place.Name}");
             var terminal = await started.Completion.ConfigureAwait(false);
             await started.OwnershipRelease.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();

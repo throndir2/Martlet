@@ -78,6 +78,9 @@ public partial class App : Application
             ProblemDialog.Show(MainWindow, title, heading, report, () => ErrorLog.OpenFolder()));
         // Failed provider requests record their HTTP status and the provider's own short explanation locally.
         Martlet.Providers.ProviderDiagnostics.SetSink(line => ErrorLog.Warn(line));
+        // Each Thinking request step by step, and what it waits for (docs/VOICE_LATENCY.md, Thinking trace), written off the
+        // reply's path.
+        Martlet.Conversation.ThinkingTrace.Listen(ErrorLog.InfoLater);
         if (error is not null) ErrorLog.Warn(error);
         if (store is not null)
         {

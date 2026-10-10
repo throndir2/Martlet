@@ -51,7 +51,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
         Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null,
-        Func<IAvatarRenderer>? createStillRenderer = null, Func<AvatarRemoteHost, IReadOnlyList<AvatarRemoteHost>>? lipSyncPool = null)
+        Func<IAvatarRenderer>? createStillRenderer = null, Func<AvatarProfile?, IReadOnlyList<LipSyncPlace>>? lipSyncPool = null)
     {
         this.createRenderer = createRenderer ?? SimulatedRendererFailure.Wrap(() => new AvatarRendererProcess(),
             Environment.GetEnvironmentVariable(SimulatedRendererFailure.Variable));
@@ -653,8 +653,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 {
                     try { Volatile.Write(ref hostLink, openHost(remote)); }
                     catch (Exception error) when (error is Audio2FaceHostException or ContractException) { }
-                    if (hostLink is { } opened) lipSyncPool.Warm(remote, opened);
                 }
+                if (automatic is not null) lipSyncPool.Warm(profile, hostLink);
             }
             StartCharacter(current, automatic);
             if (automatic is null)
@@ -810,15 +810,26 @@ internal sealed partial class AvatarController : IAsyncDisposable
         var mono = automatic is not null && segment.Format.Channels == 1;
         GeneratedSpeechStream? stream = null;
         PcmAccumulator? relay = null;
-        var host = Volatile.Read(ref hostLink);
         IReadOnlyList<LipSyncMember> pool = [];
-        // The host assigned to lip-sync and the other computers of its pool go first; this PC's own Audio2Face service is the
-        // fallback.
-        if (mono && host is not null && profile?.RemoteHost is { } assigned &&
-            (pool = await lipSyncPool.ReadyAsync(assigned, host, token)).Count > 0)
-            relay = new PcmAccumulator();
-        else if (mono && await Audio2FaceProbe.IsListeningAsync(automatic!.Options, TimeSpan.FromMilliseconds(250), token))
-            stream = new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128);
+        var local = automatic?.Options;
+        if (mono)
+        {
+            // Lip-sync's pool, in order (docs/AVATARS.md#the-lip-sync-pool): this PC's own Audio2Face service first when the list
+            // starts with it, else the computers (each chunk to the first free one), then this PC's service; with none, the
+            // voice's loudness.
+            var current = profile;
+            var places = lipSyncPool.Places(current);
+            var own = places.FirstOrDefault(p => p.Host is null);
+            local = LocalOptions(own, automatic!.Options);
+            var hosts = places.Where(p => p.Host is not null).ToArray();
+            if (own is not null && places[0] == own && await Audio2FaceProbe.IsListeningAsync(local, TimeSpan.FromMilliseconds(250), token))
+                stream = new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128);
+            else if (hosts.Length > 0 && (pool = await lipSyncPool.ReadyAsync(hosts, LipSyncPool.Assigned(current)?.HostId,
+                Volatile.Read(ref hostLink), token)).Count > 0)
+                relay = new PcmAccumulator();
+            else if (own is not null && places[0] != own && await Audio2FaceProbe.IsListeningAsync(local, TimeSpan.FromMilliseconds(250), token))
+                stream = new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128);
+        }
         Task? tee = null, present = null;
         var joined = false;
         try
@@ -828,12 +839,12 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 level => target.SendAsync("mouth", new { level }, token), () => Audio2FaceAnimating, token);
             if (automatic is not null && (stream is not null || relay is not null))
             {
-                var where = stream is not null ? automatic.Options.Endpoint.Authority
+                var where = stream is not null ? local!.Endpoint.Authority
                     : "Martlet host " + string.Join(", ", pool.Select(m => m.Link.Authority));
                 try
                 {
                     var frames = stream is not null
-                        ? LocalFramesAsync(stream, automatic.Options, token)
+                        ? LocalFramesAsync(stream, local!, token)
                         : RemoteFramesAsync(segment, relay!, lipSyncPool, pool, token);
                     await ApplyFramesAsync(segment, frames, automatic, target, where, token);
                 }
@@ -888,6 +899,20 @@ internal sealed partial class AvatarController : IAsyncDisposable
             if (!feeding) stream?.Dispose();
             relay?.Complete(failed: !completed);
         }
+    }
+
+    // This PC's own Audio2Face service: at the pool member's endpoint setting when that is a valid loopback address, else the
+    // character's.
+    private static Audio2FaceOptions LocalOptions(LipSyncPlace? own, Audio2FaceOptions character)
+    {
+        if (own?.Endpoint is not { } endpoint || !Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)) return character;
+        var options = character with { Endpoint = uri };
+        try
+        {
+            options.Validate();
+            return options;
+        }
+        catch (ArgumentException) { return character; }
     }
 
     private static async IAsyncEnumerable<AvatarFrame> LocalFramesAsync(GeneratedSpeechStream stream, Audio2FaceOptions options,
@@ -1415,8 +1440,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 catch (Exception error) when (error is Audio2FaceHostException or ContractException) { }
             Interlocked.Exchange(ref hostLink, next)?.Dispose();
             lipSyncPool.Clear();
-            if (remote is not null && next is not null) lipSyncPool.Warm(remote, next);
             if (profile is not null) profile = profile with { RemoteHost = remote };
+            if (IsShowing) lipSyncPool.Warm(profile, next);
             if (!IsShowing) return;
             if (next is not null)
                 Publish(await next.ReadyAsync(token)

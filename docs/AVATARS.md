@@ -1249,6 +1249,53 @@ awaiting generated speech** is not a verified runtime. **STOP**/Escape, relevant
 edits, session lock and app exit revoke it; restarting never restores it. Hiding
 the character does not stop voice.
 
+### The lip-sync pool
+
+Automatic lip-sync sends its requests through a pool: an ordered list of the
+places that run Audio2Face (`PoolAreas.LipSync` in the
+[pool contract](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A
+member is *This PC* (this PC's own Audio2Face service, at its `endpoint`
+setting or the character's endpoint), one of your computers that runs the
+`audio2face` host role, or one card of such a computer. A computer runs one
+Audio2Face relay, so a card member uses its computer's relay when the relay
+runs on that card (or the computer did not say which card).
+
+1. Martlet reads lip-sync's list from `pools.json` (the `pools` shared setting)
+   before each sentence. It reads the file again only when the file changed,
+   so a sentence pays no network call and no extra wait.
+2. Until the list is saved, Martlet makes it from the older choices: the
+   computer assigned to lip-sync, then the other paired computers that the
+   shared plan says run Audio2Face, then *This PC*. When lip-sync was set to
+   voice loudness, the list is empty.
+3. A member that is off, is kept for another companion PC, or is not paired on
+   this PC is left out (`PoolRouting.Order`).
+4. When *This PC* is first, this PC's own service animates the sentence if it
+   answers. Otherwise each chunk of the sentence (half a second, then one
+   second of the voice) goes through `WorkQueue.Shared` at live priority, lane
+   `lip-sync`, with the member key as the computer (`LipSyncSharing`).
+5. A free first computer takes the chunk at once: no extra request and no
+   added wait. A busy computer (`job.busy`) is passed over for the next one. A
+   computer that does not answer is passed over and is left out for 30
+   seconds.
+6. One reply stays on the computer that took its last chunk while that
+   computer is free. The next reply chooses again from the list.
+7. When every computer is busy, a chunk waits at most half its own length.
+   After that its frames would come too late, so Martlet skips the chunk and
+   the voice's loudness moves the mouth for it. The desktop log says how many
+   chunks of a sentence were skipped.
+8. An empty list, or no member that can take the sentence, means voice
+   loudness on this PC.
+
+Speech never waits for lip-sync, so the pool adds no conversation latency.
+Before the pool, a second companion PC whose lip-sync computer was busy got
+`job.busy` and used voice loudness for 30 seconds. MCP `lip_sync_pool_status`
+shows the list, its source and the member keys this PC tries.
+`lip_sync_pool_check` rehearses the production pool and queue with simulated
+computers. **Qualification:** `LipSyncSharingTests`, `LipSyncPoolTests`,
+`AvatarIntegrationTests` and the two MCP tools run locally. Lip-sync between
+real Audio2Face hosts is **NOT RUN**. The list on Companion › Lip-sync comes in
+a later change; until then the list changes only through `pools.json`.
+
 ## 3. Per-model capability and mapping checklist
 
 Before offering an enabled preset, inspect the selected local model and bind

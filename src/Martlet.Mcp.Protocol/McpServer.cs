@@ -99,6 +99,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             replies = new { type = "integer", minimum = 1, maximum = LatencyReport.MaximumReplies },
             dataDirectory = new { type = "string" }
         }),
+        Tool("thinking_trace", "Read the desktop log's Thinking trace (docs/VOICE_LATENCY.md, Thinking trace) put back together: the " +
+            "newest conversation turns (replies, glances, background thinks, Thinking pool and sense jobs, Discord replies), newest " +
+            "first, each with its route and model, state, total, first words and first audio (ms from the turn's start), how many " +
+            "requests it sent, every still-waiting notice (what it waited for and how long) and its lines in order (started, prepared, " +
+            "each request with its authorization, send, response, hidden reasoning, first words and tokens, tool rounds, Backup " +
+            "Thinking, ended); and the newest requests for the Thinking pool's slots (tr-N) with how long each waited in line and ran " +
+            "and their lines. contains keeps only turns and requests with a line containing that text. Read-only; never what was said; " +
+            "starts no audio, network or provider request.", new
+        {
+            turns = new { type = "integer", minimum = 1, maximum = ThinkingTraceReport.MaximumTurns },
+            contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this interactive session.", new
         {
@@ -1004,7 +1017,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the joined text, missing words and milliseconds. desktop: a drawn 1920 x 1080 desktop of 108 small (12 px) text lines " +
             "read at full size, as the desktop reads the screen, and at a vision look's 1024 x 576: lines found, lines read right " +
             "and milliseconds for each. With endpoint (a Reading role's worker on loopback, such as " +
-            "http://127.0.0.1:50087/) that worker's GET /status and POST /read read the same picture as a PNG. Never captures the " +
+            "http://127.0.0.1:50087/) that worker's GET /status and POST /read read the same picture as a PNG. pool (with " +
+            "dataDirectory): the computers a read tries, first to last (tries: the one named, then your other computers the shared " +
+            "plan says run the Reading role). poolCheck: the production planner and queue with simulated computers (NOT real " +
+            "hosts): a busy computer passed over, a wait for the first to free, a friend's host left for its owner. Never captures the " +
             "real screen.", new
         {
             dataDirectory = new { type = "string" },
@@ -1605,7 +1621,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
-            "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
+            "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget), " +
+            "and how much room a screen glance has (look: the persona's and the picture's estimated tokens, the room left for " +
+            "Martlet's instructions, message and notes, what a look leaves out when it doesn't fit, and a problem when the picture " +
+            "and the persona alone don't fit). " +
             "Then rehearses the production model-limit check (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like " +
             "OpenRouter, vLLM, Groq, llama.cpp and Ollama (NOT the real services; a fixture key goes only to its own base URL and " +
             "redirects aren't followed) and the production history fit of a 1,000-exchange synthetic conversation into a cloud " +
@@ -1972,11 +1991,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
-        Tool("lip_sync_pool_status", "Lip-sync's pool of computers that run Audio2Face, from a data directory: who does lip-sync " +
-            "(avatar.json: its mode and the assigned host), the paired computers the shared plan says run the audio2face role " +
-            "(cluster.json, hosts.json), the lip-sync choices (work-sharing.json: shared, order, never), and the order this PC (or " +
-            "deviceId) tries them in for each chunk with the production planner (WorkSharing.Order); with no assigned host, what " +
-            "moves the mouth instead. Host and device IDs only. Read-only.", new
+        Tool("lip_sync_pool_status", "Lip-sync's pool (the pool contract's lip-sync area) from a data directory: who does lip-sync " +
+            "(avatar.json: its mode and the assigned host), lip-sync's list (pools.json, or the list made from the older choices " +
+            "until one is saved: the assigned computer, the other paired computers the shared plan says run the audio2face role in " +
+            "Devices > Sharing work's order, then this PC's own Audio2Face service; empty when lip-sync was off), each member's " +
+            "key, kind, off, onlyFor and settings, the member keys this PC (or deviceId) tries for each chunk with the production " +
+            "router (PoolRouting.Order), and the fallback when none can (voice loudness on this PC). Host and device IDs only. " +
+            "Read-only.", new
         {
             dataDirectory = new { type = "string" },
             deviceId = new { type = "string" }
@@ -1986,7 +2007,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(job.busy), NOT real hosts or models: shared by default with the assigned computer first, a free first computer taking " +
             "a chunk with no wait, two companion PCs at once each kept on its own computer, the next reply choosing again, every " +
             "computer busy past half a chunk so the voice's loudness moves the mouth, a computer freeing within the wait, an " +
-            "unanswering computer skipped, and a kept or never-used computer left out. In-process; reads nothing.", new { }),
+            "unanswering computer skipped, a kept or never-used computer left out, a saved list's order without members turned " +
+            "off or kept for another companion PC, an empty list meaning voice loudness, and the list made from the older choices. " +
+            "In-process; reads nothing.", new { }),
         Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
             "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
             "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +
@@ -2169,6 +2192,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "logs_share_selftest" => await NodeLinkCheckAsync(cancellation, "logs"),
                 "host_connections_selftest" => await NodeLinkCheckAsync(cancellation, "host-connections"),
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
+                "thinking_trace" => ThinkingTraceReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "turns"),
+                    OptionalString(arguments, "contains")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),

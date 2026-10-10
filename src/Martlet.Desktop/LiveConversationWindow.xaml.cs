@@ -2962,19 +2962,20 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         var status = done.Status;
         var at = DateTime.Now.ToString("t") + (done.Attention is { } about ? $" ({about.Plain})" : "");
+        var trimmed = LookTrimmed(done.LookLeftOut);
         waitNote = null;
         lookFailed = false;
         if (done.Passed)
         {
             pacer?.NoteLook(false);
-            lookNote = $"Last look {at}: nothing to say.";
+            lookNote = $"Last look {at}: nothing to say.{trimmed}";
             return;
         }
         if (status.Code is "runtime.Completed")
         {
             pacer?.NoteLook(true);
             if (done.Turn?.Content.Text.Trim() is { Length: > 0 } remark) Add(ChatRole.Martlet, remark, $"{CharacterName}, about {watchSource.Label}");
-            lookNote = $"Last look {at}: commented.";
+            lookNote = $"Last look {at}: commented.{trimmed}";
             return;
         }
         if (status.Code is "runtime.Refused" or "commentary.interrupted" or "commentary.stopped" or "conversation.canceled" or "conversation.revoked")
@@ -2987,6 +2988,13 @@ public partial class LiveConversationWindow : ThemedWindow
         if (status.Code == "commentary.image_refused")
         {
             StopWatching(controller.ImageAdvice());
+            return;
+        }
+        // Even the picture with the persona and Martlet's instructions is too long for Thinking's context size (the look already
+        // went without everything it can leave out), so every look would fail the same way.
+        if (status.Code == "conversation.input_limit")
+        {
+            StopWatching(LookTooLong);
             return;
         }
         // The image model couldn't describe the look's picture (busy, too slow or failing): the next look waits a while, as for a
@@ -3024,6 +3032,16 @@ public partial class LiveConversationWindow : ThemedWindow
             ? $"The Thinking model rejected the picture. {selected.VisionAdvice()}"
             : "Martlet stopped vision. " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration, job) : Remedy(status.Code)));
     }
+
+    /// <summary>Why vision stopped when a look can't fit Thinking's context size even with only the picture, the persona and
+    /// Martlet's instructions.</summary>
+    internal const string LookTooLong = "Martlet stopped vision. The picture and the persona together are too long for Thinking's " +
+        "context size. Shorten the persona, or raise the context size in Companion › Replies.";
+
+    /// <summary>What the last look's note adds when the look went without some of what it carries to fit Thinking's context
+    /// size; empty when everything fit.</summary>
+    internal static string LookTrimmed(IReadOnlyList<string> leftOut) =>
+        leftOut.Count == 0 ? "" : $" To fit Thinking's context size, it went without {string.Join(", ", leftOut)}.";
 
     /// <summary>Stops looking and frees the screen capture, camera or stream. A <paramref name="problem"/> is shown and keeps
     /// watching stopped until you press Start watching again.</summary>

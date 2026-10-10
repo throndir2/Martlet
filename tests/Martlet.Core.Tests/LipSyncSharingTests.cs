@@ -66,6 +66,18 @@ public sealed class LipSyncSharingTests
     }
 
     [Fact]
+    public void The_list_from_older_choices_is_the_computers_then_this_pc_or_empty_when_off()
+    {
+        var list = LipSyncSharing.FromOlderChoices(false, ["m4-host", "m5-host", "m4-host"]);
+        Assert.Equal(PoolAreas.LipSync.Id, list.Area);
+        Assert.Equal(["host:m4-host", "host:m5-host", "this-pc"], list.Members.Select(m => m.Key));
+        Assert.Equal(["this-pc"], LipSyncSharing.FromOlderChoices(false, []).Members.Select(m => m.Key));
+        Assert.Empty(LipSyncSharing.FromOlderChoices(true, ["m4-host"]).Members);
+        Assert.True(PoolRouting.Order(PoolAreas.LipSync, LipSyncSharing.FromOlderChoices(true, []), "desk-2").Fallback);
+        Assert.Equal(WorkSharingJobs.LipSync, PoolAreas.LipSync.Id);
+    }
+
+    [Fact]
     public async Task One_reply_stays_on_the_computer_that_took_its_chunk_and_the_next_reply_chooses_again()
     {
         var pool = new LipSyncSharing();

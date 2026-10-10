@@ -64,9 +64,10 @@ internal static class WorkSharingRoster
 
     /// <summary>The paired computers to try for <paramref name="job"/>, first to last, each with the model its role runs (from the
     /// shared plan; null for <paramref name="planned"/>, which keeps the route's own). <paramref name="roleKind"/> is the host role
-    /// that does it there; <paramref name="model"/>, when given, the model it must run.</summary>
+    /// that does it there; <paramref name="model"/>, when given, the model it must run. Without <paramref name="planned"/>, only
+    /// the computers the plan says run it.</summary>
     internal static IReadOnlyList<(PairedHost? Host, string? Model)> Order(string? directory, string job, string roleKind, string? model,
-        string planned)
+        string? planned)
     {
         if (directory is null) return [(null, null)];
         var hosts = Hosts(directory);
@@ -83,7 +84,7 @@ internal static class WorkSharingRoster
             : (hosts.First(h => h.HostId == id), runs[id]))];
     }
 
-    private static IReadOnlyList<PairedHost> Hosts(string directory) => Cached(Path.Combine(directory, HostRegistry.FileName), () =>
+    internal static IReadOnlyList<PairedHost> Hosts(string directory) => Cached(Path.Combine(directory, HostRegistry.FileName), () =>
     {
         try { return HostRegistry.Load(directory); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return (IReadOnlyList<PairedHost>)[]; }
@@ -95,7 +96,7 @@ internal static class WorkSharingRoster
         lock (Gate) Files.Clear();
     }
 
-    private static T Cached<T>(string path, Func<T> read) where T : class
+    internal static T Cached<T>(string path, Func<T> read) where T : class
     {
         // A file is looked at again at most once a second, so a request pays no file system call on the way to its computer.
         var now = Environment.TickCount64;

@@ -33,6 +33,9 @@ public sealed class ConversationRuntime : IAsyncDisposable
     private Task? disposal;
 
     public Guid SessionId { get; } = Guid.NewGuid();
+    /// <summary>Where this runtime's turns write their Thinking trace lines (<see cref="ThinkingTrace"/>); null: to the trace's
+    /// listeners. It must never block.</summary>
+    public Action<string>? Trace { get; set; }
     public long CurrentEpoch { get { lock (Sync) return epoch; } }
     public ConversationState State { get { lock (Sync) return active?.Snapshot.State ?? ConversationState.Idle; } }
 
@@ -205,9 +208,11 @@ public sealed class ConversationRuntime : IAsyncDisposable
         return adapter;
     }
 
-    // This is the explicit new-turn operation. It neither interrupts nor queues behind existing ownership.
+    // This is the explicit new-turn operation. It neither interrupts nor queues behind existing ownership. purpose names the
+    // turn in the Thinking trace ("reply", "screen glance"...; never what was said).
     public ConversationTurn Start(ConversationRequest request, IConversationAuthorizationSource authorization,
-        CancellationToken cancellationToken = default) => StartCore(request, authorization, null, false, cancellationToken);
+        CancellationToken cancellationToken = default, string? purpose = null) =>
+        StartCore(request, authorization, null, false, cancellationToken, purpose: purpose);
 
     /// <summary>Starts a reply early, before the user's turn is confirmed (Companion › Listening › Start replies early): its
     /// Thinking request streams at once and, with <paramref name="prepareVoice"/>, its first spoken piece is synthesized, but
@@ -215,8 +220,8 @@ public sealed class ConversationRuntime : IAsyncDisposable
     /// <see cref="ConversationTurn.Release"/> lets it go on as the reply. One that is never released is stopped like any
     /// other turn (<see cref="ConversationTurn.StopAsync"/>), with nothing said or done.</summary>
     public ConversationTurn StartEarly(ConversationRequest request, IConversationAuthorizationSource authorization,
-        bool prepareVoice, CancellationToken cancellationToken = default) =>
-        StartCore(request, authorization, null, false, cancellationToken, early: true, prepareVoice: prepareVoice);
+        bool prepareVoice, CancellationToken cancellationToken = default, string? purpose = null) =>
+        StartCore(request, authorization, null, false, cancellationToken, early: true, prepareVoice: prepareVoice, purpose: purpose);
 
     public ConversationTurn Retry(ConversationTurn previous, ConversationRequest request,
         IConversationAuthorizationSource authorization, bool acknowledgeEarlierSpeech,
@@ -234,7 +239,8 @@ public sealed class ConversationRuntime : IAsyncDisposable
     }
 
     private ConversationTurn StartCore(ConversationRequest request, IConversationAuthorizationSource authorization,
-        Guid? retryOf, bool earlierSpeech, CancellationToken cancellationToken, bool early = false, bool prepareVoice = true)
+        Guid? retryOf, bool earlierSpeech, CancellationToken cancellationToken, bool early = false, bool prepareVoice = true,
+        string? purpose = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(authorization);
@@ -254,7 +260,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
             if (active is not null && (!active.Completion.IsCompleted || !active.OwnershipRelease.IsCompleted || active.Snapshot.Quarantined))
                 throw new InvalidOperationException("The previous turn still owns work or playback is quarantined.");
             ContractRules.Require(epoch < int.MaxValue - 1, "The conversation epoch range is exhausted.");
-            active = new(this, request, authorization, ++epoch, retryOf, earlierSpeech, early, prepareVoice);
+            active = new(this, request, authorization, ++epoch, retryOf, earlierSpeech, early, prepareVoice, purpose);
             active.Begin(cancellationToken);
             return active;
         }

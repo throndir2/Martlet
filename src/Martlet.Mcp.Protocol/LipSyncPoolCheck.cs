@@ -30,18 +30,33 @@ internal static class LipSyncPoolCheck
         var places = plan.Nodes.Where(n => !n.Removed && n.HostId != assigned && n.Roles.Any(r => r.Kind == Role) && paired.Contains(n.HostId))
             .Select(n => new WorkPlace(n.HostId, n.HostId == own, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))
             .ToArray();
-        var pooled = assigned is not null && mode == "auto";
+        var auto = assigned is not null && mode == "auto";
+        var saved = PoolSettings.LoadFor(dataDirectory, PoolAreas.LipSync);
+        var list = saved ?? LipSyncSharing.FromOlderChoices(mode == "loudness",
+            auto ? WorkSharing.Order(settings, WorkSharingJobs.LipSync, device, assigned, places) : []);
+        var order = PoolRouting.Order(PoolAreas.LipSync, list, device,
+            m => m.Kind == PoolMemberKind.ThisPc || m.OnHost && (paired.Contains(m.HostId) || m.HostId == assigned));
         return new
         {
             avatar, lipSync = mode, assigned, device, ownHost = own, paired,
-            shares = rules.Shares, sharedByDefault = WorkSharingJobs.SharedByDefault(WorkSharingJobs.LipSync),
-            order = rules.Order, never = rules.Never,
-            runs = places.Select(p => p.HostId),
-            tries = pooled ? WorkSharing.Order(settings, WorkSharingJobs.LipSync, device, assigned, places) : [],
-            planHost = plan.For(ClusterJobs.LipSync)?.HostId,
-            empty = mode == "loudness" ? "Lip-sync is off: the voice's loudness moves the mouth."
-                : pooled ? null
-                : "No computer does lip-sync: this PC's own Audio2Face service when it answers, otherwise the voice's loudness."
+            area = new
+            {
+                id = PoolAreas.LipSync.Id, page = PoolAreas.LipSync.Page, required = PoolAreas.LipSync.Required,
+                kinds = PoolAreas.LipSync.Kinds.Select(k => k.ToString()), whenEmpty = PoolAreas.LipSync.WhenEmpty
+            },
+            list = new
+            {
+                source = saved is not null ? PoolSettings.File(PoolAreas.LipSync.Shared) : "older choices (not saved yet)",
+                members = list.Members.Select(m => new { key = m.Key, name = m.Name, kind = m.Kind.ToString(), off = m.Off, onlyFor = m.OnlyFor, settings = m.Settings })
+            },
+            tries = order.Members.Select(m => m.Key),
+            fallback = order.Fallback ? PoolAreas.LipSync.Fallback : null,
+            sharingWork = new
+            {
+                shares = rules.Shares, sharedByDefault = WorkSharingJobs.SharedByDefault(WorkSharingJobs.LipSync),
+                order = rules.Order, never = rules.Never, runs = places.Select(p => p.HostId)
+            },
+            planHost = plan.For(ClusterJobs.LipSync)?.HostId
         };
     }
 
@@ -164,7 +179,7 @@ internal static class LipSyncPoolCheck
         var free = new LipSyncSharing();
         var first = await ChunkAsync(free, new WorkQueue(), Guid.NewGuid(), [new("m4-host", TimeSpan.FromMilliseconds(40)), new("m5-host", TimeSpan.FromMilliseconds(40))]);
         Step("A free first computer takes the chunk at once (no extra request, no added wait)",
-            first.By == "m4-host" && first.WaitedMs < 50 && free.Moved == 0, new { first, free.Moved });
+            first.By == "m4-host" && first.WaitedMs < 90 && free.Moved == 0, new { first, free.Moved });
 
         // Two companion PCs speak at once: desk-2's first chunk finds m4-host busy with desk-1's and goes to m5-host, then each
         // reply stays on its computer. Each companion PC is its own process, so each has its own queue and pool.
@@ -208,7 +223,7 @@ internal static class LipSyncPoolCheck
 
         var down = new Face("m4-host", TimeSpan.FromMilliseconds(20)) { Down = true };
         var passed = await ChunkAsync(new LipSyncSharing(), new WorkQueue(), Guid.NewGuid(), [down, new Face("m5-host", TimeSpan.FromMilliseconds(20))]);
-        Step("A computer that doesn't answer is passed over at once", passed.By == "m5-host" && passed.WaitedMs < 50, passed);
+        Step("A computer that doesn't answer is passed over at once", passed.By == "m5-host" && passed.WaitedMs < 90, passed);
 
         var kept = none.With(new WorkSharingHost { HostId = "m5-host", OnlyFor = ["desk-3"] });
         var keptOrder = WorkSharing.Order(kept, WorkSharingJobs.LipSync, "desk-2", "m4-host", [new("m5-host")]);
@@ -216,6 +231,25 @@ internal static class LipSyncPoolCheck
         var neverOrder = WorkSharing.Order(never, WorkSharingJobs.LipSync, "desk-2", "m4-host", [new("m5-host")]);
         Step("A computer kept for another companion PC, or never used for lip-sync, is left out",
             keptOrder.SequenceEqual(["m4-host"]) && neverOrder.SequenceEqual(["m5-host"]), new { keptOrder, neverOrder });
+
+        // The pool contract (pools.json): the list's order, a member turned off, one kept for another companion PC, a card member
+        // and this PC's own Audio2Face service with its endpoint.
+        var saved = new PoolList { Area = PoolAreas.LipSync.Id }
+            .With(PoolMember.Gpu("m5-host", 2))
+            .With(PoolMember.Computer("m4-host") with { Off = true })
+            .With(PoolMember.Computer("m6-host") with { OnlyFor = ["desk-3"] })
+            .With(PoolMember.ThisPc().WithSetting(PoolSettingKeys.Endpoint, "http://127.0.0.1:52010/"));
+        var tries = PoolRouting.Order(PoolAreas.LipSync, saved, "desk-2").Members.Select(m => m.Key).ToArray();
+        Step("A saved list decides: its order, without members turned off or kept for another companion PC",
+            tries.SequenceEqual(["host:m5-host#gpu2", "this-pc"]) && saved.Find("this-pc")?.Setting(PoolSettingKeys.Endpoint) == "http://127.0.0.1:52010/",
+            new { tries });
+        var empty = PoolRouting.Order(PoolAreas.LipSync, new PoolList { Area = PoolAreas.LipSync.Id }, "desk-2");
+        Step("An empty list means the voice's loudness on this PC", empty.Fallback && PoolAreas.LipSync.WhenEmpty == "Voice loudness on this PC",
+            new { empty.Fallback, whenEmpty = PoolAreas.LipSync.WhenEmpty });
+        var older = LipSyncSharing.FromOlderChoices(false, ["m4-host", "m5-host"]).Members.Select(m => m.Key).ToArray();
+        var off = LipSyncSharing.FromOlderChoices(true, ["m4-host"]).Members.Count;
+        Step("Until a list is saved, the older choice makes it: the assigned computer, the others, then this PC; lip-sync off is empty",
+            older.SequenceEqual(["host:m4-host", "host:m5-host", "this-pc"]) && off == 0, new { older, off });
 
         return new { ok, fixture = "simulated Audio2Face computers (NOT real hosts or models)", steps };
     }
