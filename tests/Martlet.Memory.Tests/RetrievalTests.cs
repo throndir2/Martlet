@@ -136,6 +136,35 @@ public sealed class RetrievalTests
     }
 
     [Fact]
+    public async Task SnapshotSearchesLikeTheStoreAfterItClosesAndSkipsExpiredFacts()
+    {
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        MemorySnapshot snapshot;
+        IReadOnlyList<MemoryRetrievalHit> fromStore;
+        Guid lasting;
+        using (var store = scope.Open(clock))
+        {
+            lasting = (await store.SaveAsync(MemoryFixtures.Save(clock, "The snapshotmarker garden has roses."))).Fact.Id;
+            await store.SaveAsync(MemoryFixtures.Save(clock, "A short snapshotmarker note.",
+                MemoryRetention.ExpiringAt(clock.Utc + TimeSpan.FromMinutes(5))));
+            await store.SaveAsync(MemoryFixtures.Save(clock, "Nothing to find here."));
+            fromStore = (await store.RetrieveAsync(new() { Text = "snapshotmarker roses" })).Hits;
+            snapshot = await store.SnapshotAsync();
+            Assert.Equal((await store.InspectAsync()).StoreRevision, snapshot.StoreRevision);
+        }
+
+        var query = new MemoryQuery { Text = "snapshotmarker roses" };
+        Assert.Equal(3, snapshot.Facts.Count);
+        Assert.Equal(fromStore.Select(hit => (hit.Fact.Id, hit.Score, hit.MatchedTerms)),
+            snapshot.Search(query, clock.Utc).Select(hit => (hit.Fact.Id, hit.Score, hit.MatchedTerms)));
+        clock.Advance(TimeSpan.FromMinutes(6));
+        Assert.Equal(lasting, Assert.Single(snapshot.Search(query, clock.Utc)).Fact.Id);
+        Assert.Equal(2, snapshot.Live(clock.Utc).Count());
+        Assert.Empty(MemorySnapshot.Empty.Search(query, clock.Utc));
+    }
+
+    [Fact]
     public async Task ConcurrentIdenticalCacheMissesShareOneSafeEntry()
     {
         using var scope = new TestScope();

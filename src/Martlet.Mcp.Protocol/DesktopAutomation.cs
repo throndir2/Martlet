@@ -317,6 +317,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
         "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
         "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        // People's link line: how many voices link to people's accounts and how many are the signed-in person's (counts only).
+        "PeopleLinkStatus",
         // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
         // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
         // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed
@@ -330,6 +332,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Profiles: how many profiles there are and whether one is in use ("2 profiles. One of them is in use."),
         // and the profile form's problem ("Give the profile a name."). Never a profile's name.
         "CharacterProfilesStatus", "CharacterProfileEditorProblem",
+        // Companion › Profiles › Household characters: how many characters other people share ("2 characters shared by 1 person in
+        // your household."; counts only, never a name). Each character's Use a copy (HouseholdCharacterCopy-<key>) and Talk to it
+        // (HouseholdCharacterJoin-<key>), each profile's sharing choice (CharacterProfileSharing-<key>) and Leave
+        // (CharacterProfileLeave-<key>) change your characters or what the household sees, so they need --allow-ui-effects.
+        "HouseholdCharactersStatus",
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
         // lock buttons' labels, which carry the state: Companion's SetupCharacterLock ("Lock position" / "Unlock position") and
         // the overlay menu's CharacterLockPosition ("Lock position" / "Unlock position"). Clicking either of them saves
@@ -389,6 +396,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // last action did (never a fact or a name). MemoryStatus (the Memory window's bottom line): whether memory is on, saving
         // or why it can't be (fixed text, never a fact or a folder).
         "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus", "MemoryStatus",
+        // The Memory window's sharing (with accounts): MemoryShareStatus says what Share selected with did or what Share new
+        // memories about me now does ("Copied 2 facts to the household's memories.", "Moved 1 fact to another person's memories.";
+        // counts and the kind of place, never a fact or a name). Choosing a place (MemoryShareTarget, ui_select), Copy
+        // (MemoryShareCopy), Move (MemoryShareMove) and the MemoryShareAboutMe box change memories, so they need --allow-ui-effects.
+        "MemoryShareStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
         // (conversations, exchanges, since when, per app); the Conversations page's status line (counts, or what a search found) and
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the
@@ -1102,6 +1114,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // it keeps on this PC ("CharacterProfileHere-3f2a9c1b" reads "On this PC: its own spot and size (420 × 560, locked) ·
         // Eyes: Follow your mouse · While it talks: any touch stops it."; sizes and fixed labels only).
         "CharacterProfileState-", "CharacterProfileHere-",
+        // Companion › Profiles › sharing: how each of your profiles is shared ("CharacterProfileShared-3f2a9c1b" reads "Private: only
+        // you see and use it.", "Shared as a copy: ..." or "Shared together: ...", or for someone else's character shared together
+        // "Shared with you together: ...") and each household character's state ("HouseholdCharacterState-3f2a9c1b" reads
+        // "Shared as a copy.", "Shared together. Talk to it to add it to your profiles." and why a part can't switch here). Fixed
+        // text only, never a name.
+        "CharacterProfileShared-", "HouseholdCharacterState-",
         // Devices › Sharing work: each job's line ("WorkSharingJob-speaking" reads "Speaking. When the computer doing it is busy
         // ..."), each computer in its order ("WorkSharingPlace-speaking-diva-host" reads "1. diva-host. this PC's own; does it for
         // this PC now."), each computer's keep line ("WorkSharingHost-diva-host" reads "diva-host. Kept for desk-1.") and its

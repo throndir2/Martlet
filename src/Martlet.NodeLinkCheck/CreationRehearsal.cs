@@ -4,9 +4,11 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Accounts;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Creations;
+using Martlet.Core.Network;
 using Martlet.Gateway;
 
 namespace Martlet.NodeLinkCheck;
@@ -15,7 +17,8 @@ namespace Martlet.NodeLinkCheck;
 /// Rehearses Martlet's creations end to end on this PC with the production code (docs/CREATIONS.md): two real gateways
 /// (Kestrel, pinned TLS, signed requests) on 127.0.0.1 with an in-memory creations.json and pieces, and three simulated
 /// desktops that keep their creations in a temporary folder with the production store (CreationStore) and sync engine
-/// (CreationSync) over the desktop's paired client (HostCreationPeer). The creations are the FIXTURE - NOT AI test-tone kind
+/// (CreationSync) over the desktop's paired client (HostCreationPeer), then two accounts' desktops that sync through their own
+/// lists, the owner's joined with the old single list (CreationOwnerBridge). The creations are the FIXTURE - NOT AI test-tone kind
 /// (FixtureCreations): generated tones kept as FLAC. Nothing leaves loopback; the folder is deleted afterwards and nothing
 /// touches the credential vault.
 /// </summary>
@@ -26,11 +29,26 @@ internal static class CreationRehearsal
         var steps = new List<(string Name, bool Ok, string Detail)>();
         var started = DateTimeOffset.UtcNow;
         var root = Path.Combine(Path.GetTempPath(), "martlet-creation-rehearsal-" + Guid.NewGuid().ToString("N"));
+        // The household's account directory on the hosts: a host lets a device use an account's list only where that account is
+        // signed in (GatewayMemorySpaceAccess.cs). Sam, the owner, is signed in on lab-desktop-sam; Alex on lab-desktop-alex.
+        var now = DateTimeOffset.UtcNow;
+        using (var founder = NetworkKey.Create("lab-desktop-sam"))
+            CreationHost.Accounts = AccountDirectory.Empty
+                .Put(founder, Account.Create("Sam", AccountRoles.Owner, Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7"))
+                    .WithDevice(AccountDevice.For("lab-desktop-sam", AccountLoginKey.ForWindows("lab-desktop-sam", "S-1-5-21-1-2-3-1001"), now)), now)
+                .Put(founder, Account.Create("Alex", AccountRoles.Member, Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"))
+                    .WithDevice(AccountDevice.For("lab-desktop-alex", AccountLoginKey.ForWindows("lab-desktop-alex", "S-1-5-21-1-2-3-1002"), now)), now)
+                .Write();
         await using var h1 = await CreationHost.StartAsync("lab-host-1");
         await using var h2 = await CreationHost.StartAsync("lab-host-2");
         var a = new LabDesktop("lab-desktop-a", Path.Combine(root, "a"));
         var b = new LabDesktop("lab-desktop-b", Path.Combine(root, "b"));
         var c = new LabDesktop("lab-desktop-c", Path.Combine(root, "c"));
+        var samAccount = Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7");
+        var alexAccount = Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0");
+        var sam = new LabDesktop("lab-desktop-sam", Path.Combine(root, "sam"), samAccount, owner: true);
+        var alex = new LabDesktop("lab-desktop-alex", Path.Combine(root, "alex"), alexAccount, owner: false);
+        Creation? samTone = null, alexTone = null, olderTone = null;
         var registry = new CreationRegistry();
         registry.Register(FixtureCreations.Kind);
         Creation? short1 = null, long1 = null;
@@ -222,6 +240,73 @@ internal static class CreationRehearsal
                         !text.Contains("Short tone", StringComparison.Ordinal),
                     $"{result.Describe()} Saved: {string.Join(", ", saved!.Hosts.Select(h => $"{h.HostId} {h.State} ({h.Complete.Count} complete)"))}");
             });
+            await Run("Two accounts on lab-host-1: Sam (the owner) and Alex each make a tone and sync through their own lists; the host keeps one pool of pieces", async () =>
+            {
+                foreach (var desktop in new[] { sam, alex }) await desktop.PairAsync(h1);
+                // The same tone, so both lists use the same pieces.
+                samTone = await CreationStore.AddAsync(sam.DataDirectory, FixtureCreations.Draft(sam.Author, "Sam's tone", 2, 523), registry,
+                    DateTimeOffset.UtcNow, token);
+                alexTone = await CreationStore.AddAsync(alex.DataDirectory, FixtureCreations.Draft(alex.Author, "Alex's tone", 2, 523), registry,
+                    DateTimeOffset.UtcNow, token);
+                var bySam = await sam.SyncAsync([h1], token);
+                var byAlex = await alex.SyncAsync([h1], token);
+                var lists = h1.Server.CreationAccounts;
+                return (lists.Contains(samAccount) && lists.Contains(alexAccount) && h1.SavedAccountLists.ContainsKey(samAccount) &&
+                        h1.SavedAccountLists.ContainsKey(alexAccount) && bySam.Sent > 0 && byAlex.Sent == 0 &&
+                        byAlex.Hosts.Single().State == CreationSyncState.Shared && byAlex.Hosts.Single().Complete.Contains(alexTone.Id),
+                    $"lists on lab-host-1: {lists.Count}; Sam sent {bySam.Sent} pieces, Alex sent {byAlex.Sent} (the host already held them); " +
+                    $"saved lists: {h1.SavedAccountLists.Count}");
+            });
+            await Run("The owner bridge: the older desktop A (old single list) gets Sam's tone, and Sam gets the tone A makes", async () =>
+            {
+                var onA = await a.SyncAsync([h1], token);
+                olderTone = await CreationStore.AddAsync(a.DataDirectory, FixtureCreations.Draft(a.Author, "Older desktop's tone", 1, 660), registry,
+                    DateTimeOffset.UtcNow, token);
+                await a.SyncAsync([h1], token);
+                var onSam = await sam.SyncAsync([h1], token);
+                return (onA.Local.Contains(samTone!.Id) && onSam.Local.Contains(olderTone.Id) && onSam.Local.Contains(short1!.Id),
+                    $"A holds Sam's tone: {onA.Local.Contains(samTone.Id)}; Sam holds A's new tone: {onSam.Local.Contains(olderTone.Id)} " +
+                    $"and A's earlier one: {onSam.Local.Contains(short1!.Id)}; Sam's creations: {onSam.Library.Live.Count}");
+            });
+            await Run("Nothing changed: Sam's next sync through the owner bridge reads only the host's digests (no list, no pieces)", async () =>
+            {
+                var counting = new Counting(sam.Host(h1));
+                var result = await sam.SyncAsync([counting], token);
+                return (counting.Digests == 1 && counting.Reads == 0 && counting.Merges == 0 && result.Sent == 0 &&
+                        result.Hosts.Single().State == CreationSyncState.Shared,
+                    $"digest reads: {counting.Digests}; full reads: {counting.Reads}; merges: {counting.Merges}; pieces sent: {result.Sent}");
+            });
+            await Run("Alex's creations stay Alex's: Alex never gets the old list or Sam's creations, and Sam never gets Alex's", async () =>
+            {
+                var onAlex = await alex.SyncAsync([h1], token);
+                var onSam = await sam.SyncAsync([h1], token);
+                var alexOnly = onAlex.Library.Live.Select(x => x.Id).SequenceEqual([alexTone!.Id]);
+                var samWithout = onSam.Library.Find(alexTone.Id) is null;
+                return (alexOnly && samWithout, $"Alex's creations: {onAlex.Library.Live.Count} (only Alex's tone: {alexOnly}); Alex's tone on Sam's desktop: {!samWithout}");
+            });
+            await Run("A piece goes only when no list uses it: Alex deletes Alex's tone and the host keeps the pieces for Sam's; Sam deletes Sam's and they go", async () =>
+            {
+                var pieces = samTone!.Assets!.SelectMany(x => x.Chunks).ToArray();
+                await CreationStore.RemoveAsync(alex.DataDirectory, alexTone!.Id, alex.DeviceId, DateTimeOffset.UtcNow, token);
+                await alex.SyncAsync([h1], token);
+                var kept = pieces.All(h1.SavedChunks.ContainsKey);
+                await CreationStore.RemoveAsync(sam.DataDirectory, samTone.Id, sam.DeviceId, DateTimeOffset.UtcNow, token);
+                await sam.SyncAsync([h1], token);
+                var onA = await a.SyncAsync([h1], token);
+                var gone = !pieces.Any(h1.SavedChunks.ContainsKey);
+                return (kept && gone && onA.Library.Find(samTone.Id)?.Removed == true,
+                    $"pieces kept while Sam's tone lived: {kept}; gone after Sam deleted it: {gone}; deleted on A too: {onA.Library.Find(samTone.Id)?.Removed == true}");
+            });
+            await Run("lab-host-1 restarts and still serves each account's own list", async () =>
+            {
+                await h1.RestartAsync();
+                var onSam = await sam.SyncAsync([h1], token);
+                var onAlex = await alex.SyncAsync([h1], token);
+                var lists = h1.Server.CreationAccounts;
+                return (lists.Contains(samAccount) && lists.Contains(alexAccount) && onSam.Hosts.Single().State == CreationSyncState.Shared &&
+                        onSam.Local.Contains(olderTone!.Id) && onAlex.Library.Live.Count == 0 && onAlex.Hosts.Single().State == CreationSyncState.Shared,
+                    $"lists after the restart: {lists.Count}; Sam: {onSam.Describe()} Alex: {onAlex.Describe()}");
+            });
         }
         finally
         {
@@ -239,7 +324,10 @@ internal static class CreationRehearsal
             scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with in-memory creations.json and pieces, and three " +
                 "simulated desktops using the production CreationStore and CreationSync over the desktop's paired client (HostCreationPeer) " +
                 "in a temporary folder, with the FIXTURE - NOT AI test-tone kind (generated tones as FLAC; nothing played). Not covered: the " +
-                "desktop window and its 30-second sync, the Linux host's files, a real song and a real LAN.",
+                "desktop window and its 30-second sync, the Linux host's files, a real song and a real LAN. Two accounts (Sam, the owner, and Alex) " +
+                "sync through their own lists on lab-host-1, and Sam's sync joins the old single list that desktop A uses (the owner bridge); the " +
+                "hosts start with an account directory that signs each in on its own desktop, so the host's access hook admits each to its own " +
+                "list; its refusals of other accounts' devices are checked by the gateway tests, not here.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -307,7 +395,7 @@ internal static class CreationRehearsal
     }
 
     /// <summary>Counts what the sync asks a host.</summary>
-    private sealed class Counting(HostCreationPeer inner) : ICreationHost, IDisposable
+    private sealed class Counting(ICreationHost inner) : ICreationHost, IDisposable
     {
         internal int Digests, Reads, Merges;
         public string HostId => inner.HostId;
@@ -333,7 +421,7 @@ internal static class CreationRehearsal
         public Task<byte[]?> ReadChunkAsync(string sha256, CancellationToken token) => inner.ReadChunkAsync(sha256, token);
         public Task<IReadOnlySet<string>> SendChunkAsync(string sha256, ReadOnlyMemory<byte> data, CancellationToken token) =>
             inner.SendChunkAsync(sha256, data, token);
-        public void Dispose() => inner.Dispose();
+        public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
     private sealed class Unreachable(string hostId) : ICreationHost
@@ -349,7 +437,7 @@ internal static class CreationRehearsal
     }
 
     /// <summary>A simulated desktop: its pairings (secrets in memory), its data folder and the production sync engine.</summary>
-    private sealed class LabDesktop(string deviceId, string dataDirectory)
+    private sealed class LabDesktop(string deviceId, string dataDirectory, Guid? account = null, bool owner = false)
     {
         private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly CreationSync sync = new(dataDirectory);
@@ -366,12 +454,17 @@ internal static class CreationRehearsal
 
         internal HostCreationPeer Peer(CreationHost host) => new(host.HostId, () => Connect(host));
 
+        /// <summary>The host as this desktop's sync uses it: its account's own list (joined with the old list for the owner),
+        /// or the old single list for a desktop without accounts.</summary>
+        internal ICreationHost Host(CreationHost host) =>
+            account is { } id ? HostCreationPeer.ForAccount(host.HostId, () => Connect(host), id, owner) : Peer(host);
+
         /// <summary>One pass of the desktop's sync with <paramref name="hosts"/> (lab hosts, or stand-ins).</summary>
         internal async Task<CreationSyncResult> SyncAsync(IReadOnlyList<object> hosts, CancellationToken token)
         {
             var peers = hosts.Select(h => h switch
             {
-                CreationHost lab => Peer(lab),
+                CreationHost lab => Host(lab),
                 ICreationHost other => other,
                 _ => throw new ArgumentException("Not a host.")
             }).ToArray();
@@ -400,7 +493,7 @@ internal static class CreationRehearsal
 
     /// <summary>A real gateway on 127.0.0.1 with an in-memory copy of creations.json and the pieces that survives a restart,
     /// counting how often desktops read the list and pieces.</summary>
-    private sealed class CreationHost : IAsyncDisposable, IGatewayCreationStorage, IGatewayAuditSink
+    private sealed class CreationHost : IAsyncDisposable, IGatewayCreationStorage, IGatewayAccountCreationStorage, IGatewayAuditSink
     {
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
@@ -411,7 +504,17 @@ internal static class CreationRehearsal
         internal string Origin { get; private set; } = "";
         internal byte[]? SavedLibrary { get; private set; }
         internal Dictionary<string, byte[]> SavedChunks { get; } = new(StringComparer.Ordinal);
+        internal Dictionary<Guid, byte[]> SavedAccountLists { get; } = [];
         internal int ChunkReads => Volatile.Read(ref chunkReads);
+
+        /// <summary>The household's account directory every lab host starts with (accounts.json).</summary>
+        internal static byte[]? Accounts { get; set; }
+
+        private sealed class AccountFile(byte[] bytes) : IGatewayAccountStorage
+        {
+            public byte[]? Load() => bytes;
+            public void Save(byte[] value) { }
+        }
 
         internal static async Task<CreationHost> StartAsync(string hostId)
         {
@@ -434,7 +537,9 @@ internal static class CreationRehearsal
             Origin = $"https://127.0.0.1:{FreePort()}";
             var origin = new GatewayOrigin(Origin);
             Server = new GatewayServer(Identity, origin, [], this);
+            Server.AttachAccountCreationStorage(this);
             Server.AttachCreationStorage(this);
+            if (Accounts is { } accounts) Server.AttachAccountStorage(new AccountFile(accounts));
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
 
@@ -457,6 +562,9 @@ internal static class CreationRehearsal
 
         public void SaveChunk(string sha256, byte[] bytes) => SavedChunks[sha256] = (byte[])bytes.Clone();
         public void RemoveChunk(string sha256) => SavedChunks.Remove(sha256);
+        public IReadOnlyCollection<Guid> List() => SavedAccountLists.Keys.ToArray();
+        public byte[]? Load(Guid account) => SavedAccountLists.GetValueOrDefault(account);
+        public void Save(Guid account, byte[] bytes) => SavedAccountLists[account] = bytes;
 
         public void Record(GatewayAuditEvent gatewayEvent) { }
 

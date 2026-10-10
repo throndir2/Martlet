@@ -549,6 +549,22 @@ NVIDIA Build and its old key.
 
 Conversations are not shared; what Martlet makes from them is (the [shared creations](#the-shared-creations)).
 
+### Each person's settings
+
+With [accounts](ACCOUNTS.md#account-settings), the settings above are split
+into the household's and each person's. The household keeps `thinking`,
+`listening`, `speaking` with their API keys, `thinking-fallback`,
+`character-actions`, `voice-recognition`, `smart-home`, `updates`,
+`model-abilities`, `work-sharing`, `pools` and the `pc.*`, `role.*` and
+`setup-run.*` entries. Each person keeps `companion` (their personalities and
+character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
+`talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
+`touch-temperament` and their own `reminders.<device ID>` entries. A person's
+settings go only to the computers where that person is signed in, and switching
+person on a computer gives Martlet that person's settings. A computer on an
+older Martlet keeps the owner's settings in step through this document, as
+before.
+
 ### What stays with each computer
 
 These describe the computer itself, so they never travel:
@@ -615,11 +631,15 @@ to *different* settings made on different computers are all kept.
 | --- | --- |
 | Each host | `shared-settings.json` beside `host.json` (0600, gateway service owner), with the API keys |
 | Each desktop | `shared-settings.json` in Martlet's data folder: the merged copy **without any key** and the digests of what it last saw; keys stay in Windows Credential Manager |
+| Each person, on each host | `account-settings-<account ID>.json` beside `host.json` (0600): that person's settings, never a key |
+| Each person, on each desktop | `accounts\<account ID>\shared-settings.json` in Martlet's data folder; `accounts\working-copy.json` names the person whose settings the data folder's files hold |
 
 The gateway serves `GET /martlet/v1/settings`, `GET /martlet/v1/settings/digest`
 and `POST /martlet/v1/settings` (merge and return) to paired devices only, over
 their pinned, signed connection; API keys for other apps may not use them
-([gateway contract](../src/Martlet.Gateway/README.md)). Desktops read a host's
+([gateway contract](../src/Martlet.Gateway/README.md)). Each person's settings
+are at `/martlet/v1/settings/accounts/{account}` (the same three forms), for
+member devices where that person is signed in. Desktops read a host's
 copy only when its digest changed and give their copy to every host whose
 digest differs. Secrets are pooled by SHA-256 of the key, and only those a
 setting still uses are kept. Like the shared Home Assistant token, the keys are
@@ -899,11 +919,21 @@ from any host.
 | `POST /martlet/v1/creations` | Merge a desktop's list in; returns the merged list and `present` |
 | `GET /martlet/v1/creations/chunks/<sha256>` | One piece (`chunk.missing` when the host has none) |
 | `POST /martlet/v1/creations/chunks/<sha256>` | Send a piece of a live creation; refused (`request.invalid`) for a wrong SHA-256 or length, or a piece no live creation has |
+| `/martlet/v1/creations/accounts/<32 hex>` (with `/digest` and `/chunks/<sha256>`) | The same for one [account's](ACCOUNTS.md) own list, for paired member devices that may use that account (`creations.account_denied` otherwise); at most 64 account lists (`creations.accounts_full`) |
+
+Each account has its own creations: a host keeps one list per account
+(`creations-account-<32 hex>.json`), the old single list for desktops on an older
+Martlet, and one pool of pieces for all of them, deleting a piece only when no
+list's live creation uses it. A desktop syncs the signed-in account's list from
+its folder `accounts\<32 hex>\`; the owner's desktop also joins the old list both
+ways, so older desktops keep the owner's creations
+([each account's own creations](CREATIONS.md#each-accounts-own-creations)).
 
 Desktops sync every 30 seconds while any host is paired and Martlet is the same on
 all your computers (and two seconds after a change), with the same engine MCP's
-`creations_check` rehearses on loopback. The desktop's sync with real paired
-hosts, the Linux host's files and two real computers are **NOT RUN**.
+`creations_check` rehearses on loopback, two accounts included. The desktop's sync
+with real paired hosts, the Linux host's files and two real computers are **NOT
+RUN**.
 
 ## The shared Home Assistant connection
 

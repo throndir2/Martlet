@@ -354,7 +354,7 @@ remember, correct, reassign or forget something:
 - `forget` (up to 50 ids) deletes those facts in one commit.
 
 `person` is a name or alias of a voice Martlet knows, its tag (`V3`), `me` (the
-one speaking, else your own voice) or `everyone` (about no one in particular).
+one speaking, else your own voice: one linked to the account signed in here) or `everyone` (about no one in particular).
 An unknown name or id is refused with what the model can use instead; nothing is
 guessed. Changes show in the conversation like remembering's (*Forgot: …*) and
 in the Tools page's log (`Martlet > manage_memories: forgot 2`, never a fact).
@@ -419,8 +419,8 @@ everyone's (about no one in particular), as every fact was before voices.
   the same store version changes nothing, and a refresh never changes the
   fact you are writing or changing, its *Belongs to* choice or the selection.
   *Belongs to* chooses whose a fact is when you add or update
-  it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice marked
-  *This is me* on People) unless *Show* lists one voice's facts; then it is
+  it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice linked
+  to your account with *This voice is ...* on People) unless *Show* lists one voice's facts; then it is
   that voice's. The details say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
   many belong to how many people and how many to forgotten voices, never a
   name or a fact.
@@ -653,7 +653,8 @@ drops anything still being remembered.
 
 For [accounts and households](ACCOUNTS.md#memory-spaces), each host also keeps
 one memory document per **memory space**, so every host keeps every person's
-memories apart. This is the host side only; desktops do not use spaces yet.
+memories apart. Desktops use them as [Memory spaces on the desktop](#memory-spaces-on-the-desktop)
+says.
 
 - **Space IDs** (`Martlet.Core.Sync.MemorySpaceId`): `household`,
   `account-<32 hex>` or `character-<32 hex>` (the ID in lowercase hex). Hosts
@@ -668,9 +669,19 @@ memories apart. This is the host side only; desktops do not use spaces yet.
   connection. Friends get `access.friend` and API keys get `key.scope`, as for
   the single document. An access hook (`GatewayMemorySpaces.Access`) then
   decides which device may read or write which space; a refusal is
-  `memories.space_denied` (403). For now it admits every member device. The
-  account directory will narrow it. A POST needs read and write access,
-  because it returns the merged space.
+  `memories.space_denied` (403). The household's account directory on the
+  host (`accounts.json`, see [accounts](ACCOUNTS.md)) decides it
+  (`GatewayMemorySpaceAccess.cs`):
+  - `household`: every paired member device.
+  - `account-<id>`: only a device where that account is signed in (a device
+    binding in the directory). An account the host doesn't know yet, or a
+    removed account, is refused. The account's settings on hosts use the same
+    rule.
+  - `character-<id>`: a device where someone of the household is signed in.
+    The directory doesn't record yet whose a character is or how it is shared;
+    sharing narrows this.
+
+  A POST needs read and write access, because it returns the merged space.
 - **Limits**: a host keeps at most 64 spaces. A new space past that is
   `memories.spaces_full` (409); the spaces it keeps still take changes.
 - **On a Linux host** each space is `memories-<space>.json` beside `host.json`
@@ -679,8 +690,128 @@ memories apart. This is the host side only; desktops do not use spaces yet.
   `ReadMemorySpaceDigestAsync` and `MergeMemorySpaceAsync`. They refuse a bad
   space ID before they send anything. Hosts older than spaces answer
   `request.invalid`.
-- The old `/martlet/v1/memories` document and `memories.json` work unchanged for
-  older desktops. Nothing moves between the old document and the spaces yet.
+- The old `/martlet/v1/memories` document and `memories.json` hold the owner's
+  memories from before accounts. A device where the owner is signed in may use
+  them, and so may a device where no account is signed in yet (a desktop on an
+  older Martlet). A device where only other people are signed in gets
+  `memories.space_denied`. The host never copies between the old document and a
+  space: the owner's desktops keep them the same (below).
+
+### Memory spaces on the desktop
+
+Each person's memories are their own ([accounts](ACCOUNTS.md#memory-spaces)).
+A desktop keeps **one memory store per memory space** of the account signed in,
+and the space tells who remembers a fact. `voice_id` still tells whom the fact
+is about.
+
+- **The spaces of an account** (`MemorySpaces.Resolve`): the **active space**,
+  where remembering writes, is the account's own `account-<id>` (or the active
+  character's own `character-<id>`, when that character remembers on its own or
+  together with others). Recall also reads `household`. (Character spaces that
+  other people share are a seam, `MemoryAccount.Shared`; sharing leaves it empty,
+  so only a character shared together reads its own space.) An account's own space is never
+  shared, because the same rule guards the account's personality and prompts on
+  hosts. This device may change the active space, the household and its own
+  character spaces. Facts that other people share are read-only here.
+- **Where each store is** (`Martlet.Core.Sync.MemorySpaceFolders`): the account's
+  own space follows its memory setting. By default it is
+  `<data>\accounts\<32 hex>\memory`; a custom folder stays the custom folder.
+  Every other space is `<data>\memory-spaces\<space>`. The sync state of each
+  space is `<data>\memory-sync\<space>\memory-sync.json`.
+- **Recall stays as fast as before.** Recall opens only the active space's
+  store, as it did with one store. The other spaces are read-only snapshots in
+  memory (`MemorySnapshot`, the store's facts and lexical index). They are loaded
+  at start, at sign-in or a switch (`DesktopMemoryService.UseAccount`, then
+  `LoadSpacesAsync`, in the background) and again after anything changes that
+  space. A recall before they load reads the active space only and never waits.
+  The best matches of all spaces come first (by score, then the active space),
+  then the newest facts of all spaces (the speaker's and everyone's first). The
+  memory block in the request is the same as before: no space label, so the
+  start of each request doesn't change. Each store has its own lock, so a sync of
+  the household never holds up recall.
+- **Remembering and the reply's tools**: a new fact goes to the active space (a
+  fact about you goes to `household` while *Share new memories about me* is on). An
+  update or a forget acts in the fact's own space when this device may change
+  it; remembering skips a fact it may not change, and `manage_memories` (or a
+  `memory_*` check-in tool) says that only its owner can change it. A
+  near-duplicate of a fact in any space recall reads isn't saved again. `find`
+  searches every space recall reads and names where a fact is kept (`kept`).
+  The tool descriptions don't change.
+- **The Memory window** lists the facts of every space recall reads. A fact kept
+  in another space than the active one says where on its line (*· Household*),
+  the details say *Kept in*, and the facts line counts them
+  (*3 in Household*). *Add fact* saves in the active space; changes and
+  deletions act in each fact's own space; facts shared with you can't be
+  changed. *Delete everything* deletes the active space's facts only (*The
+  household's memories stay*). *Share selected with* copies or moves facts
+  between spaces ([Sharing memories](#sharing-memories)).
+- **The sync, by space** (`MainWindow.MemorySync.cs`): every space the account
+  reads syncs on its own, with its own `MemorySyncNode` and state, through the
+  host's space routes. The owner's space also syncs with the old single
+  document, so desktops on an older Martlet keep the owner's memories the same.
+  A host older than spaces syncs only the owner's space, through the old
+  document; for other spaces the status asks you to update it. A host that
+  doesn't know the account on this PC yet (`memories.space_denied`) is tried
+  again on the next check. After a switch, the spaces of the account signed in
+  before get one more sync (it stays signed in on this device).
+  `MemorySyncStatus` counts the facts of each space (*42 yours, 3 household*).
+- **Moving in** (once, for the owner): this PC's store from before accounts
+  (`<data>\memory`) and its `memory-sync.json` move into the owner's space the
+  first time that store opens (`MemoryStore.MoveStore`, one rename while nobody
+  holds the store; the store ID stays, so the next sync finds nothing new). A
+  custom memory folder is already the owner's space. When the owner's space
+  already has a store, the old one stays where it is, and the desktop log says
+  so. Other accounts never take it.
+- With no account signed in (tests and fixtures), the desktop keeps one store in
+  the memory setting's folder, as before accounts, and doesn't sync it.
+
+`memory_status` and `memory_sync_status` (MCP) count each space (`spaces`),
+never a fact. `memory_sync_selftest` covers the owner moving in, the household
+shared between accounts, refusals of another account's space and of the old
+document, and a desktop on an older Martlet. Recall and remembering over spaces
+are covered by `MemorySpaceServiceTests`. Real computers signed in as
+different people are **NOT RUN**.
+
+### Sharing memories
+
+People in one home can share memories with each other ([accounts](ACCOUNTS.md#sharing)).
+Nothing here runs during a reply.
+
+- **The household's memories** (`household`) are read by every character of
+  every person. Put a fact there to make it known to the whole household.
+- **Share selected with** (Memory window, shown with accounts): select facts,
+  choose *The household's memories*, another person (*Alex's memories*) or a
+  character shared together, then **Copy** or **Move**. A copy has the same
+  words, the same person it is about and the same keeping. A space this PC
+  keeps (the household, the character in use) gets new facts here, and the
+  memory sync takes them to your other computers. Another person's memories go
+  through your paired hosts: the host's give route
+  (`POST /martlet/v1/memories/spaces/{space}/give`) only adds new facts and
+  never shows that person's facts. That person's computers take them on their
+  next sync. Without a paired host, Martlet says so and shares nothing.
+  **Move** deletes the facts here only after the copy is made; facts shared
+  with you can only be copied. `MemoryShareStatus` says what happened, with
+  counts and the kind of place only.
+- **Share new memories about me with the household** (Memory window): when it
+  is on, a new fact Martlet picks out of a conversation about you (a voice
+  People links to your account) is saved in the household's memories instead
+  of yours, so every character remembers it. Facts you type, and changes to
+  existing facts, stay where they are. It is your choice on all your computers
+  (the household entry `sharing.<account>`, `new_facts_about_me`).
+- **A character shared together** remembers in its own space, `character-<id>`,
+  for everyone who talks to it. Each fact keeps whom it is about, so it knows
+  whose each fact is. Your other characters don't read that space. When its
+  owner makes it private again, it keeps the space and what it remembers. The
+  hosts then let only the owner's devices use it.
+
+Checked locally: `MemorySharingTests` (where a new fact about you goes, the
+copies given to another space) and `memory_sync_selftest`. The selftest covers
+a fact given to another account's space through the give route on two real
+gateways, and a character space that follows the household sharing entry.
+The Memory window's sharing was checked through `-Desktop` on a disposable
+data folder (copy to the household; a move to another person without a host is
+refused and keeps the fact). A gift between two real computers and a
+conversation that remembers a fact about you are **NOT RUN**.
 
 ## Local validation
 

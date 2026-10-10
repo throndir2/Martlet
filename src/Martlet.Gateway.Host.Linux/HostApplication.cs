@@ -222,6 +222,28 @@ internal sealed class ControlCreationStorage(LinuxControlDirectory directory) : 
     }
 }
 
+/// <summary>Keeps each account's creation list in creations-account-&lt;32 hex&gt;.json beside host.json (0600, service owner);
+/// the pieces are the shared creation-chunk files. Not part of the approved configuration.</summary>
+internal sealed class ControlAccountCreationStorage(LinuxControlDirectory directory) : IGatewayAccountCreationStorage
+{
+    private readonly object gate = new();
+
+    public IReadOnlyCollection<Guid> List()
+    {
+        lock (gate) return directory.ListCreationAccounts();
+    }
+
+    public byte[]? Load(Guid account)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.CreationAccount(account), LinuxControlDirectory.MaximumCreationsBytes);
+    }
+
+    public void Save(Guid account, byte[] bytes)
+    {
+        lock (gate) directory.WriteCreationAccount(account, bytes);
+    }
+}
+
 /// <summary>Keeps the shared Home Assistant connection in home-assistant.json beside host.json (0600, service owner).
 /// Contains the HA access token and is not part of the approved configuration.</summary>
 internal sealed class ControlHomeAssistantStorage(LinuxControlDirectory directory) : IGatewayHomeAssistantStorage
@@ -380,6 +402,28 @@ internal sealed class ControlMemorySpaceStorage(LinuxControlDirectory directory)
     }
 }
 
+/// <summary>Keeps each account's settings (each person's, apart; no API keys) in account-settings-&lt;32 hex&gt;.json beside
+/// host.json (0600, service owner). Not part of the approved configuration.</summary>
+internal sealed class ControlAccountSettingsStorage(LinuxControlDirectory directory) : IGatewayAccountSettingsStorage
+{
+    private readonly object gate = new();
+
+    public IReadOnlyCollection<string> List()
+    {
+        lock (gate) return directory.ListAccountSettings();
+    }
+
+    public byte[]? Load(string account)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.AccountSettingsFile(account), LinuxControlDirectory.MaximumSharedSettingsBytes);
+    }
+
+    public void Save(string account, byte[] bytes)
+    {
+        lock (gate) directory.WriteAccountSettings(account, bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -497,9 +541,11 @@ internal static class HostApplication
                     owner.AttachVoices(new ControlVoiceStorage(directory));
                     owner.AttachSpeakingVoices(new ControlSpeakingVoiceStorage(directory));
                     owner.AttachCharacterModels(new ControlCharacterModelStorage(directory));
+                    owner.AttachAccountCreations(new ControlAccountCreationStorage(directory));
                     owner.AttachCreations(new ControlCreationStorage(directory));
                     owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
                     owner.AttachSettings(new ControlSettingsStorage(directory));
+                    owner.AttachAccountSettings(new ControlAccountSettingsStorage(directory));
                     owner.AttachMemories(new ControlMemoryStorage(directory));
                     owner.AttachAccounts(new ControlAccountStorage(directory));
                     owner.AttachMemorySpaces(new ControlMemorySpaceStorage(directory));

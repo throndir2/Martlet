@@ -6,7 +6,9 @@ using Martlet.Core.Sync;
 namespace Martlet.Mcp;
 
 /// <summary>reminders_status and reminders_check: Martlet's reminders (the reminders tool; docs/CONVERSATION.md#reminders). The
-/// status reads a data directory's shared-settings.json: every computer's reminders entry, each reminder's state and what each
+/// status reads the shared-settings.json of the account signed in on a data directory (accounts\&lt;id&gt;, named by
+/// accounts\working-copy.json; the data directory's own for a folder from before accounts): every computer's reminders entry,
+/// each reminder's state and what each
 /// computer did about it (offered, took, said, canceled, let go). The check rehearses the production code end to end on two
 /// simulated companion PCs whose entries merge through <see cref="SharedSettings"/>: setting one with the tool, the other
 /// listing and canceling, who says a due one (the PC used most recently, after both offered), a PC alone saying it at once,
@@ -18,9 +20,15 @@ internal static class RemindersCheck
     internal static Task<object> StatusAsync(string dataDirectory, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        if (!File.Exists(Path.Combine(dataDirectory, SharedSettingsState.FileName)))
-            return Task.FromResult<object>(new { state = "none", why = "No shared-settings.json in this data directory yet.", handOff = HandOff() });
-        var (document, _) = SharedSettingsState.Load(dataDirectory);
+        // Reminders are each account's own: read the copy of the account whose settings the data folder holds, else (a data
+        // folder from before accounts) the household's copy.
+        var account = AccountWorkingCopy.Load(dataDirectory)?.Account;
+        var folder = account is { } id ? AccountWorkingCopy.Folder(dataDirectory, id) : dataDirectory;
+        var source = account is null ? "household copy (shared-settings.json, before accounts)" : $"account copy (accounts\\{account:N}\\shared-settings.json)";
+        if (!File.Exists(Path.Combine(folder, SharedSettingsState.FileName)))
+            return Task.FromResult<object>(new { state = "none", account = account?.ToString("N"), source,
+                why = "No shared-settings.json there yet.", handOff = HandOff() });
+        var (document, _) = SharedSettingsState.Load(folder);
         var entries = new Dictionary<string, ReminderEntry>(StringComparer.Ordinal);
         var unreadable = new List<string>();
         foreach (var setting in document.Settings.Where(s => s.Key.StartsWith(SharedSettings.RemindersPrefix, StringComparison.Ordinal)))
@@ -31,6 +39,8 @@ internal static class RemindersCheck
         return Task.FromResult<object>(new
         {
             state = "loaded",
+            account = account?.ToString("N"),
+            source,
             computers = entries.Keys.ToArray(),
             unreadable,
             pending = board.Pending.Count,

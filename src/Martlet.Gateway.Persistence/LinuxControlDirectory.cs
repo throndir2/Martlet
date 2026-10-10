@@ -37,6 +37,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const string CreationChunkPrefix = "creation-chunk-", CreationChunkSuffix = ".bin";
     internal const string CreationChunkStaging = "creation-chunk.staging";
     internal const int MaximumCreationChunkBytes = Martlet.Core.Creations.CreationLibrary.ChunkBytes;
+    /// <summary>One account's creation list: creations-account-&lt;32 hex&gt;.json (its pieces are the shared creation-chunk files).</summary>
+    internal const string CreationAccountPrefix = "creations-account-", CreationAccountSuffix = ".json";
+    internal const string CreationAccountStaging = "creations-account.staging";
     /// <summary>The shared Home Assistant connection, including the access token, for paired desktops.</summary>
     internal const string HomeAssistant = "home-assistant.json", HomeAssistantStaging = "home-assistant.staging";
     internal const int MaximumHomeAssistantBytes = 16 * 1024;
@@ -72,6 +75,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const int MaximumAccountsBytes = Martlet.Core.Accounts.AccountDirectory.MaximumBytes;
     /// <summary>One memory space (every account's memories, apart): memories-&lt;space ID&gt;.json.</summary>
     internal const string MemorySpacePrefix = "memories-", MemorySpaceSuffix = ".json", MemorySpaceStaging = "memories-space.staging";
+    /// <summary>One account's settings (each person's, apart; no API keys): account-settings-&lt;32 hex&gt;.json.</summary>
+    internal const string AccountSettingsPrefix = "account-settings-", AccountSettingsSuffix = ".json",
+        AccountSettingsStaging = "account-settings.staging";
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -133,7 +139,8 @@ internal sealed class LinuxControlDirectory : IDisposable
     {
         if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             name != Accounts &&
-            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
+            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null &&
+            AccountSettingsOf(name) is null && CreationAccountOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -307,6 +314,28 @@ internal sealed class LinuxControlDirectory : IDisposable
         return true;
     }
 
+    /// <summary>The file name of <paramref name="account"/>'s creation list.</summary>
+    internal static string CreationAccount(Guid account) => CreationAccountPrefix + account.ToString("N") + CreationAccountSuffix;
+
+    /// <summary>The account whose creation list a file name holds; null for any other name.</summary>
+    internal static Guid? CreationAccountOf(string name) =>
+        name.Length == CreationAccountPrefix.Length + 32 + CreationAccountSuffix.Length &&
+        name.StartsWith(CreationAccountPrefix, StringComparison.Ordinal) && name.EndsWith(CreationAccountSuffix, StringComparison.Ordinal) &&
+        Martlet.Core.Sync.MemorySpaceId.IsValid(Martlet.Core.Sync.MemorySpaceId.AccountPrefix + name[CreationAccountPrefix.Length..^CreationAccountSuffix.Length])
+            ? Guid.ParseExact(name[CreationAccountPrefix.Length..^CreationAccountSuffix.Length], "N")
+            : null;
+
+    /// <summary>The accounts whose creation lists are kept here.</summary>
+    internal Guid[] ListCreationAccounts()
+    {
+        Validate();
+        return [.. fs.Enumerate(DirectoryFd).Select(CreationAccountOf).OfType<Guid>().OrderBy(a => a.ToString("N"), StringComparer.Ordinal)];
+    }
+
+    /// <summary>Atomically replaces one account's creation list (0600, service owner).</summary>
+    internal void WriteCreationAccount(Guid account, byte[] bytes) =>
+        ReplaceRecovering(CreationAccount(account), CreationAccountStaging, bytes, MaximumCreationsBytes);
+
     private void ReplaceRecovering(string name, string staging, byte[] bytes, int maximum)
     {
         if (bytes.Length < 1 || bytes.Length > maximum) throw Error(GatewayPersistenceFailure.InvalidState);
@@ -375,6 +404,30 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>Atomically replaces one memory space's file (0600, service owner).</summary>
     internal void WriteMemorySpace(string space, byte[] bytes) =>
         ReplaceRecovering(MemorySpace(space), MemorySpaceStaging, bytes, MaximumMemoriesBytes);
+
+    private static bool IsAccountId(string? value) =>
+        value is { Length: 32 } && value.AsSpan().IndexOfAnyExcept("0123456789abcdef") < 0;
+
+    /// <summary>The file name of <paramref name="account"/>'s settings (32 lowercase hex digits).</summary>
+    internal static string AccountSettingsFile(string account) =>
+        IsAccountId(account) ? AccountSettingsPrefix + account + AccountSettingsSuffix : throw Error(GatewayPersistenceFailure.InvalidPath);
+
+    /// <summary>The account ID an account-settings file name holds; null for any other name.</summary>
+    internal static string? AccountSettingsOf(string name) =>
+        name.StartsWith(AccountSettingsPrefix, StringComparison.Ordinal) && name.EndsWith(AccountSettingsSuffix, StringComparison.Ordinal) &&
+        name.Length == AccountSettingsPrefix.Length + 32 + AccountSettingsSuffix.Length &&
+        name[AccountSettingsPrefix.Length..^AccountSettingsSuffix.Length] is var account && IsAccountId(account) ? account : null;
+
+    /// <summary>The accounts whose settings are kept here.</summary>
+    internal string[] ListAccountSettings()
+    {
+        Validate();
+        return [.. fs.Enumerate(DirectoryFd).Select(AccountSettingsOf).OfType<string>().Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>Atomically replaces one account's settings file (0600, service owner).</summary>
+    internal void WriteAccountSettings(string account, byte[] bytes) =>
+        ReplaceRecovering(AccountSettingsFile(account), AccountSettingsStaging, bytes, MaximumSharedSettingsBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()

@@ -65,6 +65,14 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and loads what was saved there.</summary>
     public void AttachCreationStorage(IGatewayCreationStorage storage) => application.Creations.Attach(storage);
 
+    /// <summary>Keeps this host's creation list of each account (served at /martlet/v1/creations/accounts/{32 hex}) in
+    /// <paramref name="storage"/> and loads the lists saved there. Attach it before <see cref="AttachCreationStorage"/>, which
+    /// keeps the pieces of every list.</summary>
+    public void AttachAccountCreationStorage(IGatewayAccountCreationStorage storage) => application.Creations.AttachAccounts(storage);
+
+    /// <summary>The accounts this host keeps a creation list for.</summary>
+    public IReadOnlyList<Guid> CreationAccounts => application.Creations.Accounts;
+
     /// <summary>Keeps this host's shared Home Assistant connection (served at /martlet/v1/home-assistant) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachHomeAssistantStorage(IGatewayHomeAssistantStorage storage) => application.HomeAssistant.Attach(storage);
@@ -72,6 +80,13 @@ public sealed class GatewayServer
     /// <summary>Keeps this host's copy of the owner's shared settings (served at /martlet/v1/settings, API keys included) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachSettingsStorage(IGatewaySettingsStorage storage) => application.Settings.Attach(storage);
+
+    /// <summary>Keeps this host's copy of each account's settings (served at /martlet/v1/settings/accounts/{account}) in
+    /// <paramref name="storage"/> and loads the copies saved there.</summary>
+    public void AttachAccountSettingsStorage(IGatewayAccountSettingsStorage storage) => application.AccountSettings.Attach(storage);
+
+    /// <summary>The accounts (32 lowercase hex) this host keeps settings for.</summary>
+    public IReadOnlyList<string> AccountSettings => application.AccountSettings.Accounts;
 
     /// <summary>Keeps this host's copy of everything Martlet remembers (served at /martlet/v1/memories) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
@@ -88,7 +103,8 @@ public sealed class GatewayServer
     /// <summary>The IDs of the memory spaces this host keeps.</summary>
     public IReadOnlyList<string> MemorySpaces => application.MemorySpaces.Spaces;
 
-    /// <summary>Decides which paired device may read or write which memory space (default: every member device).</summary>
+    /// <summary>Decides which paired device may read or write which memory space (default: the account directory's rules,
+    /// GatewayMemorySpaceAccess.cs).</summary>
     internal GatewayMemorySpaceAccess MemorySpaceAccess
     {
         get => application.MemorySpaces.Access;

@@ -59,12 +59,14 @@ internal static class MemoryTools
         return arguments.ToJsonString();
     }
 
+    private static readonly JsonSerializerOptions FoundJson = new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
     private static readonly string[] Everyone = ["everyone", "everybody", "no one", "noone", "nobody", "none", "general", "anyone"];
     private static readonly string[] Me = ["me", "i", "myself", "user", "the user", "speaker", "the speaker"];
 
-    /// <param name="speaker">The voice speaking now, whose a fact is for "me" (else the owner's voice).</param>
+    /// <param name="speaker">The voice speaking now, whose a fact is for "me" (else <paramref name="yours"/>: the signed-in
+    /// person's voice).</param>
     internal static async Task<MemoryToolOutcome> RunAsync(DesktopMemoryService service, Guid configurationRevision, string argumentsJson,
-        VoiceRoster? roster, KnownVoice? speaker, CancellationToken token)
+        VoiceRoster? roster, KnownVoice? speaker, CancellationToken token, KnownVoice? yours = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         JsonObject? arguments;
@@ -78,24 +80,29 @@ internal static class MemoryTools
         string? voice = null;
         if (person is not null)
         {
-            var (resolved, problem) = Person(person, roster, speaker);
+            var (resolved, problem) = Person(person, roster, speaker, yours);
             if (problem is not null) return Refused(problem);
             voice = resolved;
         }
         switch (action)
         {
             case "find":
-                return await service.UseStoreAsync(configurationRevision, false, async (store, operationToken) =>
-                    Find((await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts, Text(arguments, "query"),
-                        person is not null, voice, roster), token).ConfigureAwait(false);
+                return await service.UseSpaceAsync(configurationRevision, null, false, async (set, _, store, operationToken) =>
+                {
+                    var here = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                    var elsewhere = service.OtherFacts(set);
+                    return Find([.. here, .. elsewhere.Select(f => f.Fact)], Text(arguments, "query"), person is not null, voice, roster,
+                        elsewhere.ToDictionary(f => f.Fact.Id, f => MemorySpaces.Label(f.Space, service.Account)));
+                }, token).ConfigureAwait(false);
             case "remember":
                 if (Fact(fact) is not { } content)
                     return Refused($"Pass the fact: one short sentence of up to {MemoryCapture.MaximumFactCharacters} characters.");
                 if (person is null) voice = speaker?.Id;
-                return await service.UseStoreAsync(configurationRevision, true, async (store, operationToken) =>
+                return await service.UseSpaceAsync(configurationRevision, null, true, async (set, _, store, operationToken) =>
                 {
                     var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
-                    if (facts.FirstOrDefault(f => MemoryCapture.SameFact(f.Content, content) && Same(f.VoiceId, voice, roster)) is { } known)
+                    if (facts.Concat(service.OtherFacts(set).Select(f => f.Fact))
+                        .FirstOrDefault(f => MemoryCapture.SameFact(f.Content, content) && Same(f.VoiceId, voice, roster)) is { } known)
                         return new MemoryToolOutcome(new($"Already remembered as {ShortId(known)}: {known.Content}"), "already remembered", []);
                     if (facts.Count >= MemoryLimits.MaximumFacts)
                         return Refused($"Memory is full ({MemoryLimits.MaximumFacts} facts). Tell the user to delete some on the Memory page.");
@@ -115,11 +122,9 @@ internal static class MemoryTools
                 if (fact is not null && (text = Fact(fact)) is null)
                     return Refused($"The fact must be one short sentence of up to {MemoryCapture.MaximumFactCharacters} characters.");
                 if (text is null && person is null) return Refused("Pass the corrected fact, a person to give it to, or both.");
-                return await service.UseStoreAsync(configurationRevision, true, async (store, operationToken) =>
+                return await ChangeAsync(service, configurationRevision, ids, async (store, targets, operationToken) =>
                 {
-                    var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
-                    var (target, problem) = Resolve(facts, ids[0]);
-                    if (target is null) return Refused(problem!);
+                    var target = targets[0];
                     var edited = await store.EditAsync(new()
                     {
                         Id = target.Id,
@@ -134,16 +139,8 @@ internal static class MemoryTools
                 }, token).ConfigureAwait(false);
             case "forget":
                 if (ids.Count is 0 or > MaximumForget) return Refused($"Pass 1 to {MaximumForget} ids from find in ids.");
-                return await service.UseStoreAsync(configurationRevision, true, async (store, operationToken) =>
+                return await ChangeAsync(service, configurationRevision, ids, async (store, targets, operationToken) =>
                 {
-                    var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
-                    var targets = new List<MemoryFact>();
-                    foreach (var id in ids)
-                    {
-                        var (target, problem) = Resolve(facts, id);
-                        if (target is null) return Refused(problem!);
-                        if (!targets.Contains(target)) targets.Add(target);
-                    }
                     await store.DeleteManyAsync(targets.Select(t => new DeleteFactRequest
                     {
                         Id = t.Id, ExpectedRevision = t.Revision, ConsentId = Guid.NewGuid()
@@ -156,8 +153,63 @@ internal static class MemoryTools
         }
     }
 
-    /// <summary>The facts that match (every query word, or the most words when none match them all), newest first, as JSON.</summary>
-    internal static MemoryToolOutcome Find(IReadOnlyList<MemoryFact> facts, string? query, bool byPerson, string? voice, VoiceRoster? roster)
+    /// <summary>Finds the facts <paramref name="ids"/> name and runs <paramref name="change"/> with the store of the memory space
+    /// they are kept in: the active space's store first (where almost every fact is, so it takes one store opening), else the
+    /// space recall found them in. Facts in two spaces are changed in two calls; a space shared with this account is refused.</summary>
+    private static async Task<MemoryToolOutcome> ChangeAsync(DesktopMemoryService service, Guid configurationRevision,
+        IReadOnlyList<string> ids, Func<MemoryStore, IReadOnlyList<MemoryFact>, CancellationToken, Task<MemoryToolOutcome>> change,
+        CancellationToken token)
+    {
+        string? elsewhere = null;
+        var outcome = await service.UseSpaceAsync<MemoryToolOutcome?>(configurationRevision, null, true, async (set, _, store, operationToken) =>
+        {
+            var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+            var targets = new List<MemoryFact>();
+            foreach (var id in ids)
+            {
+                if (Resolve(facts, id).Fact is { } here)
+                {
+                    if (elsewhere is not null)
+                        return Refused("Those facts are kept in different places (yours and the household's). Change them in separate calls.");
+                    if (!targets.Contains(here)) targets.Add(here);
+                    continue;
+                }
+                var others = service.OtherFacts(set);
+                var (found, problem) = Resolve([.. others.Select(f => f.Fact)], id);
+                if (found is null) return Refused(problem!);
+                var space = others.First(f => f.Fact.Id == found.Id).Space;
+                if (elsewhere is not null && elsewhere != space || targets.Count > 0)
+                    return Refused("Those facts are kept in different places (yours and the household's). Change them in separate calls.");
+                elsewhere = space;
+            }
+            return elsewhere is null ? await change(store, targets, operationToken).ConfigureAwait(false) : null;
+        }, token).ConfigureAwait(false);
+        if (outcome is not null || elsewhere is null) return outcome!;
+        try
+        {
+            return await service.UseSpaceAsync(configurationRevision, elsewhere, true, async (_, _, store, operationToken) =>
+            {
+                var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                var targets = new List<MemoryFact>();
+                foreach (var id in ids)
+                {
+                    var (target, problem) = Resolve(facts, id);
+                    if (target is null) return Refused(problem!);
+                    if (!targets.Contains(target)) targets.Add(target);
+                }
+                return await change(store, targets, operationToken).ConfigureAwait(false);
+            }, token).ConfigureAwait(false);
+        }
+        catch (DesktopMemoryException error) when (error.Code == "memory.read_only")
+        {
+            return Refused("That fact is in memories someone else shares with you; only they can change it.");
+        }
+    }
+
+    /// <summary>The facts that match (every query word, or the most words when none match them all), newest first, as JSON.
+    /// <paramref name="kept"/> names where a fact from another memory space than the active one is kept.</summary>
+    internal static MemoryToolOutcome Find(IReadOnlyList<MemoryFact> facts, string? query, bool byPerson, string? voice, VoiceRoster? roster,
+        IReadOnlyDictionary<Guid, string>? kept = null)
     {
         var words = Words(query);
         var matches = facts
@@ -172,20 +224,22 @@ internal static class MemoryTools
             id = ShortId(m.Fact),
             person = MemoryPeople.Label(m.Fact.VoiceId, roster) ?? "everyone",
             fact = m.Fact.Content,
-            updated = m.Fact.UpdatedAtUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            updated = m.Fact.UpdatedAtUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            kept = kept?.GetValueOrDefault(m.Fact.Id)
         }).ToArray();
-        var json = JsonSerializer.Serialize(new { count = matches.Length, shown = listed.Length, facts = listed });
+        var json = JsonSerializer.Serialize(new { count = matches.Length, shown = listed.Length, facts = listed }, FoundJson);
         return new(new(matches.Length == 0 ? json + "\nNothing matches." : json), $"found {matches.Length}", []);
     }
 
-    /// <summary>Whose a fact is from what the model wrote: (voice ID or null for everyone, null) or (null, why not).</summary>
-    internal static (string? Voice, string? Problem) Person(string text, VoiceRoster? roster, KnownVoice? speaker)
+    /// <summary>Whose a fact is from what the model wrote: (voice ID or null for everyone, null) or (null, why not). "Me" is the
+    /// <paramref name="speaker"/>, else <paramref name="yours"/> (the signed-in person's voice, <see cref="LocalVoices.Yours"/>).</summary>
+    internal static (string? Voice, string? Problem) Person(string text, VoiceRoster? roster, KnownVoice? speaker, KnownVoice? yours = null)
     {
         var name = text.Trim().Trim('"', '\'', '[', ']').Trim();
         if (Everyone.Contains(name, StringComparer.OrdinalIgnoreCase)) return (null, null);
         var live = roster?.Live ?? [];
         if (Me.Contains(name, StringComparer.OrdinalIgnoreCase))
-            return (speaker?.Id ?? live.FirstOrDefault(v => v.Owner)?.Id, null);
+            return (speaker?.Id ?? yours?.Id, null);
         var tagged = name.Length > 1 && name[0] is 'V' or 'v' && int.TryParse(name[1..], NumberStyles.None, CultureInfo.InvariantCulture, out var number)
             ? live.FirstOrDefault(v => v.Number == number) : null;
         if (tagged is not null) return (tagged.Id, null);

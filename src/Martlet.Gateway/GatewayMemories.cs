@@ -51,6 +51,19 @@ internal sealed class GatewayMemoryStore
         }
     }
 
+    /// <summary>Adds the live facts of <paramref name="given"/> whose IDs this copy doesn't have (not even as forgotten) and
+    /// returns how many.</summary>
+    internal int Give(SharedMemories given)
+    {
+        lock (gate)
+        {
+            var added = given.Live.Where(fact => memories.Find(fact.Id) is null).ToArray();
+            if (added.Length == 0) return 0;
+            Replace(SharedMemories.Merge(memories, new SharedMemories { SchemaVersion = SharedMemories.SchemaVersion1, Facts = added }), save: true);
+            return added.Count(fact => memories.Find(fact.Id) is not null);
+        }
+    }
+
     private void Replace(SharedMemories next, bool save)
     {
         var nextDigest = next.Digest();
@@ -96,7 +109,7 @@ internal sealed partial class GatewayHttpApplication
         {
             GatewayRules.Require(context.Request.Method == HttpMethods.Get, "request.invalid");
             EnsureEmptyRequest(context.Request);
-            _ = authenticator.Authenticate(context.Request);
+            AdmitOldMemories(authenticator.Authenticate(context.Request));
             await WriteJsonAsync(context, StatusCodes.Status200OK, new MemoriesDigestDocument
             {
                 ProtocolVersion = GatewayProtocolVersion.Current,
@@ -109,7 +122,7 @@ internal sealed partial class GatewayHttpApplication
         if (context.Request.Method == HttpMethods.Get)
         {
             EnsureEmptyRequest(context.Request);
-            _ = authenticator.Authenticate(context.Request);
+            AdmitOldMemories(authenticator.Authenticate(context.Request));
             result = Memories.Current;
         }
         else if (context.Request.Method == HttpMethods.Post)
@@ -117,7 +130,7 @@ internal sealed partial class GatewayHttpApplication
             var bytes = await ReadInferenceBodyAsync(context.Request, SharedMemories.MaximumBytes, context.RequestAborted).ConfigureAwait(false);
             try
             {
-                _ = authenticator.Authenticate(context.Request, crypto.Sha256(bytes));
+                AdmitOldMemories(authenticator.Authenticate(context.Request, crypto.Sha256(bytes)));
                 SharedMemories incoming;
                 try { incoming = SharedMemories.Parse(bytes); }
                 catch (ContractException) { throw new GatewayProtocolException("request.invalid"); }

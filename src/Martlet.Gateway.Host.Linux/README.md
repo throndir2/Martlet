@@ -100,7 +100,8 @@ the owner added are kept in `character-models.json` (at most 2 MiB, through
 `character-model-chunk.staging`; pieces no live model uses are deleted; see
 [shared character models](../../docs/CLUSTER.md#the-shared-character-models)); Martlet's creations are kept in `creations.json` (at most 8 MiB, through
 `creations.staging`) with each piece of a live creation's assets in `creation-chunk-<sha256>.bin` (at most 3 MiB each, through
-`creation-chunk.staging`; pieces no live creation uses are deleted; see [creations](../../docs/CREATIONS.md)); the shared Home Assistant connection, including its access token,
+`creation-chunk.staging`; each account's own list in `creations-account-<32 hex>.json` through `creations-account.staging`; pieces no
+list's live creation uses are deleted; see [creations](../../docs/CREATIONS.md)); the shared Home Assistant connection, including its access token,
 lives in `home-assistant.json` (at most 16 KiB, through
 `home-assistant.staging`). The settings the owner's computers share
 ([one Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer)),

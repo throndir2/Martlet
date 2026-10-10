@@ -62,13 +62,17 @@ internal sealed class GatewayVoiceStore
 internal sealed partial class GatewayHttpApplication
 {
     internal const string VoicesPath = "/martlet/v1/voices";
+    /// <summary>The same list with each voice's account link (docs/ACCOUNTS.md). <see cref="VoicesPath"/> leaves the links out,
+    /// because Martlet before account links refuses a voice list with a field it doesn't know.</summary>
+    internal const string LinkedVoicesPath = VoicesPath + "/linked";
     private const int MaximumVoicesResponseBytes = VoiceRoster.MaximumBytes + 4_096;
 
     internal GatewayVoiceStore Voices { get; } = new();
 
     /// <summary>GET returns this host's copy of the voice list; POST merges a desktop's copy into it and returns the merged
-    /// result. Any paired device may do either over its signed, pinned connection.</summary>
-    private async ValueTask InvokeVoicesAsync(HttpContext context)
+    /// result. Any paired device may do either over its signed, pinned connection. Without <paramref name="linked"/> the
+    /// answer leaves account links out, and a copy without links merges in without removing the host's links.</summary>
+    private async ValueTask InvokeVoicesAsync(HttpContext context, bool linked)
     {
         VoiceRoster result;
         if (context.Request.Method == HttpMethods.Get)
@@ -88,6 +92,7 @@ internal sealed partial class GatewayHttpApplication
             result = Voices.Merge(incoming);
         }
         else throw new GatewayProtocolException("request.invalid");
+        if (!linked) result = result.WithoutLinks();
         await WriteJsonAsync(context, StatusCodes.Status200OK, new VoicesDocument
         {
             ProtocolVersion = GatewayProtocolVersion.Current,

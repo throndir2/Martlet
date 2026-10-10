@@ -77,13 +77,20 @@ internal sealed partial class GatewayHttpApplication
 
     internal GatewaySettingsStore Settings { get; } = new();
 
-    private static bool IsSettingsTarget(string rawTarget) => rawTarget is SettingsPath or SettingsDigestPath;
+    private static bool IsSettingsTarget(string rawTarget) =>
+        rawTarget is SettingsPath or SettingsDigestPath || IsAccountSettingsTarget(rawTarget);
 
     /// <summary>GET /settings returns this host's copy of the shared settings and POST merges a desktop's copy into it and returns
     /// the merged result; GET /settings/digest returns only the copy's digest, so desktops read the copy when it changed. The
-    /// copy holds API keys: only paired devices may use these, over their signed, pinned connection; API keys may not.</summary>
+    /// copy holds API keys: only paired devices may use these, over their signed, pinned connection; API keys may not.
+    /// /settings/accounts/... are each account's own settings (GatewayAccountSettings.cs).</summary>
     private async ValueTask InvokeSettingsAsync(HttpContext context, string rawTarget)
     {
+        if (IsAccountSettingsTarget(rawTarget))
+        {
+            await InvokeAccountSettingsAsync(context, rawTarget).ConfigureAwait(false);
+            return;
+        }
         if (rawTarget == SettingsDigestPath)
         {
             GatewayRules.Require(context.Request.Method == HttpMethods.Get, "request.invalid");
@@ -118,6 +125,11 @@ internal sealed partial class GatewayHttpApplication
             finally { CryptographicOperations.ZeroMemory(bytes); }
         }
         else throw new GatewayProtocolException("request.invalid");
+        await WriteSettingsAsync(context, result, null).ConfigureAwait(false);
+    }
+
+    private async ValueTask WriteSettingsAsync(HttpContext context, SharedSettings result, string? account)
+    {
         var document = result.Write();
         try
         {
@@ -126,6 +138,7 @@ internal sealed partial class GatewayHttpApplication
             {
                 ProtocolVersion = GatewayProtocolVersion.Current,
                 HostId = identity.HostId,
+                Account = account,
                 Digest = result.Digest(),
                 Settings = parsed.RootElement
             }, MaximumSettingsResponseBytes).ConfigureAwait(false);
@@ -137,6 +150,9 @@ internal sealed partial class GatewayHttpApplication
     {
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
+        /// <summary>The account (32 lowercase hex) for an account's settings; absent for the household's.</summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? Account { get; init; }
         public required string Digest { get; init; }
         public required System.Text.Json.JsonElement Settings { get; init; }
     }
@@ -145,6 +161,8 @@ internal sealed partial class GatewayHttpApplication
     {
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? Account { get; init; }
         public required string Digest { get; init; }
     }
 }
