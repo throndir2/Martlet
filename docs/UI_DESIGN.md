@@ -66,7 +66,8 @@ Each page answers one question, so no two pages do the same thing:
 ### 1. Welcome wizard (first launch)
 
 This full-window overlay appears when no device-role choice has been saved
-(`device-role.txt`). The installer asks no setup questions, so this is where
+(`device-role.txt` in the [PC folder](ACCOUNTS.md#pc-scope)), or for a Windows
+user who hasn't chosen yet on a companion PC. The installer asks no setup questions, so this is where
 setup starts. Its cards are animated between steps and marked with step dots;
 [WELCOME_WIZARD.md](WELCOME_WIZARD.md) has the full flow, the old one and the
 reasons:
@@ -830,7 +831,8 @@ looping animations do not start and transitions complete immediately.
 1. Shared styles in `Themes/Motion.xaml` (nav items, choice cards, chips, node
    cards, step rows, link buttons), merged by `App` and the `ThemedWindow`
    fallback. `Motion.cs` provides the animation helpers.
-2. Models: `DeviceRolePreference` (`device-role.txt`), `MachineInfo` (local
+2. Models: `DeviceRolePreference` and `PcRole` (`device-role.txt` in the PC
+   folder), `MachineInfo` (local
    hardware probe) and `NetworkMap` (turns settings, the avatar pairing and
    hardware into nodes, roles, facts and actions).
 3. `MainWindow` becomes the shell: nav rail, welcome tour, stage-aware home,

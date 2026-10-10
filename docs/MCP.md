@@ -3190,6 +3190,32 @@ computer busy so the song waits on the shortest line, every line full
 stops answering during the song replaced by the next. In-process; reads
 nothing.
 
+`pc_scope` reads the [PC scope](ACCOUNTS.md#pc-scope) that the desktop with
+the data folder uses (optional absolute `dataDirectory`; the script gives a
+disposable one). It is read-only and returns no paths, user names or SIDs:
+`folder` (`machine-wide` for the default data folder, `data-folder` for any
+other, or `override`), `where` (`%ProgramData%\Martlet`, *the data folder* or
+`MARTLET_PC_DIRECTORY`), `sharedByWindowsUsers`, `folderExists`,
+`everyWindowsUserCanChange` (whether `BUILTIN\Users` may change the folder and
+its files; null when the folder is missing or not shared), `role` (`companion`,
+`host`, or null when nobody chose yet), `roleReadFrom` (`pc-folder`,
+`data-folder`, or this Windows user's earlier choice that moves to the PC
+folder when the desktop starts), `chosenByThisWindowsUser`,
+`hostServiceRoles`, `hostServiceRolesReadFrom` and `hostServiceSeenBy`
+(`this-windows-user`, `another-windows-user` or `unknown`: whose Docker Desktop
+Martlet last read the host service in). Setting `MARTLET_PC_DIRECTORY` to an
+absolute folder before you start the desktop and the MCP server (the
+`Invoke-MartletMcp.ps1` child processes inherit it) gives several disposable
+data folders one PC folder, as two Windows users of one PC have. Example:
+put `Host` in `device-role.txt` of one data folder, then start the desktop
+there: `DeviceRoleWhere` reads *... Martlet moved this Windows user's earlier
+choice there.* A desktop on a second, fresh data folder then reads `Host PC` in
+`DeviceRoleSummary` and shows no welcome tour. `UseAsCompanion` there (with
+`--allow-ui-effects`) makes the first desktop, still running, read `Companion
+PC` within 30 seconds; its log says *Another Windows user of this PC made it a
+companion PC, so it is one here too.* `role_lab ask host` on a third data folder
+writes the PC folder too.
+
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):
@@ -8215,7 +8241,13 @@ was on when it became a host: the character, always listening and watching
 it became a host: showing the character.*); after Martlet started as a host it
 does what it does at the start of a companion PC instead (the character's *Show
 at startup*, `StartCompanion`). It changes no saved companion choice. `DeviceRoleSummary`
-(*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text. A second start with the
+(*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text.
+`DeviceRoleWhere` says where the choice is kept and who shares it: *Every
+Windows user of this PC shares this choice and this PC's host service
+(%ProgramData%\Martlet).* for the default data folder, *This data folder keeps
+this choice...* for a disposable one, and whose Docker Desktop Martlet last
+read this PC's host service in (this or another Windows user); `pc_scope`
+returns the same headless. A second start with the
 same data directory shows the running Martlet and exits (with `--tray` it only
 exits); a different `--data-directory` runs beside it, so disposable
 verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`

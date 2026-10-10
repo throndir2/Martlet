@@ -69,14 +69,16 @@ public partial class MainWindow
     {
         actionTextDescriptor = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         actionTextDescriptor.AddValueChanged(ActionText, ActionTextChanged);
-        deviceRole = store is null ? DeviceRole.Companion : DeviceRolePreference.Load(store.DataDirectory);
-        ErrorLog.Info($"This PC runs as a {(Role == DeviceRole.Host ? "host" : "companion")} PC{(deviceRole is null ? " (not chosen yet)" : "")}.");
+        deviceRole = store is null ? DeviceRole.Companion : LoadPcRole();
+        ErrorLog.Info($"This PC runs as a {(Role == DeviceRole.Host ? "host" : "companion")} PC{(deviceRole is null ? " (not chosen yet)" : "")}. " +
+            PcRoleWhere());
         InitializeHealth();
         // The host dashboard reads this PC's host service by itself: at start, every 30 seconds while the window shows and
         // whenever it shows again, so finished steps tick without a button. It keeps reading while setup runs work, so a step
         // another run finishes (Docker Desktop starting, for example) ticks and the next ones open up.
         hostProbeTimer.Tick += (_, _) =>
         {
+            FollowPcRole();
             if (!closing && IsVisible && HostsHere && !Talking) CheckThisPcHostAsync().Forget();
         };
         IsVisibleChanged += (_, _) =>
@@ -89,7 +91,8 @@ public partial class MainWindow
         HostRunWindow.RunsChanged += ShowHostRuns;
         ApplyRole();
         RenderHome();
-        if (deviceRole is null) ShowTour(TourWelcome);
+        // A Windows user who hasn't chosen yet gets the welcome tour, unless another Windows user made this PC a host PC.
+        if (deviceRole is null || Role == DeviceRole.Companion && !roleChosenHere) ShowTour(TourWelcome);
     }
 
     private void ReleaseShell()
@@ -230,10 +233,15 @@ public partial class MainWindow
         deviceRole = role;
         if (store is not null)
         {
-            try { DeviceRolePreference.Save(store.DataDirectory, role); }
+            try
+            {
+                PcRole.Save(store.DataDirectory, Pc!, role);
+                roleChosenHere = true;
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                ActionText.Text = "Couldn't save this choice. Check access to Martlet's data folder.";
+                ActionText.Text = "Couldn't save this choice. Check access to Martlet's data folder and " + Pc!.Where + ".";
+                ErrorLog.Warn($"Couldn't save that this PC is a {(role == DeviceRole.Host ? "host" : "companion")} PC in {Pc.Where}", error);
             }
         }
         if (previous != role)
@@ -297,6 +305,7 @@ public partial class MainWindow
             : both
             ? "This is your companion PC. Talk with Martlet here. It also runs a host service, which Home keeps checking."
             : "This is your companion PC. Talk with Martlet here.";
+        RoleWhereText.Text = PcRoleWhere();
     }
 
     /// <summary>Whether this PC runs a host service of its own that Martlet should keep reading: it is a host PC, or a
@@ -386,6 +395,7 @@ public partial class MainWindow
     private void TourSkip_Click(object sender, RoutedEventArgs e)
     {
         if (deviceRole is null) SetRole(DeviceRole.Companion);
+        else KeepRoleChoice();
         HideTour();
     }
 

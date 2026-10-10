@@ -35,7 +35,7 @@ public partial class MainWindow
         catch (OperationCanceledException) { return; }
         if (closing || Role != DeviceRole.Host) return;
         RememberThisPcHostRoles(state);
-        var plan = HostAutoStart.Decide(state.Stage, state.Roles, ThisPcHostRoles.Load(store.DataDirectory), ThisPcHost() is not null,
+        var plan = HostAutoStart.Decide(state.Stage, state.Roles, RememberedHostRoles(), ThisPcHost() is not null,
             windows?.Blocked == true);
         ErrorLog.Info($"This host PC's roles, by themselves: {plan.Step} (host service {state.Stage}). {plan.Reason}");
         ShowHostAutoStart(plan.Reason);
@@ -66,19 +66,28 @@ public partial class MainWindow
         await ReadMachineAsync();
     }
 
-    /// <summary>Keeps what this PC's host service runs, so a host PC knows what to start before Docker Desktop runs.</summary>
+    /// <summary>Keeps what this PC's host service runs in the PC folder, with the Windows user whose Docker Desktop runs it, so
+    /// a host PC knows what to start before Docker Desktop runs. A host service that isn't set up in this Windows user's
+    /// Docker Desktop forgets only what this Windows user's Docker Desktop ran.</summary>
     private void RememberThisPcHostRoles(LocalHostServiceState state)
     {
-        if (store is null) return;
+        if (Pc is not { } pc) return;
         try
         {
-            if (state.Roles is { } roles) ThisPcHostRoles.Save(store.DataDirectory, roles);
-            else if (state.Stage == LocalHostServiceStage.NotSetUp) ThisPcHostRoles.Forget(store.DataDirectory);
+            if (state.Roles is { } roles)
+            {
+                pc.Prepare();
+                ThisPcHostRoles.Save(pc.Directory, roles, PcRole.ThisWindowsUser);
+            }
+            else if (state.Stage == LocalHostServiceStage.NotSetUp &&
+                     ThisPcHostRoles.WindowsUser(pc.Directory) is var user && (user is null || user == PcRole.ThisWindowsUser))
+                ThisPcHostRoles.Forget(pc.Directory);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             ErrorLog.Warn("Couldn't remember this PC's host roles", error);
         }
+        RoleWhereText.Text = PcRoleWhere();
     }
 
     /// <summary>The host dashboard's line about starting the roles by itself.</summary>
