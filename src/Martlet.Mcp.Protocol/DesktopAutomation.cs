@@ -240,9 +240,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // below ("Pool-speaking-Show-host:diva-host") and A cloud provider ("Pool-speaking-AddCloud") only show that place's own
         // card under the list, whose own button commits. Devices › Sharing work's Open buttons ("WorkSharingOpen-speaking") only
         // open the area's page. The list's On, Up, Down, Remove, Add and kept-for choices save pools.json and share it, so they
-        // need --allow-ui-effects.
+        // need --allow-ui-effects. The same for Companion › Vision's and Hearing's lists ("Pool-vision-Settings-0",
+        // "Pool-hearing-AddCloud" only shows the cloud form, whose Add to the list commits).
         "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
-        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "WorkSharingOpen-"];
+        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "Pool-vision-Settings-", "Pool-hearing-Settings-", "Pool-vision-AddCloud",
+        "Pool-hearing-AddCloud", "WorkSharingOpen-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -381,13 +383,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "FreeKeyTip-Thinking", "FreeKeyAdd-Thinking", "FreeKeyGet-Thinking", "SetupCloudGetKey-Thinking",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
-        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected). VisionToggle is Turn vision off in the Off
-        // choice's details (Picker-Vision-Off) while vision is on, and Turn vision on in the saved image model's details while it
-        // is off; clicking it saves talk-preferences.json, so it needs --allow-ui-effects.
+        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected). VisionToggle (in the Now card) is Turn vision
+        // off while vision is on and Turn vision on while it is off; clicking it saves talk-preferences.json, so it needs
+        // --allow-ui-effects.
         "VisionNow", "VisionToggle",
-        // Companion › Hearing's Now line (HearingNow: off and why, or what hears your voice), and HearingToggle: Turn hearing off in
-        // the Off choice's details (Picker-Hearing-Off) while a model hears you, Turn hearing on in the saved audio model's details
-        // after you turned it off; clicking it saves talk-preferences.json, so it needs --allow-ui-effects.
+        // Companion › Hearing's Now line (HearingNow: off and why, or what hears your voice), and HearingToggle (in the Now card):
+        // Turn hearing off while a model hears you, Turn hearing on after you turned it off; clicking it saves
+        // talk-preferences.json, so it needs --allow-ui-effects.
         "HearingNow", "HearingToggle",
         // Companion › Hearing › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
         // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
@@ -406,23 +408,22 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
         "TalkHearVoiceTestStatus",
-        // Companion › Vision's and Companion › Hearing's Now card (MainWindow.SenseModels.cs): the image or audio model in words
-        // (ImageModelNow: "Use the same model as the text model (Thinking: gemma4:e2b)." or "A model of its own: Ollama on this PC
-        // (qwen2.5vl:7b), chosen on 10/8/2026."), where pictures or recordings go now and why (ImageModelRoute: the routing's
-        // words), what the model that takes them is known to do and where that came from (ImageModelKnown), what is sent to a
-        // model of its own and where (ImageModelSent), and what Test vision or Test hearing does or last found (ImageModelTestStatus;
-        // the model's one-word answer). Under Ollama on this PC: the model picked (ImageModelLocalModel), what Ollama has and what
-        // each model takes (ImageModelLocalStatus), what the picked one is known to do (ImageModelLocalKnown) and whether it fits
-        // beside Thinking's on the graphics card (ImageModelLocalFit). Under A cloud provider or server: the provider picked
-        // (ImageModelProvider) and what the key box will do (ImageModelKeyStatus; never the key, base URL or model ID typed). Under
-        // One of your computers: ImageModelHosts when none is paired, and each computer's line in SafeValuePrefixes. The same with
-        // AudioModel. The Picker-Vision-<choice> and Picker-Hearing-<choice> options only show a panel; ImageModelUseThinking, ImageModelUseOther,
-        // ImageModelUseLocal, ImageModelSaveCloud (with ImageModelConsent) and ImageModelUseHost-<host> save sense-models.json,
-        // ImageModelPullModel downloads a model, ImageModelCheckOllama and ImageModelCheckHosts ask Ollama or the paired computers,
-        // and ImageModelTest sends a test request, so they need --allow-ui-effects. Companion › Thinking's line on where pictures
-        // and recordings go (ThinkingSenses).
+        // Companion › Vision's and Companion › Hearing's Now card (MainWindow.SenseModels.cs): the list in words (ImageModelNow:
+        // "Nothing in the list: the text model takes the pictures itself (Thinking: gemma4:e2b)." or "Ollama on this PC
+        // (qwen2.5vl:7b) is first in the list; 1 more takes a job when it is busy."), where pictures or recordings go now and why
+        // (ImageModelRoute: the routing's words), what the model that takes them is known to do and where that came from
+        // (ImageModelKnown), what is sent to a model of its own and where (ImageModelSent), and what Test vision or Test hearing
+        // does or last found (ImageModelTestStatus; the model's one-word answer). The image and audio models' lists are pool lists
+        // (Pool-vision-..., Pool-hearing-..., below and in SafeValuePrefixes). This PC's Settings in a list: the model picked
+        // (ImageModelLocalModel), what Ollama has and what each model takes (ImageModelLocalStatus), what the picked one is known to
+        // do (ImageModelLocalKnown) and whether it fits beside Thinking's on the graphics card (ImageModelLocalFit). The cloud form
+        // (Pool-vision-AddCloud shows it): the provider picked (ImageModelProvider) and what the key box will do
+        // (ImageModelKeyStatus; never the key, base URL or model ID typed). The same with AudioModel. ImageModelUseLocal,
+        // ImageModelSaveCloud (with ImageModelConsent) and a member's Pool-vision-Save-<i> save pools-local.json (and a key),
+        // ImageModelPullModel downloads a model, ImageModelCheckOllama asks Ollama, and ImageModelTest sends a test request, so
+        // they need --allow-ui-effects. Companion › Thinking's line on where pictures and recordings go (ThinkingSenses).
         "ImageModelNow", "ImageModelRoute", "ImageModelKnown", "ImageModelSent", "ImageModelTestStatus", "ImageModelLocalModel",
-        "ImageModelLocalStatus", "ImageModelLocalKnown", "ImageModelLocalFit", "ImageModelProvider", "ImageModelKeyStatus", "ImageModelHosts",
+        "ImageModelLocalStatus", "ImageModelLocalKnown", "ImageModelLocalFit", "ImageModelProvider", "ImageModelKeyStatus",
         "AudioModelNow", "AudioModelRoute", "AudioModelKnown", "AudioModelSent", "AudioModelTestStatus", "AudioModelLocalModel",
         "AudioModelLocalStatus", "AudioModelLocalKnown", "AudioModelLocalFit", "AudioModelProvider", "AudioModelKeyStatus",
         "ThinkingSenses",
@@ -1027,10 +1028,6 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // model ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
         "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
         "DeepThinkingCard-", "DeepThinkingAddCard-",
-        // Companion › Vision › Image model › One of your computers: each paired computer's line ("ImageModelHost-diva" reads "Its
-        // Thinking pool role runs qwen2.5vl:7b: it sees pictures.") and its Use for pictures button's name ("ImageModelUseHost-diva"
-        // reads "Use diva for pictures"; clicking it checks diva and saves sense-models.json, so it needs --allow-ui-effects).
-        "ImageModelHost-", "ImageModelUseHost-",
         "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-", "ThinkingPoolMedia-",
         "ThinkingPoolOn-", "ThinkingPoolModel-",
         // Companion › Thinking pool: each machine's Smarts choice ("ThinkingPoolSmarts-0" reads "Guessed: Smart", "Fast",

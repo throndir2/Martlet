@@ -33,9 +33,8 @@ public sealed record SenseRoute(SenseKind Kind, SensePath Path, DeepThinkingSett
 /// <summary>Which model takes pictures and recordings (docs/SENSE_MODELS.md). The text model (Thinking) always writes the reply.
 /// A kind whose model is the text model (the default, or a model of its own that is exactly Thinking's endpoint and model) goes
 /// in Thinking's own request when Thinking takes it, else nowhere. A kind with a model of its own goes to that model to be put
-/// into words, when it takes it: an audio model of its own on a paired computer takes no recordings (only Thinking there does),
-/// and a model known not to see or hear takes
-/// nothing. A model Martlet can't tell about is tried; a refusal is remembered in model-abilities.json.</summary>
+/// into words, when it takes it (an endpoint, or a paired computer's model through its gateway), and a model known not to see or
+/// hear takes nothing. A model Martlet can't tell about is tried; a refusal is remembered in model-abilities.json.</summary>
 public static class SenseRouting
 {
     /// <summary>Where <paramref name="kind"/> goes, with whether the Thinking model itself sees and hears as the desktop decides
@@ -74,8 +73,6 @@ public static class SenseRouting
                     $"{name} describes pictures in words for the text model (Thinking). Martlet can't tell whether it sees; it tries, and Test vision finds out.") { Unknown = true },
                 _ => new(kind, SensePath.None, place, $"{name} doesn't see pictures, so Martlet can't see. Choose an image model that sees.")
             };
-        if (place.Place != DeepThinkingPlace.Endpoint)
-            return new(kind, SensePath.None, place, $"{name} is on a paired computer, which takes recordings only for Thinking, so Thinking gets the transcript only.");
         return Hears(place, abilities) switch
         {
             HearingSupport.Supported => new(kind, SensePath.Described, place, $"{name} describes recordings in words for the text model (Thinking)."),
@@ -126,14 +123,18 @@ public static class SenseRouting
         };
     }
 
-    /// <summary>Whether a model of its own hears: only an endpoint takes recordings (the Chat Completions <c>input_audio</c> part).</summary>
+    /// <summary>Whether a model of its own hears: an endpoint by the Chat Completions <c>input_audio</c> part, a paired computer's
+    /// model through its gateway (which hands the recording to its Ollama), each by what Martlet found out, then its name.</summary>
     public static HearingSupport Hears(DeepThinkingSettings model, ModelAbilities? abilities)
     {
         ArgumentNullException.ThrowIfNull(model);
-        return model.Place == DeepThinkingPlace.Endpoint
-            ? HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, model.Origin, model.ModelId, abilities,
-                ChatCompletionsEndpointCatalog.RetiredOn(model.Origin ?? "", model.ModelId ?? "") is not null)
-            : HearingSupport.Unsupported;
+        return model.Place switch
+        {
+            DeepThinkingPlace.Endpoint => HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, model.Origin, model.ModelId, abilities,
+                ChatCompletionsEndpointCatalog.RetiredOn(model.Origin ?? "", model.ModelId ?? "") is not null),
+            DeepThinkingPlace.Host => HearingModelCatalog.ForRoute(SetupRouteType.GatewayOllama, model.HostOrigin, model.ModelId, abilities),
+            _ => HearingSupport.Unsupported
+        };
     }
 
     private static bool Retired(SetupRoute thinking) =>

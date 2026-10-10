@@ -1835,17 +1835,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             kind = new { type = "string", @enum = ThinkingPoolCheck.RequestKinds },
             limit = new { type = "integer", minimum = 1, maximum = 200 }
         }),
-        Tool("sense_models_status", "Companion > Vision > Image model and Companion > Listening > Audio model from a data directory " +
-            "(docs/SENSE_MODELS.md): sense-models.json (this PC's choice: the same model as the text model, the same model as the other " +
-            "kind, or a model of its own: Ollama on this PC, an OpenAI-compatible endpoint or a paired computer's model; never a key), " +
-            "the Thinking model and whether it sees and hears, and for pictures and recordings where they go now (Thinking: in the " +
-            "text model's own request; Described: the model of its own puts them into words for Thinking; None: nowhere) and why, " +
-            "with what the chosen model is known to do (model-abilities.json, with where that came from). With the desktop's " +
-            "sense-models-status.json: each lane's recent jobs (purposes, outcomes and times; never what was sent or said) and " +
-            "whether the model shares the conversation's computer. Each kind's pool (SensePool, lane vision or hearing): the members " +
-            "a job tries in order (the chosen model, then the Thinking pool's members known to see or hear that may receive " +
-            "pictures and recordings, never the Thinking model), and from the desktop how many jobs went to another member or " +
-            "waited and which member took the last one (position, busy and unavailable counts, wait). Read-only.", new
+        Tool("sense_models_status", "Companion > Vision's image models and Companion > Hearing's audio models from a data directory " +
+            "(docs/SENSE_MODELS.md): the Vision and Hearing lists in pools-local.json (file: lists; before the desktop made them, " +
+            "sense-models.json: loaded; none or unreadable), each kind's list as saved (each member's key, kind, on, model, engine, " +
+            "whether pictures and recordings may go there, whether the owner agreed, whether this PC can use it; never a key), the " +
+            "Thinking model and whether it sees and hears, and for pictures and recordings where they go now (Thinking: in the " +
+            "text model's own request; Described: the first model in the list that may take it puts them into words for Thinking; " +
+            "None: nowhere) and why, with what that model is known to do (model-abilities.json, with where that came from). Each " +
+            "kind's pool (SensePool, lane vision or hearing): the places a job tries in order (the chosen model, then the list's " +
+            "other models that may take the kind, never the Thinking model). With the desktop's sense-models-status.json: each " +
+            "lane's recent jobs (purposes, outcomes and times; never what was sent or said), whether the model shares the " +
+            "conversation's computer, and how many jobs went to another member or waited and which member took the last one " +
+            "(position, busy and unavailable counts, wait). Read-only: it never makes the lists.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1853,14 +1854,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "of text, image and audio models with fixture model names (the defaults with an omni or a text-only Thinking model, an " +
             "image model only, separate image and audio models, the audio model the same as an image model that can't hear, one " +
             "model for both, same-as both ways, a model of its own that is exactly Thinking's, a paired computer, what Martlet found " +
-            "out winning over names), the sense-models.json round trip, and the production lanes (SenseLanes) with a simulated " +
+            "out winning over names), the sense-models.json round trip and the Vision and Hearing lists made from it once (a " +
+            "damaged list file read as the text model), and the production lanes (SenseLanes) with a simulated " +
             "runner, NOT models: no model of its own answers at once, one job at a time, a newer picture replacing the one " +
             "waiting, priorities, a stale job dropped, refusals, failures, timeouts, the kind check, one lane for one model used " +
             "for both kinds, and the conversation first (a job waits while a reply holds the model's hardware, a running job is " +
             "stopped when a reply starts, a job the hold outlasts is dropped), and a background job (a helper, priority below zero) " +
             "giving way to a reply's picture and starting again, while a summary waits behind it. Then the pools (SensePool) with " +
-            "simulated members on their own queue: who is a member (the chosen model first; members that don't see, external " +
-            "members without the owner's agreement and the Thinking model left out; the audio pool hears), a free chosen model " +
+            "simulated members on their own queue: who is a member (a Vision list's members as places: a computer not paired here, a " +
+            "cloud provider without agreement, a server not allowed pictures, a member off or kept for another PC left out; the " +
+            "first model that may see chosen; one known not to see and the Thinking model left out after it), a free chosen model " +
             "taking the job with one request, a busy or unreachable member passing it on at once, a busy pool waiting for whichever " +
             "member frees first, and a member held for a live turn passed over. In-process; reads nothing.", new { }),
         Tool("image_model_check", "The image model (docs/SENSE_MODELS.md, Pictures: the image model) from a data directory: where " +

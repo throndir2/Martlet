@@ -1,3 +1,4 @@
+using Martlet.Conversation;
 using System.IO;
 using System.Text.Json.Nodes;
 using Martlet.Core.Cluster;
@@ -236,7 +237,7 @@ internal static class RecommendedSetupStatus
         // Version 4 made Let Thinking hear my voice three-way; an older "false" was only the old default (never chosen).
         if (hear == false && !(talk?["Version"] is JsonValue v && v.TryGetValue<int>(out var version) && version >= 4)) hear = null;
         var home = Json(directory, "smart-home.json")?["Address"] is JsonValue a && a.TryGetValue<string>(out var address) ? address : null;
-        return RecommendedSetupInputs.Choices(watch, hear, SenseModels.Load(directory), Martlet.Core.Reading.ReadingSettings.Load(directory), home);
+        return RecommendedSetupInputs.Choices(watch, hear, SenseSetup.Read(directory).Senses, Martlet.Core.Reading.ReadingSettings.Load(directory), home);
     }
 
     private static JsonObject? Json(string directory, string file)

@@ -33,9 +33,8 @@ public sealed class SensePoolDesktopTests
     private static async Task<LiveFixture> PoolFixture(List<(string Key, bool Fallback)> asked, Func<DeepThinkingSettings, SenseAttempt> answer)
     {
         var fixture = await LiveFixture.Create();
-        fixture.Controller.SenseModels = new() { Image = new() { Source = SenseSource.Own, Own = Eyes } };
-        // Both members are on the home network (external): the spare model may receive pictures, the text-only one doesn't see.
-        fixture.Controller.PoolSettings = new ThinkingPoolSettings { Members = [TextOnly, Spare] }.WithMedia(Spare.Key, true).WithMedia(TextOnly.Key, true);
+        // The Vision list: the image model, a text-only model (left out: it doesn't see) and a spare model that sees.
+        fixture.Controller.SenseListsNow = new SenseSetup(new(), [Eyes, TextOnly, Spare], [], null, null, "lists");
         fixture.Controller.SenseAttemptRunner = (kind, member, fallback, job, _) =>
         {
             Assert.Equal(SenseKind.Image, kind);
@@ -90,12 +89,16 @@ public sealed class SensePoolDesktopTests
     }
 
     [Fact]
-    public async Task An_external_member_without_the_owners_agreement_never_gets_a_picture()
+    public async Task The_first_model_in_the_list_that_sees_takes_the_pictures_and_an_empty_list_leaves_them_to_thinking()
     {
         await using var fixture = await LiveFixture.Create();
-        fixture.Controller.PoolSettings = new ThinkingPoolSettings { Members = [Spare] };
-        Assert.Equal([Eyes.Key], fixture.Controller.SenseMembers(SenseKind.Image, Eyes).Select(m => m.Key));
-        fixture.Controller.PoolSettings = fixture.Controller.PoolSettings.WithMedia(Spare.Key, true);
+        fixture.Controller.SenseListsNow = new SenseSetup(new(), [TextOnly, Eyes, Spare], [], null, null, "lists");
+        var route = fixture.Controller.SenseRoute(SenseKind.Image);
+        Assert.Equal((SensePath.Described, Eyes.Key), (route.Path, route.Model!.Key));
         Assert.Equal([Eyes.Key, Spare.Key], fixture.Controller.SenseMembers(SenseKind.Image, Eyes).Select(m => m.Key));
+
+        fixture.Controller.SenseListsNow = new SenseSetup(new(), [], [], null, null, "lists");
+        // The fixture's Thinking model (OpenAI) sees, so it takes the pictures itself.
+        Assert.Equal(SensePath.Thinking, fixture.Controller.SenseRoute(SenseKind.Image).Path);
     }
 }

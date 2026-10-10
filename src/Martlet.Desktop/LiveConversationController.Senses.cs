@@ -23,24 +23,61 @@ internal sealed partial class LiveConversationController
     internal const string SenseStatusFile = "sense-models-status.json";
 
     private SenseModels senseModels = new();
+    private SenseSetup? senseSetup;
     private SenseLanes? senseLanes;
     private readonly ConcurrentDictionary<string, ThinkSlot> senseSlots = new(StringComparer.Ordinal);
     private string? senseRoutesSaid;
     private int senseStatusPending;
 
-    /// <summary>The image and audio models this PC uses (sense-models.json); tests set them directly.</summary>
+    /// <summary>The image and audio models this PC uses: from the lists on Companion › Vision and Companion › Hearing (each kind's
+    /// first model in its list that isn't known not to take the kind; <see cref="SensePool.Senses"/>), or as tests set them.</summary>
     internal SenseModels SenseModels
     {
-        get => Volatile.Read(ref senseModels);
+        get => Volatile.Read(ref senseSetup) is { } setup ? SensePool.Senses(setup.Image, setup.Audio, SenseAbilities) : Volatile.Read(ref senseModels);
         set
         {
             Volatile.Write(ref senseModels, value ?? new());
+            Volatile.Write(ref senseSetup, null);
             SenseRoutesChanged();
         }
     }
 
-    /// <summary>Reads sense-models.json again (Companion › Vision or Listening saved it): the next job, reply or look follows it.</summary>
-    internal void ReloadSenseModels() => SenseModels = SenseModels.Load(dataDirectory);
+    /// <summary>The image and audio models' lists now (null: <see cref="SenseModels"/> as tests set them, without lists).</summary>
+    internal SenseSetup? SenseListsNow
+    {
+        get => Volatile.Read(ref senseSetup);
+        set
+        {
+            Volatile.Write(ref senseSetup, value);
+            SenseRoutesChanged();
+        }
+    }
+
+    private ModelAbilities? SenseAbilities => Configuration?.Abilities ?? Volatile.Read(ref poolAbilities);
+
+    /// <summary>Reads the Vision and Hearing lists again (Companion saved one, or they changed): the next job, reply or look follows
+    /// them. A kind without a list yet gets one made from sense-models.json, once.</summary>
+    internal void ReloadSenseModels()
+    {
+        if (dataDirectory is null) return;
+        SenseListsNow = LoadSenseSetup(dataDirectory, SenseAbilities);
+    }
+
+    /// <summary>The lists in <paramref name="directory"/>, made from sense-models.json once, with this PC's pairings.</summary>
+    internal static SenseSetup LoadSenseSetup(string directory, ModelAbilities? abilities)
+    {
+        var hosts = new Dictionary<string, SenseHost>(StringComparer.Ordinal);
+        foreach (var host in WorkSharingRoster.Hosts(directory))
+        {
+            try
+            {
+                hosts[host.HostId] = new(host.HostId, host.Pairing.Origin, host.Pairing.SpkiFingerprint, host.Pairing.DeviceId,
+                    HostPairingCredential.ToGuid(host.Pairing.CredentialId));
+            }
+            catch (InvalidOperationException) { }
+        }
+        return SenseSetup.Load(directory, WorkSharingRoster.Device, abilities, migrate: true, id => hosts.GetValueOrDefault(id));
+    }
 
     /// <summary>The image and audio models' lanes: one job at a time on each kind's model of its own.</summary>
     internal SenseLanes Senses => LazyInitializer.EnsureInitialized(ref senseLanes, NewSenseLanes);
@@ -135,18 +172,14 @@ internal sealed partial class LiveConversationController
     internal Func<SenseKind, DeepThinkingSettings, bool, SenseJob, CancellationToken, Task<SenseAttempt>>? SenseAttemptRunner { get; set; }
 
     /// <summary>The members a job of <paramref name="kind"/> tries now, first to last (<see cref="SensePool.Members"/>): the
-    /// chosen model, then the Thinking pool's members whose model takes the kind. Left out: a computer a friend shares, a
-    /// computer Devices › Sharing work keeps for other companion PCs, and a member on the conversation's own computer and graphics
-    /// card (its Thinking, voice or listening), so the conversation keeps its model's cache. No request and no file read.</summary>
-    internal IReadOnlyList<DeepThinkingSettings> SenseMembers(SenseKind kind, DeepThinkingSettings chosen, ThinkingPoolSettings? pool = null)
+    /// chosen model, then the other models in the kind's list (Companion › Vision or Hearing). Left out: a member on the
+    /// conversation's own computer and graphics card (its Thinking, voice or listening), so the conversation keeps its model's
+    /// cache. No request and no file read.</summary>
+    internal IReadOnlyList<DeepThinkingSettings> SenseMembers(SenseKind kind, DeepThinkingSettings chosen)
     {
-        var configured = Configuration;
-        var thinking = configured?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
-        var abilities = configured?.Abilities ?? Volatile.Read(ref poolAbilities);
-        return SensePool.Members(kind, chosen, pool ?? Volatile.Read(ref thinkingPool), thinking, abilities, member =>
-            member is { Place: DeepThinkingPlace.Host, HostId: { } host } &&
-                (WorkSharingRoster.IsShared(host) || !WorkSharingRoster.Settings(dataDirectory).Allows(host, WorkSharingRoster.Device)) ||
-            floorRules.Resources.Shares(SensePlace(kind, member)));
+        var thinking = Configuration?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        return SensePool.Members(kind, chosen, Volatile.Read(ref senseSetup)?.For(kind), thinking, SenseAbilities,
+            member => floorRules.Resources.Shares(SensePlace(kind, member)));
     }
 
     // One attempt of a sense job on one pool member: the request fitted to the member's model, on its own runtime slot and one-use
@@ -161,6 +194,9 @@ internal sealed partial class LiveConversationController
         var name = model.Describe();
         if (model is { Place: DeepThinkingPlace.Host, HostId: { } host } && HostPresence.IsOffline(host))
             return SenseAttempt.Unavailable($"{host} is offline");
+        // A computer older than recordings has no room for one on its route: it can't take an audio job until it is updated.
+        if (job.Audio is not null && model is { Place: DeepThinkingPlace.Host, HostId: { } old } && HostAudio.IsOld(old))
+            return SenseAttempt.Unavailable($"{old} runs a Martlet older than recordings; update it there");
         // A second model in Ollama on this PC runs only while it fits beside Thinking's, so the conversation keeps its cache.
         if (DeepThinkingPlan.For(model, routes).ChecksFit && thinking?.ModelId is { } thinkingModel)
         {
@@ -188,6 +224,10 @@ internal sealed partial class LiveConversationController
             await started.OwnershipRelease.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             var text = started.Content.Text;
+            // A computer older than recordings refused the recording for its route, not for its model, which may hear.
+            if (job.Audio is not null && model is { Place: DeepThinkingPlace.Host, HostId: { } older } && HostAudio.IsOld(older) &&
+                string.IsNullOrWhiteSpace(text))
+                return SenseAttempt.Unavailable($"{older} runs a Martlet older than recordings; update it there");
             // A model that refuses the recording is asked again without it, so that answer isn't about the recording.
             var refused = job.Audio is not null && terminal.AudioRejected ? SenseAnswer.Rejected($"{name} refused the recording")
                 : job.Image is not null && string.IsNullOrWhiteSpace(text) && terminal.ProviderFailure is ProviderFailureCode.RequestRejected or
@@ -250,12 +290,16 @@ internal sealed partial class LiveConversationController
     {
         (int Jobs, int Elsewhere, int Waited, SensePoolRoute? Last, DateTimeOffset? At, string? Chosen) now;
         lock (sensePoolGate) now = sensePool[(int)kind];
-        // Before a talk window read the Thinking pool, the status reads its file itself (off the job's path) and keeps nothing.
-        var pool = Volatile.Read(ref poolRead) == 0 && dataDirectory is not null ? ThinkingPoolSettings.Load(dataDirectory) : null;
-        IReadOnlyList<DeepThinkingSettings> members = route is { Described: true, Model: { } model } ? SenseMembers(kind, model, pool) : [];
+        IReadOnlyList<DeepThinkingSettings> members = route is { Described: true, Model: { } model } ? SenseMembers(kind, model) : [];
+        var list = Volatile.Read(ref senseSetup)?.List(kind);
         return new
         {
             lane = SensePool.Lane(kind),
+            // The list on Companion › Vision or Hearing (null: tests set the models without one), then the places a job tries.
+            list = list?.Members.Select((m, i) => new
+            {
+                position = i, key = m.Key, on = !m.Off, model = SenseLists.ModelOf(m), mayReceive = SenseLists.MayReceive(m, SenseLists.Area(kind))
+            }),
             members = members.Select((m, i) => new { position = i, key = m.Key, name = m.Describe(), place = m.Place.ToString(), chosen = i == 0 }),
             jobs = now.Jobs, elsewhere = now.Elsewhere, waited = now.Waited,
             last = now.Last is not { } last ? null : new

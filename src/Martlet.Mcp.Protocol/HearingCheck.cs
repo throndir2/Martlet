@@ -41,7 +41,7 @@ internal static partial class HearingCheck
                 thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
         var choice = HearVoiceChoice(dataDirectory);
         // Where a recording goes now (docs/SENSE_MODELS.md): to Thinking, or with an audio model of its own to that model.
-        var (senses, sensesFile) = SenseModels.Read(dataDirectory);
+        var (senses, sensesFile) = SenseSetup.Read(dataDirectory);
         var audio = SenseRouting.For(SenseKind.Audio, senses, thinking, abilities);
         var staysOnThisPc = audio.Model is { } own ? VoiceNotes.StaysOnThisPc(own)
             : modelId is null && thinking is not null && HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId);

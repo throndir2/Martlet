@@ -193,7 +193,7 @@ internal static class AudioModelCheck
     {
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
-        var (senses, file) = SenseModels.Read(dataDirectory);
+        var (senses, file) = SenseSetup.Read(dataDirectory);
         var route = SenseRouting.For(SenseKind.Audio, senses, thinking, ModelAbilities.Load(dataDirectory));
         return new
         {

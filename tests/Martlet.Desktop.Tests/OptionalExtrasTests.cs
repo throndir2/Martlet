@@ -154,73 +154,9 @@ public sealed class OptionalExtrasTests
     };
 
     [Fact]
-    public void Vision_offers_off_then_the_image_models_and_keeps_the_chosen_one_while_off()
-    {
-        var thinking = Thinking("gemma4:e2b");
-        var on = OptionalExtras.SenseChoices(SenseKind.Image, new(), thinking, null, on: true, "Ollama on this PC", "Vision is off.");
-        Assert.Equal(new[] { "Off", "Thinking", "OtherSense", "ThisPc", "Cloud", "Computer" }, on.Select(o => o.Key));
-        Assert.Equal(new[] { "Thinking" }, on.Where(o => o.InUse).Select(o => o.Key));
-        Assert.Equal("With Thinking · No extra model · sees", Row(on[1]));
-        Assert.Equal("with Thinking's request, to Ollama on this PC", Fact(on[1], "data"));
-        Assert.Equal("nowhere: they stay on this PC", Fact(on[3], "data"));
-        // The cloud's cost names the catalog's providers (NVIDIA Build has a free tier) and the others.
-        Assert.Equal("free or paid", on[4].Facts.Single(f => f.Key == "cost").Short);
-        Assert.Contains("NVIDIA Build (free endpoint): a free tier", Fact(on[4], "cost"));
-        // Ollama on this PC: a second model's graphics memory, from the catalog's image models.
-        var local = FootprintCatalog.Default.For(PlanComponent.Vision).Where(o => o.IsLocal && !o.UsesThinking).ToArray();
-        Assert.Contains(local.Max(o => o.GpuGb).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB", Fact(on[3], "vram"));
-
-        var off = OptionalExtras.SenseChoices(SenseKind.Image, new(), thinking, null, on: false, "Ollama on this PC", "Vision is off.");
-        Assert.True(off[0].InUse);
-        Assert.False(off[1].InUse);
-        Assert.Equal("chosen", off[1].Badge);
-        Assert.Equal("Vision is off.", off[1].State);
-
-        // A text-only Thinking model warns; without Thinking its own model can't be chosen.
-        var text = OptionalExtras.SenseChoices(SenseKind.Image, new(), Thinking("qwen3:8b"), null, on: true, null, "");
-        Assert.True(text[1].Warn);
-        Assert.Contains("doesn't see pictures", text[1].State);
-        Assert.NotNull(OptionalExtras.SenseChoices(SenseKind.Image, new(), null, null, on: true, null, "")[1].Unavailable);
-    }
-
-    [Fact]
-    public void Hearing_offers_off_then_the_audio_models_without_your_computers()
-    {
-        var senses = new SenseModels
-        {
-            Audio = new() { Source = SenseSource.Own, Own = new() { Place = DeepThinkingPlace.Endpoint, Origin = "https://openrouter.ai/api/v1", ModelId = "x/omni" } }
-        };
-        var choices = OptionalExtras.SenseChoices(SenseKind.Audio, senses, Thinking("gemma4:e2b"), null, on: true, null, "");
-        Assert.Equal(new[] { "Off", "Thinking", "OtherSense", "ThisPc", "Cloud" }, choices.Select(o => o.Key));
-        Assert.Equal(new[] { "Cloud" }, choices.Where(o => o.InUse).Select(o => o.Key));
-        Assert.Equal("recommended", choices[1].Badge);
-        Assert.Equal("Recordings go", choices[4].Facts.Single(f => f.Key == "data").Label);
-        Assert.Equal(OptionalExtras.OffMeans(CompanionTab.Hearing) + ".", choices[0].Summary);
-        Assert.Equal("Martlet gets only the words you say, not how you say them", OptionalExtras.OffMeans(CompanionTab.Hearing));
-    }
-
-    [Fact]
-    public void Hearing_with_thinking_on_one_of_your_computers_does_not_blame_a_model_that_hears()
-    {
-        var host = new SetupRoute
-        {
-            Role = SetupRole.Llm, RouteType = SetupRouteType.GatewayOllama, ProviderAlias = SelfHostSetup.GatewayOllamaAlias,
-            Origin = "https://miku-host.local:9443", ModelId = "gemma4-e4b", ConfigurationRevision = Guid.NewGuid()
-        };
-        var choices = OptionalExtras.SenseChoices(SenseKind.Audio, new(), host, null, on: true, null, "");
-        Assert.False(choices[1].Warn);
-        Assert.Equal(new[] { "Thinking" }, choices.Where(o => o.InUse).Select(o => o.Key));
-
-        // A route that takes no recordings says so; it doesn't say the model doesn't hear.
-        var openAi = host with { RouteType = SetupRouteType.OpenAi, ProviderAlias = "openai", Origin = "https://api.openai.com", ModelId = "gpt-4.1-mini" };
-        var refused = OptionalExtras.SenseChoices(SenseKind.Audio, new(), openAi, null, on: true, null, "");
-        Assert.True(refused[1].Warn);
-        Assert.StartsWith("Thinking's route takes no recordings, so gpt-4.1-mini gets the transcript.", refused[1].State);
-    }
-
-    [Fact]
     public void Hearing_now_says_why_it_is_off()
     {
+        Assert.Equal("Martlet gets only the words you say, not how you say them", OptionalExtras.OffMeans(CompanionTab.Hearing));
         var none = new Martlet.Conversation.SenseRoute(SenseKind.Audio, Martlet.Conversation.SensePath.None, null, "");
         Assert.Equal("Off. Martlet gets only the words you say, not how you say them. Set up Thinking first.",
             MainWindow.HearingNow(false, null, null, none));
