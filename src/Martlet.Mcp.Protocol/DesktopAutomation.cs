@@ -8,6 +8,23 @@ namespace Martlet.Mcp;
 
 internal sealed class DesktopAutomation(bool allowEffects)
 {
+    /// <summary>Whether ui_* tools may press buttons that change things (--allow-ui-effects).</summary>
+    internal bool AllowsEffects => allowEffects;
+
+    /// <summary>The Martlet desktops running in this Windows session, by process ID.</summary>
+    internal static int[] RunningDesktops()
+    {
+        var session = Process.GetCurrentProcess().SessionId;
+        var found = new List<int>();
+        foreach (var process in Process.GetProcessesByName("Martlet.Desktop"))
+            using (process)
+            {
+                try { if (process.SessionId == session && !process.HasExited) found.Add(process.Id); }
+                catch (Exception error) when (error is InvalidOperationException or Win32Exception) { }
+            }
+        return [.. found.Order()];
+    }
+
     private static readonly HashSet<string> SafeClicks = new(StringComparer.Ordinal)
     {
         // Martlet for Linux and macOS (Martlet.Companion) on a Windows dev run: its three tabs (passive navigation).
@@ -1169,8 +1186,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static bool IsSafeValue(string id) =>
         SafeValues.Contains(id) || SafeValuePrefixes.Any(prefix => id.StartsWith(prefix, StringComparison.Ordinal));
 
-    internal object Connect(int pid)
+    internal object Connect(int? requested)
     {
+        var pid = requested ?? RunningDesktops() switch
+        {
+            [] => throw new InvalidOperationException("Martlet isn't running in this Windows session. Start Martlet, then call ui_connect again."),
+            [var only] => only,
+            var several => throw new ArgumentException($"More than one Martlet runs here ({string.Join(", ", several)}); pass pid.")
+        };
         if (pid <= 0) throw new ArgumentException("A positive Martlet desktop process ID is required.");
         using var process = Process.GetProcessById(pid);
         if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase) &&

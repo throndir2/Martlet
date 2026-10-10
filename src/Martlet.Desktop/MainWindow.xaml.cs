@@ -262,6 +262,7 @@ public partial class MainWindow : ThemedWindow
         StartCluster();
         StartNodePresence();
         StartSettingsSync();
+        StartSettingsWatch();
         StartHouseholdSharing();
         StartReminders();
         StartCheckIns();

@@ -7,7 +7,10 @@ using Martlet.Mcp.Client;
 
 namespace Martlet.Mcp;
 
-internal sealed class McpServer(DesktopAutomation desktop)
+/// <summary>Martlet's local MCP server. <paramref name="allowChanges"/> (--allow-changes) lets the character and settings tools
+/// save; <paramref name="allTools"/> (--all-tools) lists every tool instead of the short list for assistants (every tool runs by
+/// name either way).</summary>
+internal sealed partial class McpServer(DesktopAutomation desktop, bool allowChanges = false, bool allTools = false)
 {
     private const int MaxLineLength = 1024 * 1024;
 
@@ -113,10 +116,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
 
-        Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this interactive session.", new
+        Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this " +
+            "interactive session. Without pid it finds the Martlet desktop running in this Windows session.", new
         {
             pid = new { type = "integer", minimum = 1 }
-        }, ["pid"]),
+        }),
         Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows " +
             "(with a status line's tooltip details as help), " +
             "and whether each window can be resized, minimized and maximized. With layout, each control also returns its screen " +
@@ -2273,10 +2277,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     {
                         protocolVersion = "2025-06-18",
                         capabilities = new { tools = new { } },
-                        serverInfo = new { name = "martlet", version = "0.1.0" }
+                        serverInfo = new { name = "martlet", title = "Martlet", version = Version },
+                        instructions = Instructions()
                     }),
                     "ping" => Success(id, new { }),
-                    "tools/list" => Success(id, new { tools = Tools }),
+                    "tools/list" => Success(id, new { tools = ToolList() }),
                     "tools/call" => Success(id, await CallAsync(parameters, cancellation)),
                     _ => Error(id, -32601, "Method not found.")
                 };
@@ -2294,8 +2299,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             var name = RequiredString(parameters, "name");
             var arguments = parameters.TryGetProperty("arguments", out var value) ? value : default;
+            if (name == "martlet_call") return await CallByNameAsync(arguments, cancellation);
             object result = name switch
             {
+                "martlet_guide" => Guide(OptionalString(arguments, "topic"), OptionalString(arguments, "search"), OptionalString(arguments, "tool")),
+                "characters_list" => await CharacterConfiguration.ListAsync(DataDirectory(arguments), OptionalBool(arguments, "includeText") ?? false,
+                    cancellation),
+                "character_create" => await ChangingAsync(name, () => CharacterConfiguration.CreateAsync(DataDirectory(arguments),
+                    OptionalString(arguments, "name"), OptionalString(arguments, "personality"), OptionalString(arguments, "cardPath"),
+                    OptionalString(arguments, "look"), OptionalString(arguments, "voice"), OptionalBool(arguments, "profile"),
+                    OptionalBool(arguments, "use"), cancellation)),
+                "character_update" => await ChangingAsync(name, () => CharacterConfiguration.UpdateAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "character"), OptionalString(arguments, "name"), OptionalString(arguments, "personality"),
+                    OptionalString(arguments, "look"), OptionalString(arguments, "voice"), cancellation)),
+                "character_use" => await ChangingAsync(name, () => CharacterConfiguration.UseAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "character"), cancellation)),
+                "character_delete" => await ChangingAsync(name, () => CharacterConfiguration.DeleteAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "character"), OptionalBool(arguments, "profileOnly") ?? false, cancellation)),
+                "settings_get" => await SettingsConfiguration.GetAsync(DataDirectory(arguments), OptionalString(arguments, "path"), cancellation),
+                "settings_schema" => SettingsConfiguration.Schema(OptionalString(arguments, "path"), OptionalInt(arguments, "depth")),
+                "settings_set" => await ChangingAsync(name, () => SettingsConfiguration.SetAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "path"), RequiredValue(arguments, "value"), OptionalString(arguments, "revision"), cancellation)),
                 "companion_status" => await CompanionStatusAsync(OptionalString(arguments, "platform"), OptionalString(arguments, "settingsFile"), cancellation),
                 "doctor_status" => await DoctorAsync(["status", "--json"], arguments, cancellation),
                 "doctor_list" => await DoctorAsync(["list", "--json"], arguments, cancellation),
@@ -2313,7 +2337,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_trace" => ThinkingTraceReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "turns"),
                     OptionalString(arguments, "contains")),
 
-                "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
+                "ui_connect" => desktop.Connect(OptionalInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),
                 "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window"),
                     OptionalBool(arguments, "focus") ?? false),
@@ -2549,7 +2573,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
             System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
-            System.Windows.Automation.ElementNotAvailableException)
+            System.Windows.Automation.ElementNotAvailableException or Martlet.Core.Contracts.ContractException or
+            Martlet.Core.Settings.CharacterCardException or IOException or UnauthorizedAccessException)
         {
             return new { content = new[] { new { type = "text", text = ex.Message } }, isError = true };
         }
