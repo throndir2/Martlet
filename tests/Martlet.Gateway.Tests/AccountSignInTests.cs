@@ -85,12 +85,6 @@ public sealed class AccountSignInTests
         return body;
     }
 
-    [Theory]
-    [InlineData("net-example", "8a58da66-fddc-5c5b-9282-fb119c84915f")]
-    [InlineData("0f3a9c", "b9681809-5be4-5629-a701-10c7c878e749")]
-    public void The_owners_account_follows_from_the_network_id(string networkId, string expected) =>
-        Assert.Equal(new Guid(expected), GatewaySignInService.OwnerAccountIdFor(networkId));
-
     [Fact]
     public async Task Household_accounts_prove_themselves_and_get_attestations_the_roster_verifies()
     {
@@ -123,7 +117,8 @@ public sealed class AccountSignInTests
         var roster = NetworkRoster.Found(founder, "HOME", now)
             .AddHost(founder, host.Identity.HostId, "Fixture", host.Origin.CanonicalOrigin, host.Identity.SpkiFingerprint, now);
         host.Server.AttachNetworkStorage(new RosterStorage(roster.Write()));
-        var ownerAccount = GatewaySignInService.OwnerAccountIdFor(roster.NetworkId);
+        // Until a desktop names the owner's account, the host uses the one every computer derives from the network.
+        var ownerAccount = OwnerAccount.IdFor(roster.NetworkId);
 
         AccountAttestation Attested(JsonElement body, Guid account, string device, string login)
         {
