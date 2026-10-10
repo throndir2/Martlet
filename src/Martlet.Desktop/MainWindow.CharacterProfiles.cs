@@ -422,6 +422,8 @@ public partial class MainWindow
             {
                 UpdateCharacterButton();
                 RenderHome();
+                // A character shared together remembers in its own memory space.
+                FollowCharacterSpace();
             }
         }
     }
@@ -506,6 +508,7 @@ public partial class MainWindow
         if (!CharacterProfileLocalStore.Save(store.DataDirectory, next) || kept is null) return;
         var profile = homeSettings.Companion.CharacterList.FirstOrDefault(c => c.Id == id);
         ErrorLog.Info($"Following the character profile switched to last ({profile?.Key}); on this PC: {ProfileHereLog(kept)}.");
+        FollowCharacterSpace();
         // A new look from another computer restarts a showing character (AfterSettingsAppliedAsync): it opens at the place.
         ApplyProfileHereAsync(kept, opensSoon: characterChanged && avatar.IsShowing, lifetime.Token).Forget();
     }

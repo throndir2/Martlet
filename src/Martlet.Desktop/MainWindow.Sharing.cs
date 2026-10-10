@@ -22,7 +22,12 @@ public partial class MainWindow
     private readonly DispatcherTimer sharingTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private bool sharingBusy;
 
-    private void InitializeHouseholdSharing() => sharingTimer.Tick += (_, _) => FollowHouseholdSharingAsync().Forget();
+    private void InitializeHouseholdSharing()
+    {
+        sharingTimer.Tick += (_, _) => FollowHouseholdSharingAsync().Forget();
+        // Another account's characters and sharing: its character in use may remember in a space of its own.
+        if (accounts is not null) accounts.AccountChanged += () => Dispatcher.InvokeAsync(FollowCharacterSpace);
+    }
 
     private void StartHouseholdSharing()
     {
@@ -159,6 +164,7 @@ public partial class MainWindow
             sharingBusy = false;
             if (changed && !closing)
             {
+                FollowCharacterSpace();
                 RenderHome();
                 if (openTab == CompanionTab.Profiles && !tabEdited) RenderTab();
             }
@@ -185,6 +191,7 @@ public partial class MainWindow
             return;
         }
         ErrorLog.Info($"Sharing: character {profile.Key} is now {mode?.ToString().ToLowerInvariant() ?? "private"}.");
+        FollowCharacterSpace();
         ActionText.Text = mode switch
         {
             CharacterShareMode.Copy => $"People in your household can now use a copy of '{profile.Name}'.",
@@ -195,6 +202,67 @@ public partial class MainWindow
     }
 
     // ---------- your memories ----------
+
+    /// <summary>The Memory window's sharing: where facts can go, giving them through the hosts and *Share new memories about me*.
+    /// Null without accounts.</summary>
+    private MemorySharingOptions? MemorySharingOptionsNow() => SharingAccount is null ? null
+        : new(MemoryShareTargets, GiveMemoriesToHostsAsync, ClusterDevice, ShareNewMemoriesAboutMe, SetShareNewMemoriesAboutMeAsync);
+
+    /// <summary>The places the Memory window can share facts to: the household's memories, each other person's memories (from the
+    /// account directory and the people on this PC) and each character shared together that this account uses.</summary>
+    private IReadOnlyList<MemoryShareTarget> MemoryShareTargets()
+    {
+        var targets = new List<MemoryShareTarget> { new(MemorySpaceId.Household, "The household's memories") };
+        if (accounts is null || SharingAccount is not { } me) return targets;
+        var people = accounts.Directory.Live.Where(a => a.Id != me).Select(a => (a.Id, a.Name))
+            .Concat(accounts.SignedIn.Where(a => a.Id != me).Select(a => (a.Id, a.Name)))
+            .DistinctBy(p => p.Id).OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase);
+        foreach (var (id, name) in people) targets.Add(new(MemorySpaceId.Account(id), $"{name}'s memories"));
+        var entries = HouseholdEntries();
+        if (OwnSharing(entries) is not { } own) return targets;
+        var together = own.Characters.Where(c => c.Mode == CharacterShareMode.Together)
+            .Concat(own.Joined.Select(j => entries.GetValueOrDefault(j.AccountId)?.Find(j.CharacterId)).OfType<SharedCharacter>()
+                .Where(c => c.Mode == CharacterShareMode.Together));
+        foreach (var character in together.DistinctBy(c => c.Id))
+            targets.Add(new(character.Space, $"{character.Name}'s memories (shared together)"));
+        return targets;
+    }
+
+    /// <summary>Gives facts to a memory space this PC doesn't keep (another person's memories) through every reachable paired
+    /// host; returns how many the space took. A host only adds facts and never shows the space.</summary>
+    private async Task<int> GiveMemoriesToHostsAsync(string space, SharedMemories gift, CancellationToken token)
+    {
+        var hosts = await Dispatcher.InvokeAsync(() => NetworkMap.Hosts(Inputs()));
+        if (hosts.Count == 0)
+            throw new DesktopMemoryException("memory.no_host", "Pair a Martlet host to share facts with someone else's memories.");
+        var taken = -1;
+        foreach (var host in hosts)
+        {
+            try { taken = Math.Max(taken, await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.GiveMemoriesAsync(space, gift, token))); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is OperationCanceledException or ArgumentException || ClusterSync.IsHostFailure(error))
+            {
+                ErrorLog.Warn($"Memory: {host.HostId} didn't take the shared facts.", error);
+            }
+        }
+        return taken >= 0 ? taken
+            : throw new DesktopMemoryException("memory.no_host", "None of your hosts took the facts. Check that they run an up-to-date Martlet, then try again.");
+    }
+
+    /// <summary>Makes memory use the space of the character in use: its own space when it is shared together, else the
+    /// account's. Called after a switch of character or a change in sharing, between replies; the other spaces load again in the
+    /// background, so recall never waits.</summary>
+    private void FollowCharacterSpace()
+    {
+        if (memory?.Account is not { } account || closing) return;
+        var character = SharedCharacterSpace();
+        if (account.Character == character) return;
+        memory.UseAccount(account with { Character = character });
+        ErrorLog.Info(character is null ? "Memory: the character in use remembers in your own memories."
+            : $"Memory: the character in use is shared together, so it remembers in its own memory space ({character[..18]}).");
+        LoadMemorySpacesAsync().Forget();
+        QueueMemorySync();
+    }
 
     /// <summary>Whether new facts about the signed-in person go to the household memory space (*Share new memories about me*).</summary>
     internal bool ShareNewMemoriesAboutMe => OwnSharing()?.NewFactsAboutMe == true;
@@ -436,6 +504,7 @@ public partial class MainWindow
             await lorebooks.UpdateAsync(current => SharedCharacters.DropLorebooks(current, gone), lifetime.Token);
         await ChangeOwnSharingAsync(own => own.WithoutJoined(character));
         CharacterProfileLocalStore.Save(store?.DataDirectory, ProfilesHere());
+        FollowCharacterSpace();
         return true;
     }
 }
