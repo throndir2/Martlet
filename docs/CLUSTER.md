@@ -276,9 +276,9 @@ switch and no single-computer choice.
 | Order | The list order is the order a request tries the members in |
 | On and off | A member that is `off` keeps its place and its settings and takes no work |
 | Kept for | `PoolMember.OnlyFor`: the companion PCs (device IDs) that may use the member; empty means every one |
-| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync) |
+| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings) |
 | Area (`PoolAreas`) | Its ID (also its `WorkQueue` lane), page, member kinds, host role, required or optional, shared or per PC. Thinking has `ConversationFirst`: the conversation's own model always goes first and is not a member |
-| Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures). An area with no list yet makes it once from its older choices (`PoolMigration`) |
+| Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision and hearing). An area with no list yet makes it once from its older choices (`PoolMigration`) |
 | Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
 | Cloud consent | `PoolMember.Consent` binds the owner's agreement (data leaves this PC, requests may cost money) to the area and the member key. A cloud member without a matching agreement takes no work |
 | Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the member key |

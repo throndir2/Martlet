@@ -1834,7 +1834,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "text model's own request; Described: the model of its own puts them into words for Thinking; None: nowhere) and why, " +
             "with what the chosen model is known to do (model-abilities.json, with where that came from). With the desktop's " +
             "sense-models-status.json: each lane's recent jobs (purposes, outcomes and times; never what was sent or said) and " +
-            "whether the model shares the conversation's computer. Read-only.", new
+            "whether the model shares the conversation's computer. Each kind's pool (SensePool, lane vision or hearing): the members " +
+            "a job tries in order (the chosen model, then the Thinking pool's members known to see or hear that may receive " +
+            "pictures and recordings, never the Thinking model), and from the desktop how many jobs went to another member or " +
+            "waited and which member took the last one (position, busy and unavailable counts, wait). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1847,7 +1850,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "waiting, priorities, a stale job dropped, refusals, failures, timeouts, the kind check, one lane for one model used " +
             "for both kinds, and the conversation first (a job waits while a reply holds the model's hardware, a running job is " +
             "stopped when a reply starts, a job the hold outlasts is dropped), and a background job (a helper, priority below zero) " +
-            "giving way to a reply's picture and starting again, while a summary waits behind it. In-process; reads nothing.", new { }),
+            "giving way to a reply's picture and starting again, while a summary waits behind it. Then the pools (SensePool) with " +
+            "simulated members on their own queue: who is a member (the chosen model first; members that don't see, external " +
+            "members without the owner's agreement and the Thinking model left out; the audio pool hears), a free chosen model " +
+            "taking the job with one request, a busy or unreachable member passing it on at once, a busy pool waiting for whichever " +
+            "member frees first, and a member held for a live turn passed over. In-process; reads nothing.", new { }),
         Tool("image_model_check", "The image model (docs/SENSE_MODELS.md, Pictures: the image model) from a data directory: where " +
             "pictures go now (sense-models.json, the Thinking route and model-abilities.json through the production SenseRouting, or " +
             "an image model of its own given as imageOrigin and imageModel), the state of its three prompts, the desktop's " +

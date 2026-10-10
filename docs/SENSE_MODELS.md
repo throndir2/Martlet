@@ -424,9 +424,58 @@ The time from the end of your speech to Martlet's first word must never grow
    Thinking's model on the graphics card. Martlet checks this before each job,
    so the conversation's prompt cache stays loaded.
 6. With the defaults, nothing new runs and no request changes.
+7. A free chosen model gets each job at once: the pool adds no request, no
+   file read and no wait (see [The image and audio pools](#the-image-and-audio-pools)).
 
 To check a change, compare the desktop log's `Reply latency` and `Thinking
 input` lines before and after.
+
+## The image and audio pools
+
+Each job of the image model or the audio model goes through a pool
+(`SensePool`, Martlet.Conversation). A pool is an ordered list of models
+that see (pictures) or hear (recordings):
+
+1. The chosen model (Companion › Vision or Companion › Hearing) is first.
+2. Then the Thinking pool's members whose model is known to see or hear
+   (Companion › Thinking pool), in the pool's order. A model that Martlet
+   can't tell about is not a member. Only the chosen model is tried without
+   that knowledge.
+
+A member is left out when:
+
+- it is the conversation's own Thinking model, so the conversation keeps its
+  prompt cache;
+- it runs on the conversation's own computer and graphics card (its
+  Thinking, voice or listening);
+- it is outside this PC and your paired computers (a cloud provider or a
+  server on the home network) and you didn't tick **May receive pictures and
+  recordings** for it on Companion › Thinking pool;
+- it is a computer a friend shares with you, or a computer Devices › Sharing
+  work keeps for other companion PCs.
+
+The job goes through `WorkQueue` (lane `vision` or `hearing`, the pool area's
+ID; each member's key is its "computer"):
+
+| The member | What the job does |
+| --- | --- |
+| Answers | The job ends with its words, its refusal (the chosen model) or a real failure |
+| Is busy (a paired computer answers `job.busy`) | The next member gets the job at once. When every member that answered is busy, the job waits for whichever frees first, until its timeout |
+| Can't take it now (offline, not reachable, no room beside Thinking, too long for it, its provider limits requests, no key) | The next member gets the job at once |
+| Keeps its graphics card for a live turn on its computer | The next member gets the job. When all of them do, the job ends without words at once |
+| Refuses the picture or recording (a member after the chosen model) | Martlet keeps *doesn't see* or *doesn't hear* for it, and the next member gets the job |
+
+Test vision (`SenseJob.OnlyChosen`) never goes to another member: it tests
+the chosen model only. A sense request to a paired computer goes straight to
+it (`HostTextTarget.Pooled`), so Thinking's work sharing never sends it to
+another computer.
+
+The pool area entries are `PoolAreas.Vision` and `PoolAreas.Hearing`
+([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). Each PC keeps
+its own list, because which models fit beside Thinking depends on its
+hardware. An empty list means no model of its own: Thinking's own model takes
+the pictures or recordings. Until the pages show these lists, the members come
+from the Thinking pool as above.
 
 ## Finding out what a model can do
 
@@ -511,7 +560,13 @@ why, whether its model shares the conversation's computer, and its line (busy,
 waiting, held for a reply, runs, and the last job's purpose, outcome and
 time). Before a talk window loads the settings, a model of its own is routed
 by what Martlet found out about it (`model-abilities.json`), and a kind that
-goes to the text model says to set up Thinking.
+goes to the text model says to set up Thinking. Each kind's `pool` has its
+`lane`, the `members` the next job tries (position, key, name, place, chosen),
+how many `jobs` went through it, how many went to another member
+(`elsewhere`) or `waited` for one, and the `last` job's member, position,
+busy and unavailable counts and wait in ms. A job that another member took,
+or that waited, also writes one `Image model pool:` or `Audio model pool:`
+line in the desktop log.
 
 ## For developers
 
@@ -549,25 +604,29 @@ held; with `DropWhenStale` (the default) it ends `Stale` when it can't start
 within its `Timeout`, so a job that must outlast a long reply sets
 `DropWhenStale = false` and passes its own token.
 
-Tests replace three things on the controller: `SenseRunner` answers a job in
+Tests replace four things on the controller: `SenseRunner` answers a job in
 place of the model's request (a refused answer is still remembered),
-`SenseSharing` says whether a kind's model shares the conversation's hardware,
-and `SenseFit` replaces the check with Ollama. Without a data folder, a refusal
-is kept in memory only.
+`SenseAttemptRunner` answers one attempt on one pool member (busy,
+unavailable, held or done), `SenseSharing` says whether a kind's model shares
+the conversation's hardware, and `SenseFit` replaces the check with Ollama.
+Without a data folder, a refusal is kept in memory only.
 
 ## Checks
 
-- MCP: `sense_models_status` reads a data folder's choices, routes and the
-  desktop's status file. `sense_models_check` rehearses the routing and the
-  lines with a simulated runner ([MCP](MCP.md#image-and-audio-models)).
+- MCP: `sense_models_status` reads a data folder's choices, routes, each
+  kind's pool and the desktop's status file. `sense_models_check` rehearses
+  the routing, the lines and the pools with a simulated runner and members
+  ([MCP](MCP.md#image-and-audio-models)).
   `image_model_check` and `audio_model_check` rehearse the picture and voice
   paths against fixture endpoints on 127.0.0.1 with the production code.
   `model_ability_check` rehearses Test vision and Test hearing, and
   `model_lab` runs a fixture endpoint for the desktop's cards.
 - Tests: `SenseModelsTests` and `SenseModelChoiceTests` (Martlet.Core.Tests),
-  `SenseRoutingTests` and `SenseLanesTests` (Martlet.Conversation.Tests),
-  `ModelVisionTestTests` (Martlet.Providers.Tests), and in
-  Martlet.Desktop.Tests `SenseModelsDesktopTests` (a fixture endpoint gets the
+  `SenseRoutingTests`, `SenseLanesTests` and `SensePoolTests`
+  (Martlet.Conversation.Tests), `ModelVisionTestTests` (Martlet.Providers.Tests), and in
+  Martlet.Desktop.Tests `SensePoolDesktopTests` (a busy image model passes the
+  picture to a pool member, a free one gets it alone, Test vision stays on the
+  chosen model, the consent rule), `SenseModelsDesktopTests` (a fixture endpoint gets the
   picture, a refused picture is remembered, a job waits for or stops for a
   reply on the same computer, helper jobs), `ImageModelPipelineTests` (no
   picture to Thinking, a reply never waits, two-step looks, the default

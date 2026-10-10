@@ -22,7 +22,7 @@ internal sealed partial class LiveConversationController
             await Task.Delay(SenseLanes.HoldPoll, clock, token).ConfigureAwait(false);
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(job.Timeout);
-        try { return await RunSenseJobOrTestAsync(kind, model, job, limit.Token).ConfigureAwait(false); }
+        try { return await RunSenseJobOrTestAsync(kind, model, job with { OnlyChosen = true }, limit.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return SenseAnswer.Failed("it didn't answer in time"); }
     }
 }

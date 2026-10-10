@@ -500,6 +500,18 @@ path, model and why, `sharesConversation`, and its line (`busy`, `waiting`,
 `held` for a reply, `runs` and the `last` job's purpose, outcome,
 milliseconds, model and problem; never what was sent or said).
 
+Each kind's `pool` ([The image and audio pools](SENSE_MODELS.md#the-image-and-audio-pools))
+is in both parts. From the data directory, while a model of its own describes
+the kind: its `lane` (`vision` or `hearing`) and the `members` a job tries in
+order (`position`, `key`, `name`, `place`, `chosen`): the chosen model, then the
+Thinking pool's members known to see or hear, without the Thinking model and
+without external members the owner didn't allow pictures and recordings. The
+desktop's `pool` also leaves out computers a friend shares, computers kept for
+other companion PCs and members on the conversation's own computer and
+graphics card. It adds `jobs`, `elsewhere` (another member took the job),
+`waited` (the job waited for a busy pool) and the `last` job's `member`, `name`,
+`position`, `chosen`, `busy`, `unavailable`, `waitedMs` and `at`.
+
 `sense_models_check` rehearses the production routing (`SenseRouting`) over
 the combinations of text, image and audio models with fixture model names, the
 `sense-models.json` round trip, and the production lines (`SenseLanes`) with a
@@ -509,8 +521,14 @@ failures, a timeout, the kind check, one line for one model used for both
 kinds, and the conversation first (`lanes-hold`: a job waits while a reply
 holds the model's hardware, a running job is stopped, and a job the hold
 outlasts is dropped; `lanes-yield`: a helper job gives way to a reply's
-picture and starts again, while a summary waits behind it). In-process; it
-reads nothing.
+picture and starts again, while a summary waits behind it). Then the pools
+(`SensePool`) with simulated members on a queue of their own: `pool-members`
+(who is a member, for pictures and for recordings), `pool-first-free` (a free
+chosen model takes the job with one request), `pool-busy-next` (a busy and an
+unreachable member pass it on at once), `pool-all-busy-waits` (the first
+member to free takes it) and `pool-held` (a member held for a live turn is
+passed over; a pool held everywhere ends at once). In-process; it reads
+nothing.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
