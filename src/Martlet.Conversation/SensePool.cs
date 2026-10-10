@@ -47,8 +47,9 @@ public static class SensePool
     /// <summary>The most members a job tries.</summary>
     public const int MaximumMembers = 8;
 
-    /// <summary>The <see cref="WorkQueue"/> lane of <paramref name="kind"/>'s jobs: <c>vision</c> or <c>hearing</c>.</summary>
-    public static string Lane(SenseKind kind) => kind == SenseKind.Image ? "vision" : "hearing";
+    /// <summary>The <see cref="WorkQueue"/> lane of <paramref name="kind"/>'s jobs: its pool area's ID (<see cref="PoolAreas.Vision"/>,
+    /// <see cref="PoolAreas.Hearing"/>).</summary>
+    public static string Lane(SenseKind kind) => (kind == SenseKind.Image ? PoolAreas.Vision : PoolAreas.Hearing).Id;
 
     /// <summary>The members a job of <paramref name="kind"/> tries, first to last: <paramref name="chosen"/> (the image or audio
     /// model of its own), then <paramref name="pool"/>'s members whose model is known to see or hear (<see cref="Takes"/>),

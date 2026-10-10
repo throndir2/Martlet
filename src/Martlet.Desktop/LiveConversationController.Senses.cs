@@ -138,12 +138,12 @@ internal sealed partial class LiveConversationController
     /// chosen model, then the Thinking pool's members whose model takes the kind. Left out: a computer a friend shares, a
     /// computer Devices › Sharing work keeps for other companion PCs, and a member on the conversation's own computer and graphics
     /// card (its Thinking, voice or listening), so the conversation keeps its model's cache. No request and no file read.</summary>
-    internal IReadOnlyList<DeepThinkingSettings> SenseMembers(SenseKind kind, DeepThinkingSettings chosen)
+    internal IReadOnlyList<DeepThinkingSettings> SenseMembers(SenseKind kind, DeepThinkingSettings chosen, ThinkingPoolSettings? pool = null)
     {
         var configured = Configuration;
         var thinking = configured?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = configured?.Abilities ?? Volatile.Read(ref poolAbilities);
-        return SensePool.Members(kind, chosen, Volatile.Read(ref thinkingPool), thinking, abilities, member =>
+        return SensePool.Members(kind, chosen, pool ?? Volatile.Read(ref thinkingPool), thinking, abilities, member =>
             member is { Place: DeepThinkingPlace.Host, HostId: { } host } &&
                 (WorkSharingRoster.IsShared(host) || !WorkSharingRoster.Settings(dataDirectory).Allows(host, WorkSharingRoster.Device)) ||
             floorRules.Resources.Shares(SensePlace(kind, member)));
@@ -250,7 +250,9 @@ internal sealed partial class LiveConversationController
     {
         (int Jobs, int Elsewhere, int Waited, SensePoolRoute? Last, DateTimeOffset? At, string? Chosen) now;
         lock (sensePoolGate) now = sensePool[(int)kind];
-        IReadOnlyList<DeepThinkingSettings> members = route is { Described: true, Model: { } model } ? SenseMembers(kind, model) : [];
+        // Before a talk window read the Thinking pool, the status reads its file itself (off the job's path) and keeps nothing.
+        var pool = Volatile.Read(ref poolRead) == 0 && dataDirectory is not null ? ThinkingPoolSettings.Load(dataDirectory) : null;
+        IReadOnlyList<DeepThinkingSettings> members = route is { Described: true, Model: { } model } ? SenseMembers(kind, model, pool) : [];
         return new
         {
             lane = SensePool.Lane(kind),
