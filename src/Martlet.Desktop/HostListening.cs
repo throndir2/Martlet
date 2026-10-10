@@ -4,6 +4,7 @@ using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -17,14 +18,18 @@ internal sealed class HostTranscriptionClient : IHostTranscriptionClient
     public async Task<string> TranscribeAsync(HostTextTarget target, string modelId, ReadOnlyMemory<byte> pcm16kMono,
         CorrelationIds ids, long epoch, DateTimeOffset deadline, CancellationToken cancellationToken)
     {
-        IReadOnlyList<(HostTextTarget Target, string Model)> targets = [.. WorkSharingRoster.Order(WorkSharingRoster.DataDirectory,
-                WorkSharingJobs.Listening, HostRoles.Stt, null, target.HostId)
-            .Select(place => place.Host is not { } host || host.HostId == target.HostId ? (target, modelId)
-                : (WorkSharingRoster.TextTarget(host, target.RouteId), place.Model ?? modelId))];
+        IReadOnlyList<(HostTextTarget? Target, string Model, PoolMember? Cloud)> targets = [.. WorkSharingRoster.Places(WorkSharingRoster.DataDirectory,
+                WorkSharingJobs.Listening, HostRoles.Stt, null, target.HostId, m => PoolCloud.Usable(WorkSharingRoster.DataDirectory, SetupRole.Stt, m))
+            .Select(place => place.Cloud is { } cloud ? (null, cloud.Model!, cloud)
+                : place.Host is not { } host || host.HostId == target.HostId ? (target, modelId, (PoolMember?)null)
+                : (WorkSharingRoster.TextTarget(host, target.RouteId), place.Model ?? modelId, null))];
         try
         {
-            return await WorkQueue.Shared.RunAsync(WorkSharingJobs.Listening, targets, t => t.Target.HostId,
-                (t, token) => WorkSharingRoster.WatchedOnce(t.Target.HostId, "listening", OnceAsync(t.Target, t.Model, pcm16kMono, ids, epoch, deadline, token)),
+            return await WorkQueue.Shared.RunAsync(WorkSharingJobs.Listening, targets, t => t.Target?.HostId ?? t.Cloud!.Key,
+                (t, token) => t.Target is { } host
+                    ? WorkSharingRoster.WatchedOnce(host.HostId, "listening", OnceAsync(host, t.Model, pcm16kMono, ids, epoch, deadline, token))
+                    // A cloud member of the Listening list, in its turn: the members before it are busy or don't answer.
+                    : PoolCloud.TranscribeAsync(WorkSharingRoster.DataDirectory!, t.Cloud!, pcm16kMono, ids, epoch, deadline, token),
                 WorkSharingRoster.Classify, deadline, null, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

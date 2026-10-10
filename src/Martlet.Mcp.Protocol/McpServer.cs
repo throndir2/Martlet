@@ -2020,7 +2020,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "Then pools: Sharing work's choices moved into the Speaking list, the list's order per companion PC, a member turned " +
             "off, Thinking's own model first, an empty list off for Speaking and voice loudness for lip-sync, a rate-limited cloud " +
-            "member passed over by its member key, and the pools shared setting's round trip. In-process; reads nothing.", new { }),
+            "member passed over by its member key, a cloud member in the list taking a segment only when the computer before it is " +
+            "busy, and the pools shared setting's round trip. In-process; reads nothing.", new { }),
         Tool("lip_sync_pool_status", "Lip-sync's pool (the pool contract's lip-sync area) from a data directory: who does lip-sync " +
             "(avatar.json: its mode and the assigned host), lip-sync's list (pools.json, or the list made from the older choices " +
             "until one is saved: the assigned computer, the other paired computers the shared plan says run the audio2face role in " +

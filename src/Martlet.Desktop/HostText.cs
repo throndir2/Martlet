@@ -160,6 +160,10 @@ internal sealed class HostTextClient : IHostTextClient
     {
         Audio2FaceHostException { OwnerFirst: true } owner => Failed(job, ProviderFailureCode.RateLimited, $"[{owner.Code} {owner.Detail}] {owner.Message}"),
         Audio2FaceHostException host => Failed(job, Map(host.Code), $"[{host.Code}] {host.Message}"),
+        // A cloud member of the Speaking or Listening list (PoolCloud) failed: its provider's own failure.
+        PoolCloud.Refused refused => Failed(job, refused.Code, refused.Message),
+        ElevenLabsException eleven => Failed(job, eleven.Code, eleven.Message),
+        CredentialUnavailableException => Failed(job, ProviderFailureCode.CredentialUnavailable, "A cloud member's key is missing on this PC."),
         HttpRequestException or IOException => Failed(job, ProviderFailureCode.Network, $"{error.GetType().Name}: {error.Message}"),
         JsonException or FormatException or InvalidOperationException =>
             Failed(job, ProviderFailureCode.ResponseSchema, $"{error.GetType().Name}: {error.Message}"),

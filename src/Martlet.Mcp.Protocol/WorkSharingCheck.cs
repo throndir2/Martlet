@@ -263,6 +263,21 @@ internal static class WorkSharingCheck
         var limited = new Voice(cloud.Key, TimeSpan.FromMilliseconds(10)) { RateLimited = true };
         var byCloud = await SpeakAsync(new WorkQueue(), "desk-2", [limited, new Voice("m3-host", TimeSpan.FromMilliseconds(10))]);
         Step("A cloud member at its rate limit is passed over like a busy computer (by its member key)", byCloud.By == "m3-host", byCloud);
+        // The Speaking list machine 1, then the cloud member: a free machine 1 speaks at once and the cloud is never asked; a busy
+        // machine 1 hands the segment to the cloud member in its turn (PoolRouting.Stops, NOT a real provider).
+        var stops = PoolRouting.Stops(PoolAreas.Speaking, new PoolList { Area = PoolAreas.Speaking.Id, Members = [PoolMember.Computer("m1-host"), cloud] },
+            "desk-2", "m1-host", null, new HashSet<string>(StringComparer.Ordinal), _ => true);
+        var first = new Voice("m1-host", TimeSpan.FromMilliseconds(200));
+        var provider = new Voice(cloud.Key, TimeSpan.FromMilliseconds(20));
+        Voice[] turn = [.. stops.Select(s => s.HostId is null ? provider : first)];
+        var free = await SpeakAsync(new WorkQueue(), "desk-2", turn);
+        var hold = SpeakAsync(new WorkQueue(), "desk-1", [first]);
+        await Task.Delay(20, cancellation);
+        var inTurn = await SpeakAsync(new WorkQueue(), "desk-2", turn);
+        await hold;
+        Step("A cloud member in the list takes a segment only when the computer before it is busy (a free first computer adds no latency)",
+            stops.Select(s => s.Key).SequenceEqual(["m1-host", cloud.Key]) && free.By == "m1-host" && inTurn.By == cloud.Key &&
+            provider.Served.Count == 1 && inTurn.WaitedMs < 100, new { stops = stops.Select(s => s.Key), free, inTurn, cloudAsked = provider.Served.Count });
         var poolsShared = new PoolSettings().With(migrated).Share();
         Step("The lists travel as the pools shared setting and read back the same",
             PoolSettings.Parse(poolsShared)?.Share() == poolsShared && Martlet.Core.Sync.SharedSettings.IsKey(PoolSettings.SharedKey), new { poolsShared });

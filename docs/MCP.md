@@ -4516,7 +4516,9 @@ Sharing work's choices moved into the Speaking list (`PoolMigration`); the
 list's order on machines 2 and 3; a member turned off; Thinking's own model
 first; an empty list off for Speaking and voice loudness for lip-sync; a
 rate-limited cloud member (HTTP 429, `PoolRefusals`) passed over by its member
-key; and the `pools` shared setting's round trip. `ok` is true when every step
+key; a cloud member in the list taking a segment only when the computer before
+it is busy (a free first computer speaks at once and the cloud member is never
+asked); and the `pools` shared setting's round trip. `ok` is true when every step
 passed. On the desktop, `ui_snapshot` reads `WorkSharingStatus` (how many of
 this PC's requests another computer took since Martlet started), each area's
 `WorkSharingPool-<area>` line ("Speaking. In order: This PC, m3-host.") with
