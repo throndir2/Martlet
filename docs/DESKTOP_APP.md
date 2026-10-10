@@ -1,8 +1,28 @@
 # The desktop app: updates, notification area, exiting and appearance
 
-How the Windows app itself behaves: app and host updates, closing to the
-notification area, exiting, palettes and the Martlet bird icon. Moved here from
-the README so the README can stay short.
+How the Windows app itself behaves: accounts on this PC, app and host updates,
+closing to the notification area, exiting, palettes and the Martlet bird icon.
+Moved here from the README so the README can stay short.
+
+## Accounts on this PC
+
+Martlet signs you in with your Windows account, with no password. The button at
+the bottom of the left rail shows who uses Martlet now (a circle with your
+initials, your name and your role in the household).
+
+1. Click it to see everyone who uses Martlet on this Windows sign-in.
+2. Click a name to switch to that person. Martlet ends the conversation first,
+   so listening and watching stop. It never switches while it replies.
+3. Click **Add a person…** for someone else who uses this Windows sign-in. Type
+   their name and click **Add**. They get an account of their own, with no
+   password, and Martlet switches to it.
+
+The first Martlet on a household's computers becomes the owner's account. If
+you used Martlet before accounts, your computers in the Martlet network all
+sign in as the owner. Your household's accounts are kept the same on every
+computer through your hosts (**Devices › Settings for all devices** shows how
+that goes). Each person's own characters and memories come in a following
+update; the design is in [Accounts and households](ACCOUNTS.md).
 
 ## App updates
 

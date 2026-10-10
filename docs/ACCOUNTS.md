@@ -238,7 +238,7 @@ All workstreams use these forms. Change them here first.
 | Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working. Answers name the `space`. A host keeps at most 64 spaces (`memories.spaces_full`). An access hook on the host (`GatewayMemorySpaces.Access`) may refuse a device (`memories.space_denied`); a POST needs read and write access. `Martlet.Core.Sync.MemorySpaceId` makes and checks space IDs. Client: `ReadMemorySpaceAsync`, `ReadMemorySpaceDigestAsync`, `MergeMemorySpaceAsync`. The hook's rules (`GatewayMemorySpaceRules`): `account-<id>` only for a device bound to that account in the directory, `household` for every member device, `character-<id>` for a device with an account signed in; the old document for the owner's devices and devices with no account |
 | Desktop memory folders | `Martlet.Core.Sync.MemorySpaceFolders`: an account's own space in its memory setting's folder (default `<account folder>\memory`, a custom folder stays custom), every other space in `<data>\memory-spaces\<space>`, each space's sync state in `<data>\memory-sync\<space>\memory-sync.json`. Desktop: `MemoryAccount` (account, folders, owner, active character's space, character spaces shared with the account) given to `DesktopMemoryService.UseAccount` at sign-in or switch |
 | Account attestation | `AccountAttestation` in `Martlet.Core.Accounts`: a host's signed statement that an account proved itself on a device. JSON (snake case): `schema_version` 1, `network_id`, `host_id`, `account_id`, `device_id`, `login` (an `AccountLoginKey`; never `windows`), `issued_at`, `expires_at` (1 minute to 30 days; 10 minutes by default), `algorithm` (`ES256` or `PS256`), `host_key` (base64url SubjectPublicKeyInfo of the host's **TLS key**, the key the roster pins as the host's `spki`) and `signature` over `"martlet-account-attestation-v1"` and the other fields, one per line (account ID as 32 hex digits, times as Unix milliseconds). `Check(roster, at)` accepts it only for an active host of that network whose pin is the SHA-256 of `host_key`, with a good signature, within its lifetime (5 minutes of clock skew). Its text form (`AccountAttestation.ToText()`, base64url of compact JSON, at most 4,096 ASCII characters) goes in a device binding's `attestation`. See [host sign-in](#host-sign-in-for-accounts) |
-| Desktop account session | `AccountSession` in Martlet.Desktop: the current account ID, its folder `<data>\accounts\<32 hex>\`, the household folder (the data folder root) and an `AccountChanged` event raised only between replies |
+| Desktop account session | `AccountSession` in Martlet.Desktop (built by W7; see [Desktop account session](#desktop-account-session)): `AccountId`, `AccountFolder` (`<data>\accounts\<32 hex>`), `HouseholdFolder` (the data folder root), `Current` and `SignedIn` (ID, name, role, pending), `OwnerId`, `AddChangeStep(Func<AccountChange, CancellationToken, Task>)`, `StartAsync`, `SwitchToAsync`, `AddPerson`, `SignIn(attestation, roster, now)` and the `AccountChanged` event, raised only between replies after every change step ran. The session file is `accounts\session.json` (`AccountSessionState` in `Martlet.Core.Accounts`, device scope, never synced) |
 | PC folder | `PcFolder` in `Martlet.Core.Installation`: `%ProgramData%\Martlet` for the default data folder, else the data folder itself, or `MARTLET_PC_DIRECTORY`. `BUILTIN\Users` may change it. Holds `device-role.txt` and `this-pc-host-roles.txt`; never secrets |
 
 ## Account directory
@@ -359,6 +359,59 @@ tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
   a secret. Who may change them is unchanged: a member desktop of the network.
   Role checks (`AccountRoles.ManagesHousehold`) are W12's.
 
+## Desktop account session
+
+Built by W7. Code: `src\Martlet.Desktop\AccountSession.cs` (the session, first
+start, change steps, switching, *Add a person*, Prove sign-ins and the
+directory reconcile), `src\Martlet.Desktop\MainWindow.Accounts.cs` (the account
+button, the picker and the directory sync), `AddPersonDialog.cs` and
+`src\Martlet.Core\Accounts\AccountSessionState.cs` (the session file). MCP:
+`accounts_status` and the picker's automation IDs ([MCP](MCP.md)).
+
+- **Session file** `accounts\session.json` (device scope, never synced):
+  `windows_sid`, `current`, `signed_in` (most recently used first), `pending`
+  (`id`, `name`, `role`, `created_at`: accounts the household directory doesn't
+  have yet) and `proofs` (`id`, `login`, `attestation`, `signed_in_at`: accounts
+  signed in with a Prove sign-in). Every other signed-in account unlocks with
+  the Windows login `windows_sid`, with no password.
+- **Open** (App start, after `NetworkIdentity.UseDataDirectory`): the saved
+  session when its `windows_sid` is this Windows login; else the accounts
+  bound to `(windows, device ID, SID)` in `accounts.json`; else, for a member
+  desktop with no `accounts.json` (an install from before accounts), the owner
+  account `OwnerAccount.IdFor(networkId)`; else a new account named after the
+  Windows display name, `owner` while the household has no owner, else
+  `member`. The account folder is made then. `MARTLET_SIMULATE_WINDOWS_LOGIN`
+  (a display name) uses a fixture SID instead, for MCP checks on a disposable
+  data folder.
+- **Change steps** (`AddChangeStep`): `AccountChange(From, To, FromFolder,
+  ToFolder, HouseholdFolder, New)`; `From` is null at start and `New` means the
+  folder was just made. App runs them at start (`StartAsync`, before the theme
+  loads; the starting thread waits, so a step must not wait for the window's
+  thread then). A switch awaits them without blocking the window's thread; a
+  step that throws stops the switch and the session stays on the old account.
+  W7 moves no files: settings and characters (W8) and memories (W9) do.
+- **Switching** (the account button at the bottom of the navigation rail):
+  refused while Martlet replies or saves a change; it ends the conversation
+  (listening and watching stop), runs the change steps, saves the session and
+  raises `AccountChanged`.
+- **Add a person**: a name (1 to 64 characters, not one already on this PC)
+  makes a `member` account bound to this Windows login with no password, then
+  switches to it.
+- **Prove sign-in** (`SignIn`, for W12 and W13): an `AccountAttestation` valid
+  now for the roster and naming this device signs the account in here. Its
+  device binding carries the attestation and its login, not the Windows login.
+- **Directory sync**: every 30 seconds while this PC is in a network (even
+  with *Keep Martlet the same on all my computers* off) and never during a
+  reply. It reads each member host's digest, takes the copies it vouches for
+  (`Accept`), then writes this PC's accounts (`AccountSession.Reconcile`):
+  pending accounts get their entry, and each signed-in account gets this
+  device's binding again when a concurrent write dropped it. A pending `owner`
+  is written as `member` when the directory already has another owner, so a
+  household keeps one owner. Pending accounts wait until a host's copy was
+  read. Then it pushes the merged copy to hosts whose digest differs.
+- Someone who deletes both `accounts.json` and `accounts\session.json` on a
+  member desktop is migrated again as the owner; account locks (W12) close this.
+
 ## Work plan
 
 Each workstream is one session, one branch and one PR into `main`. Merges are
@@ -375,7 +428,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W4 | Host sign-in for accounts: several account logins in `signin.json`, identities linked to account IDs, account attestations. **Shipped** ([Host sign-in for accounts](#host-sign-in-for-accounts)) | `GatewaySignIn*.cs`, `GatewayAccounts.cs`, `GatewaySignInHttp.cs` | - |
 | W5 | People always shared | `MainWindow.People.cs` voice sync | - |
 | W6 | PC scope: companion or host role and host service machine-wide for all Windows users. **Shipped** ([PC scope](#pc-scope)) | `DeviceRole.cs` and its callers, `PcFolder.cs` | - |
-| W7 | Desktop account session, owner migration, account picker, *Add a person*, first start, directory sync | new `AccountSession.cs`, new `MainWindow.Accounts.cs` | W1, W2 |
+| W7 | Desktop account session, owner migration, account picker, *Add a person*, first start, directory sync. **Shipped** ([Desktop account session](#desktop-account-session)) | new `AccountSession.cs`, new `MainWindow.Accounts.cs` | W1, W2 |
 | W8 | Account-scoped settings: split `settings.json` and shared settings into household and account parts; characters per account | `AppSettingsSections`, `SharedSettings*`, character profiles | W7 |
 | W9 | Desktop memory spaces: a store per space, recall over spaces, space sync, host access checks. **Shipped** ([MEMORY.md](MEMORY.md#memory-spaces-on-the-desktop)); W10 starts from `MemoryAccount.Character`/`Shared` and the space on each Memory window fact | `DesktopMemoryService`, `MainWindow.MemorySync.cs`, `MemorySyncNode` | W3, W7 |
 | W10 | Sharing: character copy and together, the household space, fact sharing | Characters page, Memory window | W8, W9 |
