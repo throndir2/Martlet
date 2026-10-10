@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- The character's lip-sync now uses every one of your computers that runs Audio2Face: when the one doing it is busy with another companion PC, the next one moves the mouth instead of falling back to voice loudness for half a minute. ([#728](https://github.com/throndir2/Martlet/pull/728))
 - Reading the text on your screen now uses every one of your computers that runs the Reading role: when the one you chose is busy or doesn't answer, another one reads instead, so reads keep coming. ([#724](https://github.com/throndir2/Martlet/pull/724))
 
 - The **Thinking requests** page now shows what each request answered: select a request to see its output beside its details, so you can see what each one adds to the conversation. The output stays on this PC and never goes in logs. ([#717](https://github.com/throndir2/Martlet/pull/717))
