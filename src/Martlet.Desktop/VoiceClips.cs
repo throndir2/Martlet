@@ -35,7 +35,7 @@ internal sealed class VoiceClips
     internal bool Enabled { get; private set; }
 
     /// <summary>A voice keeps clips until the owner names it or marks it as theirs.</summary>
-    internal static bool Wanted(KnownVoice voice) => voice is { Removed: false, Name: null, Owner: false };
+    internal static bool Wanted(KnownVoice voice) => voice is { Removed: false, Name: null, Owner: false, Account: null };
 
     internal void SetEnabled(bool on)
     {

@@ -3188,10 +3188,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         string tool, string? by, CancellationToken token)
     {
         var roster = voices?.Roster;
+        var yours = voices?.Yours.FirstOrDefault();
         MemoryToolOutcome outcome;
         try
         {
-            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, argumentsJson, roster, speaker, token),
+            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, argumentsJson, roster, speaker, token, yours),
                 token).ConfigureAwait(false);
         }
         catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
@@ -4401,17 +4402,17 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             foreach (var voice in heard.Voices)
                 if (voice.Voice is { } known)
-                    voicesLately.Add(new(known.Named ? known.DisplayName : null, known.Owner, at) { Id = known.Id });
+                    voicesLately.Add(new(known.Named ? known.DisplayName : null, voice.Mine, at) { Id = known.Id });
             voicesLately.RemoveAll(v => at - v.At > CheckIns.PeopleWindow);
             if (voicesLately.Count > 64) voicesLately.RemoveRange(0, voicesLately.Count - 64);
         }
     }
 
-    /// <summary>The voices Martlet heard within <see cref="CheckIns.PeopleWindow"/>, oldest first, and whether the owner marked one
-    /// of the voices it knows as their own, for a check-in. In memory only.</summary>
+    /// <summary>The voices Martlet heard within <see cref="CheckIns.PeopleWindow"/>, oldest first, and whether a voice Martlet
+    /// knows is linked to the signed-in account (yours), for a check-in. In memory only.</summary>
     internal (IReadOnlyList<CheckInVoice> Voices, bool OwnerKnown) RecentVoices(DateTimeOffset now)
     {
-        var ownerKnown = voices?.Roster.Voices.Any(v => v.Owner && !v.Removed) == true;
+        var ownerKnown = voices?.Yours.Count > 0;
         lock (gate) return ([.. voicesLately.Where(v => now - v.At <= CheckIns.PeopleWindow)], ownerKnown);
     }
 
