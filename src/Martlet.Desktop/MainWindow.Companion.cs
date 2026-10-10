@@ -822,7 +822,7 @@ public partial class MainWindow
                 try
                 {
                     result = await LocalOllama.TestAsync(model, replyTokens, LiveConversationConfiguration.LocalOllamaTextLimits.FirstDeltaTimeout,
-                        run.Status, run.Output, run.Token, GenerationSettings.ThinkingSteps(homeSettings?.Generation));
+                        run.Status, run.Output, run.Token, GenerationSettings.ThinkingSteps(homeSettings?.Generation), store?.DataDirectory);
                     return result.Summary;
                 }
                 catch (InvalidOperationException error)
@@ -1007,7 +1007,7 @@ public partial class MainWindow
             {
                 if (keeps.Length > 0) run.Output.Report(keeps.Trim());
                 if (download) await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
-                var loaded = await LocalOllama.LoadAsync(model, run.Status, run.Output, run.Token);
+                var loaded = await LocalOllama.LoadAsync(model, run.Status, run.Output, run.Token, store?.DataDirectory);
                 return $"{model} is {(download ? "downloaded and " : "")}loaded{(loaded >= TimeSpan.FromSeconds(1) ? $" ({loaded.TotalSeconds:0.0} s)" : "")}. " +
                     (localThinkingWanted == model ? "Thinking switches to it now." : $"You chose {localThinkingWanted} since, so Thinking doesn't switch to it.");
             }, join: true);

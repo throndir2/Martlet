@@ -20,6 +20,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- When you test or load a model in Ollama on this PC, the run window now says how much memory it really takes and how much of it is on the graphics card, and Martlet remembers it for each model. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - Each person now has their own memories: Martlet keeps what it remembers for each account apart, on every computer and host, while facts in the household's memories are shared by everyone. Your memories from before this update become the owner's, and computers that still run an older Martlet keep sharing them. ([#752](https://github.com/throndir2/Martlet/pull/752))
 - Each person in your household now has their own creations: pictures, songs and research reports one person makes stay with that person and reach only the computers where they are signed in. The creations you had before this update become yours (the owner's), and computers still on an older Martlet keep seeing them. ([#750](https://github.com/throndir2/Martlet/pull/750))
 - When several people use Martlet on one PC with their own Windows accounts, the PC is now a companion PC or a Martlet host for all of them: a switch made by one person (or from another of your computers) applies to everyone, and the choice you made before this update carries over. ([#745](https://github.com/throndir2/Martlet/pull/745))

@@ -174,6 +174,18 @@ Martlet already estimates memory the same way in
 - Ollama installs any Hugging Face GGUF with `hf.co/{repo}:{quant}`, so a new
   model needs no new Martlet release.
 
+**Built.** `LocalModelFactsReader.LookupAsync` (`Martlet.Providers.LocalModels`)
+reads these sources for a Hugging Face repository, an Ollama tag or both, and
+returns `LocalModelFacts` (`Martlet.Core.Planning`): parameters, inputs from
+`config.json`, each quantization's files and install name, and
+`Estimate(quantization, contextTokens)`. GGUF repositories are found with
+Hugging Face's `filter=base_model:quantized:{repo}&filter=gguf`, preferring
+ggml-org, unsloth, lmstudio-community and bartowski. Measured memory is kept in
+`model-memory.json` (`MeasuredModelMemory`). The estimate is within 6% of the
+measured Gemma 4 and Qwen3.5 numbers
+([Resource footprints](RESOURCE_FOOTPRINTS.md#estimating-a-model-martlet-doesnt-list));
+MCP `local_model_facts` shows it all.
+
 ## How smart and how fast
 
 - **OpenRouter** carries `benchmarks.artificial_analysis` (intelligence,
