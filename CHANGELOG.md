@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- When several people use Martlet on one PC with their own Windows accounts, the PC is now a companion PC or a Martlet host for all of them: a switch made by one person (or from another of your computers) applies to everyone, and the choice you made before this update carries over. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.66.1] - 2026-10-10
 
 ### Fixed

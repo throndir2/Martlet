@@ -1,7 +1,7 @@
 # Accounts and households
 
-Status: **design and work plan**. Nothing in this page is built yet. Each
-workstream below updates this page and the user guides when it ships. This
+Status: **design and work plan**. Built so far: W6, the [PC scope](#pc-scope).
+Each workstream below updates this page and the user guides when it ships. This
 page is the contract that the parallel workstreams share: change a contract
 here (in the same PR) before code depends on a different one.
 
@@ -91,6 +91,46 @@ Today's shared-settings sections:
 
 People and voiceprints sync even when *Keep Martlet the same on all my
 computers* is off.
+
+### PC scope
+
+Built (W6). What the PC is for is the same for every Windows user of the PC:
+
+- **Where.** The PC folder is `%ProgramData%\Martlet` when Martlet uses the
+  default data folder (`%LOCALAPPDATA%\Martlet`). Martlet started with any other
+  `--data-directory` (tests, MCP verification) keeps these files in that data
+  folder, so it never changes the real PC. `MARTLET_PC_DIRECTORY` points several
+  data folders at one PC folder for verification.
+- **What.** `device-role.txt` (companion or host PC) and
+  `this-pc-host-roles.txt` (the roles of this PC's host service, with the SID of
+  the Windows user whose Docker Desktop Martlet read them in). No secrets.
+- **Who may change it.** Martlet installs per user and never asks for
+  elevation. The Windows user who makes the folder gives `BUILTIN\Users`
+  *Modify*, inherited by its files, so every Windows user of the PC can change
+  them.
+- **Moving.** On the first start after the update, a Windows user's earlier
+  `device-role.txt` (and host roles) moves to the PC folder when the PC folder
+  has none. Each data folder keeps its own copy of the last choice made or
+  followed there: it marks that this Windows user chose (or skipped the welcome
+  tour), and an older Martlet reads it.
+- **Following.** A running Martlet reads the PC folder every 30 seconds and
+  follows a switch made by another Windows user. A switch asked from another
+  computer (`role.<device ID>`) writes the PC folder, so every Windows user of
+  the PC follows it. The `role.<device ID>` entry's time is the time the PC
+  folder's choice last changed.
+- **Welcome tour.** It shows when nobody on the PC chose yet, and for a Windows
+  user who hasn't chosen yet on a companion PC. On a host PC a new Windows user
+  lands on the host dashboard.
+- **Host service.** Docker Desktop keeps its containers for the Windows user
+  who runs it. A host PC starts the host roles by itself only in the Docker
+  Desktop of the Windows user who ran them. Another Windows user sees *in
+  another Windows user's Docker Desktop: sign in to Windows as that user to
+  manage it*. The pairing with the host service stays with each device (Device
+  scope).
+- **Not built yet.** Large downloaded models (Ollama models, Parakeet, voice
+  models) stay where each engine keeps them, mostly per Windows user.
+
+MCP: `pc_scope` and the desktop's `DeviceRoleWhere` ([MCP](MCP.md)).
 
 ### Memory spaces
 
@@ -185,6 +225,7 @@ All workstreams use these forms. Change them here first.
 | Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working |
 | Account attestation | A host's signed statement that an account proved itself on a device: network ID, host ID, account ID, device ID, login, issue and expiry times, signature by a host key that the roster pins. Verified in `Martlet.Core` by desktops and hosts |
 | Desktop account session | `AccountSession` in Martlet.Desktop: the current account ID, its folder `<data>\accounts\<32 hex>\`, the household folder (the data folder root) and an `AccountChanged` event raised only between replies |
+| PC folder | `PcFolder` in `Martlet.Core.Installation`: `%ProgramData%\Martlet` for the default data folder, else the data folder itself, or `MARTLET_PC_DIRECTORY`. `BUILTIN\Users` may change it. Holds `device-role.txt` and `this-pc-host-roles.txt`; never secrets |
 
 ## Work plan
 
@@ -201,7 +242,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W3 | Host memory spaces: storage, routes, access hook, client | `GatewayMemories.cs` and new space files, `HostMemories.cs` | - |
 | W4 | Host sign-in for accounts: several account logins in `signin.json`, identities linked to account IDs, account attestations | `GatewaySignIn*.cs`, `GatewayAccounts.cs`, `GatewaySignInHttp.cs` | - |
 | W5 | People always shared | `MainWindow.People.cs` voice sync | - |
-| W6 | PC scope: companion or host role and host service machine-wide for all Windows users | `DeviceRole.cs` and its callers | - |
+| W6 | PC scope: companion or host role and host service machine-wide for all Windows users (built) | `DeviceRole.cs` and its callers, `PcFolder.cs` | - |
 | W7 | Desktop account session, owner migration, account picker, *Add a person*, first start, directory sync | new `AccountSession.cs`, new `MainWindow.Accounts.cs` | W1, W2 |
 | W8 | Account-scoped settings: split `settings.json` and shared settings into household and account parts; characters per account | `AppSettingsSections`, `SharedSettings*`, character profiles | W7 |
 | W9 | Desktop memory spaces: a store per space, recall over spaces, space sync, host access checks | `DesktopMemoryService`, `MainWindow.MemorySync.cs`, `MemorySyncNode` | W3, W7 |

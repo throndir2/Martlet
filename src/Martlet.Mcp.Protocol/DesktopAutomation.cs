@@ -828,8 +828,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // under it, Your other computers: what the list offers (or why it is empty or can't switch them). Each computer's row reads
         // through OtherRole- below; its OtherRoleSwitch- button asks that computer to switch, so it needs --allow-ui-effects.
         // SwitchToCompanion is the host dashboard's button at the top of Home (its fixed label, "Switch to companion PC");
-        // clicking it saves device-role.txt, so it needs --allow-ui-effects.
-        "DeviceRoleSummary", "DeviceRoleText", "SwitchToCompanion", "OtherRolesStatus",
+        // clicking it saves device-role.txt, so it needs --allow-ui-effects. DeviceRoleWhere says where the choice is kept and who
+        // shares it (every Windows user of this PC, %ProgramData%\Martlet; or only this data folder) and whose Docker Desktop
+        // Martlet last read this PC's host service in (this or another Windows user); no paths or user names.
+        "DeviceRoleSummary", "DeviceRoleText", "DeviceRoleWhere", "SwitchToCompanion", "OtherRolesStatus",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
         // steps' heading ("This host is ready" or "Get this host running"), the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked) and the setup runs working now, side by side, each with

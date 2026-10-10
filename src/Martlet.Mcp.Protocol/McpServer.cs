@@ -551,6 +551,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("pc_scope", "Read the PC scope (docs/ACCOUNTS.md) the desktop with this data folder uses: which folder holds what this PC " +
+            "is for and its host service (machine-wide %ProgramData%\\Martlet for the default data folder, the data folder itself " +
+            "for any other, or MARTLET_PC_DIRECTORY), whether every Windows user of this PC can change it, the role (companion or " +
+            "host) and where it is read from (the PC folder, or this Windows user's earlier choice that moves there at the next " +
+            "start), whether this Windows user has a choice of their own, the host service's remembered roles and whether this or " +
+            "another Windows user's Docker Desktop runs them. Read-only; returns no paths, user names or SIDs.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
             "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, their host services, WSL version and status), " +
             "pending and required restarts, blockers and recovery guidance, whether Docker Desktop is installed and running, its engine " +
@@ -2274,6 +2283,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "role_lab" => await RoleLabAsync(arguments, cancellation),
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
+                "pc_scope" => PcScopeStatus(arguments),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "host_engine_check" => await HostEngineCheck.RunAsync(cancellation),
@@ -3116,6 +3126,53 @@ internal sealed class McpServer(DesktopAutomation desktop)
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
         if (!Path.IsPathFullyQualified(directory)) throw new ArgumentException("dataDirectory must be an absolute path.");
         return directory;
+    }
+
+    /// <summary>The PC scope the desktop with this data folder uses (<see cref="PcFolder"/>): where what this PC is for and its
+    /// host service are kept, who may change them and what they say. Read-only: the move of an earlier per-user choice to the
+    /// PC folder happens when the desktop starts, so this says when it is still to come. No paths, user names or SIDs.</summary>
+    private static object PcScopeStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var pc = PcFolder.For(directory);
+        var separate = pc.Separate(directory);
+        static string? Role(string folder)
+        {
+            try
+            {
+                var path = Path.Combine(folder, "device-role.txt");
+                if (!File.Exists(path)) return null;
+                return File.ReadAllText(path).Trim() == "Host" ? "host" : "companion";
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return "unreadable"; }
+        }
+        var shared = Role(pc.Directory);
+        var mine = separate ? Role(directory) : shared;
+        var roles = ThisPcHostRoles.Load(pc.Directory);
+        var pending = roles is null && separate ? ThisPcHostRoles.Load(directory) : null;
+        var user = ThisPcHostRoles.WindowsUser(pc.Directory);
+        string? me = null;
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            me = identity.User?.Value;
+        }
+        return new
+        {
+            folder = pc.Kind switch { PcFolderKind.MachineWide => "machine-wide", PcFolderKind.Override => "override", _ => "data-folder" },
+            where = pc.Where,
+            sharedByWindowsUsers = pc.Shared,
+            folderExists = Directory.Exists(pc.Directory),
+            everyWindowsUserCanChange = pc.Shared && OperatingSystem.IsWindows() ? PcFolder.EveryUserCanChange(pc.Directory) : null,
+            role = shared ?? mine,
+            roleReadFrom = shared is not null ? (separate ? "pc-folder" : "data-folder")
+                : mine is not null ? "this-windows-user (moves to the PC folder when the desktop starts)" : null,
+            chosenByThisWindowsUser = mine is not null,
+            hostServiceRoles = roles ?? pending,
+            hostServiceRolesReadFrom = roles is not null ? (separate ? "pc-folder" : "data-folder")
+                : pending is not null ? "this-windows-user (moves to the PC folder when the desktop starts)" : null,
+            hostServiceSeenBy = roles is null ? null : user is null ? "unknown" : user == me ? "this-windows-user" : "another-windows-user"
+        };
     }
 
     /// <summary>Whether Windows can run Docker Desktop (the desktop's WindowsVirtualizationSetup reads the same facts), whether
