@@ -75,6 +75,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const int MaximumAccountsBytes = Martlet.Core.Accounts.AccountDirectory.MaximumBytes;
     /// <summary>One memory space (every account's memories, apart): memories-&lt;space ID&gt;.json.</summary>
     internal const string MemorySpacePrefix = "memories-", MemorySpaceSuffix = ".json", MemorySpaceStaging = "memories-space.staging";
+    /// <summary>One account's settings (each person's, apart; no API keys): account-settings-&lt;32 hex&gt;.json.</summary>
+    internal const string AccountSettingsPrefix = "account-settings-", AccountSettingsSuffix = ".json",
+        AccountSettingsStaging = "account-settings.staging";
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -137,7 +140,7 @@ internal sealed class LinuxControlDirectory : IDisposable
         if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             name != Accounts &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null &&
-            CreationAccountOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
+            AccountSettingsOf(name) is null && CreationAccountOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -401,6 +404,30 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>Atomically replaces one memory space's file (0600, service owner).</summary>
     internal void WriteMemorySpace(string space, byte[] bytes) =>
         ReplaceRecovering(MemorySpace(space), MemorySpaceStaging, bytes, MaximumMemoriesBytes);
+
+    private static bool IsAccountId(string? value) =>
+        value is { Length: 32 } && value.AsSpan().IndexOfAnyExcept("0123456789abcdef") < 0;
+
+    /// <summary>The file name of <paramref name="account"/>'s settings (32 lowercase hex digits).</summary>
+    internal static string AccountSettingsFile(string account) =>
+        IsAccountId(account) ? AccountSettingsPrefix + account + AccountSettingsSuffix : throw Error(GatewayPersistenceFailure.InvalidPath);
+
+    /// <summary>The account ID an account-settings file name holds; null for any other name.</summary>
+    internal static string? AccountSettingsOf(string name) =>
+        name.StartsWith(AccountSettingsPrefix, StringComparison.Ordinal) && name.EndsWith(AccountSettingsSuffix, StringComparison.Ordinal) &&
+        name.Length == AccountSettingsPrefix.Length + 32 + AccountSettingsSuffix.Length &&
+        name[AccountSettingsPrefix.Length..^AccountSettingsSuffix.Length] is var account && IsAccountId(account) ? account : null;
+
+    /// <summary>The accounts whose settings are kept here.</summary>
+    internal string[] ListAccountSettings()
+    {
+        Validate();
+        return [.. fs.Enumerate(DirectoryFd).Select(AccountSettingsOf).OfType<string>().Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>Atomically replaces one account's settings file (0600, service owner).</summary>
+    internal void WriteAccountSettings(string account, byte[] bytes) =>
+        ReplaceRecovering(AccountSettingsFile(account), AccountSettingsStaging, bytes, MaximumSharedSettingsBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()

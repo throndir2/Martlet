@@ -15,9 +15,12 @@ public sealed partial class Audio2FaceHostConnection
     private const int MaximumSettingsResponseBytes = SharedSettings.MaximumBytes + 16_384;
 
     /// <summary>The digest of the host's copy, to read the copy only when it changed.</summary>
-    public async Task<string> ReadSettingsDigestAsync(CancellationToken cancellationToken = default)
+    public Task<string> ReadSettingsDigestAsync(CancellationToken cancellationToken = default) =>
+        SettingsDigestAsync(SettingsDigestPath, cancellationToken);
+
+    private async Task<string> SettingsDigestAsync(string path, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + SettingsDigestPath);
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + path);
         Sign(request, []);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(10));

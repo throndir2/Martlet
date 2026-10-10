@@ -7,7 +7,8 @@ using Martlet.Core.Sync;
 namespace Martlet.Desktop;
 
 /// <summary>Reminders ("remind me to do the dishes in an hour"): the reply model sets, lists and cancels them with the reminders
-/// tool, and they travel with the shared settings as this PC's own entry ("reminders.desktop-a"), so every companion PC knows
+/// tool, and they travel with the shared settings as this PC's own entry ("reminders.desktop-a") in the signed-in account's own
+/// settings (each person has their own reminders, docs/ACCOUNTS.md), so every companion PC where that person is signed in knows
 /// them. Every 2 seconds a companion PC checks for due ones; when several companion PCs could say one, each bids how long its
 /// user has been idle and the one used most recently says it (<see cref="Reminders.Decide"/>), so it is said once, where you
 /// are. The PC that takes it brings it into its conversation (starting it hidden when none runs): Martlet reminds you on its own
@@ -38,27 +39,31 @@ public partial class MainWindow
         reminderTimer.Start();
     }
 
+    /// <summary>Where the reminders are kept: the signed-in account's own settings (each person has their own reminders,
+    /// docs/ACCOUNTS.md), or the household's copy without accounts. Null while a switch cut short at start is unfinished.</summary>
+    private SharedSettingsNode? RemindersNode => accounts is null ? settingsNode : accountNode;
+
     /// <summary>Every computer's reminders entry from this PC's copy of the shared settings, by the device that wrote it.</summary>
     internal ReminderBoard RemindersNow()
     {
-        if (settingsNode is null) return ReminderBoard.Empty;
+        if (RemindersNode is not { } node) return ReminderBoard.Empty;
         var entries = new Dictionary<string, ReminderEntry>(StringComparer.Ordinal);
-        foreach (var setting in settingsNode.Document.Settings.Where(s => s.Key.StartsWith(SharedSettings.RemindersPrefix, StringComparison.Ordinal)))
+        foreach (var setting in node.Document.Settings.Where(s => s.Key.StartsWith(SharedSettings.RemindersPrefix, StringComparison.Ordinal)))
             if (ReminderEntry.Read(setting.Value) is { } entry) entries[setting.UpdatedBy] = entry;
         return new(entries);
     }
 
     private ReminderEntry OwnReminders() =>
-        settingsNode?.Document.Find(SharedPc.ReminderKey(ClusterDevice)) is { } own && own.UpdatedBy == ClusterDevice
+        RemindersNode?.Document.Find(SharedPc.ReminderKey(ClusterDevice)) is { } own && own.UpdatedBy == ClusterDevice
             ? ReminderEntry.Read(own.Value) ?? ReminderEntry.Empty : ReminderEntry.Empty;
 
     /// <summary>Changes this PC's reminders entry between settings syncs and gives it to the hosts right away.</summary>
     private async Task ChangeRemindersAsync(Func<ReminderBoard, ReminderEntry, ReminderEntry?> change)
     {
         while (settingsBusy && !closing) await Task.Delay(100);
-        if (closing || settingsNode is null) return;
+        if (closing || RemindersNode is not { } node) return;
         if (change(RemindersNow(), OwnReminders()) is not { } next) return;
-        settingsNode.Put(SharedPc.ReminderKey(ClusterDevice), next.Write(), DateTimeOffset.UtcNow);
+        node.Put(SharedPc.ReminderKey(ClusterDevice), next.Write(), DateTimeOffset.UtcNow);
         QueueSettingsSync();
     }
 

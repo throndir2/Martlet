@@ -402,6 +402,28 @@ internal sealed class ControlMemorySpaceStorage(LinuxControlDirectory directory)
     }
 }
 
+/// <summary>Keeps each account's settings (each person's, apart; no API keys) in account-settings-&lt;32 hex&gt;.json beside
+/// host.json (0600, service owner). Not part of the approved configuration.</summary>
+internal sealed class ControlAccountSettingsStorage(LinuxControlDirectory directory) : IGatewayAccountSettingsStorage
+{
+    private readonly object gate = new();
+
+    public IReadOnlyCollection<string> List()
+    {
+        lock (gate) return directory.ListAccountSettings();
+    }
+
+    public byte[]? Load(string account)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.AccountSettingsFile(account), LinuxControlDirectory.MaximumSharedSettingsBytes);
+    }
+
+    public void Save(string account, byte[] bytes)
+    {
+        lock (gate) directory.WriteAccountSettings(account, bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -523,6 +545,7 @@ internal static class HostApplication
                     owner.AttachCreations(new ControlCreationStorage(directory));
                     owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
                     owner.AttachSettings(new ControlSettingsStorage(directory));
+                    owner.AttachAccountSettings(new ControlAccountSettingsStorage(directory));
                     owner.AttachMemories(new ControlMemoryStorage(directory));
                     owner.AttachAccounts(new ControlAccountStorage(directory));
                     owner.AttachMemorySpaces(new ControlMemorySpaceStorage(directory));

@@ -549,6 +549,22 @@ NVIDIA Build and its old key.
 
 Conversations are not shared; what Martlet makes from them is (the [shared creations](#the-shared-creations)).
 
+### Each person's settings
+
+With [accounts](ACCOUNTS.md#account-settings), the settings above are split
+into the household's and each person's. The household keeps `thinking`,
+`listening`, `speaking` with their API keys, `thinking-fallback`,
+`character-actions`, `voice-recognition`, `smart-home`, `updates`,
+`model-abilities`, `work-sharing`, `pools` and the `pc.*`, `role.*` and
+`setup-run.*` entries. Each person keeps `companion` (their personalities and
+character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
+`talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
+`touch-temperament` and their own `reminders.<device ID>` entries. A person's
+settings go only to the computers where that person is signed in, and switching
+person on a computer gives Martlet that person's settings. A computer on an
+older Martlet keeps the owner's settings in step through this document, as
+before.
+
 ### What stays with each computer
 
 These describe the computer itself, so they never travel:
@@ -615,11 +631,15 @@ to *different* settings made on different computers are all kept.
 | --- | --- |
 | Each host | `shared-settings.json` beside `host.json` (0600, gateway service owner), with the API keys |
 | Each desktop | `shared-settings.json` in Martlet's data folder: the merged copy **without any key** and the digests of what it last saw; keys stay in Windows Credential Manager |
+| Each person, on each host | `account-settings-<account ID>.json` beside `host.json` (0600): that person's settings, never a key |
+| Each person, on each desktop | `accounts\<account ID>\shared-settings.json` in Martlet's data folder; `accounts\working-copy.json` names the person whose settings the data folder's files hold |
 
 The gateway serves `GET /martlet/v1/settings`, `GET /martlet/v1/settings/digest`
 and `POST /martlet/v1/settings` (merge and return) to paired devices only, over
 their pinned, signed connection; API keys for other apps may not use them
-([gateway contract](../src/Martlet.Gateway/README.md)). Desktops read a host's
+([gateway contract](../src/Martlet.Gateway/README.md)). Each person's settings
+are at `/martlet/v1/settings/accounts/{account}` (the same three forms), for
+member devices where that person is signed in. Desktops read a host's
 copy only when its digest changed and give their copy to every host whose
 digest differs. Secrets are pooled by SHA-256 of the key, and only those a
 setting still uses are kept. Like the shared Home Assistant token, the keys are
