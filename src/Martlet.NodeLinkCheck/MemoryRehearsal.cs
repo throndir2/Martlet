@@ -4,7 +4,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Accounts;
 using Martlet.Core.Contracts;
+using Martlet.Core.Network;
+using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Gateway;
 using Martlet.Memory;
@@ -29,6 +32,15 @@ internal static class MemoryRehearsal
         var steps = new List<(string Name, bool Ok, string Detail)>();
         var started = DateTimeOffset.UtcNow;
         var root = Path.Combine(Path.GetTempPath(), "martlet-memory-rehearsal-" + Guid.NewGuid().ToString("N"));
+        // The household's account directory on both hosts: Sam, the owner from before accounts, is signed in on A, B and C; Alex
+        // on D. E is a desktop on an older Martlet, with no account.
+        var samAccount = Account.Create("Sam", AccountRoles.Owner, Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7"));
+        var alexAccount = Account.Create("Alex", AccountRoles.Member, Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"));
+        foreach (var device in new[] { "lab-desktop-a", "lab-desktop-b", "lab-desktop-c" })
+            samAccount = samAccount.WithDevice(AccountDevice.For(device, AccountLoginKey.ForWindows(device, "S-1-5-21-1-2-3-1001"), started));
+        alexAccount = alexAccount.WithDevice(AccountDevice.For("lab-desktop-d", AccountLoginKey.ForWindows("lab-desktop-d", "S-1-5-21-1-2-3-1002"), started));
+        using (var founder = NetworkKey.Create("lab-desktop-a"))
+            LabHost.Accounts = AccountDirectory.Empty.Put(founder, samAccount, started).Put(founder, alexAccount, started).Write();
         await using var h1 = await LabHost.StartAsync("lab-memory-1");
         await using var h2 = await LabHost.StartAsync("lab-memory-2");
         LabHost[] hosts = [h1, h2];
@@ -226,7 +238,7 @@ internal static class MemoryRehearsal
                     $"A holds {af.Count}, C {cf.Count}, B {bf.Count}; same everywhere: {Same(af, cf) && Same(af, bf)}; typed facts kept: {typedAfter} of {typedBefore}; oldest conversation fact kept from {oldestKept:u}");
             });
 
-            await Run("Memory spaces: A puts a fact in Sam's account space on both hosts; B reads it there with the same digest; Alex's space, the household and the old document never see it; it survives a host restart; a bad space ID never leaves the desktop", async () =>
+            await Run("Memory spaces: A puts a fact in Sam's account space on both hosts; B reads it there with the same digest; Alex's space is refused to B (Alex isn't signed in there); the household and the old document never see it; it survives a host restart; a bad space ID never leaves the desktop", async () =>
             {
                 var sam = MemorySpaceId.Account(Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7"));
                 var alex = MemorySpaceId.Account(Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"));
@@ -239,7 +251,7 @@ internal static class MemoryRehearsal
                 foreach (var host in hosts) await a.MergeSpaceAsync(host, sam, fact, token);
                 var onB = await b.ReadSpaceAsync(h2, sam, token);
                 var digest = await b.ReadSpaceDigestAsync(h1, sam, token);
-                var apart = (await b.ReadSpaceAsync(h1, alex, token)).Facts.Count == 0 &&
+                var apart = await Denied(() => b.ReadSpaceAsync(h1, alex, token)) &&
                     (await b.ReadSpaceAsync(h1, MemorySpaceId.Household, token)).Facts.Count == 0 &&
                     (await a.ReadAsync(h1, token)).Find(id) is null;
                 await h1.StopAsync();
@@ -256,9 +268,52 @@ internal static class MemoryRehearsal
                     $"bad space ID refused before sending: {refused}; lab-memory-1 keeps spaces [{string.Join(", ", h1.Server.MemorySpaces)}]");
             });
 
+            var samSpace = samAccount.SpaceId;
+            var alexPc = new LabDesktop("lab-desktop-d", Path.Combine(root, "d"));
+            var olderPc = new LabDesktop("lab-desktop-e", Path.Combine(root, "e"));
+            foreach (var desktop in new[] { alexPc, olderPc })
+            foreach (var host in hosts)
+                await desktop.PairAsync(host);
+
+            await Run("Accounts: A's memories from before accounts move into Sam's space with the same store, so its next sync (space and old document together) records nothing new and gives both hosts' spaces every fact", async () =>
+            {
+                var before = await a.FactsAsync();
+                var moved = a.MoveIntoSpace(samSpace);
+                var result = await a.SyncSpaceAsync(hosts, samSpace, oldDocument: true, token);
+                var inSpace = await a.FactsAsync(samSpace);
+                var onHosts = (await a.ReadSpaceAsync(h1, samSpace, token)).Live.Count() == inSpace.Count &&
+                    (await a.ReadSpaceAsync(h2, samSpace, token)).Live.Count() == inSpace.Count;
+                var old = (await a.ReadAsync(h1, token)).Live.Count() == inSpace.Count;
+                return (moved && result.Recorded == 0 && before.All(f => inSpace.Any(g => g.Id == f.Id)) && onHosts && old,
+                    $"moved: {moved}; recorded as new: {result.Recorded}; took {result.Taken}; Sam's space holds {inSpace.Count} " +
+                    $"(all {before.Count} from before kept); both hosts' spaces the same: {onHosts}; the old document the same: {old}");
+            });
+
+            await Run("Accounts: B syncs Sam's space and the household; D (Alex) shares the household but is refused Sam's space and the old document; E (an older Martlet, no account) keeps using the old document and A's next sync brings its fact into Sam's space", async () =>
+            {
+                b.MoveIntoSpace(samSpace);
+                var wifi = (await a.SaveAsync("The household Wi-Fi network is called Nest.", typed: true, space: MemorySpaceId.Household)).Id;
+                await a.SyncSpaceAsync(hosts, MemorySpaceId.Household, oldDocument: false, token);
+                await b.SyncSpaceAsync(hosts, samSpace, oldDocument: true, token);
+                await b.SyncSpaceAsync(hosts, MemorySpaceId.Household, oldDocument: false, token);
+                var bHas = (await b.FactsAsync(samSpace)).Count == (await a.FactsAsync(samSpace)).Count &&
+                    (await b.FactsAsync(MemorySpaceId.Household)).Any(f => f.Id == wifi);
+                await alexPc.SyncSpaceAsync(hosts, MemorySpaceId.Household, oldDocument: false, token);
+                var dHousehold = (await alexPc.FactsAsync(MemorySpaceId.Household)).Any(f => f.Id == wifi);
+                var dRefused = await Denied(() => alexPc.ReadSpaceAsync(h1, samSpace, token)) && await Denied(() => alexPc.ReadAsync(h1, token));
+                var older = (await olderPc.SaveAsync("The owner's bike is blue.", typed: true)).Id;
+                await olderPc.SyncAsync(hosts, token);
+                var eTook = (await olderPc.FactsAsync()).Count;
+                await a.SyncSpaceAsync(hosts, samSpace, oldDocument: true, token);
+                var aTook = (await a.FactsAsync(samSpace)).Any(f => f.Id == older);
+                return (bHas && dHousehold && dRefused && eTook > 1 && aTook,
+                    $"B has Sam's space and the household fact: {bHas}; D has the household fact: {dHousehold}; D refused Sam's space and " +
+                    $"the old document: {dRefused}; E took {eTook} facts from the old document; A took E's fact into Sam's space: {aTook}");
+            });
+
             await Run("Desktops keep no fact in Martlet's data folder (only IDs, revisions and digests); only paired devices may read the hosts' copy", async () =>
             {
-                var leaks = new[] { a, b, c }.Where(d => d.DataFolderContains("Miso")).Select(d => d.DeviceId).ToArray();
+                var leaks = new[] { a, b, c, alexPc, olderPc }.Where(x => x.DataFolderContains("Miso") || x.DataFolderContains("Nest")).Select(x => x.DeviceId).ToArray();
                 using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
                 using var client = new HttpClient(handler);
                 using var response = await client.GetAsync(h1.Origin + "/martlet/v1/memories", token);
@@ -288,6 +343,20 @@ internal static class MemoryRehearsal
                 "conversation's recall and remembering around a sync, the Linux host's file and two real computers on a LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
+    }
+
+    /// <summary>Whether the host refused the device the memory space (or the old document): <c>memories.space_denied</c>.</summary>
+    private static async Task<bool> Denied(Func<Task<SharedMemories>> read)
+    {
+        try
+        {
+            await read();
+            return false;
+        }
+        catch (Audio2FaceHostException error) when (error.Code == "memories.space_denied")
+        {
+            return true;
+        }
     }
 
     private static bool Same(IReadOnlyList<MemoryFact> left, IReadOnlyList<MemoryFact> right) =>
@@ -358,14 +427,74 @@ internal static class MemoryRehearsal
             return await connection.MergeMemorySpaceAsync(space, memories, token);
         }
 
-        private async Task<T> WithStoreAsync<T>(Func<MemoryStore, Task<T>> action)
+        /// <param name="space">A memory space's store, where the desktop keeps it (MemorySpaceFolders); null: the store from
+        /// before accounts.</param>
+        private async Task<T> WithStoreAsync<T>(Func<MemoryStore, Task<T>> action, string? space = null)
         {
-            var preview = MemoryStoreActivationPreview.Create(memoryDirectory);
+            var preview = MemoryStoreActivationPreview.Create(space is null ? memoryDirectory : SpaceStore(space));
             using var store = MemoryStore.Open(preview, preview.Authorize(MemoryConsentDecision.Allow));
             return await action(store);
         }
 
-        internal Task<MemoryFact> SaveAsync(string content, bool typed, TimeSpan? expiresIn = null, string? voiceId = null) => WithStoreAsync(async store =>
+        private string SpaceStore(string space) => MemorySpaceFolders.Store(dataDirectory, space, MemorySettings.Create(),
+            space.StartsWith(MemorySpaceId.AccountPrefix, StringComparison.Ordinal) ? Guid.ParseExact(space[MemorySpaceId.AccountPrefix.Length..], "N") : null);
+
+        /// <summary>What the desktop does for the owner on its first start with accounts: the store from before accounts and
+        /// memory-sync.json move into the owner's space (MemoryStore.MoveStore; the store ID stays).</summary>
+        internal bool MoveIntoSpace(string space)
+        {
+            var moved = MemoryStore.MoveStore(memoryDirectory, SpaceStore(space));
+            var state = Path.Combine(dataDirectory, MemorySyncState.FileName);
+            var target = MemorySpaceFolders.Sync(dataDirectory, space);
+            if (File.Exists(state))
+            {
+                Directory.CreateDirectory(target);
+                File.Move(state, Path.Combine(target, MemorySyncState.FileName));
+            }
+            return moved;
+        }
+
+        /// <summary>What the desktop's memory sync does for one space: read every reachable host's copy of the space (and, for
+        /// the owner's space, of the old single document), sync the space's store with its own sync state, give each the merged
+        /// copy. A host that refuses the space is left out.</summary>
+        internal async Task<MemorySyncResult> SyncSpaceAsync(IEnumerable<LabHost> hosts, string space, bool oldDocument, CancellationToken token)
+        {
+            var copies = new List<SharedMemories>();
+            var reachable = new List<(LabHost Host, bool Old)>();
+            foreach (var host in hosts.Where(h => h.Running))
+            {
+                try
+                {
+                    copies.Add(await ReadSpaceAsync(host, space, token));
+                    reachable.Add((host, false));
+                }
+                catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or OperationCanceledException) { }
+                if (!oldDocument) continue;
+                try
+                {
+                    copies.Add(await ReadAsync(host, token));
+                    reachable.Add((host, true));
+                }
+                catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or OperationCanceledException) { }
+            }
+            var node = new MemorySyncNode(MemorySpaceFolders.Sync(dataDirectory, space), DeviceId);
+            var result = await WithStoreAsync(store => node.SyncAsync(copies, read => ReadLocalAsync(store, read),
+                (changes, apply) => store.MergeAsync(new() { Facts = changes.Facts, Forget = changes.Forget }, apply),
+                Describe, DateTimeOffset.UtcNow, token), space);
+            foreach (var (host, old) in reachable)
+                if (old) await MergeAsync(host, result.Document, token);
+                else await MergeSpaceAsync(host, space, result.Document, token);
+            return result;
+        }
+
+        private static async Task<LocalMemories> ReadLocalAsync(MemoryStore store, CancellationToken token)
+        {
+            var inspection = await store.InspectAsync(token);
+            return new LocalMemories(inspection.StoreId,
+                [.. inspection.Facts.Select(f => new LocalMemory(f.Id, f.Revision, f.UpdatedAtUtc, MemoryFactJson.Write(f)))]);
+        }
+
+        internal Task<MemoryFact> SaveAsync(string content, bool typed, TimeSpan? expiresIn = null, string? voiceId = null, string? space = null) => WithStoreAsync(async store =>
         {
             var now = DateTimeOffset.UtcNow;
             return (await store.SaveAsync(new()
@@ -375,7 +504,7 @@ internal static class MemoryRehearsal
                 Retention = expiresIn is { } after ? MemoryRetention.ExpiringAt(now + after) : MemoryRetention.UntilDeleted(),
                 VoiceId = voiceId
             })).Fact;
-        });
+        }, space);
 
         /// <summary>Edits a fact's words, keeping whose it is unless <paramref name="voiceId"/> gives another ("" for no one).</summary>
         internal Task<MemoryFact> EditAsync(Guid id, string content, string? voiceId = null) => WithStoreAsync(async store =>
@@ -396,7 +525,7 @@ internal static class MemoryRehearsal
             return true;
         });
 
-        internal Task<IReadOnlyList<MemoryFact>> FactsAsync() => WithStoreAsync(async store => (await store.InspectAsync()).Facts);
+        internal Task<IReadOnlyList<MemoryFact>> FactsAsync(string? space = null) => WithStoreAsync(async store => (await store.InspectAsync()).Facts, space);
 
         internal Task<IReadOnlyList<MemoryFact>> RecallAsync(string query) => WithStoreAsync(async store =>
             (IReadOnlyList<MemoryFact>)(await store.RetrieveAsync(MemoryQuery.TryFromBoundedSource(query)!)).Hits.Select(h => h.Fact).ToArray());
@@ -495,6 +624,7 @@ internal static class MemoryRehearsal
             Server = new GatewayServer(Identity, origin, [], this);
             Server.AttachMemoryStorage(this);
             Server.AttachMemorySpaceStorage(this);
+            if (Accounts is { } accounts) Server.AttachAccountStorage(new AccountFile(accounts));
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
 
@@ -502,6 +632,15 @@ internal static class MemoryRehearsal
         {
             if (listener is not null) await listener.DisposeAsync();
             listener = null;
+        }
+
+        /// <summary>The household's account directory every lab host starts with (accounts.json).</summary>
+        internal static byte[]? Accounts { get; set; }
+
+        private sealed class AccountFile(byte[] bytes) : IGatewayAccountStorage
+        {
+            public byte[]? Load() => bytes;
+            public void Save(byte[] value) { }
         }
 
         public byte[]? Load() => saved;

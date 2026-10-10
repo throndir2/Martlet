@@ -9,7 +9,7 @@ namespace Martlet.Desktop;
 /// (<see cref="Id"/>, its folder and the household folder, from the account session), whether it is the household's owner (the
 /// owner's space holds the memories from before accounts and the old single memory document), the active character's own space
 /// when that character remembers on its own or together with others (<c>character-&lt;id&gt;</c>, else null: the account's
-/// space) and the spaces other people share with this account. The last two are the seam for sharing (workstream W10).</summary>
+/// space) and the character spaces other people share with this account. The last two are the seam for sharing (workstream W10).</summary>
 internal sealed record MemoryAccount(Guid Id, string Folder, string HouseholdFolder, bool Owner = false, string? Character = null,
     IReadOnlyList<string>? Shared = null)
 {
@@ -50,8 +50,10 @@ internal static class MemorySpaces
         var active = account.Character is { } character && MemorySpaceId.IsValid(character) &&
             character.StartsWith(MemorySpaceId.CharacterPrefix, StringComparison.Ordinal) ? character : account.Space;
         var spaces = new List<MemorySpace> { Space(active, true), Space(MemorySpaceId.Household, true) };
+        // Only character spaces are shared: an account's own space (its memories, personality and prompts) never is.
         foreach (var shared in account.Shared ?? [])
-            if (MemorySpaceId.IsValid(shared) && spaces.All(s => s.Id != shared))
+            if (MemorySpaceId.IsValid(shared) && shared.StartsWith(MemorySpaceId.CharacterPrefix, StringComparison.Ordinal) &&
+                spaces.All(s => s.Id != shared))
                 spaces.Add(Space(shared, false));
         return new(spaces[0], spaces);
     }

@@ -254,6 +254,54 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task MemoryStatusAndSyncStatusCountEachMemorySpaceWithoutFactText()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.MemorySpaces." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new Martlet.Core.Settings.SettingsStore(directory);
+            var initial = Martlet.Core.Settings.SetupSettings.Begin(null);
+            var saved = await settings.SaveAsync(initial, null);
+            var id = Guid.NewGuid();
+            var space = Martlet.Core.Sync.MemorySpaceId.Account(id);
+            using (var memory = new DesktopMemoryService(settings))
+            {
+                memory.UseAccount(new MemoryAccount(id, Martlet.Core.Sync.MemorySpaceFolders.AccountFolder(directory, id), directory));
+                var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true,
+                    Martlet.Core.Settings.MemoryStoragePolicy.AppLocalData, null);
+                var revision = configured.Settings.Memory!.ConfigurationRevision;
+                var forever = Martlet.Memory.MemoryRetention.UntilDeleted();
+                await memory.SaveFactAsync(revision, "canary-1 is Sam's.", forever);
+                await memory.SaveFactAsync(revision, "canary-2 is Sam's too.", forever);
+                await memory.SaveFactAsync(revision, "canary-3 is the household's.", forever, space: Martlet.Core.Sync.MemorySpaceId.Household);
+            }
+            var state = Martlet.Core.Sync.MemorySpaceFolders.Sync(directory, space);
+            Martlet.Core.Sync.MemorySyncState.Empty.Save(state);
+
+            var message = (await SendAsync(SpaceCall("memory_status")))[0];
+            Assert.DoesNotContain("canary", message.GetRawText(), StringComparison.Ordinal);
+            var result = ToolResult(message);
+            Assert.Equal("none", result.GetProperty("state").GetString());
+            Assert.Equal(new[] { (space, 2), (Martlet.Core.Sync.MemorySpaceId.Household, 1) },
+                result.GetProperty("spaces").EnumerateArray().Select(s => (s.GetProperty("space").GetString()!,
+                    s.GetProperty("store").GetProperty("facts").GetInt32())).ToArray());
+
+            var sync = ToolResult((await SendAsync(SpaceCall("memory_sync_status")))[0]);
+            Assert.Equal("none", sync.GetProperty("state").GetString());
+            Assert.Equal(space, sync.GetProperty("spaces").EnumerateArray().Single().GetProperty("space").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+
+        string SpaceCall(string tool) => JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = tool, arguments = new { dataDirectory = directory } }
+        });
+    }
+
+    [Fact]
     public async Task DiscordStatusReadsTheSetupWithoutTheTokenNamesOrPeople()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Discord." + Guid.NewGuid().ToString("N"));

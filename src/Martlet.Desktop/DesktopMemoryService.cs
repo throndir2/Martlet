@@ -386,10 +386,10 @@ internal sealed class DesktopMemoryService : IDisposable
         if (MemoryQuery.TryFromBoundedSource(query, Math.Min(maximum, MemoryLimits.MaximumResults)) is { } bounded)
         {
             IEnumerable<(MemoryRetrievalHit Hit, string? Space, int Order)> hits =
-                (await store.RetrieveAsync(bounded, token).ConfigureAwait(false)).Hits.Select(hit => (hit, (string?)null, 0)).ToArray();
+                (await store.RetrieveAsync(bounded, token).ConfigureAwait(false)).Hits.Select(hit => (Hit: hit, Space: (string?)null, Order: 0)).ToArray();
             if (others.Count > 0)
                 hits = hits.Concat(others.SelectMany((other, index) =>
-                        other.Snapshot.Search(bounded, now, token).Select(hit => (hit, (string?)other.Space, index + 1))))
+                        other.Snapshot.Search(bounded, now, token).Select(hit => (Hit: hit, Space: (string?)other.Space, Order: index + 1))))
                     .OrderByDescending(h => h.Hit.Score).ThenByDescending(h => h.Hit.MatchedTerms).ThenBy(h => h.Order)
                     .ThenByDescending(h => h.Hit.Fact.UpdatedAtUtc).ThenBy(h => h.Hit.Fact.Id)
                     .Take(bounded.MaximumResults);
@@ -400,7 +400,7 @@ internal sealed class DesktopMemoryService : IDisposable
         // Someone else's facts come after the speaker's own and those about no one in particular (all by recency when nobody
         // was recognized); the best matches above already include anyone's.
         var pool = inspection.Facts.Select(fact => (Fact: fact, Space: (string?)null))
-            .Concat(others.SelectMany(other => other.Snapshot.Live(now).Select(fact => (fact, (string?)other.Space))));
+            .Concat(others.SelectMany(other => other.Snapshot.Live(now).Select(fact => (Fact: fact, Space: (string?)other.Space))));
         foreach (var (fact, space) in pool
             .OrderByDescending(f => speaker is null || f.Fact.VoiceId is null || speaker.Contains(f.Fact.VoiceId))
             .ThenByDescending(f => f.Fact.UpdatedAtUtc).ThenBy(f => f.Fact.Id))

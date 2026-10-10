@@ -27,12 +27,15 @@ public partial class MemoryWindow : ThemedWindow
         public override string ToString() => Label;
     }
 
-    /// <summary>One fact in the list, with whose it is (null for everyone's).</summary>
-    internal sealed record FactItem(MemoryFact Fact, string? Person)
+    /// <summary>One fact in the list, with whose it is (null for everyone's) and, for a fact kept in another memory space than
+    /// the active one, that space (its ID and name). Sharing facts between spaces (workstream W10) starts from the space here.</summary>
+    internal sealed record FactItem(MemoryFact Fact, string? Person, string? Space = null, string? SpaceName = null)
     {
-        /// <summary>The line under the fact: whose it is, where it came from and when it last changed.</summary>
+        /// <summary>The line under the fact: whose it is, where it came from, when it last changed and, for a fact kept in another
+        /// memory space than yours, that space.</summary>
         public string Caption => $"{Person ?? EveryoneLabel} · {MemoryPromptContext.Source(Fact.LastModifiedBy.SourceKind)} · " +
-            When(Fact.UpdatedAtUtc) + (Fact.Retention.Kind == MemoryRetentionKind.ExpiresAt ? " · " + RetentionText(Fact.Retention) : "");
+            When(Fact.UpdatedAtUtc) + (Fact.Retention.Kind == MemoryRetentionKind.ExpiresAt ? " · " + RetentionText(Fact.Retention) : "") +
+            (SpaceName is null ? "" : " · " + SpaceName);
 
         public override string ToString() => Person is null ? Fact.Content : $"{Person} · {Fact.Content}";
     }
@@ -56,6 +59,9 @@ public partial class MemoryWindow : ThemedWindow
     private string? showPerson;
     private VoiceRoster roster = VoiceRoster.Empty;
     private IReadOnlyList<MemoryFact> facts = [];
+    /// <summary>The memory space of each listed fact kept in another space than the active one (the household's, or shared).</summary>
+    private IReadOnlyDictionary<Guid, MemorySpace> elsewhere = new Dictionary<Guid, MemorySpace>();
+    private string? activeSpace;
     private AppSettings? loadedSettings;
     private string? loadedRevision;
     private Guid configurationRevision;
@@ -72,7 +78,7 @@ public partial class MemoryWindow : ThemedWindow
     private Task? refreshing;
     private bool refreshAgain;
     /// <summary>The store version the list shows, so a read that finds nothing new leaves the list and its status alone.</summary>
-    private (Guid Store, long Revision)? shownStore;
+    private string? shownStore;
     /// <summary>What the facts line says on its own (the counts, or why the facts can't be shown). An action here puts what it
     /// did in front of it, so a change shown meanwhile never doubles that.</summary>
     private string factsLine = "";
@@ -277,11 +283,11 @@ public partial class MemoryWindow : ThemedWindow
         if (closed || !CurrentEnabledConfiguration() || service.HasPendingCleanup)
             return;
         var revision = configurationRevision;
-        MemoryInspection inspection;
+        IReadOnlyList<MemorySpaceFacts> spaces;
         try
         {
             // Not on the setup slot (a reply holds it while Martlet answers): the memory service lets one user at a time in.
-            inspection = await service.InspectAsync(revision, lifetime.Token);
+            spaces = await service.InspectSpacesAsync(revision, lifetime.Token);
         }
         catch (Exception error) when (error is MemoryException or DesktopMemoryException or ContractException or
             OperationCanceledException or ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
@@ -293,15 +299,20 @@ public partial class MemoryWindow : ThemedWindow
         if (closed || revision != configurationRevision || !CurrentEnabledConfiguration())
             return;
         // Nothing changed since the list was shown: keep it, its selection and what the last action said.
-        if (shownStore == (inspection.StoreId, inspection.StoreRevision))
+        var version = string.Join('|', spaces.Select(s => $"{s.Space.Id}:{s.Inspection.StoreId:N}:{s.Inspection.StoreRevision}"));
+        if (shownStore == version)
             return;
-        shownStore = (inspection.StoreId, inspection.StoreRevision);
+        shownStore = version;
+        var inspection = spaces[0].Inspection;
+        activeSpace = spaces[0].Space.Id;
         if (exportPreview is not null && exportPreview.StoreRevision != inspection.StoreRevision)
         {
             DisposeExportPreview();
             ExportStatus.Text = "Memory changed after the preview. Preview the export again.";
         }
-        facts = inspection.Facts;
+        facts = [.. spaces.SelectMany(s => s.Inspection.Facts)];
+        elsewhere = spaces.Skip(1).SelectMany(s => s.Inspection.Facts.Select(f => (f.Id, s.Space)))
+            .GroupBy(f => f.Id).ToDictionary(g => g.Key, g => g.First().Space);
         RenderPeople();
         RenderFacts();
         RenderActions();
@@ -312,6 +323,7 @@ public partial class MemoryWindow : ThemedWindow
     {
         FactsList.ItemsSource = null;
         facts = [];
+        elsewhere = new Dictionary<Guid, MemorySpace>();
         shownStore = null;
     }
 
@@ -373,7 +385,7 @@ public partial class MemoryWindow : ThemedWindow
                 PersonKind.Forgotten => fact.VoiceId is { } id && roster.Resolve(id) is null,
                 _ => true
             })
-            .Select(fact => new FactItem(fact, PersonName(fact.VoiceId)))
+            .Select(fact => new FactItem(fact, PersonName(fact.VoiceId), SpaceOf(fact), SpaceName(fact)))
             .Where(item => words.All(word => item.Fact.Content.Contains(word, StringComparison.CurrentCultureIgnoreCase) ||
                 (item.Person ?? EveryoneLabel).Contains(word, StringComparison.CurrentCultureIgnoreCase)))
             .OrderByDescending(item => item.Fact.UpdatedAtUtc).ToArray();
@@ -416,8 +428,21 @@ public partial class MemoryWindow : ThemedWindow
         var forgotten = facts.Count(f => f.VoiceId is { } id && roster.Resolve(id) is null);
         if (owned > 0) text += $": {owned} belong{(owned == 1 ? "s" : "")} to {(people == 1 ? "1 person" : $"{people} people")} Martlet knows by voice";
         if (forgotten > 0) text += $"{(owned > 0 ? "," : ":")} {forgotten} to a forgotten voice";
+        // How many are kept in each space besides yours (counts only).
+        foreach (var space in facts.Where(f => elsewhere.ContainsKey(f.Id)).GroupBy(SpaceName))
+            text += $"; {space.Count()} in {space.Key}";
         return text + (all ? "." : $". Showing {shown}.");
     }
+
+    /// <summary>The name of the memory space a fact is kept in, or null for the active space.</summary>
+    private string? SpaceName(MemoryFact fact) =>
+        elsewhere.TryGetValue(fact.Id, out var space) ? MemorySpaces.Label(space.Id, service.Account) : null;
+
+    /// <summary>The memory space a fact is kept in (null: the active space).</summary>
+    private string? SpaceOf(MemoryFact fact) => elsewhere.GetValueOrDefault(fact.Id)?.Id;
+
+    /// <summary>Whether this device may change the fact: facts someone else shares with this account are read-only.</summary>
+    private bool Changeable(MemoryFact fact) => elsewhere.GetValueOrDefault(fact.Id) is not { Writable: false };
 
     private void PersonFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -484,7 +509,7 @@ public partial class MemoryWindow : ThemedWindow
         }
         await RunAsync(async token =>
             receipt = await service.EditFactAsync(
-                configurationRevision, fact, content, retention, voice, token).ConfigureAwait(false),
+                configurationRevision, fact, content, retention, voice, token, SpaceOf(fact)).ConfigureAwait(false),
             "Couldn't edit the fact. Refresh and try again.");
         if (closed || receipt is null)
             return;
@@ -505,7 +530,7 @@ public partial class MemoryWindow : ThemedWindow
                 return;
             MemoryDeleteReceipt? receipt = null;
             await RunAsync(async token =>
-                receipt = await service.DeleteFactAsync(configurationRevision, fact, token).ConfigureAwait(false),
+                receipt = await service.DeleteFactAsync(configurationRevision, fact, token, SpaceOf(fact)).ConfigureAwait(false),
                 "Couldn't delete the fact. Refresh and try again.");
             if (closed || receipt is null)
                 return;
@@ -527,12 +552,15 @@ public partial class MemoryWindow : ThemedWindow
         await DeleteManyAsync(shown, $"Delete {what}? This can't be undone.", "Delete remembered facts");
     }
 
-    /// <summary>Forgets everything Martlet remembers (on every computer the memory sync reaches).</summary>
+    /// <summary>Forgets everything in your own memories (on every computer the memory sync reaches); the household's memories
+    /// and memories shared with you stay.</summary>
     private async void DeleteAll_Click(object sender, RoutedEventArgs e)
     {
-        if (facts.Count == 0) return;
-        await DeleteManyAsync(facts.ToArray(),
-            $"Delete everything Martlet remembers ({(facts.Count == 1 ? "1 fact" : $"{facts.Count} facts")}), about everyone? This can't be undone.",
+        var mine = facts.Where(f => !elsewhere.ContainsKey(f.Id)).ToArray();
+        if (mine.Length == 0) return;
+        await DeleteManyAsync(mine,
+            $"Delete everything Martlet remembers ({(mine.Length == 1 ? "1 fact" : $"{mine.Length} facts")}), about everyone? This can't be undone." +
+            (elsewhere.Count > 0 ? " The household's memories stay." : ""),
             "Delete all memories");
     }
 
@@ -541,9 +569,15 @@ public partial class MemoryWindow : ThemedWindow
         if (!RequireCurrentEnabledConfiguration(FactStatus) || !confirm(this, question, title))
             return;
         MemoryExpiryReceipt? receipt = null;
+        // Each memory space deletes its own facts; facts shared with you (read-only here) stay.
         await RunAsync(async token =>
-            receipt = await service.DeleteFactsAsync(configurationRevision, doomed, token).ConfigureAwait(false),
-            "Couldn't delete the facts. Refresh and try again.");
+        {
+            var deleted = 0;
+            foreach (var space in doomed.Where(Changeable).GroupBy(SpaceOf))
+                deleted += (receipt = await service.DeleteFactsAsync(configurationRevision, [.. space], token, space.Key)
+                    .ConfigureAwait(false)).DeletedFacts;
+            receipt = receipt is null ? null : new(deleted, receipt.StoreRevision);
+        }, "Couldn't delete the facts. Refresh and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
@@ -668,6 +702,8 @@ public partial class MemoryWindow : ThemedWindow
         }
         FactDetails.Text =
             $"Belongs to: {PersonName(fact.VoiceId) ?? "everyone (not tied to a voice)"}\n" +
+            (service.Account is null ? "" : $"Kept in: {SpaceName(fact) ?? MemorySpaces.Label(activeSpace ?? service.Account.Space, service.Account)}" +
+                (Changeable(fact) ? "" : " (only the person who shares it can change it)") + "\n") +
             $"Created: {When(fact.CreatedAtUtc)} ({MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)})\n" +
             $"Updated: {When(fact.UpdatedAtUtc)} ({MemoryPromptContext.Source(fact.LastModifiedBy.SourceKind)})\n" +
             $"Retention: {RetentionText(fact.Retention)}";
@@ -836,12 +872,13 @@ public partial class MemoryWindow : ThemedWindow
         SaveFactButton.IsEnabled = enabled && !busy;
         SaveFactButton.Content = selected == 1 ? "_Add as new fact" : "_Add fact";
         EditFactButton.Visibility = selected == 1 ? Visibility.Visible : Visibility.Collapsed;
-        EditFactButton.IsEnabled = enabled && !busy && selected == 1;
+        var changeable = SelectedFacts().All(Changeable);
+        EditFactButton.IsEnabled = enabled && !busy && selected == 1 && changeable;
         NewFactButton.Visibility = selected > 0 ? Visibility.Visible : Visibility.Collapsed;
-        DeleteFactButton.IsEnabled = enabled && !busy && selected > 0;
+        DeleteFactButton.IsEnabled = enabled && !busy && selected > 0 && changeable;
         DeleteFactButton.Content = selected > 1 ? $"_Delete {selected} selected" : "_Delete selected";
         DeleteShownButton.IsEnabled = enabled && !busy && FactsList.Items.Count > 0;
-        DeleteAllButton.IsEnabled = enabled && !busy && facts.Count > 0;
+        DeleteAllButton.IsEnabled = enabled && !busy && facts.Any(f => !elsewhere.ContainsKey(f.Id));
         BrowseExportButton.IsEnabled = !busy;
         ExportButton.IsEnabled = enabled && !busy && exportPreview is not null &&
             AcceptExport.IsChecked == true && !string.IsNullOrWhiteSpace(ExportDestination.Text);
