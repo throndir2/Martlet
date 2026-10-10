@@ -281,12 +281,16 @@ internal static class MemoryRehearsal
                 var moved = a.MoveIntoSpace(samSpace);
                 var result = await a.SyncSpaceAsync(hosts, samSpace, oldDocument: true, token);
                 var inSpace = await a.FactsAsync(samSpace);
-                var onHosts = (await a.ReadSpaceAsync(h1, samSpace, token)).Live.Count() == inSpace.Count &&
-                    (await a.ReadSpaceAsync(h2, samSpace, token)).Live.Count() == inSpace.Count;
-                var old = (await a.ReadAsync(h1, token)).Live.Count() == inSpace.Count;
-                return (moved && result.Recorded == 0 && before.All(f => inSpace.Any(g => g.Id == f.Id)) && onHosts && old,
-                    $"moved: {moved}; recorded as new: {result.Recorded}; took {result.Taken}; Sam's space holds {inSpace.Count} " +
-                    $"(all {before.Count} from before kept); both hosts' spaces the same: {onHosts}; the old document the same: {old}");
+                // Every fact A keeps is live in both hosts' copies of Sam's space and in the old document (they also carry facts
+                // this version can't read, which never enter a store).
+                bool Holds(SharedMemories copy) => inSpace.All(f => copy.Find(f.Id) is { Forgotten: false });
+                var onHosts = Holds(await a.ReadSpaceAsync(h1, samSpace, token)) && Holds(await a.ReadSpaceAsync(h2, samSpace, token));
+                var old = Holds(await a.ReadAsync(h1, token)) && Holds(await a.ReadAsync(h2, token));
+                var kept = before.Count(f => inSpace.Any(g => g.Id == f.Id));
+                return (moved && result.Recorded == 0 && kept >= before.Count - result.Forgot && onHosts && old,
+                    $"moved: {moved}; recorded as new: {result.Recorded}; took {result.Taken}, forgot {result.Forgot} (to make room); " +
+                    $"Sam's space holds {inSpace.Count}, {kept} of the {before.Count} from before; both hosts' spaces hold them: {onHosts}; " +
+                    $"the old document holds them: {old}");
             });
 
             await Run("Accounts: B syncs Sam's space and the household; D (Alex) shares the household but is refused Sam's space and the old document; E (an older Martlet, no account) keeps using the old document and A's next sync brings its fact into Sam's space", async () =>
