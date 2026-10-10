@@ -45,6 +45,10 @@ public sealed record SenseJob
     /// <summary>Thinking steps: off by default (a description should start at once); null: the model's own default.</summary>
     public bool? Reasoning { get; init; } = false;
 
+    /// <summary>Only the chosen model takes it, never another member of the kind's pool (<see cref="SensePool"/>): a test of
+    /// that model (Test vision).</summary>
+    public bool OnlyChosen { get; init; }
+
     /// <summary>Throws when the job doesn't fit <paramref name="kind"/>: an image job carries exactly one picture and no recording,
     /// an audio job exactly one recording and no picture.</summary>
     public void Validate(SenseKind kind)

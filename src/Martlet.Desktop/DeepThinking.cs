@@ -43,15 +43,17 @@ internal sealed class DeepThinkTarget
     internal ThinkBounds Bounds { get; }
 
     /// <summary>The destination of <paramref name="settings"/> (not Same as Thinking), with what this PC knows of the endpoint
-    /// model's context (<paramref name="limits"/>) and whether its key comes from Thinking (<paramref name="thinking"/>).</summary>
-    internal static DeepThinkTarget For(DeepThinkingSettings settings, ThinkEffort effort, SetupRoute? thinking, ModelLimits? limits)
+    /// model's context (<paramref name="limits"/>) and whether its key comes from Thinking (<paramref name="thinking"/>). With
+    /// <paramref name="pooled"/>, a paired computer gets the request straight from its pool (<see cref="HostTextTarget.Pooled"/>).</summary>
+    internal static DeepThinkTarget For(DeepThinkingSettings settings, ThinkEffort effort, SetupRoute? thinking, ModelLimits? limits,
+        bool pooled = false)
     {
         ArgumentNullException.ThrowIfNull(settings);
         settings.Validate();
         if (settings.Place == DeepThinkingPlace.Host)
         {
             var host = new HostTextTarget(settings.HostOrigin!, settings.HostId!, settings.HostSpkiFingerprint!, settings.HostDeviceId!,
-                settings.HostCredentialId!.Value, settings.HostRoute) { Background = true };
+                settings.HostCredentialId!.Value, settings.HostRoute) { Background = true, Pooled = pooled };
             var bounds = ThinkLonger.HostBounds(effort);
             var hostLimits = LiveConversationConfiguration.ChatTextLimits with
             {
