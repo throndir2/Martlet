@@ -16,6 +16,16 @@ Open **Companion › Prompts** to edit internal prompts: persona wrapper, respon
 
 Open **Companion › Profiles**. A profile switches look, voice and personality together. A part that cannot switch yet stays as it was and Martlet says why.
 
+## Sharing a character with your household
+
+When several people use Martlet, each person has their own characters. On **Companion › Profiles**, each of your profiles has a sharing choice:
+
+- **Private** (the default): only you see and use it.
+- **Share a copy with the household**: other people see it under **Household characters** and can choose **Use a copy**. They get its personality, look, voice, emotes and its lorebooks as their own character. The copy has its own memories, and changes to it are theirs alone.
+- **Share together with the household**: other people choose **Talk to it**, and the character joins their profiles. Everyone talks to the same character. It remembers everyone it talks to in its own memories, and it knows whose each fact is. When you change its personality, look, voice or lorebooks, everyone gets your change. Only you can edit it. Others can choose **Leave** to take it out of their profiles.
+
+When you make a character private again, copies that people already made stay theirs. A character shared together leaves the other people's profiles.
+
 ## Character cards
 
 Martlet can import SillyTavern/Chub-style PNG, JSON and CHARX character cards. Always-on entries can become persona text; keyword entries can become a lorebook scoped to that persona.
