@@ -84,7 +84,7 @@ internal static class WorkSharingRoster
             : (hosts.First(h => h.HostId == id), runs[id]))];
     }
 
-    private static IReadOnlyList<PairedHost> Hosts(string directory) => Cached(Path.Combine(directory, HostRegistry.FileName), () =>
+    internal static IReadOnlyList<PairedHost> Hosts(string directory) => Cached(Path.Combine(directory, HostRegistry.FileName), () =>
     {
         try { return HostRegistry.Load(directory); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return (IReadOnlyList<PairedHost>)[]; }
@@ -96,7 +96,7 @@ internal static class WorkSharingRoster
         lock (Gate) Files.Clear();
     }
 
-    private static T Cached<T>(string path, Func<T> read) where T : class
+    internal static T Cached<T>(string path, Func<T> read) where T : class
     {
         // A file is looked at again at most once a second, so a request pays no file system call on the way to its computer.
         var now = Environment.TickCount64;

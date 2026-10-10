@@ -144,12 +144,17 @@ public sealed record PicturesSettings
     }
 
     /// <summary>The owner's ComfyUI workflow (Export (API) format), or null when none is saved or it can't be read.</summary>
-    public static JsonObject? LoadWorkflow(string? directory)
+    public static JsonObject? LoadWorkflow(string? directory) => LoadWorkflow(directory, WorkflowFile);
+
+    /// <summary>A custom workflow a pool member names by its <paramref name="file"/> name in the data directory (a .json file
+    /// name, no folders), or null when it isn't one or can't be read.</summary>
+    public static JsonObject? LoadWorkflow(string? directory, string file)
     {
-        if (directory is null) return null;
+        if (directory is null || string.IsNullOrEmpty(file) || Path.GetFileName(file) != file || file.Contains("..", StringComparison.Ordinal) ||
+            !file.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) return null;
         try
         {
-            var path = Path.Combine(directory, WorkflowFile);
+            var path = Path.Combine(directory, file);
             if (!File.Exists(path) || new FileInfo(path).Length > MaximumWorkflowBytes) return null;
             return JsonNode.Parse(File.ReadAllBytes(path)) as JsonObject;
         }

@@ -589,10 +589,14 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
     public Audio2FaceHostPairing Pairing => pairing;
 
     /// <summary>Reads the host's advertised Audio2Face relay route, or null when the host has none.</summary>
-    public async Task<Audio2FaceHostRoute?> ReadRouteAsync(CancellationToken cancellationToken = default)
+    public async Task<Audio2FaceHostRoute?> ReadRouteAsync(CancellationToken cancellationToken = default) =>
+        Audio2FaceRoute(await ReadRoutesAsync(cancellationToken).ConfigureAwait(false));
+
+    /// <summary>The Audio2Face relay route among <paramref name="routes"/> (<see cref="ReadRoutesAsync"/>), or null.</summary>
+    public static Audio2FaceHostRoute? Audio2FaceRoute(IReadOnlyList<HostRoute> routes)
     {
-        var route = (await ReadRoutesAsync(cancellationToken).ConfigureAwait(false))
-            .FirstOrDefault(r => r.RouteId == Audio2FaceHostClient.RouteId);
+        ArgumentNullException.ThrowIfNull(routes);
+        var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostClient.RouteId);
         if (route is null || route.Path != "/martlet/v1/inference/audio2face" || route.ContractId != Audio2FaceHostClient.ContractId)
             return null;
         return new(route.Path, route.RouteId, route.ContractId, route.ContractVersion, route.DestinationId, route.WorkerId,

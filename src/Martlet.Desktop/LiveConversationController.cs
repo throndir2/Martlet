@@ -13,6 +13,7 @@ using Martlet.Core.Settings;
 using Martlet.Core.Singing;
 using Martlet.Participation;
 using Martlet.Providers;
+using Martlet.Providers.Pictures;
 using Martlet.Memory;
 
 namespace Martlet.Desktop;
@@ -3551,11 +3552,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         job.Report(BackgroundJobState.Running, "Checking the singing computer");
         var availability = await setup.Maker.GetAvailabilityAsync(token).ConfigureAwait(false);
         if (!availability.Available) return BackgroundJobOutcome.Failed(availability.Reason ?? "singing isn't available right now");
-        // VevoSing chosen where only SoulX-Singer is set up (Companion > Singing offers Add VevoSing there): sing with SoulX.
+        // VevoSing chosen where no computer that sings has it (Companion > Singing offers Add VevoSing there): sing with SoulX.
         var voiceMatch = setup.VoiceMatch;
         if (!availability.VoiceMatches.Contains(voiceMatch))
         {
-            ErrorLog.Info($"Singing: {voiceMatch} isn't set up on {availability.Host}; {job.Id} uses SoulX-Singer.");
+            ErrorLog.Info($"Singing: {voiceMatch} isn't set up on any computer that sings; {job.Id} uses SoulX-Singer.");
             voiceMatch = SongVoiceMatch.SoulX;
         }
         WrittenSong? written;
@@ -3619,8 +3620,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         else (written, problem) = SongTools.ParseWritten("LYRICS:\n" + arguments.Lyrics, arguments);
         if (written is null) return BackgroundJobOutcome.Failed(problem ?? "the lyrics didn't come out right");
         // The singing computer is busy with this song until it is done (after the lyrics, which may be written there): no
-        // background think is placed there meanwhile.
-        using var singer = BackgroundDuties.Singer(dataDirectory) is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
+        // background think is placed there meanwhile. The hold moves to the computer the singing pool gives the song to.
+        using var singer = new SingerHold(jobs.Places, job.Id, BackgroundDuties.Singer(dataDirectory));
         job.Report(BackgroundJobState.Running, "Writing the music");
         var request = new SongRequest
         {
@@ -3628,7 +3629,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             Bpm = written.Bpm, Key = written.Key, Quality = setup.Quality, VoiceMatch = voiceMatch
         };
         SongResult result;
-        try { result = await setup.Maker.GenerateAsync(request, new SongJobProgress(job), token).ConfigureAwait(false); }
+        try { result = await setup.Maker.GenerateAsync(request, new SongJobProgress(job, singer), token).ConfigureAwait(false); }
         catch (SongException error) { return BackgroundJobOutcome.Failed(SongProblem(error)); }
         job.Report(BackgroundJobState.Running, "Timing the mouth to the singing");
         var (mouth, words, estimated, timing) = await singing!.MouthAsync(result, token).ConfigureAwait(false);
@@ -3668,12 +3669,39 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         _ => "making the music failed on the singing computer"
     };
 
-    // The song maker's stages, on the job's chip ("Writing the music", "Matching the singing to the voice").
-    private sealed class SongJobProgress(BackgroundJob job) : IProgress<SongProgress>
+    // The song maker's stages, on the job's chip ("Writing the music", "Matching the singing to the voice"). The report that
+    // names the computer the singing pool gave the song to moves the singer's hold there.
+    private sealed class SongJobProgress(BackgroundJob job, SingerHold singer) : IProgress<SongProgress>
     {
         public void Report(SongProgress value)
         {
+            if (value.Host is { } host) singer.Move(host);
             if (value.Stage != SongStage.Completed) job.Report(BackgroundJobState.Running, value.Describe());
+        }
+    }
+
+    // Holds the computer that makes a song from background thinks (BackgroundPlaces.Hold): Companion › Singing's computer
+    // first, then the one the singing pool gives the song to. Progress reports come one at a time from the song's own flow.
+    private sealed class SingerHold(BackgroundPlaces places, string holder, BackgroundPlace? first) : IDisposable
+    {
+        private BackgroundPlaceLease? lease = first is null ? null : places.Hold(first, holder);
+        private string? host = first?.Id;
+        private bool done;
+
+        public void Move(string to)
+        {
+            if (done || BackgroundDuties.SingerOn(to) is not { } place || place.Id == host) return;
+            var old = lease;
+            lease = places.Hold(place, holder);
+            host = place.Id;
+            old?.Dispose();
+        }
+
+        public void Dispose()
+        {
+            done = true;
+            lease?.Dispose();
+            lease = null;
         }
     }
 
@@ -3785,10 +3813,25 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private async Task<BackgroundJobOutcome> MakePictureAsync(BackgroundJob job, DrawArguments arguments, IPictureMaker maker,
         CreationAuthor author, Func<Creation, CancellationToken, Task<string>>? then, CancellationToken token)
     {
+        // The pictures computer is busy with this picture until it is drawn: no background think is placed there meanwhile. With
+        // more than one place in the Pictures list, the hold moves to the one that takes the picture (none for an address or a
+        // cloud provider).
+        var planned = BackgroundDuties.Painter(dataDirectory);
+        BackgroundPlaceLease? painter = planned is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
+        void Moved(PicturePoolMember member)
+        {
+            if (member.HostId is not { } host)
+            {
+                Interlocked.Exchange(ref painter, null)?.Dispose();
+                return;
+            }
+            var place = BackgroundDuties.PainterOn(host);
+            if (place.Id == Volatile.Read(ref painter)?.Place.Id) return;
+            Interlocked.Exchange(ref painter, jobs.Places.Hold(place, job.Id))?.Dispose();
+        }
+        if (maker is PicturePool pool) pool.Placed += Moved;
         try
         {
-            // The pictures computer is busy with this picture until it is drawn: no background think is placed there meanwhile.
-            using var painter = BackgroundDuties.Painter(dataDirectory) is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
             job.Report(BackgroundJobState.Running, "Checking where it's drawn");
             var availability = await maker.GetAvailabilityAsync(token).ConfigureAwait(false);
             if (!availability.Available) return BackgroundJobOutcome.Failed((availability.Reason ?? "pictures aren't available right now").TrimEnd('.'));
@@ -3824,6 +3867,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         finally
         {
+            if (maker is PicturePool placed) placed.Placed -= Moved;
+            Interlocked.Exchange(ref painter, null)?.Dispose();
             PictureClient.FreeLater(maker);
             (maker as IDisposable)?.Dispose();
         }

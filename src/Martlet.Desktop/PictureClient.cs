@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Cluster;
+using Martlet.Core.Contracts;
 using Martlet.Core.Pictures;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
@@ -12,11 +14,12 @@ using Martlet.Providers.Pictures;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// The picture maker Martlet's conversation uses (docs/PICTURES.md), from Companion › Pictures on this PC
-/// (<see cref="PicturesSettings"/>): ComfyUI on a paired computer's <c>pictures</c> role through its gateway
-/// (<see cref="GatewayComfyApi"/>), a ComfyUI the owner runs at an address, OpenRouter or NVIDIA Build (the key from Windows
-/// Credential Manager for each picture: Pictures' own, or Thinking's for the same provider). Setting
-/// <c>MARTLET_PICTURES_FIXTURE=1</c> before Martlet starts makes it use the FIXTURE - NOT AI <see cref="FixturePictureMaker"/>.
+/// The picture maker Martlet's conversation uses (docs/PICTURES.md), from this PC's Pictures list (<see cref="PoolAreas.Pictures"/>,
+/// pools-local.json, made once from Companion › Pictures' earlier choice, <see cref="PicturesSettings"/>): each member is ComfyUI
+/// on Martlet's <c>pictures</c> role through a paired computer's gateway (<see cref="GatewayComfyApi"/>), a ComfyUI the owner
+/// runs at an address, OpenRouter or NVIDIA Build (the key from Windows Credential Manager for each picture: the member's own,
+/// or Thinking's for the same provider). With more than one, a picture goes to the first that is free (<see cref="PicturePool"/>).
+/// Setting <c>MARTLET_PICTURES_FIXTURE=1</c> before Martlet starts makes it use the FIXTURE - NOT AI <see cref="FixturePictureMaker"/>.
 /// </summary>
 internal static class PictureClient
 {
@@ -25,7 +28,9 @@ internal static class PictureClient
     internal static readonly TimeSpan FreeAfter = TimeSpan.FromMinutes(3);
     private static readonly object Gate = new();
     private static (string Directory, DateTime Written, PicturesSettings Settings)? cached;
-    private static CancellationTokenSource? freeing;
+    private static (string Directory, DateTime Written, PoolList List)? cachedList;
+    // The computers waiting to free their graphics card, by host ID (empty: the first paired computer that offers the route).
+    private static readonly Dictionary<string, CancellationTokenSource> freeing = new(StringComparer.Ordinal);
 
     internal static bool Fixture => Environment.GetEnvironmentVariable(FixtureVariable) == "1";
 
@@ -45,25 +50,126 @@ internal static class PictureClient
         }
     }
 
-    /// <summary>Whether draw_picture is offered: the fixture is on, or pictures are set up somewhere.</summary>
-    internal static bool IsSetUp(string dataDirectory) => Fixture || Settings(dataDirectory).On;
+    /// <summary>This PC's Pictures list (<see cref="PoolAreas.Pictures"/>, pools-local.json), read again only when the file
+    /// changed (cheap enough for every reply). Without one yet, it is made once from pictures.json (<see cref="Migrate"/>) and
+    /// saved.</summary>
+    internal static PoolList List(string dataDirectory)
+    {
+        var path = Path.Combine(dataDirectory, PoolSettings.File(PoolAreas.Pictures.Shared));
+        DateTime written;
+        try { written = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { written = DateTime.MinValue; }
+        lock (Gate)
+            if (cachedList is { } known && known.Directory == dataDirectory && known.Written == written) return known.List;
+        var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Pictures);
+        if (list is null)
+        {
+            list = Migrate(dataDirectory, Settings(dataDirectory));
+            if (SaveList(dataDirectory, list))
+                ErrorLog.Info($"Pictures: made the Pictures list from the earlier choice ({list.Members.Count} place{(list.Members.Count == 1 ? "" : "s")}).");
+            return list;
+        }
+        lock (Gate) cachedList = (dataDirectory, written, list);
+        return list;
+    }
 
-    /// <summary>The picture maker for this PC's choice, or null while pictures are off. <paramref name="thinking"/> is Thinking's
-    /// route, whose key a cloud provider borrows when it has none of its own.</summary>
+    /// <summary>Saves this PC's Pictures list.</summary>
+    internal static bool SaveList(string dataDirectory, PoolList list)
+    {
+        var saved = PoolSettings.SaveFor(dataDirectory, PoolAreas.Pictures, list);
+        lock (Gate) cachedList = null;
+        return saved;
+    }
+
+    /// <summary>The Pictures list for a one-place choice (<see cref="PicturePoolMembers.Migrate"/>): that place; for Martlet's
+    /// pictures role, then the other paired computers the shared plan (cluster.json) says run it, this PC's own host service
+    /// first and then the rest, fewest jobs first, never a host a friend shares (it keeps pictures for its owner) or one kept for
+    /// another companion PC (Devices › Sharing work).</summary>
+    internal static PoolList Migrate(string dataDirectory, PicturesSettings settings)
+    {
+        IReadOnlyList<string> others = [];
+        if (settings.Place == PicturePlace.Host)
+        {
+            var hosts = Paired(dataDirectory);
+            others = PicturePoolMembers.Others(ClusterSync.LoadPlan(dataDirectory), [.. hosts.Where(h => !h.Shared).Select(h => h.HostId)],
+                OwnHost(hosts), settings.HostId, WorkSharingRoster.Settings(dataDirectory), WorkSharingRoster.Device);
+        }
+        return PicturePoolMembers.Migrate(settings, others, DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>The members a picture from this PC tries now, first to last (<see cref="PoolRouting.Order"/>): on, kept for this
+    /// PC or every one, agreed to (a cloud provider) and, for a paired computer, still paired and not a host a friend shares.</summary>
+    internal static PoolOrder Order(string dataDirectory, bool paired = true)
+    {
+        var hosts = paired ? Paired(dataDirectory) : null;
+        return PoolRouting.Order(PoolAreas.Pictures, List(dataDirectory), WorkSharingRoster.Device,
+            hosts is null ? null : member => member.Kind != PoolMemberKind.Computer || hosts.Any(h => h.HostId == member.HostId && !h.Shared));
+    }
+
+    /// <summary>Whether draw_picture is offered: the fixture is on, or the Pictures list has a place that is on.</summary>
+    internal static bool IsSetUp(string dataDirectory) => Fixture || Order(dataDirectory, paired: false).Members.Count > 0;
+
+    /// <summary>The paired computer that draws first (the first member, when it is Martlet's pictures role), or null.</summary>
+    internal static string? Painter(string dataDirectory) => Order(dataDirectory, paired: false).Members.FirstOrDefault() is { } first
+        ? first.Kind == PoolMemberKind.ThisPc ? OwnHost(Paired(dataDirectory)) : first.Kind == PoolMemberKind.Computer ? first.HostId : null
+        : null;
+
+    /// <summary>The picture maker for this PC's Pictures list, or null while it is off. One place: that place's maker, as before.
+    /// More: a <see cref="PicturePool"/> that draws on the first that is free. <paramref name="thinking"/> is Thinking's route,
+    /// whose key a cloud provider borrows when it has none of its own.</summary>
     internal static IPictureMaker? For(string dataDirectory, Guid profile, SetupRoute? thinking)
     {
         if (Fixture) return new FixturePictureMaker(TimeSpan.FromMilliseconds(300));
-        var settings = Settings(dataDirectory);
-        var custom = settings.Workflow == PictureWorkflow.Custom ? PicturesSettings.LoadWorkflow(dataDirectory) : null;
-        return settings.Place switch
+        var order = Order(dataDirectory);
+        if (order.Members.Count == 0) return null;
+        var own = OwnHost(Paired(dataDirectory));
+        var keys = PoolKeys.Load(dataDirectory);
+        List<PicturePoolMember> made = [];
+        foreach (var member in order.Members)
+            if (PicturePoolMembers.Place(member, own, keys.For(PoolAreas.Pictures.Id, member.Key)) is { } place &&
+                Maker(dataDirectory, member, place, profile, thinking) is { } maker)
+                made.Add(new(member.Key, maker, place.Place == PicturePlace.Host ? place.HostId : null));
+        return made.Count switch
         {
-            PicturePlace.ComfyUi => new ComfyPictureMaker(new ComfyHttpApi(settings.Address!), settings.Workflow, settings.Checkpoint, custom),
-            PicturePlace.Host => new ComfyPictureMaker(new GatewayComfyApi(dataDirectory, settings.HostId), settings.Workflow, settings.Checkpoint, custom),
-            PicturePlace.OpenRouter => new OpenRouterPictureMaker(settings.ModelId, token => KeyAsync(settings, profile, thinking, token)),
-            PicturePlace.NvidiaBuild => new NvidiaPictureMaker(settings.ModelId, token => KeyAsync(settings, profile, thinking, token)),
-            _ => null
+            0 => null,
+            1 => made[0].Maker,
+            _ => new PicturePool(made)
         };
     }
+
+    // One member's picture maker, with its own workflow, checkpoint, model and key; null when its address isn't one.
+    private static IPictureMaker? Maker(string dataDirectory, PoolMember member, PicturesSettings place, Guid profile, SetupRoute? thinking)
+    {
+        var custom = place.Workflow == PictureWorkflow.Custom
+            ? PicturesSettings.LoadWorkflow(dataDirectory, PicturePoolMembers.WorkflowFile(member)) : null;
+        try
+        {
+            return place.Place switch
+            {
+                PicturePlace.ComfyUi => new ComfyPictureMaker(new ComfyHttpApi(place.Address!), place.Workflow, place.Checkpoint, custom),
+                PicturePlace.Host => new ComfyPictureMaker(new GatewayComfyApi(dataDirectory, place.HostId), place.Workflow, place.Checkpoint, custom),
+                PicturePlace.OpenRouter => new OpenRouterPictureMaker(place.ModelId, token => KeyAsync(place, profile, thinking, token)),
+                PicturePlace.NvidiaBuild => new NvidiaPictureMaker(place.ModelId, token => KeyAsync(place, profile, thinking, token)),
+                _ => null
+            };
+        }
+        catch (ContractException error)
+        {
+            ErrorLog.Info($"Pictures: skipped {member.Name} in the Pictures list ({error.Message}).");
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<PairedHost> Paired(string dataDirectory)
+    {
+        try { return HostRegistry.Load(dataDirectory); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return []; }
+    }
+
+    // This PC's own host service: the one Martlet runs here, else a pairing saved as this PC's own; null: the first paired
+    // computer that offers the pictures role.
+    private static string? OwnHost(IReadOnlyList<PairedHost> hosts) =>
+        WorkSharingRoster.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
 
     /// <summary>The cloud provider's key: Pictures' own, or Thinking's for the same provider; null when there's none.</summary>
     internal static Task<string?> KeyAsync(PicturesSettings settings, Guid profile, SetupRoute? thinking, CancellationToken token)
@@ -82,17 +188,27 @@ internal static class PictureClient
             return key;
         }, token);
     }
-
-    /// <summary>After a picture on Martlet's pictures role: frees its graphics card once <see cref="FreeAfter"/> passes without
-    /// another picture, so the voice, listening and a local Thinking model get it back.</summary>
+    /// <summary>After a picture on Martlet's pictures role: frees the graphics card of the computer that drew it once
+    /// <see cref="FreeAfter"/> passes without another picture there, so the voice, listening and a local Thinking model get it
+    /// back. Each computer has its own wait, so a picture on one never keeps another's card loaded.</summary>
     internal static void FreeLater(IPictureMaker maker)
     {
+        if (maker is PicturePool { Route: { } route, Chosen: { } chosen })
+        {
+            if (route.QueuedBehind is { } ahead)
+                ErrorLog.Info($"Pictures: every place in the Pictures list was busy, so the picture waited behind {(ahead == int.MaxValue ? "others" : ahead)} on {chosen.Maker.Where}.");
+            else if (route.Position > 0 || route.Busy > 0 || route.Unavailable > 0)
+                ErrorLog.Info($"Pictures: drawn on {chosen.Maker.Where}, place {route.Position + 1} in the Pictures list ({route.Busy} busy, " +
+                    $"{route.Unavailable} couldn't draw it first).");
+            maker = chosen.Maker;
+        }
         if (maker is not ComfyPictureMaker { Api: GatewayComfyApi api }) return;
+        var host = api.HostId ?? "";
         CancellationTokenSource next = new();
         lock (Gate)
         {
-            freeing?.Cancel();
-            freeing = next;
+            if (freeing.Remove(host, out var earlier)) earlier.Cancel();
+            freeing[host] = next;
         }
         Task.Run(async () =>
         {
@@ -107,7 +223,12 @@ internal static class PictureClient
             {
                 ErrorLog.Info($"Pictures: couldn't free the graphics card on {api.Where} ({error.Message}).");
             }
-            finally { api.Dispose(); }
+            finally
+            {
+                lock (Gate)
+                    if (freeing.TryGetValue(host, out var current) && current == next) freeing.Remove(host);
+                api.Dispose();
+            }
         }).Forget();
     }
 
@@ -135,6 +256,9 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
     private (PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)? open;
 
     public string Where => open is { } found ? $"{found.Host.HostId}'s Pictures role" : hostId is null ? "Martlet's Pictures role" : $"{hostId}'s Pictures role";
+
+    /// <summary>The computer this draws on: the one it opened, else the one it was made for (null: the first that offers it).</summary>
+    public string? HostId => open?.Host.HostId ?? hostId;
 
     public async Task<JsonObject> StatusAsync(CancellationToken cancellationToken) =>
         Single(await CallAsync(new() { ["operation"] = "status" }, cancellationToken).ConfigureAwait(false));

@@ -526,6 +526,18 @@ path, model and why, `sharesConversation`, and its line (`busy`, `waiting`,
 `held` for a reply, `runs` and the `last` job's purpose, outcome,
 milliseconds, model and problem; never what was sent or said).
 
+Each kind's `pool` ([The image and audio pools](SENSE_MODELS.md#the-image-and-audio-pools))
+is in both parts. From the data directory, while a model of its own describes
+the kind: its `lane` (`vision` or `hearing`) and the `members` a job tries in
+order (`position`, `key`, `name`, `place`, `chosen`): the chosen model, then the
+Thinking pool's members known to see or hear, without the Thinking model and
+without external members the owner didn't allow pictures and recordings. The
+desktop's `pool` also leaves out computers a friend shares, computers kept for
+other companion PCs and members on the conversation's own computer and
+graphics card. It adds `jobs`, `elsewhere` (another member took the job),
+`waited` (the job waited for a busy pool) and the `last` job's `member`, `name`,
+`position`, `chosen`, `busy`, `unavailable`, `waitedMs` and `at`.
+
 `sense_models_check` rehearses the production routing (`SenseRouting`) over
 the combinations of text, image and audio models with fixture model names, the
 `sense-models.json` round trip, and the production lines (`SenseLanes`) with a
@@ -535,8 +547,14 @@ failures, a timeout, the kind check, one line for one model used for both
 kinds, and the conversation first (`lanes-hold`: a job waits while a reply
 holds the model's hardware, a running job is stopped, and a job the hold
 outlasts is dropped; `lanes-yield`: a helper job gives way to a reply's
-picture and starts again, while a summary waits behind it). In-process; it
-reads nothing.
+picture and starts again, while a summary waits behind it). Then the pools
+(`SensePool`) with simulated members on a queue of their own: `pool-members`
+(who is a member, for pictures and for recordings), `pool-first-free` (a free
+chosen model takes the job with one request), `pool-busy-next` (a busy and an
+unreachable member pass it on at once), `pool-all-busy-waits` (the first
+member to free takes it) and `pool-held` (a member held for a live turn is
+passed over; a pool held everywhere ends at once). In-process; it reads
+nothing.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
@@ -844,6 +862,10 @@ lines (where, size, seconds; never the description).
 
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
+its Pictures list as `pool` (`pools-local.json`: `configured`, `off`, each
+member's `key`, `kind`, `name`, `settings`, `consented`, `ownKeySaved` and the
+`place` it reads as; without a list yet, the list the desktop would make from
+`pictures.json`) and `tries` (the places a picture tries now, in order),
 the loaded workflow's node count, the picture creations (shape, size, engine,
 model, seconds, fixture; never titles or descriptions), the tool and job kind,
 and `afterReply` (the Songs, pictures and creations check-in tool set, as
@@ -853,13 +875,21 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 `z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
-back, with `saveDirectory` it writes the file. It never calls OpenRouter or NVIDIA
+back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
+Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
+or unsuitable computer is passed over, every one busy waits in the shortest
+queue, two pictures go to two computers, one computer gets no extra request, and
+the first list is made from `pictures.json`. It returns `ok` and each step. It
+never calls OpenRouter or NVIDIA
 Build (a picture costs money). Desktop automation: Companion › Pictures' main
 choice is an option picker, `Picker-Pictures-<place>` (`Off`, `Host`,
 `ComfyUi`, `OpenRouter`, `NvidiaBuild`), whose rows only show that place's
 details (its facts, such as `PickerFact-Pictures-cost`, and its fields and
 button); they, the `PicturesHost-<host>` pills, `PicturesCheck` and
-`PicturesComfyConnect` are passive clicks; `PicturesNow`, `PicturesTestState`,
+`PicturesComfyConnect` are passive clicks; `PicturesNow` (where it draws and,
+with more than one place in the Pictures list, the places that draw when the first
+is busy), `PicturesTestState`,
 `PicturesHostState`, `PicturesSetUp`,
 `PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
 `PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
@@ -3084,7 +3114,15 @@ is paired with hosts (`hosts.json`), it adds `paired` (Martlet.NodeLinkCheck's
 Singing card reads it (the pairing secret from Windows Credential Manager only
 signs the requests), `reachable`, `offersSinging`, `model` and `service` (the same
 status fields as above plus the models' count, total bytes and licences), or the
-`problem`; and `thisPcDocker`, what this PC's Docker shows of the role:
+`problem`; `pool`, the singing pool as the desktop's `SongClient` uses it
+(`SingingPool.Members`): `configured` (the `singing` area of `pools.json` has a
+list), `off` (that list has no member on), `saved`, `voiceMatch`, `order` (the
+computers songs try), `members` (each one's `position`, member `key`, `host`,
+`plannedSinger` (the shared plan says it runs Singing), `settings` and
+`verdict` now: `takes a song now`, `busy: N songs before a new one` or `passed
+over: ...`) and `nextSong` (`host`, `ahead`, `waitsInLine`: where the next
+song goes, `SingingPool.Pick`; null when no member can sing it); and
+`thisPcDocker`, what this PC's Docker shows of the role:
 `containers` (name, image, state, status), `images` (`martlet-singing` tags,
 sizes), `modelsVolume` (whether `martlet-singing-models` exists) and
 `setupRunning` with `setup` (a `martlet-host add singing` engine session running
@@ -3093,6 +3131,26 @@ in Docker listens only inside its gateway's network, so `paired` is how to read
 it from this PC. Read-only. As with `voice_engine_check`, a role service on a host
 listens only in the host's loopback, so `endpoint` reads it only there or through
 a forwarded port.
+
+`singing_pool_check` rehearses the singing pool
+([Singing](SINGING.md#the-singing-pool)) with the production code
+(`SingingPool` through `WorkQueue`, what `SongClient` runs) on simulated
+singing computers that answer the singing status (state, line, voice
+matches) and make a song as a host does (a full line refuses with
+`singing.busy`; a computer that is off doesn't answer). It returns `ok`,
+`fixture` (`simulated singing computers (NOT real hosts or models)`) and
+`steps`, each with `name`, `passed` and `detail`: the order without a list
+(the computer Martlet sings on, then the plan's singers, then the other
+paired computers), a `pools.json` list winning (this PC as its own host
+service, a card as its computer; off, unpaired and kept-for-others members
+left out; an empty list off), a free first computer taking the song with no
+other asked, a busy one passed over at once, a VevoSing song passing over a
+computer without VevoSing (and `singing.voice_match_unavailable` where none
+has it), computers that don't answer or don't sing passed over, every
+computer busy so the song waits on the shortest line, every line full
+(`singing.busy`), a failed song not made again elsewhere, and a computer that
+stops answering during the song replaced by the next. In-process; reads
+nothing.
 
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
@@ -4455,6 +4513,35 @@ and every `WorkSharing*` control on the Devices page: `WorkSharingJob-<job>`,
 `WorkSharingOwnFirst-<job>`, `WorkSharingUse-<job>-<host>`,
 `WorkSharingUp/Down-<job>-<host>` and `WorkSharingKeep-<host>` controls, which
 save `work-sharing.json` and so need `--allow-ui-effects`.
+
+`lip_sync_pool_status` shows lip-sync's pool (optional absolute
+`dataDirectory`, default the current user's; the script gives a disposable
+one; optional `deviceId`, default this PC's): `avatar` (`loaded`, `none` or
+`unreadable`), `lipSync` (the mode in `avatar.json`), `assigned` (the host it
+names), `paired` and `ownHost` (`hosts.json`), `area` (the pool contract's
+lip-sync area: `id`, `page`, `required`, `kinds`, `whenEmpty`), `list`
+(`source`: `pools.json`, or `older choices (not saved yet)`; and each member's
+`key`, `name`, `kind`, `off`, `onlyFor` and `settings`), `tries` (the member
+keys this PC tries for each chunk with the production `PoolRouting.Order`),
+`fallback` ("Voice loudness on this PC" when no member can take a sentence),
+`sharingWork` (lip-sync's `shares`, `order`, `never` and the plan's `runs`,
+which make the list from the older choices) and `planHost` (the shared plan's
+lip-sync host). Host and device IDs only. Read-only.
+
+`lip_sync_pool_check` rehearses the production lip-sync pool
+(`LipSyncSharing` on `WorkQueue`) with simulated Audio2Face computers that
+animate one chunk at a time and turn another away at once as a host's gateway
+does (`job.busy`), **NOT real hosts or models**. Each step reports `passed`
+and its detail: shared by default with the assigned computer first and no
+Devices card; a free first computer taking a chunk with no wait; two companion
+PCs at once, the second moved to the next computer once and each reply kept on
+its computer; the next reply choosing again; every computer busy, so a
+one-second chunk waits about half a second and is skipped (the voice's
+loudness moves the mouth); a computer freeing within the wait; an unanswering
+computer passed over at once; a kept or never-used computer left out; a saved
+list's order without a member turned off or kept for another companion PC; an
+empty list meaning voice loudness; and the list made from the older choices.
+`ok` is true when every step passed. In-process; reads nothing.
 
 `recommended_setup_status` shows Home's **Recommended setup** without the
 desktop. It builds the network recommender's request with the desktop's own
@@ -8178,7 +8265,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Martlet.Conversation;
+using Martlet.Core.Cluster;
 using Martlet.Core.Creations;
 using Martlet.Core.Pictures;
 using Martlet.Providers.Pictures;
@@ -10,11 +11,13 @@ using Martlet.Providers.Pictures;
 namespace Martlet.Mcp;
 
 /// <summary>pictures_status and pictures_check (docs/PICTURES.md). The status reads a data directory's Companion › Pictures
-/// choice (pictures.json; never a key, only whether one is saved), its workflow file and the picture creations, plus the
+/// choice (pictures.json; never a key, only whether one is saved), its Pictures list (pools-local.json, or the list the desktop
+/// would make from pictures.json) and the places a picture tries now, its workflow file and the picture creations, plus the
 /// draw_picture tool and job kind the conversation offers. The check draws one picture through the production picture maker:
 /// the FIXTURE - NOT AI maker, or a ComfyUI at an address (<see cref="ComfyHttpApi"/>, <see cref="ComfyPictureMaker"/> and
 /// <see cref="ComfyWorkflows"/>), then keeps it as a picture creation in a data directory and reads it back the way the talk
-/// window shows it. Cloud providers are never called here (a picture costs money).</summary>
+/// window shows it; or (place pool) rehearses the Pictures list's routing on simulated ComfyUI computers
+/// (<see cref="PicturePoolCheck"/>). Cloud providers are never called here (a picture costs money).</summary>
 internal static class PicturesCheck
 {
     internal static object Status(string dataDirectory)
@@ -31,6 +34,7 @@ internal static class PicturesCheck
                 model = settings.Cloud ? settings.Model : null, ownKeySaved = settings.CredentialId is not null,
                 customWorkflowNodes = workflow?.Count
             },
+            pool = Pool(dataDirectory, settings),
             kind = new
             {
                 name = PictureTools.Kind.Name, maxActive = PictureTools.Kind.MaxActive, perHour = PictureTools.Kind.MaxPerHour,
@@ -61,6 +65,60 @@ internal static class PicturesCheck
         };
     }
 
+    // This PC's Pictures list (pools-local.json) and the places a picture tries now (PoolRouting.Order, as the desktop: on, kept
+    // for this PC, agreed to and, for a paired computer, still paired and not a host a friend shares). Without a list yet, the one
+    // the desktop makes once from pictures.json (the chosen place, then the other computers the shared plan says run the
+    // pictures role). Read-only: it never saves the list.
+    private static object Pool(string dataDirectory, PicturesSettings settings)
+    {
+        var area = PoolAreas.Pictures;
+        var device = Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+        var (paired, own) = PairedHosts(dataDirectory);
+        var saved = PoolSettings.LoadFor(dataDirectory, area);
+        var list = saved ?? MigrationPreview(dataDirectory, settings, paired, own, device);
+        var order = PoolRouting.Order(area, list, device, m => m.Kind != PoolMemberKind.Computer || paired.Contains(m.HostId!));
+        var keys = PoolKeys.Load(dataDirectory);
+        return new
+        {
+            area = area.Id, lane = PicturePool.Lane, file = PoolSettings.File(area.Shared), configured = saved is not null, off = order.Off,
+            device, ownHost = own,
+            members = list.Members.Select(m => new
+            {
+                key = m.Key, kind = m.Kind.ToString(), name = m.Name, off = m.Off, onlyFor = m.OnlyFor, settings = m.Settings,
+                consented = m.Consented(area.Id), ownKeySaved = m.Kind == PoolMemberKind.Cloud ? keys.For(area.Id, m.Key) is not null : (bool?)null,
+                place = PicturePoolMembers.Place(m, own, keys.For(area.Id, m.Key))?.Describe()
+            }),
+            tries = order.Members.Select(m => m.Key), pooled = order.Members.Count > 1
+        };
+    }
+
+    private static PoolList MigrationPreview(string dataDirectory, PicturesSettings settings, string[] paired, string? own, string device)
+    {
+        ClusterPlan plan;
+        try { plan = ClusterPlan.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "cluster.json"))); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { plan = ClusterPlan.Empty; }
+        var others = settings.Place == PicturePlace.Host
+            ? PicturePoolMembers.Others(plan, paired, own, settings.HostId, WorkSharingSettings.Load(dataDirectory), device) : [];
+        return PicturePoolMembers.Migrate(settings, others, DateTimeOffset.UtcNow);
+    }
+    // The paired host IDs in hosts.json other than hosts a friend shares, and the one saved as this PC's own (Docker Desktop here).
+    private static (string[] Hosts, string? Own) PairedHosts(string dataDirectory)
+    {
+        try
+        {
+            var path = Path.Combine(dataDirectory, "hosts.json");
+            if (!File.Exists(path) || new FileInfo(path).Length > 262_144) return ([], null);
+            var hosts = (JsonNode.Parse(File.ReadAllText(path))?["hosts"] as JsonArray ?? []).OfType<JsonObject>()
+                .Where(h => h["access"]?.GetValue<string>() != Martlet.Avatar.Audio2Face.Remote.HostSignInAccess.Friend).ToArray();
+            return ([.. hosts.Select(h => h["pairing"]?["hostId"]?.GetValue<string>()).OfType<string>()],
+                hosts.FirstOrDefault(h => h["method"]?.GetValue<string>() == "ThisPcDocker")?["pairing"]?["hostId"]?.GetValue<string>());
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return ([], null);
+        }
+    }
+
     /// <summary>Draws one picture with <paramref name="place"/> (fixture, or comfyui at <paramref name="address"/>), reporting every
     /// progress stage; with <paramref name="dataDirectory"/> keeps it as a picture creation there and reads it back; with
     /// <paramref name="saveDirectory"/> writes the picture there.</summary>
@@ -70,6 +128,7 @@ internal static class PicturesCheck
         place = (place ?? "fixture").ToLowerInvariant();
         if (place is "openrouter" or "nvidia" or "nvidia-build")
             throw new ArgumentException("pictures_check never calls a paid cloud provider. Use the desktop's Draw a test picture, which asks first.");
+        if (place == "pool") return await PicturePoolCheck.RunAsync(cancellation);
         var workflow = (workflowName ?? "z-image-turbo").ToLowerInvariant() switch
         {
             "z-image-turbo" or "zimageturbo" => PictureWorkflow.ZImageTurbo,
@@ -91,7 +150,7 @@ internal static class PicturesCheck
             "fixture" => new FixturePictureMaker(TimeSpan.FromMilliseconds(50)),
             "comfyui" => new ComfyPictureMaker(new ComfyHttpApi(address ?? throw new ArgumentException("comfyui needs address, like http://127.0.0.1:8188.")),
                 workflow, checkpoint, custom),
-            _ => throw new ArgumentException("place is fixture or comfyui.")
+            _ => throw new ArgumentException("place is fixture, comfyui or pool.")
         };
         var stages = new List<object>();
         var clock = Stopwatch.StartNew();

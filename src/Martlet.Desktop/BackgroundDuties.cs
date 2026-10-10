@@ -33,13 +33,19 @@ internal static class BackgroundDuties
     internal static BackgroundPlace? Singer(string? dataDirectory) =>
         dataDirectory is null ? null : Computer(SingingPreferences.Load(dataDirectory).Host, Singing);
 
+    /// <summary>Paired computer <paramref name="host"/> as the place of a song it makes (the singing pool gave it the song).</summary>
+    internal static BackgroundPlace? SingerOn(string host) => Computer(host, Singing);
+
     /// <summary>The paired computer that draws pictures, as a place, so a picture holds it while it is drawn; null when pictures
     /// are drawn elsewhere (a ComfyUI address, a cloud provider) or not at all.</summary>
     internal static BackgroundPlace? Painter(string? dataDirectory) =>
         dataDirectory is null ? null : Computer(PainterHost(dataDirectory), Pictures);
 
-    private static string? PainterHost(string dataDirectory) =>
-        PictureClient.Settings(dataDirectory) is { Place: PicturePlace.Host, HostId: { Length: > 0 } host } ? host : null;
+    /// <summary>Paired computer <paramref name="host"/> as the place that draws a picture now (a picture computer of the pool that
+    /// took it), so the picture holds it while it is drawn.</summary>
+    internal static BackgroundPlace PainterOn(string host) => Computer(host, Pictures)!;
+
+    private static string? PainterHost(string dataDirectory) => PictureClient.Painter(dataDirectory);
 
     private static BackgroundPlace? Computer(string? host, string duty) =>
         host is null ? null : new BackgroundPlace("host:" + host, host.Length <= 80 ? host : host[..80]) { Duties = [duty] };

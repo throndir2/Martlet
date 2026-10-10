@@ -265,7 +265,7 @@ public partial class MainWindow
             {
                 Purpose = "Test vision", Instructions = "This is a test of whether you can read a picture. Answer with only the word you read.",
                 Text = ModelVisionTest.Question, Image = VisionTestPicture.Render(word), MaxOutputTokens = 32,
-                Timeout = TimeSpan.FromSeconds(90), DropWhenStale = false
+                Timeout = TimeSpan.FromSeconds(90), DropWhenStale = false, OnlyChosen = true
             };
             SenseAnswer answer;
             long milliseconds;
