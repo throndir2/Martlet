@@ -1051,6 +1051,9 @@
                         <StackPanel>
                             <TextBlock Text="What this PC is for" Style="{DynamicResource SectionHeading}"/>
                             <TextBlock x:Name="RoleText" Style="{DynamicResource Muted}" Margin="0,0,0,10" AutomationProperties.AutomationId="DeviceRoleText"/>
+                            <!-- Where the choice is kept and who shares it (MainWindow.PcScope.cs): every Windows user of this PC -->
+                            <TextBlock x:Name="RoleWhereText" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="DeviceRoleWhere" AutomationProperties.LiveSetting="Polite"/>
                             <WrapPanel>
                                 <Button x:Name="UseCompanionButton" Content="Use as my companion PC" Click="UseCompanion_Click" Margin="0,0,10,6"
                                         AutomationProperties.AutomationId="UseAsCompanion"/>
