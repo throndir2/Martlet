@@ -1503,6 +1503,48 @@ hosts keep both people's copies apart; a copy with an API key is refused before
 sending and an unsigned request for a person's settings is refused. Loopback
 only; the folder is deleted and the real vault is never touched.
 
+`account_security_status` reads [account security](ACCOUNTS.md#account-security)
+from a data directory (optional absolute `dataDirectory`), read-only and
+without the desktop: `device` (this data folder's device ID), `network`
+(whether `network.json` has a roster), `directory` (`none`, `read` or
+`unreadable`), per account in `accounts.json` its `id`, `name`, `role`,
+`removed`, `mergedInto`, `createdBy`, `logins` (how many of each kind),
+`windowsLoginOfThisPc`, `emailHints` (a count) and `devices` (`deviceId`,
+`thisPc`, the `login` kind, whether it carries an `attestation`, and its
+`proof` under the binding rule: `creator`, `attestation`, `migration`,
+`merged`, `none` when a host or desktop would refuse it, or `no_network`);
+`signedInHere`; and `locks`, per account with an unlock file in
+`account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
+`askOnThisPc`, `remember`, `encrypt`, `encryptedFiles` and `plainFiles` in
+the account's folder, `failures`, `waitUntil` and whether the DPAPI-protected
+part exists. Never a PIN, password, verifier, attestation, e-mail, login user
+name or SID.
+
+The account windows ([account security](ACCOUNTS.md#account-security)):
+**Account…** (`AccountOpen`) and the page's **Close** (`AccountClose`), the
+Unlock window's **Choose another account** (`UnlockOther`) and the Prove
+window's **Close** (`ProveClose`) are passive clicks. Everything else on them
+changes or proves something, so it needs `--allow-ui-effects`: the password
+(`AccountPasswordUser`, `AccountPassword`, `AccountPasswordRepeat`,
+`AccountAuthenticator`, `AccountAuthenticatorCode`, `AccountPasswordSave`,
+`AccountAuthenticatorRemove`), `AccountLinkWindows`, `AccountUnlinkWindows`,
+`AccountAskPassword`, `AccountPin`, `AccountPinSet`, `AccountPinRemove`,
+`AccountHello`, `AccountEncrypt`, `AccountRemember`, `AccountLockNow`,
+`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`; Unlock's `UnlockPin`,
+`UnlockPassword`, `UnlockSubmit`, `UnlockHello`, `UnlockSignIn`; Prove's
+`ProveHost`, `ProveMethod-martlet`, `ProveUser`, `ProvePassword`, `ProveCode`,
+`ProveRemember`, `ProveSubmit`; the account menu's `AccountSignInOther`
+and `AccountLock`; *Continue as ...?* (`ContinueAsDialog`: `ContinueAsYes`,
+`ContinueAsNo`) and *Choose an account* (`AccountChooseDialog`:
+`UnlockChoose-<32 hex>`, `UnlockChooseSignIn`). `ui_connect` also attaches
+while one of these windows shows at start, before the main window (Unlock,
+*Continue as*, *Choose an account*, Prove). `ui_snapshot` returns these values: `AccountName`,
+`AccountLogins`, `AccountLockState`, `AccountUnlockMethods`,
+`AccountPasswordState`, `AccountWindowsState`, `AccountHelloState`,
+`AccountEncryptState`, `AccountStatus`, `UnlockAccountName`, `UnlockStatus`,
+`ProveTitle` and `ProveStatus`; never the user name, the authenticator key
+(`AccountAuthenticatorSecret`) or the recovery codes (`AccountRecoveryCodes`).
+
 `network_status` reads the [Martlet network](NETWORK.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `state`
 (`none`, `member`, `waiting` or `unreadable`), `key` (whether
@@ -1757,7 +1799,9 @@ be driven against a real host. Mode `owner`: `src\Martlet.NodeLinkCheck` mode
 `signin-lab` (`SignInLab.cs`) starts a gateway on 127.0.0.1 with an owner
 account, an OpenID Connect provider (an issuer in that process), an allowed
 identity and an outside address set on the host; it pairs the desktop of the
-data directory (`hosts.json` there, the secret in the lab credential folder), a
+data directory (`hosts.json` there, the secret in the lab credential folder,
+under the device ID that desktop already named itself by in `device.json`, so
+its account bindings match its roster entry), a
 simulated laptop signs in and keeps syncing, and a simulated friend's computer
 (`lab-friend-pc`, identity `ana@example.net`, `authentik` subject
 `lab-friend-7`) signs in once and is refused, so it waits under *Signed in but

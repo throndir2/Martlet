@@ -231,6 +231,7 @@ internal sealed partial class GatewayHttpApplication
             caller = authenticator.Authenticate(context.Request, crypto.Sha256(body));
             RequireSignInOwner(caller);
             var change = ParseNetworkBody<GatewaySignInChange>(body);
+            GatewayRules.Require(GatewaySignInRoles.Allowed(Accounts.Current, caller.DeviceId, change), "signin.denied");
             codes = SignIn.Change(change, caller.Caller, context.RequestAborted);
         }
         var current = SignIn.Snapshot();

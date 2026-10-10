@@ -202,6 +202,7 @@ public partial class MainWindow : ThemedWindow
         InitializeConfiguring();
         InitializeMemorySync();
         InitializeAccounts();
+        InitializeAccountSecurity();
         InitializeNetwork();
         InitializeApiKeys();
         InitializeFriends();

@@ -66,6 +66,9 @@
     <Compile Include="..\Martlet.Desktop\RecommendedSetupMemory.cs" Link="Shared\RecommendedSetupMemory.cs" />
     <!-- network_status: the desktop's own reading of the Windows login (its kind and whether it has an e-mail hint only). -->
     <Compile Include="..\Martlet.Desktop\WindowsLogin.cs" Link="Shared\WindowsLogin.cs" />
+    <Compile Include="..\Martlet.Desktop\AccountLocks.cs" Link="Shared\AccountLocks.cs" />
+    <Compile Include="..\Martlet.Desktop\AccountProtection.cs" Link="Shared\AccountProtection.cs" />
+    <Compile Include="..\Martlet.Desktop\AccountVault.cs" Link="Shared\AccountVault.cs" />
     <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <Page Include="..\Martlet.Desktop\Themes\Motion.xaml" Link="Themes\Motion.xaml" />
   </ItemGroup>

@@ -697,6 +697,28 @@ taken for a TLS signature. `ToText()` gives one line of base64url (at most
 nothing (`signin.no_network`); an identity with no account gets
 `signin.no_account`.
 
+### Account bindings and roles
+
+- **A binding needs a proof.** A desktop acts for an account only through a
+  device binding in the household's account directory, and every host and
+  desktop refuses an entry with a binding that has no proof
+  (`account.binding`): the device made the account, it carries a host
+  attestation for that device and account, it is the owner's account's
+  migration binding of a member desktop, or it came with a merged account
+  ([the binding rule](ACCOUNTS.md#the-binding-rule)). So *Sign in as someone
+  else*, *Continue as* and linking a Windows login to an existing account need
+  a Prove sign-in on that PC.
+- **Who changes sign-in.** Once the household has accounts, a host lets only a
+  desktop bound to an owner or admin account change its sign-in settings; a
+  desktop of members only changes their own password logins
+  (`signin.denied` otherwise; [roles on a host](ACCOUNTS.md#roles-on-a-host)).
+  A household from before accounts keeps the earlier rule until its desktops
+  migrate.
+- **Account passwords on every host.** The Account page keeps an account's
+  Martlet password on every host of the network that the PC is paired with, so
+  any of them can check a Prove sign-in. Each host makes its own recovery
+  codes.
+
 ## Sharing a host with friends
 
 A friend with their own Martlet can use one of your hosts for its thinking,
