@@ -485,22 +485,6 @@ public partial class MainWindow : ThemedWindow
         ResetCharacterButton.ToolTip = avatar.IsShowing
             ? "Move the character back to the lower-right of your main screen" + (locked ? " (it stays locked there)" : "")
             : "Forget where the character was, so it shows at the lower-right of your main screen";
-        // Unlocking also works while the character is hidden: it then shows at its default spot.
-        LockCharacterButton.Visibility = avatar.IsShowing || locked ? Visibility.Visible : Visibility.Collapsed;
-        LockCharacterButton.IsEnabled = !changingCharacterLock;
-        LockCharacterButton.Content = locked ? "Unlock character position" : "Lock character position";
-        AutomationProperties.SetName(LockCharacterButton, locked ? "Unlock character position" : "Lock character position");
-        LockCharacterButton.ToolTip = locked ? "Let the character be dragged, moved and resized again"
-            : "Keep the character where it is until you unlock it here or on its right-click menu";
-        // Turning click-through off also works while the character is hidden; it can't be turned off on the character itself.
-        var clickThrough = avatar.ClickThrough;
-        ClickThroughCharacterButton.Visibility = avatar.IsShowing || clickThrough ? Visibility.Visible : Visibility.Collapsed;
-        ClickThroughCharacterButton.IsEnabled = !changingCharacterClickThrough;
-        ClickThroughCharacterButton.Content = clickThrough ? "Turn off click-through" : "Turn on click-through";
-        AutomationProperties.SetName(ClickThroughCharacterButton, clickThrough ? "Turn off click-through" : "Turn on click-through");
-        ClickThroughCharacterButton.ToolTip = clickThrough
-            ? "Let the character catch clicks again, so you can drag it, zoom it and right-click it"
-            : "Let clicks pass through the character to the windows under it. Turn it off here, in Companion › Character or from Martlet's icon";
     }
 
     /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
@@ -557,12 +541,10 @@ public partial class MainWindow : ThemedWindow
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
     private async void ResetCharacterZoom_Click(object sender, RoutedEventArgs e) => await ResetCharacterZoomAsync();
     private Task ResetCharacterZoomAsync() => ZoomCharacterAsync("reset");
-    private void LockCharacter_Click(object sender, RoutedEventArgs e) => SetCharacterLockAsync(!avatar.PlacementLocked).Forget();
-    private void ClickThroughCharacter_Click(object sender, RoutedEventArgs e) => SetCharacterClickThroughAsync(!avatar.ClickThrough).Forget();
 
     private bool changingCharacterLock, changingCharacterClickThrough;
 
-    /// <summary>Lets clicks pass through the character (from here, Companion › Character, the notification-area menu or the
+    /// <summary>Lets clicks pass through the character (from Companion › Character, the notification-area menu or the
     /// character's own menu) or makes it catch them again (only from Martlet: the mouse can't reach the character's menu then),
     /// and saves that on this PC so the character shows the same way next time.</summary>
     private async Task SetCharacterClickThroughAsync(bool on)
@@ -577,7 +559,7 @@ public partial class MainWindow : ThemedWindow
             if (closing) return;
             ErrorLog.Info(on ? "Click-through turned on: clicks pass through the character." : "Click-through turned off: the character catches clicks.");
             ActionText.Text = (on
-                ? "Clicks now pass through the character to the windows under it. Turn this off here, in Companion › Character or from Martlet's icon in the notification area."
+                ? "Clicks now pass through the character to the windows under it. Turn this off in Companion › Character or from Martlet's icon in the notification area."
                 : "Click-through is off. You can drag, zoom and right-click the character again.") +
                 (saved ? "" : on ? " It couldn't be saved on this PC, so it turns off when Martlet restarts."
                     : " It couldn't be saved on this PC, so it may turn on again when Martlet restarts.");
@@ -619,8 +601,8 @@ public partial class MainWindow : ThemedWindow
     /// <summary>A monitor's device name as people read it: DISPLAY2 rather than \\.\DISPLAY2.</summary>
     internal static string CharacterScreen(string device) => device.StartsWith(@"\\.\", StringComparison.Ordinal) ? device[4..] : device;
 
-    /// <summary>Locks the showing character where it is (from here, Companion › Character or the character's own menu) or
-    /// unlocks it (only from this window), and saves that on this PC so a locked character shows in the same place.</summary>
+    /// <summary>Locks the showing character where it is or unlocks it (from Companion › Character or the character's own
+    /// menu), and saves that on this PC so a locked character shows in the same place.</summary>
     private async Task SetCharacterLockAsync(bool locked)
     {
         if (closing || changingCharacterLock) return;
@@ -638,7 +620,7 @@ public partial class MainWindow : ThemedWindow
                     (at.Screen is { } screen ? $" on {CharacterScreen(screen)}." : ".")
                 : "Character position unlocked.");
             ActionText.Text = (locked
-                ? "Character position locked. Unlock it here, in Companion › Character or on the character's right-click menu to move it."
+                ? "Character position locked. Unlock it in Companion › Character or on the character's right-click menu to move it."
                 : "Character position unlocked. Drag the character to move it.") +
                 (saved ? "" : locked ? " It couldn't be saved on this PC, so it unlocks when the character hides."
                     : " It couldn't be saved on this PC, so the character may show locked next time.");

@@ -6436,7 +6436,7 @@ the same `dataDirectory` sends it.
 `MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
 returns its bounds before and after, and `ui_snapshot` reports `movable` for
-it. **Locking the character's position**: Home's `ToggleCharacterLock`
+it.
 
 **Tapping the character**: a left click on the character that doesn't drag
 it (it comes up within Windows' drag distance, within 0.7 seconds; also when
@@ -6762,21 +6762,20 @@ cutting you off* when a touch stopped Martlet), `message` (a touch-only
 reply's whole message, Companion › Prompts › *Touched*) and `notes` (*Touched,
 with your message*), with the prompts saved in the data directory.
 
-**Locking the character's position**: Home's `ToggleCharacterLock`
-(*Lock character position*, shown while the character shows or is locked),
-Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
-menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The
-character's menu chose 'lock'.*) lock it where it is; all need
-`--allow-ui-effects` because they save `character-placement.json` (see
-`character_status`'s `placement`). Locked, `movable` is false and `ui_move` is
+**Locking the character's position**: Companion › Character's
+`SetupCharacterLock` (*Lock position*, shown while the character shows or is
+locked) and the overlay menu's `CharacterLockPosition` (*Lock position*,
+carried out by Martlet: *The character's menu chose 'lock'.*) lock it where it
+is; both need `--allow-ui-effects` because they save
+`character-placement.json` (see `character_status`'s `placement`). Home has
+no lock button. Locked, `movable` is false and `ui_move` is
 refused; the overlay ignores dragging, the arrow keys and Home, and its own
 `CharacterResetPosition` is disabled; and zoom (the wheel, the menu or
 `SetupCharacterZoomIn`) only zooms the camera, keeping the overlay's bounds.
-The same `ToggleCharacterLock` and `SetupCharacterLock` then read *Unlock
-character position* and *Unlock position* (also while the character is
-hidden), and the overlay menu's `CharacterLockPosition` reads *Unlock
-position* (carried out by Martlet: *The character's menu chose 'unlock'.*);
-each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
+The same `SetupCharacterLock` then reads *Unlock position* (also while the
+character is hidden), and the overlay menu's `CharacterLockPosition` reads
+*Unlock position* (carried out by Martlet: *The character's menu chose
+'unlock'.*); each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
 where (device-independent pixels and the monitor), and `SetupCharacterView` ends with
 *Position locked.* when the overlay reports it. A locked character shows at
 its locked place again after Hide/Show or a Martlet restart (at its default
@@ -6786,22 +6785,22 @@ and `avatar-renderer` *The character's position is locked.*
 
 **Letting clicks pass through the character**: the overlay menu's
 `CharacterClickThrough` (*Let clicks pass through*, carried out by Martlet:
-*The character's menu chose 'click-through-on'.*), Home's
-`ToggleCharacterClickThrough` (*Turn on click-through*, shown while the
-character shows or click-through is on), Companion › Character's
-`SetupCharacterClickThrough` (*Turn on click-through*) and the notification-area
+*The character's menu chose 'click-through-on'.*), Companion › Character's
+`SetupCharacterClickThrough` (*Turn on click-through*, shown while the
+character shows or click-through is on) and the notification-area
 menu's checkable `TrayCharacterClickThrough` (*Let clicks pass through the
 character*, listed while the character shows or click-through is on) turn it
 on; all need `--allow-ui-effects` because they save
 `character-click-through.json` on this PC (`character_status`'s
-`clickThrough`; never shared, and Reset position leaves it alone). On, the
+`clickThrough`; never shared, and Reset position leaves it alone). Home has no
+click-through button. On, the
 overlay window (and its speech bubble) gets `WS_EX_TRANSPARENT`, so every
 click, the wheel and right-click go to the window under it: `ui_snapshot`'s
 `windowStates` reads `clickThrough` true for *Martlet character overlay*, and
 the character can't be dragged, zoomed, tapped, stroked or right-clicked with
 the mouse (its eyes still follow the mouse, and it still talks and moves).
 The mouse can't reach the character's menu then, so it is turned off in
-Martlet: `ToggleCharacterClickThrough` and `SetupCharacterClickThrough` read
+Martlet: `SetupCharacterClickThrough` reads
 *Turn off click-through* (also while the character is hidden),
 `TrayCharacterClickThrough`'s `checkedState` is `On`, and clicking any of them
 turns it off (opened through UI Automation, the overlay menu's
@@ -6850,7 +6849,7 @@ way a broken pipe does (*Renderer message length is invalid (simulated by
 MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
 the character shows (*FIXTURE: the character renderer fails its ... commands*).
 The renderer still starts, draws and closes normally. Commands include `where`
-(saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
+(saving its place after `ui_move`), `lock` (`SetupCharacterLock`), `zoom`
 (`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `place` (a character
 profile's place when you switch profiles), `mouth` (the
 loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
