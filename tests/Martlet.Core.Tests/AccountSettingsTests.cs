@@ -192,6 +192,89 @@ public sealed class AccountSettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task The_owner_and_older_computers_keep_the_owners_settings_the_same_and_other_accounts_never_see_them()
+    {
+        // An older Martlet: one node with every section on the household's copy.
+        var olderPersona = new FileSetting { Value = "\"older\"" };
+        var olderThinking = new FileSetting { Value = "\"openrouter\"" };
+        var older = new SharedSettingsNode(Path.Combine(root, "older"), "desktop-old",
+            [new Section("companion", olderPersona, "\"martlet\""), new Section("thinking", olderThinking, null)]);
+        await older.SyncAsync([], true, Start, CancellationToken.None);
+
+        // An updated computer with the owner (Sam) signed in.
+        var persona = new FileSetting { Value = "\"martlet\"" };
+        var thinking = new FileSetting { Value = "\"openrouter\"" };
+        var data = Path.Combine(root, "new");
+        var household = new SharedSettingsNode(data, "desktop-new", [new Section("thinking", thinking, null)]);
+        var sam = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Sam), "desktop-new", [new Section("companion", persona, "\"martlet\"")]);
+        await AccountSettingsSync.SwitchAsync(null, sam, [], data, Sam, Start, CancellationToken.None);
+        var (h, a) = await AccountSettingsSync.SyncAsync(household, sam, owner: true, [older.Document], [], true, Start.AddMinutes(1),
+            CancellationToken.None);
+        Assert.Equal("\"older\"", persona.Value);
+        Assert.Contains(a!.Applied, c => c.Key == "companion" && c.By == "desktop-old");
+        Assert.Equal("\"older\"", h.Document.Find("companion")!.Value);
+
+        // The owner changes the personality on the updated computer; the older computer follows it through the household's copy.
+        persona.Value = "\"sams\"";
+        (h, a) = await AccountSettingsSync.SyncAsync(household, sam, true, [older.Document], [], true, Start.AddMinutes(2), CancellationToken.None);
+        Assert.Equal(a!.Document.Find("companion"), h.Document.Find("companion"));
+        await older.SyncAsync([h.Document], true, Start.AddMinutes(3), CancellationToken.None);
+        Assert.Equal("\"sams\"", olderPersona.Value);
+
+        // Alex signs in on the updated computer: the files take Alex's settings (none yet: the default), never Sam's, and the
+        // older computer's entry in the household's copy is not Alex's.
+        var alex = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Alex), "desktop-new", [new Section("companion", persona, "\"martlet\"")]);
+        await AccountSettingsSync.SwitchAsync(sam, alex, [], data, Alex, Start.AddMinutes(4), CancellationToken.None);
+        Assert.Equal("\"martlet\"", persona.Value);
+        Assert.Equal(Alex, AccountWorkingCopy.Load(data)!.Value.Account);
+        (h, a) = await AccountSettingsSync.SyncAsync(household, alex, false, [older.Document], [], true, Start.AddMinutes(5), CancellationToken.None);
+        Assert.Equal("\"martlet\"", persona.Value);
+        Assert.Null(a!.Document.Find("companion"));
+
+        persona.Value = "\"alexs\"";
+        (h, a) = await AccountSettingsSync.SyncAsync(household, alex, false, [older.Document], [], true, Start.AddMinutes(6), CancellationToken.None);
+        Assert.Equal("\"alexs\"", a!.Document.Find("companion")!.Value);
+        Assert.Equal("\"sams\"", h.Document.Find("companion")!.Value);
+
+        // Back to Sam: Sam's personality returns.
+        var samAgain = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Sam), "desktop-new", [new Section("companion", persona, "\"martlet\"")]);
+        await AccountSettingsSync.SwitchAsync(alex, samAgain, [h.Document.Only(SettingScopes.IsAccountKey)], data, Sam, Start.AddMinutes(7),
+            CancellationToken.None);
+        Assert.Equal("\"sams\"", persona.Value);
+        Assert.Equal("\"alexs\"", new SharedSettingsNode(AccountWorkingCopy.Folder(data, Alex), "desktop-new", []).Document.Find("companion")!.Value);
+    }
+
+    [Fact]
+    public async Task A_switch_that_fails_gives_the_files_back_to_the_outgoing_account()
+    {
+        var theme = new FileSetting();
+        var data = Path.Combine(root, "switch");
+        var sam = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Sam), "desktop-a", [new Section("appearance", theme)]);
+        await AccountSettingsSync.SwitchAsync(null, sam, [], data, Sam, Start, CancellationToken.None);
+        theme.Value = "\"dark\"";
+        Assert.Equal(["appearance"], (await sam.SyncAsync([], true, Start.AddMinutes(1), CancellationToken.None)).Recorded);
+        var alex = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Alex), "desktop-a",
+            [new Section("appearance", theme), new CancelingSection()]);
+
+        // The theme already took Alex's (the default) when the switch is canceled.
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            AccountSettingsSync.SwitchAsync(sam, alex, [], data, Alex, Start.AddMinutes(2), CancellationToken.None));
+
+        Assert.Equal("\"dark\"", theme.Value);
+        Assert.Equal(Sam, AccountWorkingCopy.Load(data)!.Value.Account);
+        Assert.Empty((await sam.SyncAsync([], true, Start.AddMinutes(3), CancellationToken.None)).Recorded);
+    }
+
+    private sealed class CancelingSection : ISharedSection
+    {
+        public string Key => "talk";
+        public string Title => "talk";
+        public string? Default => "{}";
+        public Task<SharedLocal?> ReadAsync(CancellationToken token) => Task.FromResult<SharedLocal?>(new("{\"x\":1}", null, false, Start));
+        public Task<SharedApply> ApplyAsync(SharedSetting setting, string? secret, CancellationToken token) => throw new OperationCanceledException();
+    }
+
+    [Fact]
     public void The_working_copy_marker_names_the_account_whose_settings_the_files_hold()
     {
         Assert.Null(AccountWorkingCopy.Load(root));
