@@ -162,13 +162,18 @@ public sealed record PicturesSettings
     }
 
     /// <summary>Saves the owner's ComfyUI workflow after checking it is an API-format workflow (nodes with class_type and inputs).</summary>
-    public static bool SaveWorkflow(string? directory, JsonObject workflow)
+    public static bool SaveWorkflow(string? directory, JsonObject workflow) => SaveWorkflow(directory, workflow, WorkflowFile);
+
+    /// <summary>Saves a pool member's own ComfyUI workflow as <paramref name="file"/> (a .json file name in the data directory).</summary>
+    public static bool SaveWorkflow(string? directory, JsonObject workflow, string file)
     {
         ArgumentNullException.ThrowIfNull(workflow);
         if (directory is null) return false;
+        ContractRules.Require(!string.IsNullOrEmpty(file) && Path.GetFileName(file) == file && !file.Contains("..", StringComparison.Ordinal) &&
+            file.EndsWith(".json", StringComparison.OrdinalIgnoreCase), "The workflow's file name is invalid.");
         var bytes = JsonSerializer.SerializeToUtf8Bytes(workflow);
         ContractRules.Require(bytes.Length <= MaximumWorkflowBytes, "The workflow is too large (256 KB at most).");
-        return WriteAtomically(directory, WorkflowFile, bytes);
+        return WriteAtomically(directory, file, bytes);
     }
 
     private static bool WriteAtomically(string directory, string name, byte[] bytes)
