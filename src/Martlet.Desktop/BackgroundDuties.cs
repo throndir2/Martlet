@@ -33,6 +33,9 @@ internal static class BackgroundDuties
     internal static BackgroundPlace? Singer(string? dataDirectory) =>
         dataDirectory is null ? null : Computer(SingingPreferences.Load(dataDirectory).Host, Singing);
 
+    /// <summary>Paired computer <paramref name="host"/> as the place of a song it makes (the singing pool gave it the song).</summary>
+    internal static BackgroundPlace? SingerOn(string host) => Computer(host, Singing);
+
     /// <summary>The paired computer that draws pictures, as a place, so a picture holds it while it is drawn; null when pictures
     /// are drawn elsewhere (a ComfyUI address, a cloud provider) or not at all.</summary>
     internal static BackgroundPlace? Painter(string? dataDirectory) =>
