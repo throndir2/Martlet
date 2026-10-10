@@ -30,12 +30,15 @@ internal static class ReadingCheck
         var windows = await WindowsAsync(pixels, width, height, cancellation).ConfigureAwait(false);
         var desktop = await DesktopAsync(cancellation).ConfigureAwait(false);
         var worker = endpoint is null ? null : await WorkerAsync(Endpoint(endpoint), pixels, width, height, cancellation).ConfigureAwait(false);
+        var poolCheck = await ReadingPoolCheck.RunAsync(cancellation).ConfigureAwait(false);
         return new
         {
             settings = dataDirectory is null ? null : new
             {
                 file = state, place = settings.Place.ToString(), on = settings.On, hostId = settings.HostId, describe = settings.Describe()
             },
+            pool = dataDirectory is null ? null : ReadingPoolCheck.Status(dataDirectory, settings),
+            poolCheck,
             picture = new { width, height, expected = Expected },
             windowsOcr = windows,
             desktop,
