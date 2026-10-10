@@ -383,6 +383,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // last action did (never a fact or a name). MemoryStatus (the Memory window's bottom line): whether memory is on, saving
         // or why it can't be (fixed text, never a fact or a folder).
         "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus", "MemoryStatus",
+        // The Memory window's sharing (with accounts): MemoryShareStatus says what Share selected with did or what Share new
+        // memories about me now does ("Copied 2 facts to the household's memories.", "Moved 1 fact to another person's memories.";
+        // counts and the kind of place, never a fact or a name). Choosing a place (MemoryShareTarget, ui_select), Copy
+        // (MemoryShareCopy), Move (MemoryShareMove) and the MemoryShareAboutMe box change memories, so they need --allow-ui-effects.
+        "MemoryShareStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
         // (conversations, exchanges, since when, per app); the Conversations page's status line (counts, or what a search found) and
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the

@@ -84,7 +84,9 @@ public partial class MemoryWindow
     {
         if (sharing is not { } options || closed || !RequireCurrentEnabledConfiguration(ShareStatus)) return;
         if ((ShareTarget.SelectedItem as ComboBoxItem)?.Tag is not string target) return;
-        var label = (ShareTarget.SelectedItem as ComboBoxItem)?.Content as string ?? "there";
+        // The status line names the kind of place, never a person (MCP reads it).
+        var label = target == MemorySpaceId.Household ? "the household's memories"
+            : target.StartsWith(MemorySpaceId.CharacterPrefix, StringComparison.Ordinal) ? "a shared character's memories" : "another person's memories";
         var chosen = SelectedFacts().Where(f => (SpaceOf(f) ?? activeSpace) != target).ToArray();
         if (chosen.Length == 0) return;
         if (move && !chosen.All(Changeable)) return;
@@ -114,8 +116,7 @@ public partial class MemoryWindow
             : move && moved > 0 ? $"Moved {facts} to {label}."
             : move ? $"Copied {facts} to {label}; the facts here stay, because not all of them were taken."
             : $"Copied {facts} to {label}.";
-        ErrorLog.Info($"Memory: {(move && moved > 0 ? "moved" : "copied")} {shared} of {chosen.Length} fact(s) to another memory space " +
-            $"({(target == MemorySpaceId.Household ? "the household's" : target.StartsWith(MemorySpaceId.CharacterPrefix, StringComparison.Ordinal) ? "a character's" : "another person's")}).");
+        ErrorLog.Info($"Memory: {(move && moved > 0 ? "moved" : "copied")} {shared} of {chosen.Length} fact(s) to {label}.");
         RenderShare();
     }
 
