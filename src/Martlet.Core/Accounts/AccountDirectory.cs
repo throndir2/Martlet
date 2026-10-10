@@ -128,13 +128,10 @@ public sealed record AccountDirectory
         var known = current.Accounts.Select(a => a.Content).ToHashSet(StringComparer.Ordinal);
         var taken = new List<Account>();
         var rejected = 0;
-        // An account merged into another (a removed entry with merged_into), as this copy or the incoming one says.
-        Guid? MergedInto(Guid id) => current.Find(id) is { Removed: true, MergedInto: { } kept } ? kept
-            : incoming.Find(id) is { Removed: true, MergedInto: { } arriving } ? arriving : null;
         foreach (var entry in incoming.Accounts)
         {
             if (known.Contains(entry.Content)) continue;
-            if (Refusal(current.Find(entry.Id), entry, roster, MergedInto) is null) taken.Add(entry);
+            if (Refusal(current.Find(entry.Id), entry, roster, AccountBindingRules.MergedInto(entry.Id, current, incoming)) is null) taken.Add(entry);
             else rejected++;
         }
         return new(taken.Count == 0 ? current : Merge(current, Empty with { Accounts = taken }), rejected);
@@ -148,16 +145,16 @@ public sealed record AccountDirectory
     /// <item><c>account.signer</c>: not signed, with the key the roster lists, by a desktop that is active in it.</item>
     /// <item><c>account.creator</c>: it changes the device that created the account.</item>
     /// <item><c>account.binding</c>: a device binding without proof that the device proved the account
-    /// (<see cref="AccountBindingRules"/>). <paramref name="mergedInto"/> tells which account another one was merged into.</item>
+    /// (<see cref="AccountBindingRules"/>). <paramref name="mergedIntoThis"/>: the removed accounts merged into it.</item>
     /// </list>
     /// </summary>
-    public static string? Refusal(Account? accepted, Account incoming, NetworkRoster? roster, Func<Guid, Guid?>? mergedInto = null)
+    public static string? Refusal(Account? accepted, Account incoming, NetworkRoster? roster, IReadOnlyCollection<Account>? mergedIntoThis = null)
     {
         ArgumentNullException.ThrowIfNull(incoming);
         if (roster is null) return "account.no_network";
         if (!Verify(incoming, roster)) return "account.signer";
         if (accepted is not null && accepted.Id == incoming.Id && accepted.CreatedBy != incoming.CreatedBy) return "account.creator";
-        return AccountBindingRules.Refusal(accepted, incoming, roster, mergedInto);
+        return AccountBindingRules.Refusal(accepted, incoming, roster, mergedIntoThis);
     }
 
     /// <summary>Whether <paramref name="entry"/> carries a valid signature by an active desktop of <paramref name="roster"/>.</summary>

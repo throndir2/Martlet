@@ -58,7 +58,7 @@ public sealed class AccountBindingRulesTests : IDisposable
     private static AccountDevice OnB(string? attestation, DateTimeOffset? at = null) =>
         AccountDevice.For("desktop-b", AccountLoginKey.ForPassword("sam"), at ?? Now.AddMinutes(1), attestation);
 
-    private string? Refusal(Account? accepted, Account incoming, Func<Guid, Guid?>? merged = null) =>
+    private string? Refusal(Account? accepted, Account incoming, IReadOnlyCollection<Account>? merged = null) =>
         AccountDirectory.Refusal(accepted, incoming, roster, merged);
 
     [Fact]
@@ -105,22 +105,35 @@ public sealed class AccountBindingRulesTests : IDisposable
     public void A_merged_accounts_bindings_move_into_the_account_it_was_merged_into()
     {
         var sam = Sam();
-        var old = Guid.NewGuid();
-        var moved = AccountDirectory.Empty.Put(b, sam.WithDevice(OnB(Attest(old, "desktop-b"))), Now.AddMinutes(1)).Accounts[0];
+        var old = Account.Create("Sam (laptop)", AccountRoles.Member) with { CreatedBy = "desktop-b" };
+        var directory = AccountDirectory.Empty.Put(a, sam, Now).Put(b, old, Now);
+        // desktop-a made Sam's account, so it may merge the laptop account in: desktop-b's binding moves with the laptop
+        // account's attestation, and desktop-b is the laptop account's creator.
+        var byA = directory.Remove(a, old.Id, Now.AddMinutes(1), mergedInto: sam.Id);
+        var mergedByA = AccountBindingRules.MergedInto(sam.Id, byA);
+        var moved = byA.Put(a, sam.WithDevice(OnB(Attest(old.Id, "desktop-b"))), Now.AddMinutes(1)).Find(sam.Id)!;
         Assert.Equal(AccountBindingRules.Refused, Refusal(sam, moved));
-        Assert.Null(Refusal(sam, moved, id => id == old ? sam.Id : null));
-        Assert.Equal(AccountBindingRules.Refused, Refusal(sam, moved, id => id == old ? Guid.NewGuid() : null));
+        Assert.Null(Refusal(sam, moved, mergedByA));
+        Assert.Equal("merged", AccountBindingRules.Proof(sam, moved, moved.Device("desktop-b")!, roster, mergedByA));
+        var created = byA.Put(a, sam.WithDevice(OnB(null)), Now.AddMinutes(1)).Find(sam.Id)!;
+        Assert.Null(Refusal(sam, created, mergedByA));
+
+        // desktop-b has no proof for Sam's account: merging its own account into Sam's carries nothing in.
+        var byB = directory.Remove(b, old.Id, Now.AddMinutes(1), mergedInto: sam.Id);
+        var takeover = byB.Put(b, sam.WithDevice(OnB(null)), Now.AddMinutes(1)).Find(sam.Id)!;
+        Assert.Equal(AccountBindingRules.Refused, Refusal(sam, takeover, AccountBindingRules.MergedInto(sam.Id, byB)));
+        var attested = byB.Put(b, sam.WithDevice(OnB(Attest(old.Id, "desktop-b"))), Now.AddMinutes(1)).Find(sam.Id)!;
+        Assert.Equal(AccountBindingRules.Refused, Refusal(sam, attested, AccountBindingRules.MergedInto(sam.Id, byB)));
     }
 
     [Fact]
     public void Accept_finds_the_merge_in_the_same_batch()
     {
-        var directory = AccountDirectory.Empty;
-        var sam = Sam(directory);
+        var sam = Sam();
         var old = Account.Create("Sam (laptop)", AccountRoles.Member) with { CreatedBy = "desktop-b" };
-        directory = directory.Put(a, sam, Now).Put(b, old, Now);
-        var merged = directory.Remove(b, old.Id, Now.AddMinutes(1), mergedInto: sam.Id)
-            .Put(b, sam.WithDevice(OnB(Attest(old.Id, "desktop-b"))), Now.AddMinutes(1));
+        var directory = AccountDirectory.Empty.Put(a, sam, Now).Put(b, old, Now);
+        var merged = directory.Remove(a, old.Id, Now.AddMinutes(1), mergedInto: sam.Id)
+            .Put(a, sam.WithDevice(OnB(Attest(old.Id, "desktop-b"))), Now.AddMinutes(1));
         var result = AccountDirectory.Accept(directory, merged, roster);
         Assert.Equal(0, result.Rejected);
         Assert.NotNull(result.Directory.Find(sam.Id)!.Device("desktop-b"));
