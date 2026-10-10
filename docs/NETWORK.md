@@ -600,8 +600,12 @@ household account ([accounts](ACCOUNTS.md)) instead of as one of the owner's.
   and the household's providers. A provider identity that is a login of an
   account (`account_id` on the host's allow list) signs in as that account.
 - The host pairs the computer as before and answers the account and its
-  attestation. The computer keeps them in `joined-account.json` (no secret) so
-  its account session signs that account in once it has joined.
+  attestation. The computer keeps them in `joined-account.json` (no secret).
+  Once it is a member of the network, it signs that account in with the
+  attestation (`AccountSession.SignIn`), reads the household's account
+  directory and switches to the account between replies (*Hi, Sam*). The
+  attestation lasts ten minutes; when it can no longer be used, the person
+  signs in from the account button instead.
 - The host's network answer to member desktops names the account
   (`sign_in.account_id` with the join request). A member desktop lets the
   computer in by itself, as for any attested sign-in, and says whose it is:

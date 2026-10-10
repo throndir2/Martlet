@@ -19,6 +19,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavConversations", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack",
+        // The account button only opens the account picker (AccountMenu), its Add a person only opens AddPersonDialog and that
+        // dialog's Cancel only closes it. Switching (AccountSwitch-<32 hex>) and AddPersonAdd save accounts\session.json and end
+        // the conversation, so they need --allow-ui-effects.
+        "AccountButton", "AccountAddPerson", "AddPersonCancel",
         // The welcome wizard: Look again only asks the local network which Martlet desktops answer (as Add a computer's Find
         // again does), Enter an address opens Add a computer, Next on the hardware step and the two preference cards only move
         // on and show the suggestion. Choosing a network saves the device role, Join asks the other computer, Use these
@@ -263,6 +267,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // their reasons, local-model warnings, the key-storage note and the chosen engines.
         "StatusLine", "CharacterState", "CompanionStatus", "Refusals", "NotOffered", "ThinkingWarnings", "KeyNote", "ThinkingEngine", "ListeningEngine",
         "SpeakingEngine",
+        // Accounts: the account button ("Account: Sam, Owner, 2 people on this PC"), the account in use (its display name), the
+        // picker's note on why switching waits, Add a person's problem ("Alex already uses this PC. ...") and the account
+        // directory sync line in Settings. Display names, roles, counts and fixed wording; never a SID, e-mail or key.
+        "AccountButton", "AccountCurrent", "AccountMenuNote", "AddPersonProblem", "AccountsSyncStatus",
         // Troubleshooting: the status report (each check's state and remedy) and the last conversation activity. No secrets.
         "SupportReport",
         // Settings › Tools: this PC's processor type and whether Martlet runs under x64 emulation (Windows on Arm), with what
@@ -299,6 +307,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
         "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
         "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        // People's link line: how many voices link to people's accounts and how many are the signed-in person's (counts only).
+        "PeopleLinkStatus",
         // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
         // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
         // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed
@@ -945,6 +955,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
     private static readonly string[] SafeValuePrefixes = [
+        // The account picker: each account signed in on this PC ("AccountSwitch-<32 hex>" reads "Sam (in use)" or "Alex"; whether
+        // it is the one in use is its checked state). Display names only. Clicking one switches, so it needs --allow-ui-effects.
+        "AccountSwitch-",
         // Companion › Pictures, one place's settings (i: its place in the Pictures list): where the Pictures role stands there
         // ("PicturesMemberState-0" reads "Pictures role ready." or "Not set up yet ..."), the Set up button's label, the chosen
         // workflow and checkpoint, what Connect found ("PicturesComfyState-0": version, checkpoints, whether Z-Image Turbo is

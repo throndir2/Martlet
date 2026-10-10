@@ -140,9 +140,9 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeClusterAsync(context).ConfigureAwait(false);
                 return;
             }
-            if (rawTarget == VoicesPath)
+            if (rawTarget == VoicesPath || rawTarget == LinkedVoicesPath)
             {
-                await InvokeVoicesAsync(context).ConfigureAwait(false);
+                await InvokeVoicesAsync(context, linked: rawTarget == LinkedVoicesPath).ConfigureAwait(false);
                 return;
             }
             if (IsSpeakingVoicesTarget(rawTarget!))

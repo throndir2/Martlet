@@ -31,21 +31,22 @@ if (args is ["exposure"])
     Console.WriteLine(JsonSerializer.Serialize(exposureReport));
     return exposureOk ? 0 : 1;
 }
-// With "signin-lab <data directory> [--mode owner|friend|account] [--sign-in-desktop] [--share-with-friend] [--household]" it runs a live
+// With "signin-lab <data directory> [--mode owner|friend|account] [--sign-in-desktop] [--share-with-friend] [--household|--join-desktop]" it runs a live
 // sign-in lab for the desktop on that data directory (SignInLab): the desktop as the host's owner (the default) or as a friend the
 // host is shared with, or (account) household account sign-in and host attestations, headless (with --household: two hosts paired with
-// the desktop and household sign-in providers, SignInAccountLab). For a session without the
+// the desktop and household sign-in providers; with --join-desktop: the desktop joins a household as Sam's computer; SignInAccountLab). For a session without the
 // desktop's window, --sign-in-desktop (friend) has the lab sign the desktop in as the friend, and --share-with-friend (owner)
 // shares the host with the simulated friend from the start.
 if (args is ["signin-lab", var labDirectory])
     return await Martlet.NodeLinkCheck.SignInLab.RunAsync(labDirectory);
 if (args is ["signin-lab", var friendLabDirectory, "--mode", var labMode, .. var labOptions] &&
-    labOptions.All(o => o is "--sign-in-desktop" or "--share-with-friend" or "--household"))
+    labOptions.All(o => o is "--sign-in-desktop" or "--share-with-friend" or "--household" or "--join-desktop"))
     return labMode switch
     {
         "owner" => await Martlet.NodeLinkCheck.SignInLab.RunAsync(friendLabDirectory, labOptions.Contains("--share-with-friend")),
         "friend" => await Martlet.NodeLinkCheck.SignInLab.RunFriendAsync(friendLabDirectory, labOptions.Contains("--sign-in-desktop")),
         "account" when labOptions is ["--household"] => await Martlet.NodeLinkCheck.SignInAccountLab.RunAsync(friendLabDirectory),
+        "account" when labOptions is ["--join-desktop"] => await Martlet.NodeLinkCheck.SignInAccountLab.RunJoinAsync(friendLabDirectory),
         "account" when labOptions.Length == 0 => await Martlet.NodeLinkCheck.SignInLab.RunAccountAsync(friendLabDirectory),
         _ => 2
     };

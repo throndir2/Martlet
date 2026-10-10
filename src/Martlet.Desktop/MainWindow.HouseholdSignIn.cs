@@ -53,9 +53,43 @@ public partial class MainWindow
         finally { householdSignInBusy = false; }
     }
 
+    /// <summary>After this PC joined the network by signing in to a household account through a host (Join with an invite;
+    /// joined-account.json), signs that account in here with the host's attestation, which checks against the roster now that
+    /// this PC has one, and switches to it between replies. A statement that can't be used any more (it lasts ten minutes) is
+    /// forgotten, and the person signs in from the account button instead.</summary>
+    private async Task SignInJoinedAccountAsync()
+    {
+        if (accounts is null || store is null || closing || networkState.Roster is not { } roster) return;
+        if (JoinedAccount.Load(store.DataDirectory) is not { } joined) return;
+        Guid account;
+        try
+        {
+            var attestation = Martlet.Core.Accounts.AccountAttestation.FromText(joined.Attestation);
+            account = attestation.AccountId;
+            if (!accounts.State.SignedIn.Contains(account)) accounts.SignIn(attestation, roster, DateTimeOffset.UtcNow);
+            JoinedAccount.Forget(store.DataDirectory);
+            ErrorLog.Info($"Accounts: this PC joined the network as account {AccountSession.Short(account)}'s computer; signed it in here.");
+        }
+        catch (Exception error) when (error is ArgumentException or FormatException or IOException or UnauthorizedAccessException or
+            Martlet.Core.Contracts.ContractException)
+        {
+            JoinedAccount.Forget(store.DataDirectory);
+            ErrorLog.Warn("Accounts: couldn't sign in the account this PC joined as: " + error.Message);
+            ActionText.Text = "This PC joined your Martlet network, but the sign-in to your account can't be used any more. Sign in to your " +
+                "account from the account button.";
+            return;
+        }
+        RenderAccount();
+        // The household's directory names the account: read it first, so the switch greets the person by name.
+        await SyncAccountsAsync();
+        if (closing) return;
+        if (AccountSwitchBlocked() is { } why) ActionText.Text = $"Your account is signed in on this PC. {why}";
+        else await SwitchAccountAsync(account);
+    }
+
     /// <summary>The name the household's account directory gives <paramref name="account"/> ("Sam"), or "a household account"
     /// while this PC doesn't know it yet.</summary>
-    private static string AccountName(string directory, Guid account)
+    private static string HouseholdAccountName(string directory, Guid account)
     {
         try
         {

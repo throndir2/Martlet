@@ -203,7 +203,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
             var roster = Martlet.Core.Speakers.VoiceRoster.Empty;
             (roster, var sam) = roster.Add(Print(1), 3, "desk", now);
             (roster, var other) = roster.Add(Print(2), 3, "desk", now);
-            roster = roster.SetNames(sam!.Id, "Samantha", [], "desk", now).SetOwner(sam.Id, true, "desk", now);
+            roster = roster.SetNames(sam!.Id, "Samantha", [], "desk", now).SetOwner(sam.Id, true, "desk", now)
+                .SetAccount(sam.Id, Guid.NewGuid(), owner: true, "desk", now);
             var settings = new Martlet.Core.Settings.SettingsStore(directory);
             var initial = Martlet.Core.Settings.SetupSettings.Begin(null);
             var saved = await settings.SaveAsync(initial, null);
@@ -223,7 +224,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
 
             var message = (await SendAsync(Call("memory_status", directory)))[0];
             var raw = message.GetRawText();
-            foreach (var secret in new[] { "canary", "Samantha", sam.Id, other.Id, "0123456789abcdef", Path.GetFileName(directory) })
+            foreach (var secret in new[] { "canary", "Samantha", sam.Id, other.Id, "0123456789abcdef", Path.GetFileName(directory),
+                         roster.Resolve(sam.Id)!.Account!.Value.ToString(), roster.Resolve(sam.Id)!.Account!.Value.ToString("N") })
                 Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
             var result = ToolResult(message);
             Assert.Equal("on", result.GetProperty("memory").GetString());
@@ -238,9 +240,9 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Equal(1, whose.GetProperty("everyone").GetInt32());
             Assert.Equal(1, whose.GetProperty("forgottenVoices").GetInt32());
             Assert.Equal(
-                new[] { (sam.Tag, true, true, 2), (other.Tag, false, false, 1) },
+                new[] { (sam.Tag, true, true, true, 2), (other.Tag, false, false, false, 1) },
                 whose.GetProperty("voices").EnumerateArray().Select(v => (v.GetProperty("voice").GetString()!, v.GetProperty("named").GetBoolean(),
-                    v.GetProperty("owner").GetBoolean(), v.GetProperty("facts").GetInt32())).ToArray());
+                    v.GetProperty("owner").GetBoolean(), v.GetProperty("linked").GetBoolean(), v.GetProperty("facts").GetInt32())).ToArray());
         }
         finally
         {
@@ -466,6 +468,29 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Equal("on", sharing.GetProperty("state").GetString());
             Assert.Equal(1, sharing.GetProperty("hosts").GetInt32());
             Assert.Equal(1, sharing.GetProperty("friendHostsNeverUsed").GetInt32());
+
+            // Voices linked to people's accounts are counted, never named or identified.
+            var random = new Random(7);
+            float[] Print() => Martlet.Core.Speakers.VoicePrints.Normalize(Enumerable.Range(0, Martlet.Core.Speakers.VoicePrints.Dimension)
+                .Select(_ => (float)(random.NextDouble() - 0.5)).ToArray());
+            var account = Guid.NewGuid();
+            var roster = Martlet.Core.Speakers.VoiceRoster.Empty;
+            for (var i = 0; i < 3; i++) roster = roster.Add(Print(), 3, "desk", DateTimeOffset.UtcNow).Roster;
+            roster = roster.SetAccount(roster.Live[0].Id, account, true, "desk", DateTimeOffset.UtcNow)
+                .SetAccount(roster.Live[1].Id, account, true, "desk", DateTimeOffset.UtcNow);
+            File.WriteAllBytes(Path.Combine(directory, "voices.json"), roster.Write());
+            var message = (await SendAsync(DataCall("voices_status", directory)))[0];
+            Assert.DoesNotContain(account.ToString("N"), message.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(account.ToString(), message.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            var counts = ToolResult(message).GetProperty("roster");
+            Assert.Equal(3, counts.GetProperty("voices").GetInt32());
+            Assert.Equal(2, counts.GetProperty("linked").GetInt32());
+            Assert.Equal(1, counts.GetProperty("accounts").GetInt32());
+            Assert.Equal(2, counts.GetProperty("owner").GetInt32());
+            Assert.True(!counts.TryGetProperty("yours", out var before) || before.ValueKind == JsonValueKind.Null);
+            Martlet.Core.Accounts.AccountSessionState.For("S-1-5-21-1000-1000-1000-1001", account).Save(directory);
+            var signedIn = ToolResult((await SendAsync(DataCall("voices_status", directory)))[0]).GetProperty("roster");
+            Assert.Equal(2, signedIn.GetProperty("yours").GetInt32());
         }
         finally
         {

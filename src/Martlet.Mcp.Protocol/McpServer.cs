@@ -484,6 +484,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("accounts_status", "Read who uses Martlet on a desktop's data directory (docs/ACCOUNTS.md): this device's ID; the " +
+            "account session (accounts\\session.json: none, loaded or unreadable; whether its Windows login is the " +
+            "MARTLET_SIMULATE_WINDOWS_LOGIN fixture), the account in use and each account signed in on this device (ID as 32 hex " +
+            "digits, display name, role, whether it still waits to reach the household's directory, whether its folder " +
+            "accounts\\<id> exists), the household's owner account; and this PC's copy of the account directory (accounts.json: " +
+            "how many accounts, removed and owners, its revision, and per account its ID, name, role, login kinds, how many devices " +
+            "it is signed in on, whether this device is one, who created and last changed it, and when). Never a SID, e-mail, " +
+            "signature or attestation. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("outside_reachability_check", "Check how each host in this PC's Martlet network (network.json in a data directory) can " +
             "be reached: its home address and each owner-set outside address (overlay or port forward), each dialed directly, checked " +
             "against the host key pinned in the roster and asked GET /health/live (no credential, nothing else). Returns per host which " +
@@ -527,7 +538,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(lab-host-a and lab-host-b, both routed to the lab issuer) paired with that desktop; the lab's admin desktop set the " +
             "household provider authentik up on lab-host-a only (a public client), so the desktop adds it to lab-host-b by itself " +
             "when it reads its hosts' sign-in settings, and Save provider in Sign-in from outside saves it on both; status says " +
-            "which hosts have it (providerOnHosts) and keep a client secret (clientSecretOnHosts), never the secret. \"stop\": " +
+            "which hosts have it (providerOnHosts) and keep a client secret (clientSecretOnHosts), never the secret. With joinDesktop " +
+            "true (mode \"account\"; the desktop of dataDirectory and -LabCredentials): that desktop is a new computer that joins a " +
+            "household as Sam's: the lab host belongs to a simulated owner who linked the lab provider login to Sam, the lab signs the " +
+            "desktop in as Sam for it (as Join with an invite does, under its device ID: hosts.json and joined-account.json), and once " +
+            "the desktop reads hosts.json the owner's computer lets it in by the host's attestation; status says askedToJoin, " +
+            "joinRequest (with account), desktopMember and joinedAccountWaiting. \"stop\": " +
             "ends it (it also ends with this server).", new
         {
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
@@ -535,6 +551,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             signInDesktop = new { type = "boolean" },
             shareWithFriend = new { type = "boolean" },
             household = new { type = "boolean" },
+            joinDesktop = new { type = "boolean" },
             dataDirectory = new { type = "string" }
         }, ["action"]),
         Tool("role_lab", "A live lab for switching your computers between companion and host PC, for the desktop on a disposable " +
@@ -2305,6 +2322,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
+                "accounts_status" => AccountsStatus.Read(DataDirectory(arguments)),
                 "outside_reachability_check" => await OutsideReachabilityAsync(arguments, cancellation),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
             "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
@@ -2534,6 +2552,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 roster = new
                 {
                     state = "loaded", voices = list.Live.Count, named = list.Live.Count(v => v.Named), owner = list.Live.Count(v => v.Owner),
+                    // Voices linked to a person's account (docs/ACCOUNTS.md, Voices), how many accounts they link to, and how many
+                    // are the account signed in on this PC (accounts\session.json); null before accounts.
+                    linked = list.Live.Count(v => v.Account is not null),
+                    accounts = list.Live.Select(v => v.Account).OfType<Guid>().Distinct().Count(),
+                    yours = SignedInAccount(directory) is { } signedIn ? list.Live.Count(v => v.Account == signedIn) : (int?)null,
                     withLearnedNames = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation)),
                     // Voices that learned one of the companion's own names; Martlet drops it when it next hears them.
                     withCompanionName = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation &&
@@ -2577,6 +2600,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { counts = []; }
             return new { keep = Choice("voice-clips.txt") ?? "on (default)", voices = counts.Length, clips = counts.Sum() };
         }
+    }
+
+    /// <summary>The account signed in on this device (accounts\session.json), or null before accounts or when unreadable.</summary>
+    private static Guid? SignedInAccount(string directory)
+    {
+        try { return Martlet.Core.Accounts.AccountSessionState.Load(directory)?.Current; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { return null; }
     }
 
     /// <summary>voices_status's sharing: the voice list syncs with every paired host of yours (hosts.json entries that aren't
@@ -2979,6 +3009,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     extra.Add(mode == "owner" ? "--share-with-friend" : throw new ArgumentException("shareWithFriend goes with mode owner."));
                 if (OptionalBool(arguments, "household") == true)
                     extra.Add(mode == "account" ? "--household" : throw new ArgumentException("household goes with mode account."));
+                if (OptionalBool(arguments, "joinDesktop") == true)
+                    extra.Add(mode == "account" && !extra.Contains("--household") ? "--join-desktop"
+                        : throw new ArgumentException("joinDesktop goes with mode account, without household."));
                 var (process, ready) = await StartLabAsync("signin-lab", directory, "sign-in lab", cancellation, [.. extra]);
                 signInLab = process;
                 return ready;
@@ -4169,7 +4202,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 everyone = facts.Count(f => f.Voice is null),
                 voices = owned.OfType<Martlet.Core.Speakers.KnownVoice>().GroupBy(v => v.Id, StringComparer.Ordinal)
                     .OrderBy(g => g.First().Number)
-                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, facts = g.Count() }).ToArray(),
+                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, linked = g.First().Account is not null, facts = g.Count() }).ToArray(),
                 forgottenVoices = owned.Count(v => v is null)
             }
         };

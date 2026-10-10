@@ -245,6 +245,144 @@ internal static class SignInAccountLab
         return 0;
     }
 
+    internal const string JoinHost = "lab-home-host";
+
+    /// <summary>
+    /// The desktop on <paramref name="dataDirectory"/> as a new computer that joins a household by signing in to Sam's account
+    /// (signin_lab mode "account" with joinDesktop true; docs/MCP.md). A real gateway on 127.0.0.1 (<see cref="JoinHost"/>, an
+    /// ECDSA key) belongs to a simulated owner (<c>lab-owner</c>), who started the network with it, set up the lab provider with a
+    /// client secret, gave Sam a Martlet password with an authenticator and linked <c>lab-user-42</c> (<c>sam@example.net</c>) to
+    /// Sam. The lab then does what Join with an invite does for the desktop, under the device ID that desktop names itself by
+    /// (device.json): it signs in through the lab provider as Sam, keeps the pairing (hosts.json, the secret in the lab credential
+    /// folder) and the account the host vouched for (joined-account.json). Once the desktop reads hosts.json (RefreshDevices), it
+    /// asks to join; the owner's computer lets it in by the host's attestation (ApproveSignedIn), and the desktop signs Sam in and
+    /// switches to Sam. The status names the account, whether the desktop asked, was let in, and whether joined-account.json is
+    /// still waiting. Never a secret.
+    /// </summary>
+    internal static async Task<int> RunJoinAsync(string dataDirectory)
+    {
+        if (!Path.IsPathFullyQualified(dataDirectory) || !Directory.Exists(dataDirectory))
+            return Fail("The data directory must be an existing absolute folder (a disposable one).");
+        if (LabCredentialNative.FromEnvironment() is null)
+            return Fail($"Set {LabCredentialNative.Variable} to an existing folder (Invoke-MartletMcp.ps1 -LabCredentials); the lab never writes Windows Credential Manager.");
+        if (File.Exists(Path.Combine(dataDirectory, "hosts.json")))
+            return Fail("hosts.json already exists there; use a fresh disposable data directory.");
+
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromMinutes(20));
+        _ = Task.Run(() =>
+        {
+            try { while (Console.In.ReadLine() is not null) { } }
+            catch (IOException) { }
+            lifetime.Cancel();
+        });
+        var token = lifetime.Token;
+        using var issuer = new SignInRehearsal.LabIssuer();
+        await using var host = await SignInRehearsal.LabHost.StartAsync(JoinHost, ecdsa: true);
+        host.Server.UseSignInProviderHandler(issuer);
+
+        using var ownerKey = NetworkKey.Create("lab-owner");
+        var owner = new SignInRehearsal.LabDesktop(ownerKey, "LAB-OWNER");
+        await owner.PairByCodeAsync(host, token);
+        await owner.SyncAsync(token);
+        var samSecret = Totp.NewSecret();
+        await owner.ChangeAsync(JoinHost, new JsonObject
+        {
+            ["action"] = "account", ["account_id"] = SignInLab.SamAccount.ToString(), ["user"] = "Sam", ["password"] = SignInLab.AccountPassword,
+            ["totp_secret"] = samSecret, ["code"] = Totp.Code(samSecret, DateTimeOffset.UtcNow)
+        }, token);
+        await owner.ChangeAsync(JoinHost, new HouseholdProvider(Provider, "oidc", "Authentik (lab)", SignInRehearsal.LabIssuer.Issuer,
+            SignInRehearsal.LabIssuer.ClientId, null, null).Change(SignInRehearsal.LabIssuer.ClientSecret), token);
+        await owner.ChangeAsync(JoinHost, HouseholdSignIn.LinkChange(Provider, "lab-user-42", "sam@example.net", SignInLab.SamAccount), token);
+        // Sam in the household's account directory, with both logins, as the owner's computer writes it.
+        var now = DateTimeOffset.UtcNow;
+        var directory = AccountDirectory.Empty.Put(ownerKey, Account.Create("Sam", AccountRoles.Member, SignInLab.SamAccount)
+            .WithLogin(AccountLogin.For(AccountLoginKey.ForPassword("sam"), "Sam", now))
+            .WithLogin(AccountLogin.For(AccountLoginKey.ForProvider("oidc", Provider, "lab-user-42"), "sam@example.net", now)), now);
+        using (var connection = owner.Connect(JoinHost)) await connection.MergeAccountsAsync(directory, token);
+
+        // Join with an invite, as the window does it, for the desktop of the data directory.
+        var device = DeviceIds.Ensure(dataDirectory).Id;
+        var invite = new NetworkInvite { HostId = JoinHost, SpkiFingerprint = host.Fingerprint, Origin = host.Origin, Label = "Sam's household" };
+        var (origin, choices) = await HostSignInClient.ReadProvidersAsync(invite, token);
+        var (pairing, secret, who) = await HostSignInClient.SignInInBrowserAsync(invite, origin, Provider, device, Environment.MachineName,
+            issuer.Browse, TimeSpan.FromSeconds(30), token);
+        if (who.AccountId != SignInLab.SamAccount || who.Attestation is null) return Fail($"The host answered account {who.AccountId} for Sam's login.");
+        using (var lease = new SecretLease(secret))
+        {
+            var stored = new WindowsCredentialStore().WriteAvatarHostSecret(pairing.HostId, pairing.CredentialId, lease);
+            if (stored != CredentialError.None) return Fail("Couldn't keep the lab pairing secret: " + stored);
+        }
+        // joined-account.json in the form Martlet.Desktop's JoinedAccount writes.
+        await File.WriteAllTextAsync(Path.Combine(dataDirectory, "joined-account.json"), JsonSerializer.Serialize(new
+        {
+            hostId = pairing.HostId, accountId = who.AccountId, login = who.Attestation.Login.ToString(), attestation = who.Attestation.ToText(),
+            at = DateTimeOffset.UtcNow
+        }), token);
+        await File.WriteAllTextAsync(Path.Combine(dataDirectory, "hosts.json"), JsonSerializer.Serialize(new
+        {
+            version = 1,
+            hosts = new[]
+            {
+                new
+                {
+                    pairing = new
+                    {
+                        origin = pairing.Origin, hostId = pairing.HostId, spkiFingerprint = pairing.SpkiFingerprint, deviceId = pairing.DeviceId,
+                        credentialId = pairing.CredentialId
+                    },
+                    method = "Agent"
+                }
+            }
+        }), token);
+        Console.WriteLine(JsonSerializer.Serialize(new { ready = true, mode = "account", joinDesktop = true, hostId = JoinHost, desktop = device,
+            account = who.AccountId, signedInAs = who.ToString(), choices = choices.Select(c => c.Id).ToArray() }));
+
+        var events = new List<string>();
+        var asked = false;
+        object? joinRequest = null;
+        while (!token.IsCancellationRequested && !File.Exists(Path.Combine(dataDirectory, SignInLab.StopFile)))
+        {
+            try
+            {
+                var synced = await owner.SyncAsync(token);
+                if (synced.Joins.FirstOrDefault(j => j.DeviceId == device) is { } join)
+                {
+                    asked = true;
+                    joinRequest = new { provider = join.SignIn?.Provider, label = join.SignIn?.Label, account = join.SignIn?.AccountId };
+                    var approved = owner.ApproveSignedIn(synced.Joins);
+                    if (approved.Count > 0)
+                    {
+                        events.Add("owner: let in " + string.Join(", ", approved.Select(a => $"{a.DisplayName} ({a.SignIn?.Label}, account {a.SignIn?.AccountId})")));
+                        await owner.SyncAsync(token);
+                    }
+                }
+            }
+            catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or HttpRequestException)
+            {
+                events.Add("owner sync failed: " + error.Message);
+            }
+            var status = new
+            {
+                ready = true, mode = "account", joinDesktop = true, hostId = JoinHost, network = host.Server.NetworkState.State,
+                networkId = host.Server.NetworkState.NetworkId, desktop = device, account = who.AccountId, signedInAs = who.ToString(),
+                choices = choices.Select(c => c.Id).ToArray(), askedToJoin = asked, joinRequest,
+                desktopMember = owner.State.Roster?.Desktop(device) is { Removed: false },
+                joinedAccountWaiting = File.Exists(Path.Combine(dataDirectory, "joined-account.json")),
+                events = events.TakeLast(12).ToArray(), at = DateTimeOffset.UtcNow
+            };
+            var path = Path.Combine(dataDirectory, SignInLab.StatusFile);
+            try
+            {
+                await File.WriteAllTextAsync(path + ".tmp", JsonSerializer.Serialize(status), CancellationToken.None);
+                File.Move(path + ".tmp", path, overwrite: true);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            try { await Task.Delay(TimeSpan.FromSeconds(2), token); }
+            catch (OperationCanceledException) { break; }
+        }
+        return 0;
+    }
+
     /// <summary>The roster the desktop on the data directory accepted (its network.json), or null.</summary>
     private static NetworkRoster? Roster(string dataDirectory)
     {

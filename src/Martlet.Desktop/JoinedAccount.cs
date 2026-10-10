@@ -44,4 +44,11 @@ internal static class JoinedAccount
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
+
+    /// <summary>Forgets it once the account is signed in here (or the statement can't be used any more).</summary>
+    internal static void Forget(string directory)
+    {
+        try { File.Delete(Path.Combine(directory, FileName)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
 }

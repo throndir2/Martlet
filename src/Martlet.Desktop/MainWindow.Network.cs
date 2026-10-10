@@ -174,6 +174,8 @@ public partial class MainWindow
             networkCheckedAt = DateTimeOffset.Now;
             foreach (var line in result.Events) ErrorLog.Info("Martlet network: " + line);
             LogNetworkPicture(state);
+            // A PC that joined by signing in to a household account signs that account in here once it is a member.
+            if (state.Roster is not null) SignInJoinedAccountAsync().Forget();
             ObserveHostReleases(result.Views);
             await ReadSecurityAuditsAsync(state.Roster);
             var messages = result.Events.ToList();
@@ -203,7 +205,7 @@ public partial class MainWindow
                     pending = pending.Except(signedIn).ToArray();
                     networkJoins = networkJoins.Where(j => signedIn.All(s => s.DeviceId != j.DeviceId)).ToArray();
                     var who = string.Join(" and ", signedIn.Select(j => $"{j.DisplayName} (signed in as {j.SignIn!.Label ?? j.SignIn.Subject}" +
-                        (j.SignIn.AccountId is { } account ? $", {AccountName(directory, account)}'s computer" : "") + ")"));
+                        (j.SignIn.AccountId is { } account ? $", {HouseholdAccountName(directory, account)}'s computer" : "") + ")"));
                     ChangeNetwork((engine, current) => engine.ApproveSignedIn(current, signedIn).State,
                         $"{who} joined your Martlet network by itself: it signed in to {signedIn[0].HostId} with a sign-in you allowed, so it " +
                         "needs no check number. It pairs with your other hosts automatically.");

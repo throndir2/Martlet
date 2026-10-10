@@ -1089,7 +1089,11 @@ downloaded in speechDirectory*); `displayLanguage` and the `recommended` model f
 `parakeet-tdt-110m-en` for English and `parakeet-tdt-0.6b-v3-int8` otherwise;
 and `models`, each with `id`, `name`, `languages`, `englishOnly`,
 `downloadMb`, `revision`, `downloaded`, `notice` (its NOTICE file is there),
-`recommended` and `inUse`), and counts from `voices.json` (voices, named, owner, with
+`recommended` and `inUse`), and counts from `voices.json` (voices, named, owner
+(the legacy *This is me* flag, kept for older desktops), `linked`: voices linked
+to a person's account, `accounts`: how many accounts they link to, never which,
+`yours`: how many link to the account signed in on this PC (`accounts\session.json`;
+null before accounts), with
 learned names, `withCompanionName`: voices that learned one of the companion's
 own names from the saved personas, which Martlet drops when it next hears them,
 `withPlaceholderName`: voices that learned a placeholder such as "no name
@@ -1331,7 +1335,8 @@ user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
 `loaded` or `unreadable`), `voiceList` (`voices.json`: `none`, `loaded` or
 `unreadable`), `facts`, `typed`, `fromConversation`, `expiring` and `whose`:
 `everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
-by its tag such as `V3`, with `named`, `owner` and `facts`) and
+by its tag such as `V3`, with `named`, `owner`, `linked` (to a person's
+account) and `facts`) and
 `forgottenVoices`. It reads the store's file as JSON without opening or
 locking the store (the desktop can keep running), and never returns a fact's
 text, a name, a voice ID or a path. It contacts nothing.
@@ -1483,6 +1488,38 @@ saved one yet and keeps the ID its pairings use or an older Martlet's
 Windows login the server runs under: `kind` (`microsoft`, `work` or `local`),
 `hasEmailHint` and `hasSid`, never the e-mail, the name or the SID. It never
 returns keys, signatures or host addresses and contacts nothing.
+
+`accounts_status` reads who uses Martlet on a desktop's data directory
+([accounts](ACCOUNTS.md#desktop-account-session); optional absolute
+`dataDirectory`, default the current user's): `device` (this device's ID),
+`session` (`none`, `loaded` or `unreadable`: `accounts\session.json`),
+`windowsLogin` (`windows`, or `fixture` with `MARTLET_SIMULATE_WINDOWS_LOGIN`),
+`current` and each `signedIn` account (`id` as 32 hex digits, `name`, `role`,
+`pending` while the household's directory doesn't have it, `removed`,
+`current`, `folder`: whether `accounts\<id>` exists), how many are `pending`,
+the household's `owner`, and this PC's copy of the account directory:
+`directory` (`none`, `loaded` or `unreadable`: `accounts.json`), how many
+`accounts`, `removed` and `owners`, its `revision` and each of its `entries`
+(`id`, `name`, `role`, `removed`, the `logins` kinds, how many `devices` it is
+signed in on, `thisDevice`, `createdBy`, `updatedBy`, `changedAt`). It never
+returns a SID, e-mail, e-mail hint, signature or attestation and contacts
+nothing. In the desktop, the account button at the bottom of the navigation
+rail is `AccountButton` (a safe click; its value reads *Account: Sam, Owner, 2
+people on this PC*) with `AccountCurrent` (the name in use). It opens the
+`AccountMenu` picker: `AccountSwitch-<32 hex>` for each account signed in on
+this PC (value *Sam (in use)* or *Alex*; clicking one switches, ends the
+conversation and saves `accounts\session.json`, so it needs
+`--allow-ui-effects`), `AccountMenuNote` (why switching waits, such as a reply)
+and `AccountAddPerson` (a safe click that opens `AddPersonDialog`: the
+`AddPersonName` box, `AddPersonAdd`, which makes the account and switches to it
+and needs `--allow-ui-effects`, `AddPersonCancel`, a safe click, and
+`AddPersonProblem`, such as *Sam already uses this PC. Choose another name.*).
+**Devices › Settings for all devices** shows the directory sync as
+`AccountsSyncStatus` (*Accounts: 3 people in your household, the same on 2 of
+2 hosts; checked 2:14 PM.*, or *Accounts: 2 people on this PC. They reach your
+other computers once this PC is in a Martlet network.*). Launch the desktop with
+`MARTLET_SIMULATE_WINDOWS_LOGIN` set to a display name so a disposable data
+directory gets a fixture SID and that name instead of the real Windows login.
 
 `network_selftest` (no arguments) rehearses the network end to end with the
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
@@ -1769,7 +1806,27 @@ open Add a computer › `HostsStepRoles` › `HostSignInSettings`, poll
 `SignInProviderSave`, poll `SignInSettingsStatus` until *Saved Authentik (lab)
 on lab-host-a and lab-host-b.*, `signin_lab status` until
 `"clientSecretOnHosts":["lab-host-a","lab-host-b"]` and `network_status` until
-`"keptHere":true`. It needs
+`"keptHere":true`. With `joinDesktop` `true` (mode `account`, not with
+`household`; `SignInAccountLab.RunJoinAsync`) the desktop of the data
+directory is a new computer that joins a household as Sam's: the gateway
+(`lab-home-host`, ECDSA) belongs to a simulated owner (`lab-owner`) who started
+the network with it, set the lab provider up with its client secret, gave Sam a
+Martlet password with an authenticator, linked `lab-user-42`
+(`sam@example.net`) to Sam and wrote Sam (with both logins) to the account
+directory. The lab does for the desktop what **Join with an invite** does,
+under the device ID that desktop names itself by (`device.json`): it signs in
+through the lab provider as Sam and keeps the pairing (`hosts.json`, the secret
+in the lab credential folder) and the account the host vouched for
+(`joined-account.json`). `status` returns `desktop`, `account`, `signedInAs`,
+`choices` (what the window offers: `martlet` and `authentik`), `askedToJoin`,
+`joinRequest` (the host's `sign_in` with `account`), `desktopMember` and
+`joinedAccountWaiting`. Example (with `-Desktop -LabCredentials
+-AllowUiEffects`): start with `mode` `account` and `joinDesktop` `true`, click
+`TourSkip`, `NavDevices` and `RefreshDevices`, poll `signin_lab status` until
+`"desktopMember":true`, `network_status` until `"state":"member"` and
+`accounts_status` until `current` is Sam (`5a6e…005a`, `"name":"Sam"`); the
+desktop log says *Accounts: this PC joined the network as account 5a6e0000's
+computer; signed it in here* and *Hi, Sam*. It needs
 `Invoke-MartletMcp.ps1 -LabCredentials`, which points `MARTLET_LAB_CREDENTIALS`
 of the desktop and MCP server at a `lab-credentials` folder in the data
 directory, so pairing secrets go there (plaintext, thrown away with the folder)
@@ -6021,8 +6078,9 @@ saves `recommended-setup.json` and asks again, so it needs
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleNow` (its Now line: *Voice recognition on: 3 voices known, 2 with a name.*,
 *Off: Martlet doesn't check who is talking.*) and `PeopleNowProblem` (the
-installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus` and
-`PeopleVoiceCount`, and Listening › This PC shows its speech recognizers as an
+installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus`,
+`PeopleVoiceCount` and `PeopleLinkStatus` (counts only: *1 of 3 voices is linked to people's accounts. Your
+account has 1 voice. ...*, or before this PC knows its account whether a voice is marked as yours), and Listening › This PC shows its speech recognizers as an
 option picker: `Picker-Listening-<model ID>` for each Parakeet model (inside
 Martlet, no Docker), `Picker-Listening-whisper-gpu` and
 `Picker-Listening-whisper-cpu`. Each row's `PickerFacts-Listening-<key>` reads
@@ -6037,7 +6095,10 @@ these status texts, as does the talk window's `LiveStatus` (the line under "Mart
 `PeopleNameShow-3-<i>` (make name *i* the one shown; the first is the one
 shown) and `PeopleNameRemove-3-<i>`, the box `PeopleAddName-3` with
 `PeopleAddNameButton-3` (Add; Enter also adds), `PeopleClip-3-<i>` (plays
-clip *i*, newest first), `PeopleOwner-3` (*This is me*),
+clip *i*, newest first), `PeopleLink-3` (*This voice is <name>*: ticked links
+voice 3 to the signed-in account, unticked unlinks it; moving a voice linked to
+someone else's account asks one confirmation, `ConfirmationYes`; its
+accessible name is *This voice is mine*, never an account name),
 `PeopleMergeTarget-3` with `PeopleMerge-3` (enabled once a voice is chosen)
 and `PeopleForget-3`; names save at once, then sync. `PeopleClips-3` reads
 *Hear them (N):* while voice 3 has clips (a passive value). Like
@@ -8475,7 +8536,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
