@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Cluster;
+using Martlet.Core.Singing;
 
 namespace Martlet.NodeLinkCheck;
 
@@ -19,7 +21,10 @@ internal static class SingingStatus
         if (!Path.IsPathFullyQualified(dataDirectory) || !Directory.Exists(dataDirectory))
             throw new ArgumentException("singing-status needs the absolute path of a Martlet desktop data directory.");
         var hosts = new List<object>();
-        foreach (var host in SingingCheck.PairedHosts(dataDirectory))
+        // What each host's singing service said, for the singing pool (null: it doesn't offer Singing; missing: no answer).
+        var states = new Dictionary<string, SingerState?>(StringComparer.Ordinal);
+        var paired = SingingCheck.PairedHosts(dataDirectory);
+        foreach (var host in paired)
         {
             try
             {
@@ -28,11 +33,9 @@ internal static class SingingStatus
                 timeout.CancelAfter(TimeSpan.FromSeconds(20));
                 var routes = await connection.ReadRoutesAsync(timeout.Token);
                 var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.SongRouteId);
-                hosts.Add(new
-                {
-                    host = host.HostId, reachable = true, offersSinging = route is not null, model = route?.ModelId,
-                    service = route is null ? null : await ServiceAsync(connection, route, timeout.Token)
-                });
+                var (service, state) = route is null ? (null, null) : await ServiceAsync(connection, route, timeout.Token);
+                if (route is null || state is not null) states[host.HostId] = state;
+                hosts.Add(new { host = host.HostId, reachable = true, offersSinging = route is not null, model = route?.ModelId, service });
             }
             catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or
                 InvalidOperationException or OperationCanceledException && !token.IsCancellationRequested)
@@ -40,20 +43,78 @@ internal static class SingingStatus
                 hosts.Add(new { host = host.HostId, reachable = false, problem = error.Message });
             }
         }
-        return new { dataDirectory, hosts, thisPcDocker = await DockerAsync(token) };
+        return new { dataDirectory, hosts, pool = Pool(dataDirectory, [.. paired.Select(h => h.HostId)], states), thisPcDocker = await DockerAsync(token) };
     }
 
-    private static async Task<object> ServiceAsync(Audio2FaceHostConnection connection, HostRoute route, CancellationToken token)
+    /// <summary>The singing pool as the desktop's SongClient uses it (SingingPool.Members): with a pool list (the singing area
+    /// of pools.json) its members that are on and paired here, in the owner's order; without one yet, this PC's own paired
+    /// computers (the computer Martlet sings on, singing.json's host, first; then those the shared plan, cluster.json, says
+    /// run Singing; then the rest). Also what the pool does with each now for the saved voice match, and where the next song
+    /// goes.</summary>
+    private static object Pool(string dataDirectory, IReadOnlyList<string> paired, IReadOnlyDictionary<string, SingerState?> states)
+    {
+        string? saved = null;
+        var match = SongVoiceMatch.SoulX;
+        try
+        {
+            using var choices = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "singing.json")));
+            if (choices.RootElement.TryGetProperty("host", out var host) && host.ValueKind == JsonValueKind.String) saved = host.GetString();
+            if (choices.RootElement.TryGetProperty("voiceMatch", out var voiceMatch) && voiceMatch.ValueKind == JsonValueKind.String &&
+                voiceMatch.GetString() == "vevosing")
+                match = SongVoiceMatch.VevoSing;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
+        ClusterPlan plan;
+        try { plan = ClusterPlan.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "cluster.json"))); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { plan = ClusterPlan.Empty; }
+        var singers = plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == "singing"))
+            .Select(n => new WorkPlace(n.HostId, false, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))
+            .ToArray();
+        var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing);
+        var members = SingingPool.Members(list, Martlet.Diagnostics.LocalLogs.ThisDeviceId(), saved, OwnHost(dataDirectory), paired, singers);
+        var order = members.Select(m => m.HostId).Distinct(StringComparer.Ordinal).ToArray();
+        var next = SingingPool.Pick(order, states, match);
+        return new
+        {
+            configured = list is not null, off = list is not null && members.Count == 0, saved,
+            voiceMatch = match == SongVoiceMatch.VevoSing ? "vevosing" : "soulx", order,
+            members = members.Select((m, index) => new
+            {
+                position = index + 1, key = m.Member.Key, host = m.HostId, plannedSinger = singers.Any(s => s.HostId == m.HostId),
+                settings = m.Member.Settings,
+                verdict = states.TryGetValue(m.HostId, out var state) ? SingingPool.Verdict(m.HostId, state, match) : "passed over: it didn't answer"
+            }),
+            nextSong = next is { } chosen ? new { host = chosen.HostId, ahead = chosen.Ahead, waitsInLine = chosen.Ahead > 0 } : null
+        };
+    }
+
+    // The host saved as this PC's own host service (Docker Desktop here) in hosts.json, for the pool's this-pc member.
+    private static string? OwnHost(string dataDirectory)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "hosts.json")));
+            return document.RootElement.GetProperty("hosts").EnumerateArray()
+                .Where(h => h.TryGetProperty("method", out var method) && method.ValueKind == JsonValueKind.String && method.GetString() == "ThisPcDocker")
+                .Select(h => h.GetProperty("pairing").GetProperty("hostId").GetString()).FirstOrDefault();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<(object View, SingerState? State)> ServiceAsync(Audio2FaceHostConnection connection, HostRoute route, CancellationToken token)
     {
         try
         {
             var answer = await connection.SongOperationAsync(route, new Dictionary<string, object> { ["operation"] = "status" }, token);
-            if (answer.Count != 1) return new { answered = false, problem = "no status" };
+            if (answer.Count != 1) return (new { answered = false, problem = "no status" }, null);
             var status = answer[0];
             JsonElement? Field(string name) => status.TryGetProperty(name, out var value) ? value.Clone() : null;
             var artifacts = status.TryGetProperty("worker", out var worker) && worker.ValueKind == JsonValueKind.Object &&
                 worker.TryGetProperty("artifacts", out var list) && list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().ToArray() : [];
-            return new
+            return (new
             {
                 answered = true, state = Field("state"), ready = Field("ready"), engine = Field("engine"), error = Field("error"),
                 voiceMatches = Field("voice_matches"), qualities = Field("qualities"), queue = Field("queue"), running = Field("running"),
@@ -63,12 +124,12 @@ internal static class SingingStatus
                 models = artifacts.Length,
                 modelBytes = artifacts.Sum(a => a.TryGetProperty("bytes", out var bytes) ? bytes.GetInt64() : 0),
                 licenses = artifacts.Select(a => a.TryGetProperty("license_id", out var license) ? license.GetString() : null).Distinct()
-            };
+            }, SingerState.Parse(status));
         }
         catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or JsonException or
             InvalidOperationException)
         {
-            return new { answered = false, problem = error.Message };
+            return (new { answered = false, problem = error.Message }, null);
         }
     }
 

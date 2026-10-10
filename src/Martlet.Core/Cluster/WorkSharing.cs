@@ -11,12 +11,15 @@ public static class WorkSharingJobs
     public const string Listening = ClusterJobs.Listening;
     public const string Speaking = ClusterJobs.Speaking;
     public const string DeepThinking = "deep-thinking";
+    /// <summary>Reading the text on the screen (Companion › Reading): a pool of the owner's computers that run the Reading role.
+    /// Not in <see cref="All"/>: Companion › Reading keeps its own list, not a Devices › Sharing work card.</summary>
+    public const string Reading = "reading";
     public static readonly IReadOnlyList<string> All = [Speaking, Thinking, Listening, DeepThinking];
 
-    /// <summary>Speaking and Listening are shared unless turned off: each request stands alone. Thinking is shared only when
-    /// chosen: another computer's model starts your conversation without its prompt cache (a slower first word) and pushes that
-    /// computer's own conversation out of its cache. Deep thinking always thinks on the places chosen for it.</summary>
-    public static bool SharedByDefault(string job) => job is Speaking or Listening;
+    /// <summary>Speaking, Listening and Reading are shared unless turned off: each request stands alone. Thinking is shared only
+    /// when chosen: another computer's model starts your conversation without its prompt cache (a slower first word) and pushes
+    /// that computer's own conversation out of its cache. Deep thinking always thinks on the places chosen for it.</summary>
+    public static bool SharedByDefault(string job) => job is Speaking or Listening or Reading;
 
     public static string Title(string job) => job switch
     {
@@ -24,6 +27,7 @@ public static class WorkSharingJobs
         Thinking => "Thinking",
         Listening => "Listening",
         DeepThinking => "Thinking pool",
+        Reading => "Reading",
         _ => job
     };
 }

@@ -18,7 +18,8 @@ public sealed record ReadingSettings
 
     [JsonConverter(typeof(JsonStringEnumConverter<ReadingPlace>))]
     public ReadingPlace Place { get; init; }
-    /// <summary>The paired computer whose Reading role reads (Place Host); null uses the first one that offers it.</summary>
+    /// <summary>The paired computer whose Reading role reads first (Place Host); the owner's other computers that run the role
+    /// read when it is busy. Null: those computers only.</summary>
     public string? HostId { get; init; }
     public DateTimeOffset? ChosenAt { get; init; }
 

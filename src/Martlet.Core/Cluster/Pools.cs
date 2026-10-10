@@ -223,7 +223,7 @@ public static class PoolAreas
     };
     public static readonly PoolArea Singing = new()
     {
-        Id = "singing", Title = "Singing", Page = "Companion › Singing", Kinds = Local
+        Id = "singing", Title = "Singing", Page = "Companion › Singing", HostRole = "singing", Kinds = Local
     };
     /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.
     /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware, as sense-models.json). An empty list

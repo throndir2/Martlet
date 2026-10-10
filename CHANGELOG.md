@@ -11,6 +11,8 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - When your image or audio model is busy, offline or can't fit beside Thinking, Martlet now hands the picture or recording to the next model in your Thinking pool that can see or hear, and waits for the first free one when all are busy. A cloud model gets pictures and recordings only when you allowed it, and the conversation's own Thinking model never does. ([#726](https://github.com/throndir2/Martlet/pull/726))
+- Songs now go to whichever of your computers with Singing is free: when one is busy singing, doesn't answer or lacks the chosen voice match, the next one sings, and when all are busy the song waits on the one with the shortest line. ([#725](https://github.com/throndir2/Martlet/pull/725))
+- Reading the text on your screen now uses every one of your computers that runs the Reading role: when the one you chose is busy or doesn't answer, another one reads instead, so reads keep coming. ([#724](https://github.com/throndir2/Martlet/pull/724))
 - The **Thinking requests** page now shows what each request answered: select a request to see its output beside its details, so you can see what each one adds to the conversation. The output stays on this PC and never goes in logs. ([#717](https://github.com/throndir2/Martlet/pull/717))
 - When you add a new character model, Martlet now measures where its eyes, cheeks and mouth are (once, with a model that can see), so the blush lands on the cheeks instead of over the eyes, and heart eyes, star eyes and other emotes sit on the right spots. Press **Measure the face again** on Companion › Eyes to redo it any time. ([#716](https://github.com/throndir2/Martlet/pull/716))
 
