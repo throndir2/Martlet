@@ -429,8 +429,9 @@ internal sealed class DesktopMemoryService : IDisposable
     /// <param name="person">Maps a voice ID to the voice it stands for now (<see cref="MemoryPeople.Canonical"/>), so merged
     /// voices count as one person; IDs compare as they are without it.</param>
     /// <param name="spaces">Where each shown fact from another space than the active one is (<see cref="DesktopMemoryRecall.Spaces"/>).
-    /// New facts go to the active space; an update or a forget acts in the fact's own space when this device may change it, and
-    /// is skipped when it may not. A near-duplicate of a fact in any space recall reads is not saved again.</param>
+    /// New facts go to the active space, or where <see cref="NewFactSpace"/> sends them; an update or a forget acts in the fact's
+    /// own space when this device may change it, and is skipped when it may not. A near-duplicate of a fact in any space recall
+    /// reads is not saved again.</param>
     internal async Task<IReadOnlyList<MemoryCaptureChange>> RememberAsync(
         Guid expectedConfigurationRevision,
         IReadOnlyList<MemoryFact> shown,
@@ -445,8 +446,10 @@ internal sealed class DesktopMemoryService : IDisposable
         // A fact about no one in particular already covers anyone's same fact, and an unattributed one anyone's.
         bool SamePerson(string? left, string? right) =>
             left is null || right is null || string.Equals(person(left), person(right), StringComparison.Ordinal);
-        string? SpaceOf(MemoryCaptureOperation operation) => operation.Kind != MemoryCaptureKind.Remember &&
-            operation.Index is { } index && index >= 1 && index <= shown.Count ? spaces?.GetValueOrDefault(shown[index - 1].Id) : null;
+        var route = NewFactSpace;
+        string? SpaceOf(MemoryCaptureOperation operation) => operation.Kind == MemoryCaptureKind.Remember
+            ? route?.Invoke(person(operation.VoiceId))
+            : operation.Index is { } index && index >= 1 && index <= shown.Count ? spaces?.GetValueOrDefault(shown[index - 1].Id) : null;
         var changes = new List<MemoryCaptureChange>();
         var here = operations.Where(operation => SpaceOf(operation) is null).ToArray();
         if (here.Length > 0)
@@ -457,8 +460,10 @@ internal sealed class DesktopMemoryService : IDisposable
         {
             try
             {
-                changes.AddRange(await WithSpaceAsync(expectedConfigurationRevision, elsewhere.Key, (_, space, store, operationToken) =>
-                    ApplyCaptureAsync(RequireWritable(space, store), shown, [.. elsewhere], [], SamePerson, operationToken),
+                changes.AddRange(await WithSpaceAsync(expectedConfigurationRevision, elsewhere.Key, (set, space, store, operationToken) =>
+                    ApplyCaptureAsync(RequireWritable(space, store), shown, [.. elsewhere],
+                        // A new fact sent to another space mustn't repeat one of the other spaces recall reads either.
+                        elsewhere.Any(o => o.Kind == MemoryCaptureKind.Remember) ? [.. OtherFacts(set).Select(f => f.Fact)] : [], SamePerson, operationToken),
                     token, changes: true).ConfigureAwait(false));
             }
             // Only those who may change that space change its facts.
@@ -466,6 +471,11 @@ internal sealed class DesktopMemoryService : IDisposable
         }
         return changes;
     }
+
+    /// <summary>Where remembering saves a new fact about the voice given (as it stands now, after merges), when not in the active
+    /// space: the household's for *Share new memories about me* (set by the main window, docs/ACCOUNTS.md "Sharing"); null keeps
+    /// it in the active space. Read once per <see cref="RememberAsync"/>, after a reply, never on its path.</summary>
+    internal Func<string?, string?>? NewFactSpace { get; set; }
 
     /// <summary>Applies <paramref name="operations"/> to one store; <paramref name="elsewhere"/> are facts of other spaces that a
     /// new or updated fact must not repeat.</summary>

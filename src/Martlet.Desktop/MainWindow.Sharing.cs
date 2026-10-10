@@ -27,6 +27,9 @@ public partial class MainWindow
         sharingTimer.Tick += (_, _) => FollowHouseholdSharingAsync().Forget();
         // Another account's characters and sharing: its character in use may remember in a space of its own.
         if (accounts is not null) accounts.AccountChanged += () => Dispatcher.InvokeAsync(FollowCharacterSpace);
+        // Share new memories about me: remembering sends a new fact about you to the household's memories (after a reply).
+        if (memory is not null && accounts is not null)
+            memory.NewFactSpace = voice => SharingAccount is null ? null : MemorySharing.SpaceForNewFact(voice, MyVoices(), ShareNewMemoriesAboutMe);
     }
 
     private void StartHouseholdSharing()
@@ -43,7 +46,8 @@ public partial class MainWindow
 
     /// <summary>Whether this PC's settings files hold the signed-in account's settings now (never in the middle of a switch), so
     /// what it shares is read from its own characters.</summary>
-    private bool SharingFilesReady() => accounts is { Switching: false };
+    private bool SharingFilesReady() => accounts is { Switching: false } && store is not null &&
+        AccountWorkingCopy.Load(store.DataDirectory)?.Account == accounts.AccountId;
 
     /// <summary>A household member's name, for *Shared by*: from the account directory, else an account signed in on this PC.</summary>
     private string HouseholdMemberName(Guid account) =>
@@ -58,13 +62,13 @@ public partial class MainWindow
     private HouseholdSharing? OwnSharing(IReadOnlyDictionary<Guid, HouseholdSharing>? entries = null) =>
         SharingAccount is { } me ? (entries ?? HouseholdEntries()).GetValueOrDefault(me) ?? HouseholdSharing.Empty(me) : null;
 
-    /// <summary>The memory space of the character in use when it is shared together (one of yours, or one you talk to), else
-    /// null: then remembering uses the account's own space.</summary>
+    /// <summary>The memory space of the character in use when it remembers on its own (one of yours shared together now or before,
+    /// or one you talk to together), else null: then remembering uses the account's own space.</summary>
     private string? SharedCharacterSpace()
     {
         if (homeSettings?.Companion is not { ActiveCharacterId: { } id } companion || OwnSharing() is not { } own) return null;
         if (companion.CharacterList.FirstOrDefault(c => c.Id == id) is not { } profile || profile.PersonaId != companion.ActivePersonaId) return null;
-        return own.ModeOf(id) == CharacterShareMode.Together || own.HasJoined(id) ? MemorySpaceId.Character(id) : null;
+        return own.RemembersOnItsOwn(id) || own.HasJoined(id) ? MemorySpaceId.Character(id) : null;
     }
 
     /// <summary>Changes the signed-in account's household entry between settings syncs and gives it to the hosts soon. Throws
@@ -221,7 +225,7 @@ public partial class MainWindow
         var entries = HouseholdEntries();
         if (OwnSharing(entries) is not { } own) return targets;
         var together = own.Characters.Where(c => c.Mode == CharacterShareMode.Together)
-            .Concat(own.Joined.Select(j => entries.GetValueOrDefault(j.AccountId)?.Find(j.CharacterId)).OfType<SharedCharacter>()
+            .Concat(own.Joined.Select(j => entries.GetValueOrDefault(j.AccountId)?.Find(j.CharacterId)).OfType<Martlet.Core.Sharing.SharedCharacter>()
                 .Where(c => c.Mode == CharacterShareMode.Together));
         foreach (var character in together.DistinctBy(c => c.Id))
             targets.Add(new(character.Space, $"{character.Name}'s memories (shared together)"));
@@ -343,7 +347,7 @@ public partial class MainWindow
         {
             CharacterShareMode.Copy => "Shared as a copy: people in your household can use a copy, with its own memories.",
             CharacterShareMode.Together => "Shared together: people in your household talk to this character, and it remembers everyone in its own memories.",
-            _ => "Private: only you see and use it."
+            _ => own.RemembersOnItsOwn(profile.Id) ? "Private: only you see and use it. It keeps the memories it made while shared." : "Private: only you see and use it."
         }));
         return panel;
     }

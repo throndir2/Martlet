@@ -8,12 +8,11 @@ namespace Martlet.Desktop;
 /// hosts' give route.</summary>
 internal static class MemorySharing
 {
-    /// <summary>Where remembering saves a new fact: the household space when *Share new memories about me* is on and the fact is
-    /// about this person (<paramref name="voiceId"/> is one of <paramref name="myVoices"/>, after following merges with
-    /// <paramref name="canonical"/>); else <paramref name="active"/>, the space the character in use remembers in.</summary>
-    internal static string SpaceForNewFact(string? voiceId, IReadOnlySet<string> myVoices, bool shareAboutMe, string active,
-        Func<string?, string?>? canonical = null) =>
-        shareAboutMe && voiceId is not null && myVoices.Contains((canonical ?? (id => id))(voiceId) ?? voiceId) ? MemorySpaceId.Household : active;
+    /// <summary>Where remembering saves a new fact (<see cref="DesktopMemoryService.NewFactSpace"/>): the household space when
+    /// *Share new memories about me* is on and the fact is about this person (<paramref name="voiceId"/>, as it stands after merges,
+    /// is one of <paramref name="myVoices"/>); else null, the space the character in use remembers in.</summary>
+    internal static string? SpaceForNewFact(string? voiceId, IReadOnlySet<string> myVoices, bool shareAboutMe) =>
+        shareAboutMe && voiceId is not null && myVoices.Contains(voiceId) ? MemorySpaceId.Household : null;
 
     /// <summary>Copies of <paramref name="facts"/> to give to another account's space: new IDs, revision 1, the same words, whose
     /// fact it is and how long it is kept, marked as a reviewed import made now by this device. Expired facts are left out. At

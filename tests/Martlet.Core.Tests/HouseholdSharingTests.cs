@@ -109,6 +109,20 @@ public sealed class HouseholdSharingTests
     }
 
     [Fact]
+    public void A_character_shared_together_keeps_its_own_memories_after_it_is_private_again_until_it_is_removed()
+    {
+        var (companion, lorebooks, aria) = SamsCharacters();
+        var together = HouseholdSharing.Empty(Sam).WithMode(aria.Id, CharacterShareMode.Together, companion, lorebooks);
+        Assert.Equal([aria.Id], together.OwnSpaces);
+        var privateAgain = HouseholdSharing.Read(together.WithMode(aria.Id, null, companion, lorebooks).Write())!;
+        Assert.Null(privateAgain.ModeOf(aria.Id));
+        Assert.True(privateAgain.RemembersOnItsOwn(aria.Id));
+        Assert.Equal([aria.Id], privateAgain.WithMode(aria.Id, CharacterShareMode.Together, companion, lorebooks).OwnSpaces);
+        Assert.Empty(privateAgain.Refresh(companion.RemoveCharacter(aria.Id), lorebooks).OwnSpaces);
+        Assert.False(HouseholdSharing.Empty(Sam).WithMode(aria.Id, CharacterShareMode.Copy, companion, lorebooks).RemembersOnItsOwn(aria.Id));
+    }
+
+    [Fact]
     public void Unusable_or_mismatched_entries_are_ignored()
     {
         var (companion, lorebooks, aria) = SamsCharacters();

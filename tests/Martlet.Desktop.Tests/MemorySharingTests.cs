@@ -25,13 +25,56 @@ public sealed class MemorySharingTests
     public void A_new_fact_about_me_goes_to_the_household_only_when_I_share_new_memories_about_me()
     {
         var mine = new HashSet<string>(["v-sam"], StringComparer.Ordinal);
-        var active = MemorySpaceId.Account(Guid.NewGuid());
-        Assert.Equal(MemorySpaceId.Household, MemorySharing.SpaceForNewFact("v-sam", mine, shareAboutMe: true, active));
-        Assert.Equal(active, MemorySharing.SpaceForNewFact("v-sam", mine, shareAboutMe: false, active));
-        Assert.Equal(active, MemorySharing.SpaceForNewFact("v-alex", mine, shareAboutMe: true, active));
-        Assert.Equal(active, MemorySharing.SpaceForNewFact(null, mine, shareAboutMe: true, active));
-        // A merged voice counts as the person it joined.
-        Assert.Equal(MemorySpaceId.Household, MemorySharing.SpaceForNewFact("v-twin", mine, true, active, id => id == "v-twin" ? "v-sam" : id));
+        Assert.Equal(MemorySpaceId.Household, MemorySharing.SpaceForNewFact("v-sam", mine, shareAboutMe: true));
+        Assert.Null(MemorySharing.SpaceForNewFact("v-sam", mine, shareAboutMe: false));
+        Assert.Null(MemorySharing.SpaceForNewFact("v-alex", mine, shareAboutMe: true));
+        Assert.Null(MemorySharing.SpaceForNewFact(null, mine, shareAboutMe: true));
+    }
+
+    /// <summary>With *Share new memories about me* on, remembering saves a new fact about this person in the household's space,
+    /// and the rest where it always goes; a character shared together remembers in its own space.</summary>
+    [Fact]
+    public async Task Remembering_sends_new_facts_about_me_to_the_household_and_a_together_character_uses_its_own_space()
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "memory-sharing", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var data = Path.Combine(root, "data");
+            var store = new Martlet.Core.Settings.SettingsStore(data);
+            var initial = Martlet.Core.Settings.SetupSettings.Begin(null);
+            var saved = await store.SaveAsync(initial, null);
+            using var memory = new DesktopMemoryService(store);
+            var sam = Guid.NewGuid();
+            var account = new MemoryAccount(sam, MemorySpaceFolders.AccountFolder(data, sam), data);
+            memory.UseAccount(account);
+            var revision = (await memory.SaveConfigurationAsync(initial, saved.Revision, enabled: true,
+                policy: Martlet.Core.Settings.MemoryStoragePolicy.AppLocalData, customDirectory: null)).Settings.Memory!.ConfigurationRevision;
+            var mine = new HashSet<string>(["v-sam"], StringComparer.Ordinal);
+            memory.NewFactSpace = voice => MemorySharing.SpaceForNewFact(voice, mine, shareAboutMe: true);
+
+            await memory.RememberAsync(revision, [],
+            [
+                new(MemoryCaptureKind.Remember, Content: "Sam drinks green tea.", VoiceId: "v-twin"),
+                new(MemoryCaptureKind.Remember, Content: "Alex plays the cello.", VoiceId: "v-alex"),
+                new(MemoryCaptureKind.Remember, Content: "The cat is called Miso.")
+            ], person: id => id == "v-twin" ? "v-sam" : id);
+            var spaces = await memory.InspectSpacesAsync(revision);
+            Assert.Equal(["Alex plays the cello.", "The cat is called Miso."], spaces[0].Inspection.Facts.Select(f => f.Content).Order());
+            var household = spaces.Single(s => s.Space.Id == MemorySpaceId.Household).Inspection.Facts;
+            Assert.Equal(("Sam drinks green tea.", "v-twin"), (Assert.Single(household).Content, household[0].VoiceId));
+
+            // A character shared together: its own space is the active one; new facts about others go there.
+            var character = MemorySpaceId.Character(Guid.NewGuid());
+            memory.UseAccount(account with { Character = character });
+            await memory.RememberAsync(revision, [], [new(MemoryCaptureKind.Remember, Content: "Alex likes jazz.", VoiceId: "v-alex")]);
+            var after = await memory.InspectSpacesAsync(revision);
+            Assert.Equal(character, after[0].Space.Id);
+            Assert.Equal("Alex likes jazz.", Assert.Single(after[0].Inspection.Facts).Content);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

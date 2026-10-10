@@ -90,6 +90,10 @@ public sealed record HouseholdSharing
     public bool NewFactsAboutMe { get; init; }
     public IReadOnlyList<SharedCharacter> Characters { get; init; } = [];
     public IReadOnlyList<JoinedCharacter> Joined { get; init; } = [];
+    /// <summary>This account's characters that remember in a memory space of their own (<c>character-&lt;id&gt;</c>): each one shared
+    /// together, and it stays so after sharing stops, so the character keeps what it remembers. Hosts let only this account's
+    /// devices use such a space while it isn't shared together.</summary>
+    public IReadOnlyList<Guid> OwnSpaces { get; init; } = [];
 
     /// <summary>Nothing shared yet.</summary>
     public static HouseholdSharing Empty(Guid account) => new() { AccountId = account };
@@ -110,6 +114,10 @@ public sealed record HouseholdSharing
     /// <summary>How this account shares <paramref name="character"/>, or null when it is private.</summary>
     public CharacterShareMode? ModeOf(Guid character) => Find(character)?.Mode;
 
+    /// <summary>Whether this account's <paramref name="character"/> remembers in a memory space of its own: shared together now, or
+    /// before.</summary>
+    public bool RemembersOnItsOwn(Guid character) => ModeOf(character) == CharacterShareMode.Together || OwnSpaces.Contains(character);
+
     /// <summary>Whether this account talks to <paramref name="character"/> of another account together.</summary>
     public bool HasJoined(Guid character) => Joined.Any(j => j.CharacterId == character);
 
@@ -125,7 +133,11 @@ public sealed record HouseholdSharing
         var profile = companion.CharacterList.FirstOrDefault(c => c.Id == character);
         ContractRules.Require(profile is not null, "Select one of your character profiles.");
         ContractRules.Require(!HasJoined(character), "Only the owner of a character shared together can share it.");
-        var next = this with { Characters = [.. others, Snapshot(profile!, chosen, companion, lorebooks)] };
+        var next = this with
+        {
+            Characters = [.. others, Snapshot(profile!, chosen, companion, lorebooks)],
+            OwnSpaces = chosen == CharacterShareMode.Together && !OwnSpaces.Contains(character) ? [.. OwnSpaces, character] : OwnSpaces
+        };
         try { return Checked(next); }
         catch (ContractException error) when (error.Code == ErrorCode.PayloadTooLarge)
         {
@@ -148,7 +160,9 @@ public sealed record HouseholdSharing
             Characters = [.. Characters.Select(shared => Present(shared.Id) is { } profile ? Snapshot(profile, shared.Mode, companion, lorebooks) : null)
                 .OfType<SharedCharacter>()]
         };
-        return Fits(next) ? next : this with { Characters = [.. Characters.Where(c => Present(c.Id) is not null)] };
+        var spaces = OwnSpaces.Where(id => companion.CharacterList.Any(c => c.Id == id)).ToArray();
+        return Fits(next with { OwnSpaces = spaces }) ? next with { OwnSpaces = spaces }
+            : this with { Characters = [.. Characters.Where(c => Present(c.Id) is not null)], OwnSpaces = spaces };
     }
 
     public HouseholdSharing WithNewFactsAboutMe(bool on) => this with { NewFactsAboutMe = on };
@@ -224,6 +238,8 @@ public sealed record HouseholdSharing
         ContractRules.Require(Characters.Select(c => c.Id).Distinct().Count() == Characters.Count, "A shared character is listed twice.");
         ContractRules.Require(Joined!.All(j => j is not null && j.AccountId != Guid.Empty && j.CharacterId != Guid.Empty) &&
             Joined.Select(j => j.CharacterId).Distinct().Count() == Joined.Count, "A joined character is invalid or listed twice.");
+        ContractRules.Require(OwnSpaces is { Count: <= MaximumCharacters } && OwnSpaces.All(id => id != Guid.Empty) &&
+            OwnSpaces.Distinct().Count() == OwnSpaces.Count, "A character with memories of its own is invalid or listed twice.");
     }
 
     /// <summary>The entry's value: snake-case JSON within <see cref="MaximumBytes"/>.</summary>
