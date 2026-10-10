@@ -19,7 +19,7 @@ internal static class ReadingPoolCheck
     /// work-sharing.json, as the desktop makes the list once) and hosts.json.</summary>
     internal static object Status(string dataDirectory, string? device = null)
     {
-        device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+        device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory);
         var (own, friends, ownHost) = Paired(dataDirectory);
         var saved = PoolSettings.LoadFor(dataDirectory, PoolAreas.Reading);
         var list = saved ?? ReadingPool.FromChoice(ReadingSettings.Load(dataDirectory), ownHost, Others(dataDirectory, device, own, friends, ownHost));

@@ -1,7 +1,7 @@
 # Accounts and households
 
-Status: **design and work plan**. Nothing in this page is built yet. Each
-workstream below updates this page and the user guides when it ships. This
+Status: **design and work plan**. The work plan below marks the workstreams
+that are built. Each workstream updates this page and the user guides when it ships. This
 page is the contract that the parallel workstreams share: change a contract
 here (in the same PR) before code depends on a different one.
 
@@ -177,7 +177,8 @@ All workstreams use these forms. Change them here first.
 | --- | --- |
 | Account ID | `Guid`. In JSON as a normal `Guid`; in paths and space IDs as 32 lowercase hex digits (`"N"`) |
 | Space ID | `household`, `account-<32 hex>` or `character-<32 hex>`; regex `^(household\|account-[0-9a-f]{32}\|character-[0-9a-f]{32})$` |
-| Device ID | Existing devices keep theirs. New ones: `desktop-<pc name>-<6 of [a-z0-9]>`, at most 64 characters |
+| Device ID | Existing devices keep theirs. New ones: `desktop-<pc name>-<6 of [a-z0-9]>`, at most 64 characters. Kept in `device.json` (`{"version":1,"deviceId":"..."}`) in the data folder, one per Windows user; `DeviceIds` in `Martlet.Core.Network`, `NetworkIdentity.ThisDevice` in the desktop |
+| Windows login | `WindowsLogin.Current` in Martlet.Desktop: `Sid`, `Kind` (`microsoft`, `work` or `local`), `UserName`, `DisplayName` and `EmailHint`. The e-mail is a hint and personal data: never logged and never in MCP output |
 | Login | `kind` (`windows`, `martlet`, `oidc`, `discord`, `steam`), `provider` (`windows`: the device ID; `martlet`: `martlet`; others: the household provider ID), `subject` (`windows`: the SID; `martlet`: the lowercase user name; others: the provider's subject) |
 | Role | `owner`, `admin`, `member` |
 | Account directory | `accounts.json` beside `network.json` on desktops and beside `host.json` on hosts. One last-writer-wins entry per account with the hybrid revision of [shared settings](CLUSTER.md#conflicts-and-offline-changes), signed by the writing member desktop's network key. Public facts only, never secrets |
@@ -196,7 +197,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 
 | ID | Workstream | Owns | Needs |
 | --- | --- | --- | --- |
-| W1 | Device ID per Windows user; Windows login detection (SID, Microsoft, work or local, e-mail hint, display name) | `LocalLogs.ThisDeviceId`, `HostSetup.SuggestedDeviceId`, `NetworkIdentity`, new `WindowsLogin.cs` | - |
+| W1 | Device ID per Windows user; Windows login detection (SID, Microsoft, work or local, e-mail hint, display name). **Built** | `LocalLogs.ThisDeviceId`, `HostSetup.SuggestedDeviceId`, `NetworkIdentity`, new `WindowsLogin.cs` | - |
 | W2 | Account directory: contracts, merge, signatures, host storage and routes, client | new `src/Martlet.Core/Accounts/`, new `GatewayAccountDirectory.cs`, new `HostAccounts.cs` client | - |
 | W3 | Host memory spaces: storage, routes, access hook, client | `GatewayMemories.cs` and new space files, `HostMemories.cs` | - |
 | W4 | Host sign-in for accounts: several account logins in `signin.json`, identities linked to account IDs, account attestations | `GatewaySignIn*.cs`, `GatewayAccounts.cs`, `GatewaySignInHttp.cs` | - |

@@ -390,5 +390,6 @@ internal static partial class HostSetupCommands
         return (clean.Length == 0 ? "martlet" : clean.Length > 58 ? clean[..58] : clean) + "-host";
     }
 
-    internal static string SuggestedDeviceId() => Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+    /// <summary>This Windows user's device ID (<see cref="NetworkIdentity.ThisDevice"/>), which a new pairing uses.</summary>
+    internal static string SuggestedDeviceId() => NetworkIdentity.ThisDevice;
 }

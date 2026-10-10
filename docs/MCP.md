@@ -1439,8 +1439,15 @@ a friend shares with this PC: its engines only, never in this PC's network);
 and `friends`, what **Devices › Friends** last read from each of your hosts
 (`friends.json`: `checkedAt`, and per host `hostId`, `read`, `problem`, each
 friend's `label`, `provider` and `computers`, and how many are `asking`), or
-null before it read anything. It never returns keys, signatures or host
-addresses and contacts nothing.
+null before it read anything. `device` is this data folder's device ID (`id`
+and `source`): `saved` in `device.json` (one per Windows user, so two Windows
+users on one PC never share one); `pairings` or `legacy` when the desktop hasn't
+saved one yet and keeps the ID its pairings use or an older Martlet's
+`desktop-<pc name>`; or `id` null with `new` when it picks a new
+`desktop-<pc name>-<6 of [a-z0-9]>` on its next start. `windowsLogin` is the
+Windows login the server runs under: `kind` (`microsoft`, `work` or `local`),
+`hasEmailHint` and `hasSid`, never the e-mail, the name or the SID. It never
+returns keys, signatures or host addresses and contacts nothing.
 
 `network_selftest` (no arguments) rehearses the network end to end with the
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
@@ -1695,7 +1702,7 @@ from both sides, for the desktop on a disposable data directory:
 `src\Martlet.NodeLinkCheck` mode `role-lab` (`RoleLab.cs`) starts a gateway on
 127.0.0.1 that keeps the network and the shared settings in memory, pairs the
 desktop of the data directory under the device ID that desktop names itself by
-(`desktop-<computer>`; `hosts.json` there, the secret in the lab credential
+(chosen by the lab and saved in that folder's `device.json`; `hosts.json` there, the secret in the lab credential
 folder, so it also needs `Invoke-MartletMcp.ps1 -LabCredentials`), and runs a
 simulated companion PC, `lab-companion` (*LAB-COMPANION*). Once the desktop has
 bound the host to its network, the simulated PC asks to join it. Every
