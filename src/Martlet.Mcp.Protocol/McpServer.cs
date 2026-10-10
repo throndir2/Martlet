@@ -1944,7 +1944,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("live_floor_check", "Rehearse the live floor with the production LiveFloor, LiveFloorRules, ThinkingJobBoard, BackgroundJobs " +
             "and WorkQueue on fixture inputs and simulated members, NOT models: which things said are real words (said: your own " +
             "lines, else fixtures such as \"Mmm.\", \"Yeah, right.\" and \"What time is it in Tokyo?\"), the levels on a clock of their " +
-            "own (voice, quiet, a sound, words, a reply and its grace), the board at Listening (new work waits, running work and " +
+            "own (voice, quiet, a sound, words, a reply and its grace), the microphone on the production detector (a click, typing " +
+            "and Martlet's own voice stay Idle; 300 ms of voice is Listening), the board at Listening (new work waits, running work and " +
             "judges go on) and at Live (a summary dropped, remembering and naming stopped and queued again, touch zones going on, " +
             "judges running), a member on another computer never held, a think stopped and going on from what it wrote (in place, " +
             "or again with it as context), research waiting for the conversation instead of being refused, the conversation " +
