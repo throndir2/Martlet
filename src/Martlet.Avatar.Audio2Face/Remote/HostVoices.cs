@@ -9,23 +9,26 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 public sealed partial class Audio2FaceHostConnection
 {
     private const string VoicesPath = "/martlet/v1/voices";
+    private const string LinkedVoicesPath = VoicesPath + "/linked";
 
-    /// <summary>Reads the host's copy of the voice list. Hosts older than voice sharing refuse with code
+    /// <summary>Reads the host's copy of the voice list; <paramref name="linked"/> asks for each voice's account link too.
+    /// Hosts older than voice sharing (or, for <paramref name="linked"/>, older than account links) refuse with code
     /// <c>request.invalid</c> (or answer not found).</summary>
-    public async Task<VoiceRoster> ReadVoicesAsync(CancellationToken cancellationToken = default)
+    public async Task<VoiceRoster> ReadVoicesAsync(CancellationToken cancellationToken = default, bool linked = false)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + VoicesPath);
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + (linked ? LinkedVoicesPath : VoicesPath));
         Sign(request, []);
         return await VoicesAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Merges <paramref name="roster"/> into the host's copy and returns the merged list, which may include changes
-    /// another computer made.</summary>
-    public async Task<VoiceRoster> MergeVoicesAsync(VoiceRoster roster, CancellationToken cancellationToken = default)
+    /// another computer made. Without <paramref name="linked"/> the list goes and comes back without account links, as a host
+    /// older than account links reads it.</summary>
+    public async Task<VoiceRoster> MergeVoicesAsync(VoiceRoster roster, CancellationToken cancellationToken = default, bool linked = false)
     {
         ArgumentNullException.ThrowIfNull(roster);
-        var body = roster.Write();
-        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + VoicesPath)
+        var body = (linked ? roster : roster.WithoutLinks()).Write();
+        using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + (linked ? LinkedVoicesPath : VoicesPath))
         {
             Content = Audio2FaceHostClient.JsonContent(body)
         };

@@ -18,6 +18,17 @@ public sealed record VoiceName
     public required DateTimeOffset LastUsedAt { get; init; }
 }
 
+/// <summary>Which person's Martlet account a voice belongs to (docs/ACCOUNTS.md, Voices). It is a last-writer-wins register
+/// of its own, apart from the rest of the voice, so a copy without links (from an older Martlet) never removes one.
+/// <see cref="Account"/> null with a revision is an unlink. A link only tells whose voice it is: it never signs an account in,
+/// unlocks settings or spends money.</summary>
+public sealed record VoiceLink
+{
+    public Guid? Account { get; init; }
+    public required long Revision { get; init; }
+    public required string UpdatedBy { get; init; }
+}
+
 /// <summary>One voice Martlet has heard: its voiceprint (a normalized speaker embedding centroid plus a few diverse samples,
 /// never audio), the names it goes by and how often it was heard. <see cref="Removed"/> is a tombstone (forgotten, or merged
 /// into <see cref="MergedInto"/>), so the entry does not return from an older copy.</summary>
@@ -28,8 +39,11 @@ public sealed record KnownVoice
     /// <summary>The name the owner chose; it always wins over names picked up in conversation.</summary>
     public string? Name { get; init; }
     public IReadOnlyList<VoiceName> Names { get; init; } = [];
-    /// <summary>The owner marked this voice as their own.</summary>
+    /// <summary>The voice is the household owner's: an older Martlet's "This is me". Kept true while the voice links to the
+    /// owner account, so desktops older than account links still know the owner's voice; never read for behavior.</summary>
     public bool Owner { get; init; }
+    /// <summary>The account this voice belongs to (null: never linked).</summary>
+    public VoiceLink? Link { get; init; }
     public string? Centroid { get; init; }
     public IReadOnlyList<string> Samples { get; init; } = [];
     /// <summary>How many other voices were merged into this one; such voices are matched by their closest sample.</summary>
@@ -55,6 +69,10 @@ public sealed record KnownVoice
     [JsonIgnore]
     public bool Named => Name is not null || Names.Count > 0;
 
+    /// <summary>The account the voice links to, if any.</summary>
+    [JsonIgnore]
+    public Guid? Account => Link?.Account;
+
     /// <summary>A short tag the Thinking model uses to refer to this voice (V3).</summary>
     [JsonIgnore]
     public string Tag => "V" + Number;
@@ -70,7 +88,8 @@ public sealed record KnownVoice
     [JsonIgnore]
     internal IReadOnlyList<float[]> SampleVectors => Samples.Select(VoicePrints.Decode).ToArray();
 
-    internal string Content => JsonSerializer.Serialize(this with { Revision = 0, UpdatedAt = default, UpdatedBy = "" }, VoiceRoster.Json);
+    // The link is its own register, so it is left out of the entry's content.
+    internal string Content => JsonSerializer.Serialize(this with { Revision = 0, UpdatedAt = default, UpdatedBy = "", Link = null }, VoiceRoster.Json);
 }
 
 /// <summary>How a heard voiceprint compares with the voices Martlet knows.</summary>
@@ -119,7 +138,7 @@ public sealed record VoiceRoster
     public IReadOnlyList<KnownVoice> Live => Voices.Where(v => !v.Removed).OrderByDescending(v => v.LastHeardAt).ThenBy(v => v.Number).ToArray();
 
     [JsonIgnore]
-    public long Revision => Voices.Select(v => v.Revision).DefaultIfEmpty(0).Max();
+    public long Revision => Voices.Select(v => Math.Max(v.Revision, v.Link?.Revision ?? 0)).DefaultIfEmpty(0).Max();
 
     public long NextRevision(DateTimeOffset now) => Math.Max(Revision + 1, now.ToUnixTimeMilliseconds());
 
@@ -159,13 +178,13 @@ public sealed record VoiceRoster
     }
 
     /// <summary>Adds a newly heard voice ("Voice N"). When the list is full, the longest-unheard voice that has no name and is
-    /// not the owner's is forgotten to make room; the voice is null when none can be.</summary>
+    /// not linked to anyone is forgotten to make room; the voice is null when none can be.</summary>
     public (VoiceRoster Roster, KnownVoice? Voice) Add(float[] probe, double seconds, string by, DateTimeOffset now)
     {
         var roster = this;
         if (Live.Count >= MaximumVoices)
         {
-            var stale = Live.Where(v => !v.Named && !v.Owner).OrderBy(v => v.LastHeardAt).FirstOrDefault();
+            var stale = Live.Where(v => !v.Named && !v.Owner && v.Account is null).OrderBy(v => v.LastHeardAt).FirstOrDefault();
             if (stale is null) return (this, null);
             roster = roster.Forget(stale.Id, by, now);
         }
@@ -247,6 +266,31 @@ public sealed record VoiceRoster
     public VoiceRoster SetOwner(string id, bool owner, string by, DateTimeOffset now) =>
         Resolve(id) is { } voice && voice.Owner != owner ? Update(voice with { Owner = owner }, by, now) : this;
 
+    /// <summary>Links a voice to <paramref name="account"/> (null unlinks it). <paramref name="owner"/> says whether that account
+    /// is the household owner's, which keeps <see cref="KnownVoice.Owner"/> right for older desktops.</summary>
+    public VoiceRoster SetAccount(string id, Guid? account, bool owner, string by, DateTimeOffset now)
+    {
+        if (Resolve(id) is not { } voice) return this;
+        if (account == Guid.Empty) throw new ArgumentException("An account ID is required.", nameof(account));
+        owner &= account is not null;
+        if (voice.Account == account && voice.Owner == owner) return this;
+        var linked = voice.Account == account ? voice
+            : voice with { Link = new VoiceLink { Account = account, Revision = NextRevision(now), UpdatedBy = by } };
+        return voice.Owner != owner ? Update(linked with { Owner = owner }, by, now) : Put(linked);
+    }
+
+    /// <summary>The live voices linked to <paramref name="account"/>, most recently heard first.</summary>
+    public IReadOnlyList<KnownVoice> LinkedTo(Guid account) => Live.Where(v => v.Account == account).ToArray();
+
+    /// <summary>Links each voice an older Martlet marked as the owner's ("This is me") and that links to no account yet to
+    /// <paramref name="ownerAccount"/> (docs/ACCOUNTS.md, Migration). Every desktop makes the same change.</summary>
+    public VoiceRoster LinkOwnerVoices(Guid ownerAccount, string by, DateTimeOffset now) =>
+        Live.Where(v => v.Owner && v.Account is null).Aggregate(this, (roster, voice) => roster.SetAccount(voice.Id, ownerAccount, true, by, now));
+
+    /// <summary>The list as Martlet before account links reads it: the same voices without <see cref="KnownVoice.Link"/>.</summary>
+    public VoiceRoster WithoutLinks() =>
+        Voices.Any(v => v.Link is not null) ? this with { Voices = Voices.Select(v => v.Link is null ? v : v with { Link = null }).ToArray() } : this;
+
     /// <summary>Joins <paramref name="fromId"/> into <paramref name="intoId"/> (the owner says they are the same person): the
     /// names, samples and counts combine and the merged voice leaves a tombstone pointing at the kept one.</summary>
     public VoiceRoster Join(string fromId, string intoId, string by, DateTimeOffset now)
@@ -276,6 +320,9 @@ public sealed record VoiceRoster
         {
             // The kept voice keeps its own name (typed or learned); the merged voice's typed name becomes another name.
             Name = into.Name ?? (into.Named ? null : from.Name), Names = TrimNames(names), Owner = into.Owner || from.Owner, Centroid = centroid,
+            // The kept voice keeps its own account link, else takes the merged voice's.
+            Link = into.Account is null && from.Account is { } account
+                ? new VoiceLink { Account = account, Revision = NextRevision(now), UpdatedBy = by } : into.Link,
             Samples = VoicePrints.SelectRepresentatives(into.SampleVectors.Concat(from.SampleVectors), MaximumSamples).Select(VoicePrints.Encode).ToArray(),
             MergedVoices = Math.Min(into.MergedVoices + from.MergedVoices + 1, 1000),
             Heard = Math.Min(into.Heard + from.Heard, 1_000_000), SpeechSeconds = Math.Min(into.SpeechSeconds + from.SpeechSeconds, 1e7),
@@ -290,9 +337,11 @@ public sealed record VoiceRoster
     public VoiceRoster Forget(string id, string by, DateTimeOffset now) =>
         Resolve(id) is { } voice ? Put(Tombstone(voice, null, NextRevision(now), by, now)) : this;
 
+    // A tombstone unlinks a voice that was linked, so the link does not come back from an older copy either.
     private static KnownVoice Tombstone(KnownVoice voice, string? into, long revision, string by, DateTimeOffset now) => new()
     {
         Id = voice.Id, Number = voice.Number, Removed = true, MergedInto = into,
+        Link = voice.Link is null ? null : new VoiceLink { Revision = revision, UpdatedBy = by },
         Revision = revision, UpdatedAt = now.ToUniversalTime(), UpdatedBy = by
     };
 
@@ -317,13 +366,14 @@ public sealed record VoiceRoster
             ? text : null;
     }
 
-    /// <summary>Joins two copies: per voice the entry with the newest (revision, writer, content) wins.</summary>
+    /// <summary>Joins two copies: per voice the entry with the newest (revision, writer, content) wins, and so, apart from it,
+    /// does the newest account link.</summary>
     public static VoiceRoster Merge(VoiceRoster left, VoiceRoster right)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
         var voices = left.Voices.Concat(right.Voices).GroupBy(v => v.Id, StringComparer.Ordinal)
-            .Select(group => group.Aggregate((a, b) => Newer(a, b) ? a : b));
+            .Select(group => group.Aggregate((a, b) => Newer(a, b) ? a : b) with { Link = group.Select(v => v.Link).Aggregate(NewerLink) });
         return new() { SchemaVersion = SchemaVersion1, Model = EmbeddingModel, Voices = Bounded(voices) };
     }
 
@@ -331,6 +381,12 @@ public sealed record VoiceRoster
         a.Revision != b.Revision ? a.Revision > b.Revision
         : a.UpdatedBy != b.UpdatedBy ? string.CompareOrdinal(a.UpdatedBy, b.UpdatedBy) > 0
         : string.CompareOrdinal(a.Content, b.Content) >= 0;
+
+    private static VoiceLink? NewerLink(VoiceLink? a, VoiceLink? b) =>
+        a is null ? b : b is null ? a
+        : a.Revision != b.Revision ? a.Revision > b.Revision ? a : b
+        : a.UpdatedBy != b.UpdatedBy ? string.CompareOrdinal(a.UpdatedBy, b.UpdatedBy) > 0 ? a : b
+        : string.CompareOrdinal(a.Account?.ToString("N") ?? "", b.Account?.ToString("N") ?? "") >= 0 ? a : b;
 
     // Live voices first (most recently heard), then the newest tombstones; sorted by ID so equal content writes equal bytes.
     private static KnownVoice[] Bounded(IEnumerable<KnownVoice> voices)
@@ -358,6 +414,11 @@ public sealed record VoiceRoster
             ContractRules.Identifier(voice.UpdatedBy);
             ContractRules.Require(voice.MergedInto is null || voice.Removed && voice.MergedInto != voice.Id && IsId(voice.MergedInto),
                 "A merged voice must point at another voice.");
+            if (voice.Link is { } link)
+            {
+                ContractRules.Require(link.Revision is > 0 and <= MaximumRevision && link.Account != Guid.Empty, "A voice's account link is invalid.");
+                ContractRules.Identifier(link.UpdatedBy);
+            }
             if (voice.Removed)
             {
                 ContractRules.Require(voice.Name is null && voice.Names.Count == 0 && voice.Centroid is null && voice.Samples.Count == 0,

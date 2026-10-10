@@ -69,7 +69,7 @@ public partial class MainWindow
     /// <summary>Reads every paired host's copy of the voice list, merges it here and gives each host whose copy differs the
     /// merged list. It runs whatever "Keep Martlet the same on all my computers" says, so Martlet learns everyone's voice on
     /// every computer. Only your own hosts take part (<see cref="NetworkMap.Hosts"/> leaves out hosts a friend shares). Hosts
-    /// older than voice sharing are skipped.</summary>
+    /// older than voice sharing are skipped; a host older than account links gets the list without them (docs/ACCOUNTS.md).</summary>
     private async Task SyncVoicesAsync()
     {
         if (voiceSyncBusy || closing || store is null) return;
@@ -86,27 +86,37 @@ public partial class MainWindow
             {
                 try
                 {
-                    var copy = await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.ReadVoicesAsync(lifetime.Token));
+                    var linked = true;
+                    VoiceRoster copy;
+                    try { copy = await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.ReadVoicesAsync(lifetime.Token, linked: true)); }
+                    catch (Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+                    {
+                        linked = false;
+                        copy = await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.ReadVoicesAsync(lifetime.Token));
+                    }
                     localVoices.Merge(copy);
                     var mine = localVoices.Roster;
-                    if (copy.Digest() != mine.Digest())
-                        localVoices.Merge(await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.MergeVoicesAsync(mine, lifetime.Token)));
-                    return (host.HostId, Ok: true, Old: false);
+                    if (copy.Digest() != (linked ? mine : mine.WithoutLinks()).Digest())
+                        localVoices.Merge(await ClusterSync.WithConnectionAsync(host.Pairing,
+                            connection => connection.MergeVoicesAsync(mine, lifetime.Token, linked)));
+                    return (host.HostId, Ok: true, Old: false, Linked: linked);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
                 catch (Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
                 {
-                    return (host.HostId, Ok: false, Old: true);
+                    return (host.HostId, Ok: false, Old: true, Linked: false);
                 }
                 catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
                 {
-                    return (host.HostId, Ok: false, Old: false);
+                    return (host.HostId, Ok: false, Old: false, Linked: false);
                 }
             }));
             var ok = results.Count(r => r.Ok);
             var old = results.Where(r => r.Old).Select(r => r.HostId).ToArray();
+            var unlinked = results.Where(r => r.Ok && !r.Linked).Select(r => r.HostId).ToArray();
             voiceSyncStatus = $"Synced with {ok} of {results.Length} computer{(results.Length == 1 ? "" : "s")} at {DateTime.Now:t}." +
-                (old.Length > 0 ? $" Update {string.Join(", ", old)} to sync voices there." : "");
+                (old.Length > 0 ? $" Update {string.Join(", ", old)} to sync voices there." : "") +
+                (unlinked.Length > 0 ? $" Update {string.Join(", ", unlinked)} to share whose voice is whose there." : "");
         }
         catch (OperationCanceledException) { }
         finally
@@ -201,8 +211,8 @@ public partial class MainWindow
 
     private Border VoiceListCard()
     {
-        var voices = localVoices.Roster.Live.OrderByDescending(v => v.Owner).ThenByDescending(v => v.Named)
-            .ThenByDescending(v => v.LastHeardAt).ToArray();
+        var voices = localVoices.Roster.Live.OrderByDescending(localVoices.IsYours).ThenByDescending(v => v.Account is not null)
+            .ThenByDescending(v => v.Named).ThenByDescending(v => v.LastHeardAt).ToArray();
         var heading = Heading(voices.Length == 0 ? "Voices Martlet knows" : $"Voices Martlet knows ({voices.Length})");
         AutomationProperties.SetAutomationId(heading, "PeopleVoiceCount");
         var children = new List<UIElement> { heading };
@@ -213,16 +223,30 @@ public partial class MainWindow
         }
         children.Add(Note("Type a name to say who a voice is, and add as many other names as they go by. Click a name to make it the " +
             "one Martlet uses; a name with ? was only heard in conversation. Changes sync to your computers.", new Thickness(0, 0, 0, 4)));
+        var links = Note(PeopleLinkStatus(voices.Length, voices.Count(v => v.Account is not null), voices.Count(localVoices.IsYours),
+            localVoices.Account is not null), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(links, "PeopleLinkStatus");
+        children.Add(links);
         foreach (var voice in voices) children.Add(VoiceEntry(voice, voices));
         children.Add(Row(PageButton("Forget all voices", ForgetAllVoices, link: true, id: "PeopleForgetAll")));
         return Card([.. children]);
     }
 
+    /// <summary>People's link line: how many voices link to people's accounts and how many are yours. Counts only, no names.
+    /// Before the desktop knows its account, only whether a voice is marked as yours.</summary>
+    internal static string PeopleLinkStatus(int voices, int linked, int yours, bool accounts) =>
+        !accounts ? yours == 0 ? "No voice is marked as yours yet. Tick This is me on yours." : "Martlet knows which voice is yours."
+        : $"{linked} of {voices} voice{(voices == 1 ? "" : "s")} {(linked == 1 ? "is" : "are")} linked to people's accounts. " +
+          (yours == 0 ? "None is yours yet: tick This voice is ... on yours." : $"Your account has {yours} voice{(yours == 1 ? "" : "s")}.") +
+          " A voice only tells Martlet who is talking: it never signs anyone in.";
+
     private Border VoiceEntry(KnownVoice voice, IReadOnlyList<KnownVoice> all)
     {
+        var mine = localVoices.IsYours(voice);
         var stack = new List<UIElement>
         {
-            OptionTitle(voice.DisplayName, voice.Owner ? "you" : voice.Named ? null : "no name yet"),
+            OptionTitle(voice.DisplayName, mine ? "you" : voice.Account is { } other ? $"{VoiceAccountName(other) ?? "someone else"}'s voice"
+                : voice.Named ? null : "no name yet"),
             Note($"{(voice.Named ? $"Voice {voice.Number} · " : "")}heard {voice.Heard} time{(voice.Heard == 1 ? "" : "s")}, last {Ago(voice.LastHeardAt)}" +
                 (voice.MergedVoices > 0 ? $" · {voice.MergedVoices + 1} voices merged" : ""), new Thickness(0, 2, 0, 4))
         };
@@ -234,7 +258,7 @@ public partial class MainWindow
         stack.Add(VoiceNames(voice));
         if (VoiceClipRow(voice) is { } clips) stack.Add(clips);
         stack.Add(VoiceActions(voice, all));
-        return Option(stack, voice.Owner);
+        return Option(stack, mine);
     }
 
     /// <summary>Every name the voice goes by as a chip, the one shown first: click a name to show it (which also confirms a
@@ -344,15 +368,18 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>This is me, Same person as (then Merge), what Martlet remembers about them and Forget, on one line.</summary>
+    /// <summary>This voice is (yours), Same person as (then Merge), what Martlet remembers about them and Forget, on one line.</summary>
     private WrapPanel VoiceActions(KnownVoice voice, IReadOnlyList<KnownVoice> all)
     {
         var row = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
-        var owner = new CheckBox { Content = "This is me", IsChecked = voice.Owner, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 16, 6) };
-        AutomationProperties.SetAutomationId(owner, "PeopleOwner-" + voice.Number);
-        owner.Checked += (_, _) => localVoices.SetOwner(voice.Id, true);
-        owner.Unchecked += (_, _) => localVoices.SetOwner(voice.Id, false);
+        var you = localVoices.Account is { } signedIn ? VoiceAccountName(signedIn) : null;
+        var owner = new CheckBox { Content = you is null ? "This is me" : $"This voice is {you}", IsChecked = localVoices.IsYours(voice),
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 6),
+            ToolTip = "Links this voice to your account, so Martlet knows it's you talking. A voice never signs anyone in." };
+        AutomationProperties.SetName(owner, "This voice is mine");
+        AutomationProperties.SetAutomationId(owner, "PeopleLink-" + voice.Number);
+        owner.Checked += (_, _) => LinkVoice(voice, true);
+        owner.Unchecked += (_, _) => LinkVoice(voice, false);
         row.Children.Add(owner);
 
         var targets = all.Where(v => v.Id != voice.Id).ToArray();
@@ -427,6 +454,26 @@ public partial class MainWindow
         }
         catch (ContractException error) { ActionText.Text = error.Message; }
         // After the click returns: the page is rebuilt, the button with it.
+        Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.People) RenderTab(); });
+    }
+
+    /// <summary>Links the voice to the signed-in account, or unlinks it; a voice linked to someone else's account moves to yours
+    /// only after you confirm. The change syncs to your other computers shortly after.</summary>
+    private void LinkVoice(KnownVoice voice, bool yours)
+    {
+        if (closing) return;
+        var current = localVoices.Roster.Resolve(voice.Id);
+        if (current is null) return;
+        if (yours && current.Account is { } other && other != localVoices.Account &&
+            !ConfirmationDialog.Confirm(this, $"{current.DisplayName} is {VoiceAccountName(other) ?? "someone else"}'s voice.\n\n" +
+                "Make it yours instead? Martlet will treat this voice as you on all your computers.", "Make it mine"))
+        {
+            Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.People) RenderTab(); });
+            return;
+        }
+        localVoices.Link(current.Id, yours);
+        ActionText.Text = yours ? $"{current.DisplayName} is now your voice." : $"{current.DisplayName} is no longer linked to you.";
+        // After the click returns: the page is rebuilt, the box with it.
         Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.People) RenderTab(); });
     }
 
