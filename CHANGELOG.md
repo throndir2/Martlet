@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-10-10
+
 ### Added
 
 - A cloud provider in the Voice or Listening list now helps in its turn: when the computers before it are busy or don't answer, it speaks or listens instead, with its own key. While the first computer is free, nothing changes. ([#730](https://github.com/throndir2/Martlet/pull/730))
