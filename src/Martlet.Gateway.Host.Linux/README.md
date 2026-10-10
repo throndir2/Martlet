@@ -107,7 +107,9 @@ lives in `home-assistant.json` (at most 16 KiB, through
 including their cloud API keys, live in `shared-settings.json` (at most 2 MiB,
 through `shared-settings.staging`), and everything Martlet remembers
 ([one memory on every computer](../../docs/MEMORY.md#one-memory-on-every-computer))
-in `memories.json` (at most 12 MiB, through `memories.staging`). The
+in `memories.json` (at most 12 MiB, through `memories.staging`), with each
+[memory space](../../docs/ACCOUNTS.md#memory-spaces) in `memories-<space>.json`
+(at most 12 MiB each and 64 spaces, through `memories-space.staging`). The
 household's [account directory](../../docs/ACCOUNTS.md#account-directory)
 (public facts only) lives in `accounts.json` (at most 2 MiB, through
 `accounts.staging`). All are 0600 service-owner files and none is part

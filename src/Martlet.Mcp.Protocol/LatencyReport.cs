@@ -63,7 +63,7 @@ internal static partial class LatencyReport
         var root = dataDirectory ?? SettingsStore.DefaultDataDirectory();
         if (!Path.IsPathFullyQualified(root)) throw new ArgumentException("dataDirectory must be an absolute path.");
         var directory = LocalLogs.Directory(root);
-        var records = Directory.Exists(directory) ? LocalLogs.Read(directory, LocalLogs.ThisDeviceId()) : [];
+        var records = Directory.Exists(directory) ? LocalLogs.Read(directory, LocalLogs.ThisDeviceId(root)) : [];
         var parsed = records
             .Where(r => r.Component == "desktop" && r.Message.StartsWith(Prefix, StringComparison.Ordinal))
             .OrderBy(r => r.At)

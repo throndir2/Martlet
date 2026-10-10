@@ -108,6 +108,11 @@ public partial class App : Application
         {
             if (store is not null)
             {
+                // This Windows user's device ID, before anything pairs, syncs or labels logs with it.
+                var device = NetworkIdentity.UseDataDirectory(store.DataDirectory);
+                ErrorLog.Info($"Device ID: {device.Id} ({device.Source.ToString().ToLowerInvariant()}).");
+                // The kind only, never the e-mail or name; a work account's details can need the domain, so off this thread.
+                _ = Task.Run(() => ErrorLog.Info($"Signed in to Windows with a {WindowsLogin.Current}."));
                 (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
                 ThemeColors = Appearance.LoadColors(store.DataDirectory, SelectedTheme);
                 HostShells.Current = new SshHostShell(store.DataDirectory);

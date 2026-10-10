@@ -226,6 +226,36 @@ internal static class MemoryRehearsal
                     $"A holds {af.Count}, C {cf.Count}, B {bf.Count}; same everywhere: {Same(af, cf) && Same(af, bf)}; typed facts kept: {typedAfter} of {typedBefore}; oldest conversation fact kept from {oldestKept:u}");
             });
 
+            await Run("Memory spaces: A puts a fact in Sam's account space on both hosts; B reads it there with the same digest; Alex's space, the household and the old document never see it; it survives a host restart; a bad space ID never leaves the desktop", async () =>
+            {
+                var sam = MemorySpaceId.Account(Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7"));
+                var alex = MemorySpaceId.Account(Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"));
+                var id = Guid.NewGuid();
+                var fact = SharedMemories.Empty.With(new SharedMemory
+                {
+                    Id = id, Revision = 1, UpdatedAt = DateTimeOffset.UtcNow, UpdatedBy = a.DeviceId,
+                    Fact = SharedMemories.Canonical("{\"id\":\"" + id + "\",\"content\":\"Sam's sister is called Ines.\"}")
+                });
+                foreach (var host in hosts) await a.MergeSpaceAsync(host, sam, fact, token);
+                var onB = await b.ReadSpaceAsync(h2, sam, token);
+                var digest = await b.ReadSpaceDigestAsync(h1, sam, token);
+                var apart = (await b.ReadSpaceAsync(h1, alex, token)).Facts.Count == 0 &&
+                    (await b.ReadSpaceAsync(h1, MemorySpaceId.Household, token)).Facts.Count == 0 &&
+                    (await a.ReadAsync(h1, token)).Find(id) is null;
+                await h1.StopAsync();
+                await h1.StartAsync();
+                foreach (var desktop in new[] { a, b, c }) await desktop.PairAsync(h1);
+                var kept = (await c.ReadSpaceAsync(h1, sam, token)).Find(id) is { Forgotten: false };
+                var refused = false;
+                try { await a.ReadSpaceAsync(h1, "account-not-a-space", token); }
+                catch (ArgumentException) { refused = true; }
+                return (onB.Find(id) is { Forgotten: false } && digest == fact.Digest() && apart && kept && refused &&
+                        h1.Server.MemorySpaces.SequenceEqual([sam]),
+                    $"B reads it from lab-memory-2: {onB.Find(id) is { Forgotten: false }}; digest on lab-memory-1 matches: {digest == fact.Digest()}; " +
+                    $"other spaces and the old document stay without it: {apart}; kept after lab-memory-1 restarted: {kept}; " +
+                    $"bad space ID refused before sending: {refused}; lab-memory-1 keeps spaces [{string.Join(", ", h1.Server.MemorySpaces)}]");
+            });
+
             await Run("Desktops keep no fact in Martlet's data folder (only IDs, revisions and digests); only paired devices may read the hosts' copy", async () =>
             {
                 var leaks = new[] { a, b, c }.Where(d => d.DataFolderContains("Miso")).Select(d => d.DeviceId).ToArray();
@@ -252,7 +282,7 @@ internal static class MemoryRehearsal
             passed = steps.Count(s => s.Ok),
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
-            scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with an in-memory memories.json, and three simulated " +
+            scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with an in-memory memories.json and memory spaces, and three simulated " +
                 "desktops using the desktop's paired client and the real memory sync engine over real Martlet.Memory stores in a temporary " +
                 "folder, wired as the desktop wires them. Synthetic facts. Not covered: the desktop window and its 30-second sync, a " +
                 "conversation's recall and remembering around a sync, the Linux host's file and two real computers on a LAN.",
@@ -308,6 +338,24 @@ internal static class MemoryRehearsal
         {
             using var connection = Connect(host);
             return await connection.MergeMemoriesAsync(memories, token);
+        }
+
+        internal async Task<SharedMemories> ReadSpaceAsync(LabHost host, string space, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.ReadMemorySpaceAsync(space, token);
+        }
+
+        internal async Task<string> ReadSpaceDigestAsync(LabHost host, string space, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.ReadMemorySpaceDigestAsync(space, token);
+        }
+
+        internal async Task<SharedMemories> MergeSpaceAsync(LabHost host, string space, SharedMemories memories, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.MergeMemorySpaceAsync(space, memories, token);
         }
 
         private async Task<T> WithStoreAsync<T>(Func<MemoryStore, Task<T>> action)
@@ -411,8 +459,8 @@ internal static class MemoryRehearsal
             .Any(path => File.ReadAllText(path).Contains(text, StringComparison.Ordinal));
     }
 
-    /// <summary>A real gateway on 127.0.0.1 with an in-memory memories.json that survives a restart.</summary>
-    private sealed class LabHost : IAsyncDisposable, IGatewayMemoryStorage, IGatewayAuditSink
+    /// <summary>A real gateway on 127.0.0.1 with an in-memory memories.json and memory spaces that survive a restart.</summary>
+    private sealed class LabHost : IAsyncDisposable, IGatewayMemoryStorage, IGatewayMemorySpaceStorage, IGatewayAuditSink
     {
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
@@ -446,6 +494,7 @@ internal static class MemoryRehearsal
             var origin = new GatewayOrigin(Origin);
             Server = new GatewayServer(Identity, origin, [], this);
             Server.AttachMemoryStorage(this);
+            Server.AttachMemorySpaceStorage(this);
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
 
@@ -457,6 +506,10 @@ internal static class MemoryRehearsal
 
         public byte[]? Load() => saved;
         public void Save(byte[] bytes) => saved = (byte[])bytes.Clone();
+        private readonly Dictionary<string, byte[]> savedSpaces = new(StringComparer.Ordinal);
+        public IReadOnlyCollection<string> List() => savedSpaces.Keys.ToArray();
+        public byte[]? Load(string space) => savedSpaces.TryGetValue(space, out var bytes) ? bytes : null;
+        public void Save(string space, byte[] bytes) => savedSpaces[space] = (byte[])bytes.Clone();
         public void Record(GatewayAuditEvent gatewayEvent) { }
 
         public async ValueTask DisposeAsync()

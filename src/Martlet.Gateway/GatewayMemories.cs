@@ -78,14 +78,20 @@ internal sealed partial class GatewayHttpApplication
 
     internal GatewayMemoryStore Memories { get; } = new();
 
-    private static bool IsMemoriesTarget(string rawTarget) => rawTarget is MemoriesPath or MemoriesDigestPath;
+    private static bool IsMemoriesTarget(string rawTarget) =>
+        rawTarget is MemoriesPath or MemoriesDigestPath || IsMemorySpaceTarget(rawTarget);
 
     /// <summary>GET /memories returns this host's copy of what Martlet remembers and POST merges a desktop's copy into it and
     /// returns the merged result; GET /memories/digest returns only the copy's digest, so desktops read the copy when it
     /// changed. The copy holds the owner's memories: only paired devices may use these, over their signed, pinned connection;
-    /// API keys may not.</summary>
+    /// API keys may not. /memories/spaces/... are the memory spaces (GatewayMemorySpaces.cs).</summary>
     private async ValueTask InvokeMemoriesAsync(HttpContext context, string rawTarget)
     {
+        if (IsMemorySpaceTarget(rawTarget))
+        {
+            await InvokeMemorySpaceAsync(context, rawTarget).ConfigureAwait(false);
+            return;
+        }
         if (rawTarget == MemoriesDigestPath)
         {
             GatewayRules.Require(context.Request.Method == HttpMethods.Get, "request.invalid");
@@ -120,6 +126,13 @@ internal sealed partial class GatewayHttpApplication
             finally { CryptographicOperations.ZeroMemory(bytes); }
         }
         else throw new GatewayProtocolException("request.invalid");
+        await WriteMemoriesAsync(context, result, space: null).ConfigureAwait(false);
+    }
+
+    /// <summary>Writes <paramref name="result"/> with its digest; <paramref name="space"/> names the memory space (null for the
+    /// single memory document, which has no <c>space</c> field).</summary>
+    private async ValueTask WriteMemoriesAsync(HttpContext context, SharedMemories result, string? space)
+    {
         var document = result.Write();
         try
         {
@@ -129,6 +142,7 @@ internal sealed partial class GatewayHttpApplication
             {
                 ProtocolVersion = GatewayProtocolVersion.Current,
                 HostId = identity.HostId,
+                Space = space,
                 Digest = result.Digest(),
                 Memories = parsed.RootElement
             }, MaximumMemoriesResponseBytes, memoriesJson).ConfigureAwait(false);
@@ -140,6 +154,7 @@ internal sealed partial class GatewayHttpApplication
     {
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
+        public string? Space { get; init; }
         public required string Digest { get; init; }
         public required System.Text.Json.JsonElement Memories { get; init; }
     }
@@ -148,6 +163,7 @@ internal sealed partial class GatewayHttpApplication
     {
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
+        public string? Space { get; init; }
         public required string Digest { get; init; }
     }
 }

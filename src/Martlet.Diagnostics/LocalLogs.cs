@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Martlet.Core.Logs;
+using Martlet.Core.Network;
 
 namespace Martlet.Diagnostics;
 
@@ -19,15 +20,12 @@ public static partial class LocalLogs
 
     public static string Directory(string dataDirectory) => Path.Combine(dataDirectory, "logs");
 
-    /// <summary>The ID this PC uses with Martlet hosts and in the shared plan ("desktop-" and its computer name), which
-    /// also names it as the source of its log lines.</summary>
-    public static string ThisDeviceId()
-    {
-        var name = new string(Environment.MachineName.ToLowerInvariant()
-            .Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
-        var id = "desktop-" + (name.Length == 0 ? "pc" : name);
-        return id.Length > 64 ? id[..64] : id;
-    }
+    /// <summary>The device ID the desktop on <paramref name="dataDirectory"/> uses with Martlet hosts and in the shared plan
+    /// (<see cref="DeviceIds"/>: device.json, one per Windows user), which also names it as the source of its log lines. Read-only:
+    /// a data folder the desktop hasn't chosen one for yet gets the one it would keep, else the older desktop-&lt;pc name&gt; form
+    /// as a label.</summary>
+    public static string ThisDeviceId(string dataDirectory) =>
+        DeviceIds.Peek(dataDirectory)?.Id ?? DeviceIds.Legacy(Environment.MachineName);
 
     /// <summary>Every local part's lines, oldest first.</summary>
     public static IReadOnlyList<LogRecord> Read(string logDirectory, string source, int bytesPerComponent = DefaultBytesPerComponent) =>

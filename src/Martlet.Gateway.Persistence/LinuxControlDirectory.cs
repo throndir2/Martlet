@@ -70,6 +70,8 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The household's account directory: public facts only (not part of the approved configuration).</summary>
     internal const string Accounts = "accounts.json", AccountsStaging = "accounts.staging";
     internal const int MaximumAccountsBytes = Martlet.Core.Accounts.AccountDirectory.MaximumBytes;
+    /// <summary>One memory space (every account's memories, apart): memories-&lt;space ID&gt;.json.</summary>
+    internal const string MemorySpacePrefix = "memories-", MemorySpaceSuffix = ".json", MemorySpaceStaging = "memories-space.staging";
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -131,7 +133,7 @@ internal sealed class LinuxControlDirectory : IDisposable
     {
         if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             name != Accounts &&
-            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
+            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -350,6 +352,29 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces accounts.json (0600, service owner).</summary>
     internal void WriteAccounts(byte[] bytes) => ReplaceRecovering(Accounts, AccountsStaging, bytes, MaximumAccountsBytes);
+
+    /// <summary>The file name of the memory space <paramref name="space"/> (a valid space ID).</summary>
+    internal static string MemorySpace(string space) =>
+        Martlet.Core.Sync.MemorySpaceId.IsValid(space)
+            ? MemorySpacePrefix + space + MemorySpaceSuffix
+            : throw Error(GatewayPersistenceFailure.InvalidPath);
+
+    /// <summary>The space ID a memory-space file name holds; null for any other name.</summary>
+    internal static string? MemorySpaceOf(string name) =>
+        name.StartsWith(MemorySpacePrefix, StringComparison.Ordinal) && name.EndsWith(MemorySpaceSuffix, StringComparison.Ordinal) &&
+        name.Length > MemorySpacePrefix.Length + MemorySpaceSuffix.Length &&
+        name[MemorySpacePrefix.Length..^MemorySpaceSuffix.Length] is var space && Martlet.Core.Sync.MemorySpaceId.IsValid(space) ? space : null;
+
+    /// <summary>The IDs of the memory spaces kept here.</summary>
+    internal string[] ListMemorySpaces()
+    {
+        Validate();
+        return [.. fs.Enumerate(DirectoryFd).Select(MemorySpaceOf).OfType<string>().Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>Atomically replaces one memory space's file (0600, service owner).</summary>
+    internal void WriteMemorySpace(string space, byte[] bytes) =>
+        ReplaceRecovering(MemorySpace(space), MemorySpaceStaging, bytes, MaximumMemoriesBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()

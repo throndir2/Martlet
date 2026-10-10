@@ -45,6 +45,26 @@ internal static class NetworkIdentity
         hosts.GroupBy(h => h.Pairing.DeviceId, StringComparer.Ordinal).OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key, StringComparer.Ordinal).Select(g => g.Key).FirstOrDefault() ?? HostSetupCommands.SuggestedDeviceId();
 
+    /// <summary>This Windows user's device ID (docs/ACCOUNTS.md, Device ID), from device.json in the data folder
+    /// (<see cref="UseDataDirectory"/> at start). Before that, and in tests, the older desktop-&lt;pc name&gt; form.</summary>
+    internal static string ThisDevice { get; private set; } = DeviceIds.Legacy(Environment.MachineName);
+
+    /// <summary>Chooses this Windows user's device ID once, at start, before anything uses it: the one saved in device.json, else
+    /// the one this data folder's pairings or network already use, else a new desktop-&lt;pc name&gt;-&lt;6 of [a-z0-9]&gt; one,
+    /// saved so it never changes. A data folder that can't be written keeps the ID it would use without saving it.</summary>
+    internal static DeviceIdChoice UseDataDirectory(string dataDirectory)
+    {
+        DeviceIdChoice choice;
+        try { choice = DeviceIds.Ensure(dataDirectory); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            choice = DeviceIds.Peek(dataDirectory) ?? new(DeviceIds.Legacy(Environment.MachineName), DeviceIdSource.Legacy);
+            ErrorLog.Warn($"Couldn't save this PC's device ID in {DeviceIds.FileName} ({error.Message}); using {choice.Id} for now.");
+        }
+        ThisDevice = choice.Id;
+        return choice;
+    }
+
     /// <summary>This PC's network state; an unreadable file starts empty (the hosts' rosters restore a member).</summary>
     internal static NetworkLocalState Load(string dataDirectory)
     {

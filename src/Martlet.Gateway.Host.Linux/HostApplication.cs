@@ -358,6 +358,28 @@ internal sealed class ControlAccountStorage(LinuxControlDirectory directory) : I
     }
 }
 
+/// <summary>Keeps every memory space (every account's memories, apart) in memories-&lt;space&gt;.json beside host.json (0600,
+/// service owner). Not part of the approved configuration.</summary>
+internal sealed class ControlMemorySpaceStorage(LinuxControlDirectory directory) : IGatewayMemorySpaceStorage
+{
+    private readonly object gate = new();
+
+    public IReadOnlyCollection<string> List()
+    {
+        lock (gate) return directory.ListMemorySpaces();
+    }
+
+    public byte[]? Load(string space)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.MemorySpace(space), LinuxControlDirectory.MaximumMemoriesBytes);
+    }
+
+    public void Save(string space, byte[] bytes)
+    {
+        lock (gate) directory.WriteMemorySpace(space, bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -480,6 +502,7 @@ internal static class HostApplication
                     owner.AttachSettings(new ControlSettingsStorage(directory));
                     owner.AttachMemories(new ControlMemoryStorage(directory));
                     owner.AttachAccounts(new ControlAccountStorage(directory));
+                    owner.AttachMemorySpaces(new ControlMemorySpaceStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
                     ApplyExposure(owner, directory, output: null);
