@@ -1,10 +1,10 @@
 import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
 import { type EyeFields, eyeFrame, type EyeHint, type EyesFrom, eyeShape, hintEye, hintMiddle, irisBox, meshEyes, type MeshEye,
-  pinEye, readEyeHint } from "./eyes.js";
+  meshMisses, pinEye, readEyeHint } from "./eyes.js";
 import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatures, faceFromBox, faceFromHint, faceFromLayout,
-  type FaceHint, faceSkin, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, type Pin, pinFace, type PinnedFace,
-  type Point, POSE_PARAMETERS, skinCarriers, trackFace, turnFace } from "./face.js";
+  type FaceHint, faceSkin, faceSource, type FaceSource, type FeatureOffsets, bounds, HEAD_ANGLES, headRoll, measuredFeatures,
+  type Pin, pinFace, type PinnedFace, type Point, POSE_PARAMETERS, skinCarriers, trackFace, turnFace } from "./face.js";
 import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isBlush, isGesture, supportedGestures } from "./gestures.js";
 import { CHAIN_LIMITS, findSwingingChains, type SwingingChain } from "./chains.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
@@ -127,10 +127,12 @@ interface Resources {
 
 let activeAdapter: Live2DAdapter | undefined;
 
-/** The eyes found at load (see eyes.ts) and from vision: the face at rest they are measured on, the eyes the meshes draw and
- *  the hinted ones, each eye's middle pinned to the face's carriers, and how long finding them took. */
+/** The eyes found at load (see eyes.ts) and from vision: the face at rest they are measured on, the eyes the meshes draw
+ *  (`found`) and the ones in use (`mesh`: those that don't clearly miss the measured eye), the hinted ones, each eye's middle
+ *  pinned to the face's carriers, and how long finding them took. */
 interface EyeState {
   readonly face?: Face;
+  readonly found?: { readonly left?: MeshEye; readonly right?: MeshEye };
   readonly mesh: { readonly left?: MeshEye; readonly right?: MeshEye };
   readonly meshPins: { readonly left?: Pin; readonly right?: Pin };
   readonly hint?: EyeHint;
@@ -216,6 +218,10 @@ export class Live2DAdapter {
   #skin: string | undefined;
   #pinned: PinnedFace | undefined;
   #hintPinned: PinnedFace | undefined;
+  /** The face's parts as vision measured them (see setEyeHint): their offsets, the face at rest with its middle on the
+   *  measured eye line, that face pinned to the model's meshes, and the cheeks' radius in face widths. */
+  #measured: { readonly offsets: FeatureOffsets; readonly rest: Face; readonly pinned?: PinnedFace; readonly cheekSize?: number }
+    | undefined;
   #faceProbeMilliseconds = 0;
   #eyes: EyeState = NO_EYES;
   #eyeBlinkIds: readonly string[] = [];
@@ -466,19 +472,38 @@ export class Live2DAdapter {
   }
 
   /**
-   * Uses eyes measured by vision (see EyeHint: face widths from the face's middle, measured in the rest pose) for each eye the
-   * model's meshes can't give; undefined clears them. The hinted eye is pinned to the face like its other features, its iris
-   * follows ParamEyeBallX and ParamEyeBallY and its opening closes with the eye's open parameter. Returns where the eyes come
-   * from now (see eyesFrom).
+   * Uses the face measured by vision (see EyeHint: face widths from the face's middle, measured in the rest pose): its eyes for
+   * each eye the model's meshes can't give or give clearly away from the measured eye (see meshMisses), and its eye line,
+   * cheeks and mouth for the face anchor (see measuredFeatures), so the blush and the drawings around the face sit where
+   * vision saw them; undefined clears it. The hinted eyes and parts are pinned to the face like its other features, a hinted
+   * iris follows ParamEyeBallX and ParamEyeBallY and its opening closes with the eye's open parameter. Returns where the eyes
+   * come from now (see eyesFrom).
    */
   setEyeHint(hint: EyeHint | undefined): EyesFrom {
     const eyes = this.#eyes, face = eyes.face, read = face ? readEyeHint(hint) : undefined;
+    const found = eyes.found ?? eyes.mesh;
+    const keep = (side: "left" | "right") => {
+      const own = found[side], seen = read?.[side];
+      return own && !(seen && face && meshMisses(own, seen, face)) ? { [side]: own } : {};
+    };
     const pin = (side: "left" | "right") => {
       const eye = read?.[side], pinned = eye && face ? pinEye(hintMiddle(eye, face), this.#carriers, face) : undefined;
       return pinned ? { [side]: pinned } : {};
     };
     const { hint: _, ...rest } = eyes;
-    this.#eyes = { ...rest, ...(read ? { hint: read } : {}), hintPins: { ...pin("left"), ...pin("right") } };
+    this.#eyes = { ...rest, found, mesh: { ...keep("left"), ...keep("right") }, ...(read ? { hint: read } : {}),
+      hintPins: { ...pin("left"), ...pin("right") } };
+    this.#measured = undefined;
+    if (read && face) {
+      const point = (p: { x: number; y: number } | undefined) => p && { x: p.x, y: p.y };
+      const offsets: FeatureOffsets = { eyeLeft: point(read.left?.eye), eyeRight: point(read.right?.eye),
+        cheekLeft: point(read.cheekLeft), cheekRight: point(read.cheekRight), mouth: point(read.mouth) };
+      const features = measuredFeatures(face, offsets);
+      const pinned = this.#carriers.length ? pinFace(face, this.#carriers, features) : undefined;
+      this.#measured = { offsets, rest: { x: features.x, y: features.y, width: face.width, roll: face.roll },
+        ...(pinned ? { pinned } : {}),
+        ...(read.cheekLeft && read.cheekRight ? { cheekSize: (read.cheekLeft.r + read.cheekRight.r) / 2 } : {}) };
+    }
     return this.eyesFrom;
   }
 
@@ -496,25 +521,31 @@ export class Live2DAdapter {
    * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head.
    * Pinned to the model's meshes (`tracking` "mesh", with each cheek's surface: one face width across and down it): to the
    * face's skin when one drawable holds it (see `faceTracking`), else to the vertices that ride the head, so it follows
-   * whatever moves the head; otherwise estimated from the head's angles ("estimate"). Each eye with an iris (from the
-   * model's meshes or the eye hint, see `eyesFrom`) adds its iris (`irisLeft`, `irisRight`: middle and radii across and down
-   * the face) and its opening (`eyeLeftShape`, `eyeRightShape`), and puts `eyeLeft`/`eyeRight` at the eye's middle.
-   * Undefined before a model shows.
+   * whatever moves the head; otherwise estimated from the head's angles ("estimate"). With a face measured by vision (see
+   * setEyeHint) the middle is on the measured eye line and the cheeks and mouth where vision saw them, and `cheekSize` is the
+   * measured cheeks' radius in face widths. Each eye with an iris (from the model's meshes or the eye hint, see `eyesFrom`)
+   * adds its iris (`irisLeft`, `irisRight`: middle and radii across and down the face) and its opening (`eyeLeftShape`,
+   * `eyeRightShape`), and puts `eyeLeft`/`eyeRight` at the eye's middle. Undefined before a model shows.
    */
   faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
-    eyeRight: Point; mouth: Point; top: Point; tracking: "mesh" | "estimate";
+    eyeRight: Point; mouth: Point; top: Point; tracking: "mesh" | "estimate"; cheekSize?: number;
     cheekLeftFrame?: { right: Point; down: Point; visible: number }; cheekRightFrame?: { right: Point; down: Point; visible: number } }
     & EyeFields | undefined {
     const model = this.#resources?.model;
     if (!model || this.#loading) return undefined;
-    const pinned = this.#faceHint ? this.#hintPinned : this.#pinned;
+    // A face hint (setFaceHint) replaces Martlet's estimate; the measured parts are around that estimate.
+    const measured = this.#faceHint ? undefined : this.#measured;
+    const pinned = this.#faceHint ? this.#hintPinned : measured?.pinned ?? this.#pinned;
     const tracked = pinned && trackFace(pinned, i => model.getDrawableVertices(i));
     let features: FaceFeatures | undefined = tracked && tracked.width > 0 ? tracked : undefined;
+    // Measured parts that couldn't be pinned themselves move with the face as Martlet pins it.
+    if (features && measured && !measured.pinned) features = measuredFeatures(features, measured.offsets);
     if (!features) {
       const face = this.#estimatedFace(model);
       if (!face) return undefined;
-      features = faceFeatures(face);
+      features = measured ? measuredFeatures(face, measured.offsets) : faceFeatures(face);
     }
+    const onMesh = !!tracked && (features === tracked || !!measured && !measured.pinned);
     const { width, height } = this.#canvas;
     const scale = this.#fitScale(model) * this.#view.zoom, aspect = width / height;
     const point = (p: Point): Point => ({
@@ -529,23 +560,27 @@ export class Live2DAdapter {
     return { x: middle.x, y: middle.y, width: features.width * step, angle: -features.roll,
       cheekLeft: point(features.cheekLeft), cheekRight: point(features.cheekRight), eyeLeft: point(features.eyeLeft),
       eyeRight: point(features.eyeRight), mouth: point(features.mouth), top: point(features.top),
-      tracking: features === tracked ? "mesh" : "estimate",
-      ...(features === tracked ? { cheekLeftFrame: frame(tracked.cheekLeftFrame), cheekRightFrame: frame(tracked.cheekRightFrame) } : {}),
-      ...this.#eyeFields(model, features, point, step) };
+      tracking: onMesh ? "mesh" : "estimate",
+      ...(onMesh && tracked ? { cheekLeftFrame: frame(tracked.cheekLeftFrame), cheekRightFrame: frame(tracked.cheekRightFrame) } : {}),
+      ...(measured?.cheekSize !== undefined ? { cheekSize: measured.cheekSize } : {}),
+      ...this.#eyeFields(model, features, point, step, measured) };
   }
 
-  /** The eye fields of faceAnchor (canvas pixels; `point` and `step` as there) for the face as found now, `features`. Eyes
-   *  that can't be read now are only left out. */
-  #eyeFields(model: CubismModel, features: FaceFeatures, point: (p: Point) => Point, step: number): EyeFields {
+  /** The eye fields of faceAnchor (canvas pixels; `point` and `step` as there) for the face as found now, `features` (around
+   *  the measured face when `measured`). Eyes that can't be read now are only left out. */
+  #eyeFields(model: CubismModel, features: FaceFeatures, point: (p: Point) => Point, step: number,
+    measured: { readonly rest: Face } | undefined): EyeFields {
     const eyes = this.#eyes, rest = eyes.face, eyesFrom = this.eyesFrom;
     if (!rest) return { eyesFrom };
     try {
-      return { eyesFrom, ...this.#eyesNow(model, features, point, step, eyes, rest) };
+      return { eyesFrom, ...this.#eyesNow(model, features, point, step, eyes, rest, measured?.rest ?? rest) };
     } catch { return { eyesFrom }; }
   }
 
+  /** The eyes now; `rest` is the face the eyes were found and measured on, `restNow` the face at rest whose middle the face
+   *  as found now (`features`) follows (rest itself, or its middle moved to the measured eye line). */
   #eyesNow(model: CubismModel, features: FaceFeatures, point: (p: Point) => Point, step: number, eyes: EyeState,
-    rest: Face): Omit<EyeFields, "eyesFrom"> {
+    rest: Face, restNow: Face): Omit<EyeFields, "eyesFrom"> {
     const origin = point({ x: 0, y: 0 });
     const pixel = (x: number, y: number): Point => ({ x: origin.x + x * step, y: origin.y - y * step });
     const at = (drawable: number) => model.getDrawableVertices(drawable);
@@ -562,11 +597,11 @@ export class Live2DAdapter {
       if (mesh) {
         const box = irisBox(at(mesh.iris), features.roll);
         if (!box) return undefined;
-        const frame = eyeFrame(mesh.middle, eyes.meshPins[side], at, rest, features);
+        const frame = eyeFrame(mesh.middle, eyes.meshPins[side], at, restNow, features);
         return { iris: { ...pixel(box.x, box.y), rx: box.rx * step, ry: box.ry * step }, shape: eyeShape(mesh, at, shown, pixel),
           middle: frame ? pixel(frame.x, frame.y) : pixel(box.x, box.y) };
       }
-      const frame = hint && eyeFrame(hintMiddle(hint, rest), eyes.hintPins[side], at, rest, features);
+      const frame = hint && eyeFrame(hintMiddle(hint, rest), eyes.hintPins[side], at, restNow, features);
       if (!hint || !frame) return undefined;
       // ParamEyeLOpen is the character's left eye: the one on the viewer's right.
       const now = hintEye(hint, frame, rest, parameter("ParamEyeBallX", "range"), parameter("ParamEyeBallY", "range"),
@@ -1167,7 +1202,7 @@ export class Live2DAdapter {
       const eye = mesh[side], pinned = eye && pinEye(eye.middle, this.#carriers, face);
       return pinned ? { [side]: pinned } : {};
     };
-    return done({ face, mesh, meshPins: { ...pin("left"), ...pin("right") }, hintPins: {} });
+    return done({ face, found: mesh, mesh, meshPins: { ...pin("left"), ...pin("right") }, hintPins: {} });
   }
 
   #validateCanvas(): void {
@@ -1242,6 +1277,7 @@ export class Live2DAdapter {
     this.#skin = undefined;
     this.#pinned = undefined;
     this.#hintPinned = undefined;
+    this.#measured = undefined;
     this.#faceProbeMilliseconds = 0;
     this.#eyes = NO_EYES;
     this.#eyeBlinkIds = [];

@@ -560,3 +560,48 @@ test("the meshes win over the hint for each eye, and one eye left without either
   const both = one.faceAnchor();
   assert.ok(Math.abs(both.irisLeft.rx - 4.8) < 1e-3 && both.eyeRightShape.points.length === 24);
 });
+
+test("a mesh eye that clearly misses the eye vision measured gives way to the measured eye", async t => {
+  const { adapter } = await loaded(t, { eyes: "mesh" });
+  // The meshes' eyes sit 0.2 face widths either side of the middle, 0.06 above it; vision saw the right one 0.4 lower.
+  const low = { iris: { x: 0.2, y: 0.4, r: 0.05 }, eye: { x: 0.2, y: 0.4, rx: 0.1, ry: 0.06 } };
+  assert.equal(adapter.setEyeHint({ left: hint.left, right: low }), "vision");
+  const anchor = adapter.faceAnchor();
+  assert.ok(Math.abs(anchor.irisLeft.rx - 4.8) < 1e-3, "the left mesh eye agrees with vision and stays");
+  assert.equal(anchor.eyeRightShape.points.length, 24, "the right eye is the measured one");
+  assert.equal(adapter.setEyeHint(hint), "mesh", "a hint that agrees gives the mesh eye back");
+  assert.equal(adapter.setEyeHint(undefined), "mesh");
+});
+
+test("cheeks, mouth and eye line measured by vision move the blush and the face's middle, and follow the head", async t => {
+  const { adapter, set } = await loaded(t, { eyes: "params" });
+  const before = adapter.faceAnchor();
+  assert.equal(before.cheekSize, undefined);
+  // The face (the skin's box) is 0.6 units wide with its middle at (0, 1.235): 72 canvas pixels wide. Vision saw the eyes
+  // 0.1 face widths lower than Martlet's estimate, the cheeks 0.3 out and 0.35 down, the mouth 0.5 down.
+  const measured = { left: { ...hint.left, eye: { ...hint.left.eye, y: 0.1 } }, right: { ...hint.right, eye: { ...hint.right.eye, y: 0.1 } },
+    cheekLeft: { x: -0.3, y: 0.35, r: 0.1 }, cheekRight: { x: 0.3, y: 0.35, r: 0.1 }, mouth: { x: 0, y: 0.5, r: 0.05 } };
+  assert.equal(adapter.setEyeHint(measured), "vision");
+  const rest = adapter.faceAnchor();
+  assert.ok(near(rest, toCanvas({ x: 0, y: 1.235 - 0.06 })), `the middle is on the measured eye line: ${rest.x}, ${rest.y}`);
+  assert.ok(near(rest.cheekLeft, toCanvas({ x: -0.18, y: 1.235 - 0.21 })), JSON.stringify(rest.cheekLeft));
+  assert.ok(near(rest.cheekRight, toCanvas({ x: 0.18, y: 1.235 - 0.21 })), JSON.stringify(rest.cheekRight));
+  assert.ok(near(rest.mouth, toCanvas({ x: 0, y: 1.235 - 0.3 })), JSON.stringify(rest.mouth));
+  assert.ok(near(rest.top, { x: before.top.x, y: before.top.y + 0.06 * 120 }), "the top of the head moves with the eye line");
+  assert.equal(rest.cheekSize, 0.1);
+  assert.ok(Math.abs(rest.width - before.width) < 1e-6, "the face keeps its width");
+  assert.ok(near(rest.eyeLeft, toCanvas({ x: -0.12, y: 1.235 - 0.06 })), "the hinted eye is where vision saw it");
+
+  // Tipped with the head, the measured cheeks turn with it like every other feature.
+  set({ ParamAngleZ: 30 });
+  const tilted = adapter.faceAnchor();
+  const roll = 10 * Math.PI / 180, around = (p, c) => ({ x: c.x + (p.x - c.x) * Math.cos(roll) - (p.y - c.y) * Math.sin(roll),
+    y: c.y + (p.x - c.x) * Math.sin(roll) + (p.y - c.y) * Math.cos(roll) });
+  assert.ok(near(tilted.cheekLeft, toCanvas(around({ x: -0.18, y: 1.235 - 0.21 }, { x: 0, y: 0.8 }))), JSON.stringify(tilted.cheekLeft));
+
+  set({ ParamAngleZ: 0 });
+  adapter.setEyeHint(undefined);
+  const cleared = adapter.faceAnchor();
+  assert.ok(near(cleared.cheekLeft, before.cheekLeft) && near(cleared, before), "clearing the hint puts the estimate back");
+  assert.equal(cleared.cheekSize, undefined);
+});

@@ -83,11 +83,13 @@ export class VrmAvatarAdapter extends VrmRuntime {
    * the posed head bone (`tracking` "bones"), so it follows every turn of the head. Each cheek's surface comes with it: one
    * face width across and down it on the canvas, and how much it shows as the head turns. Each eye with a known iris (from
    * the eye bones and the model's meshes, or the eye hint; see `eyesFrom`) adds its iris and opening (see eyes.ts) and puts
-   * `eyeLeft`/`eyeRight` at the eye's middle. Undefined without a head bone or while the face points away from the camera.
+   * `eyeLeft`/`eyeRight` at the eye's middle. With a face measured by vision the cheeks and mouth are where vision saw them
+   * and `cheekSize` is their radius in face widths (see VrmRuntime.faceGeometry). Undefined without a head bone or while the
+   * face points away from the camera.
    */
   faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
-    eyeRight: Point; mouth: Point; top: Point; tracking: "bones"; cheekLeftFrame: CheekSurface; cheekRightFrame: CheekSurface }
-    & EyeFields | undefined {
+    eyeRight: Point; mouth: Point; top: Point; tracking: "bones"; cheekLeftFrame: CheekSurface; cheekRightFrame: CheekSurface;
+    cheekSize?: number } & EyeFields | undefined {
     if (this.closed) return undefined;
     const face = this.faceGeometry();
     if (!face) return undefined;
@@ -99,9 +101,9 @@ export class VrmAvatarAdapter extends VrmRuntime {
       const n = v.clone().project(this.camera);
       return { x: (n.x + 1) / 2 * width, y: (1 - n.y) / 2 * height };
     };
-    const middle = point(face.center);
-    const left = point(face.center.clone().addScaledVector(face.side, -face.width / 2));
-    const right = point(face.center.clone().addScaledVector(face.side, face.width / 2));
+    const middle = point(face.middle);
+    const left = point(face.middle.clone().addScaledVector(face.side, -face.width / 2));
+    const right = point(face.middle.clone().addScaledVector(face.side, face.width / 2));
     const size = Math.hypot(right.x - left.x, right.y - left.y);
     if (![middle.x, middle.y, size].every(Number.isFinite) || size <= 0) return undefined;
     const down = face.up.clone().negate();
@@ -110,6 +112,7 @@ export class VrmAvatarAdapter extends VrmRuntime {
       eyeRight: point(face.eyeRight), mouth: point(face.mouth), top: point(face.top), tracking: "bones",
       cheekLeftFrame: cheekFrame(face.cheekLeft, face.cheekLeftAcross, down, face.cheekLeftNormal, face.width, camera, point),
       cheekRightFrame: cheekFrame(face.cheekRight, face.cheekRightAcross, down, face.cheekRightNormal, face.width, camera, point),
+      ...(face.cheekSize !== undefined ? { cheekSize: face.cheekSize } : {}),
       ...this.eyeFields(face, point) };
   }
 

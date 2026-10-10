@@ -4,10 +4,10 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The eyes of the character this PC shows (Companion › Eyes › Where the eyes are): measured once per model with
-/// the Thinking model's vision in a close-up of the face (<see cref="CharacterEyes"/>), saved per model in character-eyes.json
-/// with the pictures sent, and given to the renderer as its eye hint, so that drawings over the eyes fit the iris on models
-/// whose own data doesn't say where the eyes are.</summary>
+/// <summary>The face of the character this PC shows (Companion › Eyes › Where the face is): its eyes, cheeks and mouth,
+/// measured once per model with the Thinking model's vision in a close-up of the face (<see cref="CharacterEyes"/>), saved per
+/// model in character-eyes.json with the pictures sent, and given to the renderer as its face hint, so that drawings over the
+/// eyes fit the iris and the blush lies on the cheeks.</summary>
 internal sealed class CharacterEyeService(string? dataDirectory)
 {
     /// <summary>A file whose text (JSON as a vision model answers about the close-up) stands in for the vision model: every
@@ -51,11 +51,11 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         Changed?.Invoke();
     }
 
-    /// <summary>Whether the loaded model should be measured on its own: nothing saved for it and not tried since Martlet
-    /// started. Marks it tried.</summary>
+    /// <summary>Whether the loaded model should be measured on its own: no measurement with its cheeks saved for it (a new
+    /// model, or one measured before Martlet measured cheeks) and not tried since Martlet started. Marks it tried.</summary>
     internal bool ClaimAutomatic()
     {
-        lock (automatic) return ModelId is { } id && Current is null && !Busy && automatic.Add(id);
+        lock (automatic) return ModelId is { } id && Current is not { HasCheeks: true } && !Busy && automatic.Add(id);
     }
 
     /// <summary>Takes a picture of <paramref name="profile"/>'s character (drawn off screen in its rest pose, with the face
@@ -69,7 +69,7 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         if (ModelId is not { } id) return Report("Martlet is still reading the character. Try again in a moment.");
         if (dataDirectory is null) return Report("Martlet's data folder isn't available, so the measurement can't be saved.");
         Volatile.Write(ref busy, true);
-        Report(automatically ? "The eyes are only estimated, so Martlet measures them: taking a picture of the character..." : "Taking a picture of the character...");
+        Report(automatically ? "This character's face isn't measured yet, so Martlet measures it: taking a picture of the character..." : "Taking a picture of the character...");
         var fixture = Environment.GetEnvironmentVariable(FixtureVariable) is { Length: > 0 } file ? file : null;
         var tag = fixture is null ? "" : "FIXTURE - NOT AI: ";
         try
@@ -123,9 +123,9 @@ internal sealed class CharacterEyeService(string? dataDirectory)
                 ErrorLog.Info($"Measuring the eyes didn't save a measurement: {result.Failure}");
                 return Report(tag + (result.Failure ?? "The eyes couldn't be measured.") + (fixture is null ? " Try again, or choose a model that can see (Companion › Vision)." : ""));
             }
-            var measurement = new CharacterEyeMeasurement
+            var measurement = CharacterEyeMeasurement.From(id, hint) with
             {
-                ModelId = id, Left = hint.Left!, Right = hint.Right!, By = fixture is null ? CharacterEyeMeasurement.ByVision : CharacterEyeMeasurement.ByFixture,
+                By = fixture is null ? CharacterEyeMeasurement.ByVision : CharacterEyeMeasurement.ByFixture,
                 MeasuredAt = DateTimeOffset.Now, Requests = result.Requests, Boxes = result.Boxes, Pictures = [.. pictures], Steps = result.Steps
             };
             try { await CharacterEyes.SaveAsync(dataDirectory, measurement, token); }
@@ -136,8 +136,11 @@ internal sealed class CharacterEyeService(string? dataDirectory)
             if (ModelId == id) Volatile.Write(ref current, measurement);
             ErrorLog.Info((fixture is null ? "The Thinking model" : "FIXTURE - NOT AI: a stand-in") + FormattableString.Invariant(
                 $" measured the eyes in {result.Requests} request{(result.Requests == 1 ? "" : "s")}: iris radius {hint.Left!.Iris.R:0.###} and {hint.Right!.Iris.R:0.###} face widths, ") +
-                FormattableString.Invariant($"the irises {hint.Right.Iris.X - hint.Left.Iris.X:0.###} face widths apart."));
-            return Report(CharacterEyes.Measured(measurement, DateTimeOffset.Now) + $" in {result.Requests} request{(result.Requests == 1 ? "" : "s")}.");
+                FormattableString.Invariant($"the irises {hint.Right.Iris.X - hint.Left.Iris.X:0.###} face widths apart") +
+                (hint.HasCheeks ? FormattableString.Invariant($", the cheeks at {hint.CheekLeft!.Y:0.###} and {hint.CheekRight!.Y:0.###} face widths below the face's middle") : ", without the cheeks") +
+                (hint.Mouth is { } mouth ? FormattableString.Invariant($", the mouth {mouth.Y:0.###} below it.") : ", without the mouth."));
+            return Report(CharacterEyes.Measured(measurement, DateTimeOffset.Now) + $" in {result.Requests} request{(result.Requests == 1 ? "" : "s")}" +
+                (hint.HasCheeks ? "." : ". The cheeks couldn't be measured, so the blush keeps its estimate."));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { return Stop("Measuring the eyes was stopped."); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -159,9 +162,9 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         {
             var forgot = await CharacterEyes.ForgetAsync(dataDirectory, id, token);
             if (ModelId == id) Volatile.Write(ref current, null);
-            // A forgotten measurement isn't taken again on its own until Martlet starts again; Measure the eyes takes it.
+            // A forgotten measurement isn't taken again on its own until Martlet starts again; Measure the face takes it.
             lock (automatic) automatic.Add(id);
-            return Report(forgot ? "Forgot the measurement. The eyes use the model's own data or an estimate." : "No measurement was saved for this model.");
+            return Report(forgot ? "Forgot the measurement. The eyes and the blush use the model's own data or an estimate." : "No measurement was saved for this model.");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
         {

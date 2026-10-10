@@ -10,8 +10,18 @@ namespace Martlet.Desktop.Tests;
 public sealed class CharacterEyesTests
 {
     // Boxes on the standard close-up (1.6 face widths square around an upright face): each iris 0.1 face widths across, 0.2
-    // face widths left and right of the face's middle and 0.02 above it, in an opening 0.2 wide and 0.08 tall.
+    // face widths left and right of the face's middle and 0.02 above it, in an opening 0.2 wide and 0.08 tall; each cheek 0.2
+    // wide and 0.12 tall, 0.3 out and 0.3 down; the mouth 0.1 wide and 0.04 tall, 0.45 down.
     private const string Answer = """
+        {"left":{"iris":{"left":0.34375,"top":0.45625,"right":0.40625,"bottom":0.51875},"eye":{"left":0.3125,"top":0.4625,"right":0.4375,"bottom":0.5125},
+                 "cheek":{"left":0.25,"top":0.65,"right":0.375,"bottom":0.725}},
+         "right":{"iris":{"left":0.59375,"top":0.45625,"right":0.65625,"bottom":0.51875},"eye":{"left":0.5625,"top":0.4625,"right":0.6875,"bottom":0.5125},
+                 "cheek":{"left":0.625,"top":0.65,"right":0.75,"bottom":0.725}},
+         "mouth":{"left":0.46875,"top":0.76875,"right":0.53125,"bottom":0.79375}}
+        """;
+
+    // The same eyes with no cheeks and no mouth, as an answer from before Martlet asked for them.
+    private const string EyesOnly = """
         {"left":{"iris":{"left":0.34375,"top":0.45625,"right":0.40625,"bottom":0.51875},"eye":{"left":0.3125,"top":0.4625,"right":0.4375,"bottom":0.5125}},
          "right":{"iris":{"left":0.59375,"top":0.45625,"right":0.65625,"bottom":0.51875},"eye":{"left":0.5625,"top":0.4625,"right":0.6875,"bottom":0.5125}}}
         """;
@@ -27,12 +37,19 @@ public sealed class CharacterEyesTests
         Near(0.34375, nested.LeftIris.X);
         Near(0.0625, nested.RightIris.Height);
         Near(0.05, nested.RightEye.Height);
+        Near(0.25, nested.LeftCheek!.X);
+        Near(0.625, nested.RightCheek!.X);
+        Near(0.76875, nested.Mouth!.Y);
+        Assert.Null(Boxes(EyesOnly).LeftCheek);
 
         // Flat keys with arrays, in pixels of the 768-pixel close-up.
         var flat = CharacterEyes.Parse("Here: {\"left_iris\":[264,350,312,398],\"left_eye\":[240,355,336,394],\"right_iris\":[456,350,504,398]," +
-            "\"right_eye\":[432,355,528,394]}", 768, 768).Boxes!;
+            "\"right_eye\":[432,355,528,394],\"left_cheek\":[192,500,288,557],\"right_blush\":[480,500,576,557],\"lips\":[360,590,408,610]}", 768, 768).Boxes!;
         Near(264 / 768.0, flat.LeftIris.X);
         Near((528 - 432) / 768.0, flat.RightEye.Width);
+        Near(192 / 768.0, flat.LeftCheek!.X);
+        Near(480 / 768.0, flat.RightCheek!.X);
+        Near(590 / 768.0, flat.Mouth!.Y);
 
         // A list of eyes, each naming its side (the right one first), with boxes on the 0..1000 grid of a smaller picture.
         var listed = CharacterEyes.Parse("""
@@ -85,6 +102,35 @@ public sealed class CharacterEyesTests
     }
 
     [Fact]
+    public void TheCheeksAndMouthAreCheckedAndPutInOrder()
+    {
+        var close = EyeCloseUp.Standard();
+        var good = Boxes();
+        Assert.Empty(CharacterEyes.FeatureProblems(good, close));
+        // Cheeks given the other way round are put back by where they are, with the eyes or alone.
+        var crossed = good with { LeftCheek = good.RightCheek, RightCheek = good.LeftCheek };
+        Assert.Equal(good, CharacterEyes.Ordered(crossed).Boxes);
+        Assert.Equal(good, CharacterEyes.Ordered(good.Swapped).Boxes);
+
+        // A cheek on its eye (where the blush was drawn on the screenshot's model), one far below and missing parts.
+        var onEye = CharacterEyes.FeatureProblems(good with { LeftCheek = good.LeftEye }, close);
+        Assert.Contains(onEye, p => p is { Part: CharacterEyes.FacePart.Cheeks } && p.Problem.Contains("on or above the left eye", StringComparison.Ordinal));
+        Assert.Contains(CharacterEyes.FeatureProblems(good with { RightCheek = good.RightCheek! with { Y = 0.99, Height = 0.01 } }, close),
+            p => p.Problem.Contains("face widths below the right eye", StringComparison.Ordinal));
+        Assert.Contains(CharacterEyes.FeatureProblems(good.EyesOnly, close), p => p.Problem == "It gave no box for the cheeks (5 and 6).");
+        Assert.Contains(CharacterEyes.FeatureProblems(good.EyesOnly, close), p => p.Problem == "It gave no box for the mouth (7).");
+        Assert.Contains(CharacterEyes.FeatureProblems(good with { Mouth = new(0.46875, 0.3, 0.0625, 0.025) }, close),
+            p => p is { Part: CharacterEyes.FacePart.Mouth });
+        // The eyes' own checks don't count the cheeks: a measurement keeps good eyes and leaves out what fails.
+        Assert.Empty(CharacterEyes.EyeProblems(good with { LeftCheek = good.LeftEye }, close));
+        var (kept, dropped) = CharacterEyes.Kept(good with { LeftCheek = good.LeftEye }, close);
+        Assert.Equal((null, null, good.Mouth), (kept.LeftCheek, kept.RightCheek, kept.Mouth));
+        Assert.NotEmpty(dropped);
+        Assert.Equal(7, CharacterEyes.Marks(good).Count);
+        Assert.Equal(4, CharacterEyes.Marks(good.EyesOnly).Count);
+    }
+
+    [Fact]
     public void BoxesBecomeTheHintInFaceWidthsFromTheFacesMiddleWithItsRollTakenOut()
     {
         var hint = CharacterEyes.Hint(Boxes(), EyeCloseUp.Standard());
@@ -92,6 +138,12 @@ public sealed class CharacterEyesTests
         Assert.True(hint.IsValid);
         Assert.Equal(new RendererEye(new(-0.2, -0.02, 0.05), new(-0.2, -0.02, 0.1, 0.04)), hint.Left);
         Assert.Equal(new RendererEye(new(0.2, -0.02, 0.05), new(0.2, -0.02, 0.1, 0.04)), hint.Right);
+        Assert.Equal(new RendererFeature(-0.3, 0.3, 0.08), hint.CheekLeft);
+        Assert.Equal(new RendererFeature(0.3, 0.3, 0.08), hint.CheekRight);
+        Assert.Equal(new RendererFeature(0, 0.45, 0.035), hint.Mouth);
+        Assert.True(hint.HasCheeks);
+        // One cheek alone gives no cheeks: a blush needs both.
+        Assert.False(CharacterEyes.Hint(Boxes() with { RightCheek = null }, EyeCloseUp.Standard()).HasCheeks);
 
         // A face rolled 30 degrees clockwise: a point of its own frame lands on the picture turned with it, and reads back.
         var angle = Math.PI / 6;
@@ -154,6 +206,14 @@ public sealed class CharacterEyesTests
         var json = JsonSerializer.Serialize(new RendererEyes(eye, eye), RendererProtocol.Json);
         Assert.Equal("{\"left\":{\"iris\":{\"x\":-0.2,\"y\":-0.02,\"r\":0.05},\"eye\":{\"x\":-0.2,\"y\":-0.02,\"rx\":0.1,\"ry\":0.04}}," +
             "\"right\":{\"iris\":{\"x\":-0.2,\"y\":-0.02,\"r\":0.05},\"eye\":{\"x\":-0.2,\"y\":-0.02,\"rx\":0.1,\"ry\":0.04}}}", json);
+        // Measured cheeks and mouth go with the eyes.
+        var cheek = new RendererFeature(-0.3, 0.3, 0.08);
+        Assert.EndsWith(",\"cheekLeft\":{\"x\":-0.3,\"y\":0.3,\"r\":0.08},\"cheekRight\":{\"x\":-0.3,\"y\":0.3,\"r\":0.08}}",
+            JsonSerializer.Serialize(new RendererEyes(eye, eye, cheek, cheek), RendererProtocol.Json), StringComparison.Ordinal);
+        Assert.False(new RendererEyes(eye, eye, cheek with { R = 0 }, cheek).IsValid);
+        Assert.False(new RendererEyes(eye, eye, Mouth: cheek with { Y = 3 }).IsValid);
+        Assert.Equal(new RendererEyes(eye, eye, cheek, cheek), JsonSerializer.Deserialize<RendererEyes>(
+            JsonSerializer.Serialize(new RendererEyes(eye, eye, cheek, cheek), RendererProtocol.Json), RendererProtocol.Json));
         Assert.False(new RendererFace(0.5, 0.5, 0.1, 0, "Mesh").IsValid);
         Assert.True(new RendererFace(0.5, 0.5, 0.1, 0, "mesh").IsValid);
     }
@@ -187,7 +247,7 @@ public sealed class CharacterEyesTests
         Assert.Equal(2, corrected.Requests);
         Assert.NotNull(corrected.Hint);
         var check = checking.Asked[1];
-        Assert.Equal((EyeAskKind.Check, "check", 4), (check.Kind, check.Step, check.Marks.Count));
+        Assert.Equal((EyeAskKind.Check, "check", 7), (check.Kind, check.Step, check.Marks.Count));
         Assert.Contains("lies mostly outside the left eye's opening", check.Text, StringComparison.Ordinal);
         Assert.Equal((768, 768), (check.Picture!.Width, check.Picture.Height));
         Assert.NotEqual(checking.Asked[0].Picture!.Bgra, check.Picture.Bgra);
@@ -208,15 +268,45 @@ public sealed class CharacterEyesTests
     }
 
     [Fact]
+    public async Task TheCheeksAreAskedForAgainAndLeftOutWhenTheyStillFailWhileGoodEyesAreKept()
+    {
+        var close = EyeCloseUp.Standard();
+        // An answer with only the eyes: the check asks for the cheeks and the mouth too, and the second answer gives them.
+        var missing = new Asker((EyesOnly, null), (Answer, null));
+        var completed = await CharacterEyes.RunAsync(close, missing.AskAsync, null, default);
+        Assert.Equal(2, completed.Requests);
+        Assert.Contains("It gave no box for the cheeks (5 and 6).", missing.Asked[1].Text, StringComparison.Ordinal);
+        Assert.True(completed.Hint!.HasCheeks);
+        Assert.NotNull(completed.Hint.Mouth);
+
+        // Cheeks drawn on the eyes twice: the eyes are kept, the cheeks left out, the mouth kept.
+        var onEyes = Answer.Replace("\"cheek\":{\"left\":0.25,\"top\":0.65,\"right\":0.375,\"bottom\":0.725}",
+            "\"cheek\":{\"left\":0.3125,\"top\":0.4625,\"right\":0.4375,\"bottom\":0.5125}", StringComparison.Ordinal);
+        var stubborn = await CharacterEyes.RunAsync(close, new Asker((onEyes, null), (onEyes, null)).AskAsync, null, default);
+        Assert.Equal((2, null), (stubborn.Requests, stubborn.Failure));
+        Assert.False(stubborn.Hint!.HasCheeks);
+        Assert.NotNull(stubborn.Hint.Mouth);
+        Assert.Contains(stubborn.Steps, s => s.StartsWith("kept the eyes, left out the cheeks", StringComparison.Ordinal));
+        Assert.Contains(stubborn.Problems, p => p.Contains("on or above the left eye", StringComparison.Ordinal));
+
+        // Good eyes first, then a check whose eyes break: the first answer's eyes are kept.
+        var broken = Answer.Replace("\"left\":{\"iris\":{\"left\":0.34375", "\"left\":{\"iris\":{\"left\":0.59375", StringComparison.Ordinal)
+            .Replace("\"right\":0.40625", "\"right\":0.65625", StringComparison.Ordinal);
+        var kept = await CharacterEyes.RunAsync(close, new Asker((onEyes, null), (broken, null)).AskAsync, null, default);
+        Assert.Equal(-0.2, kept.Hint!.Left!.Iris.X);
+        Assert.False(kept.Hint.HasCheeks);
+    }
+
+    [Fact]
     public async Task MeasurementsAreSavedPerModelAndForgottenWithTheirPictures()
     {
         var directory = Directory.CreateTempSubdirectory("martlet-eyes-").FullName;
         try
         {
             var hint = CharacterEyes.Hint(Boxes(), EyeCloseUp.Standard());
-            var measured = new CharacterEyeMeasurement
+            var measured = CharacterEyeMeasurement.From("model-a", hint) with
             {
-                ModelId = "model-a", Left = hint.Left!, Right = hint.Right!, MeasuredAt = DateTimeOffset.Now, Requests = 1, Boxes = Boxes(),
+                MeasuredAt = DateTimeOffset.Now, Requests = 1, Boxes = Boxes(),
                 Pictures = [new("01-eyes.png", "eyes", 768, 768, 1000, "image/png")], Steps = ["eyes: read all four boxes"]
             };
             await CharacterEyes.SaveAsync(directory, measured);
@@ -230,7 +320,23 @@ public sealed class CharacterEyesTests
             Assert.Equal(Boxes(), loaded.Boxes);
             Assert.Equal(2, CharacterEyes.LoadAll(directory).Count);
             using (var saved = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, CharacterEyes.FileName))))
+            {
                 Assert.Equal(0.05, saved.RootElement.GetProperty("models")[0].GetProperty("left").GetProperty("iris").GetProperty("r").GetDouble());
+                Assert.Equal(0.08, saved.RootElement.GetProperty("models")[0].GetProperty("cheek_left").GetProperty("r").GetDouble());
+            }
+            Assert.True(loaded.HasCheeks);
+            // A file from before Martlet measured cheeks still loads, with only the eyes.
+            var older = File.ReadAllText(Path.Combine(directory, CharacterEyes.FileName));
+            using (var document = JsonDocument.Parse(older))
+            {
+                var model = document.RootElement.GetProperty("models")[0];
+                File.WriteAllText(Path.Combine(directory, CharacterEyes.FileName), "{\"version\":1,\"models\":[{\"model_id\":\"model-old\",\"left\":" +
+                    model.GetProperty("left").GetRawText() + ",\"right\":" + model.GetProperty("right").GetRawText() + "}]}");
+            }
+            var old = CharacterEyes.Load(directory, "model-old")!;
+            Assert.False(old.HasCheeks);
+            Assert.True(old.Hint is { Clears: false, HasCheeks: false, Mouth: null });
+            File.WriteAllText(Path.Combine(directory, CharacterEyes.FileName), older);
 
             Assert.True(await CharacterEyes.ForgetAsync(directory, "model-a"));
             Assert.Null(CharacterEyes.Load(directory, "model-a"));
@@ -249,11 +355,15 @@ public sealed class CharacterEyesTests
         var now = DateTimeOffset.Now;
         var hint = CharacterEyes.Hint(Boxes(), EyeCloseUp.Standard());
         var saved = new CharacterEyeMeasurement { ModelId = "m", Left = hint.Left!, Right = hint.Right!, MeasuredAt = now };
-        Assert.Equal($"Measured with vision at {now.ToLocalTime().ToString("t", CultureInfo.CurrentCulture)}.", CharacterEyes.Status("vision", saved, true, now));
+        Assert.Equal($"Measured with vision at {now.ToLocalTime().ToString("t", CultureInfo.CurrentCulture)}. The cheeks weren't measured, so the blush " +
+            "uses an estimate. Measure the face to place it.", CharacterEyes.Status("vision", saved, true, now));
+        Assert.EndsWith(". The blush goes on the measured cheeks.", CharacterEyes.Status("mesh", CharacterEyeMeasurement.From("m", hint), true, now),
+            StringComparison.Ordinal);
         Assert.Equal("From the model's own meshes.", CharacterEyes.Status("mesh", null, true, now));
         Assert.StartsWith("From the model's own eye bones", CharacterEyes.Status("bones", null, true, now), StringComparison.Ordinal);
-        Assert.EndsWith("Measure the eyes to fit them.", CharacterEyes.Status("estimate", null, true, now), StringComparison.Ordinal);
-        Assert.EndsWith("The character uses it when it shows.", CharacterEyes.Status(null, saved, false, now), StringComparison.Ordinal);
+        Assert.EndsWith("Measure the face to fit them.", CharacterEyes.Status("estimate", null, true, now), StringComparison.Ordinal);
+        Assert.EndsWith("The character uses it when it shows. The cheeks weren't measured, so the blush uses an estimate. Measure the face to place it.",
+            CharacterEyes.Status(null, saved, false, now), StringComparison.Ordinal);
         Assert.StartsWith("FIXTURE - NOT AI", CharacterEyes.Status("vision", saved with { By = CharacterEyeMeasurement.ByFixture }, true, now), StringComparison.Ordinal);
         Assert.Contains(" on ", CharacterEyes.Measured(saved with { MeasuredAt = now.AddDays(-2) }, now), StringComparison.Ordinal);
     }
@@ -305,6 +415,14 @@ public sealed class CharacterEyesTests
         Assert.Null(service.Current);
         Assert.False(service.ClaimAutomatic(), "nor right after it was forgotten");
         service.Follow("model-2");
+        Assert.True(service.ClaimAutomatic());
+        Assert.False(service.ClaimAutomatic());
+
+        // A model measured before Martlet measured cheeks is measured again on its own, once.
+        var eyesOnly = CharacterEyes.Hint(Boxes(EyesOnly), EyeCloseUp.Standard());
+        await CharacterEyes.SaveAsync(scope.DirectoryPath, CharacterEyeMeasurement.From("model-3", eyesOnly) with { MeasuredAt = DateTimeOffset.Now });
+        service.Follow("model-3");
+        Assert.NotNull(service.Current);
         Assert.True(service.ClaimAutomatic());
         Assert.False(service.ClaimAutomatic());
     }

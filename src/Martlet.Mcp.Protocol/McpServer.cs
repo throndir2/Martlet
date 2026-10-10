@@ -213,7 +213,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
             "the renderer's hit test there: hit, drawables, bone, mesh), eyeLeft, eyeRight, mouth and top (x, y: the eye and mouth " +
             "points the overlay emotes such as tears or tongue_out are drawn from, and the top of the head; an eye with a known " +
-            "iris has its point at the eye's middle), the eyes for drawings over them: eyesFrom (mesh: a Live2D " +
+            "iris has its point at the eye's middle; with a face measured by vision the cheeks and mouth are where vision saw " +
+            "them), cheekSize (the measured cheeks' radius in face widths, which sizes the blush; null without a measurement), " +
+            "the eyes for drawings over them: eyesFrom (mesh: a Live2D " +
             "model's iris and eye-white meshes; bones: a VRM's eye bones with its iris and eye-white meshes; vision: eyes measured " +
             "by vision fill what the model can't give; estimate: an eye has neither, so its iris and opening are left out), " +
             "irisLeft and irisRight (x, y, rx, ry: the iris's middle and radii, x and rx fractions of the drawing's width, y and ry " +
@@ -826,19 +828,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
             modelPath = new { type = "string" }, tool = new { type = "string" }, arguments = new { type = "string" },
             undo = new { type = "string" }, save = new { type = "boolean" }, at = new { type = "string" }, checkInId = new { type = "string" }
         }),
-        Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
+        Tool("character_eyes", "Companion > Eyes > Where the face is (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
             "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
             "parser, checks and conversion make of answer (a simulated vision reply about the close-up: {\"left\":{\"iris\":{\"left\",\"top\"," +
-            "\"right\",\"bottom\"},\"eye\":{...}},\"right\":{...}} as fractions, pixels or 0..1000, or flat keys such as left_iris) and, when it " +
-            "fails, of second (the answer to the check with its boxes drawn and numbered, or to the question again): the steps, the four " +
-            "boxes, the problems Martlet's checks found and the renderer's eye hint (each eye's iris {x,y,r} and opening {x,y,rx,ry} in " +
+            "\"right\",\"bottom\"},\"eye\":{...},\"cheek\":{...}},\"right\":{...},\"mouth\":{...}} as fractions, pixels or 0..1000, or flat keys " +
+            "such as left_iris and left_cheek) and, when it fails, of second (the answer to the check with its boxes drawn and numbered, " +
+            "or to the question again): the steps, the boxes (eyes, cheeks, mouth), the problems Martlet's checks found and the renderer's " +
+            "face hint (each eye's iris {x,y,r} and opening {x,y,rx,ry}, and cheekLeft, cheekRight and mouth {x,y,r} when they pass, in " +
             "face widths from the face's middle, roll removed). Without snapshotPath the close-up is exactly 1.6 face widths around an " +
             "upright face; with snapshotPath (a PNG of the character, transparent around it) and face (\"x,y,width[,rollDegrees]\", the " +
             "face's middle and width as fractions of the snapshot) the production close-up is composed and encoded as the desktop sends " +
             "it (previewDirectory keeps the pictures). save writes the measurement (with the pictures and the picture of its boxes) for " +
             "the model (modelPath, modelId or the model dataDirectory's avatar.json shows) into an explicit, disposable dataDirectory, as " +
-            "Measure the eyes would (marked FIXTURE - NOT AI); forget removes it. eyesFrom (mesh, bones, vision or estimate: what the " +
+            "Measure the face would (marked FIXTURE - NOT AI); forget removes it. eyesFrom (mesh, bones, vision or estimate: what the " +
             "renderer says the eyes use) shows the status line the section shows. Contacts nothing; never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },

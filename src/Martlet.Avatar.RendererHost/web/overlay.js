@@ -2,12 +2,14 @@
 // canvas. Each overlay is registered once with how long it lasts and how it draws around the face anchor the adapter
 // reports; the layer fades it in and out and redraws every frame.
 //
-// anchor: { x, y, width, angle, cheekLeft:{x,y}, cheekRight:{x,y}, eyeLeft?, eyeRight?, mouth?, top?, tracking?,
+// anchor: { x, y, width, angle, cheekLeft:{x,y}, cheekRight:{x,y}, eyeLeft?, eyeRight?, mouth?, top?, tracking?, cheekSize?,
 // cheekLeftFrame?, cheekRightFrame?, irisLeft?, irisRight?, eyeLeftShape?, eyeRightShape?, eyesFrom? } in CSS pixels of the
 // page; x/y is the face's middle, width the face's width (zoom included), angle its roll in radians (clockwise on screen),
 // Left/Right the viewer's left and right. The adapters read it from what they draw each frame (`tracking`: "mesh" when pinned
 // to a Live2D model's own meshes, "bones" from a VRM's head bone, "estimate" from Live2D's head angles), so it follows every
-// move of the head. A cheek's frame is how its surface shows now: `right` and `down`, the steps for one face width across and
+// move of the head. With a face measured by vision the middle is on the measured eye line, the cheeks and mouth are where
+// vision saw them, and `cheekSize` is the measured cheeks' radius in face widths (0.05 to 0.4), which sizes the blush. A
+// cheek's frame is how its surface shows now: `right` and `down`, the steps for one face width across and
 // down it (a turned head squashes the far cheek), and `visible`, 0 to 1 as it turns away.
 //
 // The eyes: `irisLeft`/`irisRight` ({x, y, rx, ry}) is an eye's iris now (the coloured part with the pupil): its middle and
@@ -120,6 +122,7 @@ export function toCssAnchor(face, scaleX, scaleY) {
         visible: Number.isFinite(frame.visible) ? Math.max(0, Math.min(1, frame.visible)) : 1 };
   }
   if (typeof face.tracking === "string") anchor.tracking = face.tracking;
+  if (Number.isFinite(face.cheekSize) && face.cheekSize > 0) anchor.cheekSize = Math.max(0.05, Math.min(0.4, face.cheekSize));
   addEyes(anchor, face, scaleX, scaleY);
   return [anchor.x, anchor.y, anchor.width].every(Number.isFinite) && anchor.width > 0 ? anchor : undefined;
 }
@@ -188,6 +191,10 @@ export function insideEyeShape(shape, point) {
  *  over it, so each level looks different on every model. */
 export const BLUSH_LEVELS = Object.freeze(["blush", "blush_deep", "blush_fierce"]);
 
+// A cheek's radius (the mean of its half width and half height), in face widths, that the looks below are drawn for: about the
+// faintest blush's glow (0.17 across and 0.62 of that down). Measured cheeks of another size scale every level.
+const BLUSH_CHEEK = 0.14;
+
 // How each level looks, for one face width: the glow's radius, height (squash), strength (alpha) and colors from the middle
 // out, and its strokes (how many, how far apart, how long, their color). The fierce flush also crosses the nose (bridge) and
 // its glow pulses slowly (seconds a pulse).
@@ -231,7 +238,8 @@ function hatch(ctx, look, radius, count, scale = 1) {
 // turned head keeps fewer of a stronger level's strokes (at least the blush's three). The fierce flush's band over the nose
 // runs between the cheeks, bowed a little toward the eyes, each end as strong as its cheek shows.
 function drawLevel(look, ctx, anchor, t, weight) {
-  const radius = anchor.width * look.radius;
+  // Measured cheeks (`cheekSize`, their radius in face widths) size the blush; the faintest level fills about such a cheek.
+  const radius = anchor.width * look.radius * (anchor.cheekSize ? anchor.cheekSize / BLUSH_CHEEK : 1);
   const c = Math.cos(anchor.angle || 0), s = Math.sin(anchor.angle || 0);
   const pulse = look.pulse ? 0.93 + 0.07 * Math.cos(2 * Math.PI * t / look.pulse) : 1;
   const sides = [[anchor.cheekLeft, anchor.cheekLeftFrame], [anchor.cheekRight, anchor.cheekRightFrame]].map(([cheek, frame]) => cheek && {
