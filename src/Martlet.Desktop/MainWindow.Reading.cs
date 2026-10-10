@@ -42,8 +42,8 @@ public partial class MainWindow
         "an NVIDIA driver 580 or newer.";
 
     private const string ReadingDataTerms =
-        " While Martlet watches your screen, this PC sends screenshots to that computer. They are read in memory there and are " +
-        "not kept.";
+        " While Martlet watches your screen, this PC sends screenshots to that computer, or to another of your computers that " +
+        "runs the Reading role when that one is busy. They are read in memory there and are not kept.";
 
     private string? readingHost;
     private string? readingModel;

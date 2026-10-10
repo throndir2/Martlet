@@ -60,6 +60,15 @@ public sealed class WorkSharingTests
     }
 
     [Fact]
+    public void Reading_is_shared_by_default_without_a_devices_card()
+    {
+        Assert.True(WorkSharingJobs.SharedByDefault(WorkSharingJobs.Reading));
+        Assert.DoesNotContain(WorkSharingJobs.Reading, WorkSharingJobs.All);
+        Assert.Equal("Reading", WorkSharingJobs.Title(WorkSharingJobs.Reading));
+        Assert.Equal(["m1-host", "m3-host"], WorkSharing.Order(new WorkSharingSettings(), WorkSharingJobs.Reading, "desk-2", "m1-host", Voices));
+    }
+
+    [Fact]
     public void Settings_share_canonically_and_round_trip()
     {
         var settings = new WorkSharingSettings()

@@ -751,6 +751,27 @@ engine, model and accelerator) and `POST /read` with the same picture as a PNG
 (`worker.fullHd` and `worker.fourK`: lines found, `linesRead`, the PNG size and
 the milliseconds). It never captures the real screen.
 
+`reading_check` also shows the [Reading pool](READING.md#the-reading-pool).
+With `dataDirectory`, `pool` gives the order this PC's reads try the computers
+in, from `reading.json`, `cluster.json`, `hosts.json` and `work-sharing.json`:
+`pooled` (true with the Reading role), `job` (`reading`), `role` (`ocr`),
+`priority` (`Background`), `waitSeconds` (3), `chosen` (the computer named in
+Companion › Reading) and `chosenIsFriends`, `runs` (the owner's other paired
+computers that the shared plan says run the Reading role), `tries` (the
+production `WorkSharing.Order`, the named computer first, a friend's host only
+when named), `everyOwn` (true when nothing is named and the plan knows no
+Reading role, so every computer of the owner's own is tried) and `kept`.
+`poolCheck` rehearses the production planner and queue (`WorkQueue`) with
+simulated computers that read one screenshot at a time and turn another away at
+once (`job.busy`), **NOT real hosts**. Each step reports `passed` and its
+detail: the order; a kept computer left out; Reading shared by default with no
+Devices card; the named computer reading while free (`WaitedMs` near 0); a busy
+or unanswering one passed over at once; a read waiting for the first to free; a
+read giving up as busy after the wait; and a friend's host busy with its owner's
+work handing the read to your own computer, or, when it is the only one,
+leaving it for later (`Refusal` `later`). `poolCheck.ok` is true when every step
+passed.
+
 On the test machine (a 24-thread processor, Docker Desktop), the workers read
 the drawn desktops as follows:
 
