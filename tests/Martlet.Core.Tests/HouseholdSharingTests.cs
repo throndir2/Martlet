@@ -186,13 +186,12 @@ public sealed class HouseholdSharingTests
     }
 
     [Fact]
-    public void Joined_characters_and_the_about_me_choice_are_kept_and_a_joined_character_cannot_be_shared_again()
+    public void Joined_characters_are_kept_and_a_joined_character_cannot_be_shared_again()
     {
         var (companion, lorebooks, aria) = SamsCharacters();
-        var alexs = HouseholdSharing.Empty(Alex).WithJoined(Sam, aria.Id).WithNewFactsAboutMe(true);
+        var alexs = HouseholdSharing.Empty(Alex).WithJoined(Sam, aria.Id);
         Assert.Same(alexs, alexs.WithJoined(Sam, aria.Id));
         var read = HouseholdSharing.Read(alexs.Write())!;
-        Assert.True(read.NewFactsAboutMe);
         Assert.True(read.HasJoined(aria.Id));
         Assert.Throws<ContractException>(() => read.WithMode(aria.Id, CharacterShareMode.Copy, companion, lorebooks));
         Assert.False(read.WithoutJoined(aria.Id).HasJoined(aria.Id));

@@ -61,11 +61,11 @@ public sealed record JoinedCharacter
 /// <summary>
 /// What one account shares with the household: the household shared-settings entry <c>sharing.&lt;account 32 hex&gt;</c>
 /// (<see cref="Key"/>). Only that account's devices write it, members as well as admins. It lists the characters the account
-/// shares (<see cref="Characters"/>, a snapshot its devices refresh after each change), the characters of other accounts it
-/// talks to together (<see cref="Joined"/>) and whether new facts about this person go to the household memory space
-/// (<see cref="NewFactsAboutMe"/>). Other accounts' devices read it to show Household characters, to use a copy and to keep a
-/// character shared together the same as its owner's. Snake-case JSON, schema 1, at most <see cref="MaximumCharacters"/>
-/// characters, <see cref="MaximumJoined"/> joined characters and <see cref="MaximumBytes"/> bytes.
+/// shares (<see cref="Characters"/>, a snapshot its devices refresh after each change) and the characters of other accounts it
+/// talks to together (<see cref="Joined"/>). *Share new memories about me* is in the account directory entry
+/// (<c>Account.Sharing.MemoriesAboutMe</c>), not here. Other accounts' devices read this entry to show Household characters, to
+/// use a copy and to keep a character shared together the same as its owner's. Snake-case JSON, schema 1, at most
+/// <see cref="MaximumCharacters"/> characters, <see cref="MaximumJoined"/> joined characters and <see cref="MaximumBytes"/> bytes.
 /// </summary>
 public sealed record HouseholdSharing
 {
@@ -85,7 +85,6 @@ public sealed record HouseholdSharing
 
     public int SchemaVersion { get; init; } = SchemaVersion1;
     public required Guid AccountId { get; init; }
-    public bool NewFactsAboutMe { get; init; }
     public IReadOnlyList<SharedCharacter> Characters { get; init; } = [];
     public IReadOnlyList<JoinedCharacter> Joined { get; init; } = [];
 
@@ -148,8 +147,6 @@ public sealed record HouseholdSharing
         };
         return Fits(next) ? next : this with { Characters = [.. Characters.Where(c => Present(c.Id) is not null)] };
     }
-
-    public HouseholdSharing WithNewFactsAboutMe(bool on) => this with { NewFactsAboutMe = on };
 
     /// <summary>Records that this account talks to <paramref name="character"/> of <paramref name="account"/> together.</summary>
     public HouseholdSharing WithJoined(Guid account, Guid character) => HasJoined(character) ? this
