@@ -192,6 +192,7 @@ public partial class MainWindow : ThemedWindow
         InitializeCluster();
         InitializeNodePresence();
         InitializeSettingsSync();
+        InitializeHouseholdSharing();
         InitializeReminders();
         InitializeCheckIns();
         InitializeRecommendedSetup();
@@ -253,6 +254,7 @@ public partial class MainWindow : ThemedWindow
         StartCluster();
         StartNodePresence();
         StartSettingsSync();
+        StartHouseholdSharing();
         StartReminders();
         StartCheckIns();
         StartMemorySync();
