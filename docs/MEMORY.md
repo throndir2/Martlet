@@ -633,7 +633,9 @@ simulated desktops with real memory stores on loopback, covering recall on
 another computer, an edit, a deletion everywhere that never comes back, offline
 edits on two computers, a host that missed a change, a new computer, an expiring
 fact, a newer Martlet's fact, a fact that belongs to a voice (and is then made
-everyone's), a new memory folder, more facts than one store holds, no fact in desktop data folders and an unsigned request refused. The
+everyone's), a new memory folder, more facts than one store holds, a fact in
+one account's memory space that stays apart from other spaces and the old
+document and survives a host restart, no fact in desktop data folders and an unsigned request refused. The
 desktop window's status line was checked through `-Desktop`. The desktop's sync
 with real paired hosts, a conversation recalling and remembering around a sync,
 the Linux host's file and two real computers are **NOT RUN**.
@@ -646,6 +648,39 @@ flight. Lock, pause, mute, a configuration change, conversation close and app
 exit cancel pending remembering; Stop and window deactivation do not, because
 the exchange already finished. Turning memory off or changing its configuration
 drops anything still being remembered.
+
+### Memory spaces on every host
+
+For [accounts and households](ACCOUNTS.md#memory-spaces), each host also keeps
+one memory document per **memory space**, so every host keeps every person's
+memories apart. This is the host side only; desktops do not use spaces yet.
+
+- **Space IDs** (`Martlet.Core.Sync.MemorySpaceId`): `household`,
+  `account-<32 hex>` or `character-<32 hex>` (the ID in lowercase hex). Hosts
+  refuse any other ID with `request.invalid`.
+- **Routes**: `GET /martlet/v1/memories/spaces/{space}`,
+  `GET /martlet/v1/memories/spaces/{space}/digest` and
+  `POST /martlet/v1/memories/spaces/{space}` (merge and return). Each space is
+  today's `SharedMemories` document with the same limits and merge. The answers
+  name the `space`. A space the host never kept reads as an empty copy; a merge
+  that brings no fact makes no space.
+- **Who may use them**: paired member devices over their pinned, signed
+  connection. Friends get `access.friend` and API keys get `key.scope`, as for
+  the single document. An access hook (`GatewayMemorySpaces.Access`) then
+  decides which device may read or write which space; a refusal is
+  `memories.space_denied` (403). For now it admits every member device. The
+  account directory will narrow it. A POST needs read and write access,
+  because it returns the merged space.
+- **Limits**: a host keeps at most 64 spaces. A new space past that is
+  `memories.spaces_full` (409); the spaces it keeps still take changes.
+- **On a Linux host** each space is `memories-<space>.json` beside `host.json`
+  (0600, gateway service owner).
+- **Client** (`HostMemories.cs`): `ReadMemorySpaceAsync`,
+  `ReadMemorySpaceDigestAsync` and `MergeMemorySpaceAsync`. They refuse a bad
+  space ID before they send anything. Hosts older than spaces answer
+  `request.invalid`.
+- The old `/martlet/v1/memories` document and `memories.json` work unchanged for
+  older desktops. Nothing moves between the old document and the spaces yet.
 
 ## Local validation
 
