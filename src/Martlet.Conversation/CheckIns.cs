@@ -324,7 +324,7 @@ public static partial class CheckIns
     /// <summary>How much of a tool's answer the run record keeps (its first line).</summary>
     public const int MaximumToolResultCharacters = 120;
 
-    /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Saying the same things every 10,
+    /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Lingering emotes every minute, Saying the same things every 10,
     /// Staying in character every 15); How I react on, after your touches (at most every 5 minutes); Welcome back, Unanswered
     /// question, On a call and Someone else is here off until the owner turns them on; Describe touches on, started by touches at
     /// most once a minute. Each is only data (a prompt, facts, conditions, triggers, tool sets and an outcome) that the owner can
@@ -332,7 +332,7 @@ public static partial class CheckIns
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
     [
         new(Emotes, "Lingering emotes", "Checks whether the emotes a reply turned on and left on (such as a blush or glasses) still " +
-            "fit the moment, and turns off those that don't.", CheckInOutcome.EmotesOff, true, 5)
+            "fit the moment, and turns off those that don't.", CheckInOutcome.EmotesOff, true, 1)
         {
             PromptId = PromptCatalog.CheckInEmotes, Facts = CheckInFacts.Character | CheckInFacts.Conversation,
             Conditions = CheckInConditions.CharacterShows | CheckInConditions.EmoteShown | CheckInConditions.SlowWhenKept
