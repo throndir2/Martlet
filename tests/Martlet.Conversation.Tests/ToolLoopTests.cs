@@ -6,7 +6,7 @@ namespace Martlet.Conversation.Tests;
 
 public sealed class ToolLoopTests
 {
-    private sealed class FixtureTools(string output) : IConversationToolHost
+    internal sealed class FixtureTools(string output) : IConversationToolHost
     {
         internal List<TextToolCall> Calls { get; } = [];
         public ValueTask<ConversationToolResult> CallAsync(TextToolCall call, CancellationToken cancellationToken)
@@ -26,7 +26,7 @@ public sealed class ToolLoopTests
     };
 
     // The model answers with one function call and no text.
-    private static string CallTrace()
+    internal static string CallTrace()
     {
         const string arguments = """{"path":"notes.txt"}""";
         var done = new { id = "fc_1", type = "function_call", call_id = "call_a", name = "read_file", arguments, status = "completed" };
@@ -41,7 +41,7 @@ public sealed class ToolLoopTests
             TextFixtures.Event("response.completed", 6, new { response = Response("completed", [done]) }));
     }
 
-    private static ConversationRequest Request(IConversationToolHost tools) => new(
+    internal static ConversationRequest Request(IConversationToolHost tools) => new(
         new BoundedTextInput("What's in my notes?", tools: [Tool]), TextFixtures.Selection, new(), new(), tools: tools);
 
     [Fact]

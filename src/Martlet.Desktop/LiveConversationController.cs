@@ -1906,7 +1906,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 RecordLore(operation, lore, usedLore);
                 operation.Authorization.BindInput(request.Input);
                 operation.Publish(new("commentary.looking"));
-                turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
+                turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller, camera ? "camera glance" : "screen glance");
                 operation.Attach(turn);
             }
             if (boardSent)
@@ -2426,8 +2426,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 operation.ReplyStartedAt = clock.GetTimestamp();
                 operation.LatencyTimeline?.Mark("building the request", operation.ReplyStartedAt);
-                turn = early is null ? runtime.Start(request, operation.Authorization, operation.OriginalCaller)
-                    : runtime.StartEarly(request, operation.Authorization, early.PrepareVoice, operation.OriginalCaller);
+                // Its name in the Thinking trace (docs/VOICE_LATENCY.md, Thinking trace).
+                var purpose = operation.Report ? "background report" : operation.Touch ? "touch reaction"
+                    : own is not null || straight ? early is null ? "reply" : "reply started early" : "reply to what this PC played";
+                turn = early is null ? runtime.Start(request, operation.Authorization, operation.OriginalCaller, purpose)
+                    : runtime.StartEarly(request, operation.Authorization, early.PrepareVoice, operation.OriginalCaller, purpose);
                 operation.Attach(turn);
                 EndFloorReplyWhenMade(operation, turn);
                 QuickSoundWhenSlow(operation, turn);
@@ -2466,6 +2469,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             ErrorLog.Info($"Turn took: {operation.Inputs} ({(operation.Report ? "Martlet's report" : operation.Touch ? "a reaction to being touched" : own is not null || straight ? "a reply to you" : "a reply to what this PC played")}" +
                 $"{(operation.Look ? ", counted as a look" : "")}).");
+            // What came before the request in the Thinking trace: each wait from the moment that counts for the user.
+            if (turn.TraceName is not null && operation.LatencyTimeline is { } before)
+                turn.Note($"prepared {ReplyLatency.Before(before, operation.ReplyStartedAt)}.");
             // Whether a reply with a picture on the Described path took the image model's description (MCP's image_model_check reads
             // the newest line).
             NotePicturePath(operation);
@@ -4696,7 +4702,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         Volatile.Write(ref captureAuthorization, authorization);
         try
         {
-            var turn = capture.Start(request, authorization, token);
+            var turn = capture.Start(request, authorization, token, purpose.ToLowerInvariant());
             var terminal = await turn.Completion.ConfigureAwait(false);
             await turn.OwnershipRelease.ConfigureAwait(false);
             NoteFallback(purpose, configuration, terminal);

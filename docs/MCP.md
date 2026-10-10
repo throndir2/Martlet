@@ -426,7 +426,11 @@ simulated members (NOT models). They check that the journal records a success
 (one try, with its run time and its output), a retry (a failed member, then a
 member that answers: two tries) and a stale judge dropped after its wait (no
 try and no output), each with plausible timings. They also check that
-`Requests.Totals` counts the three by kind.
+`Requests.Totals` counts the three by kind, and that each request's
+[Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
+lines say when it waited in line, started on a member, let it go and ended
+(`thinking_trace` reads them from the desktop log; simulated requests write
+them too).
 
 ```powershell
 $env:MARTLET_SIMULATE_THINKING_REQUESTS = '6'
@@ -3767,6 +3771,15 @@ apart, which adds about that much to *first sentence* here (a real model's
 next words come within tens of milliseconds); `"breaks":{"shortEndingWords":0}`
 measures without that wait.
 
+`thinkingTrace` returns the reply's
+[Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
+lines as the desktop log gets them (`lines`), and `ok` also needs its start, its
+first request's line and its end with the state the reply ended in. With
+`reasoningMs` of 2000 or more, it also has a *still waiting* line. For example,
+`{"voiceFailure":"none","reasoningMs":2500}` returned *still waiting at 2018 ms
+for request 1's answer (2010 ms so far; sent at 34 ms, response at 51 ms,
+hidden reasoning since 56 ms)*.
+
 With `thinkingSteps` (`off` or `on`) the reply carries Companion › Replies ›
 Thinking steps (a loopback server gets the chat template's `enable_thinking`);
 with `refuseThinking` the fixture endpoint answers a request carrying it with
@@ -4083,6 +4096,27 @@ long (*The voice paused 2 times for 3120 ms in all, waiting for its next
 audio.*; left out below 100 ms), and the model IDs
 (`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
 is in [Voice latency](VOICE_LATENCY.md#measure-first-the-reply-latency-line).
+
+`thinking_trace` reads the desktop log's
+[Thinking trace](VOICE_LATENCY.md#thinking-trace-each-thinking-request-step-by-step)
+(optional absolute `dataDirectory`, default the current user's) and puts it
+back together. `newest` holds the newest `turns` (1-200, default 10)
+conversation turns, newest first. Each turn has its `name` (*Thinking turn 12
+(reply)*), `purpose`, `route`, `model`, `state` (null while it has no end
+line), `totalMs`, `firstWordsMs`, `firstAudioMs`, the number of `requests`,
+`waits` (each *still waiting* notice: `atMs`, `what` and `waitedMs`) and its
+`lines` in order. `newestPoolRequests` holds the newest requests for the
+Thinking pool's slots (`id` such as `tr-3`, `kind`, `holder`, `state`,
+`totalMs`, `waitedMs`, `ranMs` and `lines`). The counts are `turns`,
+`unfinishedTurns`, `stillWaitingLines` and `poolRequests`. Turn numbers and
+request IDs start again each time Martlet starts, so a *started* or *waits in
+line* line begins a new one. With `contains`, only the turns and requests that
+have a line with that text are kept. It is read-only, never shows what was
+said, and starts no audio, network or provider request:
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_trace","arguments":{"turns":5,"contains":"still waiting","dataDirectory":"C:\\Users\\me\\AppData\\Local\\Martlet"}}]'
+```
 
 `latency_report` reads those lines from a data directory's desktop log (with
 its rotated copies; optional absolute `dataDirectory`, default the current
@@ -6443,7 +6477,7 @@ the same `dataDirectory` sends it.
 `MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
 returns its bounds before and after, and `ui_snapshot` reports `movable` for
-it. **Locking the character's position**: Home's `ToggleCharacterLock`
+it.
 
 **Tapping the character**: a left click on the character that doesn't drag
 it (it comes up within Windows' drag distance, within 0.7 seconds; also when
@@ -6769,21 +6803,20 @@ cutting you off* when a touch stopped Martlet), `message` (a touch-only
 reply's whole message, Companion › Prompts › *Touched*) and `notes` (*Touched,
 with your message*), with the prompts saved in the data directory.
 
-**Locking the character's position**: Home's `ToggleCharacterLock`
-(*Lock character position*, shown while the character shows or is locked),
-Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
-menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The
-character's menu chose 'lock'.*) lock it where it is; all need
-`--allow-ui-effects` because they save `character-placement.json` (see
-`character_status`'s `placement`). Locked, `movable` is false and `ui_move` is
+**Locking the character's position**: Companion › Character's
+`SetupCharacterLock` (*Lock position*, shown while the character shows or is
+locked) and the overlay menu's `CharacterLockPosition` (*Lock position*,
+carried out by Martlet: *The character's menu chose 'lock'.*) lock it where it
+is; both need `--allow-ui-effects` because they save
+`character-placement.json` (see `character_status`'s `placement`). Home has
+no lock button. Locked, `movable` is false and `ui_move` is
 refused; the overlay ignores dragging, the arrow keys and Home, and its own
 `CharacterResetPosition` is disabled; and zoom (the wheel, the menu or
 `SetupCharacterZoomIn`) only zooms the camera, keeping the overlay's bounds.
-The same `ToggleCharacterLock` and `SetupCharacterLock` then read *Unlock
-character position* and *Unlock position* (also while the character is
-hidden), and the overlay menu's `CharacterLockPosition` reads *Unlock
-position* (carried out by Martlet: *The character's menu chose 'unlock'.*);
-each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
+The same `SetupCharacterLock` then reads *Unlock position* (also while the
+character is hidden), and the overlay menu's `CharacterLockPosition` reads
+*Unlock position* (carried out by Martlet: *The character's menu chose
+'unlock'.*); each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
 where (device-independent pixels and the monitor), and `SetupCharacterView` ends with
 *Position locked.* when the overlay reports it. A locked character shows at
 its locked place again after Hide/Show or a Martlet restart (at its default
@@ -6793,22 +6826,22 @@ and `avatar-renderer` *The character's position is locked.*
 
 **Letting clicks pass through the character**: the overlay menu's
 `CharacterClickThrough` (*Let clicks pass through*, carried out by Martlet:
-*The character's menu chose 'click-through-on'.*), Home's
-`ToggleCharacterClickThrough` (*Turn on click-through*, shown while the
-character shows or click-through is on), Companion › Character's
-`SetupCharacterClickThrough` (*Turn on click-through*) and the notification-area
+*The character's menu chose 'click-through-on'.*), Companion › Character's
+`SetupCharacterClickThrough` (*Turn on click-through*, shown while the
+character shows or click-through is on) and the notification-area
 menu's checkable `TrayCharacterClickThrough` (*Let clicks pass through the
 character*, listed while the character shows or click-through is on) turn it
 on; all need `--allow-ui-effects` because they save
 `character-click-through.json` on this PC (`character_status`'s
-`clickThrough`; never shared, and Reset position leaves it alone). On, the
+`clickThrough`; never shared, and Reset position leaves it alone). Home has no
+click-through button. On, the
 overlay window (and its speech bubble) gets `WS_EX_TRANSPARENT`, so every
 click, the wheel and right-click go to the window under it: `ui_snapshot`'s
 `windowStates` reads `clickThrough` true for *Martlet character overlay*, and
 the character can't be dragged, zoomed, tapped, stroked or right-clicked with
 the mouse (its eyes still follow the mouse, and it still talks and moves).
 The mouse can't reach the character's menu then, so it is turned off in
-Martlet: `ToggleCharacterClickThrough` and `SetupCharacterClickThrough` read
+Martlet: `SetupCharacterClickThrough` reads
 *Turn off click-through* (also while the character is hidden),
 `TrayCharacterClickThrough`'s `checkedState` is `On`, and clicking any of them
 turns it off (opened through UI Automation, the overlay menu's
@@ -6857,7 +6890,7 @@ way a broken pipe does (*Renderer message length is invalid (simulated by
 MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
 the character shows (*FIXTURE: the character renderer fails its ... commands*).
 The renderer still starts, draws and closes normally. Commands include `where`
-(saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
+(saving its place after `ui_move`), `lock` (`SetupCharacterLock`), `zoom`
 (`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `place` (a character
 profile's place when you switch profiles), `mouth` (the
 loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
@@ -8098,7 +8131,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

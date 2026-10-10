@@ -291,17 +291,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and the profile form's problem ("Give the profile a name."). Never a profile's name.
         "CharacterProfilesStatus", "CharacterProfileEditorProblem",
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
-        // lock buttons' labels, which carry the state: Home's ToggleCharacterLock ("Lock character position" / "Unlock
-        // character position"), Companion's SetupCharacterLock ("Lock position" / "Unlock position") and the overlay menu's
-        // CharacterLockPosition ("Lock position" / "Unlock position"). Clicking any of them saves
+        // lock buttons' labels, which carry the state: Companion's SetupCharacterLock ("Lock position" / "Unlock position") and
+        // the overlay menu's CharacterLockPosition ("Lock position" / "Unlock position"). Clicking either of them saves
         // character-placement.json, so it needs --allow-ui-effects.
-        "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
+        "SetupCharacterPlacement", "SetupCharacterLock", "CharacterLockPosition",
         // Whether clicks pass through the character (Companion › Character's note), and the click-through buttons' labels, which
-        // carry the state: Home's ToggleCharacterClickThrough and Companion's SetupCharacterClickThrough ("Turn on click-through" /
-        // "Turn off click-through") and the overlay menu's CharacterClickThrough ("Let clicks pass through" / "Stop letting clicks
-        // pass through"). Clicking any of them (or the icon menu's TrayCharacterClickThrough) saves character-click-through.json,
-        // so it needs --allow-ui-effects.
-        "SetupCharacterClickThroughNote", "ToggleCharacterClickThrough", "SetupCharacterClickThrough", "CharacterClickThrough",
+        // carry the state: Companion's SetupCharacterClickThrough ("Turn on click-through" / "Turn off click-through") and the
+        // overlay menu's CharacterClickThrough ("Let clicks pass through" / "Stop letting clicks pass through"). Clicking any of
+        // them (or the icon menu's TrayCharacterClickThrough) saves character-click-through.json, so it needs --allow-ui-effects.
+        "SetupCharacterClickThroughNote", "SetupCharacterClickThrough", "CharacterClickThrough",
         // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
         // voice"). Clicking it saves talk-preferences.json (Speak Martlet's replies aloud), so it needs --allow-ui-effects.
         "CharacterMuteVoice",

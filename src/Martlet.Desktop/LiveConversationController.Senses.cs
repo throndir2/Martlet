@@ -146,7 +146,7 @@ internal sealed partial class LiveConversationController
             var own = new DeepThinkAuthorization(target, request, configured?.Profile ?? Guid.Empty, thinking, vault, clock,
                 clock.GetUtcNow() + job.Timeout + TimeSpan.FromSeconds(5), media: true);
             Volatile.Write(ref slot.Authorization, own);
-            var started = ThinkRuntime(slot).Start(request, own, token);
+            var started = ThinkRuntime(slot).Start(request, own, token, $"{kind} sense job on {name}");
             var terminal = await started.Completion.ConfigureAwait(false);
             await started.OwnershipRelease.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();

@@ -1533,7 +1533,7 @@ public partial class MainWindow
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 resetPosition,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null,
-                // Unlocking is only here and on Home, never on the character itself.
+                // Unlocking also works here while the character is hidden.
                 showing || locked ? PageButton(locked ? "Unlock position" : "Lock position",
                     () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null,
                 // The same goes for click-through: the mouse can't reach the character to turn it off.
@@ -1545,7 +1545,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(placementNote, "SetupCharacterPlacement");
             modelPanel.Children.Add(placementNote);
             var clickThroughNote = Note(avatar.ClickThrough
-                ? "Click-through is on: clicks pass through the character to the windows under it, so you can't drag, zoom or right-click it. Turn it off here, on Home or from Martlet's icon in the notification area."
+                ? "Click-through is on: clicks pass through the character to the windows under it, so you can't drag, zoom or right-click it. Turn it off here or from Martlet's icon in the notification area."
                 : "Click-through is off: the character catches clicks. Turn it on here or from the character's right-click menu to let clicks pass through it, for example while you play a game.",
                 new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(clickThroughNote, "SetupCharacterClickThroughNote");
