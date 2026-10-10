@@ -513,10 +513,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the refusals elsewhere; friend mode: whether the desktop signed in as a friend, its access, whether it ever asked to " +
             "join or was refused anything (access.friend), and its Thinking requests). With shareWithFriend true (owner mode, for a " +
             "session without the window) the lab's own admin desktop shares the host with the simulated friend from the start, so the " +
-            "running desktop meets a friend's computer in its network sync. \"stop\": ends it (it also ends with this server).", new
+            "running desktop meets a friend's computer in its network sync. mode \"account\" (headless, no desktop needed): household " +
+            "account sign-in on a host with an ECDSA key; its owner starts a network and sets up the owner login, " +
+            "Sam's (password and authenticator), Alex's (password only) and a provider identity linked to Sam, then every Prove " +
+            "sign-in (POST /martlet/v1/signin/prove) and a laptop's sign-in as Sam must give a host attestation that " +
+            "Martlet.Core's AccountAttestation.Check accepts against the roster, and a changed or expired attestation, another key, " +
+            "a friend's identity (signin.no_account), a wrong password and Alex adding a computer (signin.needs_authenticator) are " +
+            "refused; status has ok, checks and attestations. \"stop\": ends it (it also ends with this server).", new
         {
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
-            mode = new { type = "string", @enum = new[] { "owner", "friend" } },
+            mode = new { type = "string", @enum = new[] { "owner", "friend", "account" } },
             signInDesktop = new { type = "boolean" },
             shareWithFriend = new { type = "boolean" },
             dataDirectory = new { type = "string" }
@@ -2962,7 +2968,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 if (signInLab is { HasExited: false }) throw new InvalidOperationException("The sign-in lab is already running; stop it first.");
                 var mode = OptionalString(arguments, "mode") ?? "owner";
-                if (mode is not ("owner" or "friend")) throw new ArgumentException("mode is owner or friend.");
+                if (mode is not ("owner" or "friend" or "account")) throw new ArgumentException("mode is owner, friend or account.");
                 var extra = new List<string> { "--mode", mode };
                 if (OptionalBool(arguments, "signInDesktop") == true)
                     extra.Add(mode == "friend" ? "--sign-in-desktop" : throw new ArgumentException("signInDesktop goes with mode friend."));

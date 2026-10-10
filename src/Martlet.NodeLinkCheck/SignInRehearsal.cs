@@ -485,6 +485,9 @@ internal static class SignInRehearsal
             return await connection.ReadSignInSettingsAsync(token);
         }
 
+        /// <summary>A signed connection to a host this desktop is paired with (dispose it).</summary>
+        internal Audio2FaceHostConnection Connect(string hostId) => new(pairings[hostId].Pairing, pairings[hostId].Secret);
+
         internal async Task<bool> CanUseAsync(string hostId, CancellationToken token) => await FailureCodeAsync(hostId, token) is null;
 
         /// <summary>What the host answers this computer on each route that isn't an engine (null when it was allowed).</summary>
@@ -540,12 +543,12 @@ internal static class SignInRehearsal
         /// <summary>How many times the host answered each failure code (its audit), for a lab's status.</summary>
         internal IReadOnlyDictionary<string, int> Codes => codes;
 
-        internal static async Task<LabHost> StartAsync(string hostId, IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null)
+        internal static async Task<LabHost> StartAsync(string hostId, IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null, bool ecdsa = false)
         {
             var host = new LabHost { HostId = hostId };
             try
             {
-                host.certificate = Certificate();
+                host.certificate = Certificate(ecdsa);
                 host.Origin = $"https://127.0.0.1:{FreePort()}";
                 var origin = new GatewayOrigin(host.Origin);
                 var identity = GatewayHostIdentity.FromCertificate(hostId, host.certificate);
@@ -588,12 +591,17 @@ internal static class SignInRehearsal
             finally { probe.Stop(); }
         }
 
-        private static X509Certificate2 Certificate()
+        // RSA as the rehearsals always used; ECDSA P-256 (ecdsa) like every real Martlet host certificate.
+        private static X509Certificate2 Certificate(bool ecdsa = false)
         {
-            using var key = RSA.Create(2048);
-            var request = new CertificateRequest("CN=Martlet sign-in rehearsal", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            using var rsa = ecdsa ? null : RSA.Create(2048);
+            using var ec = ecdsa ? ECDsa.Create(ECCurve.NamedCurves.nistP256) : null;
+            var request = ec is not null
+                ? new CertificateRequest("CN=Martlet sign-in rehearsal", ec, HashAlgorithmName.SHA256)
+                : new CertificateRequest("CN=Martlet sign-in rehearsal", rsa!, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
             request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-            request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+            request.CertificateExtensions.Add(new X509KeyUsageExtension(ec is not null
+                ? X509KeyUsageFlags.DigitalSignature : X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
             request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
             var names = new SubjectAlternativeNameBuilder();
             names.AddIpAddress(IPAddress.Loopback);

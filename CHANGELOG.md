@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- A Martlet host can now keep a password sign-in for each person in your household, with an optional authenticator app, and link sign-ins from your identity provider to the right person. Signing in this way proves who you are on a computer, ready for accounts in Martlet. ([#747](https://github.com/throndir2/Martlet/pull/747))
+
 ### Changed
 
 - Each person now has their own memories: Martlet keeps what it remembers for each account apart, on every computer and host, while facts in the household's memories are shared by everyone. Your memories from before this update become the owner's, and computers that still run an older Martlet keep sharing them. ([#748](https://github.com/throndir2/Martlet/pull/748))
