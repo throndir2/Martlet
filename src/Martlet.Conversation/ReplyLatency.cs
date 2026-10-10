@@ -238,6 +238,28 @@ public static class ReplyLatency
 
     private static string Ms(TimeSpan? value) => value is { } span ? span.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) : "-";
 
+    /// <summary>What happened before a reply's Thinking request, as the Thinking trace says it: how long from
+    /// <paramref name="timeline"/>'s origin to <paramref name="until"/> (the reply's start) and each step's wait, in the order
+    /// they happened ("1004 ms after you stopped talking (end of speech 800, recording 12, ..., building the request 2)").</summary>
+    public static string Before(ReplyTimeline timeline, long until)
+    {
+        ArgumentNullException.ThrowIfNull(timeline);
+        var clock = timeline.Clock;
+        var origin = timeline.OriginAt;
+        var text = new StringBuilder().Append(CultureInfo.InvariantCulture, $"{Milliseconds(Math.Max(0, until - origin), clock)} ms after {timeline.Origin}");
+        var steps = timeline.Steps.Where(step => step.At <= until).OrderBy(step => step.At).ToArray();
+        if (steps.Length == 0) return text.ToString();
+        var previous = origin;
+        text.Append(" (");
+        for (var i = 0; i < steps.Length; i++)
+        {
+            if (i > 0) text.Append(", ");
+            text.Append(CultureInfo.InvariantCulture, $"{steps[i].Step} {Milliseconds(Math.Max(0, steps[i].At - previous), clock)}");
+            previous = Math.Max(previous, steps[i].At);
+        }
+        return text.Append(')').ToString();
+    }
+
     private static string Milliseconds(long ticks, TimeProvider clock) =>
         (ticks * 1000.0 / clock.TimestampFrequency).ToString("0", CultureInfo.InvariantCulture);
 }

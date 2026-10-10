@@ -16,15 +16,21 @@ Each release's section here is also its notes on GitHub.
 ### Changed
 
 - Companion › Thinking pool is now just a list of your machines: each graphics card, model on this PC or cloud provider has its own **On** box and model choice, so you can use one GPU of a computer and not the other, and with nothing on, the pool is off. **Add a machine** at the end of the list adds another computer, a model in Ollama on this PC or a cloud provider. ([#722](https://github.com/throndir2/Martlet/pull/722))
+- Martlet's log now follows each Thinking request step by step: where it went, when each step happened, what it waits for while it waits, and how it ended, so a slow or stuck reply is easier to understand on the Diagnostics page. ([#720](https://github.com/throndir2/Martlet/pull/720))
 - The talk window's listening, watching and Stop buttons are now small icons; hover over one to see what it does. ([#715](https://github.com/throndir2/Martlet/pull/715))
 - The Lingering emotes check-in now runs every minute by default instead of every 5 minutes, so emotes that no longer fit turn off sooner. ([#714](https://github.com/throndir2/Martlet/pull/714))
 - Martlet now treats background sounds and voices as context instead of ignoring them, and answers someone in your call or room who clearly talks to it. ([#711](https://github.com/throndir2/Martlet/pull/711))
 
 ### Fixed
 
+- Vision no longer stops often with "That's too long for Martlet's Thinking model": when a look doesn't fit Thinking's context size, Martlet now leaves out the text it read on the screen and other extras so the look still goes. If even the picture and your persona don't fit, it tells you to shorten the persona or raise the context size. ([#721](https://github.com/throndir2/Martlet/pull/721))
 - Check-ins, remembering and other Thinking pool jobs no longer wait "for the conversation" because of clicks, key presses or typing near your microphone: only your voice holds them back now. ([#718](https://github.com/throndir2/Martlet/pull/718))
 - A computer in the Thinking pool whose model also answers you now says why pool jobs stay off it (your replies would wait), and no longer shows a wrong "shares the graphics card" warning. ([#713](https://github.com/throndir2/Martlet/pull/713))
 - Changing a host's conversation model to a bigger one (such as `gemma4:12b` on a 16 GB graphics card) no longer stops with "Check the host's disk space and network": if the new model doesn't load beside the old one, the host unloads the old one and tries again. ([#712](https://github.com/throndir2/Martlet/pull/712))
+
+### Removed
+
+- The home screen no longer has the **Lock/Unlock character position** and **Turn on/off click-through** buttons. Use Companion › Character or the character's right-click menu instead; you can also turn click-through off from Martlet's icon in the notification area. ([#719](https://github.com/throndir2/Martlet/pull/719))
 
 ## [0.65.0] - 2026-10-09
 

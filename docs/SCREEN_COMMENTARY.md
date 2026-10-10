@@ -245,6 +245,25 @@ each look Martlet takes on its own gets the text it read, at the end of its
 message. What you type or say never carries it. Choose where it reads in
 Companion › Reading. See [Reading the text on your screen](READING.md).
 
+## When a look is too long for Thinking
+
+A look's request holds the persona, Martlet's instructions, the picture and its
+notes. All of it must fit Thinking's context size (Companion › Replies). When
+it doesn't fit, Martlet first leaves out the oldest exchanges and lorebook
+entries, as for a reply. Then the look goes without these, one at a time, until
+it fits:
+
+1. the text read on the screen;
+2. the context notes and what Martlet said lately;
+3. the look tags (where the character looks);
+4. the character's emotes and motions.
+
+The vision line's tooltip then adds *To fit Thinking's context size, it went
+without the text read on the screen.*, and the desktop log has a *Vision: the
+screen glance didn't fit Thinking's context size* line. Vision stops only when
+the picture and the persona alone don't fit. Its message then says to shorten
+the persona or raise the context size in Companion › Replies.
+
 ## What Martlet saw stays in the conversation
 
 Pictures are never kept, but what Martlet saw in them is, so later replies know

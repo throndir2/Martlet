@@ -403,7 +403,7 @@ public sealed class BackgroundThink
         if (left < ThinkLonger.MinimumAttempt) await Task.Delay(Timeout.InfiniteTimeSpan, Clock, token).ConfigureAwait(false);
         job.Report(BackgroundJobState.Running, Doing);
         var (request, authorization) = Prepare(left);
-        var started = Runtime.Start(request, authorization, token);
+        var started = Runtime.Start(request, authorization, token, purpose: job.Id);
         Attempts++;
         var terminal = await started.Completion.ConfigureAwait(false);
         await started.OwnershipRelease.ConfigureAwait(false);

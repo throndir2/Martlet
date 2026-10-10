@@ -114,6 +114,74 @@ walk on the caller's thread, and its log line, status file and host holds run
 on other threads, so it adds nothing to the time to the first audio. MCP's
 `live_floor_status` and `live_floor_check` show it ([MCP](MCP.md#live-floor-the-live-turn-first)).
 
+## Thinking trace: each Thinking request step by step
+
+The reply latency line tells how long a reply took. It comes only when the
+reply ends, and only for a reply that had words. The desktop log also follows
+each Thinking request while it runs, so a slow or stuck request shows what it
+waits for. Each line starts with the name of the turn, for example *Thinking
+turn 12 (reply)*. A turn is one use of the Thinking model: a reply (also a
+reply started early, a background report, a touch reaction or a reply to what
+this PC played), a screen or camera glance, a background think
+(*think-longer-1*), a Thinking pool job (*digest pool job on gpu-box*), a sense
+job, a Discord reply or a memory request. Times are in milliseconds from the
+start of the turn:
+
+```text
+Thinking turn 12 (reply) started: Chat Completions https://openrouter.ai/api/v1, model x-ai/grok-4.3; input of about 6012 tokens
+(23456 bytes) with 14 earlier messages, 7 tools; spoken; Thinking steps off; Backup Thinking after 1500 ms; at most 1024 output
+tokens; first words within 15 s, no words for at most 10 s, each request within 60 s, the turn within 90 s.
+Thinking turn 12 (reply): prepared 1004 ms after you stopped talking (end of speech 800, recording 12, speech-to-text 150,
+preparing 3, memory 35, building the request 4).
+Thinking turn 12 (reply): still waiting at 2004 ms for request 1's answer (2001 ms so far; sent at 3 ms, response at 340 ms,
+hidden reasoning since 800 ms).
+Thinking turn 12 (reply): request 1 (first) answered with 1 tool call at 3400 ms: authorized at 1 ms, sent at 3 ms, response at
+340 ms, hidden reasoning from 800 ms, first words at 2700 ms, 85 characters; 6012 input tokens (5800 from the prompt cache), 230
+output tokens.
+Thinking turn 12 (reply): tool round 1: search_conversations 210 ms; 212 ms in all.
+Thinking turn 12 (reply): request 2 (after tool round 1) answered at 4800 ms: began at 3612 ms, authorized at 3613 ms, ...
+Thinking turn 12 (reply) ended at 5600 ms: Completed; 2 requests, 1 tool call, first words at 2700 ms, first audio at 3100 ms,
+340 characters, 3 spoken pieces.
+```
+
+| Line | What it says |
+| --- | --- |
+| started | The route (OpenAI Responses, Chat Completions and its endpoint, or a Martlet host), the model, the size of the input (estimated tokens, bytes, earlier messages, tools, a recording, a picture), spoken or text only, started early, Thinking steps, Backup Thinking's wait, the Thinking fallback and the time limits |
+| prepared | Replies only: each wait before the request, from the moment that counts for you (the same steps as the reply latency line) |
+| request N (why) | One line when each request ends: why it was sent (first; after tool round N; again without the tools, recording, picture or Thinking steps choice the model refused; the Thinking fallback after a failure), how it ended, and when it was authorized, sent (after its key was read and its body made), got the response headers, started hidden reasoning and had its first words; then its characters and the tokens the provider reported |
+| tool round N | Each tool call and how long it took |
+| Backup Thinking | What [Backup Thinking](CONVERSATION.md#backup-thinking-a-hedged-request) did for the first request |
+| still waiting | What the turn waits for, after 2, 5, 10, 20 and 30 s and then every 30 s: a request's authorization, its answer (with when it was sent, the response and hidden reasoning so far), the next words once words came, the voice to take the next piece (its queue is full: a long reply, a reply started early that isn't taken yet, or a reply paused for you), a tool, speech-to-text's words for a recording sent alone, or the talk window to take a reply started early |
+| ended | The state and the failure (if any), the number of requests and tool calls, the first words and first audio, the characters and spoken pieces, and what the turn dropped or fell back to |
+
+Each request for the Thinking pool's slots (the
+[Thinking requests](MCP.md#thinking-requests) page's `tr-N`) also writes its way
+through the line. The pool job's own turn then follows as *Thinking turn 13
+(memory pool job on gpu-box)*:
+
+```text
+Thinking request tr-7 (memory, memory-3): waits in line: a pool job, priority 20, needs Text, within 120000 ms.
+Thinking request tr-7 (memory, memory-3): started on gpu-box (qwen3:8b) after 1200 ms in line.
+Thinking request tr-7 (memory, memory-3): let go of gpu-box after 800 ms: the conversation needed gpu-box; it waits (paused) again.
+Thinking request tr-7 (memory, memory-3): started on gpu-box (qwen3:8b) after 4100 ms waiting again (try 2).
+Thinking request tr-7 (memory, memory-3): Succeeded after 9000 ms: waited 5300 ms, ran 3700 ms, 2 tries (last on gpu-box),
+stopped 1 time for other work, an answer of 240 characters.
+```
+
+The lines never hold what was said or written: only counts, the names of
+routes, models, members and tools, and times. They are INFO lines of
+`desktop.log`, so the Diagnostics page shows them and log sharing sends them to
+your other computers.
+
+The trace adds no wait to a reply. While a request runs, the turn only notes
+times in memory, and it makes its start line on a background thread. The log
+writes the lines on a background thread, so a slow disk never delays a reply.
+The *still waiting* notices come from the turn's supervisor, which checks every
+10 ms beside the reply. With the production runtime and a fixture endpoint
+(180 turns with the trace on and 180 with it off, four runs), the median time
+to the first words differed by -0.01 to +0.06 ms, which is noise. MCP's
+`thinking_trace` puts the lines back together ([MCP](MCP.md#latency)).
+
 ## Where the time goes today
 
 From the desktop log before this change (it measured from the reply's start
