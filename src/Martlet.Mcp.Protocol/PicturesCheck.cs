@@ -24,7 +24,8 @@ internal static class PicturesCheck
     {
         var (settings, state) = PicturesSettings.Read(dataDirectory);
         var workflow = PicturesSettings.LoadWorkflow(dataDirectory);
-        var pictures = CreationStore.View(dataDirectory).Live.Where(c => c.Kind == PictureCreations.KindName).ToArray();
+        var creations = CreationsCheck.Folder(dataDirectory);
+        var pictures = CreationStore.View(creations).Live.Where(c => c.Kind == PictureCreations.KindName).ToArray();
         return new
         {
             settings = new
@@ -58,7 +59,7 @@ internal static class PicturesCheck
                         model = metadata?.Model, where = metadata?.Where, seconds = metadata?.Seconds, fixture = metadata?.Fixture,
                         titleCharacters = picture.Title?.Length, descriptionCharacters = picture.Text?.Length,
                         assets = picture.Assets?.Select(asset => new { name = asset.Name, mediaType = asset.MediaType, bytes = asset.Bytes }).ToArray(),
-                        here = CreationStore.IsComplete(dataDirectory, picture), createdBy = picture.CreatedBy?.Computer, createdAt = picture.CreatedAt
+                        here = CreationStore.IsComplete(creations, picture), createdBy = picture.CreatedBy?.Computer, createdAt = picture.CreatedAt
                     };
                 }).ToArray()
             }
@@ -188,9 +189,10 @@ internal static class PicturesCheck
                 var registry = new CreationRegistry();
                 registry.Register(PictureCreations.Kind);
                 var arguments = PictureTools.Parse($$"""{"description": {{System.Text.Json.JsonSerializer.Serialize(request.Prompt)}}, "title": "Test picture", "shape": "{{PictureShapes.Name(shape)}}"}""").Arguments!;
-                var creation = await CreationStore.AddAsync(dataDirectory, PictureCreations.Draft(result, arguments.Title, arguments.About, request,
+                var creations = CreationsCheck.Folder(dataDirectory);
+                var creation = await CreationStore.AddAsync(creations, PictureCreations.Draft(result, arguments.Title, arguments.About, request,
                     new CreationAuthor { Device = "mcp-pictures-check", Computer = Environment.MachineName }), registry, DateTimeOffset.UtcNow, cancellation);
-                var (image, mediaType, problem) = await PictureCreations.LoadAsync(creation, CreationStore.Assets(dataDirectory, creation), cancellation);
+                var (image, mediaType, problem) = await PictureCreations.LoadAsync(creation, CreationStore.Assets(creations, creation), cancellation);
                 kept = new
                 {
                     id = creation.Key, kind = creation.Kind, bytes = creation.Bytes, readBack = image is not null && image.AsSpan().SequenceEqual(result.Image),

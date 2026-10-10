@@ -177,7 +177,7 @@ internal sealed partial class LiveConversationController
         };
         try
         {
-            var creation = await CreationStore.AddAsync(dataDirectory, ResearchReports.Draft(report, author), Creations, clock.GetUtcNow(), token)
+            var creation = await CreationStore.AddAsync(CreationsDirectory!, ResearchReports.Draft(report, author), Creations, clock.GetUtcNow(), token)
                 .ConfigureAwait(false);
             ErrorLog.Info($"Web research: {job.Id} kept its report as creation {creation.Key} ({creation.Bytes / 1024} KiB, {report.Sources.Count} sources).");
             return creation.Key;

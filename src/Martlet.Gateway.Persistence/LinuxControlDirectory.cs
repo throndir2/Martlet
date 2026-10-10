@@ -37,6 +37,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const string CreationChunkPrefix = "creation-chunk-", CreationChunkSuffix = ".bin";
     internal const string CreationChunkStaging = "creation-chunk.staging";
     internal const int MaximumCreationChunkBytes = Martlet.Core.Creations.CreationLibrary.ChunkBytes;
+    /// <summary>One account's creation list: creations-account-&lt;32 hex&gt;.json (its pieces are the shared creation-chunk files).</summary>
+    internal const string CreationAccountPrefix = "creations-account-", CreationAccountSuffix = ".json";
+    internal const string CreationAccountStaging = "creations-account.staging";
     /// <summary>The shared Home Assistant connection, including the access token, for paired desktops.</summary>
     internal const string HomeAssistant = "home-assistant.json", HomeAssistantStaging = "home-assistant.staging";
     internal const int MaximumHomeAssistantBytes = 16 * 1024;
@@ -133,7 +136,8 @@ internal sealed class LinuxControlDirectory : IDisposable
     {
         if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             name != Accounts &&
-            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
+            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null &&
+            CreationAccountOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -306,6 +310,28 @@ internal sealed class LinuxControlDirectory : IDisposable
         fs.Flush(DirectoryFd);
         return true;
     }
+
+    /// <summary>The file name of <paramref name="account"/>'s creation list.</summary>
+    internal static string CreationAccount(Guid account) => CreationAccountPrefix + account.ToString("N") + CreationAccountSuffix;
+
+    /// <summary>The account whose creation list a file name holds; null for any other name.</summary>
+    internal static Guid? CreationAccountOf(string name) =>
+        name.Length == CreationAccountPrefix.Length + 32 + CreationAccountSuffix.Length &&
+        name.StartsWith(CreationAccountPrefix, StringComparison.Ordinal) && name.EndsWith(CreationAccountSuffix, StringComparison.Ordinal) &&
+        Martlet.Core.Sync.MemorySpaceId.IsValid(Martlet.Core.Sync.MemorySpaceId.AccountPrefix + name[CreationAccountPrefix.Length..^CreationAccountSuffix.Length])
+            ? Guid.ParseExact(name[CreationAccountPrefix.Length..^CreationAccountSuffix.Length], "N")
+            : null;
+
+    /// <summary>The accounts whose creation lists are kept here.</summary>
+    internal Guid[] ListCreationAccounts()
+    {
+        Validate();
+        return [.. fs.Enumerate(DirectoryFd).Select(CreationAccountOf).OfType<Guid>().OrderBy(a => a.ToString("N"), StringComparer.Ordinal)];
+    }
+
+    /// <summary>Atomically replaces one account's creation list (0600, service owner).</summary>
+    internal void WriteCreationAccount(Guid account, byte[] bytes) =>
+        ReplaceRecovering(CreationAccount(account), CreationAccountStaging, bytes, MaximumCreationsBytes);
 
     private void ReplaceRecovering(string name, string staging, byte[] bytes, int maximum)
     {
