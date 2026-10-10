@@ -113,6 +113,13 @@ if (args is ["memories"])
     Console.WriteLine(JsonSerializer.Serialize(memoriesReport));
     return memoriesOk ? 0 : 1;
 }
+// With "accounts" it rehearses the household's account directory kept the same through the hosts (AccountRehearsal).
+if (args is ["accounts"])
+{
+    var (accountsOk, accountsReport) = await Martlet.NodeLinkCheck.AccountRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(accountsReport));
+    return accountsOk ? 0 : 1;
+}
 // With "logs" it rehearses shared logs: every computer's log lines reaching every host and desktop (LogRehearsal).
 if (args is ["logs"])
 {

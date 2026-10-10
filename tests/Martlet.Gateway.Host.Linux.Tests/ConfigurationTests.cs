@@ -442,6 +442,34 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void Memory_spaces_are_kept_beside_host_json_one_file_each()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        WriteConfig(fs, Config());
+        using var dir = new LinuxControlDirectory("/srv/martlet/host.json", fs);
+        var storage = new ControlMemorySpaceStorage(dir);
+        const string sam = "account-5a3f0c9e8b7d4e21a6c3b2f1d0e9a8b7";
+        Assert.Empty(storage.List());
+        Assert.Null(storage.Load(sam));
+        var document = Encoding.UTF8.GetBytes("{\"schema_version\":1,\"facts\":[]}");
+        storage.Save(sam, document);
+        storage.Save("household", document);
+        new ControlMemoryStorage(dir).Save(document);
+        Assert.Equal([sam, "household"], storage.List());
+        Assert.Equal(document, storage.Load(sam));
+        Assert.Equal(0x8180, fs.Parent.Children[$"memories-{sam}.json"].Identity.Mode);
+        Assert.DoesNotContain(fs.Parent.Children.Keys, name => name.EndsWith(".staging", StringComparison.Ordinal));
+        foreach (var bad in new[] { "Household", "../household", "account-" + new string('A', 32), "account-x" })
+        {
+            Assert.Throws<GatewayPersistenceException>(() => storage.Save(bad, document));
+            Assert.Throws<GatewayPersistenceException>(() => storage.Load(bad));
+        }
+        Assert.Throws<GatewayPersistenceException>(() => storage.Save(sam, new byte[LinuxControlDirectory.MaximumMemoriesBytes + 1]));
+        Assert.Equal(["host.json", "memories-account-5a3f0c9e8b7d4e21a6c3b2f1d0e9a8b7.json", "memories-household.json", "memories.json"],
+            fs.Parent.Children.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void Staging_leftover_is_not_overwritten_or_mistaken_for_approval()
     {
         using var fs = new FakeLinuxFileSystem();

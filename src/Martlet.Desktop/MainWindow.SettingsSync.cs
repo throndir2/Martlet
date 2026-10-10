@@ -300,10 +300,10 @@ public partial class MainWindow
                 OwnHostServiceId()).Write(), null, false, DateTimeOffset.UtcNow)),
             (_, _) => Task.FromResult(SharedApply.Done));
         // Whether this PC is a companion or a host PC: this PC records its own choice, and follows it when another computer
-        // asks it to switch (Make it a host PC on that computer's Devices map).
+        // asks it to switch (Make it a host PC on that computer's Devices map). Its time is the time the PC folder's choice
+        // last changed, whichever Windows user of this PC made it.
         yield return new DelegateSection(SharedPc.RoleKey(ClusterDevice), "Companion or host PC", _ =>
-            Task.FromResult<SharedLocal?>(new(SharedPc.WriteRole(Role), null, deviceRole is null,
-                FileTime(Path.Combine(directory, DeviceRolePreference.FileName)))),
+            Task.FromResult<SharedLocal?>(new(SharedPc.WriteRole(Role), null, deviceRole is null, FileTime(PcRole.FilePath(Pc!)))),
             (setting, _) => Task.FromResult(FollowRoleRequest(setting)));
         yield return new DelegateSection(CharacterKey, "Character", ReadCharacterAsync, ApplyCharacterAsync);
         yield return new DelegateSection(TalkKey, "How you talk", _ =>

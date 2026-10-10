@@ -71,7 +71,7 @@ internal static class SingingStatus
             .Select(n => new WorkPlace(n.HostId, false, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))
             .ToArray();
         var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing);
-        var members = SingingPool.Members(list, Martlet.Diagnostics.LocalLogs.ThisDeviceId(), saved, OwnHost(dataDirectory), paired, singers);
+        var members = SingingPool.Members(list, Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory), saved, OwnHost(dataDirectory), paired, singers);
         var order = members.Select(m => m.HostId).Distinct(StringComparer.Ordinal).ToArray();
         var next = SingingPool.Pick(order, states, match);
         return new

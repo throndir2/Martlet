@@ -1068,8 +1068,11 @@ type*.
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
 recognition choice (`on (default)` until it is turned off; a shared setting) and
-`sharing` (the voice list travels while *Keep Martlet the same on all my
-computers* is on, from `cluster-sync.txt`),
+`sharing` (people are always shared: the voice list syncs with every paired
+host of yours whatever *Keep Martlet the same on all my computers* says;
+`state` *on*, *no paired hosts yet* or *hosts unreadable*, `always: true`,
+`hosts` from `hosts.json` and `friendHostsNeverUsed`, the hosts a friend shares,
+which never get the list),
 whether a Martlet folder (optional absolute `martletDirectory`, default the
 installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
@@ -1392,10 +1395,36 @@ shares its fact; a fact expiring in two seconds is forgotten everywhere once
 expired; a newer Martlet's fact passes through hosts and desktops without
 entering this version's stores; a new memory folder takes everything again and
 forgets nothing; 600 old conversation facts from two computers end as the same
-512 everywhere (oldest conversation facts forgotten, typed facts kept); no fact
+512 everywhere (oldest conversation facts forgotten, typed facts kept); memory
+spaces ([accounts](ACCOUNTS.md#memory-spaces)): A merges a fact into Sam's
+`account-<id>` space on both hosts with `MergeMemorySpaceAsync`, B reads it
+there (`ReadMemorySpaceAsync`) with the same digest
+(`ReadMemorySpaceDigestAsync`), Alex's space, `household` and the old document
+stay without it, it survives a host restart, a bad space ID is refused before
+anything is sent, and the step names the spaces the host keeps; no fact
 in any desktop data folder while the hosts' copy holds them; and an unsigned
 request refused (HTTP 401). Synthetic facts, loopback only; the folder is
 deleted.
+
+`accounts_sync_selftest` (no arguments) rehearses the household's
+[account directory](ACCOUNTS.md#account-directory) end to end with the
+production code (`src\Martlet.NodeLinkCheck`, mode `accounts`,
+`AccountRehearsal.cs`; returns `{exitCode, report}`): two real gateways
+(`lab-accounts-1`, `lab-accounts-2`; Kestrel, pinned TLS, signed requests, an
+in-memory `network.json` and `accounts.json`) bound to one lab network, two
+member desktops (`lab-desktop-a`, `lab-desktop-b`) and one outside computer
+(`lab-intruder`) with real network keys and the desktop's paired client
+(`HostAccounts.cs`). Its steps: A founds the network and binds both hosts; A
+adds the owner account (ID from `OwnerAccount.IdFor`, created by the founder,
+its Windows login signed in on A) and both hosts keep it, signed by A, with
+digests that match A's copy; B checks every entry against its roster and takes
+it; B adds a person through one host only and every copy ends the same; offline
+renames on A and B (the later wins, the creator stays); an offline edit can't
+undo a removal; the outside computer's own entry and a forged change of the
+owner account are refused (`rejected` 2, the host copy unchanged); a restarted
+host serves the same directory from its saved `accounts.json`; and an unsigned
+request is refused (HTTP 401). Synthetic accounts, loopback only. A friend's
+credential is covered by `Martlet.Gateway.Tests` (`AccountDirectoryRouteTests`).
 
 `settings_sync_selftest` (no arguments) rehearses shared settings end to end
 with the production code (`src\Martlet.NodeLinkCheck`, mode `settings`,
@@ -1439,8 +1468,15 @@ a friend shares with this PC: its engines only, never in this PC's network);
 and `friends`, what **Devices › Friends** last read from each of your hosts
 (`friends.json`: `checkedAt`, and per host `hostId`, `read`, `problem`, each
 friend's `label`, `provider` and `computers`, and how many are `asking`), or
-null before it read anything. It never returns keys, signatures or host
-addresses and contacts nothing.
+null before it read anything. `device` is this data folder's device ID (`id`
+and `source`): `saved` in `device.json` (one per Windows user, so two Windows
+users on one PC never share one); `pairings` or `legacy` when the desktop hasn't
+saved one yet and keeps the ID its pairings use or an older Martlet's
+`desktop-<pc name>`; or `id` null with `new` when it picks a new
+`desktop-<pc name>-<6 of [a-z0-9]>` on its next start. `windowsLogin` is the
+Windows login the server runs under: `kind` (`microsoft`, `work` or `local`),
+`hasEmailHint` and `hasSid`, never the e-mail, the name or the SID. It never
+returns keys, signatures or host addresses and contacts nothing.
 
 `network_selftest` (no arguments) rehearses the network end to end with the
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
@@ -1714,7 +1750,7 @@ from both sides, for the desktop on a disposable data directory:
 `src\Martlet.NodeLinkCheck` mode `role-lab` (`RoleLab.cs`) starts a gateway on
 127.0.0.1 that keeps the network and the shared settings in memory, pairs the
 desktop of the data directory under the device ID that desktop names itself by
-(`desktop-<computer>`; `hosts.json` there, the secret in the lab credential
+(chosen by the lab and saved in that folder's `device.json`; `hosts.json` there, the secret in the lab credential
 folder, so it also needs `Invoke-MartletMcp.ps1 -LabCredentials`), and runs a
 simulated companion PC, `lab-companion` (*LAB-COMPANION*). Once the desktop has
 bound the host to its network, the simulated PC asks to join it. Every
@@ -3192,6 +3228,32 @@ computer busy so the song waits on the shortest line, every line full
 (`singing.busy`), a failed song not made again elsewhere, and a computer that
 stops answering during the song replaced by the next. In-process; reads
 nothing.
+
+`pc_scope` reads the [PC scope](ACCOUNTS.md#pc-scope) that the desktop with
+the data folder uses (optional absolute `dataDirectory`; the script gives a
+disposable one). It is read-only and returns no paths, user names or SIDs:
+`folder` (`machine-wide` for the default data folder, `data-folder` for any
+other, or `override`), `where` (`%ProgramData%\Martlet`, *the data folder* or
+`MARTLET_PC_DIRECTORY`), `sharedByWindowsUsers`, `folderExists`,
+`everyWindowsUserCanChange` (whether `BUILTIN\Users` may change the folder and
+its files; null when the folder is missing or not shared), `role` (`companion`,
+`host`, or null when nobody chose yet), `roleReadFrom` (`pc-folder`,
+`data-folder`, or this Windows user's earlier choice that moves to the PC
+folder when the desktop starts), `chosenByThisWindowsUser`,
+`hostServiceRoles`, `hostServiceRolesReadFrom` and `hostServiceSeenBy`
+(`this-windows-user`, `another-windows-user` or `unknown`: whose Docker Desktop
+Martlet last read the host service in). Setting `MARTLET_PC_DIRECTORY` to an
+absolute folder before you start the desktop and the MCP server (the
+`Invoke-MartletMcp.ps1` child processes inherit it) gives several disposable
+data folders one PC folder, as two Windows users of one PC have. Example:
+put `Host` in `device-role.txt` of one data folder, then start the desktop
+there: `DeviceRoleWhere` reads *... Martlet moved this Windows user's earlier
+choice there.* A desktop on a second, fresh data folder then reads `Host PC` in
+`DeviceRoleSummary` and shows no welcome tour. `UseAsCompanion` there (with
+`--allow-ui-effects`) makes the first desktop, still running, read `Companion
+PC` within 30 seconds; its log says *Another Windows user of this PC made it a
+companion PC, so it is one here too.* `role_lab ask host` on a third data folder
+writes the PC folder too.
 
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
@@ -5932,7 +5994,8 @@ and use* asks one confirmation, `ConfirmationYes`, then downloads that model
 and switches Listening to it; *Use it* switches to a downloaded model at once),
 they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). While Listening uses a paired
+switch: the list always syncs with your paired hosts, whatever `ClusterSync`
+says, and `PeopleSyncStatus` shows the last sync). While Listening uses a paired
 host or OpenAI, Listening's *Now* card has `SetupJobStandIn-Listening` (a passive
 value): what hears you on this PC's processor when that route can't (*If OpenAI
 can't hear you, Parakeet TDT 110M (English) hears you on this PC's processor
@@ -8217,7 +8280,13 @@ was on when it became a host: the character, always listening and watching
 it became a host: showing the character.*); after Martlet started as a host it
 does what it does at the start of a companion PC instead (the character's *Show
 at startup*, `StartCompanion`). It changes no saved companion choice. `DeviceRoleSummary`
-(*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text. A second start with the
+(*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text.
+`DeviceRoleWhere` says where the choice is kept and who shares it: *Every
+Windows user of this PC shares this choice and this PC's host service
+(%ProgramData%\Martlet).* for the default data folder, *This data folder keeps
+this choice...* for a disposable one, and whose Docker Desktop Martlet last
+read this PC's host service in (this or another Windows user); `pc_scope`
+returns the same headless. A second start with the
 same data directory shows the running Martlet and exits (with `--tray` it only
 exits); a different `--data-directory` runs beside it, so disposable
 verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
