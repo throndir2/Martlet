@@ -103,7 +103,8 @@ public partial class MainWindow
         return RecommendedSetupInputs.Sources(inputs, NetworkMap.Build(inputs), ClusterDevice, OwnHostId(), ThisPcDiskFreeGb(),
             offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
             poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
-            off: RecommendedSetupMemory.Load(directory).OffParts, choices: RecommendedSetupChoices(directory));
+            off: RecommendedSetupMemory.Load(directory).OffParts, choices: RecommendedSetupChoices(directory),
+            pools: directory is null ? null : PoolSettings.Load(directory));
     }
 
     /// <summary>This PC's choices for the parts it sets on their Companion pages (Vision, Reading, Hearing, Smart home), read

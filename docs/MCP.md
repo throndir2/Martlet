@@ -4490,8 +4490,15 @@ Thinking no), the `order` and `never` chosen, `planned` (the computer the job
 uses now, from `settings.json`), `runs` (paired computers the shared plan says
 run that role) and `tries` (the production `WorkSharing.Order` for that device;
 null for Deep thinking, whose places come from Companion › Deep thinking), and
-`kept` (computers kept for some companion PCs, with `usableHere`). Host and
-device IDs only.
+`kept` (computers kept for some companion PCs, with `usableHere`). It also
+shows the pool lists: `poolsFile` and `poolsLocalFile` (`loaded` or `none`) and
+`pools`, one entry for each area that has a list, with `area`, `title`, `page`,
+`shared` (pools.json) or not (pools-local.json), `required`, `whenEmpty`,
+`off`, `fallback`, `members` (`key`, `kind`, `name`, `on`, `onlyFor`,
+`settings`, `usableHere` and, for a cloud member, `agreed`) and, for Speaking,
+Listening and Thinking, `tries` (the production `PoolRouting.Hosts` for that
+device; null without a route on a computer). Host and device IDs, provider and
+model names only; never a key.
 
 `work_sharing_check` rehearses the production planner and queue (`WorkQueue`)
 on the four-computer example (machines 1 and 3 companions with Chatterbox,
@@ -4504,15 +4511,35 @@ at once (`WaitedMs` near 0); machine 2 waiting while both voices are busy and
 taken by whichever frees first (machine 3, `WaitedMs` about 250); four segments
 at once spread two and two; a computer kept for one companion PC or unticked
 for Speaking left out; an unanswering computer skipped; Deep thinking leaving
-out a kept computer; and the shared setting's round trip. `ok` is true when
-every step passed. On the desktop, `ui_snapshot` reads `WorkSharingStatus`
-(how many of this PC's requests another computer took since Martlet started)
-and every `WorkSharing*` control on the Devices page: `WorkSharingJob-<job>`,
-`WorkSharingPlace-<job>-<host>` ("1. m3-host. never used for it."),
-`WorkSharingHost-<host>` and the `WorkSharingShare-<job>`,
-`WorkSharingOwnFirst-<job>`, `WorkSharingUse-<job>-<host>`,
-`WorkSharingUp/Down-<job>-<host>` and `WorkSharingKeep-<host>` controls, which
-save `work-sharing.json` and so need `--allow-ui-effects`.
+out a kept computer; and the shared setting's round trip. Then the pools:
+Sharing work's choices moved into the Speaking list (`PoolMigration`); the
+list's order on machines 2 and 3; a member turned off; Thinking's own model
+first; an empty list off for Speaking and voice loudness for lip-sync; a
+rate-limited cloud member (HTTP 429, `PoolRefusals`) passed over by its member
+key; and the `pools` shared setting's round trip. `ok` is true when every step
+passed. On the desktop, `ui_snapshot` reads `WorkSharingStatus` (how many of
+this PC's requests another computer took since Martlet started), each area's
+`WorkSharingPool-<area>` line ("Speaking. In order: This PC, m3-host.") with
+its `WorkSharingOpen-<area>` button (opens the area's page; a safe click), the
+Thinking pool's `WorkSharingJob-deep-thinking`, `WorkSharingPlace-deep-thinking-<host>`
+and `WorkSharingUse-deep-thinking-<host>`, and `WorkSharingHost-<host>` and
+`WorkSharingKeep-<host>` (the Thinking pool's keep choice). Those choices save
+`work-sharing.json`, so they need `--allow-ui-effects`.
+
+The pool list control (Companion › Voice and Listening under *Where it runs*,
+Companion › Thinking under *When the Thinking model is busy*, and each pooled
+area's page) reads through `ui_snapshot` with `idPrefix` `Pool-<area>`:
+`Pool-<area>-Summary` ("One member is on. Requests go to it.", "Off: nothing
+in the list is on.", or the fallback for a required area),
+`Pool-<area>-Member-<i>` ("1. This PC. Each companion PC itself."),
+`Pool-<area>-On-<i>` (ticked or not), `Pool-<area>-Up-<i>`, `-Down-<i>`,
+`-Remove-<i>`, `-Settings-<i>`, `-OnlyFor-<i>` and the Add buttons
+(`Pool-<area>-AddThisPc`, `-AddHost-<host>`, `-AddGpu-<host>-<card>`,
+`-AddAddress` with the `-Address` box). Settings (a member's settings under
+its row), `Pool-<area>-Show-<key>` and `Pool-<area>-AddCloud` (a place's own
+card under the list) are safe clicks. On, Up, Down, Remove, Add and the
+kept-for choice save `pools.json` (or `pools-local.json`) and share it, so they
+need `--allow-ui-effects`.
 
 `lip_sync_pool_status` shows lip-sync's pool (optional absolute
 `dataDirectory`, default the current user's; the script gives a disposable

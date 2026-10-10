@@ -45,6 +45,8 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     public IReadOnlyList<JobPlan> LocalJobs { get; init; } = [];
     public IReadOnlyDictionary<string, string> JobOptions { get; init; } = new Dictionary<string, string>();
     public WorkSharingSettings Sharing { get; init; } = new();
+    /// <summary>The shared pool lists (pools.json): Speaking's and Listening's members, once they have lists.</summary>
+    public PoolSettings Pools { get; init; } = new();
     /// <summary>This PC's Martlet device id (the order work-sharing tries computers in depends on the companion PC asking).</summary>
     public string Device { get; init; } = "";
     public IReadOnlyCollection<string> ThinkingPool { get; init; } = [];
@@ -232,6 +234,17 @@ internal static class RecommendedSetupInputs
             .Select(c => new WorkPlace(c.Id, c.ThisPc,
                 sources.Plan?.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == c.Id) ?? 0))
             .ToArray();
+        // A job with a pool list: its members that run the engine, in the owner's order (this PC is its own host service).
+        if (PoolAreas.Find(job) is { } area && sources.Pools.Has(area.Id))
+        {
+            var own = runs.FirstOrDefault(r => r.Own)?.HostId;
+            return current with
+            {
+                Pool = [.. PoolRouting.Order(area, sources.Pools.Pool(area.Id), sources.Device).Members
+                    .Select(m => m.Kind == PoolMemberKind.ThisPc ? own : m.OnHost ? m.HostId : null)
+                    .Where(id => id is not null && id != host && runs.Any(r => r.HostId == id)).Select(id => id!).Distinct(StringComparer.Ordinal)]
+            };
+        }
         var order = WorkSharing.Order(sources.Sharing, job, sources.Device, host, runs);
         return current with { Pool = [.. order.Where(id => id != host)] };
     }
@@ -382,7 +395,7 @@ internal static class RecommendedSetupInputs
         double? diskFreeGb, Func<string, TimeSpan?>? offlineFor = null, WorkSharingSettings? sharing = null,
         IReadOnlyCollection<string>? thinkingPool = null, IReadOnlyCollection<string>? poolOptOut = null, string? voiceEngine = null,
         IReadOnlyCollection<string>? configuredProviders = null, IReadOnlyCollection<PlanComponent>? off = null,
-        IReadOnlyList<PartChoice>? choices = null)
+        IReadOnlyList<PartChoice>? choices = null, PoolSettings? pools = null)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         var computers = new List<SetupComputer>();
@@ -441,7 +454,7 @@ internal static class RecommendedSetupInputs
         var providers = configuredProviders ?? [];
         return new SetupSources(computers)
         {
-            Plan = inputs.Plan, LocalJobs = jobs, JobOptions = options, Sharing = sharing ?? new(), Device = device,
+            Plan = inputs.Plan, LocalJobs = jobs, JobOptions = options, Sharing = sharing ?? new(), Pools = pools ?? new(), Device = device,
             ThinkingPool = thinkingPool ?? [], PoolOptOut = poolOptOut ?? [], VoiceEngine = voiceEngine,
             ConfiguredProviders = providers, Off = off ?? [], Choices = choices ?? []
         };

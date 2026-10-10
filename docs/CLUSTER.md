@@ -188,8 +188,13 @@ The plan gives each job one computer, but a computer runs one voice, one
 Thinking reply and one transcription at a time: its gateway turns a second
 request away at once (`job.busy`). Before this, a companion PC whose voice
 computer was busy speaking for another companion PC lost that sentence.
-**Devices › Sharing work** decides what happens instead, and is the same on
-all your computers (`work-sharing.json`, the `work-sharing` shared setting).
+Each job's own page now lists the machines that do it, in order
+([Pools](#pools-one-ordered-list-of-members-per-area)): **Companion › Voice**
+for Speaking, **Companion › Listening** for Listening and **Companion ›
+Thinking** (*When the Thinking model is busy*) for Thinking. The lists are the
+same on all your computers (`pools.json`, the `pools` shared setting).
+**Devices › Sharing work** shows what each list holds, with a button that opens
+its page, and keeps the Thinking pool's own choices (`work-sharing.json`).
 
 Each request goes through Martlet's queue (`WorkQueue`, `Martlet.Core.Cluster`):
 
@@ -212,32 +217,51 @@ Each request goes through Martlet's queue (`WorkQueue`, `Martlet.Core.Cluster`):
    `live`, or stops it with `job.preempted`: that is `WorkRefusal.Preempted`,
    never a failure ([live floor](CONVERSATION.md#the-live-floor-the-live-turn-comes-first)).
 
-The order (`WorkSharing.Order`) is deterministic and costs nothing: the paired
-computers the shared plan says run the job's engine (the same voice engine
-for Speaking; the same model for Thinking), from this PC's files. Without
-choices it is the computer the job uses now, then this PC's own host service,
-then the others, fewest plan jobs first. Per job you can:
+The order is deterministic and costs nothing: the list's members that run the
+job's engine (the same voice engine for Speaking; the same model for
+Thinking), from this PC's files (`PoolRouting.Hosts`). `this-pc` is each
+companion PC's own host service. A computer kept for other companion PCs, a
+member that is off and a computer that doesn't run the engine are left out. On
+each list you can:
 
 | Choice | Effect |
 | --- | --- |
-| *Use another computer when this one is busy* | On for Speaking and Listening. Off for Thinking: another computer's model starts your conversation without its prompt cache (a later first word) and pushes that computer's own conversation out of its cache, so a reply waits for its own computer unless you turn it on |
-| *Each companion PC tries its own computer first* | Puts `this-pc` first: every companion PC uses its own host service first, with no network hop |
-| **Up** / **Down** | Sets the order every companion PC tries the computers in |
-| *Use* (untick) | That computer never does this job, even when the plan names it (unless no other can) |
+| **On** (untick) | The member takes no work and keeps its settings. With no member on, Speaking and Listening are off: Martlet turns their route off (no voice, or typing only), and turns it on again when a member is on |
+| **Up** / **Down** | Sets the order every companion PC tries the members in. Speaking and Listening: the first member that is on is the route the conversation uses; when it becomes a different kind of place (a computer after a cloud provider), Martlet switches the route the way the place's own Use button does |
+| **Remove** | Takes the member out of the list |
+| **Settings** | Shows the member's own settings: *Change model* on a computer, and the place's own card under the list (voice engine, speech recognizer, cloud provider with its key and consent) |
+| *Every companion PC* / *Only* | Keeps the member for one companion PC: no other companion PC sends it work |
+| **Add to the list** | This PC, each paired computer, each graphics card of a computer with two or more, and a cloud provider (set up under the list; Use puts it first) |
 
-And per computer, *Keep a computer for one companion PC* (**Every companion
-PC** or **Only** one): no other companion PC sends it work, whatever their
-order. Deep thinking keeps its own places (Companion › Thinking pool), but a
-computer unticked for it or kept for another companion PC can't run a think
-from this PC.
+Thinking is different: the conversation's own model always goes first, so
+nothing changes while it is free and no latency is added. Its list holds only
+the computers a reply may go to when that model is busy, and it is empty by
+default: another computer's model starts your conversation without its prompt
+cache (a later first word) and pushes that computer's own conversation out of
+its cache.
+
+The first time a computer starts with this version, it makes the Speaking,
+Listening and Thinking lists from Devices › Sharing work's choices and each
+job's route (`PoolMigration.FromWorkSharing`): the chosen order (*own computer
+first* becomes `this-pc` first), the route's computer, this PC's own host
+service, then the other computers that run the engine; a computer unticked for
+the job is left out; a computer kept for one companion PC keeps that. A list
+another computer already shared is kept. A list with nothing in it is not
+made, so a new computer never shares an empty list over another computer's
+choices. Deep thinking keeps its own places
+(Companion › Thinking pool), and its *Use* and *Keep a computer for one
+companion PC* choices stay on Devices › Sharing work.
 
 For the four computers in the example (machines 1 and 3 companions with
 Chatterbox, machine 2 a companion without a voice, machine 4 for lip-sync and
-pictures) with *own computer first* on: machine 1 speaks on its own Chatterbox,
-machine 3 on its own, and machine 2 on machine 1, or machine 3 when machine 1
-is busy, or whichever of the two finishes first when both are. Keeping machine
-3 for itself leaves machine 2 only machine 1.
+pictures) with the Speaking list `this-pc`, machine 1, machine 3: machine 1
+speaks on its own Chatterbox, machine 3 on its own, and machine 2 on machine
+1, or machine 3 when machine 1 is busy, or whichever of the two finishes first
+when both are. Keeping machine 3 for itself leaves machine 2 only machine 1.
 
+Cloud members of Speaking and Listening are used when they are first in the
+list (the route is that provider); a cloud member after a computer is shown in
+the list but host requests don't fall back to it yet.
 Lip-sync goes to a pool of the places that run Audio2Face through the same
 queue, without a card here ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)).
 Pictures go through each PC's Pictures list (`PicturePool`, lane `pictures`): a
@@ -253,11 +277,11 @@ Reading role through the same queue, without a card here
 directly, so the queue can't see those replies; Ollama queues them. The
 Devices card's status line (`WorkSharingStatus`) and the desktop log
 (`Sharing work: Speaking went to m3-host (1 busy) after 240 ms.`) say when a
-request went elsewhere. **Qualification:** the planner, queue, settings and
-Devices card are checked locally (`WorkSharingTests`,
-`WorkSharingRosterTests`, MCP `work_sharing_status`, `work_sharing_check` and
-the Devices card through `-Desktop`); requests between real hosts are **NOT
-RUN**.
+request went elsewhere. **Qualification:** the planner, queue, lists, their
+migration and the pages are checked locally (`WorkSharingTests`,
+`WorkSharingRosterTests`, `PoolsTests`, MCP `work_sharing_status`,
+`work_sharing_check` and Companion › Voice, Thinking and Devices › Sharing
+work through `-Desktop`); requests between real hosts are **NOT RUN**.
 
 **Recommended setup.** Home's recommended setup for all your computers plans
 who does each job, the Speaking and Listening pools above and the Thinking
@@ -299,8 +323,18 @@ An area adds itself in four steps:
    read it again only when the file changed), call `PoolRouting.Order`, and
    send the request through `WorkQueue.Shared`. When `PoolOrder.Fallback` is
    true, run the area's fallback.
-4. Show the list on the area's page with the shared list control, and give
-   each member's settings editor to that control.
+4. Show the list on the area's page with the shared list control,
+   `PoolListCard(new PoolListOptions { Area = ..., Status = ..., Settings = ... })`
+   (src\Martlet.Desktop\MainWindow.Pools.cs). Give it each member's state line
+   (`Status`), its settings editor (`Settings`), which computers can be added
+   (`CanAdd`), new members' default settings (`NewMember`), the cloud add form
+   (`AddCloud`) and what the area does after a change (`Saved`). Its automation
+   IDs are `Pool-<area>-Summary`, `-Member-<i>`, `-On-<i>`, `-Up-<i>`,
+   `-Down-<i>`, `-Remove-<i>`, `-Settings-<i>`, `-OnlyFor-<i>`, `-AddThisPc`,
+   `-AddHost-<host>`, `-AddGpu-<host>-<card>`, `-Address` and `-AddAddress`. On
+   the desktop's request path, read the list with `WorkSharingRoster.Pool(directory,
+   area)` or `WorkSharingRoster.PoolMembers(area, usable)`: both read the file
+   again only when it changed.
 
 **Qualification:** the contract, its storage, migration, routing and the
 queue's handling of member keys are checked locally (`PoolsTests`). Each

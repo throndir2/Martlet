@@ -234,7 +234,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CustomThemeRole-",
         // A "?" ("Help-CheckInsAbout", HelpTip.cs) only shows its explanation, and a section you open and close
         // ("Fold-CheckInMore-emotes", Fold.cs) only shows or hides its settings; neither saves anything.
-        "Help-", "Fold-"];
+        "Help-", "Fold-",
+        // A pool list (MainWindow.Pools.cs, Companion › Voice, Listening, Thinking and each pooled area's page): a member's
+        // Settings ("Pool-speaking-Settings-0", Hide settings while open) only shows or hides its settings under it; Show its setup
+        // below ("Pool-speaking-Show-host:diva-host") and A cloud provider ("Pool-speaking-AddCloud") only show that place's own
+        // card under the list, whose own button commits. Devices › Sharing work's Open buttons ("WorkSharingOpen-speaking") only
+        // open the area's page. The list's On, Up, Down, Remove, Add and kept-for choices save pools.json and share it, so they
+        // need --allow-ui-effects.
+        "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
+        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "WorkSharingOpen-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -1062,8 +1070,16 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // choice ("WorkSharingKeep-diva-host"), the Share and own-computer-first boxes ("WorkSharingShare-speaking",
         // "WorkSharingOwnFirst-speaking"), each Use box ("WorkSharingUse-speaking-diva-host") and Up/Down buttons
         // ("WorkSharingUp-speaking-diva-host"). Changing any of them saves work-sharing.json and shares it with your other
-        // computers, so it needs --allow-ui-effects. Host IDs, device IDs and fixed text only.
+        // computers, so it needs --allow-ui-effects. Host IDs, device IDs and fixed text only. Each area's pool summary
+        // ("WorkSharingPool-speaking" reads "Speaking. In order: This PC, diva-host.") and its Open button.
         "WorkSharing",
+        // A pool list (MainWindow.Pools.cs): its summary ("Pool-speaking-Summary" reads "2 members are on. A request goes to the
+        // first free one, in this order; ..."), each member's line ("Pool-speaking-Member-0" reads "1. diva-host. A paired
+        // computer; in use: Chatterbox on diva-host; runs Chatterbox (chatterbox-turbo).") and whether its On box
+        // ("Pool-speaking-On-0") is ticked, its Up, Down, Remove and Settings buttons, its kept-for choice ("Pool-speaking-OnlyFor-0"
+        // reads "Every companion PC" or "Only desk-1"), and the Add buttons' labels ("Pool-speaking-AddHost-diva-host",
+        // "Pool-speaking-AddThisPc", "Pool-speaking-AddGpu-diva-host-2"). Host IDs, device IDs, provider and model names, never a key.
+        "Pool-",
         // Companion › Thinking, Voice and Listening › Keys from before: each key Martlet set aside when the job stopped using it
         // ("SetupOldKey-Thinking-0" reads "Your OpenRouter key" or "The pairing key for diva-host"; never the key) and its
         // Remove button's name ("SetupOldKeyRemove-Thinking-0" reads "Remove your OpenRouter key"). Remove deletes the key from

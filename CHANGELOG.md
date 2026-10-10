@@ -20,6 +20,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Companion › Voice and Listening now show the machines that speak or listen as a list: add this PC, your computers, a graphics card or a cloud provider, put them in order, and turn each one on or off. The first one does the job, the next ones help when it is busy, and with none on the job is off. Companion › Thinking lists the computers that may answer when your Thinking model is busy (none by default). Your choices from Devices › Sharing work move into these lists. ([#729](https://github.com/throndir2/Martlet/pull/729))
 - Companion › Thinking pool is now just a list of your machines: each graphics card, model on this PC or cloud provider has its own **On** box and model choice, so you can use one GPU of a computer and not the other, and with nothing on, the pool is off. **Add a machine** at the end of the list adds another computer, a model in Ollama on this PC or a cloud provider. ([#722](https://github.com/throndir2/Martlet/pull/722))
 - Martlet's log now follows each Thinking request step by step: where it went, when each step happened, what it waits for while it waits, and how it ended, so a slow or stuck reply is easier to understand on the Diagnostics page. ([#720](https://github.com/throndir2/Martlet/pull/720))
 - The talk window's listening, watching and Stop buttons are now small icons; hover over one to see what it does. ([#715](https://github.com/throndir2/Martlet/pull/715))

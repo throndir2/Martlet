@@ -348,12 +348,28 @@ public partial class MainWindow
 
         public Task<SetupStepResult> ShareAsync(string job, string machineId, bool join, CancellationToken cancel)
         {
+            var title = WorkSharingJobs.Title(job);
+            // A job with a pool list: the computer joins its list (or turns on in it), or leaves it.
+            if (PoolAreas.Find(job) is { } area && window.store is { } store && WorkSharingRoster.Pool(store.DataDirectory, area) is { } list)
+            {
+                var key = PoolMember.Computer(machineId).Key;
+                var member = list.Find(key);
+                if (join ? member is { Off: false } : member is null)
+                    return Task.FromResult(SetupStepResult.Done(join ? $"{machineId} is already in the {title} list." : $"{machineId} isn't in the {title} list."));
+                var listed = join ? list.With((member ?? PoolMember.Computer(machineId)) with { Off = false }) : list.Without(key);
+                var joined = join ? $"{machineId} is now in the {title} list: it takes {title} when the ones before it are busy."
+                    : $"{machineId} is no longer in the {title} list.";
+                if (!PoolSettings.SaveFor(store.DataDirectory, area, listed)) return Task.FromResult(SetupStepResult.Failed($"Couldn't save the {title} list on this PC."));
+                WorkSharingRoster.Forget();
+                ErrorLog.Info("Pools: " + joined);
+                window.QueueSettingsSync();
+                return Task.FromResult(SetupStepResult.Done(joined));
+            }
             var settings = window.SharingSettings();
             var rules = settings.Job(job);
             var next = join
                 ? rules with { Share = rules.Shares ? rules.Share : true, Never = [.. rules.Never.Where(n => n != machineId)] }
                 : rules with { Never = [.. rules.Never.Where(n => n != machineId), machineId] };
-            var title = WorkSharingJobs.Title(job);
             if (next.Shares == rules.Shares && next.Never.Order(StringComparer.Ordinal).SequenceEqual(rules.Never.Order(StringComparer.Ordinal)))
                 return Task.FromResult(SetupStepResult.Done(join ? $"{machineId} already takes {title} when it's needed."
                     : $"{machineId} already takes no {title}."));

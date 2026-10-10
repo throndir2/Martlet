@@ -219,7 +219,7 @@ internal static class RecommendedSetupStatus
         var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return new SetupSources(computers)
         {
-            Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Device = device, ThinkingPool = pool,
+            Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Pools = PoolSettings.Load(directory), Device = device, ThinkingPool = pool,
             PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers,
             Off = RecommendedSetupMemory.Load(directory).OffParts, Choices = Choices(directory)
         };

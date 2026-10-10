@@ -417,6 +417,8 @@ public partial class MainWindow
                 homeSettings?.Companion?.Personas.Select(p => p.Text)));
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
+            // Speaking, Listening and Thinking get their pool lists once, from Devices › Sharing work and their routes.
+            EnsurePools();
             // Touch zones saved before reaction lists get the list they play now (the active persona's temperament is known now).
             characterTouchZones.FillLists();
             // The talk window stays open while you change things in Companion: it picks up a saved change once Martlet is free.

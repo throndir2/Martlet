@@ -5,10 +5,9 @@ using Martlet.Core.Cluster;
 
 namespace Martlet.Desktop;
 
-/// <summary>Devices › Sharing work (docs/CLUSTER.md#sharing-work-between-your-computers): for each job, whether a companion PC
-/// may send it to another computer that runs the same engine when the one doing it is busy, which computers it tries first and
-/// which never; and which computers are kept for one companion PC. The choices are work-sharing.json, shared with all your
-/// computers; requests follow them through <see cref="WorkSharingRoster"/> and <see cref="WorkQueue"/>.</summary>
+/// <summary>Devices › Sharing work (docs/CLUSTER.md#sharing-work-between-your-computers): what each area's pool list holds, with
+/// a button that opens the area's page, where the list is edited (<see cref="MainWindow.PoolListCard"/>); and the Thinking
+/// pool's own choices (which computers it never uses, which are kept for one companion PC), still in work-sharing.json.</summary>
 public partial class MainWindow
 {
     private WorkSharingSettings SharingSettings() => WorkSharingRoster.Settings(store?.DataDirectory);
@@ -61,20 +60,63 @@ public partial class MainWindow
             WorkSharingStatusText.Text = "Unavailable without a local data folder.";
             return;
         }
+        EnsurePools();
         var settings = SharingSettings();
         WorkSharingStatusText.Text = WorkSharingStatusLine();
-        foreach (var job in WorkSharingJobs.All) WorkSharingJobsPanel.Children.Add(SharingJobCard(settings, job));
+        // Each area's machines are a list on its own page now; this card says what each list holds and opens it.
+        foreach (var area in PoolAreas.All.Where(a => RoutePools.Any(p => p.Area == a) || WorkSharingRoster.Pool(store.DataDirectory, a) is not null))
+            WorkSharingJobsPanel.Children.Add(PoolSummaryRow(area));
+        WorkSharingJobsPanel.Children.Add(SharingJobCard(settings, WorkSharingJobs.DeepThinking));
         var hosts = clusterPlan.Nodes.Where(n => !n.Removed).Select(n => n.HostId)
             .Union(NetworkMap.Hosts(Inputs()).Select(h => h.HostId), StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         if (hosts.Length == 0) return;
-        var heading = new TextBlock { Text = "Keep a computer for one companion PC", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 0) };
+        var heading = new TextBlock { Text = "Keep a computer for one companion PC (Thinking pool)", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 0) };
         WorkSharingHostsPanel.Children.Add(heading);
         var note = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 2, 0, 0),
-            Text = "A computer kept for one companion PC takes no work from the others, whatever their order says." };
+            Text = "A computer kept for one companion PC takes no Thinking pool work from the others. In the other lists, each machine " +
+                "has its own Every companion PC or Only choice." };
         note.SetResourceReference(StyleProperty, "Muted");
         WorkSharingHostsPanel.Children.Add(note);
         var companions = SharingCompanions();
         foreach (var host in hosts) WorkSharingHostsPanel.Children.Add(SharingKeepRow(settings, host, companions));
+    }
+
+    /// <summary>The Companion page that shows <paramref name="area"/>'s list.</summary>
+    private static CompanionTab? PoolTab(PoolArea area) => area.Id switch
+    {
+        ClusterJobs.Speaking => CompanionTab.Voice,
+        ClusterJobs.Listening => CompanionTab.Listening,
+        ClusterJobs.Thinking => CompanionTab.Thinking,
+        ClusterJobs.LipSync => CompanionTab.LipSync,
+        "pictures" => CompanionTab.Pictures,
+        "singing" => CompanionTab.Singing,
+        "vision" => CompanionTab.Vision,
+        "hearing" => CompanionTab.Hearing,
+        "reading" => CompanionTab.Reading,
+        _ => null
+    };
+
+    /// <summary>One area's list in a line (<c>WorkSharingPool-&lt;area&gt;</c>) with the button that opens its page
+    /// (<c>WorkSharingOpen-&lt;area&gt;</c>).</summary>
+    private FrameworkElement PoolSummaryRow(PoolArea area)
+    {
+        var list = WorkSharingRoster.Pool(store?.DataDirectory, area);
+        var on = list?.Members.Where(m => !m.Off).ToArray() ?? [];
+        var detail = list is null ? (area.ConversationFirst ? "Its own model only: a reply waits for it when it is busy." : "Nothing in its list yet.")
+            : on.Length == 0 ? (area.Required ? $"Nothing is on, so {area.WhenEmpty.ToLowerInvariant()} is used."
+                : area.ConversationFirst ? "Its own model only: a reply waits for it when it is busy." : "Off: nothing in its list is on.")
+            : (area.ConversationFirst ? "Its own model first, then " : "In order: ") + string.Join(", ", on.Select(m => m.Name)) + ".";
+        var row = NetworkRowFrame();
+        if (PoolTab(area) is { } tab)
+        {
+            var open = new Button { Content = "Open " + area.Page, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+            AutomationProperties.SetAutomationId(open, "WorkSharingOpen-" + area.Id);
+            open.Click += (_, _) => OpenCompanion(tab);
+            DockPanel.SetDock(open, Dock.Right);
+            row.Children.Add(open);
+        }
+        row.Children.Add(NetworkRowText("WorkSharingPool-" + area.Id, area.Title, detail));
+        return NetworkRowCard(row, warning: false);
     }
 
     private static string WorkSharingStatusLine()

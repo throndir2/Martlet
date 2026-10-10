@@ -498,6 +498,32 @@ public partial class MainWindow
             if (DevicesPage.IsVisible) RenderWorkSharing();
             return Task.FromResult(SharedApply.Done);
         });
+        // The pool lists of the areas that are the same on all computers (Companion › Voice, Listening, Thinking and the
+        // others): which machines do each area's requests, in order, with each one's settings.
+        yield return new DelegateSection(PoolSettings.SharedKey, "Pools", _ =>
+        {
+            var path = Path.Combine(directory, PoolSettings.FileName);
+            var saved = PoolSettings.Load(directory);
+            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
+        }, async (setting, _) =>
+        {
+            if (PoolSettings.Parse(setting.Value) is not { } shared)
+                return SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it.");
+            if (!shared.Save(directory)) return SharedApply.Waiting("It couldn't be saved on this PC.");
+            WorkSharingRoster.Forget();
+            // Speaking and Listening turn off (or on again) with their lists, as on the computer that changed them.
+            try
+            {
+                await FollowPoolOnOffAsync(PoolAreas.Speaking, SetupRole.Tts);
+                await FollowPoolOnOffAsync(PoolAreas.Listening, SetupRole.Stt);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException)
+            {
+                ErrorLog.Info($"Pools: couldn't follow the shared lists' on and off here yet: {error.Message}");
+            }
+            if (DevicesPage.IsVisible) RenderWorkSharing();
+            return SharedApply.Done;
+        });
     }
 
     private sealed record SharedSpeechDisplay(bool SpeechBubbles, bool Subtitles);
