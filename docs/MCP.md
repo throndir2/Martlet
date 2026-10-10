@@ -2070,12 +2070,14 @@ nothing.
 directory (optional absolute `dataDirectory`; the script gives a disposable one).
 Each [account](ACCOUNTS.md) keeps its own creations in `accounts\<32 hex>`: with
 `account` (32 hex digits or a GUID) it reads that account's; without it, the
-account the data folder's creations moved to (`accounts\creations-moved.json`),
-or the data folder itself before that move. `from` names the `account` (null
-before the move), the `folder` it read, `chosenBy` (`argument`, `moved` or `data
-folder (before accounts)`), the recorded `moved` (account, `movedAt`,
-`creations`, `assets`) and `leftInDataFolder` (a list still in the data folder
-after the move, such as one that couldn't be read). Then `state` (`none`, `loaded` or `unreadable` for `creations.json`), `live`,
+account in use on that device (`accounts\session.json`), else the account the
+data folder's creations moved to (`accounts\creations-moved.json`), else the
+data folder itself. `from` names the `account` (null before accounts), the
+`folder` it read, `chosenBy` (`argument`, `signed in`, `moved` or `data folder
+(before accounts)`), the recorded `moved` (account, `movedAt`, `creations`,
+`assets`) and `leftInDataFolder` (a list still in the data folder after the move,
+such as one that couldn't be read). `songs_status` and `pictures_status` read the
+same folder. Then `state` (`none`, `loaded` or `unreadable` for `creations.json`), `live`,
 `tombstones`, `totalBytes`, `revision`, `digest` (its first 16 hex digits),
 `kinds` (count and bytes per kind), and per live creation its `key` (the short id
 the tools and `Creation-<key>` use), `kind`, `kindVersion`, `bytes`,
@@ -7338,7 +7340,10 @@ and `CreationDelete` asks with `ConfirmationYes`/`ConfirmationNo` and deletes it
 everywhere (a tombstone travels); both need `--allow-ui-effects`.
 `creations_status` reads the same list headlessly, and `creations_check
 {"seedDataDirectory": ...}` fills a disposable folder with two test tones for
-checking the page.
+checking the page. It puts them in the data folder itself, as an install from
+before accounts kept them: a desktop started on that folder moves them into the
+first account that signs in there, and a person added with `AccountAddPerson`
+starts with none (*No creations yet.*).
 
 Companion › *Emotes and motions* (`CompanionTab-Emotes`) lists the
 [emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
