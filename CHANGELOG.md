@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- When your image or audio model is busy, offline or can't fit beside Thinking, Martlet now hands the picture or recording to the next model in your Thinking pool that can see or hear, and waits for the first free one when all are busy. A cloud model gets pictures and recordings only when you allowed it, and the conversation's own Thinking model never does. (PR_LINK)
+- When your image or audio model is busy, offline or can't fit beside Thinking, Martlet now hands the picture or recording to the next model in your Thinking pool that can see or hear, and waits for the first free one when all are busy. A cloud model gets pictures and recordings only when you allowed it, and the conversation's own Thinking model never does. ([#726](https://github.com/throndir2/Martlet/pull/726))
 - The **Thinking requests** page now shows what each request answered: select a request to see its output beside its details, so you can see what each one adds to the conversation. The output stays on this PC and never goes in logs. ([#717](https://github.com/throndir2/Martlet/pull/717))
 - When you add a new character model, Martlet now measures where its eyes, cheeks and mouth are (once, with a model that can see), so the blush lands on the cheeks instead of over the eyes, and heart eyes, star eyes and other emotes sit on the right spots. Press **Measure the face again** on Companion › Eyes to redo it any time. ([#716](https://github.com/throndir2/Martlet/pull/716))
 
