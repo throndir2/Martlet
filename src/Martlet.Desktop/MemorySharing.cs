@@ -1,24 +1,13 @@
-using Martlet.Core.Speakers;
 using Martlet.Core.Sync;
 using Martlet.Memory;
 
 namespace Martlet.Desktop;
 
-/// <summary>Sharing memories with the household (docs/ACCOUNTS.md, "Sharing"): which voices are this person (for *Share new
-/// memories about me*), where a new fact from remembering goes, and the copies of facts given to another account's space (which
-/// this device may not read) through the hosts' give route.</summary>
+/// <summary>Sharing memories with the household (docs/ACCOUNTS.md, "Sharing"): where a new fact from remembering goes (for *Share
+/// new memories about me*), and the copies of facts given to another account's space (which this device may not read) through the
+/// hosts' give route.</summary>
 internal static class MemorySharing
 {
-    /// <summary>The voices that are the signed-in person: the voices People links to <paramref name="account"/> (the voice list
-    /// is the one place links live); without accounts, the voice marked *This is me*. Each as the live voice it stands for now
-    /// (merged voices count as one person).</summary>
-    internal static IReadOnlySet<string> MyVoices(Guid? account, VoiceRoster? roster)
-    {
-        if (roster is null) return new HashSet<string>(StringComparer.Ordinal);
-        IEnumerable<KnownVoice> voices = account is { } id ? roster.LinkedTo(id) : roster.Live.Where(v => v.Owner);
-        return voices.Select(v => roster.Resolve(v.Id)?.Id ?? v.Id).ToHashSet(StringComparer.Ordinal);
-    }
-
     /// <summary>Where remembering saves a new fact: the household space when *Share new memories about me* is on and the fact is
     /// about this person (<paramref name="voiceId"/> is one of <paramref name="myVoices"/>, after following merges with
     /// <paramref name="canonical"/>); else <paramref name="active"/>, the space the character in use remembers in.</summary>

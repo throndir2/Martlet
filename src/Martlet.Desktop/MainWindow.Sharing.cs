@@ -199,8 +199,8 @@ public partial class MainWindow
     /// <summary>Whether new facts about the signed-in person go to the household memory space (*Share new memories about me*).</summary>
     internal bool ShareNewMemoriesAboutMe => OwnSharing()?.NewFactsAboutMe == true;
 
-    /// <summary>The voices that are the signed-in person: those People links to the account, else the voice marked *This is me*.</summary>
-    internal IReadOnlySet<string> MyVoices() => MemorySharing.MyVoices(SharingAccount, localVoices.Roster);
+    /// <summary>The voices that are the signed-in person (People's links, W11).</summary>
+    internal IReadOnlySet<string> MyVoices() => localVoices.Yours.Select(v => v.Id).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Turns *Share new memories about me* on or off: in the household entry (it works on every PC), and in the account
     /// directory entry's <c>sharing.memories_about_me</c> when the account is there already.</summary>
