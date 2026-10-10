@@ -131,6 +131,7 @@ public partial class App : Application
                 Accounts = OpenAccounts(store.DataDirectory);
                 // Each account's settings (docs/ACCOUNTS.md): the first account on a data folder from before accounts gets its files.
                 if (Accounts is { } owner) AccountSettingsStart.Register(owner);
+                Accounts?.AddChangeStep(Martlet.Desktop.MainWindow.MoveDataFolderCreationsAsync);
                 if (Accounts is { } accounts) Task.Run(() => accounts.StartAsync(CancellationToken.None)).GetAwaiter().GetResult();
                 (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
                 ThemeColors = Appearance.LoadColors(store.DataDirectory, SelectedTheme);

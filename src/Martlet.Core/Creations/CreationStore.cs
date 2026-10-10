@@ -228,6 +228,72 @@ public static class CreationStore
     /// <summary>Whether <paramref name="error"/> is one a sync or an edit reports rather than throws past.</summary>
     public static bool IsFailure(Exception error) => error is IOException or UnauthorizedAccessException or ContractException;
 
+    /// <summary>Moves every creation kept in <paramref name="fromDirectory"/> (the list, the asset files, copies in progress and
+    /// the last sync record) into <paramref name="toDirectory"/>, merged with what is there, and deletes them from
+    /// <paramref name="fromDirectory"/>. Nothing is lost: the list is saved in its new place before anything is deleted, an asset
+    /// is deleted only when the new place holds a file of the same SHA-256 and length, and running it again finishes an
+    /// interrupted move. Throws <see cref="ContractException"/> and moves nothing when the old list can't be read. Returns how
+    /// many creations the old list had and how many asset files moved.</summary>
+    public static async Task<(int Creations, int Assets)> MoveAsync(string fromDirectory, string toDirectory, CancellationToken token)
+    {
+        ContractRules.Require(!string.Equals(Path.GetFullPath(fromDirectory).TrimEnd(Path.DirectorySeparatorChar),
+            Path.GetFullPath(toDirectory).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase), "Creations can't move to the same folder.");
+        int creations, assets = 0;
+        await Gate.WaitAsync(token);
+        try
+        {
+            var listPath = Path.Combine(fromDirectory, LibraryFile);
+            var from = Load(fromDirectory);
+            ContractRules.Require(from is not null || !File.Exists(listPath), "The creations list in the data folder can't be read, so it was left there.");
+            creations = from?.Creations.Count(c => !c.Removed) ?? 0;
+            if (from is not null) Commit(toDirectory, from);
+
+            var root = Root(fromDirectory);
+            if (Directory.Exists(root))
+                foreach (var file in Directory.EnumerateFiles(root))
+                {
+                    var name = Path.GetFileName(file);
+                    var target = Path.Combine(Root(toDirectory), name);
+                    if (!name.EndsWith(AssetExtension, StringComparison.Ordinal)) File.Delete(file);
+                    else if (new FileInfo(target) is { Exists: true } there && there.Length == new FileInfo(file).Length) File.Delete(file);
+                    else
+                    {
+                        Directory.CreateDirectory(Root(toDirectory));
+                        File.Move(file, target, overwrite: true);
+                        assets++;
+                    }
+                }
+            var incoming = Path.Combine(fromDirectory, IncomingDirectoryName);
+            if (Directory.Exists(incoming))
+                foreach (var folder in Directory.EnumerateDirectories(incoming))
+                {
+                    var target = Path.Combine(toDirectory, IncomingDirectoryName, Path.GetFileName(folder));
+                    if (Directory.Exists(target)) DeleteDirectory(folder);
+                    else
+                    {
+                        Directory.CreateDirectory(Path.Combine(toDirectory, IncomingDirectoryName));
+                        Directory.Move(folder, target);
+                    }
+                }
+            var syncState = Path.Combine(fromDirectory, CreationSyncState.FileName);
+            if (File.Exists(syncState))
+            {
+                if (File.Exists(Path.Combine(toDirectory, CreationSyncState.FileName))) File.Delete(syncState);
+                else
+                {
+                    Directory.CreateDirectory(toDirectory);
+                    File.Move(syncState, Path.Combine(toDirectory, CreationSyncState.FileName));
+                }
+            }
+            if (File.Exists(listPath)) File.Delete(listPath);
+            foreach (var folder in new[] { root, incoming })
+                if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any()) DeleteDirectory(folder);
+        }
+        finally { Gate.Release(); }
+        Changed?.Invoke(toDirectory);
+        return (creations, assets);
+    }
+
     private static string Pieces(string dataDirectory, string sha256) => Path.Combine(dataDirectory, IncomingDirectoryName, sha256[..16]);
 
     private static async Task PlaceAsync(string dataDirectory, string sha256, ReadOnlyMemory<byte> bytes, CancellationToken token)
