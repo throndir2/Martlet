@@ -14,12 +14,18 @@ public static class WorkSharingJobs
     /// <summary>Reading the text on the screen (Companion › Reading): a pool of the owner's computers that run the Reading role.
     /// Not in <see cref="All"/>: Companion › Reading keeps its own list, not a Devices › Sharing work card.</summary>
     public const string Reading = "reading";
+    /// <summary>Lip-sync's lane in <see cref="WorkQueue"/> (<see cref="LipSyncSharing"/>). Not in <see cref="All"/>: its pool
+    /// list lives on its own page, not a Devices › Sharing work card.</summary>
+    public const string LipSync = ClusterJobs.LipSync;
+    /// <summary>Drawing pictures (Companion › Pictures): each PC's Pictures list (<see cref="PoolAreas.Pictures"/>). Not in
+    /// <see cref="All"/>: Companion › Pictures keeps its own list, not a Devices › Sharing work card.</summary>
+    public const string Pictures = "pictures";
     public static readonly IReadOnlyList<string> All = [Speaking, Thinking, Listening, DeepThinking];
 
-    /// <summary>Speaking, Listening and Reading are shared unless turned off: each request stands alone. Thinking is shared only
-    /// when chosen: another computer's model starts your conversation without its prompt cache (a slower first word) and pushes
-    /// that computer's own conversation out of its cache. Deep thinking always thinks on the places chosen for it.</summary>
-    public static bool SharedByDefault(string job) => job is Speaking or Listening or Reading;
+    /// <summary>Speaking, Listening, Reading and Lip-sync are shared unless turned off: each request stands alone. Thinking is
+    /// shared only when chosen: another computer's model starts your conversation without its prompt cache (a slower first word)
+    /// and pushes that computer's own conversation out of its cache. Deep thinking always thinks on the places chosen for it.</summary>
+    public static bool SharedByDefault(string job) => job is Speaking or Listening or Reading or LipSync;
 
     public static string Title(string job) => job switch
     {
@@ -27,7 +33,9 @@ public static class WorkSharingJobs
         Thinking => "Thinking",
         Listening => "Listening",
         DeepThinking => "Thinking pool",
+        LipSync => "Lip-sync",
         Reading => "Reading",
+        Pictures => "Pictures",
         _ => job
     };
 }

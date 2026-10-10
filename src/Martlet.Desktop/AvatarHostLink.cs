@@ -35,7 +35,13 @@ internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection,
         if (Volatile.Read(ref route) is not null) return true;
         if (time.GetUtcNow() - checkedAt < Recheck) return false;
         checkedAt = time.GetUtcNow();
-        try { Volatile.Write(ref route, await connection.ReadRouteAsync(token).ConfigureAwait(false)); }
+        try
+        {
+            var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
+            // Which cards serve the relay, so a lip-sync pool member that names a card can be matched to it.
+            HostRouteGpus.Note(connection.Pairing.HostId, routes);
+            Volatile.Write(ref route, Audio2FaceHostConnection.Audio2FaceRoute(routes));
+        }
         catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException ||
             error is OperationCanceledException && !token.IsCancellationRequested)
         {

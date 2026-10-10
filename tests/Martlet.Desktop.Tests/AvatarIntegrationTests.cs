@@ -166,7 +166,7 @@ public sealed class AvatarIntegrationTests
         var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"]), new("blink", 0, 1, 0, ["Expression"])] };
         await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
         await controller.ShowAsync(scope.Profile(backend.Endpoint.AbsoluteUri), default);
-        Assert.Contains("detected", controller.Status, StringComparison.Ordinal);
+        Assert.Contains("Lip-sync is using Audio2Face at", controller.Status, StringComparison.Ordinal);
         var configured = RendererProtocol.Data<RendererConfiguration>(renderer.Messages.Single(m => m.Kind == "configure"));
         Assert.Equal("aa", Assert.Single(configured.Targets).Target);
         var device = new ControlledDevice { AutoConsume = false };
@@ -189,6 +189,7 @@ public sealed class AvatarIntegrationTests
     {
         internal ConcurrentQueue<(long Samples, CorrelationIds Ids)> Requests { get; } = new();
         internal string Name { get; init; } = "192.168.1.20:9443";
+        internal bool Busy { get; init; }
         internal bool Disposed { get; private set; }
         public string Authority => Name;
         public Task<bool> ReadyAsync(CancellationToken token) => Task.FromResult(true);
@@ -197,6 +198,7 @@ public sealed class AvatarIntegrationTests
         {
             Requests.Enqueue((pcm.Length / 2, ids));
             await Task.Yield();
+            if (Busy) throw new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.busy", "The host is busy.");
             yield return new(0, new Dictionary<string, double> { ["jawOpen"] = 0.6, ["unknownShape"] = 0.9 });
             yield return new(480, new Dictionary<string, double> { ["jawOpen"] = 0.3 });
         }
@@ -240,6 +242,44 @@ public sealed class AvatarIntegrationTests
         Assert.True(second.Disposed);
         Assert.Contains("this PC", controller.Status, StringComparison.Ordinal);
         await controller.StopAsync();
+    }
+
+    [Fact]
+    public async Task Lip_sync_goes_to_the_next_computer_of_its_pool_when_the_assigned_one_is_busy()
+    {
+        var closed = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        closed.Start();
+        var port = ((System.Net.IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"])] };
+        var busy = new FakeHostLink { Busy = true };
+        var free = new FakeHostLink { Name = "192.168.1.30:9443" };
+        AvatarRemoteHost Remote(string id, string ip) => new()
+        {
+            Origin = $"https://{ip}:9443", HostId = id, SpkiFingerprint = "sha256:" + new string('a', 64),
+            DeviceId = "desktop-test", CredentialId = new string('B', 22)
+        };
+        var (assigned, other) = (Remote("pool-busy-a", "192.168.1.20"), Remote("pool-busy-b", "192.168.1.30"));
+        await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true,
+            openHost: host => host.HostId == assigned.HostId ? busy : free,
+            lipSyncPool: _ => [new("host:" + assigned.HostId, assigned), new("host:" + other.HostId, other), new("this-pc", null)]);
+        await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/") with { RemoteHost = assigned }, default);
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var harness = new Harness(device, generatedSpeech: controller.Observer);
+        harness.Answer("Actual generated PCM test.");
+        var turn = harness.Start();
+        await Harness.Until(() => renderer.Messages.Any(m => m.Kind == "apply"));
+        Assert.NotEmpty(busy.Requests);
+        Assert.Equal(turn.TurnId, Assert.Single(free.Requests).Ids.TurnId);
+        Assert.Equal(1, controller.LipSyncSharing.Moved);
+        Assert.Equal(0, controller.LipSyncSharing.Skipped);
+        Assert.Equal("host:" + other.HostId, controller.LipSyncSharing.LastHost);
+        device.AutoConsume = true;
+        Assert.Equal(ConversationState.Completed, (await Harness.Finish(turn)).State);
+        Assert.Equal(SpeechFixtures.Audio(), device.Bytes);
+        await controller.StopAsync();
+        Assert.True(free.Disposed);
     }
 
     [Fact]

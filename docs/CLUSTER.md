@@ -261,8 +261,13 @@ when both are. Keeping machine 3 for itself leaves machine 2 only machine 1.
 
 Cloud members of Speaking and Listening are used when they are first in the
 list (the route is that provider); a cloud member after a computer is shown in
-the list but host requests don't fall back to it yet. Lip-sync, pictures,
-vision, hearing, singing and reading route their own lists.
+the list but host requests don't fall back to it yet.
+Lip-sync goes to a pool of the places that run Audio2Face through the same
+queue, without a card here ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)).
+Pictures go through each PC's Pictures list (`PicturePool`, lane `pictures`): a
+computer whose ComfyUI already draws a picture is passed over for a free one,
+and when all are busy the picture waits in the shortest queue
+([Pictures](PICTURES.md#more-than-one-picture-computer)).
 Songs go through the singing pool (`SingingPool`, lane `singing`): a computer
 that sings another song is passed over for a free one, and when all are busy
 the song waits on the shortest line ([Singing](SINGING.md#the-singing-pool)).

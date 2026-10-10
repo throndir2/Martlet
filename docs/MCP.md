@@ -836,6 +836,10 @@ lines (where, size, seconds; never the description).
 
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
+its Pictures list as `pool` (`pools-local.json`: `configured`, `off`, each
+member's `key`, `kind`, `name`, `settings`, `consented`, `ownKeySaved` and the
+`place` it reads as; without a list yet, the list the desktop would make from
+`pictures.json`) and `tries` (the places a picture tries now, in order),
 the loaded workflow's node count, the picture creations (shape, size, engine,
 model, seconds, fixture; never titles or descriptions), the tool and job kind,
 and `afterReply` (the Songs, pictures and creations check-in tool set, as
@@ -845,13 +849,21 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 `z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
-back, with `saveDirectory` it writes the file. It never calls OpenRouter or NVIDIA
+back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
+Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
+or unsuitable computer is passed over, every one busy waits in the shortest
+queue, two pictures go to two computers, one computer gets no extra request, and
+the first list is made from `pictures.json`. It returns `ok` and each step. It
+never calls OpenRouter or NVIDIA
 Build (a picture costs money). Desktop automation: Companion › Pictures' main
 choice is an option picker, `Picker-Pictures-<place>` (`Off`, `Host`,
 `ComfyUi`, `OpenRouter`, `NvidiaBuild`), whose rows only show that place's
 details (its facts, such as `PickerFact-Pictures-cost`, and its fields and
 button); they, the `PicturesHost-<host>` pills, `PicturesCheck` and
-`PicturesComfyConnect` are passive clicks; `PicturesNow`, `PicturesTestState`,
+`PicturesComfyConnect` are passive clicks; `PicturesNow` (where it draws and,
+with more than one place in the Pictures list, the places that draw when the first
+is busy), `PicturesTestState`,
 `PicturesHostState`, `PicturesSetUp`,
 `PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
 `PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
@@ -4502,6 +4514,35 @@ its row), `Pool-<area>-Show-<key>` and `Pool-<area>-AddCloud` (a place's own
 card under the list) are safe clicks. On, Up, Down, Remove, Add and the
 kept-for choice save `pools.json` (or `pools-local.json`) and share it, so they
 need `--allow-ui-effects`.
+
+`lip_sync_pool_status` shows lip-sync's pool (optional absolute
+`dataDirectory`, default the current user's; the script gives a disposable
+one; optional `deviceId`, default this PC's): `avatar` (`loaded`, `none` or
+`unreadable`), `lipSync` (the mode in `avatar.json`), `assigned` (the host it
+names), `paired` and `ownHost` (`hosts.json`), `area` (the pool contract's
+lip-sync area: `id`, `page`, `required`, `kinds`, `whenEmpty`), `list`
+(`source`: `pools.json`, or `older choices (not saved yet)`; and each member's
+`key`, `name`, `kind`, `off`, `onlyFor` and `settings`), `tries` (the member
+keys this PC tries for each chunk with the production `PoolRouting.Order`),
+`fallback` ("Voice loudness on this PC" when no member can take a sentence),
+`sharingWork` (lip-sync's `shares`, `order`, `never` and the plan's `runs`,
+which make the list from the older choices) and `planHost` (the shared plan's
+lip-sync host). Host and device IDs only. Read-only.
+
+`lip_sync_pool_check` rehearses the production lip-sync pool
+(`LipSyncSharing` on `WorkQueue`) with simulated Audio2Face computers that
+animate one chunk at a time and turn another away at once as a host's gateway
+does (`job.busy`), **NOT real hosts or models**. Each step reports `passed`
+and its detail: shared by default with the assigned computer first and no
+Devices card; a free first computer taking a chunk with no wait; two companion
+PCs at once, the second moved to the next computer once and each reply kept on
+its computer; the next reply choosing again; every computer busy, so a
+one-second chunk waits about half a second and is skipped (the voice's
+loudness moves the mouth); a computer freeing within the wait; an unanswering
+computer passed over at once; a kept or never-used computer left out; a saved
+list's order without a member turned off or kept for another companion PC; an
+empty list meaning voice loudness; and the list made from the older choices.
+`ok` is true when every step passed. In-process; reads nothing.
 
 `recommended_setup_status` shows Home's **Recommended setup** without the
 desktop. It builds the network recommender's request with the desktop's own
@@ -8225,7 +8266,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
