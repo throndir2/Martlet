@@ -1258,9 +1258,9 @@ public partial class LiveConversationWindow : ThemedWindow
         return playedLately.Select(played => played.Line).Concat(pcHeld.Select(held => LineOf(held.Speech, held.Text, held.From)));
     }
 
-    // The microphone heard a voice Martlet knows as yours: voice recognition's owner, or Voice ID's match.
+    // The microphone heard a voice Martlet knows as yours: one linked to the signed-in account, or Voice ID's match.
     private static bool Yours(HeardSpeech speech) =>
-        speech.Voices?.Speaker?.Voice is { Owner: true } || speech.SpeakerCheck is { Verdict: SpeakerVerdict.User };
+        speech.Voices?.Speaker is { Mine: true } || speech.SpeakerCheck is { Verdict: SpeakerVerdict.User };
 
     /// <summary>How long after the microphone heard you a line the PC plays may still be your own voice played back (both are
     /// transcribed separately, so one can come a few seconds after the other).</summary>
@@ -1351,7 +1351,7 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         if (speech.Interrupt is { } stop) heardInterrupt = (stop, speech.SpeechStartedAt);
-        var label = speech.Voices?.Speaker?.Voice is { } voice ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)";
+        var label = speech.Voices?.Speaker is { Voice: { } voice } speaker ? $"{voice.DisplayName}{(speaker.Mine ? " (you)" : "")} (spoken)" : "You (spoken)";
         var yours = Yours(speech);
         // Straight to Thinking: the recording goes on its own and its words fill the bubble once speech-to-text has them.
         if (speech.Words is { } words && speech.Recording is not null)
@@ -2281,8 +2281,8 @@ public partial class LiveConversationWindow : ThemedWindow
             heard = home = reply = null;
         }
         if (heard is null && operation.Transcript is { } said && !string.IsNullOrWhiteSpace(said))
-            heard = Add(ChatRole.User, said.Trim(), operation.Heard?.Speaker?.Voice is { } voice
-                ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
+            heard = Add(ChatRole.User, said.Trim(), operation.Heard?.Speaker is { Voice: { } voice } speaker
+                ? $"{voice.DisplayName}{(speaker.Mine ? " (you)" : "")} (spoken)" : "You (spoken)");
         // What Home Assistant did or answered for this turn, above the reply.
         if (home is null && operation.HomeSummary is { } summary && !string.IsNullOrWhiteSpace(summary))
             home = Add(ChatRole.Note, summary.Trim(), "");

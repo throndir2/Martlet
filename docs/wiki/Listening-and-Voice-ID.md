@@ -30,7 +30,7 @@ The card says what hears the recordings now, what the model is known to do and w
 
 ## People
 
-Open **Companion › People**. Voice recognition is on by default and bundled. You can name voices and give each as many other names as they go by (up to 40), hear the last few clips of a voice you haven't named yet, mark **This is me**, merge voices, inspect memories for that person, forget one voice or forget all voices.
+Open **Companion › People**. Voice recognition is on by default and bundled. You can name voices and give each as many other names as they go by (up to 40), hear the last few clips of a voice you haven't named yet, link a voice to your account with **This voice is <your name>** (each voice belongs to at most one person in the household, and a voice never signs anyone in), merge voices, inspect memories for that person, forget one voice or forget all voices.
 
 Voice recognition is convenience, not authentication. Similar voices, recordings, illness, distance and microphone changes can fool it.
 

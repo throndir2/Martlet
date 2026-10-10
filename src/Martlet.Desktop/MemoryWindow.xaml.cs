@@ -53,6 +53,7 @@ public partial class MemoryWindow : ThemedWindow
     private readonly Func<string?> chooseExport;
     private readonly Func<Window, string, string, bool> confirm;
     private readonly Func<VoiceRoster> voices;
+    private readonly Func<KnownVoice, bool> yours;
     private string? showPerson;
     private VoiceRoster roster = VoiceRoster.Empty;
     private IReadOnlyList<MemoryFact> facts = [];
@@ -81,6 +82,7 @@ public partial class MemoryWindow : ThemedWindow
 
     /// <param name="voices">The voices Martlet knows (People), whose facts the window can show and choose.</param>
     /// <param name="person">A voice ID whose facts to show first (People's "What Martlet remembers").</param>
+    /// <param name="yours">Whether a voice is the signed-in person's (<see cref="LocalVoices.IsYours"/>).</param>
     internal MemoryWindow(
         DesktopMemoryService service,
         SetupOperationRunner operations,
@@ -88,7 +90,8 @@ public partial class MemoryWindow : ThemedWindow
         Func<string?>? chooseExport = null,
         Func<Window, string, string, bool>? confirm = null,
         Func<VoiceRoster>? voices = null,
-        string? person = null)
+        string? person = null,
+        Func<KnownVoice, bool>? yours = null)
     {
         this.service = service;
         this.operations = operations;
@@ -96,6 +99,7 @@ public partial class MemoryWindow : ThemedWindow
         this.chooseExport = chooseExport ?? PickExport;
         this.confirm = confirm ?? Confirm;
         this.voices = voices ?? (() => VoiceRoster.Empty);
+        this.yours = yours ?? (voice => voice.Owner);
         showPerson = person;
         autoSave = new AutoSave(SaveConfigurationAsync);
         busyCheck.Tick += (_, _) => BusyChecked();
@@ -320,7 +324,7 @@ public partial class MemoryWindow : ThemedWindow
     private void RenderPeople()
     {
         roster = voices();
-        var live = roster.Live.OrderByDescending(v => v.Owner).ThenByDescending(v => v.Named).ThenBy(v => v.Number)
+        var live = roster.Live.OrderByDescending(yours).ThenByDescending(v => v.Named).ThenBy(v => v.Number)
             .Select(v => new PersonOption(PersonName(v), PersonKind.Voice, v.Id)).ToArray();
         var forgotten = facts.Any(f => f.VoiceId is { } id && roster.Resolve(id) is null);
         // Keep what was shown; a voice merged meanwhile shows the voice it joined.
@@ -358,7 +362,7 @@ public partial class MemoryWindow : ThemedWindow
                 ? canonical : fact.VoiceId
             // A new fact belongs to the voice shown, else to yours: you typed it.
             : PersonFilter.SelectedItem is PersonOption { Kind: PersonKind.Voice } shown ? shown.VoiceId
-            : roster.Live.FirstOrDefault(v => v.Owner)?.Id;
+            : roster.Live.FirstOrDefault(yours)?.Id;
         PersonChoice.SelectedItem = options.FirstOrDefault(o => o.VoiceId == voice) ?? options[0];
     }
 
@@ -428,8 +432,8 @@ public partial class MemoryWindow : ThemedWindow
     }
 
     /// <summary>A voice as the window names it: its name (and "you" for yours), else "Voice 3".</summary>
-    private static string PersonName(KnownVoice voice) =>
-        (voice.Named ? voice.DisplayName : $"Voice {voice.Number}") + (voice.Owner ? " (you)" : "");
+    private string PersonName(KnownVoice voice) =>
+        (voice.Named ? voice.DisplayName : $"Voice {voice.Number}") + (yours(voice) ? " (you)" : "");
 
     private string? PersonName(string? voiceId) =>
         voiceId is null ? null : roster.Resolve(voiceId) is { } voice ? PersonName(voice) : "A forgotten voice";

@@ -48,7 +48,7 @@ internal static class VoicePromptContext
         var also = voice.OtherNames.Select(Sanitize).ToArray();
         return (name is null ? $"someone whose name Martlet doesn't know yet (voice {voice.Tag}" : $"{name} (voice {voice.Tag}") +
             (also.Length > 0 ? "; also called " + string.Join(", ", also) : "") +
-            (voice.Owner ? "; the owner of this PC" : "") +
+            (heard.Mine ? "; the signed-in user" : "") +
             (heard.Added ? "; heard for the first time" : "") + ").";
     }
 

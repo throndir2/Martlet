@@ -165,6 +165,13 @@ The People list is one household list. A voice can link to one account
 character answers and saves the fact in Sam's space with Alex's voice ID. A
 voice never switches the account, unlocks settings or spends money.
 
+Built (W11): People's **This voice is <name>** links a voice to the signed-in
+account. *Your voice* everywhere (memory's *me* and new facts, *Someone else is
+here*, the echo check, the *(you)* labels and the voices block of each message)
+means a voice linked to the signed-in account. A voice marked *This is me* by an
+older Martlet links to the owner account. The Voice ID filter is per account
+through the account-scoped `voice-id` section (W8).
+
 ### Roles
 
 | Role | May |
@@ -227,6 +234,7 @@ All workstreams use these forms. Change them here first.
 | E-mail hint | Lowercase hex SHA-256 of the UTF-8 text `"martlet-email-hint-v1\n<network ID>\n<trimmed, lowercase e-mail>"` (`Account.EmailHintFor`). The directory keeps only hints, never an e-mail address |
 | Directory routes | `GET /martlet/v1/accounts`, `GET /martlet/v1/accounts/digest`, `POST /martlet/v1/accounts` (merge and return). Paired member devices only; friends are refused |
 | Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working. Answers name the `space`. A host keeps at most 64 spaces (`memories.spaces_full`). An access hook on the host (`GatewayMemorySpaces.Access`) may refuse a device (`memories.space_denied`); a POST needs read and write access. `Martlet.Core.Sync.MemorySpaceId` makes and checks space IDs. Client: `ReadMemorySpaceAsync`, `ReadMemorySpaceDigestAsync`, `MergeMemorySpaceAsync` |
+| Voice link | Each voice in `voices.json` may carry `link`: `{ "account": <Account ID or absent>, "revision", "updated_by" }`, a last-writer-wins register merged apart from the rest of the voice (an absent `account` with a revision is an unlink). Martlet before links refuses unknown fields, so `GET`/`POST /martlet/v1/voices` serve and return the list without links and merge a copy without links without removing any; `GET`/`POST /martlet/v1/voices/linked` carry them. The legacy `owner` flag stays true while the voice links to the owner account. `Martlet.Core.Speakers.VoiceRoster`: `SetAccount`, `LinkedTo`, `LinkOwnerVoices`, `WithoutLinks`. Client: `ReadVoicesAsync(linked: true)`, `MergeVoicesAsync(..., linked: true)`. The voice list is the only place links live: the account directory's `voices` field is not used for them |
 | Account attestation | `AccountAttestation` in `Martlet.Core.Accounts`: a host's signed statement that an account proved itself on a device. JSON (snake case): `schema_version` 1, `network_id`, `host_id`, `account_id`, `device_id`, `login` (an `AccountLoginKey`; never `windows`), `issued_at`, `expires_at` (1 minute to 30 days; 10 minutes by default), `algorithm` (`ES256` or `PS256`), `host_key` (base64url SubjectPublicKeyInfo of the host's **TLS key**, the key the roster pins as the host's `spki`) and `signature` over `"martlet-account-attestation-v1"` and the other fields, one per line (account ID as 32 hex digits, times as Unix milliseconds). `Check(roster, at)` accepts it only for an active host of that network whose pin is the SHA-256 of `host_key`, with a good signature, within its lifetime (5 minutes of clock skew). Its text form (`AccountAttestation.ToText()`, base64url of compact JSON, at most 4,096 ASCII characters) goes in a device binding's `attestation`. See [host sign-in](#host-sign-in-for-accounts) |
 | Desktop account session | `AccountSession` in Martlet.Desktop (built by W7; see [Desktop account session](#desktop-account-session)): `AccountId`, `AccountFolder` (`<data>\accounts\<32 hex>`), `HouseholdFolder` (the data folder root), `Current` and `SignedIn` (ID, name, role, pending), `OwnerId`, `AddChangeStep(Func<AccountChange, CancellationToken, Task>)`, `StartAsync`, `SwitchToAsync`, `AddPerson`, `SignIn(attestation, roster, now)` and the `AccountChanged` event, raised only between replies after every change step ran. The session file is `accounts\session.json` (`AccountSessionState` in `Martlet.Core.Accounts`, device scope, never synced) |
 | PC folder | `PcFolder` in `Martlet.Core.Installation`: `%ProgramData%\Martlet` for the default data folder, else the data folder itself, or `MARTLET_PC_DIRECTORY`. `BUILTIN\Users` may change it. Holds `device-role.txt` and `this-pc-host-roles.txt`; never secrets |
@@ -251,7 +259,7 @@ Built by W2. Code: `src\Martlet.Core\Accounts\` (`Account.cs`,
 | `role` | `owner`, `admin` or `member` |
 | `logins` | At most 16: `kind`, `provider`, `subject`, optional `label` (at most 128 characters; shown, never trusted), `added_at` |
 | `devices` | At most 64 device bindings: `device_id`, `login` (`kind`, `provider`, `subject`), `signed_in_at`, optional `attestation` (1-4,096 printable ASCII characters; the [account attestation](#shared-contracts) text) |
-| `voices` | At most 16 voice IDs from People (32 lowercase hex digits) that are this person |
+| `voices` | At most 16 voice IDs from People (32 lowercase hex digits). Not used: whose voice is whose lives in the voice list ([Voice link](#shared-contracts)), so there is one source of truth |
 | `email_hints` | At most 8 [e-mail hints](#shared-contracts) for *Continue as ...?* |
 | `sharing` | `characters` (`private`, `copy` or `together`) and `memories_about_me` (*Share new memories about me*) |
 | `removed` | A removed account stays as a tombstone with its ID and name and no logins, devices, voices or hints |
