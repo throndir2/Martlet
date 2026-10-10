@@ -882,21 +882,27 @@ or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
 the first list is made from `pictures.json`. It returns `ok` and each step. It
 never calls OpenRouter or NVIDIA
-Build (a picture costs money). Desktop automation: Companion › Pictures' main
-choice is an option picker, `Picker-Pictures-<place>` (`Off`, `Host`,
-`ComfyUi`, `OpenRouter`, `NvidiaBuild`), whose rows only show that place's
-details (its facts, such as `PickerFact-Pictures-cost`, and its fields and
-button); they, the `PicturesHost-<host>` pills, `PicturesCheck` and
-`PicturesComfyConnect` are passive clicks; `PicturesNow` (where it draws and,
-with more than one place in the Pictures list, the places that draw when the first
-is busy), `PicturesTestState`,
-`PicturesHostState`, `PicturesSetUp`,
-`PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
-`PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
-`PicturesKeyStatus`, `PicturesUseCloud`, `PicturesTurnOff` and `PicturesTest`
-return their text. Set up, Draw with..., Turn pictures off and Draw a test picture
-save, install or draw, so they need `--allow-ui-effects`; the Creations page shows
-a picture as `CreationPicture`.
+Build (a picture costs money). Desktop automation: Companion › Pictures' *Where
+it draws* is the shared pool list (`Pool-pictures-...`, see the pool list
+automation IDs): `Pool-pictures-Summary`, `Pool-pictures-Member-<i>` (a place,
+its kind and its state: whether the Pictures role is ready there, its workflow,
+or a cloud provider's key status), `Pool-pictures-On-<i>`, `-Up-`, `-Down-`,
+`-Remove-`, `-OnlyFor-<i>`, `-AddThisPc`, `-AddHost-<host>`, `-Address` and
+`-AddAddress`. `Pool-pictures-Settings-<i>` (show or hide a place's settings),
+`PicturesCheck` and a place's `PicturesComfyConnect-<i>` are passive clicks.
+`PicturesNow` (where it draws and the places that draw when the first is busy),
+`PicturesTestState` (each place ready or why not, or the test picture's size,
+place and seconds), and in a place's settings `PicturesMemberState-<i>`,
+`PicturesSetUp-<i>`, `PicturesWorkflow-<i>`, `PicturesCheckpoint-<i>`,
+`PicturesComfyState-<i>`, `PicturesLoadWorkflow-<i>`, `PicturesSaveSettings-<i>`,
+`PicturesKeyStatus-<i>` and `PicturesSaveKey-<i>`, and the cloud provider form's
+`PicturesCloudProvider`, `PicturesModel`, `PicturesKeyStatus`, `PicturesConsent`,
+`PicturesAddCloud` and `PicturesCloudState` (what the last Add did, or why it
+didn't), return their text (never a key). The list's On, Up,
+Down, Remove and Add, and Set up, Save, Load workflow file, Save key, Add
+OpenRouter or NVIDIA Build and Draw a test picture save, install or draw, so
+they need `--allow-ui-effects`; the Creations page shows a picture as
+`CreationPicture`.
 
 ### Reminders
 

@@ -55,10 +55,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
         // --allow-ui-effects.
         "CheckInsOpenPool",
-        // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
-        // there); Connect only reads the typed ComfyUI's status and models. Neither saves or draws. Draw a test picture, Set up
-        // and the Draw with/Turn off buttons need --allow-ui-effects.
-        "PicturesCheck", "PicturesComfyConnect",
+        // Companion › Pictures' Check only asks each place in the Pictures list whether it can draw now (a cloud provider: only
+        // whether a key is there); a place's Connect (PicturesComfyConnect-<i>, a prefix below) only reads that ComfyUI's status and
+        // models. Neither saves or draws. Draw a test picture, Set up, Save, Load workflow file, Save key and Add need
+        // --allow-ui-effects.
+        "PicturesCheck",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
@@ -212,11 +213,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
-        // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
-        // details, only show where it stands on that computer; their own buttons commit. Reading's model pills
+        // Companion › Reading's computer pills ("ReadingHost-this-pc"), in its role's details, only show where it stands on that
+        // computer; their own buttons commit. Reading's model pills
         // ("ReadingModel-ppocrv5-mobile", "ReadingModel-ppocrv5-server", "ReadingModel-rapidocr-ppocrv4") only show that model's
         // details and the button that sets it up or switches to it (Set up and Switch need --allow-ui-effects).
-        "PicturesHost-", "ReadingHost-", "ReadingModel-",
+        "ReadingHost-", "ReadingModel-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -247,7 +248,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Singing's list: a member's Settings ("Pool-singing-Settings-0") only shows or hides its Singing state, Set up
         // Singing here, Add VevoSing here and its own quality; those buttons and the quality save or install, so they need
         // --allow-ui-effects.
-        "Pool-singing-Settings-"];
+        "Pool-singing-Settings-",
+        // Companion › Pictures: a place's Settings ("Pool-pictures-Settings-0") only shows or hides its settings, and its Connect
+        // ("PicturesComfyConnect-0") only reads that ComfyUI's version, checkpoints and models.
+        "Pool-pictures-Settings-", "PicturesComfyConnect-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -472,14 +476,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Every Companion page: its group in the side list ("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its fixed intro, which
         // starts with "Optional." on a page Martlet works without.
         "CompanionGroupTitle", "CompanionIntro",
-        // Companion › Pictures: where Martlet draws now (PicturesNow), what Check or Draw a test picture found (PicturesTestState:
-        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (where it
-        // stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
-        // Z-Image Turbo is there), the chosen workflow, a cloud provider's model ID and whether a key is saved or Thinking's is
-        // used (never the key), and the buttons' labels. Pictures themselves are never returned.
-        "PicturesNow", "PicturesTestState", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
-        "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
-        "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
+        // Companion › Pictures: where Martlet draws now (PicturesNow: the first place in the Pictures list and the ones that draw
+        // when it is busy), what Check or Draw a test picture found (PicturesTestState: each place ready or why not, or the test
+        // picture's size, place and seconds), the Add a cloud provider form's provider, model ID, key status (whether
+        // Thinking's key is used; never the key), agreement box, button label and what the last Add did (PicturesCloudState). Each place's settings read through
+        // SafeValuePrefixes (PicturesMemberState-<i> and the rest). Pictures themselves are never returned.
+        "PicturesNow", "PicturesTestState", "PicturesCheck", "PicturesTest", "PicturesCloudProvider", "PicturesModel", "PicturesKeyStatus",
+        "PicturesConsent", "PicturesAddCloud", "PicturesCloudState",
         // Companion › Reading: where Martlet reads the text on the screen (ReadingNow), the newest read while watching and the
         // Read my screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds, the full-size
         // screenshot's width x height and when, or why it couldn't), whether Windows can read text here, the Reading role on the
@@ -937,6 +940,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
     private static readonly string[] SafeValuePrefixes = [
+        // Companion › Pictures, one place's settings (i: its place in the Pictures list): where the Pictures role stands there
+        // ("PicturesMemberState-0" reads "Pictures role ready." or "Not set up yet ..."), the Set up button's label, the chosen
+        // workflow and checkpoint, what Connect found ("PicturesComfyState-0": version, checkpoints, whether Z-Image Turbo is
+        // there), the Load, Connect and Save buttons' labels, and a cloud place's key status ("PicturesKeyStatus-0": whether its
+        // own key or Thinking's is used; never the key) and Save key label.
+        "PicturesMemberState-", "PicturesSetUp-", "PicturesWorkflow-", "PicturesCheckpoint-", "PicturesComfyState-", "PicturesComfyConnect-",
+        "PicturesLoadWorkflow-", "PicturesSaveSettings-", "PicturesKeyStatus-", "PicturesSaveKey-",
         // A "?" (HelpTip.cs, "Help-CheckInsAbout") reads as "About <topic>", and its "help" is the explanation it shows; never
         // anything typed or secret.
         "Help-",

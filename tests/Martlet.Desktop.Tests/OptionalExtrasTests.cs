@@ -1,5 +1,4 @@
 using System.IO;
-using Martlet.Core.Pictures;
 using Martlet.Core.Planning;
 using Martlet.Core.Reading;
 using Martlet.Core.Settings;
@@ -79,21 +78,6 @@ public sealed class OptionalExtrasTests
         Assert.Equal("Any use", matches[0].Facts.Single(f => f.Key == "license").Short);
         Assert.NotEqual(Fact(matches[0], "download"), Fact(matches[1], "download"));
         Assert.NotEqual(Fact(matches[0], "vram"), Fact(matches[1], "vram"));
-    }
-
-    [Fact]
-    public void Pictures_offers_off_and_every_place_with_cost_and_where_descriptions_go()
-    {
-        var choices = OptionalExtras.PicturesChoices(PicturePlace.OpenRouter);
-        Assert.Equal(new[] { "Off", "Host", "ComfyUi", "OpenRouter", "NvidiaBuild" }, choices.Select(o => o.Key));
-        Assert.Equal(new[] { "OpenRouter" }, choices.Where(o => o.InUse).Select(o => o.Key));
-        Assert.Equal("recommended", choices[1].Badge);
-        Assert.Contains("needs a 8 GB+ card", Fact(choices[1], "vram"));
-        Assert.Equal("free", Fact(choices[1], "cost"));
-        Assert.StartsWith("paid", Fact(choices[3], "cost"));
-        Assert.Contains("OpenRouter", Fact(choices[3], "data"));
-        Assert.All(choices.Skip(1), option => Assert.Contains(option.Facts, f => f.Key == "size"));
-        Assert.True(OptionalExtras.PicturesChoices(PicturePlace.Off)[0].InUse);
     }
 
     [Fact]
