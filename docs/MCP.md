@@ -3542,7 +3542,8 @@ saved off, `muted`, its opposite, which the overlay menu's *Mute voice* and
 *Unmute voice* change, and `volume`, Companion › Voice's *Voice volume* from 0
 to 1, full unless saved lower; see below) and
 `lorebooks` (`books`, `on` and
-`entries` counts). Those editors have no Save button; each change saves on its
+`entries` counts, and `account`: the account folder they were read from, named
+by `accounts\working-copy.json`; null for a data folder from before accounts). Those editors have no Save button; each change saves on its
 own into the newest saved file, keeping what was saved elsewhere meanwhile
 (another page, or sync from your other computers, such as the lip-sync host).
 `OpenCompanion` (Personality's *Edit personality*), `OpenAvatar` (Character's
