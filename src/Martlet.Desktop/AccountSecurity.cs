@@ -39,3 +39,39 @@ internal interface IAccountMergeStep
     string Name { get; }
     Task MergeAsync(Guid into, Guid from, CancellationToken token);
 }
+
+/// <summary>The merge step for the files of the merged account's folder on this PC (<c>&lt;data&gt;\accounts\&lt;32 hex&gt;\</c>):
+/// each file the kept account's folder lacks is copied there; a file both have stays the kept account's. Encrypted files
+/// (<c>.mlock</c>) can't be merged until the merged account is unlocked here once.</summary>
+internal sealed class AccountFolderMergeStep(string dataDirectory) : IAccountMergeStep
+{
+    public string Name => "files on this PC";
+
+    public Task MergeAsync(Guid into, Guid from, CancellationToken token) => Task.Run(() =>
+    {
+        var source = AccountFolder(dataDirectory, from);
+        var copied = Copy(source, AccountFolder(dataDirectory, into), token);
+        if (copied > 0) ErrorLog.Info($"Accounts: copied {copied} file(s) of account {from:N} into account {into:N} for the merge.");
+    }, token);
+
+    internal static string AccountFolder(string dataDirectory, Guid id) => System.IO.Path.Combine(dataDirectory, "accounts", id.ToString("N"));
+
+    internal static int Copy(string source, string target, CancellationToken token = default)
+    {
+        if (!System.IO.Directory.Exists(source)) return 0;
+        var files = System.IO.Directory.EnumerateFiles(source, "*", System.IO.SearchOption.AllDirectories).ToArray();
+        if (files.Any(f => f.EndsWith(AccountVault.SealedExtension, StringComparison.Ordinal)))
+            throw new InvalidOperationException("The other account's files on this PC are encrypted. Switch to it once to unlock them, then merge.");
+        var copied = 0;
+        foreach (var file in files)
+        {
+            token.ThrowIfCancellationRequested();
+            var destination = System.IO.Path.Combine(target, System.IO.Path.GetRelativePath(source, file));
+            if (System.IO.File.Exists(destination)) continue;
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination)!);
+            System.IO.File.Copy(file, destination);
+            copied++;
+        }
+        return copied;
+    }
+}

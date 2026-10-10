@@ -67,7 +67,7 @@ public partial class AccountWindow : ThemedWindow
         HelloCheck.IsEnabled = !locks.Encrypt;
         EncryptCheck.IsChecked = locks.Encrypt;
         EncryptText.Text = locks.Encrypt
-            ? "Your files on this PC are encrypted whenever this account is locked. Your PIN" + (locks.Methods.Contains("password") ? " or password" : "") + " opens them."
+            ? "Your files on this PC are encrypted whenever you switch to another account or close Martlet. Your PIN" + (locks.Methods.Contains("password") ? " or password" : "") + " opens them."
             : "Needs a PIN on this PC. Type it in the PIN box, then turn this on. Windows Hello can't open encrypted files.";
         RememberCheck.IsChecked = locks.Remember;
         PinRemoveButton.IsEnabled = locks.HasPin;
@@ -374,7 +374,7 @@ public partial class AccountWindow : ThemedWindow
                 host.FileKey = key;
                 PinText.Clear();
                 PasswordText.Clear();
-                Status("Your files on this PC are encrypted whenever this account locks: Lock now, switching to another account or closing Martlet.");
+                Status("Your files on this PC are encrypted whenever this account stops being active here: when you switch to another account or close Martlet.");
             }
             else
             {

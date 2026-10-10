@@ -202,7 +202,9 @@ voice never switches the account, unlocks settings or spends money.
 
 Accounts are kept apart, not secret from a person with administrator rights on
 a host or PC. An account lock can encrypt that account's folder on a shared
-Windows login. End-to-end encrypted spaces are later work.
+Windows login: *Encrypt my files on this PC while locked*
+([Account security](#encrypted-files-while-locked)), opt-in and off by default.
+End-to-end encrypted spaces are later work.
 
 ### Latency
 
@@ -229,6 +231,10 @@ All workstreams use these forms. Change them here first.
 | Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working. Answers name the `space`. A host keeps at most 64 spaces (`memories.spaces_full`). An access hook on the host (`GatewayMemorySpaces.Access`) may refuse a device (`memories.space_denied`); a POST needs read and write access. `Martlet.Core.Sync.MemorySpaceId` makes and checks space IDs. Client: `ReadMemorySpaceAsync`, `ReadMemorySpaceDigestAsync`, `MergeMemorySpaceAsync` |
 | Account attestation | `AccountAttestation` in `Martlet.Core.Accounts`: a host's signed statement that an account proved itself on a device. JSON (snake case): `schema_version` 1, `network_id`, `host_id`, `account_id`, `device_id`, `login` (an `AccountLoginKey`; never `windows`), `issued_at`, `expires_at` (1 minute to 30 days; 10 minutes by default), `algorithm` (`ES256` or `PS256`), `host_key` (base64url SubjectPublicKeyInfo of the host's **TLS key**, the key the roster pins as the host's `spki`) and `signature` over `"martlet-account-attestation-v1"` and the other fields, one per line (account ID as 32 hex digits, times as Unix milliseconds). `Check(roster, at)` accepts it only for an active host of that network whose pin is the SHA-256 of `host_key`, with a good signature, within its lifetime (5 minutes of clock skew). Its text form (`AccountAttestation.ToText()`, base64url of compact JSON, at most 4,096 ASCII characters) goes in a device binding's `attestation`. See [host sign-in](#host-sign-in-for-accounts) |
 | Desktop account session | `AccountSession` in Martlet.Desktop: the current account ID, its folder `<data>\accounts\<32 hex>\`, the household folder (the data folder root) and an `AccountChanged` event raised only between replies |
+| Device binding rule | `AccountBindingRules` in `Martlet.Core.Accounts`, called by `AccountDirectory.Refusal` on desktops and hosts: a binding needs a proof (`creator`, `attestation`, `migration` or `merged`). See [the binding rule](#the-binding-rule) |
+| Device unlock file | `<data>\account-locks\<32 hex>.json`, device scope, never synced, outside the account's folder (`AccountLockStore`). Plain choices (`ask_on_this_pc`, `remember`, `hello`, `has_pin`, `has_password`, `encrypt`, `failures`, `retry_after`) and a DPAPI-protected part with PBKDF2 verifiers and wrapped file keys. See [Unlock on this PC](#unlock-on-this-pc) |
+| Locked account folder | While an account with *Encrypt my files on this PC while locked* is not active on this PC, its folder holds `<name>.mlock` files. Nothing reads or writes another account's folder; a change step loads an account's files only after it became active |
+| Account merge step | `IAccountMergeStep` in Martlet.Desktop: one per kind of account data; *Merge another account into this one* runs each before it removes the merged account. See [Merging accounts](#merging-accounts) |
 | PC folder | `PcFolder` in `Martlet.Core.Installation`: `%ProgramData%\Martlet` for the default data folder, else the data folder itself, or `MARTLET_PC_DIRECTORY`. `BUILTIN\Users` may change it. Holds `device-role.txt` and `this-pc-host-roles.txt`; never secrets |
 
 ## Account directory
@@ -279,10 +285,11 @@ desktop can sign entries before it is in a network.
 - `AccountDirectory.Accept(current, incoming, roster)` takes the incoming
   entries that `AccountDirectory.Refusal(accepted, incoming, roster)` lets in,
   then merges. Hosts and desktops use it for every copy they receive.
-  `Refusal` is the one place that decides; later rules (for example the binding
-  rule of W12) go there. Today it refuses `account.no_network` (no roster),
-  `account.signer` (not signed by an active member desktop with the key that the
-  roster lists) and `account.creator` (the entry changes `created_by`).
+  `Refusal` is the one place that decides. It refuses `account.no_network` (no
+  roster), `account.signer` (not signed by an active member desktop with the
+  key that the roster lists), `account.creator` (the entry changes
+  `created_by`) and, since W12, `account.binding` (a device binding without
+  proof; see [the binding rule](#the-binding-rule)).
 - A host takes no entry while it is in no network. Entries it took earlier stay
   when their signer leaves the network, as with roster entries.
 - A host keeps `accounts.json` when it leaves a network, as it keeps its other
@@ -346,8 +353,169 @@ tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
   `recovery-codes` with `account_id`, `allow` with `account_id` and `link`.
   `GET` answers `owner_account_id`, `accounts` (`account_id`, `user`,
   `has_authenticator`, `recovery_codes_left`) and `allowed[].account_id`, never
-  a secret. Who may change them is unchanged: a member desktop of the network.
-  Role checks (`AccountRoles.ManagesHousehold`) are W12's.
+  a secret. Who may change them: see [Roles on a host](#roles-on-a-host).
+
+## Account security
+
+Built by W12. Code: `src\Martlet.Core\Accounts\AccountBindingRules.cs`,
+`src\Martlet.Gateway\GatewaySignInRoles.cs` and, in Martlet.Desktop,
+`AccountWindow` (the Account page), `AccountUnlockWindow`,
+`AccountProveWindow`, `AccountLocks.cs`, `AccountProtection.cs`,
+`AccountVault.cs`, `WindowsHello.cs`, `AccountLinks.cs` and
+`MainWindow.AccountSecurity.cs`. MCP: `account_security_status` and the
+account windows' automation IDs ([MCP](MCP.md)).
+
+### The Account page
+
+Open it from the account menu (**Account…**). It shows the account's logins
+and how it unlocks on this PC, and has:
+
+- **Martlet password**: a user name, a password (12 or more characters) and,
+  optionally, an authenticator app (a key, an `otpauth` link and a current
+  code). Martlet keeps it on every host of this PC's network that it is
+  paired with (W4's `account` action; the owner's account uses `owner` and
+  always has an authenticator). The answer shows each host's recovery codes
+  once. This PC then keeps a verifier of the password, so the password
+  unlocks the account here offline. **Remove the authenticator** removes it on
+  every host.
+- **This Windows login**: **Link this Windows login** adds this PC's Windows
+  login (device ID and SID) to the account and makes this PC's binding use
+  it, with the proof the binding already has. **Unlink** removes it; it is
+  refused when it is the account's only login. With a password remembered
+  here, this PC stays signed in with the password and asks for it from then
+  on; else the account signs out of this PC.
+- **On this PC**: *Ask for my password on this PC*, **Set PIN** and **Remove
+  PIN**, *Unlock with Windows Hello*, *Encrypt my files on this PC while
+  locked*, *Remember me on this PC*, **Lock now** and **Sign out of this PC**.
+- **Merge another account into this one** ([Merging accounts](#merging-accounts)).
+
+### Unlock on this PC
+
+Switching to an account that is signed in on this PC needs an **Unlock** when:
+
+- the account doesn't have this PC's Windows login among its logins (it signed
+  in with *Sign in as someone else*), or
+- *Ask for my password on this PC* is on, or
+- its files are encrypted here.
+
+The Unlock window takes the PIN, the password or Windows Hello, offline. It
+shows at start before the account loads and before every switch, never during
+a reply. **Choose another account** goes back to the account picker, **Sign in
+as someone else** to Prove.
+
+`<data>\account-locks\<32 hex>.json` (device scope, never synced, written with
+an ACL for this Windows user only) keeps how the account unlocks here:
+
+- The PIN (4 to 12 digits, Martlet's own for that account, not the Windows
+  PIN) and the password only as PBKDF2-SHA256 verifiers (600,000 iterations,
+  16-byte salt), in a part protected with DPAPI for this Windows user, so other
+  Windows users of the PC can't read them. People who share the Windows login
+  can; the PBKDF2 cost is what slows their guessing.
+- Five wrong PINs or passwords are free; then each try waits, from one second
+  doubling up to 15 minutes, also after a restart.
+- The password verifier is made after a Prove sign-in with the password or a
+  password change from this PC, and replaced at the next one.
+
+**Windows Hello** is Windows' own check of this Windows login's face,
+fingerprint or Windows PIN (`UserConsentVerifier`, called without Windows
+Runtime projections). It can't tell apart people who share one Windows login,
+so it keeps accounts apart only when nobody else set up Windows Hello on that
+login. The Account page says so. It releases no key, so it is off while the
+files are encrypted.
+
+### Sign in as someone else
+
+From the account menu or the Unlock window: a [Prove](#logins) sign-in through
+one of this PC's own hosts (`AccountProveWindow`: user name, password and the
+authenticator code when the login has one). The host answers its attestation;
+the desktop checks it with its own roster, then writes this PC's binding to
+that account with the attestation in the account directory
+(`AccountLinks.SignedIn`), keeps a verifier of the password and switches.
+*Remember me on this PC* (on by default): off, Martlet signs the account out of
+this PC when it closes (the binding and the unlock file go; the account's
+folder stays). Provider sign-ins (W13) add a method to the same window.
+
+**Continue as ...?** At first start, when the Windows login's e-mail hint
+matches an account's hint (`Account.HasEmail`) and that account has a
+Martlet password, Martlet asks *Continue as Sam?*. **Yes** runs Prove for that
+account (the e-mail alone never signs anyone in), links this Windows login and
+binds this PC with the attestation. **No**, a failed Prove or an account
+without a password makes a new account as before.
+
+### The binding rule
+
+A device acts for an account only when it proved that account. Desktops and
+hosts check every device binding of an incoming entry
+(`AccountBindingRules`, from `AccountDirectory.Refusal`) and refuse the entry
+(`account.binding`) when one has no proof:
+
+| Proof | When |
+| --- | --- |
+| (accepted) | This computer already accepted exactly that binding (it was checked then; a host removed since doesn't undo it) |
+| `creator` | The device made the account (`created_by`, which never changes) |
+| `attestation` | Its `attestation` checks out (`AccountAttestation.Check`) against the roster at the binding's `signed_in_at`, for that device and that account |
+| `migration` | The owner's account (`OwnerAccount.IdFor`) and an active member desktop of the roster that binds itself, with its own Windows login, in an entry it wrote: every desktop of a household from before accounts was the owner's |
+| `merged` | It came from an account merged into this one (that account's creator, or an attestation for it), and the device that wrote the merge is bound to this account by one of the proofs above |
+
+So linking a login to an existing account, *Sign in as someone else* and
+*Continue as* always need a Prove, and nobody carries a PC into someone else's
+account by merging an account of their own into it. Limits: a member desktop
+can still bind itself to the owner's account as a migration; a modified
+desktop of the network can always do harm (it signs roster entries).
+
+### Roles on a host
+
+Once the household has accounts in a host's account directory, only a desktop
+bound to an `owner` or `admin` account may change that host's sign-in settings
+(`GatewaySignInRoles`, `signin.denied` otherwise). A desktop bound only to
+member accounts may change those accounts' own password logins (`account`,
+`remove-account-authenticator`, `recovery-codes` and `remove-account` with that
+`account_id`). A household without accounts keeps the earlier rule: any member
+desktop. The host sees devices, not people: a desktop bound to an admin's
+account counts as an admin's whichever of its accounts is active, and the
+desktop shows household sign-in only to an owner or admin.
+
+### Merging accounts
+
+*Merge another account into this one*, for one person with two accounts:
+
+1. Choose the other account. Sign in as it (Prove), and as this account too
+   when it has a Martlet password.
+2. Each `IAccountMergeStep` moves the other account's data into this one
+   through its own store and sync: today the account's folder files that this
+   one lacks; W8, W9 and W11 add their steps for characters and account
+   settings, memories (`account-<id>` space) and voice links. A step that
+   fails stops the merge before anything is removed.
+3. `AccountLinks.Merge` gives this account the other's logins, device
+   bindings, voices, e-mail hints and the higher role, and removes the other
+   with `merged_into` (both signed by this PC). Devices bound to the merged
+   account follow `merged_into`. The owner's account can't be merged into
+   another; merge the other way.
+
+The merged account's password logins stay on the hosts: they prove the merged
+account, and its `merged_into` leads to this one.
+
+### Encrypted files while locked
+
+*Encrypt my files on this PC while locked* (opt-in, off by default; needs a PIN
+here):
+
+- A random 256-bit file key, wrapped with AES-256-GCM under a key from the PIN
+  (PBKDF2), and under one from the password when you type it while turning
+  this on or change the password here. Windows Hello can't open it, so it is
+  off.
+- When the account stops being active on this PC (a switch to another account,
+  or Martlet closing), every file of `<data>\accounts\<32 hex>\` is encrypted
+  in place to `<name>.mlock` (AES-256-GCM, the file's path in the folder as
+  associated data), one file at a time with an atomic replace. Unlock decrypts
+  them before the account loads. A crash leaves each file whole; when both
+  copies exist, the plain one wins. A file another program has open stays
+  plain and is logged. **Lock now** shows Unlock without encrypting (the
+  account's files are in use).
+- It keeps people on one Windows login apart. It is not secret from an
+  administrator or from someone who guesses a short PIN. Forgetting the PIN
+  (when the password didn't wrap the key) loses this PC's copy; the hosts keep
+  the account's synced data.
 
 ## Work plan
 

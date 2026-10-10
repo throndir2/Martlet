@@ -128,3 +128,40 @@ public sealed class AccountLinksTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => AccountLinks.Merge(directory, a, sam.Id, owner.Id, Now));
     }
 }
+
+public sealed class AccountFolderMergeStepTests : IDisposable
+{
+    private readonly string data = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "martlet-account-merge-" + Guid.NewGuid().ToString("N"));
+    private readonly Guid sam = Guid.NewGuid(), laptop = Guid.NewGuid();
+
+    private string Folder(Guid id, params string[] parts) =>
+        System.IO.Path.Combine([AccountFolderMergeStep.AccountFolder(data, id), .. parts]);
+
+    [Fact]
+    public async Task The_merged_accounts_files_the_kept_one_lacks_are_copied_and_its_own_stay()
+    {
+        System.IO.Directory.CreateDirectory(Folder(laptop, "characters"));
+        System.IO.Directory.CreateDirectory(Folder(sam));
+        System.IO.File.WriteAllText(Folder(laptop, "characters", "nova.json"), "laptop nova");
+        System.IO.File.WriteAllText(Folder(laptop, "settings.json"), "laptop settings");
+        System.IO.File.WriteAllText(Folder(sam, "settings.json"), "sam settings");
+        await new AccountFolderMergeStep(data).MergeAsync(sam, laptop, CancellationToken.None);
+        Assert.Equal("laptop nova", System.IO.File.ReadAllText(Folder(sam, "characters", "nova.json")));
+        Assert.Equal("sam settings", System.IO.File.ReadAllText(Folder(sam, "settings.json")));
+        await new AccountFolderMergeStep(data).MergeAsync(sam, Guid.NewGuid(), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Encrypted_files_wait_until_the_merged_account_is_unlocked_here()
+    {
+        System.IO.Directory.CreateDirectory(Folder(laptop));
+        System.IO.File.WriteAllText(Folder(laptop, "settings.json"), "laptop settings");
+        AccountVault.Seal(Folder(laptop), AccountVault.NewKey());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new AccountFolderMergeStep(data).MergeAsync(sam, laptop, CancellationToken.None));
+    }
+
+    public void Dispose()
+    {
+        if (System.IO.Directory.Exists(data)) System.IO.Directory.Delete(data, recursive: true);
+    }
+}

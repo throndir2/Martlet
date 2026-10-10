@@ -1453,6 +1453,44 @@ no key in any desktop file while the hosts' private copy holds them and every
 copy ends the same; and an unsigned request refused (HTTP 401). Loopback only;
 the folder is deleted and the real vault is never touched.
 
+`account_security_status` reads [account security](ACCOUNTS.md#account-security)
+from a data directory (optional absolute `dataDirectory`), read-only and
+without the desktop: `device` (this data folder's device ID), `network`
+(whether `network.json` has a roster), `directory` (`none`, `read` or
+`unreadable`), per account in `accounts.json` its `id`, `name`, `role`,
+`removed`, `mergedInto`, `createdBy`, `logins` (how many of each kind),
+`windowsLoginOfThisPc`, `emailHints` (a count) and `devices` (`deviceId`,
+`thisPc`, the `login` kind, whether it carries an `attestation`, and its
+`proof` under the binding rule: `creator`, `attestation`, `migration`,
+`merged`, `none` when a host or desktop would refuse it, or `no_network`);
+`signedInHere`; and `locks`, per account with an unlock file in
+`account-locks` (this PC only): `methods` (`pin`, `password`, `hello`),
+`askOnThisPc`, `remember`, `encrypt`, `encryptedFiles` and `plainFiles` in
+the account's folder, `failures`, `waitUntil` and whether the DPAPI-protected
+part exists. Never a PIN, password, verifier, attestation, e-mail, login user
+name or SID.
+
+The account windows ([account security](ACCOUNTS.md#account-security)):
+**Account…** (`AccountOpen`) and the page's **Close** (`AccountClose`), the
+Unlock window's **Choose another account** (`UnlockOther`) and the Prove
+window's **Close** (`ProveClose`) are passive clicks. Everything else on them
+changes or proves something, so it needs `--allow-ui-effects`: the password
+(`AccountPasswordUser`, `AccountPassword`, `AccountPasswordRepeat`,
+`AccountAuthenticator`, `AccountAuthenticatorCode`, `AccountPasswordSave`,
+`AccountAuthenticatorRemove`), `AccountLinkWindows`, `AccountUnlinkWindows`,
+`AccountAskPassword`, `AccountPin`, `AccountPinSet`, `AccountPinRemove`,
+`AccountHello`, `AccountEncrypt`, `AccountRemember`, `AccountLockNow`,
+`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`; Unlock's `UnlockPin`,
+`UnlockPassword`, `UnlockSubmit`, `UnlockHello`, `UnlockSignIn`; Prove's
+`ProveHost`, `ProveMethod-martlet`, `ProveUser`, `ProvePassword`, `ProveCode`,
+`ProveRemember`, `ProveSubmit`; and the account menu's `AccountSignInOther`
+and `AccountLock`. `ui_snapshot` returns these values: `AccountName`,
+`AccountLogins`, `AccountLockState`, `AccountUnlockMethods`,
+`AccountPasswordState`, `AccountWindowsState`, `AccountHelloState`,
+`AccountEncryptState`, `AccountStatus`, `UnlockAccountName`, `UnlockStatus`,
+`ProveTitle` and `ProveStatus`; never the user name, the authenticator key
+(`AccountAuthenticatorSecret`) or the recovery codes (`AccountRecoveryCodes`).
+
 `network_status` reads the [Martlet network](NETWORK.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `state`
 (`none`, `member`, `waiting` or `unreadable`), `key` (whether
