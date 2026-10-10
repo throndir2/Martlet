@@ -155,6 +155,19 @@ public sealed class LipSyncPoolTests
     }
 
     [Fact]
+    public void A_friends_host_chosen_on_this_pc_goes_first_and_never_twice()
+    {
+        var friend = Remote("friend-f1", 40);
+        var paired = new Dictionary<string, AvatarRemoteHost>(StringComparer.Ordinal) { ["friend-a4"] = Remote("friend-a4"), [friend.HostId] = friend };
+        var list = new PoolList { Area = PoolAreas.LipSync.Id }.With(PoolMember.Computer("friend-a4")).With(PoolMember.ThisPc());
+        Assert.Equal(["host:friend-f1", "host:friend-a4", "this-pc"], LipSyncPool.FromList(list, paired, friend).Select(p => p.Key));
+        Assert.Equal(["host:friend-a4", "this-pc"], LipSyncPool.FromList(list, paired).Select(p => p.Key));
+        var off = list with { Members = [.. list.Members.Select(m => m with { Off = true })] };
+        Assert.Equal(["host:friend-f1"], LipSyncPool.FromList(off, paired, friend).Select(p => p.Key));
+        Assert.Single(LipSyncPool.FromList(list.With(PoolMember.Computer("friend-f1")), paired, friend), p => p.Host?.HostId == "friend-f1");
+    }
+
+    [Fact]
     public void A_card_member_needs_the_relay_on_that_card_when_the_computer_said_which()
     {
         Assert.True(LipSyncPool.Serves(PoolMember.Gpu("cards-unknown", 2)));

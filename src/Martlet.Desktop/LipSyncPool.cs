@@ -62,9 +62,20 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
         var paired = directory is null ? new Dictionary<string, AvatarRemoteHost>(StringComparer.Ordinal)
             : WorkSharingRoster.Hosts(directory).GroupBy(h => h.HostId, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.First().Pairing, StringComparer.Ordinal);
-        if (Assigned(profile) is { } assigned) paired.TryAdd(assigned.HostId, assigned);
-        var list = Saved(directory) ?? Migrate(profile, directory);
-        return Resolve(PoolRouting.Order(PoolAreas.LipSync, list, WorkSharingRoster.Device, m => Usable(m, paired)), paired);
+        var assigned = Assigned(profile);
+        if (assigned is not null) paired.TryAdd(assigned.HostId, assigned);
+        var list = WorkSharingRoster.Pool(directory, PoolAreas.LipSync) ?? Migrate(profile, directory);
+        return FromList(list, paired, assigned is not null && WorkSharingRoster.IsShared(assigned.HostId) ? assigned : null);
+    }
+
+    /// <summary>The places for <paramref name="list"/> (<see cref="PoolRouting.Order"/>, then <see cref="Resolve"/>). A host a
+    /// friend shares with this PC (<paramref name="friend"/>), chosen for lip-sync on this PC, goes first: it never goes in your
+    /// shared list.</summary>
+    internal static IReadOnlyList<LipSyncPlace> FromList(PoolList list, IReadOnlyDictionary<string, AvatarRemoteHost> paired,
+        AvatarRemoteHost? friend = null)
+    {
+        var places = Resolve(PoolRouting.Order(PoolAreas.LipSync, list, WorkSharingRoster.Device, m => Usable(m, paired)), paired);
+        return friend is null || places.Any(p => p.Host?.HostId == friend.HostId) ? places : [new("host:" + friend.HostId, friend), .. places];
     }
 
     /// <summary>The places for <paramref name="order"/>: each computer once (at its first member: a computer runs one Audio2Face
@@ -104,32 +115,6 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
             ? [.. WorkSharingRoster.Order(directory, WorkSharingJobs.LipSync, HostRoles.Audio2Face, null, assigned.HostId)
                 .Select(place => place.Host?.HostId ?? assigned.HostId)]
             : []);
-
-    private static readonly object FileGate = new();
-    private static (string? Path, DateTime Written, long Checked, PoolList? List) saved;
-
-    // Lip-sync's saved list (null: none yet). The file is looked at again at most once a second and read again only when it
-    // changed, so a sentence pays no file system call.
-    private static PoolList? Saved(string? directory)
-    {
-        if (directory is null) return null;
-        var path = Path.Combine(directory, PoolSettings.File(PoolAreas.LipSync.Shared));
-        var now = Environment.TickCount64;
-        lock (FileGate)
-            if (saved.Path == path && now - saved.Checked < 1_000) return saved.List;
-        DateTime written;
-        try { written = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { written = DateTime.MinValue; }
-        lock (FileGate)
-            if (saved.Path == path && saved.Written == written)
-            {
-                saved.Checked = now;
-                return saved.List;
-            }
-        var list = written == DateTime.MinValue ? null : PoolSettings.LoadFor(directory, PoolAreas.LipSync);
-        lock (FileGate) saved = (path, written, now, list);
-        return list;
-    }
 
     // ---------- the computers ----------
 

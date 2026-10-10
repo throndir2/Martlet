@@ -628,29 +628,20 @@ window ends it unless Martlet is listening or watching, which only hides it.
     choice checkbox. Saving stores the route, then the key in Windows Credential
     Manager, then the confirmed choice.
 
-  Lip-sync on its own page uses the same **Where it runs** chooser and
-  cards, with two places: *This PC* and *Another of your computers* (there is
-  no cloud provider). Voice loudness is worked out on this PC, so it is one of
-  *This PC*'s ways rather than a place. The recommended place is *This PC*
-  unless this PC lacks an NVIDIA graphics card of 4 GB or more and another
-  computer can run Audio2Face. Each card's button commits the choice, which
-  switches right away, even while the character talks:
-
-  - *This PC*: three ways in one option picker. **Audio2Face on this PC**
-    (*Set up Audio2Face with Docker* sets up and pairs Martlet's
-    host service on this PC, then hands lip-sync to it, installing Audio2Face
-    with its open-source engine, no key; once the host service exists, *Use Audio2Face on this
-    PC* and *Check it*; recommended with an NVIDIA graphics card of 4 GB or
-    more), **Voice loudness** (advanced lip-sync off: *Use voice loudness*
-    turns Audio2Face off; recommended otherwise) and the advanced **Your own
-    Audio2Face service**, a service you run yourself at the character's
-    loopback endpoint (*Use my own service*). That is Martlet's default: it
-    only looks for a service there before each sentence, so voice loudness is
-    marked *in use* and your own service *not running* when nothing answers;
-    only when one answers (or Audio2Face-only is activated) is it marked
-    *in use*. It never implies Audio2Face is installed.
-  - *Another of your computers*: the same host list as the job tabs, with *Use
-    it*, *Add a computer*, *Check hosts* and the Devices map.
+  Lip-sync on its own page uses the shared pool list instead of the **Where it
+  runs** chooser: an ordered list of *This PC* (your own Audio2Face service at
+  a loopback address), your computers that run Audio2Face and their cards
+  ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)). There is no cloud
+  provider. The first member that is on and free moves the mouth; with none
+  on, the mouth follows the voice's loudness, so there is no separate *off*.
+  Each member's *Settings* hold its own choices: *This PC*'s service address,
+  or a computer's *Install Audio2Face*, *Change model* and *Check it*. Each
+  change switches right away, even while the character talks. Under the list,
+  *Audio2Face on this PC* says what this PC's graphics card means for
+  Audio2Face and has *Set up Audio2Face with Docker* (sets up and pairs
+  Martlet's host service on this PC, installs Audio2Face with its open-source
+  engine, no key, and puts it first in the list) or, once the host service
+  exists, *Install Audio2Face on this PC* and *Check it*.
 
   *Keys from before*, at the bottom of a job tab, lists the keys Martlet set
   aside when that job stopped using them (a cloud provider's key after a

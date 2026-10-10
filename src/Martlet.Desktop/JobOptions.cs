@@ -300,46 +300,4 @@ internal static class JobOptions
         });
         return options;
     }
-
-    // ---------- Lip-sync › This PC ----------
-
-    internal const string Audio2Face = "Audio2Face", Loudness = "Loudness", OwnService = "Own";
-
-    /// <summary>The ways the mouth moves on this PC: Audio2Face in Docker here, voice loudness (no setup), and an Audio2Face
-    /// service the owner runs. <paramref name="cannot"/>: why this PC can't run Audio2Face at all (an ARM processor);
-    /// <paramref name="fits"/>: it has an NVIDIA card of 4 GB or more.</summary>
-    internal static IReadOnlyList<PickerOption> LipSyncWays(bool audio2FaceInUse, bool notInstalled, bool loudnessInUse, bool ownInUse,
-        bool fits, string? cannot, string endpoint)
-    {
-        var catalog = FootprintCatalog.Default;
-        return
-        [
-            new(Audio2Face, "Audio2Face on this PC",
-                "NVIDIA Audio2Face moves the mouth naturally with Martlet's voice. It runs in Docker with NVIDIA's open-source engine: no NVIDIA account or key.")
-            {
-                Badge = notInstalled ? "chosen, not installed yet" : audio2FaceInUse ? InUse : fits && cannot is null ? Recommended : null,
-                InUse = audio2FaceInUse,
-                Facts = With(OptionFacts.Of(catalog.Find("audio2face-3d")!),
-                    new("setup", "Set up by", "Martlet, in one run window", "Docker"),
-                    new("data", "Your data", "Martlet's voice stays on this PC", null)),
-                Unavailable = cannot
-            },
-            new(Loudness, "Voice loudness",
-                "Advanced lip-sync off: the mouth opens and closes with Martlet's voice. Any character and graphics card, nothing to install.")
-            {
-                Badge = loudnessInUse ? InUse : !fits || cannot is not null ? Recommended : null, InUse = loudnessInUse,
-                Facts = With(OptionFacts.Of(catalog.Find("loudness-lipsync")!), new OptionFact("setup", "Set up by", "nothing: it is built in", "built in"))
-            },
-            new(OwnService, "Your own Audio2Face service",
-                $"Advanced: an Audio2Face service you already run at {endpoint}. The mouth follows voice loudness whenever it doesn't answer.")
-            {
-                Badge = ownInUse ? InUse : null, InUse = ownInUse,
-                Facts =
-                [
-                    new("runs-on", "Runs on", $"your own service at {endpoint}", "your service"),
-                    new("setup", "Set up by", "you, outside Martlet", "you set it up")
-                ]
-            }
-        ];
-    }
 }
