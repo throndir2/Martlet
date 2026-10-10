@@ -76,6 +76,19 @@ internal static class SingingPoolCheck
             "a computer not paired here (a host a friend shares is never given) is left out",
             order.SequenceEqual(["m3-host", "m4-host", "m1-host", "desk-host"]), new { order });
 
+        var list = new PoolList
+        {
+            Area = PoolAreas.Singing.Id,
+            Members = [PoolMember.ThisPc(), PoolMember.Computer("m1-host") with { Off = true }, PoolMember.Gpu("m4-host", 2),
+                PoolMember.Computer("friend-host"), PoolMember.Computer("m3-host") with { OnlyFor = ["desk-9"] }]
+        };
+        var listed = SingingPool.Members(list, "desk-2", "m3-host", "desk-host", ["m1-host", "m3-host", "m4-host", "desk-host"], []);
+        var empty = SingingPool.Members(new PoolList { Area = PoolAreas.Singing.Id }, "desk-2", "m3-host", "desk-host", ["m3-host"], []);
+        Step("A singing pool list (pools.json) wins: its members in order, this PC as its own host service, a card as its computer; " +
+            "a member turned off, not paired here (a friend's host) or kept for another companion PC is left out; an empty list is off",
+            listed.Select(m => m.HostId).SequenceEqual(["desk-host", "m4-host"]) && listed[1].Member.Key == "host:m4-host#gpu2" && empty.Count == 0,
+            new { listed = listed.Select(m => new { m.Member.Key, m.HostId }), emptyListMembers = empty.Count });
+
         Singer first = new("m3-host"), second = new("m4-host");
         var free = await SingAsync([first, second]);
         Step("The first computer sings nothing now: it takes the song and no other computer is asked",

@@ -33,7 +33,21 @@ public sealed class SingingPoolMembersTests
                 .Observe("friend-host", null, [new() { Kind = "singing", Model = "ace-step-v15-soulx-svc" }], false, "desk-1", Now));
             new SingingPreferences(Host: "m3-host").Save(directory);
 
-            Assert.Equal(["m3-host", "m4-host", "m1-host"], SongClient.Members(directory).Select(h => h.HostId));
+            Assert.Equal(["m3-host", "m4-host", "m1-host"], SongClient.Members(directory).Select(m => m.Host.HostId));
+            Assert.Equal(PoolMember.Computer("m4-host").Key, SongClient.Members(directory)[1].Member.Key);
+
+            // A pool list wins: its members that are on and paired here, in its order; an empty list is off.
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Singing, new PoolList
+            {
+                Area = PoolAreas.Singing.Id,
+                Members = [PoolMember.Computer("m4-host"), PoolMember.Computer("m1-host") with { Off = true }, PoolMember.Computer("friend-host"),
+                    PoolMember.Computer("gone-host"), PoolMember.Computer("m3-host")]
+            }));
+            Assert.Equal(["m4-host", "m3-host"], SongClient.Members(directory).Select(m => m.Host.HostId));
+            Assert.True(SongClient.IsSetUp(directory));
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Singing, new PoolList { Area = PoolAreas.Singing.Id }));
+            Assert.Empty(SongClient.Members(directory));
+            Assert.False(SongClient.IsSetUp(directory));
         }
         finally { Directory.Delete(directory, true); }
     }

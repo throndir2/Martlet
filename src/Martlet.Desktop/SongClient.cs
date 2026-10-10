@@ -76,13 +76,15 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
         Environment.GetEnvironmentVariable(FixtureVariable) == "1" ? new FixtureSongMaker(TimeSpan.FromMilliseconds(400)) : new SongClient(dataDirectory);
 
     /// <summary>Whether singing is set up, without the network: not turned off on Companion › Singing, and the fixture is on, or
-    /// a computer still paired with this PC ran Singing when the desktop last checked (<see cref="SingingPreferences.Host"/>).
-    /// Cheap enough to ask for every reply.</summary>
+    /// the singing pool list (pools.json) has a member on that is paired here, or, without a list yet, a computer still paired
+    /// with this PC ran Singing when the desktop last checked (<see cref="SingingPreferences.Host"/>). Cheap enough to ask for
+    /// every reply.</summary>
     internal static bool IsSetUp(string dataDirectory)
     {
         var preferences = SingingPreferences.Load(dataDirectory);
         if (preferences.Off) return false;
         if (Environment.GetEnvironmentVariable(FixtureVariable) == "1") return true;
+        if (PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing) is not null) return Members(dataDirectory).Count > 0;
         if (preferences.Host is not { } host) return false;
         try { return HostRegistry.Load(dataDirectory).Any(h => h.HostId == host && !h.Shared); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
@@ -91,20 +93,27 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
     /// <summary>The shared-library ID of the voice Martlet speaks with on this PC (its reference revision), or null.</summary>
     internal static string? SpeakingVoiceId(string dataDirectory) => F5Voices.Applied(dataDirectory)?.ReferenceRevision;
 
-    /// <summary>The singing pool from this PC's files, without the network: the owner's own paired computers (never hosts
-    /// friends share) in the order songs try them (<see cref="SingingPool.Order"/>): the computer Martlet sings on, then those
-    /// the shared plan (cluster.json) says run Singing, then the other paired computers.</summary>
-    internal static IReadOnlyList<PairedHost> Members(string dataDirectory)
+    /// <summary>The singing pool from this PC's files, without the network (<see cref="SingingPool.Members"/>): the owner's own
+    /// paired computers (never hosts friends share), each with its pool member, in the order songs try them. With a pool list
+    /// (the <c>singing</c> area of pools.json): its members that are on, in the owner's order. Without one yet: the computer
+    /// Martlet sings on, then those the shared plan (cluster.json) says run Singing, then the other paired computers.</summary>
+    internal static IReadOnlyList<(PoolMember Member, PairedHost Host)> Members(string dataDirectory)
     {
         PairedHost[] hosts;
         try { hosts = [.. HostRegistry.Load(dataDirectory).Where(h => !h.Shared)]; }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return []; }
-        var plan = ClusterSync.LoadPlan(dataDirectory);
-        var singers = plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == HostRoles.Singing))
-            .Select(n => new WorkPlace(n.HostId, false, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))
-            .ToArray();
-        var order = SingingPool.Order(SingingPreferences.Load(dataDirectory).Host, [.. hosts.Select(h => h.HostId)], singers);
-        return [.. order.Select(id => hosts.First(h => h.HostId == id))];
+        var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing);
+        WorkPlace[] singers = [];
+        if (list is null)
+        {
+            var plan = ClusterSync.LoadPlan(dataDirectory);
+            singers = [.. plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == HostRoles.Singing))
+                .Select(n => new WorkPlace(n.HostId, false, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))];
+        }
+        var own = WorkSharingRoster.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        return [.. SingingPool.Members(list, WorkSharingRoster.Device, SingingPreferences.Load(dataDirectory).Host, own,
+                [.. hosts.Select(h => h.HostId)], singers)
+            .Select(m => (m.Member, hosts.First(h => h.HostId == m.HostId)))];
     }
 
     /// <summary>What a computer's singing service reports through its gateway: its state (ready, busy, loading or
@@ -155,7 +164,8 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
     {
         var members = Members(dataDirectory);
         if (members.Count == 0) return SongMakerAvailability.Unavailable("Set up Singing on Companion > Voice first.");
-        var read = await Task.WhenAll(members.Select(async host =>
+        var hosts = members.Select(m => m.Host).DistinctBy(h => h.HostId).ToArray();
+        var read = await Task.WhenAll(hosts.Select(async host =>
         {
             try { return (host.HostId, Service: await ReadServiceAsync(host.Pairing, cancellationToken).ConfigureAwait(false), Problem: (string?)null); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -171,7 +181,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
                 : SongMakerAvailability.Unavailable("Set up Singing on Companion > Voice first.");
         }
         var states = read.ToDictionary(r => r.HostId, r => r.Service?.Singer, StringComparer.Ordinal);
-        var order = members.Select(h => h.HostId).ToArray();
+        var order = hosts.Select(h => h.HostId).ToArray();
         var matches = singing.SelectMany(r => r.Service!.VoiceMatches).Distinct().Order().ToArray();
         var wanted = SingingPreferences.Load(dataDirectory).VoiceMatch;
         var next = SingingPool.Pick(order, states, matches.Contains(wanted) ? wanted : SongVoiceMatch.SoulX)?.HostId ?? singing[0].HostId;
@@ -189,8 +199,9 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
             throw new SongException(SongErrorCodes.Unavailable, "No computer is set up for Singing. Set it up on Companion > Voice.");
         try
         {
-            var sung = await SingingPool.RunAsync(WorkQueue.Shared, members, h => h.HostId, LookAsync, SingAsync, request.VoiceMatch,
-                WorkSharingRoster.Classify, null, cancellationToken).ConfigureAwait(false);
+            var sung = await SingingPool.RunAsync(WorkQueue.Shared, members, m => m.Member.Key, (m, t) => LookAsync(m.Host, t),
+                (m, t) => SingAsync(m.Host, t), request.VoiceMatch, WorkSharingRoster.Classify, null, cancellationToken,
+                m => m.Host.HostId).ConfigureAwait(false);
             return sung.Result;
         }
         catch (WorkPreemptedException error)
@@ -229,7 +240,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
             }
             using (connection)
             {
-                ErrorLog.Info($"Singing: {host.HostId} makes the song (number {members.Select(h => h.HostId).ToList().IndexOf(host.HostId) + 1} " +
+                ErrorLog.Info($"Singing: {host.HostId} makes the song (number {members.Select(m => m.Host.HostId).ToList().IndexOf(host.HostId) + 1} " +
                     $"of {members.Count} in the singing pool).");
                 progress?.Report(new SongProgress(SongStage.Queued, 0) { Host = host.HostId });
                 try

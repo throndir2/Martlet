@@ -51,6 +51,24 @@ public sealed class SingingPoolTests
     }
 
     [Fact]
+    public void A_pool_list_wins_over_the_older_choices_and_an_empty_one_is_off()
+    {
+        var list = new PoolList
+        {
+            Area = PoolAreas.Singing.Id,
+            Members = [PoolMember.Computer("m4-host"), PoolMember.ThisPc(), PoolMember.Computer("m1-host") with { Off = true },
+                PoolMember.Computer("friend-host"), PoolMember.Gpu("m3-host", 2) with { OnlyFor = ["desk-9"] }]
+        };
+        var members = SingingPool.Members(list, "desk-2", "m3-host", "desk-host", ["m1-host", "m3-host", "m4-host", "desk-host"], []);
+        Assert.Equal(["m4-host", "desk-host"], members.Select(m => m.HostId));
+        Assert.Equal("this-pc", members[1].Member.Key);
+        Assert.Empty(SingingPool.Members(new PoolList { Area = PoolAreas.Singing.Id }, "desk-2", "m3-host", null, ["m3-host"], []));
+        var older = SingingPool.Members(null, "desk-2", "m3-host", "desk-host", ["desk-host", "m3-host"], []);
+        Assert.Equal(["host:m3-host", "this-pc"], older.Select(m => m.Member.Key));
+        Assert.Equal("singing", SingingPool.Lane);
+    }
+
+    [Fact]
     public async Task A_free_first_computer_takes_the_song_and_no_other_is_asked()
     {
         Singer first = new("m3-host"), second = new("m4-host");

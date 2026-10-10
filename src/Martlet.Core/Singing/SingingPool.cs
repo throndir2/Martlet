@@ -51,8 +51,28 @@ public sealed record SungOn<T>(T Result, string HostId, bool Queued, int Ahead);
 /// </summary>
 public static class SingingPool
 {
-    /// <summary>The <see cref="WorkQueue"/> lane of songs.</summary>
-    public const string Lane = "singing";
+    /// <summary>The <see cref="WorkQueue"/> lane of songs: the singing pool area's ID.</summary>
+    public static string Lane => PoolAreas.Singing.Id;
+
+    /// <summary>The singing pool of companion PC <paramref name="device"/>, each member with the paired computer it sings on.
+    /// With a pool list (<paramref name="list"/>, the <c>singing</c> area of pools.json): its members in the owner's order
+    /// (<see cref="PoolRouting.Order"/>), this PC as its own host service (<paramref name="own"/>) and a card as its computer,
+    /// each only while it is paired here (<paramref name="paired"/>, without hosts friends share). An empty list, or one with
+    /// no member on, is off. Without a list yet: the older choices (<see cref="Order"/>).</summary>
+    public static IReadOnlyList<(PoolMember Member, string HostId)> Members(PoolList? list, string device, string? saved, string? own,
+        IReadOnlyList<string> paired, IReadOnlyList<WorkPlace> singers)
+    {
+        ArgumentNullException.ThrowIfNull(paired);
+        string? HostOf(PoolMember member) => (member.Kind switch
+        {
+            PoolMemberKind.ThisPc => own,
+            PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
+            _ => null
+        }) is { } id && paired.Contains(id, StringComparer.Ordinal) ? id : null;
+        if (list is not null)
+            return [.. PoolRouting.Order(PoolAreas.Singing, list, device, m => HostOf(m) is not null).Members.Select(m => (m, HostOf(m)!))];
+        return [.. Order(saved, paired, singers).Select(id => (id == own ? PoolMember.ThisPc() : PoolMember.Computer(id), id))];
+    }
 
     /// <summary>The order songs try the owner's own computers: <paramref name="saved"/> (the computer Martlet sings on,
     /// Companion › Singing) first, then those the shared plan says run Singing (<paramref name="singers"/>, fewest plan jobs
@@ -122,10 +142,12 @@ public static class SingingPool
     /// summary) through <paramref name="queue"/>. <paramref name="look"/> reads a computer's singing status (null: it doesn't
     /// sing); <paramref name="sing"/> makes the song there, waiting in its line when it has one. <paramref name="classify"/>
     /// says what other failures mean (a gateway's refusals); <see cref="SongException"/>s are read by <see cref="Classify"/>.
+    /// <paramref name="hostOf"/> is a member's key in the queue (a pool member's <see cref="PoolMember.Key"/>);
+    /// <paramref name="nameOf"/> its name in messages and <see cref="SungOn{T}.HostId"/> (the computer; default: the key).
     /// Throws the last refusal when no computer took the song.</summary>
     public static async Task<SungOn<T>> RunAsync<TTarget, T>(WorkQueue queue, IReadOnlyList<TTarget> members, Func<TTarget, string> hostOf,
         Func<TTarget, CancellationToken, Task<SingerState?>> look, Func<TTarget, CancellationToken, Task<T>> sing, SongVoiceMatch match,
-        Func<Exception, WorkRefusal>? classify, TimeProvider? clock, CancellationToken token)
+        Func<Exception, WorkRefusal>? classify, TimeProvider? clock, CancellationToken token, Func<TTarget, string>? nameOf = null)
     {
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(members);
@@ -134,6 +156,7 @@ public static class SingingPool
         ArgumentNullException.ThrowIfNull(sing);
         if (members.Count == 0) throw new SongException(SongErrorCodes.Unavailable, "No computer is set up for Singing.");
         var time = clock ?? TimeProvider.System;
+        var name = nameOf ?? hostOf;
         var index = members.Select((member, i) => (hostOf(member), i)).GroupBy(p => p.Item1, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().i, StringComparer.Ordinal);
         WorkRefusal Refuse(Exception error)
@@ -150,11 +173,11 @@ public static class SingingPool
         {
             var id = hostOf(member);
             var state = await look(member, t).ConfigureAwait(false);
-            if (Refusal(id, state, match) is { } refusal) throw refusal;
+            if (Refusal(name(member), state, match) is { } refusal) throw refusal;
             if (state!.Ahead > 0)
             {
                 lock (busy) busy[id] = (member, state.Ahead);
-                throw new SongException(SongErrorCodes.Busy, $"{id} is singing another song.");
+                throw new SongException(SongErrorCodes.Busy, $"{name(member)} is singing another song.");
             }
             took = id;
             return await sing(member, t).ConfigureAwait(false);
@@ -163,7 +186,7 @@ public static class SingingPool
         {
             var made = await queue.RunAsync(Lane, members, hostOf, Free, Refuse, time.GetUtcNow(), time, token, WorkPriority.Background)
                 .ConfigureAwait(false);
-            return new(made, took!, false, 0);
+            return new(made, name(members.First(m => hostOf(m) == took)), false, 0);
         }
         catch (Exception error) when (error is not OperationCanceledException && Refuse(error) != WorkRefusal.None && Waiting(busy) > 0) { }
 
@@ -177,7 +200,8 @@ public static class SingingPool
         }
         var queued = await queue.RunAsync(Lane, line.Select(b => b.Member).ToArray(), hostOf, Wait, Refuse, time.GetUtcNow(), time, token,
             WorkPriority.Background).ConfigureAwait(false);
-        return new(queued, took!, true, line.First(b => hostOf(b.Member) == took).Ahead);
+        var chosen = line.First(b => hostOf(b.Member) == took);
+        return new(queued, name(chosen.Member), true, chosen.Ahead);
     }
 
     private static int Waiting<TTarget>(Dictionary<string, (TTarget, int)> busy)

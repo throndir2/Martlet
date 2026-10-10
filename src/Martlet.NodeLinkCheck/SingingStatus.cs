@@ -46,9 +46,11 @@ internal static class SingingStatus
         return new { dataDirectory, hosts, pool = Pool(dataDirectory, [.. paired.Select(h => h.HostId)], states), thisPcDocker = await DockerAsync(token) };
     }
 
-    /// <summary>The singing pool as the desktop's SongClient uses it (SingingPool): the order songs try this PC's own paired
+    /// <summary>The singing pool as the desktop's SongClient uses it (SingingPool.Members): with a pool list (the singing area
+    /// of pools.json) its members that are on and paired here, in the owner's order; without one yet, this PC's own paired
     /// computers (the computer Martlet sings on, singing.json's host, first; then those the shared plan, cluster.json, says
-    /// run Singing; then the rest), what the pool does with each now for the saved voice match, and where the next song goes.</summary>
+    /// run Singing; then the rest). Also what the pool does with each now for the saved voice match, and where the next song
+    /// goes.</summary>
     private static object Pool(string dataDirectory, IReadOnlyList<string> paired, IReadOnlyDictionary<string, SingerState?> states)
     {
         string? saved = null;
@@ -68,18 +70,38 @@ internal static class SingingStatus
         var singers = plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == "singing"))
             .Select(n => new WorkPlace(n.HostId, false, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))
             .ToArray();
-        var order = SingingPool.Order(saved, paired, singers);
+        var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Singing);
+        var members = SingingPool.Members(list, Martlet.Diagnostics.LocalLogs.ThisDeviceId(), saved, OwnHost(dataDirectory), paired, singers);
+        var order = members.Select(m => m.HostId).Distinct(StringComparer.Ordinal).ToArray();
         var next = SingingPool.Pick(order, states, match);
         return new
         {
-            saved, voiceMatch = match == SongVoiceMatch.VevoSing ? "vevosing" : "soulx", order,
-            members = order.Select((id, index) => new
+            configured = list is not null, off = list is not null && members.Count == 0, saved,
+            voiceMatch = match == SongVoiceMatch.VevoSing ? "vevosing" : "soulx", order,
+            members = members.Select((m, index) => new
             {
-                position = index + 1, host = id, plannedSinger = singers.Any(s => s.HostId == id),
-                verdict = states.TryGetValue(id, out var state) ? SingingPool.Verdict(id, state, match) : "passed over: it didn't answer"
+                position = index + 1, key = m.Member.Key, host = m.HostId, plannedSinger = singers.Any(s => s.HostId == m.HostId),
+                settings = m.Member.Settings,
+                verdict = states.TryGetValue(m.HostId, out var state) ? SingingPool.Verdict(m.HostId, state, match) : "passed over: it didn't answer"
             }),
             nextSong = next is { } chosen ? new { host = chosen.HostId, ahead = chosen.Ahead, waitsInLine = chosen.Ahead > 0 } : null
         };
+    }
+
+    // The host saved as this PC's own host service (Docker Desktop here) in hosts.json, for the pool's this-pc member.
+    private static string? OwnHost(string dataDirectory)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "hosts.json")));
+            return document.RootElement.GetProperty("hosts").EnumerateArray()
+                .Where(h => h.TryGetProperty("method", out var method) && method.ValueKind == JsonValueKind.String && method.GetString() == "ThisPcDocker")
+                .Select(h => h.GetProperty("pairing").GetProperty("hostId").GetString()).FirstOrDefault();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private static async Task<(object View, SingerState? State)> ServiceAsync(Audio2FaceHostConnection connection, HostRoute route, CancellationToken token)

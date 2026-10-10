@@ -238,8 +238,11 @@ machine 3 on its own, and machine 2 on machine 1, or machine 3 when machine 1
 is busy, or whichever of the two finishes first when both are. Keeping machine
 3 for itself leaves machine 2 only machine 1.
 
-Lip-sync, singing and pictures are not shared yet: each stays on its one
-computer. Reading the screen goes to a pool of your computers that run the
+Lip-sync and pictures are not shared yet: each stays on its one computer.
+Songs go through the singing pool (`SingingPool`, lane `singing`): a computer
+that sings another song is passed over for a free one, and when all are busy
+the song waits on the shortest line ([Singing](SINGING.md#the-singing-pool)).
+Reading the screen goes to a pool of your computers that run the
 Reading role through the same queue, without a card here
 ([the Reading pool](READING.md#the-reading-pool)). Thinking with Ollama on a companion PC itself talks to that Ollama
 directly, so the queue can't see those replies; Ollama queues them. The
