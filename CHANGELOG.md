@@ -15,7 +15,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
-- Martlet's log now follows each Thinking request step by step: where it went, when each step happened, what it waits for while it waits, and how it ended, so a slow or stuck reply is easier to understand on the Diagnostics page. ([#719](https://github.com/throndir2/Martlet/pull/719))
+- Martlet's log now follows each Thinking request step by step: where it went, when each step happened, what it waits for while it waits, and how it ended, so a slow or stuck reply is easier to understand on the Diagnostics page. ([#720](https://github.com/throndir2/Martlet/pull/720))
 - The talk window's listening, watching and Stop buttons are now small icons; hover over one to see what it does. ([#715](https://github.com/throndir2/Martlet/pull/715))
 - The Lingering emotes check-in now runs every minute by default instead of every 5 minutes, so emotes that no longer fit turn off sooner. ([#714](https://github.com/throndir2/Martlet/pull/714))
 - Martlet now treats background sounds and voices as context instead of ignoring them, and answers someone in your call or room who clearly talks to it. ([#711](https://github.com/throndir2/Martlet/pull/711))
@@ -28,7 +28,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Removed
 
-- The home screen no longer has the **Lock/Unlock character position** and **Turn on/off click-through** buttons. Use Companion › Character or the character's right-click menu instead; you can also turn click-through off from Martlet's icon in the notification area. ([#719](https://github.com/throndir2/Martlet/pull/719))
+- The home screen no longer has the **Lock/Unlock character position** and **Turn on/off click-through** buttons. Use Companion › Character or the character's right-click menu instead; you can also turn click-through off from Martlet's icon in the notification area. ([#720](https://github.com/throndir2/Martlet/pull/720))
 
 ## [0.65.0] - 2026-10-09
 
