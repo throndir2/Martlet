@@ -4641,6 +4641,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var remember = job.Remember;
         MemoryCaptureReport? report = null;
         IReadOnlyList<MemoryFact>? known = null;
+        IReadOnlyDictionary<Guid, string>? knownSpaces = null;
         var roster = voices?.Roster;
         // Whose new facts are: the speaker among the voices recognized in the message, when remembering has them.
         var speaker = job.Present?.Speaker?.Voice;
@@ -4651,8 +4652,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             {
                 try
                 {
-                    known = (await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
-                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token), token).ConfigureAwait(false)).Facts;
+                    var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
+                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token), token).ConfigureAwait(false);
+                    (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
                 }
                 catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
                     IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -4698,7 +4700,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 {
                     var shown = known!.Take(prompt.ShownFacts).ToArray();
                     var changes = await RetryStoreAsync(() => memory!.RememberAsync(job.Configuration.Memory!.ConfigurationRevision, shown,
-                        operations, id => MemoryPeople.Canonical(id, roster), token), token).ConfigureAwait(false);
+                        operations, id => MemoryPeople.Canonical(id, roster), token, knownSpaces), token).ConfigureAwait(false);
                     // Whose each change is, as the talk window names them (with any name learned from this same answer).
                     var whose = voices?.Roster ?? roster;
                     report = changes.Count == 0 ? null

@@ -60,6 +60,7 @@ public sealed class MemorySpaceTests
     public async Task Each_space_keeps_its_own_memories_apart_from_the_others_and_from_the_old_document()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         var storage = new SpaceStorage();
         host.Server.AttachMemorySpaceStorage(storage);
         var member = await MemberAsync(host);
@@ -119,6 +120,7 @@ public sealed class MemorySpaceTests
         var household = OneFact("The household's Wi-Fi is called Nest.");
         await using (var first = await GatewayTestHost.StartAsync())
         {
+            first.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
             first.Server.AttachMemorySpaceStorage(storage);
             var member = await MemberAsync(first);
             using (var a = await first.Client.SendAsync(first.SignedPost(Spaces + Sam, GatewayRole.Voice, member, cat.Write())))
@@ -129,6 +131,7 @@ public sealed class MemorySpaceTests
         storage.Saved["Account-NOT-A-SPACE"] = cat.Write();
 
         await using var second = await GatewayTestHost.StartAsync();
+        second.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         second.Server.AttachMemorySpaceStorage(storage);
         Assert.Equal([Sam, MemorySpaceId.Household], second.Server.MemorySpaces);
         var again = await MemberAsync(second);
@@ -249,6 +252,7 @@ public sealed class MemorySpaceTests
     public async Task A_host_keeps_at_most_64_spaces_and_refuses_a_new_one_past_that()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.MemorySpaceAccess = GatewayMemorySpaces.EveryMember;
         var member = await MemberAsync(host);
         for (var i = 0; i < 64; i++)
         {

@@ -10,12 +10,14 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Each person who uses Martlet now has their own personalities and character profiles, replies, prompts, lorebooks, the character shown, how they talk, the theme, Voice ID and reminders. Switching to another person brings back theirs, and they go only to the computers where that person is signed in. How Martlet thinks, listens and speaks, and the paid API keys, stay shared by the whole household. ([#751](https://github.com/throndir2/Martlet/pull/751))
 - On Companion › People, **This voice is <your name>** links a voice to your own account, so Martlet knows it's you talking, and anyone else in your home who speaks is answered by your character and remembered by their own voice. A voice never signs anyone in. ([#749](https://github.com/throndir2/Martlet/pull/749))
 - Martlet now signs you in with your Windows account and shows who is using it at the bottom left. Click it to switch to another person on this PC or to **Add a person**, who gets an account of their own with no password, and your household's accounts are kept the same on all your computers. Each person's own characters and memories come in a following update. ([#748](https://github.com/throndir2/Martlet/pull/748))
 - A Martlet host can now keep a password sign-in for each person in your household, with an optional authenticator app, and link sign-ins from your identity provider to the right person. Signing in this way proves who you are on a computer, ready for accounts in Martlet. ([#747](https://github.com/throndir2/Martlet/pull/747))
 
 ### Changed
 
+- Each person now has their own memories: Martlet keeps what it remembers for each account apart, on every computer and host, while facts in the household's memories are shared by everyone. Your memories from before this update become the owner's, and computers that still run an older Martlet keep sharing them. ([#752](https://github.com/throndir2/Martlet/pull/752))
 - Each person in your household now has their own creations: pictures, songs and research reports one person makes stay with that person and reach only the computers where they are signed in. The creations you had before this update become yours (the owner's), and computers still on an older Martlet keep seeing them. ([#750](https://github.com/throndir2/Martlet/pull/750))
 - When several people use Martlet on one PC with their own Windows accounts, the PC is now a companion PC or a Martlet host for all of them: a switch made by one person (or from another of your computers) applies to everyone, and the choice you made before this update carries over. ([#745](https://github.com/throndir2/Martlet/pull/745))
 - The people Martlet recognizes by voice are now always shared with all your computers, even while **Keep Martlet the same on all my computers** is off, so Martlet learns everyone's voice everywhere. ([#742](https://github.com/throndir2/Martlet/pull/742))

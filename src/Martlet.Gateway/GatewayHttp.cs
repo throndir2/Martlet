@@ -52,6 +52,8 @@ internal sealed partial class GatewayHttpApplication
         // A host whose roster entry lists outside addresses is reachable from outside: the guard's limits apply to every source.
         Network.Changed = roster => Guard.Listed = roster?.Host(identity.HostId) is { Removed: false, Addresses.Count: > 0 };
         InitializeSignIn(credentials);
+        // The account directory decides which device may use which memory space (GatewayMemorySpaceAccess.cs).
+        MemorySpaces.Access = MayUseMemorySpace;
         Guard.SignInBlocked = () => GatewayOutsideAccess.SignInBlockedReason(SignIn);
         // Preemptions and refusals of pool work go into this host's own log, which paired desktops show.
         inference.Activity = (message, repeatKey) => Logs.Own(LogLevels.Info, message, repeatKey);

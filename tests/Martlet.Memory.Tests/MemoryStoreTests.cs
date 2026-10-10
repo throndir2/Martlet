@@ -67,6 +67,35 @@ public sealed class MemoryStoreTests
     }
 
     [Fact]
+    public async Task MoveStoreKeepsTheStoreAndRefusesAnOwnedOrOccupiedOne()
+    {
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        var target = Path.Combine(scope.Root, "moved");
+        Guid storeId;
+        using (var store = scope.Open(clock))
+        {
+            await store.SaveAsync(MemoryFixtures.Save(clock, "The movingmarker fact."));
+            storeId = (await store.InspectAsync()).StoreId;
+            await MemoryFixtures.FailureAsync(MemoryFailure.Busy, () => Task.FromResult(MemoryStore.MoveStore(scope.StoreDirectory, target)));
+        }
+        Assert.True(MemoryStore.MoveStore(scope.StoreDirectory, target));
+        Assert.False(File.Exists(scope.StorePath));
+        Assert.False(MemoryStore.MoveStore(scope.StoreDirectory, target));
+        var preview = MemoryStoreActivationPreview.Create(target);
+        using (var moved = MemoryStore.Open(preview, preview.Authorize(MemoryConsentDecision.Allow), clock))
+        {
+            var inspection = await moved.InspectAsync();
+            Assert.Equal(storeId, inspection.StoreId);
+            Assert.Equal("The movingmarker fact.", Assert.Single(inspection.Facts).Content);
+        }
+        using (var fresh = scope.Open(clock))
+            await fresh.SaveAsync(MemoryFixtures.Save(clock, "Another fact."));
+        Assert.False(MemoryStore.MoveStore(scope.StoreDirectory, target));
+        Assert.True(File.Exists(scope.StorePath));
+    }
+
+    [Fact]
     public async Task ConflictingEditAndDeleteNeverClaimSuccess()
     {
         using var scope = new TestScope();
