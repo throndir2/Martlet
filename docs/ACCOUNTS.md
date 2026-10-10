@@ -227,7 +227,7 @@ All workstreams use these forms. Change them here first.
 | E-mail hint | Lowercase hex SHA-256 of the UTF-8 text `"martlet-email-hint-v1\n<network ID>\n<trimmed, lowercase e-mail>"` (`Account.EmailHintFor`). The directory keeps only hints, never an e-mail address |
 | Directory routes | `GET /martlet/v1/accounts`, `GET /martlet/v1/accounts/digest`, `POST /martlet/v1/accounts` (merge and return). Paired member devices only; friends are refused |
 | Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working. Answers name the `space`. A host keeps at most 64 spaces (`memories.spaces_full`). An access hook on the host (`GatewayMemorySpaces.Access`) may refuse a device (`memories.space_denied`); a POST needs read and write access. `Martlet.Core.Sync.MemorySpaceId` makes and checks space IDs. Client: `ReadMemorySpaceAsync`, `ReadMemorySpaceDigestAsync`, `MergeMemorySpaceAsync` |
-| Account attestation | A host's signed statement that an account proved itself on a device: network ID, host ID, account ID, device ID, login, issue and expiry times, signature by a host key that the roster pins. Verified in `Martlet.Core` by desktops and hosts. Its text form (`AccountAttestation.ToText()`, base64url of compact JSON, at most 4,096 ASCII characters) goes in a device binding's `attestation` |
+| Account attestation | `AccountAttestation` in `Martlet.Core.Accounts`: a host's signed statement that an account proved itself on a device. JSON (snake case): `schema_version` 1, `network_id`, `host_id`, `account_id`, `device_id`, `login` (an `AccountLoginKey`; never `windows`), `issued_at`, `expires_at` (1 minute to 30 days; 10 minutes by default), `algorithm` (`ES256` or `PS256`), `host_key` (base64url SubjectPublicKeyInfo of the host's **TLS key**, the key the roster pins as the host's `spki`) and `signature` over `"martlet-account-attestation-v1"` and the other fields, one per line (account ID as 32 hex digits, times as Unix milliseconds). `Check(roster, at)` accepts it only for an active host of that network whose pin is the SHA-256 of `host_key`, with a good signature, within its lifetime (5 minutes of clock skew). Its text form (`AccountAttestation.ToText()`, base64url of compact JSON, at most 4,096 ASCII characters) goes in a device binding's `attestation`. See [host sign-in](#host-sign-in-for-accounts) |
 | Desktop account session | `AccountSession` in Martlet.Desktop: the current account ID, its folder `<data>\accounts\<32 hex>\`, the household folder (the data folder root) and an `AccountChanged` event raised only between replies |
 | PC folder | `PcFolder` in `Martlet.Core.Installation`: `%ProgramData%\Martlet` for the default data folder, else the data folder itself, or `MARTLET_PC_DIRECTORY`. `BUILTIN\Users` may change it. Holds `device-role.txt` and `this-pc-host-roles.txt`; never secrets |
 
@@ -312,6 +312,43 @@ Friends (`access.friend`) and API keys are refused. The desktop client is
   sign-in first.
 - `Account.Key` (32 hex digits) and `Account.SpaceId` (`account-<32 hex>`).
 
+## Host sign-in for accounts
+
+Built by W4. Code: `src\Martlet.Gateway\GatewaySignIn.cs` and
+`GatewaySignInHttp.cs`, `src\Martlet.Core\Accounts\AccountAttestation.cs`, the
+desktop client in `src\Martlet.Avatar.Audio2Face\Remote\HostSignIn.cs`. The
+user guide is [NETWORK.md](NETWORK.md#household-accounts-on-a-host); the MCP
+tool `signin_lab` with `mode` `account` rehearses it ([MCP](MCP.md)).
+
+- `signin.json` keeps, as before, the owner login (always with an
+  authenticator), providers and allowed identities, and now also
+  `owner_account_id`, `accounts` (other accounts' `martlet` logins: account ID,
+  user name, password verifier, optional authenticator and recovery codes) and
+  `account_id` on allowed member identities. Files written before accounts
+  load unchanged.
+- The owner login and member identities without an `account_id` prove the
+  owner's account: `owner_account_id`, else `OwnerAccount.IdFor` of the host's
+  network. Friends prove no account (`signin.no_account`).
+- A `martlet` login without an authenticator proves its account on a paired
+  computer, but never adds a computer (`signin.needs_authenticator`). Outside
+  access still needs the owner login or an allowed provider identity.
+- **Prove route:** `POST /martlet/v1/signin/begin` (provider `martlet`, `owner`
+  or a provider ID), then `POST /martlet/v1/signin/prove`, signed by the paired
+  computer (not a friend's), with `attempt_id`, `proof` and optional
+  `lifetime_seconds`. It answers `account_id`, `signed_in` and `attestation`
+  for that computer. `/signin/complete` also answers `account_id` and
+  `attestation` for the computer it adds. Desktop client:
+  `Audio2FaceHostConnection.ProveWithPasswordAsync`, `ProveInBrowserAsync`,
+  `BeginProveAsync` and `ProveAsync` (`HostAccountProof`), and
+  `HostSignInIdentity.AccountId` and `Attestation` after joining.
+- **Settings:** `POST /martlet/v1/signin/settings` actions `owner-account`,
+  `account`, `remove-account-authenticator`, `remove-account`,
+  `recovery-codes` with `account_id`, `allow` with `account_id` and `link`.
+  `GET` answers `owner_account_id`, `accounts` (`account_id`, `user`,
+  `has_authenticator`, `recovery_codes_left`) and `allowed[].account_id`, never
+  a secret. Who may change them is unchanged: a member desktop of the network.
+  Role checks (`AccountRoles.ManagesHousehold`) are W12's.
+
 ## Work plan
 
 Each workstream is one session, one branch and one PR into `main`. Merges are
@@ -325,7 +362,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W1 | Device ID per Windows user; Windows login detection (SID, Microsoft, work or local, e-mail hint, display name). **Shipped** ([NETWORK.md](NETWORK.md#trust-model), device ID) | `LocalLogs.ThisDeviceId`, `HostSetup.SuggestedDeviceId`, `NetworkIdentity`, new `WindowsLogin.cs` | - |
 | W2 | Account directory: contracts, merge, signatures, host storage and routes, client. **Shipped** ([Account directory](#account-directory)) | new `src/Martlet.Core/Accounts/`, new `GatewayAccountDirectory.cs`, new `HostAccounts.cs` client | - |
 | W3 | Host memory spaces: storage, routes, access hook, client. **Shipped** ([MEMORY.md](MEMORY.md#memory-spaces-on-every-host)); the hook admits every member device until W9 | `GatewayMemories.cs` and new space files, `HostMemories.cs` | - |
-| W4 | Host sign-in for accounts: several account logins in `signin.json`, identities linked to account IDs, account attestations | `GatewaySignIn*.cs`, `GatewayAccounts.cs`, `GatewaySignInHttp.cs` | - |
+| W4 | Host sign-in for accounts: several account logins in `signin.json`, identities linked to account IDs, account attestations. **Shipped** ([Host sign-in for accounts](#host-sign-in-for-accounts)) | `GatewaySignIn*.cs`, `GatewayAccounts.cs`, `GatewaySignInHttp.cs` | - |
 | W5 | People always shared | `MainWindow.People.cs` voice sync | - |
 | W6 | PC scope: companion or host role and host service machine-wide for all Windows users. **Shipped** ([PC scope](#pc-scope)) | `DeviceRole.cs` and its callers, `PcFolder.cs` | - |
 | W7 | Desktop account session, owner migration, account picker, *Add a person*, first start, directory sync | new `AccountSession.cs`, new `MainWindow.Accounts.cs` | W1, W2 |

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Access;
+using Martlet.Core.Accounts;
 using Martlet.Core.Network;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
@@ -350,4 +351,197 @@ internal static class SignInLab
     /// <summary>Where the desktop hands a browser sign-in page to the lab in a lab run (Martlet.Desktop's SignInBrowser).</summary>
     internal const string BrowserVariable = "MARTLET_LAB_BROWSER";
     internal const string BrowserFile = "signin-browser.url";
+
+    internal const string AccountPassword = "lab account passphrase";
+    internal static readonly Guid SamAccount = new("5a6e0000-0000-4000-8000-00000000005a");
+    internal static readonly Guid AlexAccount = new("a1e40000-0000-4000-8000-0000000000a1");
+
+    /// <summary>
+    /// Household account sign-in (docs/ACCOUNTS.md), headless: a real gateway on 127.0.0.1 with an ECDSA P-256 TLS key like
+    /// every Martlet host. Its owner (lab-owner) pairs, starts a Martlet network with it and sets up an owner login (with an
+    /// authenticator, its account derived from the network), Sam's login (password and authenticator), Alex's (password only),
+    /// the lab OpenID Connect provider with lab-user-42 linked to Sam and lab-friend-7 as a friend. Then it signs in every way
+    /// and checks each host attestation against the owner's roster with Martlet.Core's <see cref="AccountAttestation.Check"/>,
+    /// and that a changed or expired one, another key and the wrong logins are refused. The data directory only takes
+    /// signin-lab.json; the desktop is not involved. The lab keeps the host running until it is stopped.
+    /// </summary>
+    internal static async Task<int> RunAccountAsync(string dataDirectory)
+    {
+        if (!Path.IsPathFullyQualified(dataDirectory) || !Directory.Exists(dataDirectory))
+            return Fail("The data directory must be an existing absolute folder (a disposable one).");
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromMinutes(20));
+        _ = Task.Run(() =>
+        {
+            try { while (Console.In.ReadLine() is not null) { } }
+            catch (IOException) { }
+            lifetime.Cancel();
+        });
+        var token = lifetime.Token;
+        await using var host = await SignInRehearsal.LabHost.StartAsync("lab-account-host", ecdsa: true);
+        using var issuer = new SignInRehearsal.LabIssuer();
+        host.Server.UseSignInProviderHandler(issuer);
+
+        using var ownerKey = NetworkKey.Create("lab-owner");
+        var owner = new SignInRehearsal.LabDesktop(ownerKey, "LAB-OWNER");
+        await owner.PairByCodeAsync(host, token);
+        await owner.SyncAsync(token);
+        var roster = owner.State.Roster ?? throw new InvalidOperationException("The lab owner started no network.");
+        var now = DateTimeOffset.UtcNow;
+        var ownerSecret = Totp.NewSecret();
+        var samSecret = Totp.NewSecret();
+        await owner.ChangeAsync(host.HostId, new JsonObject
+        {
+            ["action"] = "owner", ["user"] = "owner", ["password"] = AccountPassword, ["totp_secret"] = ownerSecret, ["code"] = Totp.Code(ownerSecret, now)
+        }, token);
+        var samSetup = await owner.ChangeAsync(host.HostId, new JsonObject
+        {
+            ["action"] = "account", ["account_id"] = SamAccount, ["user"] = "Sam", ["password"] = AccountPassword, ["totp_secret"] = samSecret,
+            ["code"] = Totp.Code(samSecret, now)
+        }, token);
+        await owner.ChangeAsync(host.HostId, new JsonObject
+        {
+            ["action"] = "account", ["account_id"] = AlexAccount, ["user"] = "alex", ["password"] = AccountPassword
+        }, token);
+        await owner.ChangeAsync(host.HostId, new JsonObject
+        {
+            ["action"] = "provider", ["provider_config"] = new JsonObject
+            {
+                ["id"] = "authentik", ["kind"] = "oidc", ["name"] = "Authentik (lab)", ["issuer"] = SignInRehearsal.LabIssuer.Issuer,
+                ["client_id"] = SignInRehearsal.LabIssuer.ClientId, ["client_secret"] = SignInRehearsal.LabIssuer.ClientSecret
+            }
+        }, token);
+        await owner.ChangeAsync(host.HostId, new JsonObject
+        {
+            ["action"] = "allow", ["provider"] = "authentik", ["subject"] = "lab-user-42", ["label"] = "sam@example.net", ["account_id"] = SamAccount
+        }, token);
+        var settings = await owner.ChangeAsync(host.HostId, new JsonObject
+        {
+            ["action"] = "allow", ["provider"] = "authentik", ["subject"] = FriendSubject, ["label"] = FriendEmail, ["access"] = "friend"
+        }, token);
+        var ownerAccount = settings.OwnerAccountId;
+
+        var checks = new List<object>();
+        var attestations = new List<object>();
+        var allOk = true;
+        void Record(string name, bool ok, string detail)
+        {
+            allOk &= ok;
+            checks.Add(new { name, ok, detail });
+        }
+        object Describe(AccountAttestation a, AccountAttestationCheck result) => new
+        {
+            account = a.AccountId, device = a.DeviceId, login = a.Login.ToString(), a.Algorithm, a.IssuedAt, a.ExpiresAt, check = result.ToString(),
+            textLength = a.ToText().Length
+        };
+        async Task<HostAccountProof?> Prove(string name, Func<Audio2FaceHostConnection, Task<HostAccountProof>> proving, Guid expected, string login)
+        {
+            try
+            {
+                using var connection = owner.Connect(host.HostId);
+                var proof = await proving(connection);
+                var result = proof.Attestation.Check(roster, DateTimeOffset.UtcNow);
+                attestations.Add(Describe(proof.Attestation, result));
+                Record(name, result == AccountAttestationCheck.Valid && proof.AccountId == expected && proof.Attestation.DeviceId == ownerKey.DeviceId &&
+                    proof.Attestation.Login.ToString() == login,
+                    $"account {proof.AccountId:N} as {proof.Attestation.Login} on {proof.Attestation.DeviceId}: {result} ({proof.Attestation.Algorithm})");
+                return proof;
+            }
+            catch (Audio2FaceHostException error)
+            {
+                Record(name, false, "refused: " + error.Code);
+                return null;
+            }
+        }
+        async Task Refused(string name, string expected, Func<Task> attempt)
+        {
+            try
+            {
+                await attempt();
+                Record(name, false, "it was not refused");
+            }
+            catch (Audio2FaceHostException error) { Record(name, error.Code == expected, "refused: " + error.Code); }
+        }
+
+        // The authenticator steps the setups used are spent, so the first proofs use the next step (one step of drift).
+        var next = DateTimeOffset.UtcNow.AddSeconds(Totp.StepSeconds);
+        var owners = await Prove("owner proves the owner's account (password and authenticator)",
+            c => c.ProveWithPasswordAsync("owner", AccountPassword, Totp.Code(ownerSecret, next), cancellationToken: token),
+            ownerAccount ?? Guid.Empty, "martlet:martlet:owner");
+        await Prove("Sam proves Sam's account (password and authenticator)",
+            c => c.ProveWithPasswordAsync("sam", AccountPassword, Totp.Code(samSecret, next), cancellationToken: token), SamAccount, "martlet:martlet:sam");
+        var alex = await Prove("Alex proves Alex's account (password only)",
+            c => c.ProveWithPasswordAsync("ALEX", AccountPassword, null, TimeSpan.FromHours(1), token), AlexAccount, "martlet:martlet:alex");
+        await Prove("Sam proves Sam's account with the identity provider", c => c.ProveInBrowserAsync("authentik", issuer.Browse, TimeSpan.FromSeconds(30),
+            cancellationToken: token), SamAccount, "oidc:authentik:lab-user-42");
+        await Refused("a friend's identity proves no account", "signin.no_account", async () =>
+        {
+            using var connection = owner.Connect(host.HostId);
+            await connection.ProveInBrowserAsync("authentik", url => issuer.Browse(url, FriendSubject, FriendEmail), TimeSpan.FromSeconds(30),
+                cancellationToken: token);
+        });
+        await Refused("a wrong password is refused", "signin.invalid", async () =>
+        {
+            using var connection = owner.Connect(host.HostId);
+            await connection.ProveWithPasswordAsync("alex", "not the lab passphrase", null, cancellationToken: token);
+        });
+
+        // A laptop away from home adds itself as Sam (a recovery code, as the authenticator step is spent) and gets Sam's
+        // attestation with its pairing; Alex, without an authenticator, can't add a computer.
+        using var laptopKey = NetworkKey.Create("lab-sam-laptop");
+        var invite = new NetworkInvite { HostId = host.HostId, SpkiFingerprint = host.Fingerprint, Origin = host.Origin, Label = "Lab home" };
+        try
+        {
+            var attempt = await HostSignInClient.BeginAsync(invite, host.Origin, "martlet", cancellationToken: token);
+            var (_, _, who) = await HostSignInClient.CompleteAsync(invite, attempt, laptopKey.DeviceId, "LAB-SAM-LAPTOP",
+                new JsonObject { ["user"] = "sam", ["password"] = AccountPassword, ["code"] = samSetup.RecoveryCodes![0] }, token);
+            var result = who.Attestation?.Check(roster, DateTimeOffset.UtcNow);
+            if (who.Attestation is { } added) attestations.Add(Describe(added, result!.Value));
+            Record("a laptop adds itself as Sam and gets Sam's attestation", who.AccountId == SamAccount && result == AccountAttestationCheck.Valid &&
+                who.Attestation!.DeviceId == laptopKey.DeviceId, $"signed in as {who}, account {who.AccountId:N}, attestation {result}");
+        }
+        catch (Audio2FaceHostException error) { Record("a laptop adds itself as Sam and gets Sam's attestation", false, "refused: " + error.Code); }
+        await Refused("Alex can't add a computer without an authenticator", "signin.needs_authenticator", async () =>
+        {
+            var attempt = await HostSignInClient.BeginAsync(invite, host.Origin, "martlet", cancellationToken: token);
+            await HostSignInClient.CompleteAsync(invite, attempt, "lab-alex-laptop", "LAB-ALEX-LAPTOP",
+                new JsonObject { ["user"] = "alex", ["password"] = AccountPassword }, token);
+        });
+
+        if (alex is { Attestation: var genuine })
+        {
+            Record("a changed attestation fails", (genuine with { AccountId = SamAccount }).Check(roster, DateTimeOffset.UtcNow) == AccountAttestationCheck.BadSignature,
+                "Alex's attestation claiming Sam's account: " + (genuine with { AccountId = SamAccount }).Check(roster, DateTimeOffset.UtcNow));
+            Record("an expired attestation fails", genuine.Check(roster, genuine.ExpiresAt.AddSeconds(1)) == AccountAttestationCheck.Expired,
+                "checked a second after it expired: " + genuine.Check(roster, genuine.ExpiresAt.AddSeconds(1)));
+            var moved = roster.AddHost(ownerKey, host.HostId, "lab-account-host", host.Origin, "sha256:" + new string('0', 64), DateTimeOffset.UtcNow);
+            Record("another key than the roster's pin fails", genuine.Check(moved, DateTimeOffset.UtcNow) == AccountAttestationCheck.KeyNotPinned,
+                "with the host pinned to another key: " + genuine.Check(moved, DateTimeOffset.UtcNow));
+            var text = genuine.ToText();
+            Record("the text form round-trips", text.Length <= AccountAttestation.MaximumTextLength &&
+                AccountAttestation.FromText(text).Check(roster, DateTimeOffset.UtcNow) == AccountAttestationCheck.Valid,
+                $"{text.Length} characters of base64url");
+        }
+        var final = await owner.ReadAsync(host.HostId, token);
+        Record("the host lists the household logins", final.Accounts.Count == 2 && final.Accounts.Any(a => a is { User: "Sam", HasAuthenticator: true, RecoveryCodesLeft: 9 }) &&
+            final.Accounts.Any(a => a is { User: "alex", HasAuthenticator: false }) && final.Allowed.Any(a => a.AccountId == SamAccount),
+            string.Join(", ", final.Accounts.Select(a => $"{a.User} ({a.AccountId:N}, authenticator {a.HasAuthenticator}, {a.RecoveryCodesLeft} recovery codes)")));
+        Record("the owner's account comes from the network", ownerAccount is not null && owners?.AccountId == ownerAccount,
+            $"owner account {ownerAccount:N} in network {roster.NetworkId}");
+
+        var status = new
+        {
+            ready = true, mode = "account", ok = allOk, hostId = host.HostId, origin = host.Origin, network = host.Server.NetworkState.State,
+            networkId = roster.NetworkId, hostPin = roster.Host(host.HostId)?.Spki, ownerAccount,
+            accounts = new { sam = SamAccount, alex = AlexAccount }, checks, attestations, at = DateTimeOffset.UtcNow
+        };
+        var json = JsonSerializer.Serialize(status);
+        await File.WriteAllTextAsync(Path.Combine(dataDirectory, StatusFile), json, CancellationToken.None);
+        Console.WriteLine(JsonSerializer.Serialize(new { ready = true, mode = "account", ok = allOk, hostId = host.HostId, checks = checks.Count }));
+        while (!token.IsCancellationRequested && !File.Exists(Path.Combine(dataDirectory, StopFile)))
+        {
+            try { await Task.Delay(500, token); }
+            catch (OperationCanceledException) { break; }
+        }
+        return allOk ? 0 : 1;
+    }
 }
