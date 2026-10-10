@@ -154,9 +154,14 @@ internal sealed partial class GatewayHttpApplication
         _ = AttestationKey();
         var claimed = Claimed(prove.Proof);
         var request = Admit(context, claimed);
+        // Linking a provider login (W13): only for an account this computer may act for (bound to it here, or an owner's or admin's
+        // computer), or any member computer while the household has no accounts yet.
+        if (prove.LinkAccountId is { } link)
+            GatewayRules.Require(link != Guid.Empty && (!Accounts.Current.Live.Any() ||
+                Accounts.Current.SignedInOn(caller.DeviceId).Any(a => a.Id == link || AccountRoles.ManagesHousehold(a.Role))), "signin.denied");
         try
         {
-            var (who, accountId, login) = await SignIn.ProveAsync(prove.AttemptId, caller.DeviceId, prove.Proof, context.RequestAborted)
+            var (who, accountId, login) = await SignIn.ProveAsync(prove.AttemptId, caller.DeviceId, prove.Proof, context.RequestAborted, prove.LinkAccountId)
                 .ConfigureAwait(false);
             var attestation = TryAttest(accountId, caller.DeviceId, login, lifetime) ?? throw new GatewayProtocolException("signin.unavailable");
             Guard.Record(request with { Subject = Subject(who) }, GatewayGuardOutcome.Success, "signin.proved", Subject(who));
@@ -231,7 +236,8 @@ internal sealed partial class GatewayHttpApplication
             caller = authenticator.Authenticate(context.Request, crypto.Sha256(body));
             RequireSignInOwner(caller);
             var change = ParseNetworkBody<GatewaySignInChange>(body);
-            GatewayRules.Require(GatewaySignInRoles.Allowed(Accounts.Current, caller.DeviceId, change), "signin.denied");
+            GatewayRules.Require(GatewaySignInRoles.Allowed(Accounts.Current, caller.DeviceId, change, SignIn.Snapshot()), "signin.denied");
+            if (change.Action == "link-login") RequireLinkAttestation(change, caller);
             codes = SignIn.Change(change, caller.Caller, context.RequestAborted);
         }
         var current = SignIn.Snapshot();
@@ -271,6 +277,22 @@ internal sealed partial class GatewayHttpApplication
             }).ToArray(),
             RecoveryCodes = codes
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>A <c>link-login</c> change (W13) carries another host's attestation that a provider identity proved an account on
+    /// the calling computer: it must check against this host's roster now and name the caller, and when this host allows the
+    /// identity already it must prove that same account here (<c>signin.login_taken</c> otherwise).</summary>
+    private void RequireLinkAttestation(GatewaySignInChange change, GatewayPrincipal caller)
+    {
+        var attested = GatewaySignInSettings.ParseAttestation(change.Attestation);
+        var roster = Network.State == "bound" ? Network.Roster : null;
+        GatewayRules.Require(roster is not null, "signin.no_network");
+        GatewayRules.Require(attested.DeviceId == caller.DeviceId && attested.Check(roster!, clock.GetUtcNow()) == AccountAttestationCheck.Valid,
+            "signin.invalid");
+        var login = attested.Login;
+        if (SignIn.Snapshot().Allowed.Any(a => a.Provider == login.Provider && a.Subject == login.Subject))
+            GatewayRules.Require(SignIn.AccountFor(new GatewaySignInIdentity(login.Provider, login.Subject, null))?.AccountId == attested.AccountId,
+                "signin.login_taken");
     }
 
     /// <summary>Only the owner's computers change sign-in: an active member desktop of the network this host is in, or any
@@ -313,6 +335,9 @@ internal sealed partial class GatewayHttpApplication
         public required JsonElement Proof { get; init; }
         /// <summary>How long the attestation lasts, 60 seconds to 30 days; ten minutes when absent.</summary>
         public int? LifetimeSeconds { get; init; }
+        /// <summary>W13: link a provider identity this host doesn't allow yet to this account as one of its logins (the caller must
+        /// be able to act for it); the answer then attests that account with the new login.</summary>
+        public Guid? LinkAccountId { get; init; }
     }
 
     private sealed record SignInProofDocument

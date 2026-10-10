@@ -473,11 +473,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "each paired host in hosts.json with how many outside addresses are kept with its pairing and its access (pairedHosts: " +
             "\"member\" for your own, \"friend\" for a host a friend shares with this PC, used for its engines only and never in this " +
             "PC's network); and who your hosts are shared with as Devices › Friends last read it (friends: per host, each friend's " +
-            "label, provider and how many of their computers signed in, and how many asked; friends.json). Also this PC's device " +
+            "label, provider and how many of their computers signed in, and how many asked; friends.json); and the household's sign-in " +
+            "providers as the desktop last read them from its hosts (householdSignIn: each provider's ID, kind and name, the hosts that " +
+            "have it, miss it, have other settings or lack its client secret, and whether that desktop keeps its secret to add it to " +
+            "new hosts; household-signin.json). Also this PC's device " +
             "ID (device: id and source, saved in device.json, one per Windows user; source pairings or legacy is the ID the desktop " +
             "keeps on its next start, new means it picks desktop-<pc name>-<6 characters>) and the Windows login it runs under " +
             "(windowsLogin: kind microsoft, work or local, and whether it has an e-mail hint; never the e-mail, name or SID). " +
-            "Read-only; contacts nothing and returns no keys or addresses.", new
+            "Read-only; contacts nothing and returns no keys, secrets or addresses.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -541,12 +544,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "sign-in (POST /martlet/v1/signin/prove) and a laptop's sign-in as Sam must give a host attestation that " +
             "Martlet.Core's AccountAttestation.Check accepts against the roster, and a changed or expired attestation, another key, " +
             "a friend's identity (signin.no_account), a wrong password and Alex adding a computer (signin.needs_authenticator) are " +
-            "refused; status has ok, checks and attestations. \"stop\": ends it (it also ends with this server).", new
+            "refused; status has ok, checks and attestations. With household true (mode \"account\"; needs the desktop of " +
+            "dataDirectory and Invoke-MartletMcp.ps1 -LabCredentials): household sign-in providers instead: two real gateways " +
+            "(lab-host-a and lab-host-b, both routed to the lab issuer) paired with that desktop; the lab's admin desktop set the " +
+            "household provider authentik up on lab-host-a only (a public client), so the desktop adds it to lab-host-b by itself " +
+            "when it reads its hosts' sign-in settings, and Save provider in Sign-in from outside saves it on both; status says " +
+            "which hosts have it (providerOnHosts) and keep a client secret (clientSecretOnHosts), never the secret; once both are bound, " +
+            "acting for that desktop it links a provider login to Sam, and two new computers join as Sam's (newDeviceMember, " +
+            "secondDeviceMember); it answers the desktop's own browser sign-ins (MARTLET_LAB_BROWSER: first as the desktop's person, for " +
+            "the Account page's Link, then as Sam, for Sign in as someone else). With joinDesktop " +
+            "true (mode \"account\"; the desktop of dataDirectory and -LabCredentials): that desktop is a new computer that joins a " +
+            "household as Sam's: the lab host belongs to a simulated owner who linked the lab provider login to Sam, the lab signs the " +
+            "desktop in as Sam for it (as Join with an invite does, under its device ID: hosts.json and joined-account.json), and once " +
+            "the desktop reads hosts.json the owner's computer lets it in by the host's attestation; status says askedToJoin, " +
+            "joinRequest (with account), desktopMember and joinedAccountWaiting. \"stop\": " +
+            "ends it (it also ends with this server).", new
         {
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
             mode = new { type = "string", @enum = new[] { "owner", "friend", "account" } },
             signInDesktop = new { type = "boolean" },
             shareWithFriend = new { type = "boolean" },
+            household = new { type = "boolean" },
+            joinDesktop = new { type = "boolean" },
             dataDirectory = new { type = "string" }
         }, ["action"]),
         Tool("role_lab", "A live lab for switching your computers between companion and host PC, for the desktop on a disposable " +
@@ -3038,13 +3057,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     extra.Add(mode == "friend" ? "--sign-in-desktop" : throw new ArgumentException("signInDesktop goes with mode friend."));
                 if (OptionalBool(arguments, "shareWithFriend") == true)
                     extra.Add(mode == "owner" ? "--share-with-friend" : throw new ArgumentException("shareWithFriend goes with mode owner."));
+                if (OptionalBool(arguments, "household") == true)
+                    extra.Add(mode == "account" ? "--household" : throw new ArgumentException("household goes with mode account."));
+                if (OptionalBool(arguments, "joinDesktop") == true)
+                    extra.Add(mode == "account" && !extra.Contains("--household") ? "--join-desktop"
+                        : throw new ArgumentException("joinDesktop goes with mode account, without household."));
                 var (process, ready) = await StartLabAsync("signin-lab", directory, "sign-in lab", cancellation, [.. extra]);
                 signInLab = process;
                 return ready;
             }
             case "status":
-                return File.Exists(status) ? JsonSerializer.Deserialize<JsonElement>(await File.ReadAllBytesAsync(status, cancellation))
-                    : new { ready = false, running = signInLab is { HasExited: false } };
+                return await ReadLabStatusAsync(status, signInLab, cancellation);
             case "stop":
                 StopLab(signInLab);
                 signInLab = null;
@@ -4338,10 +4361,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
         var pairedHosts = PairedHostsSummary(directory);
         var friends = FriendsSummary(directory);
+        var householdSignIn = HouseholdSignInSummary(directory);
         var device = DeviceSummary(directory);
         var login = Martlet.Mcp.Shared.WindowsLogin.Current;
         var windowsLogin = new { kind = login.Kind, hasEmailHint = login.HasEmailHint, hasSid = login.Sid.Length > 0 };
-        if (!File.Exists(path)) return new { state = "none", key, device, windowsLogin, pairedHosts, friends };
+        if (!File.Exists(path)) return new { state = "none", key, device, windowsLogin, pairedHosts, friends, householdSignIn };
         Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
         try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
@@ -4365,8 +4389,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ignored = local.Ignored,
             removedFrom = local.RemovedFrom,
             pairedHosts,
-            friends
+            friends,
+            householdSignIn
         };
+    }
+
+    /// <summary>household-signin.json: the household's sign-in providers as the desktop last read them from its hosts (each
+    /// provider's ID, kind, name, the hosts that have it, miss it, have other settings or lack its client secret, and whether that
+    /// desktop keeps its secret to add it to new hosts) and the providers that desktop set up; never a secret. Null when the
+    /// desktop hasn't read it.</summary>
+    private static object? HouseholdSignInSummary(string directory)
+    {
+        try
+        {
+            var path = Path.Combine(directory, "household-signin.json");
+            return File.Exists(path) ? JsonSerializer.Deserialize<JsonElement>(File.ReadAllBytes(path)) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
     }
 
     /// <summary>This data folder's device ID, read-only (Martlet.Core's DeviceIds): saved in device.json ("saved"), or the one the

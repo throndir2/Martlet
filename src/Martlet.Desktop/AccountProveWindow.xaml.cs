@@ -18,8 +18,9 @@ internal sealed record ProveHost(AvatarRemoteHost Host, string Label);
 /// linking this Windows login and merging accounts. The host checks the Martlet password (and the authenticator code when the
 /// login has one) and answers its signed attestation that the account proved itself on this PC (<c>/signin/prove</c>); this
 /// window checks that attestation against this PC's roster before anyone uses it. The password is never saved: the caller keeps
-/// only a verifier of it (<see cref="AccountLockStore.RememberPassword"/>). Provider sign-ins (Google, Authentik and others,
-/// W13) add a method to <see cref="MethodList"/> and a branch to <see cref="ProveAsync"/>.
+/// only a verifier of it (<see cref="AccountLockStore.RememberPassword"/>). Provider sign-ins (W13: Google, Microsoft, Authentik
+/// and others the household set up) are more methods in <see cref="MethodList"/>: the person signs in in the browser and the host
+/// checks the identity with the provider; a provider sign-in keeps no password.
 /// </summary>
 public partial class AccountProveWindow : ThemedWindow
 {
@@ -50,8 +51,54 @@ public partial class AccountProveWindow : ThemedWindow
             SignInButton.IsEnabled = false;
             StatusText.Text = "This PC has no host of your Martlet network to check a sign-in. Pair one under Devices first.";
         }
-        Loaded += (_, _) => (UserText.Text.Length == 0 ? (UIElement)UserText : PasswordText).Focus();
+        Loaded += async (_, _) =>
+        {
+            (UserText.Text.Length == 0 ? (UIElement)UserText : PasswordText).Focus();
+            await LoadProvidersAsync(hosts);
+        };
         Closed += (_, _) => lifetime.Cancel();
+    }
+
+    /// <summary>The household's provider chosen to sign in with (W13: Google, Microsoft, Authentik and others, in the browser);
+    /// null for the Martlet password.</summary>
+    private HostSignInProvider? provider;
+
+    /// <summary>Adds a method for each sign-in provider the first host that answers offers (the household's providers are on every
+    /// host): <c>ProveMethod-&lt;provider ID&gt;</c>, signed in in the browser.</summary>
+    private async Task LoadProvidersAsync(IReadOnlyList<ProveHost> hosts)
+    {
+        foreach (var choice in hosts)
+        {
+            try
+            {
+                var invite = new NetworkInvite { HostId = choice.Host.HostId, SpkiFingerprint = choice.Host.SpkiFingerprint, Origin = choice.Host.Origin };
+                var (_, offered) = await HostSignInClient.ReadProvidersAsync(invite, lifetime.Token);
+                foreach (var item in offered.Where(p => p.InBrowser))
+                {
+                    var option = new System.Windows.Controls.RadioButton
+                    {
+                        Content = $"{item.Name} (in your browser)", GroupName = "ProveMethod", Margin = new Thickness(0, 2, 0, 0)
+                    };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(option, "ProveMethod-" + item.Id);
+                    option.Checked += (_, _) =>
+                    {
+                        provider = item;
+                        PasswordPanel.Visibility = Visibility.Collapsed;
+                    };
+                    MethodList.Children.Add(option);
+                }
+                return;
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException or ContractException or
+                InvalidOperationException or JsonException) { }
+        }
+    }
+
+    private void PasswordMethod_Checked(object sender, RoutedEventArgs e)
+    {
+        provider = null;
+        if (PasswordPanel is not null) PasswordPanel.Visibility = Visibility.Visible;
     }
 
     /// <summary>The hosts of this PC's own Martlet network that it is paired with, by roster name.</summary>
@@ -62,7 +109,7 @@ public partial class AccountProveWindow : ThemedWindow
 
     private async void SignIn_Click(object sender, RoutedEventArgs e)
     {
-        if (UserText.Text.Trim().Length == 0 || PasswordText.Password.Length == 0)
+        if (provider is null && (UserText.Text.Trim().Length == 0 || PasswordText.Password.Length == 0))
         {
             StatusText.Text = "Type your user name and password.";
             return;
@@ -76,17 +123,20 @@ public partial class AccountProveWindow : ThemedWindow
         {
             foreach (var choice in hosts)
             {
-                StatusText.Text = $"Checking with {choice.Label}...";
+                StatusText.Text = provider is { } chosen
+                    ? $"Finish signing in with {chosen.Name} in your browser ({choice.Label} checks it), then come back here."
+                    : $"Checking with {choice.Label}...";
                 try
                 {
                     var proof = await ProveAsync(choice.Host, lifetime.Token);
+                    Activate();
                     if (Problem(proof) is { } problem)
                     {
                         StatusText.Text = problem;
                         return;
                     }
                     Proof = proof;
-                    Password = PasswordText.Password;
+                    Password = provider is null ? PasswordText.Password : null;
                     ProvedBy = choice.Host.HostId;
                     PasswordText.Clear();
                     CodeText.Clear();
@@ -117,6 +167,9 @@ public partial class AccountProveWindow : ThemedWindow
     private async Task<HostAccountProof> ProveAsync(AvatarRemoteHost host, CancellationToken cancellationToken)
     {
         using var connection = ClusterSync.Connect(host);
+        if (provider is { } chosen)
+            return await connection.ProveInBrowserAsync(chosen.Id, SignInBrowser.Open, TimeSpan.FromMinutes(5), redirectPort: chosen.RedirectPort,
+                cancellationToken: cancellationToken);
         return await connection.ProveWithPasswordAsync(UserText.Text.Trim(), PasswordText.Password, CodeText.Text.Trim() is { Length: > 0 } code ? code : null,
             cancellationToken: cancellationToken);
     }

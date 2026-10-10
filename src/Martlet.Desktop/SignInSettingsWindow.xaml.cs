@@ -38,7 +38,11 @@ public partial class SignInSettingsWindow : ThemedWindow
         }
         catch (Exception error) when (error is IOException or ContractException or UnauthorizedAccessException) { }
         Closed += (_, _) => lifetime.Cancel();
-        Loaded += async (_, _) => await RunAsync(async connection => Show(await connection.ReadSignInSettingsAsync(lifetime.Token)), "Reading");
+        Loaded += async (_, _) =>
+        {
+            await RunAsync(async connection => Show(await connection.ReadSignInSettingsAsync(lifetime.Token)), "Reading");
+            await ReadHouseholdAsync();
+        };
     }
 
     private async Task RunAsync(Func<Audio2FaceHostConnection, Task> action, string doing)
@@ -242,6 +246,12 @@ public partial class SignInSettingsWindow : ThemedWindow
                 (ProviderIdText.Text, ProviderNameText.Text, ProviderIssuerText.Text, ProviderScopesText.Text, ProviderPortText.Text) =
                     ("google", "Google", "https://accounts.google.com", "openid email profile", "");
                 break;
+            case "microsoft":
+                // Personal Microsoft accounts: the "consumers" tenant's fixed issuer. A work or school account uses its own
+                // tenant's issuer (https://login.microsoftonline.com/<tenant ID>/v2.0) under OpenID Connect.
+                (ProviderIdText.Text, ProviderNameText.Text, ProviderIssuerText.Text, ProviderScopesText.Text, ProviderPortText.Text) =
+                    ("microsoft", "Microsoft", MicrosoftConsumersIssuer, "openid email profile", "");
+                break;
             case "discord":
                 (ProviderIdText.Text, ProviderNameText.Text, ProviderIssuerText.Text, ProviderScopesText.Text, ProviderPortText.Text) =
                     ("discord", "Discord", "", "identify", "53682");
@@ -254,6 +264,12 @@ public partial class SignInSettingsWindow : ThemedWindow
         }
     }
 
+    /// <summary>The issuer of personal Microsoft accounts (the "consumers" tenant).</summary>
+    internal const string MicrosoftConsumersIssuer = "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0";
+
+    /// <summary>Saves the provider on every host of the household (docs/NETWORK.md, household sign-in providers). A typed client
+    /// secret goes to every host and is kept on this PC to add the provider to hosts that join later; without one, hosts that
+    /// have a secret keep theirs, and hosts that miss the provider get the secret this PC kept for that client, if any.</summary>
     private async void SaveProvider_Click(object sender, RoutedEventArgs e)
     {
         var kind = ((ProviderKindBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string) switch
@@ -261,24 +277,148 @@ public partial class SignInSettingsWindow : ThemedWindow
             "discord" => "discord", "steam" => "steam", _ => "oidc"
         };
         int? port = int.TryParse(ProviderPortText.Text.Trim(), out var number) ? number : null;
-        var config = new JsonObject
+        var provider = new HouseholdProvider(ProviderIdText.Text.Trim().ToLowerInvariant(), kind, ProviderNameText.Text.Trim(),
+            kind == "oidc" ? ProviderIssuerText.Text.Trim().TrimEnd('/') : null,
+            ProviderClientIdText.Text.Trim() is { Length: > 0 } client ? client : null,
+            ProviderScopesText.Text.Trim() is { Length: > 0 } scopes ? scopes : null, port);
+        var typed = ProviderSecretText.Password is { Length: > 0 } secret ? secret : null;
+        var kept = typed is null && HouseholdSignInStore.Load(dataDirectory).Kept.Any(k => k.Id == provider.Id && k.Secret && k.Kind == kind &&
+            k.ClientId == provider.ClientId) ? HouseholdSignInStore.Secret(provider.Id) : null;
+        string? SecretFor(string hostId) => typed ?? (kept is not null &&
+            household.GetValueOrDefault(hostId)?.Providers.FirstOrDefault(p => p.Id == provider.Id) is not { HasClientSecret: true } ? kept : null);
+        var results = await SendHouseholdAsync(hosts => hosts, hostId => provider.Change(SecretFor(hostId)), "Saving");
+        if (results.Any(r => r.Saved))
         {
-            ["id"] = ProviderIdText.Text.Trim().ToLowerInvariant(), ["kind"] = kind, ["name"] = ProviderNameText.Text.Trim(),
-            ["issuer"] = kind == "oidc" ? ProviderIssuerText.Text.Trim().TrimEnd('/') : null,
-            ["client_id"] = ProviderClientIdText.Text.Trim() is { Length: > 0 } client ? client : null,
-            ["scopes"] = ProviderScopesText.Text.Trim() is { Length: > 0 } scopes ? scopes : null,
-            ["redirect_port"] = port
-        };
-        if (ProviderSecretText.Password.Length > 0) config["client_secret"] = ProviderSecretText.Password;
-        await ChangeAsync(new JsonObject { ["action"] = "provider", ["provider_config"] = config },
-            $"Saved {ProviderNameText.Text.Trim()}. Sign in with it once from the computer to allow, then allow it here.");
-        ProviderSecretText.Clear();
+            try { HouseholdSignInStore.Keep(dataDirectory, provider, typed); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                ErrorLog.Warn("Household sign-in: couldn't record the provider on this PC: " + error.Message);
+            }
+            ProviderSecretText.Clear();
+        }
+        Finish(results, $"Saved {provider.Name}", " Sign in with it once from the computer to allow, then allow it here.");
     }
 
-    private async void RemoveProvider_Click(object sender, RoutedEventArgs e) => await ChangeAsync(new JsonObject
+    private async void RemoveProvider_Click(object sender, RoutedEventArgs e)
     {
-        ["action"] = "remove-provider", ["id"] = ProviderIdText.Text.Trim().ToLowerInvariant()
-    }, "Provider removed; computers that signed in with it lost access.");
+        var id = ProviderIdText.Text.Trim().ToLowerInvariant();
+        var change = HouseholdProvider.RemoveChange(id);
+        var paused = shown is { Usable: true } current && !current.UsableAfter(change) && OutsideAddresses().Count > 0
+            ? $" {host.HostId} is reachable from outside home: after this, nobody can sign in to it, so its outside access pauses until you set up " +
+              "the owner account or allow an identity again."
+            : "";
+        if (!ConfirmationDialog.Confirm(this, $"Remove {id} from every host of your household? Computers and friends that sign in with it lose access " +
+                "to those hosts, and your computers that joined with it leave your Martlet network on their next sync." + paused, "Remove provider"))
+        {
+            StatusText.Text = "Nothing changed.";
+            return;
+        }
+        var results = await SendHouseholdAsync(hosts => hosts.Where(h => !household.TryGetValue(h, out var settings) || settings.Providers.Any(p => p.Id == id))
+            .Append(host.HostId).ToArray(), _ => change, "Removing");
+        if (results.Any(r => r.Saved))
+        {
+            try { HouseholdSignInStore.Forget(dataDirectory, id); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                ErrorLog.Warn("Household sign-in: couldn't forget the provider on this PC: " + error.Message);
+            }
+        }
+        Finish(results, $"Removed {id}", " Computers that signed in with it lost access there.");
+    }
+
+    /// <summary>Adds each household provider to the hosts of the network that miss it (or lack the client secret it needs), from
+    /// the household's configuration and, where needed, the client secret this PC kept for it.</summary>
+    private async void PushProviders_Click(object sender, RoutedEventArgs e)
+    {
+        await ReadHouseholdAsync();
+        var hosts = HouseholdHosts();
+        var document = HouseholdSignInStore.Load(dataDirectory);
+        var missing = HouseholdSignInStore.Missing(document, household);
+        var results = new List<HouseholdChangeResult>();
+        foreach (var (provider, withSecret, targets) in missing)
+        {
+            var secret = withSecret ? HouseholdSignInStore.Secret(provider.Id) : null;
+            if (withSecret && secret is null) continue;
+            results.AddRange(await HouseholdSignIn.SendAsync(targets.Where(hosts.ContainsKey), id => ClusterSync.Connect(hosts[id]), _ => provider.Change(secret),
+                lifetime.Token));
+        }
+        var skipped = HouseholdSignIn.Providers(household).Where(s => s.Missing.Count + s.WithoutSecret.Count > 0 && missing.All(m => m.Provider.Id != s.Provider.Id))
+            .Select(s => $"{s.Provider.Name} needs its client secret on {string.Join(", ", s.Missing.Concat(s.WithoutSecret))}: type it above and Save provider")
+            .ToArray();
+        foreach (var result in results.Where(r => r.Settings is not null)) household[result.HostId] = result.Settings!;
+        if (results.FirstOrDefault(r => r.HostId == host.HostId)?.Settings is { } mine) Show(mine);
+        StatusText.Text = (results.Count == 0 ? "Every host that answered has the household's providers." : HouseholdSignIn.Describe(results, "Added the providers")) +
+            (skipped.Length > 0 ? " " + string.Join("; ", skipped) + "." : "");
+        RenderHousehold();
+    }
+
+    /// <summary>This PC's own hosts in the household: every paired host of your Martlet network (all paired hosts while this PC is
+    /// in no network), never a host a friend shares with this PC; always this window's host.</summary>
+    private Dictionary<string, AvatarRemoteHost> HouseholdHosts()
+    {
+        var hosts = new Dictionary<string, AvatarRemoteHost>(StringComparer.Ordinal) { [host.HostId] = host };
+        try
+        {
+            var roster = NetworkIdentity.Load(dataDirectory).Roster;
+            foreach (var paired in HostRegistry.Load(dataDirectory).Where(h => !h.Shared && (roster is null || roster.Host(h.HostId) is { Removed: false })))
+                hosts.TryAdd(paired.HostId, paired.Pairing);
+        }
+        catch (Exception error) when (error is IOException or ContractException or UnauthorizedAccessException or InvalidDataException or JsonException) { }
+        return hosts;
+    }
+
+    private Dictionary<string, HostSignInSettings> household = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, string> householdProblems = new Dictionary<string, string>();
+
+    /// <summary>Reads every household host's sign-in settings (never a secret) and shows where each provider is set up.</summary>
+    private async Task ReadHouseholdAsync()
+    {
+        var hosts = HouseholdHosts();
+        try
+        {
+            var (read, problems) = await HouseholdSignIn.ReadAsync(hosts.Keys, id => ClusterSync.Connect(hosts[id]), lifetime.Token);
+            household = new(read, StringComparer.Ordinal);
+            householdProblems = problems;
+            RenderHousehold();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void RenderHousehold()
+    {
+        var states = HouseholdSignIn.Providers(household);
+        HouseholdProvidersText.Text = HouseholdSignIn.Coverage(states, householdProblems);
+        try { HouseholdSignInStore.Remember(dataDirectory, states, householdProblems, DateTimeOffset.UtcNow); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn("Household sign-in: couldn't keep the summary for MCP: " + error.Message);
+        }
+    }
+
+    /// <summary>Sends a change to the household's hosts that <paramref name="pick"/> chooses (from all of them), and keeps what they
+    /// answered.</summary>
+    private async Task<IReadOnlyList<HouseholdChangeResult>> SendHouseholdAsync(Func<IReadOnlyList<string>, IReadOnlyList<string>> pick,
+        Func<string, JsonObject> changeFor, string doing)
+    {
+        var hosts = HouseholdHosts();
+        StatusText.Text = $"{doing} on {hosts.Count} host(s)...";
+        try
+        {
+            var results = await HouseholdSignIn.SendAsync(pick(hosts.Keys.Order(StringComparer.Ordinal).ToArray()).Where(hosts.ContainsKey),
+                id => ClusterSync.Connect(hosts[id]), changeFor, lifetime.Token);
+            foreach (var result in results.Where(r => r.Settings is not null)) household[result.HostId] = result.Settings!;
+            return results;
+        }
+        catch (OperationCanceledException) { return []; }
+    }
+
+    private void Finish(IReadOnlyList<HouseholdChangeResult> results, string done, string next)
+    {
+        var text = HouseholdSignIn.Describe(results, done) + (results.Any(r => r.Saved) ? next : "");
+        if (results.FirstOrDefault(r => r.HostId == host.HostId)?.Settings is { } mine) Show(mine, text);
+        else StatusText.Text = text;
+        RenderHousehold();
+    }
 
     private async void AllowRefused_Click(object sender, RoutedEventArgs e) => await AllowNewestAsync(friend: false);
 

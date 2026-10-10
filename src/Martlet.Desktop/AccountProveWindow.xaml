@@ -14,7 +14,7 @@
         <ComboBox x:Name="HostChoice" Margin="0,4,0,8" DisplayMemberPath="Label" AutomationProperties.AutomationId="ProveHost"/>
         <TextBlock Text="Sign in with"/>
         <StackPanel x:Name="MethodList" Margin="0,4,0,8" AutomationProperties.AutomationId="ProveMethods">
-            <RadioButton x:Name="PasswordMethod" Content="Martlet password" GroupName="ProveMethod" IsChecked="True"
+            <RadioButton x:Name="PasswordMethod" Content="Martlet password" GroupName="ProveMethod" IsChecked="True" Checked="PasswordMethod_Checked"
                          AutomationProperties.AutomationId="ProveMethod-martlet"/>
         </StackPanel>
         <StackPanel x:Name="PasswordPanel">

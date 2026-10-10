@@ -32,6 +32,7 @@ public partial class AccountWindow : ThemedWindow
             Refresh();
             await ShowPasswordStateAsync();
             await ShowHelloAsync();
+            await ShowProviderLoginsAsync();
         };
     }
 
@@ -58,7 +59,7 @@ public partial class AccountWindow : ThemedWindow
         LoginsText.Text = account is null
             ? "Logins: this Windows login. The account reaches your household's directory once this PC is in your Martlet network."
             : "Logins: " + Describe(account);
-        PasswordSection.IsEnabled = WindowsSection.IsEnabled = MergeSection.IsEnabled = account is not null;
+        PasswordSection.IsEnabled = WindowsSection.IsEnabled = MergeSection.IsEnabled = ProviderSection.IsEnabled = account is not null;
         LockStateText.Text = locks.NeedsUnlock(windows)
             ? "Martlet asks you to unlock this account on this PC."
             : "This Windows login unlocks this account by itself on this PC.";

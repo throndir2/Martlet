@@ -343,7 +343,11 @@ internal sealed partial class GatewayHttpApplication
             {
                 DeviceId = j.DeviceId, DisplayName = j.DisplayName, Key = j.Key, CheckNumber = j.CheckNumber, RequestedAt = j.RequestedAt,
                 SignIn = SignIn.Attestation(j.DeviceId) is { } signedIn
-                    ? new() { Provider = signedIn.Identity.Provider, Subject = signedIn.Identity.Subject, Label = signedIn.Identity.Label, At = signedIn.At }
+                    ? new()
+                    {
+                        Provider = signedIn.Identity.Provider, Subject = signedIn.Identity.Subject, Label = signedIn.Identity.Label, At = signedIn.At,
+                        AccountId = SignIn.AccountFor(signedIn.Identity)?.AccountId
+                    }
                     : null
             }).ToArray(),
             Devices = Network.Devices().Select(d => new PairedDeviceDocument
@@ -449,6 +453,9 @@ internal sealed partial class GatewayHttpApplication
         public required string Subject { get; init; }
         public string? Label { get; init; }
         public required DateTimeOffset At { get; init; }
+        /// <summary>The household account that sign-in proves (docs/ACCOUNTS.md): the computer joins as one of that person's
+        /// computers. Absent while the host is in no network. Older desktops ignore it.</summary>
+        public Guid? AccountId { get; init; }
     }
 
     private sealed record JoinDocument

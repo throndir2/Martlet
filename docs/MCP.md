@@ -1530,9 +1530,12 @@ changes or proves something, so it needs `--allow-ui-effects`: the password
 `AccountAuthenticatorRemove`), `AccountLinkWindows`, `AccountUnlinkWindows`,
 `AccountAskPassword`, `AccountPin`, `AccountPinSet`, `AccountPinRemove`,
 `AccountHello`, `AccountEncrypt`, `AccountRemember`, `AccountLockNow`,
-`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`; Unlock's `UnlockPin`,
+`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`, and (W13) each
+household provider's **Link** (`AccountLinkProvider-<provider ID>`) and each
+linked login's **Unlink** (`AccountUnlinkLogin-<provider>-<subject>`); Unlock's `UnlockPin`,
 `UnlockPassword`, `UnlockSubmit`, `UnlockHello`, `UnlockSignIn`; Prove's
-`ProveHost`, `ProveMethod-martlet`, `ProveUser`, `ProvePassword`, `ProveCode`,
+`ProveHost`, `ProveMethod-martlet`, each household provider
+(`ProveMethod-<provider ID>`, signed in in the browser), `ProveUser`, `ProvePassword`, `ProveCode`,
 `ProveRemember`, `ProveSubmit`; the account menu's `AccountSignInOther`
 and `AccountLock`; *Continue as ...?* (`ContinueAsDialog`: `ContinueAsYes`,
 `ContinueAsNo`) and *Choose an account* (`AccountChooseDialog`:
@@ -1541,7 +1544,9 @@ while one of these windows shows at start, before the main window (Unlock,
 *Continue as*, *Choose an account*, Prove). `ui_snapshot` returns these values: `AccountName`,
 `AccountLogins`, `AccountLockState`, `AccountUnlockMethods`,
 `AccountPasswordState`, `AccountWindowsState`, `AccountHelloState`,
-`AccountEncryptState`, `AccountStatus`, `UnlockAccountName`, `UnlockStatus`,
+`AccountEncryptState`, `AccountStatus`, `AccountProviderLogins` (the linked
+provider logins, *Linked: Authentik (lab) as me@example.net.*, and the result
+of the last Link or Unlink), `UnlockAccountName`, `UnlockStatus`,
 `ProveTitle` and `ProveStatus`; never the user name, the authenticator key
 (`AccountAuthenticatorSecret`) or the recovery codes (`AccountRecoveryCodes`).
 
@@ -1560,7 +1565,13 @@ a friend shares with this PC: its engines only, never in this PC's network);
 and `friends`, what **Devices › Friends** last read from each of your hosts
 (`friends.json`: `checkedAt`, and per host `hostId`, `read`, `problem`, each
 friend's `label`, `provider` and `computers`, and how many are `asking`), or
-null before it read anything. `device` is this data folder's device ID (`id`
+null before it read anything. `householdSignIn` is the household's sign-in
+providers as the desktop last read them from its hosts
+(`household-signin.json`: `kept`, the providers this PC set up with their
+configuration and whether it keeps the client secret, never the secret;
+`checkedAt`; `providers`, each with `id`, `kind`, `name`, the hosts it is `on`,
+`missing`, with `different` settings or `withoutSecret`, and `keptHere`; and
+`problems` per host), or null before it read anything. `device` is this data folder's device ID (`id`
 and `source`): `saved` in `device.json` (one per Windows user, so two Windows
 users on one PC never share one); `pairings` or `legacy` when the desktop hasn't
 saved one yet and keeps the ID its pairings use or an older Martlet's
@@ -1844,7 +1855,88 @@ changed attestation (`BadSignature`), an expired one (`Expired`) and another key
 than the roster's pin (`KeyNotPinned`) must fail. The start answer and `status`
 carry `ok`, the 14 `checks` (`name`, `ok`, `detail`) and the `attestations`
 (account, device, login, algorithm, times, check, text length). Example: start
-with `mode` `account`, then check `"ok":true`. It needs
+with `mode` `account`, then check `"ok":true`. With `household` `true` (mode
+`account`; `SignInAccountLab.cs`) the lab involves the desktop of the data
+directory instead and rehearses [household sign-in
+providers](NETWORK.md#household-sign-in-providers) and [signing in to your
+household account](NETWORK.md#signing-in-to-your-household-account): two
+gateways (`lab-host-a`, `lab-host-b`, ECDSA keys, both routed to the lab
+issuer) paired with that desktop (`hosts.json`, secrets in the lab credential
+folder). Before the desktop binds them, the lab's admin desktop sets the
+household provider `authentik` up on `lab-host-a` only, as a public client, so
+the desktop adds it to `lab-host-b` by itself when **Devices › Friends** reads
+its hosts. Once both are bound, the lab acts with the desktop's own pairings:
+it gives Sam a Martlet password with an authenticator on both hosts, proves
+Sam on `lab-host-a` and links `lab-user-42` (`me@example.net`) to Sam on every
+host with `HouseholdSignIn.LinkInBrowserAsync`. When `lab-host-b` has the
+provider, it proves Sam there with that login and a new computer
+(`lab-new-pc`) signs in to Sam's account through `lab-host-b`, gets Sam's
+attestation and asks to join; a second computer (`lab-sam-pc`) reads what
+**Join with an invite** offers there (`joinChoices`, with `martlet`) and joins
+with Sam's Martlet password and a recovery code (`SignInWithPasswordAsync`,
+the window's call). The desktop lets both in by itself and its log says whose
+computer each is. `status` returns `phase` (`done` once both are members), `failure`, `network`,
+`providers` (per host: `Id`, `Kind`, `Name`, `HasClientSecret`; never the
+secret), `providerOnHosts`, `clientSecretOnHosts`, `linkedLogins` (per host:
+`provider`, `subject`, `account`), `link` (`account`, `provedWith`,
+`identity`, `savedOn`, `problems`), `providerProve`,
+`accountSignIn` and `passwordSignIn` (`account`, `check` or `attestation`,
+`verified`), `joinChoices`, `joinAttested` (the join request's `sign_in` as the
+desktop's client read it, with `account`), `newDeviceMember`,
+`newDeviceWasMember`, `newDeviceWaiting`, `secondDeviceMember`, `browsedAs`
+(whom the lab's simulated browser signed in as for the desktop) and `events`.
+The desktop hands its browser sign-in pages to the lab (`MARTLET_LAB_BROWSER`):
+the first one signs in as the desktop's own person (`lab-desktop-7`,
+`owner@example.net`), the next ones as Sam (`lab-user-42`). Example (with `-Desktop -LabCredentials -AllowUiEffects`): start
+with `mode` `account` and `household` `true`, click `TourSkip`, `NavDevices`
+and `RefreshDevices` (the desktop reads `hosts.json` again), poll
+`network_status` until `"state":"member"` and `signin_lab status` until
+`"link":{`, click `FriendsCheck`, poll `signin_lab status` until
+`"providerOnHosts":["lab-host-a","lab-host-b"]` and then until
+`"newDeviceMember":true` (the desktop syncs every 20 seconds). In the window:
+open Add a computer › `HostsStepRoles` › `HostSignInSettings`, poll
+`ui_snapshot` until `SignInHouseholdProviders` reads *Authentik (lab)
+(authentik): on lab-host-a and lab-host-b.*, `ui_set_text`
+`SignInProviderId` `authentik`, `SignInProviderName` `Authentik (lab)`,
+`SignInProviderIssuer` `https://idp.lab.invalid`, `SignInProviderClientId`
+`martlet-lab` and `SignInProviderSecret` `lab-client-secret`, click
+`SignInProviderSave`, poll `SignInSettingsStatus` until *Saved Authentik (lab)
+on lab-host-a and lab-host-b.*, `signin_lab status` until
+`"clientSecretOnHosts":["lab-host-a","lab-host-b"]` and `network_status` until
+`"keptHere":true`. The Account page: once `accounts_status` reads
+`"pending":0`, click `AccountButton` and `AccountOpen`, poll `ui_snapshot` until
+`AccountProviderLogins` reads *No sign-in from a provider is linked*, click
+`AccountLinkProvider-authentik` (the desktop's account has only its Windows
+login, so no Prove first; the lab browser signs in as `owner@example.net`),
+poll until *Linked owner@example.net (authentik) on lab-host-a and lab-host-b.*,
+`signin_lab status` until `lab-desktop-7` is in `linkedLogins` and
+`accounts_status` until the account's `logins` list `oidc`; click
+`AccountUnlinkLogin-authentik-lab-desktop-7` and `ConfirmationYes`, poll until
+*Unlinked owner@example.net ...* and `"logins":["windows"]`. Signing in with a
+provider: click `AccountClose`, `AccountButton`, wait for and click
+`AccountSignInOther`, then `ProveMethod-authentik` and `ProveSubmit` (the lab
+browser signs in as Sam) and poll `accounts_status` until `current` is Sam
+(`5a6e…005a`). With `joinDesktop` `true` (mode `account`, not with
+`household`; `SignInAccountLab.RunJoinAsync`) the desktop of the data
+directory is a new computer that joins a household as Sam's: the gateway
+(`lab-home-host`, ECDSA) belongs to a simulated owner (`lab-owner`) who started
+the network with it, set the lab provider up with its client secret, gave Sam a
+Martlet password with an authenticator, linked `lab-user-42`
+(`sam@example.net`) to Sam and wrote Sam (with both logins) to the account
+directory. The lab does for the desktop what **Join with an invite** does,
+under the device ID that desktop names itself by (`device.json`): it signs in
+through the lab provider as Sam and keeps the pairing (`hosts.json`, the secret
+in the lab credential folder) and the account the host vouched for
+(`joined-account.json`). `status` returns `desktop`, `account`, `signedInAs`,
+`choices` (what the window offers: `martlet` and `authentik`), `askedToJoin`,
+`joinRequest` (the host's `sign_in` with `account`), `desktopMember` and
+`joinedAccountWaiting`. Example (with `-Desktop -LabCredentials
+-AllowUiEffects`): start with `mode` `account` and `joinDesktop` `true`, click
+`TourSkip`, `NavDevices` and `RefreshDevices`, poll `signin_lab status` until
+`"desktopMember":true`, `network_status` until `"state":"member"` and
+`accounts_status` until `current` is Sam (`5a6e…005a`, `"name":"Sam"`); the
+desktop log says *Accounts: this PC joined the network as account 5a6e0000's
+computer; signed it in here* and *Hi, Sam*. It needs
 `Invoke-MartletMcp.ps1 -LabCredentials`, which points `MARTLET_LAB_CREDENTIALS`
 of the desktop and MCP server at a `lab-credentials` folder in the data
 directory, so pairing secrets go there (plaintext, thrown away with the folder)
@@ -1901,7 +1993,9 @@ until *Host PC*.
 
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
-`SignInConnect`, provider choices `SignInProvider-<id>`, `SignInUser`,
+`SignInConnect`, provider choices `SignInProvider-<id>`, with
+`SignInProvider-martlet` for *Your household account (Martlet password)* when
+the host keeps household logins, `SignInUser`,
 `SignInPassword`, `SignInCode`, `SignInSubmit`, status `SignInJoinStatus`, the
 checked host `SignInHost`, `SignInJoinClose`); a paired host's **Sign-in from
 outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
@@ -1909,10 +2003,12 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
 `SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
 `SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
-`SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
+`SignInHouseholdProviders` (where each household provider is set up; a safe
+value), `SignInProvidersPush` (**Add to the other hosts**), `SignInProviderKind`
+(with *Microsoft (personal accounts)*), `SignInProviderId`, `SignInProviderName`,
 `SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
-`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`,
-`SignInProviderRemove`, `SignInRefusedList`, `SignInRefusedAllow` (allow the
+`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave` and
+`SignInProviderRemove` (both on every host of your network), `SignInRefusedList`, `SignInRefusedAllow` (allow the
 newest as one of your computers), `SignInRefusedAllowFriend` (as a friend),
 `SignInRemovedList` (computers your member PCs still have to remove from the
 network), `SignInOutsideWarning` (outside access paused or about to be),

@@ -102,6 +102,8 @@ public partial class MainWindow
             friendsCheckedAt = DateTimeOffset.Now;
             SaveFriendsSummary();
             LogFriends();
+            // The same read shows which hosts miss a household sign-in provider; add them in the background.
+            SyncHouseholdSignInAsync(friendsRead, friendsProblems).Forget();
         }
         catch (OperationCanceledException) { }
         finally

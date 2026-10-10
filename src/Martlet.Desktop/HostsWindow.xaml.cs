@@ -807,7 +807,7 @@ public partial class HostsWindow : ThemedWindow
     private void JoinWithInvite_Click(object sender, RoutedEventArgs e)
     {
         var device = DeviceIdText.Text.Trim();
-        new SignInJoinWindow(device, async (pairing, secret, outside, who) =>
+        new SignInJoinWindow(device, pairings.DataDirectory, async (pairing, secret, outside, who) =>
         {
             if (who.Friend)
             {
