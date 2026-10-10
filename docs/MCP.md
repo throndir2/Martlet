@@ -1437,7 +1437,13 @@ no account): A's store from before accounts moves into Sam's space
 together with the old document records nothing new and gives both hosts every
 fact; B syncs Sam's space and the household; D shares the household fact but
 is refused Sam's space and the old document; E keeps using the old document,
-and A's next sync brings E's fact into Sam's space; no fact in any desktop data
+and A's next sync brings E's fact into Sam's space; sharing
+([accounts](ACCOUNTS.md#sharing)): D gives a fact to Sam's space through the give
+route (`GiveMemoriesAsync`; the host takes it once, D is still refused Sam's
+space, and A's next sync takes it), and a character space follows Sam's
+household sharing entry (`sharing.<account>`, merged into both hosts' settings):
+shared together, D remembers in it and A reads it; private again, D is refused on
+both hosts and A still syncs it; no fact in any desktop data
 folder while the hosts' copy holds them; and an unsigned request refused (HTTP
 401). Synthetic facts, loopback only; the folder is deleted.
 
@@ -2107,7 +2113,25 @@ after a switch on another computer), and per profile `here` (null when it keeps
 nothing here yet) with `place` (`locked`, `left`, `top`, `width`, `height` in
 device-independent pixels and `screen`, or null), `gaze` (`personality`,
 `mouse`, `near`, `ahead` or `window`), `gazeFree` and `touchInterrupts` (`any`,
-`intimate` or `never`). Names are never returned. Read-only; it contacts
+`intimate` or `never`). Per profile, `sharing` is how the account in use shares
+it with the household: `private`, `copy`, `together`, or `joined` (someone else's
+character shared together that it talks to). It is null without accounts. Names
+are never returned. Read-only; it contacts nothing.
+
+`household_sharing` reads what each account of a household shares
+([ACCOUNTS](ACCOUNTS.md#sharing)) from a data directory (optional absolute
+`dataDirectory`). It reads that PC's copy of the household settings
+(`shared-settings.json`, the `sharing.<account>` entries) and the account in use
+(`accounts\session.json`). It returns `state` (`none` or `loaded`),
+`currentAccount`, `entries`, `unreadable`, `householdCharacters` (the characters
+other people share, as the account in use sees them), `ownShared`, `ownJoined`
+and `newFactsAboutMe`. Per account it returns `account` (32 hex digits),
+`current`, `copy`, `together`, `joined`, `newFactsAboutMe`, `bytes`, `updatedBy`
+and `changedAt`. Each of its `characters` has `key`, `mode`, `space` (the
+`character-<id>` memory space when shared together), `lorebooks`,
+`lorebookEntries`, `look` (`keep`, `builtin` or `shared`) and `voice`. Each of
+its `joinedCharacters` has `account`, `key`, `space` and `stillShared`. It never
+returns a name, a personality's text or a lorebook entry. Read-only; it contacts
 nothing.
 
 `creations_status` reads [Martlet's creations](CREATIONS.md) from a data
@@ -3667,7 +3691,21 @@ remembered, changed or forgotten elsewhere (remembering after a reply,
 the `MemoryStorageSection` and `MemoryExportSection` expanders are passive
 clicks; `MemoryDeleteFact` (the selected fact or facts), `MemoryDeleteShown`
 (every fact listed now: one person's or what the search found) and
-`MemoryDeleteAll` ask first and need `--allow-ui-effects`. Their
+`MemoryDeleteAll` ask first and need `--allow-ui-effects`. With accounts the
+Memory window also shares ([Sharing memories](MEMORY.md#sharing-memories)):
+`MemoryShareAboutMe` (*Share new memories about me with the household*,
+`ui_toggle`), `MemoryShareTarget` (*Share selected with*: "The household's
+memories", "<name>'s memories" for each other person, "<name>'s memories (shared
+together)" for each character shared together, chosen with `ui_select`),
+`MemoryShareCopy` and `MemoryShareMove` (enabled with facts selected; select
+facts in `MemoryFacts` with `ui_select` and the fact's words). These change
+memories, so they need `--allow-ui-effects`. `MemoryShareStatus` reads what they
+did, with counts and the kind of place only (*Copied 1 fact to the household's
+memories.*, *Moved 2 facts to another person's memories.*, *New facts about you
+now go to the household's memories.*). A share to another person without a
+paired host puts *Pair a Martlet host to share facts with someone else's
+memories.* in `MemoryFactStatus` and moves nothing. `memory_status` then counts
+the facts of each space. Their
 fields (`CompanionName`, `CompanionText`,
 the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
@@ -7374,6 +7412,29 @@ submenu has `TrayCharacterProfile-<key>` items, the one in use ticked. Use,
 Save, Remove and switching from Home or the menu need `--allow-ui-effects`.
 `character_profiles` reads them headlessly.
 
+**Sharing characters with the household** ([ACCOUNTS](ACCOUNTS.md#sharing)) is on the
+same page. Each of your profiles has a choice, `CharacterProfileSharing-<key>`
+("Private", "Share a copy with the household" or "Share together with the
+household"), and a state line, `CharacterProfileShared-<key>`. The state line
+reads "Private: only you see and use it.", "Shared as a copy: ..." or "Shared
+together: ...". A character someone else shares with you together reads
+"Shared with you together: ...". Its `CharacterProfileEdit-<key>` is disabled,
+and `CharacterProfileLeave-<key>` replaces Remove and asks first. The
+**Household characters** card lists the characters other people share.
+`HouseholdCharactersStatus` reads "2 characters shared by 1 person in your
+household." or "Nobody in your household shares a character yet.". Each row has
+`HouseholdCharacterState-<key>` ("Shared as a copy.", "Shared together. Talk to it
+to add it to your profiles.", and why a part can't switch here). Each row also
+has a button: `HouseholdCharacterCopy-<key>` (*Use a copy*: a copy with new IDs
+and its own memories, then switched to) or `HouseholdCharacterJoin-<key>` (*Talk to
+it*: the character with the same IDs, then switched to; *Use* once it is in your
+profiles). These state lines are counts and fixed text, never a name. The
+choice, Use a copy, Talk to it and Leave need `--allow-ui-effects`. The
+desktop log records *Sharing: character <key> is now together.*, *Sharing: used
+a copy of a household character (<key>) as <key>.* and *Sharing: this account
+talks to a character shared together (<key>).*. `household_sharing` and the
+`sharing` field of `character_profiles` read the same state headlessly.
+
 The **Creations** page (`NavCreations`, between Companion and Diagnostics; its
 content is `CreationsPage`) lists [what Martlet made](CREATIONS.md), newest first.
 `CreationsNote` reads the fixed "Ask Martlet to sing or show any of these.",
@@ -8526,7 +8587,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

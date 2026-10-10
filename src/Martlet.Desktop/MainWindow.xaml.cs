@@ -195,6 +195,7 @@ public partial class MainWindow : ThemedWindow
         InitializeCluster();
         InitializeNodePresence();
         InitializeSettingsSync();
+        InitializeHouseholdSharing();
         InitializeReminders();
         InitializeCheckIns();
         InitializeRecommendedSetup();
@@ -260,6 +261,7 @@ public partial class MainWindow : ThemedWindow
         StartCluster();
         StartNodePresence();
         StartSettingsSync();
+        StartHouseholdSharing();
         StartReminders();
         StartCheckIns();
         StartMemorySync();
@@ -347,7 +349,7 @@ public partial class MainWindow : ThemedWindow
     {
         if (memory is null || closing || model?.IsRunning == true) return;
         memoryWindowOpen = true;
-        try { new MemoryWindow(memory, setupOperations, voices: () => localVoices.Roster, person: person, yours: localVoices.IsYours) { Owner = this }.ShowDialog(); }
+        try { new MemoryWindow(memory, setupOperations, voices: () => localVoices.Roster, person: person, yours: localVoices.IsYours) { Owner = this, Sharing = MemorySharingOptionsNow() }.ShowDialog(); }
         finally { memoryWindowOpen = false; }
         QueueMemorySync();
         await RefreshAsync();

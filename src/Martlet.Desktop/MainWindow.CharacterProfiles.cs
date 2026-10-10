@@ -110,6 +110,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(status, "CharacterProfilesStatus");
         stack.Add(status);
         var here = ProfilesHere();
+        var sharing = OwnSharing();
         foreach (var profile in profiles)
         {
             var inUse = profile.Id == current?.Id;
@@ -117,7 +118,7 @@ public partial class MainWindow
                 $"Personality: {PersonaName(profile.PersonaId, companion)}";
             var problem = ProfileProblem(profile, library, voices);
             stack.Add(ProfileRow(profile, detail, inUse ? "In use." : problem is null ? "Ready." : problem + " Using it switches the rest.",
-                ProfileHereText(here.For(profile.Id)), inUse));
+                ProfileHereText(here.For(profile.Id)), inUse, ProfileSharingControls(profile, sharing), sharing?.HasJoined(profile.Id) == true));
         }
         stack.Add(Row(PageButton(profiles.Count == 0 ? "Save what Martlet uses now as a profile..." : "New profile...",
             () => EditProfile(Guid.Empty), primary: profiles.Count == 0, id: "CharacterProfileNew")));
@@ -130,6 +131,8 @@ public partial class MainWindow
             tabEdited = true;
         }
 
+        page.Children.Add(HouseholdCharactersCard(companion, library, voices));
+
         page.Children.Add(Card(Heading("The parts"),
             Note("Add looks in Character, voices in Voice and personalities in Personality; every profile can use them.", new Thickness(0, 0, 0, 8)),
             Row(PageButton("Character", () => OpenCompanion(CompanionTab.Character), id: "ProfilesOpenCharacter"),
@@ -138,9 +141,11 @@ public partial class MainWindow
     }
 
     /// <summary>One profile: its name (with the in-use mark), what it sets, a readable state line
-    /// (<c>CharacterProfileState-key</c>: never a name), what it keeps on this PC (<c>CharacterProfileHere-key</c>) and Use, Edit
-    /// and Remove.</summary>
-    private UIElement ProfileRow(CharacterProfile profile, string detail, string state, string here, bool inUse)
+    /// (<c>CharacterProfileState-key</c>: never a name), what it keeps on this PC (<c>CharacterProfileHere-key</c>), how it is shared
+    /// with the household (<paramref name="sharing"/>) and Use, Edit and Remove. A character someone else shares with you together
+    /// (<paramref name="joined"/>) can't be edited here, and Leave (<c>CharacterProfileLeave-key</c>) replaces Remove.</summary>
+    private UIElement ProfileRow(CharacterProfile profile, string detail, string state, string here, bool inUse, UIElement? sharing = null,
+        bool joined = false)
     {
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock
@@ -154,6 +159,7 @@ public partial class MainWindow
         var stateText = Note(state, new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(stateText, "CharacterProfileState-" + profile.Key);
         text.Children.Add(stateText);
+        if (sharing is not null) text.Children.Add(sharing);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         Button Small(string label, Action run, string id)
         {
@@ -166,8 +172,12 @@ public partial class MainWindow
         var use = Small(inUse ? "In use" : "Use", () => UseCharacterProfileAsync(profile.Id).Forget(), "Use");
         use.IsEnabled = !inUse;
         buttons.Children.Add(use);
-        buttons.Children.Add(Small("Edit", () => EditProfile(profile.Id), "Edit"));
-        buttons.Children.Add(Small("Remove", () => RemoveCharacterProfileAsync(profile).Forget(), "Remove"));
+        var edit = Small("Edit", () => EditProfile(profile.Id), "Edit");
+        edit.IsEnabled = !joined;
+        if (joined) edit.ToolTip = "Only the person who shares it changes it.";
+        buttons.Children.Add(edit);
+        buttons.Children.Add(joined ? Small("Leave", () => LeaveSharedCharacterAsync(profile).Forget(), "Leave")
+            : Small("Remove", () => RemoveCharacterProfileAsync(profile).Forget(), "Remove"));
         var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(buttons, Dock.Right);
         row.Children.Add(buttons);
@@ -281,6 +291,8 @@ public partial class MainWindow
         }
         // A new profile that Martlet is now (the first that matches) takes on this PC's place, eyes and touch choice.
         RememberProfileHere();
+        // A shared character is shared as it is now.
+        FollowHouseholdSharingAsync().Forget();
         editingProfile = null;
         ActionText.Text = id == Guid.Empty ? $"Saved the profile '{name}'. Use it to switch to it in one step." : $"Saved '{name}'.";
         if (!closing) RenderHome();
@@ -296,8 +308,9 @@ public partial class MainWindow
         if (await ChangeCompanionAsync(companion => companion.CharacterList.Any(c => c.Id == profile.Id) ? companion.RemoveCharacter(profile.Id) : companion,
                 "Your character profiles changed.") is null)
             return;
-        // What it kept on this PC goes with it.
+        // What it kept on this PC goes with it, and it is no longer shared with the household.
         CharacterProfileLocalStore.Save(store?.DataDirectory, ProfilesHere());
+        await StopSharingRemovedAsync(profile.Id);
         if (editingProfile == profile.Id) editingProfile = null;
         ActionText.Text = $"Removed the profile '{profile.Name}'.";
         if (!closing) RenderHome();
@@ -409,6 +422,8 @@ public partial class MainWindow
             {
                 UpdateCharacterButton();
                 RenderHome();
+                // A character shared together remembers in its own memory space.
+                FollowCharacterSpace();
             }
         }
     }
@@ -493,6 +508,7 @@ public partial class MainWindow
         if (!CharacterProfileLocalStore.Save(store.DataDirectory, next) || kept is null) return;
         var profile = homeSettings.Companion.CharacterList.FirstOrDefault(c => c.Id == id);
         ErrorLog.Info($"Following the character profile switched to last ({profile?.Key}); on this PC: {ProfileHereLog(kept)}.");
+        FollowCharacterSpace();
         // A new look from another computer restarts a showing character (AfterSettingsAppliedAsync): it opens at the place.
         ApplyProfileHereAsync(kept, opensSoon: characterChanged && avatar.IsShowing, lifetime.Token).Forget();
     }

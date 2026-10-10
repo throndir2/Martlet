@@ -315,6 +315,54 @@ internal static class MemoryRehearsal
                     $"the old document: {dRefused}; E took {eTook} facts from the old document; A took E's fact into Sam's space: {aTook}");
             });
 
+            await Run("Sharing a fact: D (Alex) gives a fact to Sam's space through the give route without reading it; the host takes it once, D is still refused the space, and A's next sync of Sam's space takes it from the host", async () =>
+            {
+                var fact = await alexPc.SaveAsync("Sam's birthday is on the third of May.", typed: true, space: alexAccount.SpaceId);
+                var now = DateTimeOffset.UtcNow;
+                var provenance = MemoryProvenance.UserReviewedImport(Guid.NewGuid(), now);
+                var copy = fact with { Id = Guid.NewGuid(), Revision = 1, CreatedAtUtc = now, UpdatedAtUtc = now, CreatedFrom = provenance, LastModifiedBy = provenance };
+                var gift = SharedMemories.Empty.With(new SharedMemory
+                {
+                    Id = copy.Id, Revision = 1, UpdatedAt = now, UpdatedBy = alexPc.DeviceId, Fact = SharedMemories.Canonical(MemoryFactJson.Write(copy))
+                });
+                var taken = await alexPc.GiveAsync(h1, samSpace, gift, token);
+                var again = await alexPc.GiveAsync(h1, samSpace, gift, token);
+                var refused = await Denied(() => alexPc.ReadSpaceAsync(h1, samSpace, token));
+                await a.SyncSpaceAsync(hosts, samSpace, oldDocument: true, token);
+                var aHas = (await a.FactsAsync(samSpace)).Any(f => f.Id == copy.Id && f.Content == fact.Content);
+                var onH2 = (await a.ReadSpaceAsync(h2, samSpace, token)).Find(copy.Id) is { Forgotten: false };
+                return (taken == 1 && again == 0 && refused && aHas && onH2,
+                    $"lab-memory-1 took {taken}, then {again} for the same gift; D still refused Sam's space: {refused}; A has the fact in Sam's " +
+                    $"space after its sync: {aHas}; lab-memory-2 has it too: {onH2}");
+            });
+
+            await Run("Sharing a character: its memory space follows Sam's household sharing entry (sharing.<account>): shared together, D (Alex) remembers in it and Sam's A reads it; private again (it keeps its own memories), D is refused and A still syncs it", async () =>
+            {
+                var companion = CompanionSettings.Create();
+                companion = companion.AddCharacter("Aria", companion.ActivePersonaId, null, null, out var aria);
+                var space = MemorySpaceId.Character(aria.Id);
+                var together = Martlet.Core.Sharing.HouseholdSharing.Empty(samAccount.Id)
+                    .WithMode(aria.Id, Martlet.Core.Sharing.CharacterShareMode.Together, companion, Martlet.Core.Lorebooks.LorebookLibrary.Create());
+                var revision = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                async Task PublishAsync(Martlet.Core.Sharing.HouseholdSharing sharing)
+                {
+                    var document = SharedSettings.Empty.Put(Martlet.Core.Sharing.HouseholdSharing.Key(samAccount.Id), sharing.Write(), null, a.DeviceId,
+                        DateTimeOffset.UtcNow, ++revision);
+                    foreach (var host in hosts) await a.MergeSettingsAsync(host, document, token);
+                }
+                await PublishAsync(together);
+                var note = (await alexPc.SaveAsync("Aria likes the old telescope.", typed: true, space: space)).Id;
+                await alexPc.SyncSpaceAsync(hosts, space, oldDocument: false, token);
+                var shared = (await a.ReadSpaceAsync(h1, space, token)).Find(note) is { Forgotten: false };
+                var privateAgain = together.WithMode(aria.Id, null, companion, Martlet.Core.Lorebooks.LorebookLibrary.Create());
+                await PublishAsync(privateAgain);
+                var refused = await Denied(() => alexPc.ReadSpaceAsync(h1, space, token)) && await Denied(() => alexPc.ReadSpaceAsync(h2, space, token));
+                await a.SyncSpaceAsync(hosts, space, oldDocument: false, token);
+                var samKeeps = (await a.FactsAsync(space)).Any(f => f.Id == note);
+                return (shared && refused && samKeeps && privateAgain.RemembersOnItsOwn(aria.Id),
+                    $"shared together: D's fact reached the hosts and A reads it: {shared}; private again: D refused on both hosts: {refused}; " +
+                    $"A still syncs the space and keeps D's fact: {samKeeps}");
+            });
             await Run("Desktops keep no fact in Martlet's data folder (only IDs, revisions and digests); only paired devices may read the hosts' copy", async () =>
             {
                 var leaks = new[] { a, b, c, alexPc, olderPc }.Where(x => x.DataFolderContains("Miso") || x.DataFolderContains("Nest")).Select(x => x.DeviceId).ToArray();
@@ -425,6 +473,17 @@ internal static class MemoryRehearsal
             return await connection.ReadMemorySpaceDigestAsync(space, token);
         }
 
+        internal async Task<int> GiveAsync(LabHost host, string space, SharedMemories memories, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.GiveMemoriesAsync(space, memories, token);
+        }
+
+        internal async Task<SharedSettings> MergeSettingsAsync(LabHost host, SharedSettings settings, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            return await connection.MergeSettingsAsync(settings, token);
+        }
         internal async Task<SharedMemories> MergeSpaceAsync(LabHost host, string space, SharedMemories memories, CancellationToken token)
         {
             using var connection = Connect(host);

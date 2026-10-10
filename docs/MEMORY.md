@@ -707,8 +707,9 @@ is about.
 - **The spaces of an account** (`MemorySpaces.Resolve`): the **active space**,
   where remembering writes, is the account's own `account-<id>` (or the active
   character's own `character-<id>`, when that character remembers on its own or
-  together with others). Recall also reads `household` and the character spaces
-  that other people share with the account. An account's own space is never
+  together with others). Recall also reads `household`. (Character spaces that
+  other people share are a seam, `MemoryAccount.Shared`; sharing leaves it empty,
+  so only a character shared together reads its own space.) An account's own space is never
   shared, because the same rule guards the account's personality and prompts on
   hosts. This device may change the active space, the household and its own
   character spaces. Facts that other people share are read-only here.
@@ -728,7 +729,8 @@ is about.
   memory block in the request is the same as before: no space label, so the
   start of each request doesn't change. Each store has its own lock, so a sync of
   the household never holds up recall.
-- **Remembering and the reply's tools**: a new fact goes to the active space. An
+- **Remembering and the reply's tools**: a new fact goes to the active space (a
+  fact about you goes to `household` while *Share new memories about me* is on). An
   update or a forget acts in the fact's own space when this device may change
   it; remembering skips a fact it may not change, and `manage_memories` (or a
   `memory_*` check-in tool) says that only its owner can change it. A
@@ -741,8 +743,8 @@ is about.
   (*3 in Household*). *Add fact* saves in the active space; changes and
   deletions act in each fact's own space; facts shared with you can't be
   changed. *Delete everything* deletes the active space's facts only (*The
-  household's memories stay*). Moving and sharing facts between spaces is not
-  in this version.
+  household's memories stay*). *Share selected with* copies or moves facts
+  between spaces ([Sharing memories](#sharing-memories)).
 - **The sync, by space** (`MainWindow.MemorySync.cs`): every space the account
   reads syncs on its own, with its own `MemorySyncNode` and state, through the
   host's space routes. The owner's space also syncs with the old single
@@ -769,6 +771,47 @@ shared between accounts, refusals of another account's space and of the old
 document, and a desktop on an older Martlet. Recall and remembering over spaces
 are covered by `MemorySpaceServiceTests`. Real computers signed in as
 different people are **NOT RUN**.
+
+### Sharing memories
+
+People in one home can share memories with each other ([accounts](ACCOUNTS.md#sharing)).
+Nothing here runs during a reply.
+
+- **The household's memories** (`household`) are read by every character of
+  every person. Put a fact there to make it known to the whole household.
+- **Share selected with** (Memory window, shown with accounts): select facts,
+  choose *The household's memories*, another person (*Alex's memories*) or a
+  character shared together, then **Copy** or **Move**. A copy has the same
+  words, the same person it is about and the same keeping. A space this PC
+  keeps (the household, the character in use) gets new facts here, and the
+  memory sync takes them to your other computers. Another person's memories go
+  through your paired hosts: the host's give route
+  (`POST /martlet/v1/memories/spaces/{space}/give`) only adds new facts and
+  never shows that person's facts. That person's computers take them on their
+  next sync. Without a paired host, Martlet says so and shares nothing.
+  **Move** deletes the facts here only after the copy is made; facts shared
+  with you can only be copied. `MemoryShareStatus` says what happened, with
+  counts and the kind of place only.
+- **Share new memories about me with the household** (Memory window): when it
+  is on, a new fact Martlet picks out of a conversation about you (a voice
+  People links to your account) is saved in the household's memories instead
+  of yours, so every character remembers it. Facts you type, and changes to
+  existing facts, stay where they are. It is your choice on all your computers
+  (the household entry `sharing.<account>`, `new_facts_about_me`).
+- **A character shared together** remembers in its own space, `character-<id>`,
+  for everyone who talks to it. Each fact keeps whom it is about, so it knows
+  whose each fact is. Your other characters don't read that space. When its
+  owner makes it private again, it keeps the space and what it remembers. The
+  hosts then let only the owner's devices use it.
+
+Checked locally: `MemorySharingTests` (where a new fact about you goes, the
+copies given to another space) and `memory_sync_selftest`. The selftest covers
+a fact given to another account's space through the give route on two real
+gateways, and a character space that follows the household sharing entry.
+The Memory window's sharing was checked through `-Desktop` on a disposable
+data folder (copy to the household; a move to another person without a host is
+refused and keeps the fact). A gift between two real computers and a
+conversation that remembers a fact about you are **NOT RUN**.
 
 ## Local validation
 

@@ -728,7 +728,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "missing); the profile switched to last; which profile matches what Martlet uses now (the active persona, the look " +
             "in avatar.json and the voice the speaking route keeps or the shared list chose); and what each profile keeps on this " +
             "PC (character-profiles-local.json: its place, size, monitor and lock, its usual gaze and whether replies may change " +
-            "it, and which touches stop it while it talks) with the profile whose choices this PC uses. Never returns names. " +
+            "it, and which touches stop it while it talks) with the profile whose choices this PC uses; and how the account in use shares " +
+            "each profile with the household (sharing: private, copy, together, or joined for someone else's character shared together; " +
+            "null without accounts). Never returns names. " +
             "Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -998,6 +1000,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("household_sharing", "Read what each account of a household shares (docs/ACCOUNTS.md \"Sharing\") from a desktop's data " +
+            "directory: its copy of the household settings (shared-settings.json, the sharing.<account> entries) and the account in use " +
+            "(accounts\\session.json). Per account: its ID (32 hex), how many characters it shares as a copy and together, each shared " +
+            "character's key (first 8 hex digits), mode, memory space when shared together, lorebook and entry counts and whether it sets " +
+            "a look and a voice, the characters shared together it talks to (and whether their owner still shares them), whether new " +
+            "facts about this person go to the household space, the entry's size, writer and time; plus how many household characters " +
+            "the account in use sees and entries that can't be read. Never a name, a personality's text or a lorebook entry. Read-only; " +
+            "contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
@@ -1007,7 +1020,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "memory spaces (a fact in one account's space stays apart from other spaces and the old document, and survives a host restart), " +
             "accounts with the hosts' account directory (the owner's memories from before accounts move into the owner's space and sync with " +
             "both its space and the old document; the household space is shared; a device of another account is refused the owner's space " +
-            "and the old document; a desktop on an older Martlet keeps using the old document) and " +
+            "and the old document; a desktop on an older Martlet keeps using the old document), sharing (another account gives a fact to " +
+            "the owner's space through the give route without reading it, and a character's space follows the owner's household sharing " +
+            "entry: open to the household while shared together, the owner's only once private again) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
         Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
             "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +
@@ -2388,6 +2403,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
+                "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
@@ -3643,6 +3659,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var current = companion?.CurrentCharacter(modelNow, voiceNow);
         var profiles = companion?.CharacterList ?? [];
         var (hereState, hereInUse, here) = ProfilesHere(directory);
+        var sharing = HouseholdSharingStatus.Own(directory);
         return new
         {
             state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
@@ -3669,7 +3686,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 },
                 voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
                 inUse = p.Id == current?.Id,
-                here = here.GetValueOrDefault(p.Id)
+                here = here.GetValueOrDefault(p.Id),
+                // How the account in use shares it with the household (household_sharing); null without accounts.
+                sharing = HouseholdSharingStatus.ModeOf(sharing, p.Id)
             }).ToArray()
         };
     }

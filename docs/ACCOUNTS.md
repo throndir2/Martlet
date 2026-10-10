@@ -146,15 +146,20 @@ MCP: `pc_scope` and the desktop's `DeviceRoleWhere` ([MCP](MCP.md)).
 
 - A fact keeps `voice_id`: whom the fact is about. The space tells who
   remembers the fact.
-- Recall reads the active character's space, `household` and any space shared
-  with the account. It loads them at sign-in or switch, so recall stays as fast
-  as now.
+- Recall reads the active character's space and `household`. It loads them at
+  sign-in or switch, so recall stays as fast as now. A character shared
+  together keeps its memories in its own `character-<id>` space, and only that
+  character reads it: your other characters don't, so each character stays its
+  own individual (`MemoryAccount.Shared` stays empty).
 - Every host keeps every space. A device downloads only the spaces it may read.
-- Hosts decide from the account directory: `account-<id>` only for a device
-  where that account is signed in, `household` for every member device, and
-  `character-<id>` for a device where someone of the household is signed in
-  (sharing narrows it). Friends never. An account's own space is never shared,
-  because the same rule guards that account's settings on hosts.
+- Hosts decide from the account directory and the household's sharing entries:
+  `account-<id>` only for a device where that account is signed in,
+  `household` for every member device, and `character-<id>` for a device where
+  someone of the household is signed in while the character is shared together
+  (or not named by any sharing entry), but only for its owner's devices once it
+  is private again. Giving facts (`GatewayMemorySpaceUse.Give`) is for every
+  member device. Friends never. An account's own space is never shared, because
+  the same rule guards that account's settings on hosts.
 - Desktops: see [Memory spaces on the desktop](MEMORY.md#memory-spaces-on-the-desktop).
 
 ### Sharing
@@ -165,7 +170,49 @@ MCP: `pc_scope` and the desktop's `DeviceRoleWhere` ([MCP](MCP.md)).
 | Share a copy | Household members can **Use a copy**: personality, look, voice, emotes and lorebooks are copied to their account, with its own memories |
 | Share together | Household members talk to the same character. It uses a `character-<id>` space and remembers everyone |
 | Share a fact | The Memory window moves or copies a fact to `household` or to another account's space |
-| Share new memories about me | New facts about this person also go to `household` |
+| Share new memories about me | New facts about this person go to `household`, which every character reads |
+
+Built by W10 ([user guide](wiki/Personality-and-Characters.md#sharing-a-character-with-your-household),
+[memories](MEMORY.md#sharing-memories)). Code: `src\Martlet.Core\Sharing\`
+(`HouseholdSharing`, `SharedCharacters`), `src\Martlet.Desktop\MainWindow.Sharing.cs`,
+`MemoryWindow.Sharing.cs`, `MemorySharing.cs`, the host rule in
+`src\Martlet.Gateway\GatewayMemorySpaceAccess.cs` and the give route in
+`GatewayMemorySpaces.cs`.
+
+- **What an account shares** is its household entry `sharing.<account>`
+  ([shared contracts](#shared-contracts)). It is the only place another person
+  can read a shared character, because each account's settings are its own.
+  The account's devices write it from Companion › Profiles and refresh the
+  snapshot every 30 seconds and after each profile change, never during a
+  reply and never during a switch (only while `accounts\working-copy.json`
+  names the account signed in).
+- **Use a copy** runs on the receiving person's device: a new personality,
+  character profile and lorebooks with new IDs (names made unique) in that
+  person's own settings, then Martlet switches to it. The copy is a snapshot.
+- **Talk to it** adds a *mirror* with the **same** profile, personality and
+  lorebook IDs as the owner's, records it in the person's own entry
+  (`joined`) and switches to it. After every check, the mirror follows the
+  owner's changes. When the owner no longer shares it together, it leaves the
+  person's characters. Only its owner edits it; the others can *Leave*.
+- **Memory**: a character shared together, or one that was (`own_spaces`), and
+  every mirror remember in `character-<id>` (`MemoryAccount.Character`). A
+  character that becomes private again keeps that space, so it forgets
+  nothing; hosts then let only its owner's devices use it.
+- **Share a fact** copies the selected facts with the same words, person and
+  keeping. The household's space (and the character space in use) is kept on
+  this PC, so the copy is saved there and the memory sync takes it to the
+  hosts. Another person's space is given through the hosts' give route, and
+  the giving device never reads it. *Move* deletes the facts here only after
+  the copy.
+- **Share new memories about me** is `new_facts_about_me` in the household
+  entry, so it works on every PC, also before the account reaches the
+  directory. It is copied to the directory entry's `sharing.memories_about_me`
+  when the account is there. Remembering then saves a new fact whose voice
+  People links to the account (`LocalVoices.Yours`) in `household`
+  (`DesktopMemoryService.NewFactSpace`), after the reply.
+- Accounts are kept apart, not secret: a host doesn't check which device writes
+  `sharing.<account>`. A later change can bind the writer to the account with
+  an account attestation.
 
 ### Voices
 
@@ -246,6 +293,8 @@ All workstreams use these forms. Change them here first.
 | E-mail hint | Lowercase hex SHA-256 of the UTF-8 text `"martlet-email-hint-v1\n<network ID>\n<trimmed, lowercase e-mail>"` (`Account.EmailHintFor`). The directory keeps only hints, never an e-mail address |
 | Directory routes | `GET /martlet/v1/accounts`, `GET /martlet/v1/accounts/digest`, `POST /martlet/v1/accounts` (merge and return). Paired member devices only; friends are refused |
 | Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working. Answers name the `space`. A host keeps at most 64 spaces (`memories.spaces_full`). An access hook on the host (`GatewayMemorySpaces.Access`) may refuse a device (`memories.space_denied`); a POST needs read and write access. `Martlet.Core.Sync.MemorySpaceId` makes and checks space IDs. Client: `ReadMemorySpaceAsync`, `ReadMemorySpaceDigestAsync`, `MergeMemorySpaceAsync`. The hook's rules (`GatewayMemorySpaceRules`): `account-<id>` only for a device bound to that account in the directory, `household` for every member device, `character-<id>` for a device with an account signed in; the old document for the owner's devices and devices with no account |
+| Memory give route | `POST /martlet/v1/memories/spaces/{space}/give`: 1-64 facts and no forgotten ones. The hook is asked with `GatewayMemorySpaceUse.Give`, which every member device gets. The host adds only fact IDs new to the space and answers `host_id`, `space` and `taken`, never the space. Client: `GiveMemoriesAsync`. *Share a fact* uses it for another account's space |
+| Household sharing entry | `sharing.<account 32 hex>` in the household shared settings (`Martlet.Core.Sharing.HouseholdSharing`). Only that account's devices write it, members too. Snake-case JSON, schema 1, at most 256 KiB: `account_id`, `characters` (at most 32: `id`, `mode` `copy` or `together`, `name`, `persona` `{id, name, text, breaks}`, `model_id`, `voice_id`, `lorebooks` that are on only for that persona), `joined` (`{account_id, character_id}` of characters shared together that this account talks to), `own_spaces` (this account's characters that remember in their own `character-<id>` space: each one shared together, kept after sharing stops) and `new_facts_about_me` (*Share new memories about me*). A reader ignores an entry whose key and `account_id` differ. A private character isn't listed. `SettingScopes.IsAccountKey` is false for it: a household key |
 | Desktop memory folders | `Martlet.Core.Sync.MemorySpaceFolders`: an account's own space in its memory setting's folder (default `<account folder>\memory`, a custom folder stays custom), every other space in `<data>\memory-spaces\<space>`, each space's sync state in `<data>\memory-sync\<space>\memory-sync.json`. Desktop: `MemoryAccount` (account, folders, owner, active character's space, character spaces shared with the account) given to `DesktopMemoryService.UseAccount` at sign-in or switch |
 | Creation routes | `GET /martlet/v1/creations/accounts/{32 hex}`, `GET .../digest`, `POST ...` (merge and return), `GET` and `POST .../chunks/{sha256}`. The documents are today's `CreationLibrary` and pieces; answers name the `account`. A host keeps one list per account (`creations-account-<32 hex>.json` on Linux) and one pool of pieces for every list, and deletes a piece only when no list's live creation uses it; at most 64 account lists (`creations.accounts_full`). Paired member devices only, and only those that `GatewayMemorySpaces.Access` lets use `account-<32 hex>` (read; a POST read and write), else `creations.account_denied`. The old `/martlet/v1/creations` stays for older desktops; the owner's desktop joins it with the owner's list both ways (`CreationOwnerBridge`). Desktop: the account folder holds `creations.json`, `creations\`, `creations-incoming\` and `creations-sync.json`; `<data>\accounts\creations-moved.json` records the one move of the data folder's creations (`CreationAccounts.MoveDataFolderCreationsOnceAsync`). Client: `ReadAccountCreationsAsync`, `ReadAccountCreationsDigestAsync`, `MergeAccountCreationsAsync`, `ReadAccountCreationChunkAsync`, `SendAccountCreationChunkAsync`; `HostCreationPeer.ForAccount` |
 | Voice link | Each voice in `voices.json` may carry `link`: `{ "account": <Account ID or absent>, "revision", "updated_by" }`, a last-writer-wins register merged apart from the rest of the voice (an absent `account` with a revision is an unlink). Martlet before links refuses unknown fields, so `GET`/`POST /martlet/v1/voices` serve and return the list without links and merge a copy without links without removing any; `GET`/`POST /martlet/v1/voices/linked` carry them. The legacy `owner` flag stays true while the voice links to the owner account. `Martlet.Core.Speakers.VoiceRoster`: `SetAccount`, `LinkedTo`, `LinkOwnerVoices`, `WithoutLinks`. Client: `ReadVoicesAsync(linked: true)`, `MergeVoicesAsync(..., linked: true)`. The voice list is the only place links live: the account directory's `voices` field is not used for them |
@@ -514,7 +563,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W7 | Desktop account session, owner migration, account picker, *Add a person*, first start, directory sync. **Shipped** ([Desktop account session](#desktop-account-session)) | new `AccountSession.cs`, new `MainWindow.Accounts.cs` | W1, W2 |
 | W8 | Account-scoped settings: split `settings.json` and shared settings into household and account parts; characters per account. **Shipped** ([Account settings](#account-settings)); creations per account are W8b | `AppSettingsSections`, `SharedSettings*`, character profiles | W7 |
 | W9 | Desktop memory spaces: a store per space, recall over spaces, space sync, host access checks. **Shipped** ([MEMORY.md](MEMORY.md#memory-spaces-on-the-desktop)); W10 starts from `MemoryAccount.Character`/`Shared` and the space on each Memory window fact | `DesktopMemoryService`, `MainWindow.MemorySync.cs`, `MemorySyncNode` | W3, W7 |
-| W10 | Sharing: character copy and together, the household space, fact sharing | Characters page, Memory window | W8, W9 |
+| W10 | Sharing: character copy and together, the household space, fact sharing. **Shipped** ([Sharing](#sharing)) | Characters page, Memory window | W8, W9 |
 | W11 | Voice-to-account links on People; Voice ID filter per account | People page, `voices.json` | W7 |
 | W12 | Account security: password and authenticator per account, PIN and Windows Hello lock, sign in as someone else, remember on this PC, merge accounts | Account page | W4, W7 |
 | W13 | Provider logins linked to accounts; new devices join by account sign-in | Sign-in windows | W4, W12 |

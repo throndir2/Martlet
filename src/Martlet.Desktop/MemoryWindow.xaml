@@ -29,6 +29,11 @@
                 <CheckBox x:Name="EnableChoice" Content="Remember facts from conversations"
                           Checked="Configuration_Changed" Unchecked="Configuration_Changed" Margin="0,0,0,12"
                           AutomationProperties.AutomationId="MemoryEnable" />
+                <!-- Shown with accounts: new facts about you go to the household's memories, which every character reads. -->
+                <CheckBox x:Name="ShareAboutMeChoice" Content="Share new memories about me with the household" Visibility="Collapsed"
+                          Checked="ShareAboutMe_Changed" Unchecked="ShareAboutMe_Changed" Margin="0,-6,0,12"
+                          AutomationProperties.AutomationId="MemoryShareAboutMe"
+                          ToolTip="New facts Martlet learns about you go to the household's memories. Every character in the household remembers them." />
 
                 <Border Style="{DynamicResource CardStyle}" Padding="18">
                     <Grid>
@@ -81,6 +86,21 @@
                                 <Button x:Name="DeleteAllButton" Content="Delete _everything" Click="DeleteAll_Click"
                                         Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="MemoryDeleteAll" />
                             </WrapPanel>
+                            <!-- Shown with accounts: copy or move the selected facts to the household or to another person. -->
+                            <StackPanel x:Name="SharePanel" Margin="0,4,0,0" Visibility="Collapsed">
+                                <Label Target="{Binding ElementName=ShareTarget}" Content="S_hare selected with" Padding="0,0,0,3" />
+                                <WrapPanel>
+                                    <ComboBox x:Name="ShareTarget" MinHeight="30" MinWidth="220" Margin="0,0,8,6"
+                                              AutomationProperties.AutomationId="MemoryShareTarget" AutomationProperties.Name="Where to share the selected facts" />
+                                    <Button x:Name="ShareCopyButton" Content="Cop_y" Click="ShareCopy_Click" Padding="10,6" Margin="0,0,8,6"
+                                            AutomationProperties.AutomationId="MemoryShareCopy" />
+                                    <Button x:Name="ShareMoveButton" Content="_Move" Click="ShareMove_Click" Padding="10,6" Margin="0,0,8,6"
+                                            AutomationProperties.AutomationId="MemoryShareMove" />
+                                </WrapPanel>
+                                <!-- No accessible name: a text block's name is its text, which MCP reads (counts and fixed text only). -->
+                                <TextBlock x:Name="ShareStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                                           AutomationProperties.AutomationId="MemoryShareStatus" />
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- Write a new fact, or change the one selected. -->

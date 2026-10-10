@@ -887,6 +887,7 @@ public partial class MemoryWindow : ThemedWindow
         ExportButton.IsEnabled = enabled && !busy && exportPreview is not null &&
             AcceptExport.IsChecked == true && !string.IsNullOrWhiteSpace(ExportDestination.Text);
         RenderResolvedDirectory();
+        RenderShare();
         if (busy && !closed && !busyCheck.IsEnabled)
             busyCheck.Start();
     }
