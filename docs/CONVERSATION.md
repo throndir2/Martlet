@@ -1449,7 +1449,7 @@ own character and runs its own conversation.
 
 | Check-in | Every | Asks, with these facts | Martlet then |
 | --- | --- | --- | --- |
-| Lingering emotes (`emotes`) | 5 min | Do the emotes a reply turned on still fit? The emotes with their hints and how long each has shown, the end of the conversation, how long it has been quiet, the day and time. | Turns off each emote the answer names (`OFF {blush}`), as `{/blush}` does. `KEEP` changes nothing. |
+| Lingering emotes (`emotes`) | 1 min | Do the emotes a reply turned on still fit? The emotes with their hints and how long each has shown, the end of the conversation, how long it has been quiet, the day and time. | Turns off each emote the answer names (`OFF {blush}`), as `{/blush}` does. `KEEP` changes nothing. |
 | Where the character looks (`gaze`) | 5 min | Does the gaze a reply chose still fit? What the eyes do now and usually, how long ago the reply chose it, the end of the conversation. | `USUAL` takes the eyes back to their usual gaze, as `{look usual}` does. `KEEP` changes nothing. |
 | Promises (`promises`) | 5 min | Did the character say it would do something it never started? The end of the conversation, the reminders set and this conversation's background work. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |

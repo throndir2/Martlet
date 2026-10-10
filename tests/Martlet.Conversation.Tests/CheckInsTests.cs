@@ -42,6 +42,7 @@ public sealed partial class CheckInsTests
             CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Actions], defaults.Select(c => c.Id));
         // The check-ins that wait for a signal are off until the owner turns them on.
         Assert.Equal([true, true, true, true, true, true, false, false, false, false, true, true], defaults.Select(c => c.On));
+        Assert.Equal(1, defaults.Single(c => c.Id == CheckIns.Emotes).EveryMinutes);
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
         Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
             defaults.Single(c => c.Id == CheckIns.Repeats) is var repeats ? (repeats.EveryMinutes, repeats.Outcome, repeats.PromptId) : default);
@@ -92,7 +93,8 @@ public sealed partial class CheckInsTests
         var state = State();
         Assert.Null(CheckIns.Wait(Built(CheckIns.Emotes), state, null));
         Assert.Equal("it's off", CheckIns.Wait(Built(CheckIns.Emotes) with { On = false }, state, null));
-        Assert.Equal("next in 3 min", CheckIns.Wait(Built(CheckIns.Emotes), state, new(Now.AddMinutes(-2), 4, "every emote still fits", false)));
+        Assert.Equal("next in 30 s", CheckIns.Wait(Built(CheckIns.Emotes), state, new(Now.AddSeconds(-30), 4, "every emote still fits", false)));
+        Assert.Null(CheckIns.Wait(Built(CheckIns.Emotes), state, new(Now.AddMinutes(-2), 4, "every emote still fits", false)));
         Assert.Equal("the character isn't showing", CheckIns.Wait(Built(CheckIns.Emotes), state with { CharacterShows = false }, null));
         Assert.Equal("no emote a reply turned on is showing", CheckIns.Wait(Built(CheckIns.Emotes), state with { Emotes = [] }, null));
         Assert.Contains("3 min", CheckIns.Wait(Built(CheckIns.Emotes), state with { Emotes = [state.Emotes[2]] }, null));
@@ -133,7 +135,8 @@ public sealed partial class CheckInsTests
 
         // After an answer that kept everything, with nothing new said, the emotes and the gaze wait three times their pace.
         var kept = new CheckInRun(Now.AddMinutes(-6), 4, "every emote still fits", false) { Kept = true };
-        Assert.Equal("next in 9 min", CheckIns.Wait(Built(CheckIns.Emotes), state, kept));
+        Assert.Equal("next in 9 min", CheckIns.Wait(Built(CheckIns.Emotes) with { EveryMinutes = 5 }, state, kept));
+        Assert.Equal(TimeSpan.FromMinutes(3), CheckIns.Pace(Built(CheckIns.Emotes), kept, 4));
         Assert.Equal(TimeSpan.FromMinutes(15), CheckIns.Pace(Built(CheckIns.Gaze), kept, 4));
         Assert.Null(CheckIns.Wait(Built(CheckIns.Emotes), state with { Exchanged = 5 }, kept));
         Assert.Null(CheckIns.Wait(Built(CheckIns.Emotes), state, kept with { Kept = false }));
