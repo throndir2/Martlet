@@ -222,8 +222,8 @@ internal sealed class AccountSession
     {
         var clean = Account.CleanText(name, Account.MaximumNameLength);
         if (!Account.IsName(clean)) throw new ArgumentException($"Type a name of 1 to {Account.MaximumNameLength} letters.");
-        if (SignedIn.Any(a => string.Equals(a.Name, clean, StringComparison.CurrentCultureIgnoreCase)))
-            throw new ArgumentException($"{clean} already uses this PC. Choose another name.");
+        if (SignedIn.FirstOrDefault(a => string.Equals(a.Name, clean, StringComparison.CurrentCultureIgnoreCase)) is { } same)
+            throw new ArgumentException($"{same.Name} already uses this PC. Choose another name.");
         if (state.SignedIn.Count >= AccountSessionState.MaximumAccounts) throw new ArgumentException("This PC has as many people as it can keep.");
         var id = Guid.NewGuid();
         var next = state.Add(id, new() { Id = id, Name = clean!, Role = AccountRoles.Member, CreatedAt = now.ToUniversalTime() });
@@ -232,6 +232,31 @@ internal sealed class AccountSession
         ErrorLog.Info($"Accounts: added account {Short(id)} (member) on this Windows login, with no password.");
         Changed?.Invoke();
         return id;
+    }
+
+    /// <summary>Signs an account in on this device after a Prove sign-in (W12, W13: a password, a provider or Allow on another
+    /// device): <paramref name="attestation"/> is the host's statement (<see cref="AccountAttestation"/>) that the account proved
+    /// itself on this device. It must be valid now for <paramref name="roster"/> and name this device. The account joins the
+    /// picker (it doesn't unlock with this Windows login) and the directory sync writes its device binding with the attestation.
+    /// The caller switches to it with <see cref="SwitchToAsync"/>. Throws <see cref="ArgumentException"/> when the statement
+    /// can't be used here.</summary>
+    internal void SignIn(AccountAttestation attestation, NetworkRoster roster, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(attestation);
+        ArgumentNullException.ThrowIfNull(roster);
+        if (attestation.Check(roster, now) is var check and not AccountAttestationCheck.Valid)
+            throw new ArgumentException($"The host's sign-in statement can't be used ({check}). Sign in again.");
+        if (attestation.DeviceId != DeviceId) throw new ArgumentException("The host's sign-in statement is for another device. Sign in again.");
+        if (!state.SignedIn.Contains(attestation.AccountId) && state.SignedIn.Count >= AccountSessionState.MaximumAccounts)
+            throw new ArgumentException("This PC has as many people as it can keep.");
+        var next = state.Add(new AccountProof
+        {
+            Id = attestation.AccountId, Login = attestation.Login, Attestation = attestation.ToText(), SignedInAt = now.ToUniversalTime()
+        });
+        next.Save(HouseholdFolder);
+        state = next;
+        ErrorLog.Info($"Accounts: account {Short(attestation.AccountId)} signed in on this PC with a {attestation.Login.Kind} login.");
+        Changed?.Invoke();
     }
 
     /// <summary>Takes the directory the sync merged and wrote: saves accounts.json and the session without the pending accounts
@@ -290,18 +315,21 @@ internal sealed class AccountSession
 
     /// <summary>
     /// Writes this device's accounts into <paramref name="directory"/> after it was merged with the hosts' copies: each signed-in
-    /// account the directory lacks is written from its pending name and role, and each one gets this Windows login and this
-    /// device's binding when it lacks them (a write elsewhere at the same time can drop them). A household has one owner: a
-    /// pending owner is written as a member when the directory has another owner. Entries are signed by <paramref name="signer"/>.
-    /// Returns the directory and the accounts written.
+    /// account the directory lacks is written from its pending name and role, and each one gets this device's binding when it
+    /// lacks it (a write elsewhere at the same time can drop it): with this Windows login (added to its logins too), or with the
+    /// login and attestation of its Prove sign-in. A household has one owner: a pending owner is written as a member when the
+    /// directory has another owner. Entries are signed by <paramref name="signer"/>. Returns the directory and the accounts
+    /// written.
     /// </summary>
     internal static (AccountDirectory Directory, IReadOnlyList<Guid> Written) Reconcile(AccountDirectory directory, AccountSessionState state,
         NetworkRoster roster, INetworkSigner signer, string deviceId, DateTimeOffset now)
     {
-        var login = AccountLoginKey.ForWindows(deviceId, state.WindowsSid);
+        var windows = AccountLoginKey.ForWindows(deviceId, state.WindowsSid);
         var written = new List<Guid>();
         foreach (var id in state.SignedIn)
         {
+            var proof = state.ProofFor(id);
+            var login = proof?.Login ?? windows;
             var entry = directory.Find(id);
             if (entry is { Removed: true }) continue;
             if (entry is null)
@@ -310,15 +338,17 @@ internal sealed class AccountSession
                 var role = pending.Role == AccountRoles.Owner && directory.Live.Any(a => a.Role == AccountRoles.Owner && a.Id != id)
                     ? AccountRoles.Member : pending.Role;
                 entry = (id == OwnerAccount.IdFor(roster.NetworkId) ? OwnerAccount.Create(roster, pending.Name) with { Role = role }
-                    : Account.Create(pending.Name, role, id)).WithLogin(AccountLogin.For(login, null, pending.CreatedAt));
+                    : Account.Create(pending.Name, role, id)).WithLogin(AccountLogin.For(windows, null, pending.CreatedAt));
             }
-            else if (entry.Login(login) is not null && entry.Device(deviceId)?.Login == login)
+            else if ((proof is not null || entry.Login(windows) is not null) && entry.Device(deviceId) is { } bound &&
+                bound.Login == login && bound.Attestation == proof?.Attestation)
             {
                 if (state.PendingFor(id) is not null) written.Add(id);
                 continue;
             }
-            else if (entry.Login(login) is null) entry = entry.WithLogin(AccountLogin.For(login, null, now));
-            if (entry.Device(deviceId)?.Login != login) entry = entry.WithDevice(AccountDevice.For(deviceId, login, now));
+            else if (proof is null && entry.Login(windows) is null) entry = entry.WithLogin(AccountLogin.For(windows, null, now));
+            if (entry.Device(deviceId) is not { } device || device.Login != login || device.Attestation != proof?.Attestation)
+                entry = entry.WithDevice(AccountDevice.For(deviceId, login, proof?.SignedInAt ?? now, proof?.Attestation));
             directory = directory.Put(signer, entry, now);
             written.Add(id);
         }

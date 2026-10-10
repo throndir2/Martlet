@@ -14,11 +14,22 @@ public sealed record PendingAccount
     public required DateTimeOffset CreatedAt { get; init; }
 }
 
+/// <summary>An account signed in on this device with a Prove sign-in (docs/ACCOUNTS.md, "Logins"), not with this Windows login:
+/// the login it proved, the host's attestation text (<see cref="AccountAttestation.ToText"/>) and when.</summary>
+public sealed record AccountProof
+{
+    public required Guid Id { get; init; }
+    public required AccountLoginKey Login { get; init; }
+    public required string Attestation { get; init; }
+    public required DateTimeOffset SignedInAt { get; init; }
+}
+
 /// <summary>
 /// Which accounts are signed in on this device and which one is in use now: accounts\session.json in the data folder (device
-/// scope, never synced). <see cref="WindowsSid"/> is the Windows login the accounts are bound to; every account in
-/// <see cref="SignedIn"/> unlocks with it, most recently used first. <see cref="Pending"/> holds the accounts the household
-/// directory doesn't have yet. IDs, names and roles only: never a password or key. JSON, snake case, schema 1.
+/// scope, never synced). <see cref="WindowsSid"/> is the Windows login the accounts are bound to: every account in
+/// <see cref="SignedIn"/> (most recently used first) unlocks with it, except the ones in <see cref="Proofs"/>, which signed in
+/// with a Prove sign-in. <see cref="Pending"/> holds the accounts the household directory doesn't have yet. IDs, names, roles,
+/// logins and attestations only: never a password or key. JSON, snake case, schema 1.
 /// </summary>
 public sealed record AccountSessionState
 {
@@ -44,6 +55,7 @@ public sealed record AccountSessionState
     public required Guid Current { get; init; }
     public required IReadOnlyList<Guid> SignedIn { get; init; }
     public IReadOnlyList<PendingAccount> Pending { get; init; } = [];
+    public IReadOnlyList<AccountProof> Proofs { get; init; } = [];
 
     /// <summary>accounts\session.json in <paramref name="dataDirectory"/>.</summary>
     public static string PathFor(string dataDirectory) => Path.Combine(dataDirectory, Folder, FileName);
@@ -56,6 +68,17 @@ public sealed record AccountSessionState
     };
 
     public PendingAccount? PendingFor(Guid id) => Pending.FirstOrDefault(p => p.Id == id);
+
+    /// <summary>How <paramref name="id"/> signed in here with a Prove sign-in, or null when this Windows login unlocks it.</summary>
+    public AccountProof? ProofFor(Guid id) => Proofs.FirstOrDefault(p => p.Id == id);
+
+    /// <summary>This session with <paramref name="proof"/>'s account signed in (after the current one) by its Prove sign-in.</summary>
+    public AccountSessionState Add(AccountProof proof) => this with
+    {
+        SignedIn = [.. SignedIn.Where(id => id != proof.Id), proof.Id],
+        Pending = Pending.Where(p => p.Id != proof.Id).ToArray(),
+        Proofs = [.. Proofs.Where(p => p.Id != proof.Id), proof]
+    };
 
     /// <summary>This session with <paramref name="account"/> in use, first in <see cref="SignedIn"/>.</summary>
     public AccountSessionState Use(Guid account) => this with { Current = account, SignedIn = [account, .. SignedIn.Where(id => id != account)] };
@@ -84,6 +107,10 @@ public sealed record AccountSessionState
         ContractRules.Require(Pending is { Count: <= MaximumAccounts } && Pending.All(p => p is not null && SignedIn.Contains(p.Id) &&
             Account.IsName(p.Name) && AccountRoles.IsRole(p.Role) && p.CreatedAt.Offset == TimeSpan.Zero) &&
             Pending.Select(p => p.Id).Distinct().Count() == Pending.Count, "The account session's pending accounts are invalid.");
+        ContractRules.Require(Proofs is { Count: <= MaximumAccounts } && Proofs.All(p => p is not null && SignedIn.Contains(p.Id) &&
+            p.Login is not null && AccountLoginKinds.IsKind(p.Login.Kind) && p.Attestation is { Length: > 0 and <= AccountAttestation.MaximumTextLength } &&
+            p.SignedInAt.Offset == TimeSpan.Zero && Pending.All(q => q.Id != p.Id)) && Proofs.Select(p => p.Id).Distinct().Count() == Proofs.Count,
+            "The account session's sign-ins are invalid.");
     }
 
     public byte[] Write()

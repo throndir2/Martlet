@@ -125,6 +125,41 @@ public sealed class AccountSessionTests : IDisposable
     }
 
     [Fact]
+    public void AProveSignInJoinsThePickerAndIsWrittenWithItsAttestationNotThisWindowsLogin()
+    {
+        using var ec = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        using var certificate = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=Martlet local gateway", ec,
+            System.Security.Cryptography.HashAlgorithmName.SHA256).CreateSelfSigned(Now.AddDays(-1), Now.AddDays(90));
+        var pin = "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(ec.ExportSubjectPublicKeyInfo()));
+        using var key = NetworkKey.Create(Device);
+        var roster = NetworkRoster.Found(key, "DESK", Now).AddHost(key, "home-host", "Home host", "https://192.168.1.20:9443", pin, Now);
+        var robin = Account.Create("Robin", AccountRoles.Admin);
+        var password = AccountLoginKey.ForPassword("robin");
+        var household = AccountDirectory.Empty.Put(key, robin.WithLogin(AccountLogin.For(password, "robin", Now)), Now);
+        var session = Open();
+        var elsewhere = AccountAttestation.Issue(roster.NetworkId, "home-host", robin.Id, "desktop-other-zz9999", password, Now,
+            AccountAttestation.DefaultLifetime, certificate);
+        Assert.Throws<ArgumentException>(() => session.SignIn(elsewhere, roster, Now));
+        var proof = AccountAttestation.Issue(roster.NetworkId, "home-host", robin.Id, Device, password, Now, AccountAttestation.DefaultLifetime, certificate);
+        Assert.Throws<ArgumentException>(() => session.SignIn(proof, roster, proof.ExpiresAt.AddMinutes(1)));
+
+        session.SignIn(proof, roster, Now);
+        var (directory, written) = AccountSession.Reconcile(household, session.State, roster, key, Device, Now);
+
+        Assert.Contains(robin.Id, session.SignedIn.Select(a => a.Id));
+        Assert.Contains(robin.Id, written);
+        var entry = directory.Find(robin.Id)!;
+        Assert.Equal(password, entry.Device(Device)!.Login);
+        Assert.Equal(proof.ToText(), entry.Device(Device)!.Attestation);
+        Assert.Null(entry.Login(AccountLoginKey.ForWindows(Device, Sid)));
+        Assert.Equal(robin.Id, Open(name: null).State.ProofFor(robin.Id)!.Id);
+        session.Follow(directory, written);
+        var (again, none) = AccountSession.Reconcile(directory, session.State, roster, key, Device, Now.AddMinutes(1));
+        Assert.Empty(none);
+        Assert.Equal(directory.Digest(), again.Digest());
+    }
+
+    [Fact]
     public void ReconcileWritesPendingAccountsWithThisLoginAndHostsAcceptThem()
     {
         using var key = NetworkKey.Create(Device);
