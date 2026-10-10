@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.66.1] - 2026-10-10
+
 ### Fixed
 
 - Martlet's microphone error texts (in diagnostics and the log) no longer say listening won't start again by itself, and no longer call a microphone that Windows reset after a format change "lost". ([#739](https://github.com/throndir2/Martlet/pull/739))
