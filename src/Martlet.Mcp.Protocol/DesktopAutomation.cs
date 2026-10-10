@@ -169,6 +169,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Make one of my computers (SignInAccess-<key>), Remove (SignInRemove-<key>) and Make invite change or reveal things,
         // so they need --allow-ui-effects.
         "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose",
+        // Accounts (docs/ACCOUNTS.md): Account opens the Account page and Close closes it; the Unlock window's Choose another
+        // account only closes it for the account picker; the Prove window's Close closes it. Everything else on them (Save
+        // password, Link or Unlink this Windows login, Ask for my password, Set PIN, Windows Hello, Encrypt, Remember, Lock now,
+        // Sign out, Merge, Unlock, Use Windows Hello, Sign in) changes or proves something, so it needs --allow-ui-effects.
+        "AccountOpen", "AccountClose", "UnlockOther", "ProveClose",
         // Devices › Friends' Check now only reads each of your hosts' sign-in settings (never a secret) and keeps the non-secret
         // summary in friends.json; Share and Stop sharing (FriendShare-<host>-<key>, FriendStop-<host>-<key>) change who may use
         // a host, so they need --allow-ui-effects. Hosts shared with this PC's Check now (SharedHostsCheck, and each row's
@@ -279,6 +284,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // friend's; never a password, secret or recovery code).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
         "SignInEnrolledList", "SignInRefusedList", "SignInRemovedList", "SignInOutsideWarning",
+        // Accounts (docs/ACCOUNTS.md): the Account page's account name and role, the kinds of its logins ("this Windows login, a
+        // Martlet password."), its lock state on this PC, the ways it unlocks here (PIN, password, Windows Hello), on how many
+        // hosts its password is set and whether with an authenticator, this Windows login's link, Windows Hello and encryption
+        // states and the page's status line; the Unlock window's account name and status; the Prove window's status. Names,
+        // counts and fixed wording: never a password, PIN, authenticator key or code, recovery code, user name, SID or e-mail
+        // (AccountPasswordUser, AccountAuthenticatorSecret and AccountRecoveryCodes are not listed).
+        "AccountName", "AccountLogins", "AccountLockState", "AccountUnlockMethods", "AccountPasswordState", "AccountWindowsState",
+        "AccountHelloState", "AccountEncryptState", "AccountStatus", "UnlockAccountName", "UnlockStatus", "ProveStatus", "ProveTitle",
         // Devices › Friends: how many hosts are shared with how many friends and who asked ("You share 1 host with 1 friend. ...
         // Checked 14:02."), and Hosts shared with this PC: how many hosts friends share with this PC. Counts and fixed wording.
         "FriendsStatus", "SharedHostsStatus",
