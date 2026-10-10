@@ -20,6 +20,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Companion › Thinking pool is now just a list of your machines: each graphics card, model on this PC or cloud provider has its own **On** box and model choice, so you can use one GPU of a computer and not the other, and with nothing on, the pool is off. **Add a machine** at the end of the list adds another computer, a model in Ollama on this PC or a cloud provider. ([#722](https://github.com/throndir2/Martlet/pull/722))
 - Martlet's log now follows each Thinking request step by step: where it went, when each step happened, what it waits for while it waits, and how it ended, so a slow or stuck reply is easier to understand on the Diagnostics page. ([#720](https://github.com/throndir2/Martlet/pull/720))
 - The talk window's listening, watching and Stop buttons are now small icons; hover over one to see what it does. ([#715](https://github.com/throndir2/Martlet/pull/715))
 - The Lingering emotes check-in now runs every minute by default instead of every 5 minutes, so emotes that no longer fit turn off sooner. ([#714](https://github.com/throndir2/Martlet/pull/714))

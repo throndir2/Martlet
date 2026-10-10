@@ -53,7 +53,8 @@ public sealed record ThinkingPoolHostResult(ThinkingPoolSettings Pool, ThinkingP
 /// <item>A member on its host's Ollama moves to the host's Thinking pool role once the host offers it; a member on a role
 /// follows the role's slot count; a member on an extra card leaves when the host no longer runs a model there.</item>
 /// </list>
-/// A computer the owner took out (<see cref="ThinkingPoolSettings.LeftByOwner"/>), one Devices › Sharing work says the Thinking
+/// A computer the owner took out (<see cref="ThinkingPoolSettings.LeftByOwner"/>), a graphics card the owner turned off
+/// (<see cref="ThinkingPoolSettings.OffMembers"/>; the computer's other cards still join), one Devices › Sharing work says the Thinking
 /// pool never uses or keeps for other companion PCs, and any computer while the pool is full never joins. A host PC has no
 /// Thinking pool. Endpoints (a cloud provider, Ollama on this PC) are added by the owner only.</summary>
 public static class ThinkingPoolAutoJoin
@@ -121,6 +122,9 @@ public static class ThinkingPoolAutoJoin
         var at = now ?? DateTimeOffset.Now;
         var roles = Roles(host);
         var mine = pool.Members.Where(m => m.Place == DeepThinkingPlace.Host && m.HostId == id).ToArray();
+        // The cards the owner turned off stay off: they never join or move by themselves.
+        var off = pool.OffMembers.Where(m => m.Place == DeepThinkingPlace.Host && m.HostId == id).ToArray();
+        bool Off(ThinkingPoolOffer offer) => pool.IsOff(DeepThinkingSettings.KeyOf(id, SelfHostSetup.DeepThinkingCard(offer.RouteId) ?? 1));
         if (mine.Length == 0)
         {
             if (pool.Left(id)) return Same($"You took {id} out of the Thinking pool. Tick it to add it again.");
@@ -128,10 +132,12 @@ public static class ThinkingPoolAutoJoin
                 return Same($"Devices › Sharing work says the Thinking pool never uses {id}.");
             if (sharing is not null && device is not null && !sharing.Allows(id, device))
                 return Same($"{id} is kept for {string.Join(" and ", sharing.OnlyFor(id))} (Devices › Sharing work).");
-            if (Route(host, conversationThinkingHost) is null)
+            if (Route(host, conversationThinkingHost) is not { } first)
                 return Same(roles.Count == 0 && host.HostId == conversationThinkingHost && host.Offers.Any(o => o.RouteId == SelfHostSetup.OllamaRouteId)
                     ? $"{id}'s Ollama does this PC's conversation Thinking. Add the Thinking pool role there to join the pool beside it."
                     : $"{id} has no Thinking model. Add the Thinking pool role there to join the pool.");
+            if (off.Length > 0 && (roles.Count > 0 ? roles.All(Off) : Off(first)))
+                return Same($"You turned {id} off in the Thinking pool. Tick On there to use it again.");
         }
         // A member stays when its computer offers no Thinking pool role now (offline, or the role removed): nothing to follow.
         if (mine.Length > 0 && roles.Count == 0) return Same($"{id} is in the pool already.", mine[0]);
@@ -150,7 +156,7 @@ public static class ThinkingPoolAutoJoin
             next = next.Add(member);
             changes.Add((change, member));
         }
-        foreach (var offer in roles.Count > 0 ? roles : [Route(host, conversationThinkingHost)!])
+        foreach (var offer in (roles.Count > 0 ? roles : [Route(host, conversationThinkingHost)!]).Where(o => !Off(o)))
         {
             var card = SelfHostSetup.DeepThinkingCard(offer.RouteId) ?? 1;
             var existing = next.Members.FirstOrDefault(m => m.Key == DeepThinkingSettings.KeyOf(id, card));
@@ -165,8 +171,8 @@ public static class ThinkingPoolAutoJoin
                     $"{(card > 1 ? $"'s graphics card {card}" : "")} doesn't join.");
             else Apply(ThinkingPoolHostChange.Joined, Member(host, offer, at));
         }
-        // A Thinking pool model on an extra card that the host no longer runs leaves (card 1 stays, as above).
-        foreach (var gone in mine.Where(m => m.OnHostRole && m.Card > 1 && roles.All(r => r.RouteId != m.HostRouteId)))
+        // A Thinking pool model on an extra card that the host no longer runs leaves (card 1 stays, as above), also one turned off.
+        foreach (var gone in mine.Concat(roles.Count > 0 ? off : []).Where(m => m.OnHostRole && m.Card > 1 && roles.All(r => r.RouteId != m.HostRouteId)))
         {
             next = next.Remove(gone.Key);
             changes.Add((ThinkingPoolHostChange.CardRemoved, gone));

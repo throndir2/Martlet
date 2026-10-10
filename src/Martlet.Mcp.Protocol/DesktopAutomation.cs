@@ -646,7 +646,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // saves it, so it needs --allow-ui-effects).
         "RepliesAdultContent",
         // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
-        // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
+        // longer's state (on by default; its own ThinkLongerOn box turns it off) or what keeps it from working, and the chosen
         // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need
         // --allow-ui-effects); what Ollama on this PC has downloaded, whether the model typed for it fits beside Thinking's on the
         // graphics card, and what an endpoint's key field will do (never a key or
@@ -659,10 +659,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare",
         "DeepThinkingKeyStatus", "LiveTasks", "LiveJobs", "LiveSong",
-        // Companion › Thinking pool › Add a machine: the rule that computers with a Thinking model join by themselves, and which
-        // computers you keep out (computer names only).
+        // Companion › Thinking pool › Add a machine › Another of your computers (Fold-ThinkingPoolAddComputer; the other forms are
+        // Fold-ThinkingPoolAddLocal and Fold-ThinkingPoolAddCloud): the rule that computers with a Thinking model join by
+        // themselves, and which computers you keep out (computer names only).
         "DeepThinkingAutoJoin",
-        // Companion › Thinking pool › Machines: the member count and usable slots, the conversation's own row (it is never in the
+        // Companion › Thinking pool › Machines: how many machines are on with their usable slots and how many are off, or that
+        // the pool is off because no machine is on ("The Thinking pool is off: no machine is on. ..."), the conversation's own
+        // row (it is never in the
         // pool), the guidance ("1 slot: long thinking can delay screen and sound summaries; add a second slot for the full
         // experience."), the likely-slowdown warnings (a member beside the conversation's Thinking model or the voice), the live
         // floor's line (which members start no new pool work while you talk with Martlet because they share the conversation's
@@ -991,27 +994,37 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the Thinking pool model and slots on diva (now gemma4:e4b)"; clicking it reads the role's settings there and opens its
         // dialog, so it needs --allow-ui-effects). Thinking's, Listening's and Lip-sync's computers have the same button for the
         // role they run ("SetupChangeHost-thinking-diva" reads "Change model: conversation model on diva (now gemma4-e4b)").
-        // Each paired computer's In the pool box ("DeepThinkingPool-diva" reads "diva in the Thinking pool" and whether it is
-        // ticked: a computer with a Thinking model joins by itself; unticking takes it out and keeps it out, ticking adds it
-        // again; both save thinking-pool.json, so they need --allow-ui-effects). Its line (DeepThinkingHost-diva) says why a
-        // computer that isn't a member is out. Each machine in the pool has its line ("ThinkingPoolMember-0" reads "diva's
-        // Thinking pool (qwen3-8b): Reads text; writes text. 2 slots, set on diva."; a paired computer's role sets its slots
-        // there, so it has Change model instead of a slot choice), its badges ("ThinkingPoolBadges-0" reads "...: Waits while
-        // you talk · Costs money · Offline", only those that apply), its slot choice (ThinkingPoolSlots-0, not for a paired
-        // computer's role) and its Remove button (ThinkingPoolRemove-0, not for a paired computer). Its Quick jobs, Long jobs and
+        // Each paired computer that isn't a member has its In the pool box ("DeepThinkingPool-diva" reads "diva in the Thinking
+        // pool" and whether it is ticked: a computer with a Thinking model joins by itself; ticking adds one kept out again; it
+        // saves thinking-pool.json, so it needs --allow-ui-effects). Its line (DeepThinkingHost-diva) says why a computer that
+        // isn't a member is out. The list is the pool: each machine (one per graphics card of a paired computer) has its On box
+        // ("ThinkingPoolOn-0" reads "diva's Thinking pool (qwen3-8b): On" and whether it is ticked; unticking keeps the machine
+        // and its settings but gives it no jobs, and a paired computer's card then never joins again by itself; with no machine
+        // on, the pool is off), its line ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): Reads text; writes
+        // text. 2 slots, set on diva."; a machine that is off starts "Off: it takes no jobs ..."), its model
+        // ("ThinkingPoolModel-0": a paired computer's card lists the models its Thinking pool role offers, and choosing one sets
+        // it up there in a run window; Ollama on this PC lists its models; another endpoint has a text box), its badges
+        // ("ThinkingPoolBadges-0" reads "...: Waits while you talk · Costs money · Offline", only those that apply), its slot
+        // choice (ThinkingPoolSlots-0; on a paired computer's card it sets the role's slots there in a run window) and, for an
+        // endpoint, its Remove button (ThinkingPoolRemove-0). Its Quick jobs, Long jobs and
         // Backup for slow replies boxes ("ThinkingPoolQuick-0", "ThinkingPoolLong-0", "ThinkingPoolAnswers-0" read "diva's Thinking
         // pool (qwen3-8b): Quick jobs" and whether each is ticked). An external member (an endpoint not on this PC) also has
         // May receive pictures and recordings ("ThinkingPoolMedia-0", off by default; this PC and paired computers have no such
-        // box because they always may). The slot choice, Remove and every box save thinking-pool.json,
-        // so they need --allow-ui-effects.
+        // box because they always may). The On box, model, slot choice, Remove and every box save thinking-pool.json or change
+        // the computer's role, so they need --allow-ui-effects. A graphics card of a computer in the list without a Thinking pool
+        // model yet has its line ("DeepThinkingCard-diva-gpu2" reads "diva, graphics card 2: No Thinking pool model on this card
+        // yet. ...") and its Add a model button ("DeepThinkingAddCard-diva-gpu2"; it installs the role, so it needs
+        // --allow-ui-effects).
         // Each paired computer's shared-card warning, when the Thinking pool role there shares one graphics card with its Thinking
         // model ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
         "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
+        "DeepThinkingCard-", "DeepThinkingAddCard-",
         // Companion › Vision › Image model › One of your computers: each paired computer's line ("ImageModelHost-diva" reads "Its
         // Thinking pool role runs qwen2.5vl:7b: it sees pictures.") and its Use for pictures button's name ("ImageModelUseHost-diva"
         // reads "Use diva for pictures"; clicking it checks diva and saves sense-models.json, so it needs --allow-ui-effects).
         "ImageModelHost-", "ImageModelUseHost-",
         "ThinkingPoolMember-", "ThinkingPoolBadges-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-", "ThinkingPoolQuick-", "ThinkingPoolLong-", "ThinkingPoolMedia-",
+        "ThinkingPoolOn-", "ThinkingPoolModel-",
         // Companion › Thinking pool: each machine's Smarts choice ("ThinkingPoolSmarts-0" reads "Guessed: Smart", "Fast",
         // "Standard" or "Smart"), the Runs on card's choice for each kind of job ("ThinkingPoolRunsOn-check-in" reads "Prefer
         // smart") with its machine boxes for These members ("ThinkingPoolRunsOnMember-check-in-0" reads "Check-ins: runs on
