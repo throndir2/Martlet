@@ -108,8 +108,10 @@ public static class CaptureErrors
             ErrorCode.AudioAccessDenied => "Windows denied microphone access. Review microphone privacy settings before retrying.",
             ErrorCode.AudioDeviceBusy => "The selected microphone is busy. Release the competing client before retrying.",
             ErrorCode.AudioDeviceUnavailable => "The selected microphone is unavailable. Select an available input.",
-            ErrorCode.AudioDeviceLost => "The microphone was lost. Select an input and press again; capture will not restart itself.",
-            ErrorCode.AudioDeviceChanged => "The input or its format changed. Review the selection and press again.",
+            ErrorCode.AudioDeviceLost => "The microphone stopped: Windows removed, disabled or reset it (for example after a format change). " +
+                "This recording was discarded; the next one opens the microphone again.",
+            ErrorCode.AudioDeviceChanged => "The microphone in use or its format changed. This recording was discarded; " +
+                "the next one uses the current microphone.",
             ErrorCode.AudioFormatUnsupported => "The input format is unsupported. Select a supported PCM16 or float32 input.",
             ErrorCode.StreamTruncated => "Input samples were lost or incomplete. The utterance was discarded.",
             ErrorCode.PayloadTooLarge => "The input packet exceeded its bounded capacity. The utterance was discarded.",
