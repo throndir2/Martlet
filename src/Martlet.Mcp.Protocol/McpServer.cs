@@ -1028,7 +1028,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("pictures_status", "Read Companion › Pictures for a data directory: where Martlet draws (pictures.json: off, " +
             "Martlet's Pictures host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
-            "model; whether an own key is saved, never the key), the loaded custom workflow's node count, the picture creations " +
+            "model; whether an own key is saved, never the key), the Pictures list (pool: pools-local.json's members with their keys, " +
+            "settings and agreement, or the list the desktop would make from pictures.json; tries: the places a picture tries now, in " +
+            "order), the loaded custom workflow's node count, the picture creations " +
             "(shape, size, engine, model, seconds, fixture, assets, whether they're on this PC; never titles or descriptions) and the " +
             "draw_picture tool and job kind the conversation offers. Read-only.", new
         {
@@ -1040,9 +1042,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "custom with workflowFile, an absolute path to an Export (API) file), queue, history, the picture fetched). Returns " +
             "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
             "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
-            "does; with saveDirectory (absolute) it writes the picture there. Never calls a paid cloud provider.", new
+            "does; with saveDirectory (absolute) it writes the picture there. Place \"pool\" instead rehearses the Pictures list's " +
+            "routing (PicturePool and WorkQueue) on simulated ComfyUI computers (FIXTURE): busy, absent or unsuitable computers " +
+            "passed over, all busy waiting in the shortest queue, two pictures on two computers and the first list made from " +
+            "pictures.json; it returns ok and each step. Never calls a paid cloud provider.", new
         {
-            place = new { type = "string", @enum = new[] { "fixture", "comfyui" } },
+            place = new { type = "string", @enum = new[] { "fixture", "comfyui", "pool" } },
             address = new { type = "string", maxLength = 512 },
             workflow = new { type = "string", @enum = new[] { "z-image-turbo", "checkpoint", "custom" } },
             checkpoint = new { type = "string", maxLength = 255 },

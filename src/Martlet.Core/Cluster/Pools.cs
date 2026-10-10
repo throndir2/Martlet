@@ -217,9 +217,13 @@ public static class PoolAreas
         Id = ClusterJobs.LipSync, Title = "Lip-sync", Page = "Companion › Lip-sync", HostRole = "audio2face", Kinds = Local,
         Required = true, Fallback = "Voice loudness on this PC"
     };
+    /// <summary>Pictures: Martlet's pictures role on this PC's host service or a paired computer (one ComfyUI per computer, so
+    /// no card members), a ComfyUI the owner runs at an address, or a cloud provider ("openrouter", "nvidia-build"). Each PC
+    /// keeps its own list. Member settings: workflow, checkpoint and file (a custom workflow in the data directory).</summary>
     public static readonly PoolArea Pictures = new()
     {
-        Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures", Kinds = AllKinds, Shared = false
+        Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures",
+        Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
     };
     public static readonly PoolArea Singing = new()
     {

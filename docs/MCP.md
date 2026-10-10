@@ -836,6 +836,10 @@ lines (where, size, seconds; never the description).
 
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
+its Pictures list as `pool` (`pools-local.json`: `configured`, `off`, each
+member's `key`, `kind`, `name`, `settings`, `consented`, `ownKeySaved` and the
+`place` it reads as; without a list yet, the list the desktop would make from
+`pictures.json`) and `tries` (the places a picture tries now, in order),
 the loaded workflow's node count, the picture creations (shape, size, engine,
 model, seconds, fixture; never titles or descriptions), the tool and job kind,
 and `afterReply` (the Songs, pictures and creations check-in tool set, as
@@ -845,13 +849,21 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 `z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
-back, with `saveDirectory` it writes the file. It never calls OpenRouter or NVIDIA
+back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
+Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
+or unsuitable computer is passed over, every one busy waits in the shortest
+queue, two pictures go to two computers, one computer gets no extra request, and
+the first list is made from `pictures.json`. It returns `ok` and each step. It
+never calls OpenRouter or NVIDIA
 Build (a picture costs money). Desktop automation: Companion › Pictures' main
 choice is an option picker, `Picker-Pictures-<place>` (`Off`, `Host`,
 `ComfyUi`, `OpenRouter`, `NvidiaBuild`), whose rows only show that place's
 details (its facts, such as `PickerFact-Pictures-cost`, and its fields and
 button); they, the `PicturesHost-<host>` pills, `PicturesCheck` and
-`PicturesComfyConnect` are passive clicks; `PicturesNow`, `PicturesTestState`,
+`PicturesComfyConnect` are passive clicks; `PicturesNow` (where it draws and,
+with more than one place in the Pictures list, the places that draw when the first
+is busy), `PicturesTestState`,
 `PicturesHostState`, `PicturesSetUp`,
 `PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
 `PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,

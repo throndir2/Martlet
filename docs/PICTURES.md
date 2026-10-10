@@ -8,7 +8,8 @@ full size), keeps it in **Creations** on all your Martlet computers, and shows i
 ## Where it draws
 
 Companion › Pictures › *Where it draws* is this PC's own choice (`pictures.json` in the data folder; never shared, since
-which machine is free to draw depends on the computer you talk to). The pictures themselves are shared.
+which machine is free to draw depends on the computer you talk to). Martlet makes the Pictures list from it
+([More than one picture computer](#more-than-one-picture-computer)). The pictures themselves are shared.
 
 The page has the standard order: **Now** (where Martlet draws, with **Check** and **Draw a test picture**), then *Where
 it draws* as an option picker: **Off** (Martlet doesn't draw pictures; pictures it drew stay in Creations) and the
@@ -47,6 +48,39 @@ With your own ComfyUI, choose what it runs:
 Martlet checks the workflow's model files are there before it queues, follows the prompt through ComfyUI's queue, and
 fetches the saved picture. Cancelling the job (the talk window's Cancel) takes it off ComfyUI's queue or interrupts it.
 
+### More than one picture computer
+
+Pictures use a list of places, in order (the Pictures pool: `pictures` in `pools-local.json`, this PC's own and never
+shared; see [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A place is Martlet's Pictures role on this
+PC's host service or on one of your paired computers, a ComfyUI you run at an address, or OpenRouter or NVIDIA Build. Each
+place keeps its own settings: the workflow, the checkpoint and a custom workflow file for ComfyUI, the model for a cloud
+provider. An empty list means pictures are off.
+
+The first time it needs the list, Martlet makes it from the choice in Companion › Pictures. The chosen place goes first.
+For Martlet's Pictures role, the other computers that run the role follow, with the same workflow: this PC's own host
+service first, then the others (fewest jobs first). A host a friend shares and a computer kept for another companion PC
+(Devices › Sharing work) are left out. A cloud provider you chose before keeps your agreement to pay. Until the Pictures
+page edits the list directly, choosing a place there makes the list again in the same way, and *Now* names the places that
+draw when the first is busy.
+
+Each picture tries the places in order and draws on the first that is free:
+
+- A ComfyUI whose queue already holds a picture (another companion PC's or this PC's) is busy, and so is a cloud provider
+  that answers busy. The picture goes to the next place at once.
+- A place that doesn't answer, isn't ready, lacks the workflow's model files or checkpoint, rejects the workflow (a custom
+  node it doesn't have) or refuses its key is passed over too.
+- When every place that can draw is busy, the picture waits in the shortest ComfyUI queue among them. Martlet asks each
+  place once; it doesn't ask again and again.
+- A content filter's refusal is not passed on to another place.
+- Two pictures at once from this PC go to two places when two are free.
+- With one place, it draws there exactly as before, with no extra request.
+
+Pictures go through Martlet's queue for shared work (lane `pictures`, each place by its key, such as `host:m3-host`), so the
+desktop log says when a picture went elsewhere (`Sharing work: pictures went to host:m3-host (1 busy).`, `Pictures: drawn
+on m3-host's Pictures role, place 2 in the Pictures list ...`). The computer that draws holds its place against background
+thinks while it draws, and each computer frees its own graphics card three minutes after its last picture. The places'
+order is kept as it is: a computer whose model is still loaded is not moved first.
+
 ## In conversation
 
 While pictures are set up and Thinking can call tools, every reply offers one more tool, `draw_picture` (always the same
@@ -76,7 +110,8 @@ costs money). After a picture on Martlet's Pictures role, the desktop frees that
 after the last picture, so the voice, listening and a local Thinking model get it back.
 
 `MARTLET_PICTURES_FIXTURE=1` before Martlet starts makes it draw with the FIXTURE - NOT AI gradient maker (automated
-checks). MCP: `pictures_status` and `pictures_check` ([MCP](MCP.md#pictures)).
+checks). MCP: `pictures_status` (with the Pictures list and the places a picture tries now) and `pictures_check` (with
+`place` `pool`, a rehearsal of the list's routing on simulated ComfyUI computers) ([MCP](MCP.md#pictures)).
 
 ## Use
 
@@ -104,3 +139,8 @@ Verified on 2026-10-06 on Windows with no usable NVIDIA GPU in that session:
 - The Pictures role's Docker image build and Z-Image Turbo on a GPU, because Docker wasn't running.
 - OpenRouter and NVIDIA Build with real keys, because each picture costs money.
 - A real Thinking model choosing to draw.
+
+The Pictures list (2026-10-09) is checked locally: `PicturePoolTests`, `PicturePoolMembersTests` and
+`PicturePoolDesktopTests`, MCP `pictures_check` with `place` `pool` (simulated ComfyUI computers, FIXTURE) and
+`pictures_status`, and Companion › Pictures' *Now* through `-Desktop`. Pictures drawn on real computers through the list
+are **NOT RUN**: this PC had no computer with the Pictures role.
