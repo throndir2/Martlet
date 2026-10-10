@@ -204,7 +204,7 @@ public sealed class LiveConversationTests
             Assert.False(Control<Button>(window, "SendButton").IsEnabled);
             Assert.Equal(Visibility.Collapsed, Control<Button>(window, "PttButton").Visibility);
             Assert.Equal(Visibility.Visible, Control<Button>(window, "MicChip").Visibility);
-            Assert.Equal("Can't listen", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Can't listen", window.MicLabel);
             Assert.Contains("Review Listening", (string)Control<Button>(window, "MicChip").ToolTip, StringComparison.Ordinal);
             Assert.Empty(window.Messages);
             Click(window, "SendButton"); // An empty message box sends nothing, even through a routed click.
@@ -233,7 +233,7 @@ public sealed class LiveConversationTests
             await Loaded(window);
             // Nothing listens until Start listening is pressed.
             Assert.Null(window.Listener);
-            Assert.Equal("Start listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Start listening", window.MicLabel);
             Assert.Equal(0, fixture.Capture.Opens);
             Click(window, "MicChip");
             await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text.Contains("Heard you.", StringComparison.Ordinal)));
@@ -248,16 +248,16 @@ public sealed class LiveConversationTests
             // Listening ran beside the reply and goes on; Esc quiets Martlet but never pauses it: only the mic button does.
             var live = Assert.IsType<LiveListener>(window.Listener);
             Assert.True(live.Running);
-            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", window.MicLabel);
             Escape(window, "InputText");
             await Heartbeat();
             Assert.Same(live, window.Listener);
             Assert.True(live.Running);
-            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", window.MicLabel);
             Click(window, "MicChip");
             await fixture.Advance(() => !live.Running && !fixture.Runner.IsRunning);
             Assert.Null(window.Listener);
-            Assert.Equal("Start listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Start listening", window.MicLabel);
             await Heartbeat();
             Assert.False(fixture.Runner.IsRunning);
             Assert.Equal(1, fixture.Stt.Calls);
@@ -281,7 +281,7 @@ public sealed class LiveConversationTests
             await fixture.Advance(() => fixture.Llm.Calls == 1 && window.Current is { OwnershipReleased: true } &&
                 Text(window, "ResultText").Contains("Couldn't reach the provider", StringComparison.Ordinal));
             // A failed reply never pauses listening.
-            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", window.MicLabel);
             Assert.True(window.Listener is { Running: true });
 
             EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
@@ -291,7 +291,7 @@ public sealed class LiveConversationTests
             Assert.Equal(2, window.Messages.Count(m => m.IsUser));
             // [pass] is never shown or spoken.
             Assert.DoesNotContain(window.Messages, m => m.Role == ChatRole.Martlet);
-            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", window.MicLabel);
             Assert.True(window.Listener is { Running: true });
         }
         finally { window.Close(); }
@@ -2131,12 +2131,12 @@ public sealed class LiveConversationTests
             Assert.False(window.IsWatching);
             Assert.False(window.WatchingStarted);
             Assert.Equal(0, glancer.Captures);
-            Assert.Equal("Start watching", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal("Start watching", window.VisionLabel);
             Assert.Equal(("Not watching", false), window.WatchingStatus);
 
             Click(window, "VisionChip");
             Assert.True(window.IsWatching);
-            Assert.Equal("Stop watching", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal("Stop watching", window.VisionLabel);
             Assert.StartsWith("Watching. ", System.Windows.Automation.AutomationProperties.GetName(Control<Button>(window, "VisionChip")));
             Assert.Equal(("Watching your active window.", false), window.WatchingStatus);
             await fixture.Advance(() => glancer.Captures > 0);
@@ -2144,7 +2144,7 @@ public sealed class LiveConversationTests
             Click(window, "VisionChip");
             Assert.False(window.IsWatching);
             Assert.False(window.WatchingStarted);
-            Assert.Equal("Start watching", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal("Start watching", window.VisionLabel);
             // A capture already under way may still finish; nothing new starts after that.
             await Ticks(fixture);
             var seen = glancer.Captures;
@@ -2205,11 +2205,11 @@ public sealed class LiveConversationTests
             Click(window, "VisionChip");
             Assert.False(window.IsWatching);
             Assert.False(window.WatchingStarted);
-            Assert.Equal("Can't see", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal("Can't see", window.VisionLabel);
             Assert.Equal(("Choose a camera in Companion › Vision.", true), window.WatchingStatus);
             // Choosing a camera clears the problem but doesn't start looking by itself.
             window.UsePreferences(camera with { CameraId = "camera-1", CameraName = "Test camera" }, null);
-            Assert.Equal("Start watching", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal("Start watching", window.VisionLabel);
             Assert.Equal(("Not watching", false), window.WatchingStatus);
             Assert.False(window.IsWatching);
             Assert.Equal(0, glancer.Captures);
