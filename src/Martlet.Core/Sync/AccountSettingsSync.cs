@@ -5,7 +5,9 @@ namespace Martlet.Core.Sync;
 /// <para>Older Martlets keep every setting in the household document. So that they keep working, the owner's account takes the
 /// account entries an older computer writes there (<see cref="SettingScopes.IsAccountKey"/>), and the household document takes
 /// the owner's account entries back. Both are last-writer-wins merges of the same entries, so every copy converges. Other
-/// accounts never read or write those entries.</para></summary>
+/// accounts never read or write those entries.</para>
+/// <para>Like <see cref="SharedSettingsNode"/>, it calls the sections on the caller's context (the desktop's window thread),
+/// so it never leaves it.</para></summary>
 public static class AccountSettingsSync
 {
     /// <summary>The account entries of <paramref name="settings"/>, each as it is (revision, writer and value).</summary>
@@ -23,9 +25,9 @@ public static class AccountSettingsSync
         SharedSettingsResult? accountResult = null;
         if (account is not null)
             accountResult = await account.SyncAsync(owner ? [.. accountCopies, .. householdCopies.Select(AccountPart)] : accountCopies,
-                true, now, token).ConfigureAwait(false);
+                true, now, token);
         var bridged = owner && accountResult is not null ? [.. householdCopies, AccountPart(accountResult.Document)] : householdCopies;
-        var householdResult = await household.SyncAsync(bridged, shared, now, token).ConfigureAwait(false);
+        var householdResult = await household.SyncAsync(bridged, shared, now, token);
         return (householdResult, accountResult);
     }
 
@@ -38,12 +40,12 @@ public static class AccountSettingsSync
         IEnumerable<SharedSettings> copies, string dataDirectory, Guid account, DateTimeOffset now, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(to);
-        if (from is not null) await from.SyncAsync([], false, now, token).ConfigureAwait(false);
+        if (from is not null) await from.SyncAsync([], false, now, token);
         IReadOnlyDictionary<string, string> waiting;
-        try { waiting = await to.AdoptAsync(copies, token).ConfigureAwait(false); }
+        try { waiting = await to.AdoptAsync(copies, token); }
         catch when (from is not null)
         {
-            try { await from.AdoptAsync(CancellationToken.None).ConfigureAwait(false); }
+            try { await from.AdoptAsync(CancellationToken.None); }
             catch (Exception error) when (error is not OperationCanceledException) { }
             throw;
         }

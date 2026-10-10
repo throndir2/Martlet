@@ -327,7 +327,9 @@ public sealed class SharedSettingsNode
             waiting[section.Key] = error is ContractException ? error.Message : $"Couldn't read it here: {error.Message}";
             return (false, null);
         }
-        var value = entry?.Value ?? (local is { IsDefault: true } ? null : section.Default);
+        // Without an entry the files take the default, unless they hold nothing for this setting yet (nothing of another
+        // account's to replace, and a new computer's files are not made just for a default) or hold the default already.
+        var value = entry?.Value ?? (local is null or { IsDefault: true } ? null : section.Default);
         var holds = local is not null && (entry is not null ? entry.Holds(local.Value, local.SecretSha256)
             : string.Equals(local.Value, value, StringComparison.Ordinal) && local.Secret is null);
         if (value is not null && !holds)

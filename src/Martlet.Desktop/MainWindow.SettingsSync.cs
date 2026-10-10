@@ -8,6 +8,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
+using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Credentials.Windows;
@@ -47,7 +48,7 @@ public partial class MainWindow
     private SharedSettingsNode? accountNode;
     private Guid? accountNodeFor;
     /// <summary>Each host's copy of the signed-in account's settings, with its digest.</summary>
-    private readonly Dictionary<string, (Guid Account, string Digest, SharedSettings Copy)> accountCopies = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (Guid Account, string Digest, SharedSettings Copy)> accountSettingsCopies = new(StringComparer.Ordinal);
     private (int Current, int Hosts, int Old) accountHosts;
     private bool settingsBusy;
     private DateTimeOffset? settingsCheckedAt;
@@ -141,7 +142,7 @@ public partial class MainWindow
             waiting = await AccountSettingsSync.SwitchAsync(from, next, copies, directory, account, DateTimeOffset.UtcNow, token);
             accountNode = next;
             accountNodeFor = account;
-            accountCopies.Clear();
+            accountSettingsCopies.Clear();
             lorebooks?.UseDirectory(AccountWorkingCopy.Folder(directory, account));
         }
         finally { settingsBusy = false; }
@@ -232,7 +233,7 @@ public partial class MainWindow
             if (accountResult is not null)
             {
                 var accountDigest = accountResult.Document.Digest();
-                accountHosts = (accountReads.Count(r => r.Ok && accountCopies.GetValueOrDefault(r.HostId).Digest == accountDigest), hosts.Count,
+                accountHosts = (accountReads.Count(r => r.Ok && accountSettingsCopies.GetValueOrDefault(r.HostId).Digest == accountDigest), hosts.Count,
                     accountReads.Count(r => r.Old));
             }
             foreach (var key in result.Recorded.Where(k => !SharedPc.IsRoleKey(k)))
@@ -358,9 +359,9 @@ public partial class MainWindow
             var copy = await ClusterSync.WithConnectionAsync(host.Pairing, async connection =>
             {
                 var digest = await connection.ReadAccountSettingsDigestAsync(account, lifetime.Token);
-                if (accountCopies.TryGetValue(host.HostId, out var known) && known.Account == account && known.Digest == digest) return known.Copy;
+                if (accountSettingsCopies.TryGetValue(host.HostId, out var known) && known.Account == account && known.Digest == digest) return known.Copy;
                 var read = await connection.ReadAccountSettingsAsync(account, lifetime.Token);
-                accountCopies[host.HostId] = (account, read.Digest(), read);
+                accountSettingsCopies[host.HostId] = (account, read.Digest(), read);
                 return read;
             });
             return (host.HostId, host, copy, true, false);
@@ -384,12 +385,12 @@ public partial class MainWindow
         foreach (var read in reads.Where(r => r.Ok))
         {
             if (closing || accountNodeFor != account) return;
-            if (accountCopies.GetValueOrDefault(read.HostId) is var known && known.Account == account && known.Digest == digest) continue;
+            if (accountSettingsCopies.GetValueOrDefault(read.HostId) is var known && known.Account == account && known.Digest == digest) continue;
             try
             {
                 var copy = await ClusterSync.WithConnectionAsync(read.Host.Pairing, connection =>
                     connection.MergeAccountSettingsAsync(account, merged, lifetime.Token));
-                accountCopies[read.HostId] = (account, copy.Digest(), copy);
+                accountSettingsCopies[read.HostId] = (account, copy.Digest(), copy);
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
             catch (Exception error) when (error is OperationCanceledException or ArgumentException || ClusterSync.IsHostFailure(error))

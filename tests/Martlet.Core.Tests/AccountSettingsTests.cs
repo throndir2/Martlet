@@ -274,6 +274,61 @@ public sealed class AccountSettingsTests : IDisposable
         public Task<SharedApply> ApplyAsync(SharedSetting setting, string? secret, CancellationToken token) => throw new OperationCanceledException();
     }
 
+    /// <summary>Stands for the desktop's window thread: work posted to it runs with it as the current context.</summary>
+    private sealed class WindowContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) => ThreadPool.QueueUserWorkItem(_ =>
+        {
+            SetSynchronizationContext(this);
+            d(state);
+        });
+    }
+
+    /// <summary>A section that reads its file truly asynchronously and notes when it is called off the window's context.</summary>
+    private sealed class WindowSection(string key, FileSetting file) : ISharedSection
+    {
+        internal bool OffWindow { get; private set; }
+        public string Key => key;
+        public string Title => key;
+        public string? Default => "\"light\"";
+        public async Task<SharedLocal?> ReadAsync(CancellationToken token)
+        {
+            await Task.Delay(1, token);
+            OffWindow |= SynchronizationContext.Current is not WindowContext;
+            return new(file.Value, null, file.Value == "\"light\"", Start);
+        }
+        public Task<SharedApply> ApplyAsync(SharedSetting setting, string? secret, CancellationToken token)
+        {
+            OffWindow |= SynchronizationContext.Current is not WindowContext;
+            file.Value = setting.Value;
+            return Task.FromResult(SharedApply.Done);
+        }
+    }
+
+    [Fact]
+    public async Task Switching_and_syncing_call_the_sections_on_the_callers_context()
+    {
+        var data = Path.Combine(root, "window");
+        var theme = new FileSetting();
+        var section = new WindowSection("appearance", theme);
+        await Task.Run(async () =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new WindowContext());
+            var household = new SharedSettingsNode(data, "desktop-a", []);
+            var sam = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Sam), "desktop-a", [section]);
+            await AccountSettingsSync.SwitchAsync(null, sam, [], data, Sam, Start, CancellationToken.None);
+            theme.Value = "\"dark\"";
+            await AccountSettingsSync.SyncAsync(household, sam, true, [], [], true, Start.AddMinutes(1), CancellationToken.None);
+            var alex = new SharedSettingsNode(AccountWorkingCopy.Folder(data, Alex), "desktop-a", [section]);
+            await AccountSettingsSync.SwitchAsync(sam, alex, [], data, Alex, Start.AddMinutes(2), CancellationToken.None);
+            await AccountSettingsSync.SwitchAsync(alex, new SharedSettingsNode(AccountWorkingCopy.Folder(data, Sam), "desktop-a", [section]), [], data,
+                Sam, Start.AddMinutes(3), CancellationToken.None);
+        });
+
+        Assert.Equal("\"dark\"", theme.Value);
+        Assert.False(section.OffWindow);
+    }
+
     [Fact]
     public void The_working_copy_marker_names_the_account_whose_settings_the_files_hold()
     {
