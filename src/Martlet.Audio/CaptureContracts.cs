@@ -85,9 +85,10 @@ public sealed record CaptureSourceFormat(int SampleRate, int Channels, int BitsP
     }
 }
 
+// FailureDetail says why the device failed, for the local log only: never a device name or ID, or anything heard.
 public sealed record CaptureSnapshot(CorrelationIds Ids, long Epoch, CaptureState State,
     CaptureEndReason? EndReason, long SourceSamples, long CanonicalSamples, int RetainedPcmBytes,
-    long DroppedEvents, MartletError? Error);
+    long DroppedEvents, MartletError? Error, string? FailureDetail = null);
 
 public sealed record CaptureEvent(long Sequence, TimeSpan Elapsed, CaptureEventKind Kind,
     CaptureSnapshot Snapshot, CaptureSourceFormat? SourceFormat = null, double? Peak = null, double? Rms = null);
@@ -135,12 +136,15 @@ public sealed class CaptureDeviceException : Exception
 {
     public ErrorCode Code { get; }
     public bool ResourcesReleased { get; }
+    /// <summary>What went wrong, for the local log only: never a device name or ID, or anything heard.</summary>
+    public string? Detail { get; }
 
-    public CaptureDeviceException(ErrorCode code, bool resourcesReleased = true)
+    public CaptureDeviceException(ErrorCode code, bool resourcesReleased = true, string? detail = null)
         : base(CaptureErrors.Create(code).Summary)
     {
         Code = code;
         ResourcesReleased = resourcesReleased;
+        Detail = detail;
     }
 }
 

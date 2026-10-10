@@ -8251,6 +8251,16 @@ host voice (for example Chatterbox Nano in this PC's host service), `ui_click` `
 spoken turns; `latency_report`, `logs_tail`, `hearing_check`'s `lastTurn` and
 `conversation_history_status` show what happened.
 
+A real microphone's problems are in the desktop log, never its name or what it
+heard. The *Always listening: the microphone failed* warning gives the error
+and the device's own reason (for example *Windows removed it*, *Windows error
+0x88890004*, the format the microphone gives and the property changes Windows
+reported on it first). *Microphone:* lines name each property Windows changed on
+the microphone in use, once per property per run; such a change alone no longer
+stops listening ([Capture](CAPTURE.md)). Read them with
+`{"name":"logs_tail","arguments":{"contains":"icrophone"}}`. The fixture
+microphone never fails or changes, so only a real one shows these lines.
+
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
 `ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_toggle`,

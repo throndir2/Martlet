@@ -33,6 +33,7 @@ public sealed class CaptureRun
     private CaptureState state = CaptureState.Starting;
     private CaptureEndReason? endReason;
     private MartletError? error;
+    private string? failureDetail;
     private bool preserve, terminal;
     private CaptureSnapshot? terminalSnapshot;
 
@@ -296,6 +297,7 @@ public sealed class CaptureRun
         catch (Exception ex)
         {
             failure = CaptureErrors.Normalize(ex);
+            Explain(ex);
             if (device is null) released = ex is CaptureDeviceException { ResourcesReleased: true };
             End(CaptureEndReason.DeviceFailure, false, failure);
         }
@@ -305,15 +307,25 @@ public sealed class CaptureRun
             if (device is not null)
             {
                 try { device.Stop(); }
-                catch (Exception ex) { failure = CaptureErrors.Normalize(ex); }
+                catch (Exception ex)
+                {
+                    failure = CaptureErrors.Normalize(ex);
+                    Explain(ex);
+                }
                 try { device.Dispose(); }
                 catch (Exception ex)
                 {
                     released = false;
                     failure = CaptureErrors.Normalize(ex);
+                    Explain(ex);
                 }
             }
             nativeRelease.TrySetResult(new(released, failure));
+        }
+
+        void Explain(Exception ex)
+        {
+            if ((ex as CaptureDeviceException)?.Detail is { } detail) Volatile.Write(ref failureDetail, detail);
         }
     }
 
@@ -373,7 +385,7 @@ public sealed class CaptureRun
 
     private CaptureSnapshot GetSnapshot() => new(request.Ids, request.Epoch, state, endReason,
         sourceSamples, canonicalSamples, pcm is null ? utterance?.ByteCount ?? 0 : byteCount,
-        Interlocked.Read(ref droppedEvents), error);
+        Interlocked.Read(ref droppedEvents), error, error is null ? null : Volatile.Read(ref failureDetail));
 
     private void Emit(CaptureEventKind kind, double? peak = null, double? rms = null)
     {

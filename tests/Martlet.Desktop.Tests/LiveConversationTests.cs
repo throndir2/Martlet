@@ -2383,10 +2383,12 @@ public sealed class LiveConversationTests
     public async Task CaptureFailuresNeverUploadAndTypedFallbackRequiresNewAction(ErrorCode code)
     {
         await using var fixture = await LiveFixture.Create();
-        fixture.Capture.ReadFailure = new CaptureDeviceException(code);
+        fixture.Capture.ReadFailure = new CaptureDeviceException(code, detail: "Windows set it to Unplugged");
         var operation = fixture.Start(microphone: true);
         await fixture.Finish(operation);
         Assert.Equal(code, operation.Status.AudioFailure);
+        // Always listening's warning gives the device's own reason from here.
+        Assert.Equal("Windows set it to Unplugged", operation.Capture!.Snapshot.FailureDetail);
         Assert.Equal(0, fixture.Stt.Calls);
         Assert.Equal(0, fixture.Llm.Calls);
         Assert.Equal(0, operation.Capture!.Snapshot.RetainedPcmBytes);

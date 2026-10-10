@@ -1441,16 +1441,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
 
-    // Why always listening lost the microphone, for the log (a user's log is the only place that shows it): the error, whether
-    // the microphone gave any sound first, which microphone and whether echo reduction wrapped it, and the wait before the next
-    // try. Never a device name or anything heard.
+    // Why always listening lost the microphone, for the log (a user's log is the only place that shows it): the error and what
+    // Windows reported (the device's own detail), whether the microphone gave any sound first, which microphone and whether echo
+    // reduction wrapped it, and the wait before the next try. Never a device name or anything heard.
     private void LogMicrophoneFailure(LiveListener listening, LiveConversationOperation utterance, ErrorCode failure, int failures,
         TimeSpan wait)
     {
-        var samples = utterance.Capture?.Snapshot.CanonicalSamples ?? 0;
+        var snapshot = utterance.Capture?.Snapshot;
+        var samples = snapshot?.CanonicalSamples ?? 0;
         var when = samples > 0 ? $"after {samples / 16000.0:0.0} s of sound" : "before any sound";
-        var details = listening.Pc ? failure.ToString()
-            : $"{failure}, " + (utterance.Authorization.Configuration.Audio?.Input.EndpointId is null
+        var why = snapshot?.FailureDetail is { Length: > 0 } detail ? $": {detail}" : "";
+        var details = listening.Pc ? failure + why
+            : $"{failure}{why}, " + (utterance.Authorization.Configuration.Audio?.Input.EndpointId is null
                 ? "Windows' default microphone" : "the microphone chosen in Companion")
             + (listening.Options.ReduceEcho && echoReducer is not null ? ", echo reduction on" : "");
         ErrorLog.Warn($"Always listening: {(listening.Pc ? "hearing this PC's sound" : "the microphone")} failed {when} ({details}); " +

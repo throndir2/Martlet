@@ -210,22 +210,34 @@ or failure, not a reconnection loop.
 
 | Input policy | Device-change behavior |
 | --- | --- |
-| `FixedEndpoint` | Always the requested actual endpoint. Loss/state/profile/property change stops and discards. Unrelated default changes do not silently switch it. Reconnection does not rearm. |
+| `FixedEndpoint` | Always the requested actual endpoint. Loss/state change, or Windows invalidating the stream (for example after a format or profile change), stops and discards. Unrelated default changes do not silently switch it. Reconnection does not rearm. |
 | `FollowDefaultOnNextPress` | Explicitly resolve the Windows console-role capture default once per authorized press. A mid-utterance default change stops/discards with `AudioDeviceChanged`. Only a new press/epoch can bind the new default. No automatic reopen/follow within an utterance. |
 
-Selected property changes are conservatively treated as format/device churn,
-even if the changed property later turns out not to affect PCM. Review selection
-and press again; a false-safe continuing stream is worse than a visible stop.
+A property-change notice alone does not stop capture. Some drivers rewrite
+endpoint properties, even `PKEY_AudioEngine_DeviceFormat`, each time a stream
+starts. Stopping on them made always listening fail about one second into each
+try. When the format or hardware really changes, Windows ends the stream itself
+with `AUDCLNT_E_DEVICE_INVALIDATED` (reported as `AudioDeviceLost`), and the
+engine converts to the client's format until then. Martlet keeps the notices
+for the log: the property keys go into the failure detail, and the desktop log
+notes each new key once per run. Property changes before the input is bound
+also no longer count as "devices changed while it opened".
+
+Each device failure carries a detail for the local log (`CaptureDeviceException.Detail`,
+`CaptureSnapshot.FailureDetail`): the notice or Windows HRESULT, the format
+the microphone gives and the property changes seen first. It never contains a
+device name or ID, or audio. Always listening adds it to its "the microphone
+failed" warning.
 The native adapter consumes sticky selected-device failures again after
 Stop/Reset, so release before the next Read cannot turn a recorded default/
-property/state/loss event into a completed utterance. Stop/Reset and disposal
+state/loss event into a completed utterance. Stop/Reset and disposal
 are still attempted before reporting the failure.
 Neither policy changes default devices, permissions, privacy, endpoint volume/
 mute, drivers, services, another capture instance or playback.
 
 Activation, endpoint/format queries, capture buffer leases, Stop/Reset and
 COM release remain on one long-running MTA worker. Pinned NAudio notifications
-use `CreateNotificationClient(false)`; OS callbacks only set atomic flags, never
+use `CreateNotificationClient(false)`; OS callbacks only record metadata (atomic flags and property keys), never
 call user handlers/audio APIs or synchronously unregister. Windows' device
 enumerator is a process-wide singleton that does not AddRef registered clients,
 and releasing it does not end a registration, so this adapter deactivates

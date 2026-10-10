@@ -32,13 +32,14 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
         }
         catch (Exception ex)
         {
+            var context = device.Context();
             try { device.Dispose(); }
             catch (Exception)
             {
                 throw new CaptureDeviceException(ErrorCode.AudioCaptureFailed, resourcesReleased: false);
             }
             if (ex is OperationCanceledException) throw;
-            throw Normalize(ex);
+            throw Normalize(ex, context);
         }
     }
 
@@ -62,9 +63,11 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
         return source;
     }
 
-    internal static CaptureDeviceException Normalize(Exception exception)
+    // The detail names what Windows reported (its HRESULT, never its message, which can carry a device's name) plus the context.
+    internal static CaptureDeviceException Normalize(Exception exception, string? context = null)
     {
-        if (exception is CaptureDeviceException failure) return failure;
+        if (exception is CaptureDeviceException failure)
+            return context is null ? failure : new(failure.Code, failure.ResourcesReleased, Join(failure.Detail, context));
         var code = exception switch
         {
             UnauthorizedAccessException => ErrorCode.AudioAccessDenied,
@@ -80,8 +83,11 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
             },
             _ => ErrorCode.AudioCaptureFailed
         };
-        return new(code);
+        var detail = exception is COMException ? $"Windows error 0x{exception.HResult:X8}" : exception.GetType().Name;
+        return new(code, detail: context is null ? detail : Join(detail, context));
     }
+
+    private static string Join(string? detail, string context) => detail is null ? context : detail + "; " + context;
 
     private sealed class Device(CaptureDeviceAccess access, Action released) : ICaptureDevice
     {
@@ -105,7 +111,7 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
                 ? notifications.Enumerator.GetDevice(access.Input.EndpointId!)
                 : notifications.Enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
             if (endpoint.DataFlow != DataFlow.Capture || endpoint.State != DeviceState.Active)
-                throw new CaptureDeviceException(ErrorCode.AudioDeviceUnavailable);
+                throw new CaptureDeviceException(ErrorCode.AudioDeviceUnavailable, detail: $"Windows reports it {endpoint.State}");
             notifications.Bind(endpoint.ID, access.Input.Policy);
             Check(token);
             client = endpoint.CreateAudioClient();
@@ -116,9 +122,9 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
                 500_000, 0, mix, Guid.NewGuid());
             initialized = true;
             if (client.BufferSize <= 0 || client.BufferSize > Format.SampleRate / 10)
-                throw new CaptureDeviceException(ErrorCode.AudioFormatUnsupported);
+                throw new CaptureDeviceException(ErrorCode.AudioFormatUnsupported, detail: $"Windows gave a buffer of {client.BufferSize} frames");
             if (DescribeFormat(client.MixFormat) != Format)
-                throw new CaptureDeviceException(ErrorCode.AudioDeviceChanged);
+                throw new CaptureDeviceException(ErrorCode.AudioDeviceChanged, detail: "its sound format changed while it opened");
             capture = client.AudioCaptureClient;
             scratch = new byte[Format.MaximumPacketBytes];
             Check(token);
@@ -133,7 +139,7 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
                 client!.Start();
                 started = true;
             }
-            catch (Exception ex) { throw Normalize(ex); }
+            catch (Exception ex) { throw Normalize(ex, Context()); }
         }
 
         public CapturePacket Read(Span<byte> destination, CancellationToken cancellationToken)
@@ -142,23 +148,25 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
             try
             {
                 notifications!.CheckSelected();
-                if (endpoint!.State != DeviceState.Active) throw new CaptureDeviceException(ErrorCode.AudioDeviceLost);
+                if (endpoint!.State is var now && now != DeviceState.Active)
+                    throw new CaptureDeviceException(ErrorCode.AudioDeviceLost, detail: $"Windows reports it {now}");
                 var available = capture!.GetNextPacketSize();
                 if (available == 0) return new(0);
                 if (available < 0 || available > Format.SampleRate / 10)
-                    throw new CaptureDeviceException(ErrorCode.PayloadTooLarge);
+                    throw new CaptureDeviceException(ErrorCode.PayloadTooLarge, detail: $"Windows offered a packet of {available} frames");
                 var pointer = capture.GetBuffer(out var frames, out var flags, out var position, out var timestamp);
                 try
                 {
                     if (frames < 0 || frames > Format.SampleRate / 10 || frames * Format.BlockAlignment > destination.Length)
-                        throw new CaptureDeviceException(ErrorCode.PayloadTooLarge);
+                        throw new CaptureDeviceException(ErrorCode.PayloadTooLarge, detail: $"Windows gave a packet of {frames} frames");
                     var bytes = frames * Format.BlockAlignment;
                     if (bytes == 0) return new(0);
                     if ((flags & ~(AudioClientBufferFlags.Silent | AudioClientBufferFlags.DataDiscontinuity | AudioClientBufferFlags.TimestampError)) != 0)
-                        throw new CaptureDeviceException(ErrorCode.StreamTruncated);
+                        throw new CaptureDeviceException(ErrorCode.StreamTruncated, detail: $"Windows marked a packet {flags}");
                     if (position < 0 || position > long.MaxValue - frames || (flags & AudioClientBufferFlags.TimestampError) != 0
                         || (nextPosition is { } expected && (position != expected || (flags & AudioClientBufferFlags.DataDiscontinuity) != 0)))
-                        throw new CaptureDeviceException(ErrorCode.StreamTruncated);
+                        throw new CaptureDeviceException(ErrorCode.StreamTruncated,
+                            detail: $"a packet at {position} came where {nextPosition?.ToString() ?? "the first"} was due (flags {flags})");
                     nextPosition = position + frames;
                     if ((flags & AudioClientBufferFlags.Silent) != 0)
                         destination[..bytes].Clear();
@@ -176,7 +184,7 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
                     capture.ReleaseBuffer(frames);
                 }
             }
-            catch (Exception ex) { throw Normalize(ex); }
+            catch (Exception ex) { throw Normalize(ex, Context()); }
         }
 
         public void Stop()
@@ -197,7 +205,17 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
                 // Check after Stop/Reset so a recorded device failure cannot skip native cleanup.
                 notifications?.CheckSelected();
             }
-            catch (Exception ex) { throw Normalize(ex); }
+            catch (Exception ex) { throw Normalize(ex, Context()); }
+        }
+
+        // For the log beside a failure: the sound the microphone gives and the property changes Windows reported on it.
+        internal string? Context()
+        {
+            var format = Format;
+            var sound = format is null ? null : $"it gives {format.SampleRate} Hz, {format.Channels} channel{(format.Channels == 1 ? "" : "s")}, " +
+                $"{format.BitsPerSample}-bit {(format.Encoding == DeviceSampleEncoding.IeeeFloat ? "float" : "PCM")}";
+            var changes = notifications?.PropertyChanges;
+            return sound is null ? changes : changes is null ? sound : sound + "; " + changes;
         }
 
         public void Dispose()
