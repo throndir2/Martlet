@@ -1392,7 +1392,13 @@ shares its fact; a fact expiring in two seconds is forgotten everywhere once
 expired; a newer Martlet's fact passes through hosts and desktops without
 entering this version's stores; a new memory folder takes everything again and
 forgets nothing; 600 old conversation facts from two computers end as the same
-512 everywhere (oldest conversation facts forgotten, typed facts kept); no fact
+512 everywhere (oldest conversation facts forgotten, typed facts kept); memory
+spaces ([accounts](ACCOUNTS.md#memory-spaces)): A merges a fact into Sam's
+`account-<id>` space on both hosts with `MergeMemorySpaceAsync`, B reads it
+there (`ReadMemorySpaceAsync`) with the same digest
+(`ReadMemorySpaceDigestAsync`), Alex's space, `household` and the old document
+stay without it, it survives a host restart, a bad space ID is refused before
+anything is sent, and the step names the spaces the host keeps; no fact
 in any desktop data folder while the hosts' copy holds them; and an unsigned
 request refused (HTTP 401). Synthetic facts, loopback only; the folder is
 deleted.

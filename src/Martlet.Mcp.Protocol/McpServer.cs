@@ -958,7 +958,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
             "Walks saving on one computer and recalling on another, an edit, a deletion reaching every computer (and never coming back), " +
             "offline edits on two computers, a host that missed changes, a new computer taking everything, an expired fact, a full store " +
-            "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder and " +
+            "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder, " +
+            "memory spaces (a fact in one account's space stays apart from other spaces and the old document, and survives a host restart) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
         Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
