@@ -654,8 +654,8 @@ off* or *on*) end each Now card.
 
 Below it, each page has the shared pool list for its models (the pool list
 control, described with Devices › Sharing work): `Pool-vision-...` and `Pool-hearing-...`
-(`-Summary` reads *Nothing in the list is on, so the conversation's own model
-is used.* for an empty list; `-Member-<i>` reads *1. This PC. Each companion PC
+(`-Summary` reads *Nothing in the list is on. Instead: Thinking's own model
+takes the pictures itself.* for an empty list; `-Member-<i>` reads *1. This PC. Each companion PC
 itself; qwen2.5vl:7b: sees pictures; in use: it takes the pictures first.*).
 `Pool-vision-Settings-<i>` and `Pool-vision-AddCloud` are passive: they only
 show a member's settings or the cloud form. In This PC's settings,
@@ -782,11 +782,12 @@ refusal for the model. The owner never presses Play: see
 
 ### Reading
 
-Companion › Reading ([Reading](READING.md)) chooses where Martlet reads the text
-on the screen while it watches: Windows OCR on this PC (the default), the `ocr`
-host role (route `martlet.gateway.ocr.v1`, [Reading host role](OCR_HOST.md)) or
-off. The local server's `reading_check` reads a data directory's `reading.json`
-(`dataDirectory`), then reads a drawn 1024 x 576 test picture with known text
+Companion › Reading ([Reading](READING.md)) lists the places that read the text
+on the screen while Martlet watches, in order: This PC with Windows OCR (the
+default) or with the `ocr` host role (route `martlet.gateway.ocr.v1`,
+[Reading host role](OCR_HOST.md)), and your computers' Reading role. With
+nothing on, reading is off. The local server's `reading_check` reads a data
+directory's Reading list (`dataDirectory`, see `pool` below), then reads a drawn 1024 x 576 test picture with known text
 (`HEALTH 87 / 100`, `Score: 12450`, `VICTORY`, a chat line) with Windows OCR on
 this PC, as watching does. It returns the lines, the joined text, the missing
 words and the milliseconds (the first read and a second one). Its `desktop`
@@ -805,25 +806,26 @@ engine, model and accelerator) and `POST /read` with the same picture as a PNG
 the milliseconds). It never captures the real screen.
 
 `reading_check` also shows the [Reading pool](READING.md#the-reading-pool).
-With `dataDirectory`, `pool` gives the order this PC's reads try the computers
-in, from `reading.json`, `cluster.json`, `hosts.json` and `work-sharing.json`:
-`pooled` (true with the Reading role), `job` (`reading`), `role` (`ocr`),
-`priority` (`Background`), `waitSeconds` (3), `chosen` (the computer named in
-Companion › Reading) and `chosenIsFriends`, `runs` (the owner's other paired
-computers that the shared plan says run the Reading role), `tries` (the
-production `WorkSharing.Order`, the named computer first, a friend's host only
-when named), `everyOwn` (true when nothing is named and the plan knows no
-Reading role, so every computer of the owner's own is tried) and `kept`.
-`poolCheck` rehearses the production planner and queue (`WorkQueue`) with
-simulated computers that read one screenshot at a time and turn another away at
-once (`job.busy`), **NOT real hosts**. Each step reports `passed` and its
-detail: the order; a kept computer left out; Reading shared by default with no
-Devices card; the named computer reading while free (`WaitedMs` near 0); a busy
-or unanswering one passed over at once; a read waiting for the first to free; a
-read giving up as busy after the wait; and a friend's host busy with its owner's
-work handing the read to your own computer, or, when it is the only one,
-leaving it for later (`Refusal` `later`). `poolCheck.ok` is true when every step
-passed.
+With `dataDirectory`, `pool` gives this PC's Reading list and the places a read
+tries: `area` and `lane` (`reading`), `file` (`pools-local.json`), `list`
+(`saved`, or `made from reading.json (not saved yet)` before the page saved it),
+`off` (nothing on), `priority` (`Background`), `waitSeconds` (3), `ownHost`
+(this PC's own host service), `members` (each member's `index`, `key`, `name`,
+`kind`, `on`, `reads` in words, its `engine` and `model` settings, `onlyFor` and
+whether it is `paired` here) and `tries` (the production `ReadingPool.Targets`:
+each place's `key`, `hostId`, null for Windows OCR, and the `member` that named
+it). `poolCheck` rehearses the production list code, planner and queue
+(`WorkQueue`) with simulated computers that read one screenshot at a time and
+turn another away at once (`job.busy`), **NOT real hosts**. Each step reports
+`passed` and its detail: the list's order (Windows OCR, then each computer once;
+a member off, kept for another companion PC or not paired left out); This PC
+with the Reading role as its own host service; nothing on as off; the list made
+from `reading.json`; each PC keeping its own list; the first member reading
+while free (`WaitedMs` near 0); a busy or unanswering one passed over at once; a
+read waiting for the first to free; a read giving up as busy after the wait; and
+a friend's host busy with its owner's work handing the read to your own
+computer, or, when it is the only one, leaving it for later (`Refusal`
+`later`). `poolCheck.ok` is true when every step passed.
 
 On the test machine (a 24-thread processor, Docker Desktop), the workers read
 the drawn desktops as follows:
@@ -838,22 +840,27 @@ the drawn desktops as follows:
 The server model is for an NVIDIA graphics card only: on a processor, one read
 takes longer than the gateway's 15 s limit.
 
-Desktop automation: Companion › Reading's main choice is an option picker:
-`Picker-Reading-Off`, `Picker-Reading-ThisPc` and `Picker-Reading-Host` only show
-that option's details (with its facts, such as `PickerFacts-Reading-ThisPc`:
-*Processor (in Martlet) · 0.1 GB RAM · 0.14 s to read the screen*). The
-`ReadingHost-<host>` pills and the `ReadingModel-<model>` pills
-(`ReadingModel-ppocrv5-mobile`, `ReadingModel-ppocrv5-server` and
-`ReadingModel-rapidocr-ppocrv4`) in the role's details are passive clicks too:
-they only show that computer or model. The server pill is disabled on a computer
-without an NVIDIA graphics card. `ReadingNow`, `ReadingLast`, `ReadingTestState`,
-`ReadingWindowsState`, `ReadingHostState` (where the role stands and with which
-model), `ReadingModelNote` (where the chosen model runs, how accurate it is and
-its download) and the labels of `ReadingSetUp`, `ReadingSwitch`,
-`ReadingUseHost`, `ReadingUseThisPc`, `ReadingTurnOff` and `ReadingTest` are
-safe values. Set up and Switch (`ReadingSwitch`, which changes a computer's
-Reading role to the chosen model) need `--allow-ui-effects`. Read my screen now
-(`ReadingTest`) captures the screen, so it needs `--allow-ui-effects` too. `ReadingTestState` gives the size of the full-size
+Desktop automation: Companion › Reading's list is the shared pool list
+(`Pool-reading-Summary`, `Pool-reading-Member-<i>` such as *1. gpu-pc. A paired
+computer; runs PP-OCRv5 mobile.*, `Pool-reading-On-<i>`, `-Up-<i>`, `-Down-<i>`,
+`-Remove-<i>`, `-OnlyFor-<i>`, `-AddThisPc` and `-AddHost-<host>`; the pool list
+control is described after `work_sharing_check`). `Pool-reading-Settings-<i>`
+only shows or hides that member's settings. In them, This PC's engine pills
+(`ReadingEngine-windows-ocr` and `ReadingEngine-ocr`) save the member's engine,
+so they need `--allow-ui-effects`, and `ReadingWindowsState` says whether Windows
+can read text here. For the Reading role, the model pills
+(`ReadingModel-<place>-<model>`, place `this-pc` or the host, model
+`ppocrv5-mobile`, `ppocrv5-server` or `rapidocr-ppocrv4`) are passive clicks:
+they only show that model. The server pill is disabled on a computer without an
+NVIDIA graphics card. `ReadingHostState-<place>` (where the role stands and with
+which model), `ReadingModelNote-<place>` (where the chosen model runs, how
+accurate it is and its download) and the labels of `ReadingSetUp-<place>` and
+`ReadingSwitch-<place>` are safe values. Set up and Switch (which changes a
+computer's Reading role to the chosen model) need `--allow-ui-effects`.
+`PickerCompare-Reading` only shows or hides the comparison table. `ReadingNow`,
+`ReadingLast`, `ReadingTestState` and the label of `ReadingTest` are safe values.
+Read my screen now (`ReadingTest`) captures the screen, so it needs
+`--allow-ui-effects` too. `ReadingTestState` gives the size of the full-size
 screenshot it read, for example *(1920 x 1080 screenshot)*. The text it read
 (`ReadingTestText`) is never returned.
 
@@ -891,21 +898,27 @@ or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
 the first list is made from `pictures.json`. It returns `ok` and each step. It
 never calls OpenRouter or NVIDIA
-Build (a picture costs money). Desktop automation: Companion › Pictures' main
-choice is an option picker, `Picker-Pictures-<place>` (`Off`, `Host`,
-`ComfyUi`, `OpenRouter`, `NvidiaBuild`), whose rows only show that place's
-details (its facts, such as `PickerFact-Pictures-cost`, and its fields and
-button); they, the `PicturesHost-<host>` pills, `PicturesCheck` and
-`PicturesComfyConnect` are passive clicks; `PicturesNow` (where it draws and,
-with more than one place in the Pictures list, the places that draw when the first
-is busy), `PicturesTestState`,
-`PicturesHostState`, `PicturesSetUp`,
-`PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
-`PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
-`PicturesKeyStatus`, `PicturesUseCloud`, `PicturesTurnOff` and `PicturesTest`
-return their text. Set up, Draw with..., Turn pictures off and Draw a test picture
-save, install or draw, so they need `--allow-ui-effects`; the Creations page shows
-a picture as `CreationPicture`.
+Build (a picture costs money). Desktop automation: Companion › Pictures' *Where
+it draws* is the shared pool list (`Pool-pictures-...`, see the pool list
+automation IDs): `Pool-pictures-Summary`, `Pool-pictures-Member-<i>` (a place,
+its kind and its state: whether the Pictures role is ready there, its workflow,
+or a cloud provider's key status), `Pool-pictures-On-<i>`, `-Up-`, `-Down-`,
+`-Remove-`, `-OnlyFor-<i>`, `-AddThisPc`, `-AddHost-<host>`, `-Address` and
+`-AddAddress`. `Pool-pictures-Settings-<i>` (show or hide a place's settings),
+`PicturesCheck` and a place's `PicturesComfyConnect-<i>` are passive clicks.
+`PicturesNow` (where it draws and the places that draw when the first is busy),
+`PicturesTestState` (each place ready or why not, or the test picture's size,
+place and seconds), and in a place's settings `PicturesMemberState-<i>`,
+`PicturesSetUp-<i>`, `PicturesWorkflow-<i>`, `PicturesCheckpoint-<i>`,
+`PicturesComfyState-<i>`, `PicturesLoadWorkflow-<i>`, `PicturesSaveSettings-<i>`,
+`PicturesKeyStatus-<i>` and `PicturesSaveKey-<i>`, and the cloud provider form's
+`PicturesCloudProvider`, `PicturesModel`, `PicturesKeyStatus`, `PicturesConsent`,
+`PicturesAddCloud` and `PicturesCloudState` (what the last Add did, or why it
+didn't), return their text (never a key). The list's On, Up,
+Down, Remove and Add, and Set up, Save, Load workflow file, Save key, Add
+OpenRouter or NVIDIA Build and Draw a test picture save, install or draw, so
+they need `--allow-ui-effects`; the Creations page shows a picture as
+`CreationPicture`.
 
 ### Reminders
 
@@ -4525,7 +4538,9 @@ Sharing work's choices moved into the Speaking list (`PoolMigration`); the
 list's order on machines 2 and 3; a member turned off; Thinking's own model
 first; an empty list off for Speaking and voice loudness for lip-sync; a
 rate-limited cloud member (HTTP 429, `PoolRefusals`) passed over by its member
-key; and the `pools` shared setting's round trip. `ok` is true when every step
+key; a cloud member in the list taking a segment only when the computer before
+it is busy (a free first computer speaks at once and the cloud member is never
+asked); and the `pools` shared setting's round trip. `ok` is true when every step
 passed. On the desktop, `ui_snapshot` reads `WorkSharingStatus` (how many of
 this PC's requests another computer took since Martlet started), each area's
 `WorkSharingPool-<area>` line ("Speaking. In order: This PC, m3-host.") with
@@ -4539,7 +4554,8 @@ The pool list control (Companion › Voice and Listening under *Where it runs*,
 Companion › Thinking under *When the Thinking model is busy*, and each pooled
 area's page) reads through `ui_snapshot` with `idPrefix` `Pool-<area>`:
 `Pool-<area>-Summary` ("One member is on. Requests go to it.", "Off: nothing
-in the list is on.", or the fallback for a required area),
+in the list is on.", or for a required area "Nothing in the list is on.
+Instead: Voice loudness on this PC."),
 `Pool-<area>-Member-<i>` ("1. This PC. Each companion PC itself."),
 `Pool-<area>-On-<i>` (ticked or not), `Pool-<area>-Up-<i>`, `-Down-<i>`,
 `-Remove-<i>`, `-Settings-<i>`, `-OnlyFor-<i>` and the Add buttons
@@ -7391,27 +7407,33 @@ voice engine there, or says one would share the card before one is set up.
 
 Companion › Singing (`CompanionTab-Singing`, under *Optional extras*;
 [Singing](SINGING.md)) has the standard order. `SingingNow` says whether and
-where Martlet sings ("Off. Martlet doesn't sing. Singing stays set up on your
-computers.", "Not set up yet. ...", "Martlet sings on gpu-pc with SoulX-Singer,
-fast."). The main choice is an option picker: `Picker-Singing-Off` and
-`Picker-Singing-Role` only show that option's details (passive). The role's row
-reads its facts (`PickerFacts-Singing-Role`: "NVIDIA GPU · 7.2 GB VRAM · 1-2 min
-a song"; `PickerFact-Singing-<fact>` in its details: `vram`, `download`, `song`,
-`license`, `cost`, `data`). Off's details have `SingingTurnOff` (*Turn singing
-off*, while Martlet sings; it keeps the role set up and saves `singing.json`).
-In the role's details, `SingingState` says where it stands on the shown computer ("Not set up on
-this PC yet.", "Setting up on gpu-pc...", "Ready on gpu-pc with SoulX-Singer.",
-"Ready on this PC with SoulX-Singer and VevoSing.", "Adding VevoSing on this
-PC...", "Setup failed on this PC: ..." or why that computer can't sing, such as
-"Needs an NVIDIA graphics card with 6 GB+; this PC has ..."; the voice matches come
-from that computer's singing service, read through its gateway once the card shows
-it), `SingingSetUp` its button while it isn't ready there ("Set up", "Setting
-up..."; disabled with the reason as help text when the computer can't sing) and
-`SingingUse` (*Sing on gpu-pc*, once it is ready there and Martlet doesn't sing
-there yet; it saves `singing.json`, so it needs `--allow-ui-effects`). `SingingGpu` (fixed
-text: its first sentence, with all of it in `help`) answers whether Singing needs a graphics card of its own. With another
-computer paired, the pills `SingingHost-this-pc` and `SingingHost-<host ID>` only
-choose the shown computer (passive). Under *Song choices*, `SingingQuality` ("Fast
+where Martlet sings ("Off. Martlet doesn't sing: no computer in the list is on.
+Singing stays set up on your computers.", "Not set up yet. ...", "Martlet sings
+on gpu-pc (or the first free one of 2 computers) with SoulX-Singer, fast.").
+There is no Off choice and no single-computer choice: *Where Martlet sings* is
+the shared pool list ([the singing pool](SINGING.md#the-singing-pool)) with the
+`Pool-singing-...` IDs below (summary, each member's line with its state, such
+as "1. gpu-pc. A paired computer; runs Singing with SoulX-Singer and VevoSing;
+high quality.", On, Up, Down, Remove, Settings, kept-for and the Add buttons;
+only computers that aren't shared by friends and can run Singing can be added).
+A member's Settings (`Pool-singing-Settings-<i>`, passive) shows
+`Pool-singing-State-<member key>` ("Singing is ready here with SoulX-Singer.",
+"Setting Singing up here...", "Singing isn't set up here yet.", "Setting Singing
+up failed: ..." or why that computer can't sing, such as "Needs an NVIDIA
+graphics card with 6 GB+; this PC has ..."; the voice matches come from that
+computer's singing service, read through its gateway once the page shows it),
+`Pool-singing-SetUp-<member key>` (*Set up Singing here* while it isn't ready
+there; disabled with the reason as help text when the computer can't sing),
+`Pool-singing-AddVevo-<member key>` (*Add VevoSing here* where it runs without
+VevoSing) and `Pool-singing-Quality-<member key>` (*The song choice below*,
+*Fast* or *High quality*: that computer's own quality, saved in the list). A
+computer added that doesn't sing yet opens its Settings. The list, the quality
+and both buttons save `pools.json` or install, so they need
+`--allow-ui-effects`. *What Singing is* shows the role's details only
+(`Picker-Singing-Role`): its facts (`PickerFact-Singing-<fact>`: `vram`,
+`download`, `song`, `license`, `cost`, `data`) and `SingingGpu` (fixed text: its
+first sentence, with all of it in `help`), which answers whether Singing needs a
+graphics card of its own. Under *Song choices*, `SingingQuality` ("Fast
 (recommended)", "High quality ...") reports the saved quality (`ui_select` on it
 saves `singing.json`, so it needs `--allow-ui-effects`), and the voice match is a
 second option picker: `Picker-SingingVoiceMatch-SoulX` and
@@ -7419,19 +7441,17 @@ second option picker: `Picker-SingingVoiceMatch-SoulX` and
 compare their footprint and license (`PickerFact-SingingVoiceMatch-license`:
 VevoSing is "CC-BY-NC-ND-4.0: personal, non-commercial use only ..."), and
 `SingingUseSoulX` or `SingingUseVevoSing` saves the choice (needs
-`--allow-ui-effects`). With VevoSing chosen
-on a ready computer whose service doesn't list it, `SingingVoiceMatchState` says
-so ("VevoSing isn't set up on this PC. Songs use SoulX-Singer until you add it.",
-or "Adding VevoSing on this PC...") and `SingingSetUpVevo` (*Add VevoSing there*,
-"Adding VevoSing..." while it runs) asks its own confirmation naming VevoSing's
-CC-BY-NC-ND-4.0 terms and downloads only then. `SingingSetUp` asks one
-confirmation naming the downloads, licences and terms and sets the role up through
-`martlet-host add singing` (a run window on this PC whose `HostRunStatus` follows
-the image build, the service starting and each model file's download, for example
-"Singing: downloading model-svc.pt, 45% of 2730 MiB..."); both need
-`--allow-ui-effects`. There is no play button: songs are only performed by Martlet
-in conversation, so make and inspect real songs headlessly with `singing_check`.
-
+`--allow-ui-effects`). With VevoSing chosen while no computer in the list that
+sings has it, `SingingVoiceMatchState` says so ("VevoSing isn't set up on any
+computer in the list. Songs use SoulX-Singer until you add it: ..."). *Set up
+Singing here* asks one confirmation naming the downloads, licences and terms and
+sets the role up through `martlet-host add singing` (a run window on this PC
+whose `HostRunStatus` follows the image build, the service starting and each
+model file's download, for example "Singing: downloading model-svc.pt, 45% of
+2730 MiB..."); *Add VevoSing here* asks its own confirmation naming VevoSing's
+CC-BY-NC-ND-4.0 terms and downloads. There is no play button: songs are only
+performed by Martlet in conversation, so make and inspect real songs headlessly
+with `singing_check`.
 On Companion › Tools (`CompanionTab-Tools`), the Now line `ToolsNow` comes first, then the Terminal card with
 the page's main choice: the radio buttons `ToolsTerminalOn` (*Let Martlet run terminal commands*) and
 `ToolsTerminalOff` (*Off*, the default) report which one is `selected`, and
@@ -7806,19 +7826,20 @@ field will do; never a key or typed base URL). `DeepThinkingUseLocal`
 `thinking-pool.json` and need `--allow-ui-effects`; an open conversation's
 next think uses it.
 Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
-and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
-PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
-*Another of your computers*; under *This PC*, the ways are an option picker:
-`Picker-LipSync-Audio2Face` (Audio2Face on this PC, with *in use*,
-*recommended* or *chosen, not installed yet*), `Picker-LipSync-Loudness`
-(voice loudness: advanced lip-sync off) and `Picker-LipSync-Own` (your own
-Audio2Face service, with *in use*, *not running* or *checking* while it is the
-setting in effect, Martlet's default). In the shown way's details,
-`LipSyncDockerAbout` says what this PC's graphics card means for Audio2Face and
-`LipSyncOwnState` what your own service does now. Voice loudness reads *in use*
-while the default's own service doesn't answer.
-`SetupLipSyncLoudness`, `SetupLipSyncOwnService` and the Audio2Face buttons
-change lip-sync and need `--allow-ui-effects`.
+and Companion › Lip-sync's `LipSyncNow` (what moves the mouth for the next
+sentence: the first member that is on in lip-sync's list, or voice loudness)
+and `LipSyncNowProblem`. Lip-sync's places are its pool list
+(`Pool-lip-sync-*`, the shared list control above; there is no other on/off
+switch). `Pool-lip-sync-Settings-<i>` is a safe click: it shows *This PC*'s
+address box `Pool-lip-sync-Endpoint` (saved by `Pool-lip-sync-SaveEndpoint`)
+or a computer's `Pool-lip-sync-Install-<host>`,
+`Pool-lip-sync-Change-<member key>` and `Pool-lip-sync-Check-<host>`. Under
+the list, *Audio2Face on this PC* reads `LipSyncDockerAbout` (what this PC's
+graphics card means for Audio2Face) with `SetupLipSyncHostThisPc` (no host
+service yet) or `SetupLipSyncUseLocal` and `SetupLipSyncCheckLocal`. Saving
+the address, On, Up, Down, Remove, Add and the set-up buttons change lip-sync
+and need `--allow-ui-effects`; `lip_sync_pool_status` then shows the list and
+the profile's `lipSync` and `assigned` following its first member that is on.
 When Thinking runs in Ollama on this PC, the talk window has Ollama load the
 model as it opens (and again on activity after a few quiet minutes), and
 `LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,

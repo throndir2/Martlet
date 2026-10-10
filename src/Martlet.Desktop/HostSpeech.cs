@@ -248,26 +248,38 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         // Chatterbox Original says each sentence as the owner's style says (Companion › Voice); no other engine reads it.
         var style = SpeechEngines.ForRoute(target.RouteId) == SpeechEngines.ChatterboxOriginal ? ChatterboxStyle.Load(dataDirectory) : null;
         var targets = Targets(target);
-        await using var frames = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Speaking, targets, t => t.HostId,
-                (t, token) => WorkSharingRoster.Watched(t.HostId, "speaking", SpeakAsync(t, reference, input, ids, epoch, deadline, style, token), token),
+        await using var frames = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Speaking, targets, t => t.Key,
+                (t, token) => t.Host is { } host
+                    ? WorkSharingRoster.Watched(host.HostId, "speaking", SpeakAsync(host, reference, input, ids, epoch, deadline, style, token), token)
+                    // A cloud member of the Speaking list, in its turn: the members before it are busy or don't answer.
+                    : PoolCloud.SpeakAsync(dataDirectory, t.Cloud!, input, ids, epoch, deadline, token),
                 WorkSharingRoster.Classify, deadline, null, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => frames.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
             yield return frames.Current;
     }
 
-    // The route's own computer first, then the others that run the same voice engine, in Devices › Sharing work's order.
-    private IReadOnlyList<HostSpeechTarget> Targets(HostSpeechTarget target)
+    /// <summary>One stop of a segment: a paired computer's voice, or a cloud member of the Speaking list.</summary>
+    private sealed record Stop(HostSpeechTarget? Host, PoolMember? Cloud)
     {
-        if (SpeechEngines.ForRoute(target.RouteId) is not { } engine) return [target];
-        return [.. WorkSharingRoster.Order(dataDirectory, WorkSharingJobs.Speaking, engine.HostRoleKind, null, target.HostId)
-            .Select(place => place.Host is not { } host || host.HostId == target.HostId && place.Model is null ? target
+        public string Key => Host?.HostId ?? Cloud!.Key;
+    }
+
+    // The route's own computer first, then the others that run the same voice engine, in the Speaking list's order (Companion ›
+    // Voice), with the list's cloud members in their turn.
+    private IReadOnlyList<Stop> Targets(HostSpeechTarget target)
+    {
+        if (SpeechEngines.ForRoute(target.RouteId) is not { } engine) return [new(target, null)];
+        return [.. WorkSharingRoster.Places(dataDirectory, WorkSharingJobs.Speaking, engine.HostRoleKind, null, target.HostId,
+                m => PoolCloud.Usable(dataDirectory, SetupRole.Tts, m))
+            .Select(place => place.Cloud is { } cloud ? new Stop(null, cloud)
+                : new Stop(place.Host is not { } host || host.HostId == target.HostId && place.Model is null ? target
                 : target with
                 {
                     Origin = host.Pairing.Origin, HostId = host.HostId, SpkiFingerprint = host.Pairing.SpkiFingerprint,
                     DeviceId = host.Pairing.DeviceId, CredentialId = HostPairingCredential.ToGuid(host.Pairing.CredentialId),
                     ModelId = place.Model ?? target.ModelId
-                })];
+                }, null))];
     }
 
     private static async IAsyncEnumerable<byte[]> SpeakAsync(HostSpeechTarget target, HostSpeechReference reference,

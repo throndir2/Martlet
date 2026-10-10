@@ -91,7 +91,30 @@ public sealed class PicturePoolMembersTests
             Assert.Null(PicturesSettings.LoadWorkflow(directory, "pictures-workflow-2.txt"));
             Assert.Null(PicturesSettings.LoadWorkflow(directory, "missing.json"));
             Assert.Equal(PicturesSettings.WorkflowFile, PicturePoolMembers.WorkflowFile(PoolMember.ThisPc()));
+
+            // Each place saves its own workflow in its own file.
+            var (a, b) = (PicturePoolMembers.WorkflowFileFor(PoolMember.Computer("m1-host")), PicturePoolMembers.WorkflowFileFor(PoolMember.Service("http://lab:8188/")));
+            Assert.NotEqual(a, b);
+            Assert.Matches("^pictures-workflow-[0-9a-f]{10}\\.json$", a);
+            Assert.True(PicturesSettings.SaveWorkflow(directory, new System.Text.Json.Nodes.JsonObject { ["1"] = new System.Text.Json.Nodes.JsonObject() }, a));
+            Assert.Single(PicturesSettings.LoadWorkflow(directory, a)!);
+            Assert.Throws<Martlet.Core.Contracts.ContractException>(() =>
+                PicturesSettings.SaveWorkflow(directory, new System.Text.Json.Nodes.JsonObject(), "..\\x.json"));
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void Members_read_in_plain_words()
+    {
+        Assert.Equal("this PC's Pictures role", PicturePoolMembers.Describe(PoolMember.ThisPc()));
+        Assert.Equal("m3-host's Pictures role", PicturePoolMembers.Describe(PoolMember.Computer("m3-host")));
+        Assert.Equal("ComfyUI at http://lab:8188/", PicturePoolMembers.Describe(PoolMember.Service("http://lab:8188/")));
+        Assert.Equal("NVIDIA Build (black-forest-labs/flux.1-schnell)",
+            PicturePoolMembers.Describe(PoolMember.Cloud(PicturePoolMembers.NvidiaBuild, "black-forest-labs/flux.1-schnell")));
+        Assert.Equal("Z-Image Turbo", PicturePoolMembers.WorkflowText(PoolMember.ThisPc()));
+        Assert.Equal("checkpoint a.safetensors", PicturePoolMembers.WorkflowText(
+            PicturePoolMembers.WithWorkflow(PoolMember.ThisPc(), PictureWorkflow.Checkpoint, "a.safetensors", null)));
+        Assert.Null(PicturePoolMembers.WorkflowText(PoolMember.Cloud(PicturePoolMembers.OpenRouter, "m")));
     }
 }

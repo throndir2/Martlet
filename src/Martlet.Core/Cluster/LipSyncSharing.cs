@@ -34,6 +34,19 @@ public sealed class LipSyncSharing
         };
     }
 
+    /// <summary><paramref name="list"/> with each graphics-card member as a row for its computer (a host runs one Audio2Face
+    /// relay, whichever card it uses), each computer once at its first place, so a list saved with card rows keeps working.</summary>
+    public static PoolList OneRowPerComputer(PoolList list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        if (list.Members.All(m => m.Kind != PoolMemberKind.Gpu)) return list;
+        return list with
+        {
+            Members = [.. list.Members.Select(m => m.Kind == PoolMemberKind.Gpu ? m with { Kind = PoolMemberKind.Computer, Card = null } : m)
+                .DistinctBy(m => m.Key)]
+        };
+    }
+
     /// <summary>The computer that took the last chunk (null before the first).</summary>
     public string? LastHost
     {

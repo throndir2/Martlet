@@ -1027,10 +1027,12 @@ next to it, so the Character page stays short and opens at once.
 
 - **Entry points**: Companion › Lip-sync; Devices › device doing
   lip-sync › *Done by*; Home's Now line when lip-sync isn't working.
-- **Flow**: P2 with two places, *This PC* and *Another of your computers*;
-  *This PC* offers **Audio2Face, with Docker** or **Voice loudness, no setup**.
-  Choosing a machine without Audio2Face offers **Set up Audio2Face on
-  GAMING-PC** inline (P5). The mouth follows voice loudness until ready.
+- **Flow**: the page's ordered list of places that run Audio2Face (*This
+  PC*'s own service and your computers). Add, turn on or off and
+  move them with *Up* and *Down*; with none on, the mouth follows voice
+  loudness. A computer without Audio2Face shows **Install Audio2Face** in its
+  *Settings* (P5); *Audio2Face on this PC* under the list sets it up here with
+  Docker. The mouth follows voice loudness until one is ready.
 - **Clicks**: 2.
 
 ### G. Agreements and permissions

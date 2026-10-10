@@ -46,13 +46,18 @@ internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
     public (SongSetup? Setup, string? Problem) Current()
     {
         if (!SongClient.IsSetUp(dataDirectory))
-            return (null, SingingPreferences.Load(dataDirectory).Off ? "singing is off (Companion › Singing)."
+            return (null, WorkSharingRoster.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
+                ? "singing is off: no computer in Companion › Singing's list is on."
+                : SingingPreferences.Load(dataDirectory).Off ? "singing is off (Companion › Singing)."
                 : "singing isn't set up on any of your computers (Companion › Singing).");
         var voice = SongClient.SpeakingVoiceId(dataDirectory) ?? (Fixture ? "fixture-voice" : null);
         if (voice is null) return (null, "there's no voice to sing with yet (Companion › Voice).");
         var choices = SingingPreferences.Load(dataDirectory);
+        var pool = SongClient.Members(dataDirectory);
         return (new SongSetup(SongClient.For(dataDirectory), voice, choices.Quality, choices.VoiceMatch,
-            Fixture ? "this PC (FIXTURE - NOT AI)" : choices.Host ?? "the singing computer"), null);
+            Fixture ? "this PC (FIXTURE - NOT AI)"
+            : pool.Count > 1 ? $"the first free one of {string.Join(", ", pool.Select(m => m.Host.HostId).Distinct())}"
+            : pool.FirstOrDefault().Host?.HostId ?? choices.Host ?? "the singing computer"), null);
     }
 
     public override string ToString() => nameof(DesktopSongSource);

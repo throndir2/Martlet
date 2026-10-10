@@ -62,14 +62,16 @@ public sealed class PoolsTests
                 PoolMember.Cloud("openai", "tts-1"),
                 PoolMember.Service("http://lab:8188/"),
                 PoolMember.ThisPc(),
+                PoolMember.Computer("m3-host"),
                 PoolMember.Gpu("m3-host", 2)
             ]
         };
         var order = PoolRouting.Order(area, list, "desk-2", m => m.HostId != "m9-host");
-        // Kept for desk-1, off, a cloud provider without the owner's agreement, and an address Speaking doesn't take are left out.
-        Assert.Equal(["this-pc", "host:m3-host#gpu2"], order.Members.Select(m => m.Key));
+        // Kept for desk-1, off, a cloud provider without the owner's agreement, an address and a card Speaking doesn't take are
+        // left out.
+        Assert.Equal(["this-pc", "host:m3-host"], order.Members.Select(m => m.Key));
         Assert.False(order.Off);
-        Assert.Equal(["host:m1-host", "this-pc", "host:m3-host#gpu2"], PoolRouting.Order(area, list, "desk-1").Members.Select(m => m.Key));
+        Assert.Equal(["host:m1-host", "this-pc", "host:m3-host"], PoolRouting.Order(area, list, "desk-1").Members.Select(m => m.Key));
         var agreed = list.With(PoolMember.Cloud("openai", "tts-1").WithConsent(area.Id, DateTimeOffset.UnixEpoch));
         Assert.Contains(PoolRouting.Order(area, agreed, "desk-2").Members, m => m.Kind == PoolMemberKind.Cloud);
         // An agreement is for one area and one member: another model needs a new one.
@@ -167,12 +169,65 @@ public sealed class PoolsTests
             Members = [PoolMember.Cloud("openai", "tts-1"), PoolMember.ThisPc(), PoolMember.Gpu("m3-host", 2), PoolMember.Computer("m3-host"),
                 PoolMember.Computer("m9-host"), PoolMember.Computer("m1-host")]
         };
-        // A cloud member isn't a computer; this PC is its own host service; a card is its computer; m9-host doesn't run it.
+        // A cloud member isn't a computer; this PC is its own host service; Speaking takes no card; m9-host doesn't run it.
         Assert.Equal(["m7-host", "m3-host", "m1-host"], PoolRouting.Hosts(PoolAreas.Speaking, list, "desk-7", "m1-host", "m7-host", runs));
         Assert.Equal(["m3-host", "m1-host"], PoolRouting.Hosts(PoolAreas.Speaking, list, "desk-2", "m1-host", null, runs));
         Assert.Equal(["m1-host"], PoolRouting.Hosts(PoolAreas.Speaking, new PoolList { Area = "speaking" }, "desk-2", "m1-host", null, runs));
         Assert.Equal(["m1-host", "m3-host"],
             PoolRouting.Hosts(PoolAreas.Thinking, new PoolList { Area = "thinking", Members = [PoolMember.Computer("m3-host")] }, "desk-2", "m1-host", null, runs));
+    }
+
+    [Fact]
+    public void Speaking_listening_and_thinking_take_one_row_per_computer_and_no_card()
+    {
+        foreach (var area in new[] { PoolAreas.Speaking, PoolAreas.Listening, PoolAreas.Thinking })
+        {
+            Assert.False(area.Takes(PoolMemberKind.Gpu));
+            Assert.True(area.Takes(PoolMemberKind.Computer));
+        }
+        Assert.True(PoolAreas.Speaking.Takes(PoolMemberKind.Cloud) && PoolAreas.Listening.Takes(PoolMemberKind.Cloud));
+    }
+
+    [Fact]
+    public void Stops_put_a_cloud_member_in_its_turn_between_computers()
+    {
+        var runs = new HashSet<string>(["m1-host", "m3-host"], StringComparer.Ordinal);
+        var cloud = PoolMember.Cloud("openai", "tts-1").WithConsent(PoolAreas.Speaking.Id, DateTimeOffset.UnixEpoch);
+        var list = new PoolList { Area = PoolAreas.Speaking.Id, Members = [PoolMember.Computer("m1-host"), cloud, PoolMember.Computer("m3-host")] };
+        Assert.Equal(["m1-host", "cloud:openai/tts-1", "m3-host"],
+            PoolRouting.Stops(PoolAreas.Speaking, list, "desk-2", "m1-host", null, runs, m => m.Kind == PoolMemberKind.Cloud).Select(s => s.Key));
+        // Without a key on this PC (usable says no), or without the owner's agreement, the cloud member is left out.
+        Assert.Equal(["m1-host", "m3-host"], PoolRouting.Stops(PoolAreas.Speaking, list, "desk-2", "m1-host", null, runs).Select(s => s.Key));
+        var unagreed = list.With(PoolMember.Cloud("openai", "tts-1"));
+        Assert.Equal(["m1-host", "m3-host"], PoolRouting.Stops(PoolAreas.Speaking, unagreed, "desk-2", "m1-host", null, runs, _ => true).Select(s => s.Key));
+        // Hosts stays the computers only.
+        Assert.Equal(["m1-host", "m3-host"], PoolRouting.Hosts(PoolAreas.Speaking, list, "desk-2", "m1-host", null, runs));
+        // Only a cloud member: the request goes to it, not to the route's own computer the list left out.
+        var only = new PoolList { Area = PoolAreas.Speaking.Id, Members = [cloud] };
+        Assert.Equal(["cloud:openai/tts-1"], PoolRouting.Stops(PoolAreas.Speaking, only, "desk-2", "m1-host", null, runs, _ => true).Select(s => s.Key));
+    }
+
+    [Fact]
+    public async Task A_cloud_member_takes_the_request_only_when_the_computers_before_it_are_busy()
+    {
+        var runs = new HashSet<string>(["m1-host"], StringComparer.Ordinal);
+        var cloud = PoolMember.Cloud("openai", "tts-1").WithConsent(PoolAreas.Speaking.Id, DateTimeOffset.UnixEpoch);
+        var stops = PoolRouting.Stops(PoolAreas.Speaking, new PoolList { Area = PoolAreas.Speaking.Id, Members = [PoolMember.Computer("m1-host"), cloud] },
+            "desk-2", "m1-host", null, runs, _ => true);
+        var cloudStarted = 0;
+        Task<string> Run(bool hostBusy) => new WorkQueue { Retry = TimeSpan.FromMilliseconds(5) }.RunAsync(PoolAreas.Speaking.Id, stops, s => s.Key,
+            (s, _) =>
+            {
+                if (s.HostId is null) Interlocked.Increment(ref cloudStarted);
+                return s.HostId is not null && hostBusy ? Task.FromException<string>(new RateLimited()) : Task.FromResult(s.Key);
+            },
+            e => e is RateLimited ? WorkRefusal.Busy : WorkRefusal.None, DateTimeOffset.UtcNow.AddSeconds(5), null, CancellationToken.None);
+        // The first computer is free: it takes it at once and the cloud member is never started (no added latency).
+        Assert.Equal("m1-host", await Run(hostBusy: false));
+        Assert.Equal(0, cloudStarted);
+        // The first computer is busy: the cloud member takes it in its turn.
+        Assert.Equal("cloud:openai/tts-1", await Run(hostBusy: true));
+        Assert.Equal(1, cloudStarted);
     }
 
     [Fact]

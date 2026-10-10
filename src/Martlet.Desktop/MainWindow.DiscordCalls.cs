@@ -302,9 +302,8 @@ public partial class MainWindow
             return;
         }
         var dataDirectory = store.DataDirectory;
-        var settings = PictureClient.Settings(dataDirectory);
-        if (settings.Cloud && !PictureClient.Fixture &&
-            !ConfirmationDialog.Confirm(this, $"Draw the camera background with {settings.Describe()}? It may cost money.", "Draw a camera background", "Draw", "Cancel"))
+        if (PictureClient.FirstPaid(dataDirectory) is { } paid && !PictureClient.Fixture &&
+            !ConfirmationDialog.Confirm(this, $"Draw the camera background? It may go to {paid}, which may cost money.", "Draw a camera background", "Draw", "Cancel"))
             return;
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Llm);
         var maker = PictureClient.For(dataDirectory, homeSettings?.Profile.Id ?? Guid.Empty, thinking);

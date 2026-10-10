@@ -1,3 +1,4 @@
+using Martlet.Core.Cluster;
 using Martlet.Core.Pictures;
 
 namespace Martlet.Desktop.Tests;
@@ -24,8 +25,8 @@ public sealed class BackgroundDutiesTests
             Assert.Equal("host:singer", BackgroundDuties.Singer(directory)!.Id);
             Assert.Equal("host:painter", BackgroundDuties.Painter(directory)!.Id);
 
-            // One computer that sings and draws is kept for both.
-            Assert.True(new PicturesSettings { Place = PicturePlace.Host, HostId = "singer" }.Save(directory));
+            // One computer that sings and draws is kept for both. The Pictures list, made from pictures.json above, is the source now.
+            Assert.True(PictureClient.SaveList(directory, new PoolList { Area = PoolAreas.Pictures.Id, Members = [PoolMember.Computer("singer")] }));
             Assert.Equal([BackgroundDuties.Singing, BackgroundDuties.Pictures], BackgroundDuties.Of(directory)["singer"]);
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }

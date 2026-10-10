@@ -1466,6 +1466,7 @@ public partial class MainWindow
                 }
             }
             await ApplyLipSyncAsync(host, key == "off");
+            FollowLipSyncChoiceIntoPool(key);
             tabPlace.Remove(CompanionTab.LipSync);
             RecordClusterJob(ClusterJobs.LipSync, ClusterSync.Local(ClusterJobs.LipSync, homeSettings, homeAvatar, shared: SharedHostIds()));
             var who = key == "off" ? "no one (basic mouth movement)" : host?.HostId ?? "this PC";

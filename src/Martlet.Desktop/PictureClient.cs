@@ -28,7 +28,6 @@ internal static class PictureClient
     internal static readonly TimeSpan FreeAfter = TimeSpan.FromMinutes(3);
     private static readonly object Gate = new();
     private static (string Directory, DateTime Written, PicturesSettings Settings)? cached;
-    private static (string Directory, DateTime Written, PoolList List)? cachedList;
     // The computers waiting to free their graphics card, by host ID (empty: the first paired computer that offers the route).
     private static readonly Dictionary<string, CancellationTokenSource> freeing = new(StringComparer.Ordinal);
 
@@ -50,34 +49,28 @@ internal static class PictureClient
         }
     }
 
-    /// <summary>This PC's Pictures list (<see cref="PoolAreas.Pictures"/>, pools-local.json), read again only when the file
-    /// changed (cheap enough for every reply). Without one yet, it is made once from pictures.json (<see cref="Migrate"/>) and
-    /// saved.</summary>
+    /// <summary>This PC's Pictures list (<see cref="PoolAreas.Pictures"/>, pools-local.json), from the pool lists' cache (read
+    /// again only when the file changed, cheap enough for every reply). Without one yet, it is made from pictures.json
+    /// (<see cref="Migrate"/>) and saved once it has a place; an empty one isn't saved, so a choice saved there later still
+    /// counts.</summary>
     internal static PoolList List(string dataDirectory)
     {
-        var path = Path.Combine(dataDirectory, PoolSettings.File(PoolAreas.Pictures.Shared));
-        DateTime written;
-        try { written = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { written = DateTime.MinValue; }
+        if (WorkSharingRoster.Pool(dataDirectory, PoolAreas.Pictures) is { } list) return list;
         lock (Gate)
-            if (cachedList is { } known && known.Directory == dataDirectory && known.Written == written) return known.List;
-        var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Pictures);
-        if (list is null)
         {
+            if (PoolSettings.LoadFor(dataDirectory, PoolAreas.Pictures) is { } saved) return saved;
             list = Migrate(dataDirectory, Settings(dataDirectory));
-            if (SaveList(dataDirectory, list))
+            if (list.Members.Count > 0 && SaveList(dataDirectory, list))
                 ErrorLog.Info($"Pictures: made the Pictures list from the earlier choice ({list.Members.Count} place{(list.Members.Count == 1 ? "" : "s")}).");
             return list;
         }
-        lock (Gate) cachedList = (dataDirectory, written, list);
-        return list;
     }
 
-    /// <summary>Saves this PC's Pictures list.</summary>
+    /// <summary>Saves this PC's Pictures list (never shared).</summary>
     internal static bool SaveList(string dataDirectory, PoolList list)
     {
         var saved = PoolSettings.SaveFor(dataDirectory, PoolAreas.Pictures, list);
-        lock (Gate) cachedList = null;
+        WorkSharingRoster.Forget();
         return saved;
     }
 
@@ -108,6 +101,17 @@ internal static class PictureClient
 
     /// <summary>Whether draw_picture is offered: the fixture is on, or the Pictures list has a place that is on.</summary>
     internal static bool IsSetUp(string dataDirectory) => Fixture || Order(dataDirectory, paired: false).Members.Count > 0;
+
+    /// <summary>The first cloud provider a picture may go to, in words ("OpenRouter (google/...)"), so a picture the owner asks for
+    /// on a page can say first that it may cost money; null when no cloud provider in the list is on.</summary>
+    internal static string? FirstPaid(string dataDirectory) =>
+        Order(dataDirectory, paired: false).Members.FirstOrDefault(m => m.Kind == PoolMemberKind.Cloud) is { } paid ? PicturePoolMembers.Describe(paid) : null;
+
+    /// <summary>A cloud member's own key on this PC as the place's settings (its credential ID in pool-keys.json); null without one.</summary>
+    internal static PicturesSettings? CloudPlace(string dataDirectory, PoolMember member) =>
+        member.Kind == PoolMemberKind.Cloud
+            ? PicturePoolMembers.Place(member, null, PoolKeys.Load(dataDirectory).For(PoolAreas.Pictures.Id, member.Key))
+            : null;
 
     /// <summary>The paired computer that draws first (the first member, when it is Martlet's pictures role), or null.</summary>
     internal static string? Painter(string dataDirectory) => Order(dataDirectory, paired: false).Members.FirstOrDefault() is { } first

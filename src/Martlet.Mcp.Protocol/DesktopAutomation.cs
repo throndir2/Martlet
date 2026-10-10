@@ -55,10 +55,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
         // --allow-ui-effects.
         "CheckInsOpenPool",
-        // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
-        // there); Connect only reads the typed ComfyUI's status and models. Neither saves or draws. Draw a test picture, Set up
-        // and the Draw with/Turn off buttons need --allow-ui-effects.
-        "PicturesCheck", "PicturesComfyConnect",
+        // Companion › Pictures' Check only asks each place in the Pictures list whether it can draw now (a cloud provider: only
+        // whether a key is there); a place's Connect (PicturesComfyConnect-<i>, a prefix below) only reads that ComfyUI's status and
+        // models. Neither saves or draws. Draw a test picture, Set up, Save, Load workflow file, Save key and Add need
+        // --allow-ui-effects.
+        "PicturesCheck",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
@@ -190,12 +191,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
     /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit, and
-    /// Voice engine's computer pills ("SpeakingHost-gpu-pc") and Singing's ("SingingHost-this-pc") only show that computer's engines. Home's
+    /// Voice engine's computer pills ("SpeakingHost-gpu-pc") only show that computer's engines. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
     /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
     /// "LogPart-gateway") only filter the shown lines, and selecting a line ("LogEntry-0") only shows it in full. An MCP directory
     /// result ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "SingingHost-", "HealthCheck-", "HealthOpen-",
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "HealthCheck-", "HealthOpen-",
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // An option picker's choice ("Picker-VoiceEngine-chatterbox", "Picker-Pictures-Off") only shows that option's details
         // below the list, its Compare ("PickerCompare-VoiceEngine") only shows or hides the table, and its Show N more
@@ -212,11 +213,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
-        // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
-        // details, only show where it stands on that computer; their own buttons commit. Reading's model pills
-        // ("ReadingModel-ppocrv5-mobile", "ReadingModel-ppocrv5-server", "ReadingModel-rapidocr-ppocrv4") only show that model's
-        // details and the button that sets it up or switches to it (Set up and Switch need --allow-ui-effects).
-        "PicturesHost-", "ReadingHost-", "ReadingModel-",
+        // Companion › Reading's model pills in a list member's settings ("ReadingModel-this-pc-ppocrv5-mobile",
+        // "ReadingModel-gpu-pc-ppocrv5-server", "ReadingModel-gpu-pc-rapidocr-ppocrv4") only show that model's details and the
+        // button that sets it up or switches to it there (Set up and Switch need --allow-ui-effects).
+        "ReadingModel-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -240,11 +240,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // below ("Pool-speaking-Show-host:diva-host") and A cloud provider ("Pool-speaking-AddCloud") only show that place's own
         // card under the list, whose own button commits. Devices › Sharing work's Open buttons ("WorkSharingOpen-speaking") only
         // open the area's page. The list's On, Up, Down, Remove, Add and kept-for choices save pools.json and share it, so they
-        // need --allow-ui-effects. The same for Companion › Vision's and Hearing's lists ("Pool-vision-Settings-0",
-        // "Pool-hearing-AddCloud" only shows the cloud form, whose Add to the list commits).
-        "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
-        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "Pool-vision-Settings-", "Pool-hearing-Settings-", "Pool-vision-AddCloud",
-        "Pool-hearing-AddCloud", "WorkSharingOpen-"];
+        // need --allow-ui-effects. Lip-sync's Settings ("Pool-lip-sync-Settings-0") shows This PC's address box
+        // ("Pool-lip-sync-Endpoint", saved by Pool-lip-sync-SaveEndpoint) or a computer's Install, Change model and Check it buttons.
+        "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-reading-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
+        "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "Pool-lip-sync-Settings-", "WorkSharingOpen-",
+        // Companion › Singing's list: a member's Settings ("Pool-singing-Settings-0") only shows or hides its Singing state, Set up
+        // Singing here, Add VevoSing here and its own quality; those buttons and the quality save or install, so they need
+        // --allow-ui-effects.
+        "Pool-singing-Settings-",
+        // Companion › Pictures: a place's Settings ("Pool-pictures-Settings-0") only shows or hides its settings, and its Connect
+        // ("PicturesComfyConnect-0") only reads that ComfyUI's version, checkpoints and models.
+        "Pool-pictures-Settings-", "PicturesComfyConnect-",
+        // Companion › Vision's and Hearing's lists: a member's Settings ("Pool-vision-Settings-0") only shows or hides its model and
+        // settings, and A cloud provider or server ("Pool-hearing-AddCloud") only shows the cloud form, whose Add to the list commits.
+        "Pool-vision-Settings-", "Pool-hearing-Settings-", "Pool-vision-AddCloud", "Pool-hearing-AddCloud"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -334,10 +343,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The character overlay's drag surface reads as its last tap's hit test (zone, hit areas, drawables, bone; model-authored
         // names only, never paths); character_touch taps it.
         "MoveAvatar",
-        // Companion › Lip-sync › This PC: its ways are an option picker (Picker-LipSync-Audio2Face, -Loudness, -Own); the shown
-        // way's details read what this PC's graphics card means for Audio2Face (LipSyncDockerAbout) and where your own service
-        // stands (LipSyncOwnState).
-        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnState", "LipSyncDockerAbout",
+        // Companion › Lip-sync: what moves the mouth now (LipSyncNow, LipSyncNowProblem) and, under its pool list (Pool-lip-sync-*),
+        // what this PC's graphics card means for Audio2Face (LipSyncDockerAbout).
+        "LipSyncNow", "LipSyncNowProblem", "LipSyncDockerAbout",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.
@@ -454,34 +462,34 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("F5AddVoiceRecording", then "F5AddVoiceRecording-2" and so on in SafeValuePrefixes), and its intro, which names the
         // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
         // prefix below.
-        // Companion › Singing (under Optional extras): whether and where Martlet sings (SingingNow), and in the Singing role's
-        // details (Picker-Singing-Role) where it stands on the shown computer (not set up, setting up, ready with the voice
-        // matches set up there, failed with the reason, or why that computer can't sing), whether it needs a graphics card of
-        // its own (SingingGpu, fixed text) and the buttons' labels (Set up, Sing on <computer>, Turn singing off in the Off
-        // choice's details); the saved quality; with VevoSing chosen where it isn't set up (Picker-SingingVoiceMatch-VevoSing),
-        // that it isn't (or is being added) and the Add VevoSing there button's label. Set up, Sing on, Turn singing off, Use
-        // SoulX-Singer or VevoSing and Add VevoSing there need --allow-ui-effects. Songs are only performed in conversation
-        // (singing_check exercises them headlessly).
-        "SingingNow", "SingingState", "SingingSetUp", "SingingUse", "SingingTurnOff", "SingingGpu", "SingingQuality",
-        "SingingUseSoulX", "SingingUseVevoSing", "SingingVoiceMatchState", "SingingSetUpVevo",
+        // Companion › Singing (under Optional extras): whether and where Martlet sings (SingingNow: "Martlet sings on m3-host (or
+        // the first free one of 2 computers) with SoulX-Singer, fast." or "Off. ...: no computer in the list is on."); its list
+        // reads through the Pool- prefix below, and a member's Settings add where Singing stands there
+        // ("Pool-singing-State-host:m3-host": ready with the voice matches set up there, setting up, failed with the reason, or
+        // why that computer can't sing), the Set up Singing here and Add VevoSing here buttons' labels
+        // ("Pool-singing-SetUp-host:m3-host", "Pool-singing-AddVevo-host:m3-host") and its own quality
+        // ("Pool-singing-Quality-host:m3-host": The song choice below, Fast or High quality). What Singing is
+        // (Picker-Singing-Role) and whether it needs a graphics card of its own (SingingGpu, fixed text); the saved quality;
+        // with VevoSing chosen where no computer in the list has it (Picker-SingingVoiceMatch-VevoSing), that it isn't set up.
+        // Use SoulX-Singer or VevoSing need --allow-ui-effects. Songs are only performed in conversation (singing_check
+        // exercises them headlessly).
+        "SingingNow", "SingingGpu", "SingingQuality", "SingingUseSoulX", "SingingUseVevoSing", "SingingVoiceMatchState",
         // Every Companion page: its group in the side list ("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its fixed intro, which
         // starts with "Optional." on a page Martlet works without.
         "CompanionGroupTitle", "CompanionIntro",
-        // Companion › Pictures: where Martlet draws now (PicturesNow), what Check or Draw a test picture found (PicturesTestState:
-        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (where it
-        // stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
-        // Z-Image Turbo is there), the chosen workflow, a cloud provider's model ID and whether a key is saved or Thinking's is
-        // used (never the key), and the buttons' labels. Pictures themselves are never returned.
-        "PicturesNow", "PicturesTestState", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
-        "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
-        "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
-        // Companion › Reading: where Martlet reads the text on the screen (ReadingNow), the newest read while watching and the
-        // Read my screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds, the full-size
-        // screenshot's width x height and when, or why it couldn't), whether Windows can read text here, the Reading role on the
-        // shown computer (where it stands and with which model), the chosen model's note (where it runs, how accurate and its
-        // download) and the buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
-        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingHostState", "ReadingModelNote",
-        "ReadingSetUp", "ReadingSwitch", "ReadingUseHost", "ReadingUseThisPc", "ReadingTurnOff", "ReadingTest",
+        // Companion › Pictures: where Martlet draws now (PicturesNow: the first place in the Pictures list and the ones that draw
+        // when it is busy), what Check or Draw a test picture found (PicturesTestState: each place ready or why not, or the test
+        // picture's size, place and seconds), the Add a cloud provider form's provider, model ID, key status (whether
+        // Thinking's key is used; never the key), agreement box, button label and what the last Add did (PicturesCloudState). Each place's settings read through
+        // SafeValuePrefixes (PicturesMemberState-<i> and the rest). Pictures themselves are never returned.
+        "PicturesNow", "PicturesTestState", "PicturesCheck", "PicturesTest", "PicturesCloudProvider", "PicturesModel", "PicturesKeyStatus",
+        "PicturesConsent", "PicturesAddCloud", "PicturesCloudState",
+        // Companion › Reading: what reads the text on the screen (ReadingNow), the newest read while watching and the Read my
+        // screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds, the full-size screenshot's
+        // width x height and when, or why it couldn't), whether Windows can read text here and the buttons' labels. The list itself
+        // reads through "Pool-" and each member's settings through the "Reading" prefixes below. The text read from a real screen
+        // (ReadingTestText) is never returned.
+        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
@@ -932,6 +940,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
     private static readonly string[] SafeValuePrefixes = [
+        // Companion › Pictures, one place's settings (i: its place in the Pictures list): where the Pictures role stands there
+        // ("PicturesMemberState-0" reads "Pictures role ready." or "Not set up yet ..."), the Set up button's label, the chosen
+        // workflow and checkpoint, what Connect found ("PicturesComfyState-0": version, checkpoints, whether Z-Image Turbo is
+        // there), the Load, Connect and Save buttons' labels, and a cloud place's key status ("PicturesKeyStatus-0": whether its
+        // own key or Thinking's is used; never the key) and Save key label.
+        "PicturesMemberState-", "PicturesSetUp-", "PicturesWorkflow-", "PicturesCheckpoint-", "PicturesComfyState-", "PicturesComfyConnect-",
+        "PicturesLoadWorkflow-", "PicturesSaveSettings-", "PicturesKeyStatus-", "PicturesSaveKey-",
         // A "?" (HelpTip.cs, "Help-CheckInsAbout") reads as "About <topic>", and its "help" is the explanation it shows; never
         // anything typed or secret.
         "Help-",
@@ -939,7 +954,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
         "PickerFacts-", "PickerDetail-", "PickerFact-", "PickerState-", "PickerCell-", "PickerSummary-",
-        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -1077,6 +1092,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads "Every companion PC" or "Only desk-1"), and the Add buttons' labels ("Pool-speaking-AddHost-diva-host",
         // "Pool-speaking-AddThisPc", "Pool-speaking-AddGpu-diva-host-2"). Host IDs, device IDs, provider and model names, never a key.
         "Pool-",
+        // Companion › Reading, a list member's settings: This PC's engine pills ("ReadingEngine-windows-ocr" ticked or not;
+        // choosing one saves pools-local.json, so it needs --allow-ui-effects), the Reading role's state on that place
+        // ("ReadingHostState-gpu-pc" reads "Ready on gpu-pc with PP-OCRv5 mobile."), the shown model's note
+        // ("ReadingModelNote-gpu-pc") and the Set up and Switch buttons' labels ("ReadingSetUp-this-pc", "ReadingSwitch-gpu-pc").
+        // Host IDs, model names and fixed text.
+        "ReadingEngine-", "ReadingHostState-", "ReadingModelNote-", "ReadingSetUp-", "ReadingSwitch-",
         // Companion › Thinking, Voice and Listening › Keys from before: each key Martlet set aside when the job stopped using it
         // ("SetupOldKey-Thinking-0" reads "Your OpenRouter key" or "The pairing key for diva-host"; never the key) and its
         // Remove button's name ("SetupOldKeyRemove-Thinking-0" reads "Remove your OpenRouter key"). Remove deletes the key from

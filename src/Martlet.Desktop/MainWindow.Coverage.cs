@@ -88,18 +88,19 @@ public partial class MainWindow
 
     private Uri OwnLipSyncEndpoint() => new(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint);
 
-    /// <summary>When lip-sync is handled by this PC's own Audio2Face service, checks that something answers on its loopback
-    /// port (a 300 ms local connect; nothing is sent), so Home, Devices and Companion › Lip-sync say when nothing runs there.</summary>
+    /// <summary>When lip-sync uses this PC's own Audio2Face service (its choice, or This PC on in lip-sync's list), checks that
+    /// something answers on its loopback port (a 300 ms local connect; nothing is sent), so Home, Devices and Companion › Lip-sync
+    /// say when nothing runs there.</summary>
     private async Task CheckOwnLipSyncAsync()
     {
         if (closing || checkingOwnLipSync) return;
         bool? answers = null;
-        if (NetworkMap.LipSync(homeAvatar) == LipSyncHandler.ThisPc)
+        if (LipSyncLooksHere())
         {
             checkingOwnLipSync = true;
             try
             {
-                answers = await Audio2FaceProbe.IsListeningAsync(new Audio2FaceOptions { Endpoint = OwnLipSyncEndpoint() },
+                answers = await Audio2FaceProbe.IsListeningAsync(new Audio2FaceOptions { Endpoint = LipSyncThisPcEndpoint() },
                     TimeSpan.FromMilliseconds(300), lifetime.Token);
             }
             catch (Exception error) when (error is OperationCanceledException or ArgumentException or UriFormatException) { return; }
@@ -109,6 +110,7 @@ public partial class MainWindow
         ownLipSyncAnswers = answers;
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        if (openTab == CompanionTab.LipSync && CompanionPage.IsVisible) RenderTab();
     }
 
     /// <summary>What this PC's own lip-sync does right now, for the places that show who handles lip-sync.</summary>

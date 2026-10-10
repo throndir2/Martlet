@@ -147,18 +147,4 @@ public sealed class JobOptionsTests
         Assert.Equal(["e", "c", "b", "d", "f", "a"], same.Select(o => o.Key));
         Assert.Equal(2, one);
     }
-
-    [Fact]
-    public void LipSyncWaysRecommendLoudnessWithoutASuitableCardAndBlockAudio2FaceOnArm()
-    {
-        var options = JobOptions.LipSyncWays(false, false, loudnessInUse: true, false, fits: false, cannot: null, "127.0.0.1:52000");
-        Assert.Equal([JobOptions.Audio2Face, JobOptions.Loudness, JobOptions.OwnService], options.Select(o => o.Key));
-        Assert.Equal("in use", options[1].Badge);
-        Assert.Null(options[0].Badge);
-        Assert.Equal("NVIDIA GPU", options[0].Facts[0].Short);
-
-        var arm = JobOptions.LipSyncWays(false, false, false, false, fits: true, cannot: "This PC has an ARM processor.", "127.0.0.1:52000");
-        Assert.Equal("This PC has an ARM processor.", arm[0].Unavailable);
-        Assert.Equal("recommended", arm[1].Badge);
-    }
 }

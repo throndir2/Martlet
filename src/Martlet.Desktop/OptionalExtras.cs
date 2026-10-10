@@ -112,60 +112,6 @@ internal static class OptionalExtras
         }
     ];
 
-    // ---------- Pictures ----------
-
-    internal const string PicturesRole = "pictures-comfyui";
-    internal const string PicturesOpenRouter = "hosted:openrouter-pictures";
-    internal const string PicturesNvidiaBuild = "hosted:nvidia-build-pictures";
-
-    /// <summary>Companion › Pictures' main choice, keyed by <see cref="Martlet.Core.Pictures.PicturePlace"/>: Off, Martlet's Pictures
-    /// role, your own ComfyUI, OpenRouter or NVIDIA Build.</summary>
-    internal static IReadOnlyList<PickerOption> PicturesChoices(Martlet.Core.Pictures.PicturePlace saved)
-    {
-        PickerOption Place(Martlet.Core.Pictures.PicturePlace place, string name, string summary, IReadOnlyList<OptionFact> facts, bool recommended = false) =>
-            new(place.ToString(), name, summary)
-            {
-                InUse = saved == place, Badge = saved == place ? "in use" : recommended ? "recommended" : null, Facts = facts
-            };
-        return
-        [
-            Off(CompanionTab.Pictures, saved == Martlet.Core.Pictures.PicturePlace.Off),
-            Place(Martlet.Core.Pictures.PicturePlace.Host, "Martlet's Pictures role",
-                "ComfyUI with Z-Image Turbo on this PC or another of your computers with an NVIDIA graphics card. Private and free.",
-                Facts(PicturesRole, [],
-                    new("picture", "Per picture", "a few seconds; a 12 GB+ card is faster", "Seconds a picture"),
-                    new("size", "Picture size", "about 1 megapixel: 1024x1024, or a wide or tall shape", null),
-                    new("cost", "Cost", "free", "free"),
-                    new("data", "Your data", "descriptions stay on your computers", null),
-                    new("license", "License", "Z-Image Turbo Apache-2.0, ComfyUI GPL-3.0", null)), recommended: true),
-            Place(Martlet.Core.Pictures.PicturePlace.ComfyUi, "My own ComfyUI",
-                "A ComfyUI you already run, on this PC or another machine, at its address. Use its models or your own workflow.",
-                [
-                    new("runs-on", "Runs on", "the graphics card of the computer that runs your ComfyUI", "Your ComfyUI"),
-                    new("vram", "Graphics memory", "what its model needs (Z-Image Turbo: an 8 GB+ card)", null),
-                    new("download", "Download", "nothing from Martlet: it uses the models your ComfyUI has", "No download"),
-                    new("picture", "Per picture", "depends on your model and card", null),
-                    new("size", "Picture size", "Z-Image Turbo and XL models about 1024 pixels, others 512-768", null),
-                    new("cost", "Cost", "free", "free"),
-                    new("data", "Your data", "descriptions go to your ComfyUI's address (it has no password: only on your own network)", null)
-                ]),
-            Place(Martlet.Core.Pictures.PicturePlace.OpenRouter, "OpenRouter", "Many image models in the cloud. Each picture costs money.",
-                Facts(PicturesOpenRouter, [new("runs-on", "Runs on", "online: nothing runs on your computers", "Online")],
-                    new("picture", "Per picture", "seconds, by the model", null),
-                    new("size", "Picture size", "about 1K, in the shape Martlet picks", null),
-                    new("cost", "Cost", "paid: each picture costs money (an OpenRouter key)", "paid"),
-                    new("data", "Your data", "descriptions go to OpenRouter and the model's provider", null),
-                    new("models", "Models", "any OpenRouter model that draws (default google/gemini-3.1-flash-image)", null))),
-            Place(Martlet.Core.Pictures.PicturePlace.NvidiaBuild, "NVIDIA Build", "FLUX models in NVIDIA's cloud with your NVIDIA API key.",
-                Facts(PicturesNvidiaBuild, [new("runs-on", "Runs on", "online: nothing runs on your computers", "Online")],
-                    new("picture", "Per picture", "seconds (FLUX.1 schnell is fast)", null),
-                    new("size", "Picture size", "about 1 megapixel, in the shape Martlet picks", null),
-                    new("cost", "Cost", "your nvapi- key; each picture may cost money", "API key"),
-                    new("data", "Your data", "descriptions go to NVIDIA", null),
-                    new("models", "Models", "NVIDIA's FLUX models (default black-forest-labs/flux.1-schnell)", null)))
-        ];
-    }
-
     // ---------- Reading ----------
 
     internal const string ReadingWindowsOcr = "reading:windows-ocr";

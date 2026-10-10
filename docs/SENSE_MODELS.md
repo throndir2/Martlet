@@ -497,8 +497,8 @@ The pool area entries are `PoolAreas.Vision` and `PoolAreas.Hearing`
 ([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). Each PC keeps
 its own list, because which models fit beside Thinking depends on its
 hardware. An empty list means no model of its own: Thinking's own model takes
-the pictures or recordings (the list's summary says *the conversation's own
-model is used*).
+the pictures or recordings (the list's summary says *Nothing in the list is
+on. Instead: Thinking's own model takes the pictures itself.*).
 
 ## Finding out what a model can do
 
