@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- When you test or load a model in Ollama on this PC, the run window now says how much memory it really takes and how much of it is on the graphics card, and Martlet remembers it for each model. ([#760](https://github.com/throndir2/Martlet/pull/760))
+
 ## [0.67.0] - 2026-10-10
 
 ### Added
