@@ -1011,17 +1011,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             text = new { type = "string", maxLength = 300 },
             dataDirectory = new { type = "string" }
         }),
-        Tool("reading_check", "Companion › Reading (docs/READING.md): read reading.json for a data directory (where Martlet reads " +
-            "the text on the screen: Windows OCR on this PC, a host's Reading role or off) and read a drawn test picture with known " +
+        Tool("reading_check", "Companion › Reading (docs/READING.md): read a data directory's Reading list (where Martlet reads " +
+            "the text on the screen, in order: Windows OCR on this PC, the Reading role of your computers; nothing on is off) and read a drawn test picture with known " +
             "text (HEALTH 87 / 100, Score: 12450, VICTORY, a chat line) through Windows OCR on this PC, as watching does: lines, " +
             "the joined text, missing words and milliseconds. desktop: a drawn 1920 x 1080 desktop of 108 small (12 px) text lines " +
             "read at full size, as the desktop reads the screen, and at a vision look's 1024 x 576: lines found, lines read right " +
             "and milliseconds for each. With endpoint (a Reading role's worker on loopback, such as " +
             "http://127.0.0.1:50087/) that worker's GET /status and POST /read read the same picture as a PNG. pool (with " +
-            "dataDirectory): the computers a read tries, first to last (tries: the one named, then your other computers the shared " +
-            "plan says run the Reading role). poolCheck: the production planner and queue with simulated computers (NOT real " +
-            "hosts): a busy computer passed over, a wait for the first to free, a friend's host left for its owner. Never captures the " +
-            "real screen.", new
+            "dataDirectory): the list (pools-local.json, or made from reading.json until the page saves it), its members and the " +
+            "places a read tries, first to last. poolCheck: the production list code, planner and queue with simulated computers " +
+            "(NOT real hosts): the list's order, off when nothing is on, a busy computer passed over, a wait for the first to free, " +
+            "a friend's host left for its owner. Never captures the real screen.", new
         {
             dataDirectory = new { type = "string" },
             endpoint = new { type = "string", maxLength = 64 }

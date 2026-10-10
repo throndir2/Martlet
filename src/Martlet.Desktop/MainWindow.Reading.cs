@@ -5,23 +5,26 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Reading;
 
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Companion › Reading (docs/READING.md, an optional extra): where Martlet reads the text on your screen while it watches
-/// (reading.json, this PC's own choice). In the standard order: Now (what it reads with, the newest read and Read my screen now,
-/// which reads the whole screen once with the saved choice), then the main choice as an option picker: Off, Windows OCR on this
-/// PC (the default and recommended: on the processor, nothing leaves the PC) or Martlet's <c>ocr</c> host role in Docker, set up
-/// on this PC or another of your computers with the same martlet-host flow as every role and reached through its gateway. The
-/// role runs one of three models (<see cref="OptionalExtras.ReadingModels"/>): PP-OCRv5 mobile on the processor (recommended),
-/// PP-OCRv5 server on an NVIDIA graphics card, or RapidOCR on the processor. Each option's details hold where it stands and the
-/// button that uses it. Automation IDs: <c>ReadingNow</c>, <c>ReadingLast</c>, <c>Picker-Reading-&lt;Off|ThisPc|Host&gt;</c>,
-/// <c>ReadingWindowsState</c>, <c>ReadingUseThisPc</c>, <c>ReadingHost-&lt;host&gt;</c>, <c>ReadingModel-&lt;model&gt;</c>
-/// (ppocrv5-mobile, ppocrv5-server or rapidocr-ppocrv4), <c>ReadingModelNote</c>, <c>ReadingHostState</c>, <c>ReadingSetUp</c>,
-/// <c>ReadingSwitch</c>, <c>ReadingUseHost</c>, <c>ReadingTurnOff</c>, <c>ReadingTest</c>, <c>ReadingTestState</c> and
+/// Companion › Reading (docs/READING.md, an optional extra): the places that read the text on your screen while Martlet watches,
+/// as one ordered list (<see cref="ReadingList"/>, pools-local.json, this PC's own). In the standard order: Now (what reads, the
+/// newest read and Read my screen now, which reads the whole screen once with the list), then the list (the shared pool list,
+/// <see cref="PoolListCard"/>): This PC reads with Windows OCR (the default and recommended: on the processor, nothing leaves
+/// the PC) or with Martlet's <c>ocr</c> host role on this PC; a computer or one of its cards reads with its Reading role, set up
+/// with the same martlet-host flow as every role and reached through its gateway. The role runs one of three models
+/// (<see cref="OptionalExtras.ReadingModels"/>): PP-OCRv5 mobile on the processor (recommended), PP-OCRv5 server on an NVIDIA
+/// graphics card, or RapidOCR on the processor. A member's Settings choose its engine (This PC) or show its model and Set up or
+/// Switch there. With nothing on, reading is off. Then Compare them. Automation IDs: <c>ReadingNow</c>, <c>ReadingLast</c>, the
+/// list's <c>Pool-reading-...</c>, <c>ReadingEngine-&lt;windows-ocr|ocr&gt;</c>, <c>ReadingWindowsState</c>,
+/// <c>ReadingModel-&lt;place&gt;-&lt;model&gt;</c> (place: this-pc or the host; model: ppocrv5-mobile, ppocrv5-server or
+/// rapidocr-ppocrv4), <c>ReadingModelNote-&lt;place&gt;</c>, <c>ReadingHostState-&lt;place&gt;</c>, <c>ReadingSetUp-&lt;place&gt;</c>,
+/// <c>ReadingSwitch-&lt;place&gt;</c>, <c>PickerCompare-Reading</c>, <c>ReadingTest</c>, <c>ReadingTestState</c> and
 /// <c>ReadingTestText</c>.
 /// </summary>
 public partial class MainWindow
@@ -42,13 +45,14 @@ public partial class MainWindow
         "an NVIDIA driver 580 or newer.";
 
     private const string ReadingDataTerms =
-        " While Martlet watches your screen, this PC sends screenshots to that computer, or to another of your computers that " +
-        "runs the Reading role when that one is busy. They are read in memory there and are not kept.";
+        " While Martlet watches your screen and that computer is in your Reading list, this PC sends it screenshots. They are " +
+        "read in memory there and are not kept.";
 
-    private string? readingHost;
-    private string? readingModel;
+    /// <summary>The model each place's pills show (place: <see cref="ReadingThisPc"/> or a host ID), until it is set up there.</summary>
+    private readonly Dictionary<string, string> readingModels = new(StringComparer.Ordinal);
+    /// <summary>Why the last setup failed, by place.</summary>
+    private readonly Dictionary<string, string> readingFailures = new(StringComparer.Ordinal);
     private string? readingPending;
-    private string? readingFailure;
     private string? readingTestState;
     private string? readingTestText;
     private bool readingTesting;
@@ -57,10 +61,11 @@ public partial class MainWindow
 
     private void RenderReadingTab(Panel page)
     {
-        var saved = ReadingSettings.Load(store?.DataDirectory);
+        if (store is not null) ReadingList.Ensure(store.DataDirectory);
+        var list = ReadingList.Load(store?.DataDirectory);
         if (readingWindows is null && !readingWindowsBusy) CheckWindowsReadingAsync().Forget();
 
-        var now = new TextBlock { Text = ReadingNow(saved), FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        var now = new TextBlock { Text = ReadingNow(list), FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(now, "ReadingNow");
         var last = Note(ScreenReader.LastReport is { } report ? "While watching: " + report
             : "Nothing read yet. Martlet reads while you watch your screen with it (Start watching).", new Thickness(0, 4, 0, 0));
@@ -75,7 +80,7 @@ public partial class MainWindow
         };
         AutomationProperties.SetName(text, "Text Martlet read on your screen");
         AutomationProperties.SetAutomationId(text, "ReadingTestText");
-        var readNow = saved.On ? PageButton("Read my screen now", () => ReadScreenNowAsync().Forget(), id: "ReadingTest") : null;
+        var readNow = list.NoneOn ? null : PageButton("Read my screen now", () => ReadScreenNowAsync().Forget(), id: "ReadingTest");
         if (readNow is not null) readNow.IsEnabled = !readingTesting;
         page.Children.Add(Card(Heading("Now"), now,
             HelpTip.Explain("While Martlet watches your screen, it reads the text on each changed screenshot, off to the side, so replies " +
@@ -83,46 +88,38 @@ public partial class MainWindow
                 "text it read. What you type or say never waits for it. The text is never kept in the conversation.",
                 new Thickness(0, 4, 0, 0), "Reading", "reading"), last, test, text, Row(readNow)));
 
-        // The main choice: Off, Windows OCR on this PC or Martlet's Reading role. Each option's details hold its button.
-        var options = OptionalExtras.ReadingChoices(saved.Place, readingWindows, ReadingShown(saved).Chosen.Model).Select(option => Enum.Parse<ReadingPlace>(option.Key) switch
+        page.Children.Add(PoolListCard(new PoolListOptions
         {
-            ReadingPlace.ThisPc => option with { Details = () => ReadingThisPcPanel(saved) },
-            ReadingPlace.Host => option with { Details = () => ReadingHostPanel(saved) },
-            _ => option with
-            {
-                Details = () => [Note("Martlet still sees your screen while it watches, but it doesn't read the text on it separately.",
-                    new Thickness(0, 0, 0, 0))],
-                Action = saved.Place == ReadingPlace.Off ? null
-                    : () => PageButton("Turn reading off", () => SaveReading(new ReadingSettings { Place = ReadingPlace.Off, ChosenAt = DateTimeOffset.Now },
-                        "Reading is off."), primary: true, id: "ReadingTurnOff")
-            }
-        }).ToList();
-        page.Children.Add(OptionPicker("Reading", "Where it reads", "This choice stays on this PC.", options));
-    }
-    private static string ReadingNow(ReadingSettings saved) => saved.On
-        ? $"Martlet reads the text on your screen with {saved.Describe()} while it watches."
-        : $"Off. {OptionalExtras.OffMeans(CompanionTab.Reading)}.";
+            Area = PoolAreas.Reading,
+            Heading = "Where it reads",
+            Intro = "The places that read your screen, in order. The first free one reads; when it is busy or doesn't answer, the " +
+                "next one does. This PC reads with Windows OCR or Martlet's Reading role, and your other computers with the Reading " +
+                "role. Press Settings to choose how one reads. With nothing on, Martlet doesn't read your screen. This list stays on this PC.",
+            Status = ReadingMemberStatus,
+            Settings = ReadingMemberSettings,
+            NewMember = ReadingNewMember
+        }));
 
-    /// <summary>Saves this PC's choice; watching picks it up at its next screenshot.</summary>
-    private bool SaveReading(ReadingSettings next, string done)
+        // Compare them: Windows OCR beside the Reading role (with the model the first computer in the list runs).
+        var first = list.Members.FirstOrDefault(m => !m.Off && !ReadingPool.UsesWindows(m));
+        var firstHost = first is null ? null : ReadingPool.HostOf(first, ThisPcHost()?.HostId);
+        var options = OptionalExtras.ReadingChoices(ReadingPool.Choice(list, ThisPcHost()?.HostId).Place, readingWindows,
+            firstHost is null ? null : hostChecks.GetValueOrDefault(firstHost)?.Offers?.GetValueOrDefault(HostRoles.Ocr)).Where(o => !o.IsOff).ToList();
+        var open = pickerCompare.Contains("Reading");
+        var compare = PageButton(open ? "Hide the comparison" : "Compare Windows OCR and the Reading role", () =>
+        {
+            if (!pickerCompare.Remove("Reading")) pickerCompare.Add("Reading");
+            RenderTab();
+        }, link: true, id: "PickerCompare-Reading");
+        page.Children.Add(open ? Card(Heading("Compare them"), Row(compare), PickerTable("Reading", options)) : Card(Heading("Compare them"), Row(compare)));
+    }
+
+    private static string ReadingNow(PoolList list)
     {
-        if (store is null) return false;
-        try
-        {
-            if (!next.Save(store.DataDirectory)) throw new InvalidOperationException("Couldn't save Reading. Check access to Martlet's data folder.");
-        }
-        catch (Exception error) when (error is ContractException or InvalidOperationException)
-        {
-            ActionText.Text = error.Message;
-            return false;
-        }
-        ForgetPicker("Reading");
-        readingTestState = null;
-        readingTestText = null;
-        ErrorLog.Info($"Reading: now {next.Describe()}.");
-        ActionText.Text = done;
-        if (!closing && openTab == CompanionTab.Reading) RenderTab();
-        return true;
+        var on = list.Members.Where(m => !m.Off).ToList();
+        if (on.Count == 0) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Reading)}.";
+        return $"Martlet reads the text on your screen with {ReadingPool.Describe(on[0])} while it watches" +
+            (on.Count > 1 ? $"; when that one is busy, the next of the {on.Count} in the list reads." : ".");
     }
 
     private async Task CheckWindowsReadingAsync()
@@ -133,95 +130,109 @@ public partial class MainWindow
         if (!closing && openTab == CompanionTab.Reading && !tabEdited) RenderTab();
     }
 
-    // ---------- Windows OCR on this PC ----------
+    // ---------- the list's members ----------
 
-    /// <summary>Windows OCR's details: whether Windows can read text here, and Read on this PC.</summary>
-    private List<UIElement> ReadingThisPcPanel(ReadingSettings saved)
+    /// <summary>Where a member reads with the Reading role: its place (<see cref="ReadingThisPc"/> or the host ID), the paired
+    /// computer (null: this PC has no host service yet, or the computer isn't paired here) and its name in words.</summary>
+    private (string Place, PairedHost? Host, string Where) ReadingRoleOf(PoolMember member) => member.Kind == PoolMemberKind.ThisPc
+        ? (ReadingThisPc, ThisPcHost(), "this PC")
+        : (member.HostId!, FindHost(member.HostId!) ?? FindSharedHost(member.HostId), member.HostId!);
+
+    /// <summary>A member's state line: Windows OCR, or the model its computer's Reading role runs and whether that is the model
+    /// its settings name.</summary>
+    private string? ReadingMemberStatus(PoolMember member)
     {
-        var inUse = saved.Place == ReadingPlace.ThisPc;
-        var state = Note(readingWindows switch
+        if (ReadingPool.UsesWindows(member))
+            return readingWindows switch
+            {
+                true => "reads with Windows OCR on this PC's processor; nothing leaves this PC",
+                false => "Windows OCR, but Windows has no text recognition language here, so the next one reads",
+                _ => "reads with Windows OCR; checking it"
+            };
+        var (place, host, where) = ReadingRoleOf(member);
+        var parts = new List<string>();
+        if (member.Kind == PoolMemberKind.ThisPc) parts.Add("reads with Martlet's Reading role on this PC");
+        if (readingPending == place) parts.Add("setting up...");
+        else if (host is null) parts.Add(member.Kind == PoolMemberKind.ThisPc ? "not set up yet: press Settings" : $"{where} isn't paired with this PC");
+        else
         {
-            true => "Windows can read text on this PC." + (inUse ? " Martlet reads here." : ""),
-            false => WindowsScreenTextReader.NoLanguage,
-            _ => "Checking Windows text recognition…"
-        }, new Thickness(0, 4, 0, 0));
-        if (readingWindows == false) state.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        AutomationProperties.SetAutomationId(state, "ReadingWindowsState");
-        return [state, Row(inUse ? null : PageButton("Read on this PC", () => SaveReading(new ReadingSettings { Place = ReadingPlace.ThisPc, ChosenAt = DateTimeOffset.Now },
-            "Martlet now reads the text on your screen with Windows OCR on this PC."), primary: true, id: "ReadingUseThisPc"))];
+            var check = hostChecks.GetValueOrDefault(host.HostId);
+            if (check?.Offers?.TryGetValue(HostRoles.Ocr, out var offer) == true)
+            {
+                parts.Add("runs " + (OptionalExtras.ReadingModelOf(offer)?.Name ?? (string.IsNullOrEmpty(offer) ? "its reader" : offer)));
+                if (OptionalExtras.ReadingModelOf(member.Setting(PoolSettingKeys.Model)) is { } wanted && wanted.Model != offer)
+                    parts.Add($"its setting is {wanted.Name}: Switch in Settings");
+            }
+            else parts.Add(check?.Reachable == false ? "not reachable right now"
+                : check?.Reachable == true ? "doesn't run Reading yet: Set up in Settings" : "not checked yet");
+            if (readingFailures.GetValueOrDefault(place) is { } failed) parts.Add("setup failed: " + failed);
+        }
+        if (member.Kind == PoolMemberKind.Gpu) parts.Add("its computer picks the card");
+        return string.Join("; ", parts);
     }
 
-    // ---------- Martlet's Reading role ----------
-
-    /// <summary>What the Reading role's details show: the computer (<see cref="ReadingThisPc"/> or a host ID) and that host, the
-    /// other computers, the model the computer runs (its offer; null: not set up), the model to set up or switch to (the pill the
-    /// owner picked, else the model it runs, else the recommended one, and never one that needs an NVIDIA card the computer
-    /// doesn't have) and whether it has an NVIDIA card for containers (null: not known).</summary>
-    private sealed record ReadingView(string Shown, PairedHost? Target, PairedHost[] Others, string? Offer,
-        OptionalExtras.ReadingRoleModel Chosen, bool? Nvidia);
-
-    private ReadingView ReadingShown(ReadingSettings saved)
+    /// <summary>A member's settings: This PC's engine (Windows OCR or the Reading role), and for the Reading role its model, where
+    /// it stands and Set up or Switch there.</summary>
+    private UIElement? ReadingMemberSettings(PoolMember member)
     {
-        var thisPc = ThisPcHost();
-        // Hosts friends share with this PC read for this PC too, when their owner set Reading up there.
-        var others = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).Concat(sharedHosts).ToArray();
-        var reads = others.FirstOrDefault(h => !h.Shared && Offers(h, HostRoles.Ocr));
-        var shown = readingHost ?? (saved.Place == ReadingPlace.Host && saved.HostId is { } chosen
-            ? thisPc?.HostId == chosen ? ReadingThisPc : chosen
-            : thisPc is not null && Offers(thisPc, HostRoles.Ocr) ? ReadingThisPc : reads?.HostId ?? ReadingThisPc);
-        var onThisPc = shown == ReadingThisPc;
-        var target = onThisPc ? thisPc : FindHost(shown) ?? FindSharedHost(shown);
+        var stack = new StackPanel();
+        if (member.Kind == PoolMemberKind.ThisPc)
+        {
+            var engines = new WrapPanel { Margin = new Thickness(0, 0, 0, 2) };
+            foreach (var (engine, label) in new[] { (ReadingPool.WindowsOcr, "Windows OCR (recommended)"), (ReadingPool.Role, "Martlet's Reading role") })
+            {
+                var pill = new RadioButton { Content = label, GroupName = "ReadingEngine", IsChecked = ReadingPool.UsesWindows(member) == (engine == ReadingPool.WindowsOcr) };
+                pill.SetResourceReference(StyleProperty, "FilterPill");
+                AutomationProperties.SetName(pill, "This PC reads with " + label);
+                AutomationProperties.SetAutomationId(pill, "ReadingEngine-" + engine);
+                pill.Checked += (_, _) => SaveReadingMember(member.WithSetting(PoolSettingKeys.Engine, engine),
+                    engine == ReadingPool.WindowsOcr ? "This PC now reads with Windows OCR." : "This PC now reads with Martlet's Reading role.");
+                engines.Children.Add(pill);
+            }
+            stack.Children.Add(engines);
+            if (ReadingPool.UsesWindows(member))
+            {
+                var state = Note(readingWindows switch
+                {
+                    true => "Windows can read text on this PC. It reads a screenshot in a fraction of a second, and nothing leaves this PC.",
+                    false => WindowsScreenTextReader.NoLanguage,
+                    _ => "Checking Windows text recognition…"
+                }, new Thickness(0, 4, 0, 0));
+                if (readingWindows == false) state.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+                AutomationProperties.SetAutomationId(state, "ReadingWindowsState");
+                stack.Children.Add(state);
+                return stack;
+            }
+        }
+        foreach (var element in ReadingRolePanel(member)) stack.Children.Add(element);
+        return stack;
+    }
+
+    /// <summary>The Reading role's settings of a member: the model pills (choosing one only shows it), the model's note, where
+    /// it stands on that computer, and Set up there (or Switch to the picked model).</summary>
+    private List<UIElement> ReadingRolePanel(PoolMember member)
+    {
+        var (place, target, where) = ReadingRoleOf(member);
+        var onThisPc = member.Kind == PoolMemberKind.ThisPc;
         var offer = target is null ? null : hostChecks.GetValueOrDefault(target.HostId)?.Offers?.GetValueOrDefault(HostRoles.Ocr);
         var nvidia = target is not null && HardwareStore?.Find(target.HostId) is { } report
             ? report.Gpus.Any(g => g.IsNvidia) && report.NvidiaContainers != "no"
             : onThisPc && !ReferenceEquals(machine, MachineInfo.Unknown) ? machine.Gpus.Any(g => g.IsNvidia) : (bool?)null;
-        var model = OptionalExtras.ReadingModelOf(readingModel) ?? OptionalExtras.ReadingModelOf(offer) ?? OptionalExtras.ReadingModels[0];
-        if (model.NeedsNvidia && nvidia == false) model = OptionalExtras.ReadingModels[0];
-        return new(shown, target, others, offer, model, nvidia);
-    }
-
-    /// <summary>The Reading role's details: the computer pills (with other computers paired, or shared by a friend), the model
-    /// pills, where it stands on the shown computer, Set up there (or Switch to the picked model), and Read there once it is ready.</summary>
-    private List<UIElement> ReadingHostPanel(ReadingSettings saved)
-    {
-        var view = ReadingShown(saved);
-        var (shown, target, chosen) = (view.Shown, view.Target, view.Chosen);
-        var stack = new List<UIElement>
-        {
-            Note("Set up by Martlet in Docker like its other roles, on the computer and with the model you choose.", new Thickness(0, 0, 0, 4))
-        };
-        if (view.Others.Length > 0)
-        {
-            var pills = new WrapPanel { Margin = new Thickness(0, 2, 0, 2) };
-            foreach (var (id, label) in new[] { (ReadingThisPc, "This PC") }.Concat(view.Others.Select(h => (h.HostId, h.Shared ? $"{h.HostId} (a friend's)" : h.HostId))))
-            {
-                var pill = new RadioButton { Content = label, GroupName = "ReadingHost", IsChecked = id == shown };
-                pill.SetResourceReference(StyleProperty, "FilterPill");
-                AutomationProperties.SetName(pill, label);
-                AutomationProperties.SetAutomationId(pill, "ReadingHost-" + id);
-                pill.Checked += (_, _) =>
-                {
-                    if (readingHost == id) return;
-                    readingHost = id;
-                    RenderTab();
-                };
-                pills.Children.Add(pill);
-            }
-            stack.Add(pills);
-        }
-        var onThisPc = shown == ReadingThisPc;
-        var where = onThisPc ? "this PC" : shown;
+        var chosen = OptionalExtras.ReadingModelOf(readingModels.GetValueOrDefault(place)) ?? OptionalExtras.ReadingModelOf(member.Setting(PoolSettingKeys.Model)) ??
+            OptionalExtras.ReadingModelOf(offer) ?? OptionalExtras.ReadingModels[0];
+        if (chosen.NeedsNvidia && nvidia == false) chosen = OptionalExtras.ReadingModels[0];
+        var stack = new List<UIElement>();
 
         // The model: PP-OCRv5 mobile (recommended), PP-OCRv5 server (an NVIDIA graphics card only) or RapidOCR.
         var models = new WrapPanel { Margin = new Thickness(0, 4, 0, 2) };
         foreach (var model in OptionalExtras.ReadingModels)
         {
             var label = model == OptionalExtras.ReadingModels[0] ? model.Name + " (recommended)" : model.Name;
-            var pill = new RadioButton { Content = label, GroupName = "ReadingModel", IsChecked = model == chosen, IsEnabled = readingPending is null };
+            var pill = new RadioButton { Content = label, GroupName = "ReadingModel-" + place, IsChecked = model == chosen, IsEnabled = readingPending is null };
             pill.SetResourceReference(StyleProperty, "FilterPill");
-            AutomationProperties.SetName(pill, label);
-            AutomationProperties.SetAutomationId(pill, "ReadingModel-" + model.Model);
-            if (model.NeedsNvidia && view.Nvidia == false)
+            AutomationProperties.SetName(pill, $"{label} on {where}");
+            AutomationProperties.SetAutomationId(pill, $"ReadingModel-{place}-{model.Model}");
+            if (model.NeedsNvidia && nvidia == false)
             {
                 var why = $"Needs an NVIDIA graphics card; {where} has none.";
                 pill.IsEnabled = false;
@@ -231,8 +242,8 @@ public partial class MainWindow
             }
             pill.Checked += (_, _) =>
             {
-                if (readingModel == model.Model) return;
-                readingModel = model.Model;
+                if (readingModels.GetValueOrDefault(place) == model.Model) return;
+                readingModels[place] = model.Model;
                 RenderTab();
             };
             models.Children.Add(pill);
@@ -246,41 +257,39 @@ public partial class MainWindow
                 $"beside the voice and thinking; on a processor it takes about a minute a screenshot. Download: {chosen.Download}.",
             _ => $"RapidOCR (PP-OCRv4) runs on the processor and is the smallest, but it misses more small text than PP-OCRv5. Download: {chosen.Download}."
         }, new Thickness(0, 0, 0, 0));
-        AutomationProperties.SetAutomationId(modelNote, "ReadingModelNote");
+        AutomationProperties.SetAutomationId(modelNote, "ReadingModelNote-" + place);
         stack.Add(modelNote);
 
         var ready = target is not null && Offers(target, HostRoles.Ocr);
-        var runs = OptionalExtras.ReadingModelOf(view.Offer)?.Name ?? (string.IsNullOrEmpty(view.Offer) ? "its reader" : view.Offer);
-        var other = ready && !string.IsNullOrEmpty(view.Offer) && view.Offer != chosen.Model;
-        var pending = readingPending == shown;
-        var inUse = saved.Place == ReadingPlace.Host && target is not null && saved.HostId == target.HostId;
+        var runs = OptionalExtras.ReadingModelOf(offer)?.Name ?? (string.IsNullOrEmpty(offer) ? "its reader" : offer);
+        var other = ready && !string.IsNullOrEmpty(offer) && offer != chosen.Model;
+        var pending = readingPending == place;
         var cannot = ready || onThisPc ? null
-            : target is { Shared: true } ? $"A friend shares {shown} with this PC; only its owner can set Reading up there."
-            : CannotHand(shown, HostRoles.Ocr, "reading");
+            : target is null ? $"{where} isn't paired with this PC."
+            : target.Shared ? $"A friend shares {where} with this PC; only its owner can set Reading up there."
+            : CannotHand(where, HostRoles.Ocr, "reading");
+        var failure = readingFailures.GetValueOrDefault(place);
         var state = pending && other ? $"Switching {where} to {chosen.Name}..."
-            : ready ? $"Ready on {where} with {runs}." + (inUse ? " Martlet reads there." : "") +
-                (other && target is { Shared: true } ? " Only its owner can change the model." : "")
+            : ready ? $"Ready on {where} with {runs}." + (other && target is { Shared: true } ? " Only its owner can change the model." : "")
             : pending ? $"Setting up {chosen.Name} on {where}..."
-            : cannot ?? (readingFailure is { } failed ? $"Setup failed on {where}: {failed}" : $"Not set up on {where} yet.");
+            : cannot ?? (failure is not null ? $"Setup failed on {where}: {failure}" : $"Not set up on {where} yet.");
         var stateLine = Note(state, new Thickness(0, 4, 0, 0));
-        if (cannot is not null || readingFailure is not null && !pending && !ready) stateLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        AutomationProperties.SetAutomationId(stateLine, "ReadingHostState");
+        if (cannot is not null || failure is not null && !pending && !ready) stateLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+        AutomationProperties.SetAutomationId(stateLine, "ReadingHostState-" + place);
         stack.Add(stateLine);
         if (ready)
         {
-            Button? change = null;
             if (other && target is { Shared: false })
             {
-                change = PageButton(pending ? "Switching..." : $"Switch to {chosen.Name}",
-                    () => SetUpReadingAsync(onThisPc ? null : target, chosen, changing: true).Forget(), primary: inUse, id: "ReadingSwitch");
+                var change = PageButton(pending ? "Switching..." : $"Switch to {chosen.Name}",
+                    () => SetUpReadingAsync(onThisPc ? null : target, chosen, changing: true).Forget(), primary: true, id: "ReadingSwitch-" + place);
                 change.IsEnabled = readingPending is null;
+                stack.Add(Row(change));
             }
-            var use = inUse ? null : PageButton($"Read on {where}", () => UseReadingHost(target!.HostId, where), primary: true, id: "ReadingUseHost");
-            if (change is not null || use is not null) stack.Add(Row(use, change));
             return stack;
         }
         var setUp = PageButton(pending ? "Setting up..." : $"Set up {chosen.Name}", () => SetUpReadingAsync(onThisPc ? null : target, chosen).Forget(),
-            primary: true, id: "ReadingSetUp");
+            primary: true, id: "ReadingSetUp-" + place);
         setUp.IsEnabled = !pending && cannot is null && readingPending is null;
         if (cannot is not null)
         {
@@ -291,9 +300,88 @@ public partial class MainWindow
         stack.Add(Row(setUp));
         return stack;
     }
-    private void UseReadingHost(string hostId, string where) =>
-        SaveReading(new ReadingSettings { Place = ReadingPlace.Host, HostId = hostId, ChosenAt = DateTimeOffset.Now },
-            $"Martlet now reads the text on your screen on {where}.");
+
+    /// <summary>The settings a member gets when it is added: This PC reads with Windows OCR (or with the Reading role when Windows
+    /// can't read here and this PC runs it); a computer keeps the model its Reading role runs.</summary>
+    private PoolMember ReadingNewMember(PoolMember member)
+    {
+        if (member.Kind == PoolMemberKind.ThisPc)
+            return readingWindows == false && ThisPcHost() is { } own && Offers(own, HostRoles.Ocr) ? ReadingPool.ThisPcRole() : ReadingPool.Windows();
+        var offer = member.HostId is { } id ? hostChecks.GetValueOrDefault(id)?.Offers?.GetValueOrDefault(HostRoles.Ocr) : null;
+        return string.IsNullOrEmpty(offer) ? member : member.WithSetting(PoolSettingKeys.Model, offer);
+    }
+
+    /// <summary>Saves <paramref name="next"/> in the Reading list (by its key); watching follows it at its next screenshot.</summary>
+    private bool SaveReadingList(Func<PoolList, PoolList> change, string done)
+    {
+        if (store is null) return false;
+        ReadingList.Ensure(store.DataDirectory);
+        if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.Reading, change(ReadingList.Load(store.DataDirectory))))
+        {
+            ActionText.Text = "Couldn't save the Reading list on this PC.";
+            return false;
+        }
+        WorkSharingRoster.Forget();
+        ErrorLog.Info("Pools: " + done);
+        ActionText.Text = done;
+        // Rebuilt after the click's own event finishes, so the control that changed isn't replaced under it.
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (!closing && openTab == CompanionTab.Reading) RenderTab();
+        });
+        return true;
+    }
+
+    private void SaveReadingMember(PoolMember next, string done) => SaveReadingList(list => list.With(next), done);
+
+    /// <summary>Puts <paramref name="hostId"/> first in the Reading list (added when missing, on again when off), as Devices'
+    /// Use for reading on a host a friend shares does.</summary>
+    private void UseReadingHost(string hostId, string where)
+    {
+        var offer = hostChecks.GetValueOrDefault(hostId)?.Offers?.GetValueOrDefault(HostRoles.Ocr);
+        SaveReadingList(list =>
+        {
+            var member = (list.Find(PoolMember.Computer(hostId).Key) ?? PoolMember.Computer(hostId)) with { Off = false };
+            if (!string.IsNullOrEmpty(offer)) member = member.WithSetting(PoolSettingKeys.Model, offer);
+            return list.With(member).Move(member.Key, -PoolSettings.MaximumMembers);
+        }, $"Martlet now reads the text on your screen on {where} first.");
+    }
+
+    /// <summary>Whether this PC's Reading list reads on <paramref name="hostId"/> (a member that is on names it).</summary>
+    private bool ReadsOn(string hostId) => store is not null &&
+        ReadingList.Load(store.DataDirectory).Members.Any(m => !m.Off && m.OnHost && m.HostId == hostId);
+
+    /// <summary>Takes <paramref name="hostId"/> out of the Reading list (a host forgotten). When nothing else was on, This PC reads
+    /// with Windows OCR, as before.</summary>
+    private void ForgetReadingHost(string hostId)
+    {
+        if (store is null || !ReadingList.Load(store.DataDirectory).Members.Any(m => m.OnHost && m.HostId == hostId)) return;
+        SaveReadingList(list =>
+        {
+            var next = list with { Members = [.. list.Members.Where(m => !(m.OnHost && m.HostId == hostId))] };
+            return next.NoneOn && !list.NoneOn ? next.With(ReadingPool.Windows()) : next;
+        }, $"{hostId} is no longer in the Reading list.");
+    }
+
+    /// <summary>After the Reading role was set up (or switched) on <paramref name="hostId"/> (null: this PC), the members that read
+    /// there keep its model (This PC reads with the role then).</summary>
+    private void ReadingSetUpDone(string? hostId, OptionalExtras.ReadingRoleModel model, string where)
+    {
+        var own = ThisPcHost()?.HostId;
+        readingModels.Remove(hostId ?? ReadingThisPc);
+        SaveReadingList(list =>
+        {
+            var members = list.Members.Select(m => hostId is null ? m.Kind == PoolMemberKind.ThisPc
+                    ? m.WithSetting(PoolSettingKeys.Engine, ReadingPool.Role).WithSetting(PoolSettingKeys.Model, model.Model) : m
+                : ReadingPool.HostOf(m, own) == hostId ? m.WithSetting(PoolSettingKeys.Model, model.Model) : m).ToList();
+            var next = list with { Members = members };
+            // Set up from Devices or another page: the place joins the list at its end.
+            if (members.All(m => hostId is null ? m.Kind != PoolMemberKind.ThisPc : ReadingPool.HostOf(m, own) != hostId))
+                next = next.With(hostId is null ? ReadingPool.ThisPcRole().WithSetting(PoolSettingKeys.Model, model.Model)
+                    : PoolMember.Computer(hostId).WithSetting(PoolSettingKeys.Model, model.Model));
+            return next;
+        }, $"Reading is ready on {where} with {model.Name}.");
+    }
 
     /// <summary>Sets the Reading role up on <paramref name="host"/> (null: this PC) with <paramref name="model"/>, or switches it
     /// to that model (<paramref name="changing"/>), after one confirmation naming its downloads, licences and what goes there,
@@ -316,7 +404,7 @@ public partial class MainWindow
                 $"{verb} Reading"))
             return;
         var answers = model.Answers();
-        readingFailure = null;
+        readingFailures.Remove(host?.HostId ?? ReadingThisPc);
         readingPending = host?.HostId ?? ReadingThisPc;
         RenderTab();
         try
@@ -325,10 +413,10 @@ public partial class MainWindow
             {
                 var done = await RunHostActionAsync(host, changing ? HostAction.Change(HostRoles.Ocr) : HostRoles.Get(HostRoles.Ocr).Add, answers);
                 if (closing) return;
-                if (done is null) readingFailure = $"{(changing ? "Switching" : "Setting")} it {(changing ? "" : "up ")}on {host.HostId} stopped. Its run window has details.";
+                if (done is null) readingFailures[host.HostId] = $"{(changing ? "Switching" : "Setting")} it {(changing ? "" : "up ")}on {host.HostId} stopped. Its run window has details.";
                 else if (await WaitForReadingAsync(host, model.Model, lifetime.Token) is { } why)
-                    readingFailure = $"{(changing ? "The switch" : "Setup")} finished, but Martlet can't see {model.Name} on {host.HostId} yet ({why}). Check it in a minute.";
-                else UseReadingHost(host.HostId, host.HostId);
+                    readingFailures[host.HostId] = $"{(changing ? "The switch" : "Setup")} finished, but Martlet can't see {model.Name} on {host.HostId} yet ({why}). Check it in a minute.";
+                else ReadingSetUpDone(host.HostId, model, host.HostId);
                 return;
             }
             string? stopped = null;
@@ -353,7 +441,7 @@ public partial class MainWindow
                 run.Status("Checking Reading on this PC...");
                 if (await WaitForReadingAsync(pc, model.Model, run.Token) is { } why)
                     throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see {model.Name} yet ({why}). Check this PC in a minute.");
-                Dispatcher.Invoke(() => UseReadingHost(pc.HostId, "this PC"));
+                Dispatcher.Invoke(() => ReadingSetUpDone(null, model, "this PC"));
                 return $"Reading is ready on this PC with {model.Name}.";
             }
             string? status;
@@ -369,14 +457,14 @@ public partial class MainWindow
             if (!closing && status is not null)
             {
                 ActionText.Text = status;
-                if (!status.StartsWith("Reading is ready", StringComparison.Ordinal)) readingFailure = status;
+                if (!status.StartsWith("Reading is ready", StringComparison.Ordinal)) readingFailures[ReadingThisPc] = status;
             }
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
             JsonException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
         {
-            readingFailure = error.Message;
+            readingFailures[host?.HostId ?? ReadingThisPc] = error.Message;
             ActionText.Text = error.Message;
         }
         finally
@@ -401,10 +489,9 @@ public partial class MainWindow
                 why = $"it still reads with {OptionalExtras.ReadingModelOf(offer)?.Name ?? offer}";
             else if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.OcrRouteId) == true && store is not null)
             {
-                using var reader = new HostScreenTextReader(store.DataDirectory, host.HostId);
                 try
                 {
-                    var state = await reader.StatusAsync(token);
+                    var state = await PoolScreenTextReader.StatusAsync(host, token);
                     if (state == "ready") return null;
                     if (state == "failed") return "its reader failed to load; the Reading role's log on that computer says why";
                     why = $"its reader is {state}";

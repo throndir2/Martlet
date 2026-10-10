@@ -64,79 +64,89 @@ internal sealed class WindowsScreenTextReader : IScreenTextReader
     public void Dispose() { }
 }
 
-/// <summary>The owner's computers that run the Reading role (RapidOCR or PP-OCRv5), as a pool, through their gateways (route
-/// <c>martlet.gateway.ocr.v1</c>). The screenshot goes there as a JPEG, is read in memory and is not kept. Each read goes through
-/// <see cref="WorkQueue"/> at background priority (<see cref="Targets"/>): first the computer named in Companion › Reading, then
-/// the owner's other computers that the shared plan says run the Reading role. A computer that is busy, doesn't answer or
-/// doesn't run the role is passed over for the next at once; when every one is busy the read waits up to <see cref="Wait"/>
-/// for the first to free. While the named computer is free nothing changes: no extra request. Each computer's connection is
-/// kept open between reads and dropped when that computer fails. A host a friend shares reads only when it is the one named.</summary>
-internal sealed class HostScreenTextReader : IScreenTextReader
+/// <summary>Companion › Reading's list (<see cref="ReadingList"/>, docs/READING.md#the-reading-pool) as one reader: Windows OCR on
+/// this PC and the Reading role (RapidOCR or PP-OCRv5) of paired computers, through their gateways (route
+/// <c>martlet.gateway.ocr.v1</c>). Each read goes through <see cref="WorkQueue"/> (lane <c>reading</c>) at background priority to
+/// the list's places in order (<see cref="Targets"/>, read again from local files for each read): a place that is busy, doesn't
+/// answer or can't read now (a computer without the role, Windows without an OCR language) is passed over for the next at once;
+/// when every one is busy the read waits up to <see cref="Wait"/> for the first to free. While the first is free nothing changes:
+/// no extra request. A screenshot goes to a computer as a JPEG (encoded once, only when a computer reads), is read in memory
+/// there and is not kept. Each computer's connection is kept between reads and dropped when that computer fails.</summary>
+internal sealed class PoolScreenTextReader : IScreenTextReader
 {
     /// <summary>Reads <paramref name="jpeg"/> on one computer: the route it used and the lines.</summary>
     internal delegate Task<(HostRoute Route, IReadOnlyList<ReadLine> Lines)> HostRead(PairedHost host, byte[] jpeg, CancellationToken token);
 
-    /// <summary>How long a read waits in line when every computer is busy. The next capture brings a newer screenshot anyway.</summary>
+    /// <summary>Reads the screenshot with Windows OCR on this PC.</summary>
+    internal delegate Task<IReadOnlyList<ReadLine>> LocalRead(byte[] bgra, int width, int height, CancellationToken token);
+
+    /// <summary>How long a read waits in line when every place is busy. The next capture brings a newer screenshot anyway.</summary>
     internal static TimeSpan Wait => TimeSpan.FromSeconds(3);
 
-    private sealed record Used(string HostId, HostRoute Route);
-
-    private readonly string dataDirectory;
-    private readonly string? hostId;
+    private readonly string? dataDirectory;
     private readonly WorkQueue queue;
     private readonly TimeSpan wait;
     private readonly HostRead read;
+    private readonly LocalRead local;
     private readonly object gate = new();
     private readonly Dictionary<string, (HostRoute Route, Audio2FaceHostConnection Connection)> open = new(StringComparer.Ordinal);
-    private volatile Used? last;
+    private WindowsScreenTextReader? windows;
+    private volatile string? last;
 
-    /// <summary>Reads on <paramref name="hostId"/> first (null: the owner's computers that run the Reading role). The other
-    /// arguments are for tests: the queue (default <see cref="WorkQueue.Shared"/>), the wait and the read on one computer.</summary>
-    internal HostScreenTextReader(string dataDirectory, string? hostId, WorkQueue? queue = null, TimeSpan? wait = null, HostRead? read = null)
+    /// <summary>Reads with the list in <paramref name="dataDirectory"/>. The other arguments are for tests: the queue (default
+    /// <see cref="WorkQueue.Shared"/>), the wait, the read on one computer and the read with Windows OCR.</summary>
+    internal PoolScreenTextReader(string? dataDirectory, WorkQueue? queue = null, TimeSpan? wait = null, HostRead? read = null,
+        LocalRead? local = null)
     {
         this.dataDirectory = dataDirectory;
-        this.hostId = hostId;
         this.queue = queue ?? WorkQueue.Shared;
         this.wait = wait ?? Wait;
         this.read = read ?? ReadOnAsync;
+        this.local = local ?? ((bgra, width, height, token) => (windows ??= new()).ReadAsync(bgra, width, height, token));
     }
 
-    /// <summary>The computer that did the last read, else the one named.</summary>
-    public string Engine => last is { } found
-        ? $"{found.HostId}'s Reading role" + (OptionalExtras.ReadingModelOf(found.Route.ModelId) is { } model ? $" ({model.Name})" : "")
-        : hostId is null ? "Martlet's Reading role" : $"{hostId}'s Reading role";
+    /// <summary>The place that did the last read, else the list's first that is on.</summary>
+    public string Engine => last ?? (ReadingList.Load(dataDirectory).Members.FirstOrDefault(m => !m.Off) is { } first
+        ? ReadingPool.Describe(first) : "nothing (the Reading list is empty)");
 
     public async Task<IReadOnlyList<ReadLine>> ReadAsync(byte[] bgra, int width, int height, CancellationToken token)
     {
-        // Encoded below normal priority: the conversation's own work on this PC comes first.
         var targets = Targets();
-        var jpeg = await LowPriority.RunAsync(() => Jpeg(bgra, width, height), token, "Martlet screen reading").ConfigureAwait(false);
-        // The queue throws the last refusal, which is always from the computer it tried last.
+        byte[]? jpeg = null;
+        // The queue throws the last refusal, which is always from the place it tried last.
         var tried = targets[0];
         try
         {
-            var (host, route, lines) = await queue.RunAsync(WorkSharingJobs.Reading, targets, h => h.HostId, async (h, t) =>
+            var (engine, lines) = await queue.RunAsync(PoolAreas.Reading.Id, targets, p => p.Target.Key, async (p, t) =>
             {
-                tried = h;
-                var (route, lines) = await WorkSharingRoster.WatchedOnce(h.HostId, "reading", read(h, jpeg, t)).ConfigureAwait(false);
-                return (h, route, lines);
+                tried = p;
+                if (p.Host is not { } host)
+                {
+                    // Windows can't read here (no OCR language): the next place reads.
+                    try { return ("Windows OCR on this PC", await local(bgra, width, height, t).ConfigureAwait(false)); }
+                    catch (ScreenReadException error) { throw new Audio2FaceHostException("worker.unavailable", error.Message); }
+                }
+                // Encoded once, below normal priority: the conversation's own work on this PC comes first.
+                jpeg ??= await LowPriority.RunAsync(() => Jpeg(bgra, width, height), t, "Martlet screen reading").ConfigureAwait(false);
+                var (route, lines) = await WorkSharingRoster.WatchedOnce(host.HostId, "reading", read(host, jpeg, t)).ConfigureAwait(false);
+                return ($"{host.HostId}'s Reading role" + (OptionalExtras.ReadingModelOf(route.ModelId) is { } model ? $" ({model.Name})" : ""), lines);
             }, WorkSharingRoster.Classify, DateTimeOffset.UtcNow + wait, null, token, WorkPriority.Background).ConfigureAwait(false);
-            last = new(host.HostId, route);
+            last = engine;
             return lines;
         }
         catch (WorkPreemptedException) when (!token.IsCancellationRequested)
         {
             // Background priority: a computer that keeps its graphics card for a live turn, or for its owner (a friend's host),
-            // was passed over, and no other took the read.
-            throw new ScreenReadException(targets.Count == 1 && tried.Shared
-                ? $"{tried.HostId} is busy with its owner's own work; Martlet reads again in a moment."
-                : "The computers that read keep their graphics cards for other work now; Martlet reads again in a moment.", busy: true);
+            // was passed over, and no other place took the read.
+            throw new ScreenReadException(targets.Count == 1 && tried.Host is { Shared: true } shared
+                ? $"{shared.HostId} is busy with its owner's own work; Martlet reads again in a moment."
+                : "The computers in the Reading list keep their graphics cards for other work now; Martlet reads again in a moment.", busy: true);
         }
         catch (Audio2FaceHostException error) when (error.Code == "job.busy")
         {
-            throw new ScreenReadException(error.OwnerFirst ? $"{tried.HostId} is busy with its owner's own work; Martlet reads again in a moment."
-                : targets.Count == 1 ? $"{tried.HostId}'s Reading role is busy."
-                : $"Every computer that runs the Reading role is busy ({targets.Count}); Martlet reads again in a moment.", busy: true, error);
+            throw new ScreenReadException(error.OwnerFirst ? $"{Name(tried)} is busy with its owner's own work; Martlet reads again in a moment."
+                : targets.Count == 1 ? $"{Name(tried)}'s Reading role is busy."
+                : $"Every place in the Reading list is busy ({targets.Count}); Martlet reads again in a moment.", busy: true, error);
         }
         catch (Audio2FaceHostException error) when (error.Code is "host.unreachable" or "worker.unavailable")
         {
@@ -144,61 +154,38 @@ internal sealed class HostScreenTextReader : IScreenTextReader
         }
         catch (Audio2FaceHostException error)
         {
-            throw new ScreenReadException($"{tried.HostId}'s Reading role: {error.Message}", inner: error);
+            throw new ScreenReadException($"{Name(tried)}'s Reading role: {error.Message}", inner: error);
         }
         catch (Exception error) when (error is HttpRequestException or IOException)
         {
-            throw new ScreenReadException($"{tried.HostId} stopped answering ({error.Message}).", inner: error);
+            throw new ScreenReadException($"{Name(tried)} stopped answering ({error.Message}).", inner: error);
         }
-        finally { Array.Clear(jpeg); }
-    }
-
-    /// <summary>The computers a read tries, first to last: the one named in Companion › Reading, then the owner's other
-    /// computers that the shared plan says run the Reading role (<see cref="WorkSharingRoster.Order"/>: this PC's own host
-    /// service, then the fewest jobs first; never a computer kept for another companion PC). A host a friend shares is in it
-    /// only when it is the one named (the shared plan never lists one). With none named and none in the plan, every computer
-    /// of the owner's own, as before the plan knew the Reading role.</summary>
-    internal IReadOnlyList<PairedHost> Targets()
-    {
-        List<PairedHost> order = [.. WorkSharingRoster.Order(dataDirectory, WorkSharingJobs.Reading, HostRoles.Ocr, null, hostId)
-            .Select(p => p.Host).OfType<PairedHost>().Where(h => !h.Shared || h.HostId == hostId)];
-        if (hostId is null && order.Count == 0)
+        finally
         {
-            var sharing = WorkSharingRoster.Settings(dataDirectory);
-            order.AddRange(Registry().Where(h => !h.Shared && sharing.Allows(h.HostId, WorkSharingRoster.Device)));
-        }
-        return order.Count > 0 ? order : throw new ScreenReadException(hostId is null
-            ? "No paired computer runs the Reading role. Set it up in Companion › Reading."
-            : $"{hostId} doesn't run the Reading role. Set it up there in Companion › Reading.");
-    }
-
-    private IReadOnlyList<PairedHost> Registry()
-    {
-        try { return HostRegistry.Load(dataDirectory); }
-        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
-        {
-            throw new ScreenReadException(error.Message, inner: error);
+            if (jpeg is not null) Array.Clear(jpeg);
         }
     }
 
-    /// <summary>The Reading role's state on the computer named ("ready" or "loading"); without one, on the first to try.</summary>
-    internal async Task<string> StatusAsync(CancellationToken token)
+    private static string Name((ReadingTarget Target, PairedHost? Host) place) => place.Host?.HostId ?? "This PC";
+
+    /// <summary>The places a read tries, first to last (<see cref="ReadingList.Targets"/>): the list's members that are on, kept
+    /// for this PC and paired here, Windows OCR as This PC, each computer once.</summary>
+    internal IReadOnlyList<(ReadingTarget Target, PairedHost? Host)> Targets()
     {
-        var host = hostId is null ? Targets()[0] : Registry().FirstOrDefault(h => h.HostId == hostId) ??
-            throw new ScreenReadException($"{hostId} isn't paired with this PC.");
+        var targets = ReadingList.Targets(dataDirectory);
+        return targets.Count > 0 ? targets
+            : throw new ScreenReadException("Nothing in the Reading list can read on this PC now. Check Companion › Reading.");
+    }
+
+    /// <summary>The Reading role's state on <paramref name="host"/> ("ready", "loading" or "failed").</summary>
+    internal static async Task<string> StatusAsync(PairedHost host, CancellationToken token)
+    {
+        using var reader = new PoolScreenTextReader(null);
         try
         {
-            var (route, connection) = await OpenAsync(host, token).ConfigureAwait(false);
-            try
-            {
-                var answer = await connection.OcrStatusAsync(route, token).ConfigureAwait(false);
-                return answer.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String ? state.GetString()! : "unknown";
-            }
-            catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException)
-            {
-                Drop(host.HostId, connection);
-                throw;
-            }
+            var (route, connection) = await reader.OpenAsync(host, token).ConfigureAwait(false);
+            var answer = await connection.OcrStatusAsync(route, token).ConfigureAwait(false);
+            return answer.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String ? state.GetString()! : "unknown";
         }
         catch (Audio2FaceHostException error) when (error.Code is "host.unreachable" or "worker.unavailable")
         {
@@ -310,6 +297,7 @@ internal sealed class HostScreenTextReader : IScreenTextReader
             open.Clear();
         }
         foreach (var kept in all) kept.Connection.Dispose();
+        windows?.Dispose();
     }
 }
 
@@ -343,18 +331,10 @@ internal sealed class ScreenReader : IDisposable
     /// <summary>The newest read of this PC's watching, for Companion › Reading (null until one finished).</summary>
     internal static string? LastReport { get; set; }
 
-    /// <summary>The reader for this PC's choice in Companion › Reading (reading.json): Windows OCR on this PC (the default), a
-    /// host's Reading role, or null when reading is off.</summary>
-    internal static ScreenReader? For(string? dataDirectory, TimeProvider? clock = null)
-    {
-        var settings = ReadingSettings.Load(dataDirectory);
-        return settings.Place switch
-        {
-            ReadingPlace.ThisPc => new(new WindowsScreenTextReader(), clock),
-            ReadingPlace.Host when dataDirectory is not null => new(new HostScreenTextReader(dataDirectory, settings.HostId), clock),
-            _ => null
-        };
-    }
+    /// <summary>The reader for this PC's list in Companion › Reading (<see cref="ReadingList"/>): Windows OCR on this PC and the
+    /// Reading role of your computers, in the list's order; null when nothing in the list is on (reading is off).</summary>
+    internal static ScreenReader? For(string? dataDirectory, TimeProvider? clock = null) =>
+        ReadingList.Load(dataDirectory).NoneOn ? null : new(new PoolScreenTextReader(dataDirectory), clock);
 
     internal string Engine => reader.Engine;
     internal bool Busy => running is { IsCompleted: false };

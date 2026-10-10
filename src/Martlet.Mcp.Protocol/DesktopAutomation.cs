@@ -212,11 +212,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
-        // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
-        // details, only show where it stands on that computer; their own buttons commit. Reading's model pills
-        // ("ReadingModel-ppocrv5-mobile", "ReadingModel-ppocrv5-server", "ReadingModel-rapidocr-ppocrv4") only show that model's
-        // details and the button that sets it up or switches to it (Set up and Switch need --allow-ui-effects).
-        "PicturesHost-", "ReadingHost-", "ReadingModel-",
+        // Companion › Pictures' computer pills ("PicturesHost-this-pc"), in its role's details, only show where it stands on that
+        // computer; their own buttons commit. Reading's model pills in a list member's settings ("ReadingModel-this-pc-ppocrv5-mobile",
+        // "ReadingModel-gpu-pc-ppocrv5-server", "ReadingModel-gpu-pc-rapidocr-ppocrv4") only show that model's details and the
+        // button that sets it up or switches to it there (Set up and Switch need --allow-ui-effects).
+        "PicturesHost-", "ReadingModel-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -241,7 +241,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // card under the list, whose own button commits. Devices › Sharing work's Open buttons ("WorkSharingOpen-speaking") only
         // open the area's page. The list's On, Up, Down, Remove, Add and kept-for choices save pools.json and share it, so they
         // need --allow-ui-effects.
-        "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
+        "Pool-speaking-Settings-", "Pool-listening-Settings-", "Pool-thinking-Settings-", "Pool-reading-Settings-", "Pool-speaking-Show-", "Pool-listening-Show-",
         "Pool-speaking-AddCloud", "Pool-listening-AddCloud", "WorkSharingOpen-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
@@ -474,13 +474,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "PicturesNow", "PicturesTestState", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
         "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
         "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
-        // Companion › Reading: where Martlet reads the text on the screen (ReadingNow), the newest read while watching and the
-        // Read my screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds, the full-size
-        // screenshot's width x height and when, or why it couldn't), whether Windows can read text here, the Reading role on the
-        // shown computer (where it stands and with which model), the chosen model's note (where it runs, how accurate and its
-        // download) and the buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
-        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingHostState", "ReadingModelNote",
-        "ReadingSetUp", "ReadingSwitch", "ReadingUseHost", "ReadingUseThisPc", "ReadingTurnOff", "ReadingTest",
+        // Companion › Reading: what reads the text on the screen (ReadingNow), the newest read while watching and the Read my
+        // screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds, the full-size screenshot's
+        // width x height and when, or why it couldn't), whether Windows can read text here and the buttons' labels. The list itself
+        // reads through "Pool-" and each member's settings through the "Reading" prefixes below. The text read from a real screen
+        // (ReadingTestText) is never returned.
+        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
@@ -1080,6 +1079,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads "Every companion PC" or "Only desk-1"), and the Add buttons' labels ("Pool-speaking-AddHost-diva-host",
         // "Pool-speaking-AddThisPc", "Pool-speaking-AddGpu-diva-host-2"). Host IDs, device IDs, provider and model names, never a key.
         "Pool-",
+        // Companion › Reading, a list member's settings: This PC's engine pills ("ReadingEngine-windows-ocr" ticked or not;
+        // choosing one saves pools-local.json, so it needs --allow-ui-effects), the Reading role's state on that place
+        // ("ReadingHostState-gpu-pc" reads "Ready on gpu-pc with PP-OCRv5 mobile."), the shown model's note
+        // ("ReadingModelNote-gpu-pc") and the Set up and Switch buttons' labels ("ReadingSetUp-this-pc", "ReadingSwitch-gpu-pc").
+        // Host IDs, model names and fixed text.
+        "ReadingEngine-", "ReadingHostState-", "ReadingModelNote-", "ReadingSetUp-", "ReadingSwitch-",
         // Companion › Thinking, Voice and Listening › Keys from before: each key Martlet set aside when the job stopped using it
         // ("SetupOldKey-Thinking-0" reads "Your OpenRouter key" or "The pairing key for diva-host"; never the key) and its
         // Remove button's name ("SetupOldKeyRemove-Thinking-0" reads "Remove your OpenRouter key"). Remove deletes the key from

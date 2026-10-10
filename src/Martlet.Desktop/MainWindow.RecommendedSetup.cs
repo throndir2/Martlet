@@ -111,7 +111,7 @@ public partial class MainWindow
     /// from the data folder: what the review says about them.</summary>
     private IReadOnlyList<PartChoice> RecommendedSetupChoices(string? directory)
     {
-        var reading = Martlet.Core.Reading.ReadingSettings.Load(directory);
+        var reading = Martlet.Core.Reading.ReadingPool.Choice(ReadingList.Load(directory), ThisPcHost()?.HostId);
         var model = reading.HostId is { } host ? hostChecks.GetValueOrDefault(host)?.Offers?.GetValueOrDefault(HostRoles.Ocr) : null;
         return RecommendedSetupInputs.Choices(Talk.Watch, Talk.HearVoice, SenseModels.Load(directory), reading,
             HomePreferences.Load(directory).Address, model);

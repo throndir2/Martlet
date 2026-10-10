@@ -9,8 +9,9 @@ namespace Martlet.Core.Reading;
 /// computers (<see cref="Host"/>), or not at all (<see cref="Off"/>).</summary>
 public enum ReadingPlace { ThisPc, Host, Off }
 
-/// <summary>Companion › Reading on this PC (reading.json in the data folder; never shared, since which computer reads depends on
-/// the computer you talk to). A missing or unreadable file means the default: Windows OCR on this PC.</summary>
+/// <summary>Companion › Reading's older choice on this PC (reading.json in the data folder; never shared). Martlet no longer
+/// writes it: the Reading list (<see cref="ReadingPool"/>) is made from it once, and an older Martlet still reads it. A missing
+/// or unreadable file means the default: Windows OCR on this PC.</summary>
 public sealed record ReadingSettings
 {
     public const string FileName = "reading.json";
@@ -18,8 +19,7 @@ public sealed record ReadingSettings
 
     [JsonConverter(typeof(JsonStringEnumConverter<ReadingPlace>))]
     public ReadingPlace Place { get; init; }
-    /// <summary>The paired computer whose Reading role reads first (Place Host); the owner's other computers that run the role
-    /// read when it is busy. Null: those computers only.</summary>
+    /// <summary>The paired computer whose Reading role read first (Place Host). Null: the computers that run the role.</summary>
     public string? HostId { get; init; }
     public DateTimeOffset? ChosenAt { get; init; }
 

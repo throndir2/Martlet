@@ -148,13 +148,13 @@ public sealed class ScreenReadingTests
     {
         using var answer = JsonDocument.Parse(
             """{"lines":[{"text":"Score: 12,450","score":0.99,"box":[699,41,180,30]},{"text":"VICTORY","score":0.98,"box":[383,269,240,60]}],"width":1024,"height":576,"milliseconds":640}""");
-        var lines = HostScreenTextReader.Lines(answer.RootElement);
+        var lines = PoolScreenTextReader.Lines(answer.RootElement);
         Assert.Equal([new ReadLine("Score: 12,450", 699, 41, 180, 30), new ReadLine("VICTORY", 383, 269, 240, 60)], lines);
 
         using var failed = JsonDocument.Parse("""{"error":{"code":"request.invalid","summary":"not a picture"}}""");
-        Assert.Contains("not a picture", Assert.Throws<ScreenReadException>(() => HostScreenTextReader.Lines(failed.RootElement)).Message);
+        Assert.Contains("not a picture", Assert.Throws<ScreenReadException>(() => PoolScreenTextReader.Lines(failed.RootElement)).Message);
         using var invalid = JsonDocument.Parse("""{"lines":[{"text":"x"}]}""");
-        Assert.Throws<ScreenReadException>(() => HostScreenTextReader.Lines(invalid.RootElement));
+        Assert.Throws<ScreenReadException>(() => PoolScreenTextReader.Lines(invalid.RootElement));
     }
 
     [Fact]
