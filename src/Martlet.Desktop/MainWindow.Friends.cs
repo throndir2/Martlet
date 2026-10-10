@@ -281,7 +281,7 @@ public partial class MainWindow
     {
         var uses = HostJob.All.Where(j => NetworkMap.JobHost(homeSettings, j.Role) == hostId).Select(j => j.Job).ToList();
         if (NetworkMap.LipSync(homeAvatar) == LipSyncHandler.Host && homeAvatar?.RemoteHost?.HostId == hostId) uses.Add("lip-sync");
-        if (store is not null && ReadingSettings.Load(store.DataDirectory) is { Place: ReadingPlace.Host } reading && reading.HostId == hostId) uses.Add("reading");
+        if (store is not null && ReadsOn(hostId)) uses.Add("reading");
         return uses;
     }
 
@@ -356,9 +356,7 @@ public partial class MainWindow
             return;
         await HostTaskAsync(async token =>
         {
-            if (store is not null && ReadingSettings.Load(store.DataDirectory) is { Place: ReadingPlace.Host } reading && reading.HostId == host.HostId)
-                SaveReading(new ReadingSettings { Place = ReadingPlace.ThisPc, ChosenAt = DateTimeOffset.Now },
-                    "Martlet now reads the text on your screen with Windows OCR on this PC.");
+            ForgetReadingHost(host.HostId);
             var stranded = await ForgetPairingAsync(host, token);
             ActionText.Text = $"Forgot {host.HostId}, the host a friend shared." +
                 (stranded.Count > 0 ? $" Nobody handles {string.Join(" or ", stranded)} now. Choose another device in Companion or Devices." : "");

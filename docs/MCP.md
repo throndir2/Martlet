@@ -773,11 +773,12 @@ refusal for the model. The owner never presses Play: see
 
 ### Reading
 
-Companion › Reading ([Reading](READING.md)) chooses where Martlet reads the text
-on the screen while it watches: Windows OCR on this PC (the default), the `ocr`
-host role (route `martlet.gateway.ocr.v1`, [Reading host role](OCR_HOST.md)) or
-off. The local server's `reading_check` reads a data directory's `reading.json`
-(`dataDirectory`), then reads a drawn 1024 x 576 test picture with known text
+Companion › Reading ([Reading](READING.md)) lists the places that read the text
+on the screen while Martlet watches, in order: This PC with Windows OCR (the
+default) or with the `ocr` host role (route `martlet.gateway.ocr.v1`,
+[Reading host role](OCR_HOST.md)), and your computers' Reading role. With
+nothing on, reading is off. The local server's `reading_check` reads a data
+directory's Reading list (`dataDirectory`, see `pool` below), then reads a drawn 1024 x 576 test picture with known text
 (`HEALTH 87 / 100`, `Score: 12450`, `VICTORY`, a chat line) with Windows OCR on
 this PC, as watching does. It returns the lines, the joined text, the missing
 words and the milliseconds (the first read and a second one). Its `desktop`
@@ -796,25 +797,26 @@ engine, model and accelerator) and `POST /read` with the same picture as a PNG
 the milliseconds). It never captures the real screen.
 
 `reading_check` also shows the [Reading pool](READING.md#the-reading-pool).
-With `dataDirectory`, `pool` gives the order this PC's reads try the computers
-in, from `reading.json`, `cluster.json`, `hosts.json` and `work-sharing.json`:
-`pooled` (true with the Reading role), `job` (`reading`), `role` (`ocr`),
-`priority` (`Background`), `waitSeconds` (3), `chosen` (the computer named in
-Companion › Reading) and `chosenIsFriends`, `runs` (the owner's other paired
-computers that the shared plan says run the Reading role), `tries` (the
-production `WorkSharing.Order`, the named computer first, a friend's host only
-when named), `everyOwn` (true when nothing is named and the plan knows no
-Reading role, so every computer of the owner's own is tried) and `kept`.
-`poolCheck` rehearses the production planner and queue (`WorkQueue`) with
-simulated computers that read one screenshot at a time and turn another away at
-once (`job.busy`), **NOT real hosts**. Each step reports `passed` and its
-detail: the order; a kept computer left out; Reading shared by default with no
-Devices card; the named computer reading while free (`WaitedMs` near 0); a busy
-or unanswering one passed over at once; a read waiting for the first to free; a
-read giving up as busy after the wait; and a friend's host busy with its owner's
-work handing the read to your own computer, or, when it is the only one,
-leaving it for later (`Refusal` `later`). `poolCheck.ok` is true when every step
-passed.
+With `dataDirectory`, `pool` gives this PC's Reading list and the places a read
+tries: `area` and `lane` (`reading`), `file` (`pools-local.json`), `list`
+(`saved`, or `made from reading.json (not saved yet)` before the page saved it),
+`off` (nothing on), `priority` (`Background`), `waitSeconds` (3), `ownHost`
+(this PC's own host service), `members` (each member's `index`, `key`, `name`,
+`kind`, `on`, `reads` in words, its `engine` and `model` settings, `onlyFor` and
+whether it is `paired` here) and `tries` (the production `ReadingPool.Targets`:
+each place's `key`, `hostId`, null for Windows OCR, and the `member` that named
+it). `poolCheck` rehearses the production list code, planner and queue
+(`WorkQueue`) with simulated computers that read one screenshot at a time and
+turn another away at once (`job.busy`), **NOT real hosts**. Each step reports
+`passed` and its detail: the list's order (Windows OCR, then each computer once;
+a member off, kept for another companion PC or not paired left out); This PC
+with the Reading role as its own host service; nothing on as off; the list made
+from `reading.json`; each PC keeping its own list; the first member reading
+while free (`WaitedMs` near 0); a busy or unanswering one passed over at once; a
+read waiting for the first to free; a read giving up as busy after the wait; and
+a friend's host busy with its owner's work handing the read to your own
+computer, or, when it is the only one, leaving it for later (`Refusal`
+`later`). `poolCheck.ok` is true when every step passed.
 
 On the test machine (a 24-thread processor, Docker Desktop), the workers read
 the drawn desktops as follows:
@@ -829,22 +831,27 @@ the drawn desktops as follows:
 The server model is for an NVIDIA graphics card only: on a processor, one read
 takes longer than the gateway's 15 s limit.
 
-Desktop automation: Companion › Reading's main choice is an option picker:
-`Picker-Reading-Off`, `Picker-Reading-ThisPc` and `Picker-Reading-Host` only show
-that option's details (with its facts, such as `PickerFacts-Reading-ThisPc`:
-*Processor (in Martlet) · 0.1 GB RAM · 0.14 s to read the screen*). The
-`ReadingHost-<host>` pills and the `ReadingModel-<model>` pills
-(`ReadingModel-ppocrv5-mobile`, `ReadingModel-ppocrv5-server` and
-`ReadingModel-rapidocr-ppocrv4`) in the role's details are passive clicks too:
-they only show that computer or model. The server pill is disabled on a computer
-without an NVIDIA graphics card. `ReadingNow`, `ReadingLast`, `ReadingTestState`,
-`ReadingWindowsState`, `ReadingHostState` (where the role stands and with which
-model), `ReadingModelNote` (where the chosen model runs, how accurate it is and
-its download) and the labels of `ReadingSetUp`, `ReadingSwitch`,
-`ReadingUseHost`, `ReadingUseThisPc`, `ReadingTurnOff` and `ReadingTest` are
-safe values. Set up and Switch (`ReadingSwitch`, which changes a computer's
-Reading role to the chosen model) need `--allow-ui-effects`. Read my screen now
-(`ReadingTest`) captures the screen, so it needs `--allow-ui-effects` too. `ReadingTestState` gives the size of the full-size
+Desktop automation: Companion › Reading's list is the shared pool list
+(`Pool-reading-Summary`, `Pool-reading-Member-<i>` such as *1. gpu-pc. A paired
+computer; runs PP-OCRv5 mobile.*, `Pool-reading-On-<i>`, `-Up-<i>`, `-Down-<i>`,
+`-Remove-<i>`, `-OnlyFor-<i>`, `-AddThisPc` and `-AddHost-<host>`; the pool list
+control is described after `work_sharing_check`). `Pool-reading-Settings-<i>`
+only shows or hides that member's settings. In them, This PC's engine pills
+(`ReadingEngine-windows-ocr` and `ReadingEngine-ocr`) save the member's engine,
+so they need `--allow-ui-effects`, and `ReadingWindowsState` says whether Windows
+can read text here. For the Reading role, the model pills
+(`ReadingModel-<place>-<model>`, place `this-pc` or the host, model
+`ppocrv5-mobile`, `ppocrv5-server` or `rapidocr-ppocrv4`) are passive clicks:
+they only show that model. The server pill is disabled on a computer without an
+NVIDIA graphics card. `ReadingHostState-<place>` (where the role stands and with
+which model), `ReadingModelNote-<place>` (where the chosen model runs, how
+accurate it is and its download) and the labels of `ReadingSetUp-<place>` and
+`ReadingSwitch-<place>` are safe values. Set up and Switch (which changes a
+computer's Reading role to the chosen model) need `--allow-ui-effects`.
+`PickerCompare-Reading` only shows or hides the comparison table. `ReadingNow`,
+`ReadingLast`, `ReadingTestState` and the label of `ReadingTest` are safe values.
+Read my screen now (`ReadingTest`) captures the screen, so it needs
+`--allow-ui-effects` too. `ReadingTestState` gives the size of the full-size
 screenshot it read, for example *(1920 x 1080 screenshot)*. The text it read
 (`ReadingTestText`) is never returned.
 

@@ -247,9 +247,12 @@ public static class PoolAreas
         Id = "hearing", Title = "Hearing", Page = "Companion › Hearing", Kinds = AllKinds, Shared = false, Required = true,
         Fallback = "Thinking's own model takes the recordings"
     };
+    /// <summary>Reading the text on the screen (<see cref="Martlet.Core.Reading.ReadingPool"/>): This PC (Windows OCR, or the Reading
+    /// role on its own host service: setting <c>engine</c>), a computer or a card (its Reading role: setting <c>model</c>). Each
+    /// PC keeps its own list, as its older choice (reading.json) was never shared: the screen read is that PC's. Empty: off.</summary>
     public static readonly PoolArea Reading = new()
     {
-        Id = "reading", Title = "Reading", Page = "Companion › Reading", HostRole = "ocr", Kinds = Local
+        Id = "reading", Title = "Reading", Page = "Companion › Reading", HostRole = "ocr", Kinds = Local, Shared = false
     };
 
     public static IReadOnlyList<PoolArea> All { get; } = [Speaking, Listening, Thinking, LipSync, Pictures, Singing, Vision, Hearing, Reading];
