@@ -109,7 +109,10 @@ through `shared-settings.staging`), and everything Martlet remembers
 ([one memory on every computer](../../docs/MEMORY.md#one-memory-on-every-computer))
 in `memories.json` (at most 12 MiB, through `memories.staging`), with each
 [memory space](../../docs/ACCOUNTS.md#memory-spaces) in `memories-<space>.json`
-(at most 12 MiB each and 64 spaces, through `memories-space.staging`). All are 0600 service-owner files and none is part
+(at most 12 MiB each and 64 spaces, through `memories-space.staging`). The
+household's [account directory](../../docs/ACCOUNTS.md#account-directory)
+(public facts only) lives in `accounts.json` (at most 2 MiB, through
+`accounts.staging`). All are 0600 service-owner files and none is part
 of approval. Its log (own activity plus every computer's lines the owner's desktops
 [share with it](../../docs/DIAGNOSTICS.md#diagnostics-page-and-shared-logs)) is
 kept the same way in `logs.json` (at most 2 MiB, through `logs.staging`); a
