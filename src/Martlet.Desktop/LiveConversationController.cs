@@ -13,6 +13,7 @@ using Martlet.Core.Settings;
 using Martlet.Core.Singing;
 using Martlet.Participation;
 using Martlet.Providers;
+using Martlet.Providers.Pictures;
 using Martlet.Memory;
 
 namespace Martlet.Desktop;
@@ -3812,10 +3813,25 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private async Task<BackgroundJobOutcome> MakePictureAsync(BackgroundJob job, DrawArguments arguments, IPictureMaker maker,
         CreationAuthor author, Func<Creation, CancellationToken, Task<string>>? then, CancellationToken token)
     {
+        // The pictures computer is busy with this picture until it is drawn: no background think is placed there meanwhile. With
+        // more than one place in the Pictures list, the hold moves to the one that takes the picture (none for an address or a
+        // cloud provider).
+        var planned = BackgroundDuties.Painter(dataDirectory);
+        BackgroundPlaceLease? painter = planned is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
+        void Moved(PicturePoolMember member)
+        {
+            if (member.HostId is not { } host)
+            {
+                Interlocked.Exchange(ref painter, null)?.Dispose();
+                return;
+            }
+            var place = BackgroundDuties.PainterOn(host);
+            if (place.Id == Volatile.Read(ref painter)?.Place.Id) return;
+            Interlocked.Exchange(ref painter, jobs.Places.Hold(place, job.Id))?.Dispose();
+        }
+        if (maker is PicturePool pool) pool.Placed += Moved;
         try
         {
-            // The pictures computer is busy with this picture until it is drawn: no background think is placed there meanwhile.
-            using var painter = BackgroundDuties.Painter(dataDirectory) is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
             job.Report(BackgroundJobState.Running, "Checking where it's drawn");
             var availability = await maker.GetAvailabilityAsync(token).ConfigureAwait(false);
             if (!availability.Available) return BackgroundJobOutcome.Failed((availability.Reason ?? "pictures aren't available right now").TrimEnd('.'));
@@ -3851,6 +3867,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         finally
         {
+            if (maker is PicturePool placed) placed.Placed -= Moved;
+            Interlocked.Exchange(ref painter, null)?.Dispose();
             PictureClient.FreeLater(maker);
             (maker as IDisposable)?.Dispose();
         }

@@ -55,7 +55,7 @@ public partial class MainWindow
     {
         var saved = store is null ? new PicturesSettings() : PicturesSettings.Load(store.DataDirectory);
 
-        var now = new TextBlock { Text = PicturesNow(saved), FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        var now = new TextBlock { Text = PicturesNow(saved) + PicturesPoolNow(saved), FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(now, "PicturesNow");
         var check = Note(picturesChecking ? picturesTesting ? "Drawing a test picture…" : "Checking…"
             : picturesCheck ?? (saved.On ? "Press Check to see whether it can draw now." : ""), new Thickness(0, 4, 0, 0));
@@ -92,6 +92,15 @@ public partial class MainWindow
         ? "FIXTURE - NOT AI: pictures come from the test picture maker (MARTLET_PICTURES_FIXTURE)."
         : saved.On ? $"Martlet draws on {saved.Describe()}." : $"Off. {OptionalExtras.OffMeans(CompanionTab.Pictures)}.";
 
+    /// <summary>The other places in this PC's Pictures list that draw when the first is busy (<see cref="PictureClient.Order"/>), in
+    /// the order a picture tries them; empty when there are none.</summary>
+    private string PicturesPoolNow(PicturesSettings saved)
+    {
+        if (PictureClient.Fixture || store is null || !saved.On) return "";
+        var others = PictureClient.Order(store.DataDirectory).Members.Skip(1).Select(m => m.Name).ToArray();
+        return others.Length == 0 ? "" : $" When it is busy, {string.Join(" or ", others)} draws instead (it tries them in this order).";
+    }
+
     /// <summary>Saves this PC's choice; the next reply offers draw_picture (or stops offering it).</summary>
     private bool SavePictures(PicturesSettings next, string done)
     {
@@ -99,6 +108,9 @@ public partial class MainWindow
         try
         {
             if (!next.Save(store.DataDirectory)) throw new InvalidOperationException("Couldn't save Pictures. Check access to Martlet's data folder.");
+            // The Pictures list follows the choice made here: the chosen place, then the other computers that run the role.
+            if (!PictureClient.SaveList(store.DataDirectory, PictureClient.Migrate(store.DataDirectory, next)))
+                throw new InvalidOperationException("Couldn't save the Pictures list. Check access to Martlet's data folder.");
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException)
         {

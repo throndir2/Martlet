@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Pictures now go to whichever of your picture computers is free: when the one you chose is busy drawing, doesn't answer or lacks the checkpoint or workflow, another computer with the Pictures role draws instead, and when all are busy the picture waits on the one with the shortest line. Each computer also frees its own graphics card a few minutes after its last picture. ([#727](https://github.com/throndir2/Martlet/pull/727))
 - When your image or audio model is busy, offline or can't fit beside Thinking, Martlet now hands the picture or recording to the next model in your Thinking pool that can see or hear, and waits for the first free one when all are busy. A cloud model gets pictures and recordings only when you allowed it, and the conversation's own Thinking model never does. ([#726](https://github.com/throndir2/Martlet/pull/726))
 - Songs now go to whichever of your computers with Singing is free: when one is busy singing, doesn't answer or lacks the chosen voice match, the next one sings, and when all are busy the song waits on the one with the shortest line. ([#725](https://github.com/throndir2/Martlet/pull/725))
 - Reading the text on your screen now uses every one of your computers that runs the Reading role: when the one you chose is busy or doesn't answer, another one reads instead, so reads keep coming. ([#724](https://github.com/throndir2/Martlet/pull/724))

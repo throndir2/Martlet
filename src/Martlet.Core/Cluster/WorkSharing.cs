@@ -14,6 +14,9 @@ public static class WorkSharingJobs
     /// <summary>Reading the text on the screen (Companion › Reading): a pool of the owner's computers that run the Reading role.
     /// Not in <see cref="All"/>: Companion › Reading keeps its own list, not a Devices › Sharing work card.</summary>
     public const string Reading = "reading";
+    /// <summary>Drawing pictures (Companion › Pictures): each PC's Pictures list (<see cref="PoolAreas.Pictures"/>). Not in
+    /// <see cref="All"/>: Companion › Pictures keeps its own list, not a Devices › Sharing work card.</summary>
+    public const string Pictures = "pictures";
     public static readonly IReadOnlyList<string> All = [Speaking, Thinking, Listening, DeepThinking];
 
     /// <summary>Speaking, Listening and Reading are shared unless turned off: each request stands alone. Thinking is shared only
@@ -28,6 +31,7 @@ public static class WorkSharingJobs
         Listening => "Listening",
         DeepThinking => "Thinking pool",
         Reading => "Reading",
+        Pictures => "Pictures",
         _ => job
     };
 }
