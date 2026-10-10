@@ -70,6 +70,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>Everything Martlet remembers, the same on the owner's computers (not part of the approved configuration).</summary>
     internal const string Memories = "memories.json", MemoriesStaging = "memories.staging";
     internal const int MaximumMemoriesBytes = Martlet.Core.Sync.SharedMemories.MaximumBytes;
+    /// <summary>The household's account directory: public facts only (not part of the approved configuration).</summary>
+    internal const string Accounts = "accounts.json", AccountsStaging = "accounts.staging";
+    internal const int MaximumAccountsBytes = Martlet.Core.Accounts.AccountDirectory.MaximumBytes;
     /// <summary>One memory space (every account's memories, apart): memories-&lt;space ID&gt;.json.</summary>
     internal const string MemorySpacePrefix = "memories-", MemorySpaceSuffix = ".json", MemorySpaceStaging = "memories-space.staging";
     internal uint UserId => fs.UserId;
@@ -132,6 +135,7 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal byte[]? Read(string name, int maximum)
     {
         if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
+            name != Accounts &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null &&
             CreationAccountOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
@@ -371,6 +375,9 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces memories.json (0600, service owner).</summary>
     internal void WriteMemories(byte[] bytes) => ReplaceRecovering(Memories, MemoriesStaging, bytes, MaximumMemoriesBytes);
+
+    /// <summary>Atomically replaces accounts.json (0600, service owner).</summary>
+    internal void WriteAccounts(byte[] bytes) => ReplaceRecovering(Accounts, AccountsStaging, bytes, MaximumAccountsBytes);
 
     /// <summary>The file name of the memory space <paramref name="space"/> (a valid space ID).</summary>
     internal static string MemorySpace(string space) =>

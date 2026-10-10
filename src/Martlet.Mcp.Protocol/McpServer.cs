@@ -513,10 +513,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the refusals elsewhere; friend mode: whether the desktop signed in as a friend, its access, whether it ever asked to " +
             "join or was refused anything (access.friend), and its Thinking requests). With shareWithFriend true (owner mode, for a " +
             "session without the window) the lab's own admin desktop shares the host with the simulated friend from the start, so the " +
-            "running desktop meets a friend's computer in its network sync. \"stop\": ends it (it also ends with this server).", new
+            "running desktop meets a friend's computer in its network sync. mode \"account\" (headless, no desktop needed): household " +
+            "account sign-in on a host with an ECDSA key; its owner starts a network and sets up the owner login, " +
+            "Sam's (password and authenticator), Alex's (password only) and a provider identity linked to Sam, then every Prove " +
+            "sign-in (POST /martlet/v1/signin/prove) and a laptop's sign-in as Sam must give a host attestation that " +
+            "Martlet.Core's AccountAttestation.Check accepts against the roster, and a changed or expired attestation, another key, " +
+            "a friend's identity (signin.no_account), a wrong password and Alex adding a computer (signin.needs_authenticator) are " +
+            "refused; status has ok, checks and attestations. \"stop\": ends it (it also ends with this server).", new
         {
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
-            mode = new { type = "string", @enum = new[] { "owner", "friend" } },
+            mode = new { type = "string", @enum = new[] { "owner", "friend", "account" } },
             signInDesktop = new { type = "boolean" },
             shareWithFriend = new { type = "boolean" },
             dataDirectory = new { type = "string" }
@@ -552,6 +558,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
             "it runs or reaches over SSH; this PC's own host service set up from the host dashboard is found from Docker by the " +
             "desktop, not here). Read-only; contacts nothing and returns no addresses, SSH targets or keys.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("pc_scope", "Read the PC scope (docs/ACCOUNTS.md) the desktop with this data folder uses: which folder holds what this PC " +
+            "is for and its host service (machine-wide %ProgramData%\\Martlet for the default data folder, the data folder itself " +
+            "for any other, or MARTLET_PC_DIRECTORY), whether every Windows user of this PC can change it, the role (companion or " +
+            "host) and where it is read from (the PC folder, or this Windows user's earlier choice that moves there at the next " +
+            "start), whether this Windows user has a choice of their own, the host service's remembered roles and whether this or " +
+            "another Windows user's Docker Desktop runs them. Read-only; returns no paths, user names or SIDs.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -965,6 +980,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder, " +
             "memory spaces (a fact in one account's space stays apart from other spaces and the old document, and survives a host restart) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
+        Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
+            "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +
+            "network, two member desktops and one outside computer with real network keys and the desktop's paired client " +
+            "(HostAccounts.cs). Walks binding both hosts, migrating to the owner account (the ID derived from the network ID, created by " +
+            "the founder), a second desktop checking signatures against its roster, a new person synced through one host only, offline " +
+            "renames (the later wins), a removal that an offline edit can't undo, an outside computer's entry and a forged change refused " +
+            "(rejected count), a restarted host keeping accounts.json, digests matching on every copy and an unsigned request refused. " +
+            "Synthetic accounts only; loopback only.", new { }),
         Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
             "lorebooks.json and shared-settings.json in a temporary folder, an in-memory stand-in for Windows Credential Manager, the " +
@@ -2279,6 +2302,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "role_lab" => await RoleLabAsync(arguments, cancellation),
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
+                "pc_scope" => PcScopeStatus(arguments),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "host_engine_check" => await HostEngineCheck.RunAsync(cancellation),
@@ -2334,6 +2358,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
+                "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),
@@ -2936,7 +2961,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 if (signInLab is { HasExited: false }) throw new InvalidOperationException("The sign-in lab is already running; stop it first.");
                 var mode = OptionalString(arguments, "mode") ?? "owner";
-                if (mode is not ("owner" or "friend")) throw new ArgumentException("mode is owner or friend.");
+                if (mode is not ("owner" or "friend" or "account")) throw new ArgumentException("mode is owner, friend or account.");
                 var extra = new List<string> { "--mode", mode };
                 if (OptionalBool(arguments, "signInDesktop") == true)
                     extra.Add(mode == "friend" ? "--sign-in-desktop" : throw new ArgumentException("signInDesktop goes with mode friend."));
@@ -3145,6 +3170,53 @@ internal sealed class McpServer(DesktopAutomation desktop)
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
         if (!Path.IsPathFullyQualified(directory)) throw new ArgumentException("dataDirectory must be an absolute path.");
         return directory;
+    }
+
+    /// <summary>The PC scope the desktop with this data folder uses (<see cref="PcFolder"/>): where what this PC is for and its
+    /// host service are kept, who may change them and what they say. Read-only: the move of an earlier per-user choice to the
+    /// PC folder happens when the desktop starts, so this says when it is still to come. No paths, user names or SIDs.</summary>
+    private static object PcScopeStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var pc = PcFolder.For(directory);
+        var separate = pc.Separate(directory);
+        static string? Role(string folder)
+        {
+            try
+            {
+                var path = Path.Combine(folder, "device-role.txt");
+                if (!File.Exists(path)) return null;
+                return File.ReadAllText(path).Trim() == "Host" ? "host" : "companion";
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return "unreadable"; }
+        }
+        var shared = Role(pc.Directory);
+        var mine = separate ? Role(directory) : shared;
+        var roles = ThisPcHostRoles.Load(pc.Directory);
+        var pending = roles is null && separate ? ThisPcHostRoles.Load(directory) : null;
+        var user = ThisPcHostRoles.WindowsUser(pc.Directory);
+        string? me = null;
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            me = identity.User?.Value;
+        }
+        return new
+        {
+            folder = pc.Kind switch { PcFolderKind.MachineWide => "machine-wide", PcFolderKind.Override => "override", _ => "data-folder" },
+            where = pc.Where,
+            sharedByWindowsUsers = pc.Shared,
+            folderExists = Directory.Exists(pc.Directory),
+            everyWindowsUserCanChange = pc.Shared && OperatingSystem.IsWindows() ? PcFolder.EveryUserCanChange(pc.Directory) : null,
+            role = shared ?? mine,
+            roleReadFrom = shared is not null ? (separate ? "pc-folder" : "data-folder")
+                : mine is not null ? "this-windows-user (moves to the PC folder when the desktop starts)" : null,
+            chosenByThisWindowsUser = mine is not null,
+            hostServiceRoles = roles ?? pending,
+            hostServiceRolesReadFrom = roles is not null ? (separate ? "pc-folder" : "data-folder")
+                : pending is not null ? "this-windows-user (moves to the PC folder when the desktop starts)" : null,
+            hostServiceSeenBy = roles is null ? null : user is null ? "unknown" : user == me ? "this-windows-user" : "another-windows-user"
+        };
     }
 
     /// <summary>Whether Windows can run Docker Desktop (the desktop's WindowsVirtualizationSetup reads the same facts), whether
