@@ -4,9 +4,11 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Accounts;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Creations;
+using Martlet.Core.Network;
 using Martlet.Gateway;
 
 namespace Martlet.NodeLinkCheck;
@@ -27,6 +29,16 @@ internal static class CreationRehearsal
         var steps = new List<(string Name, bool Ok, string Detail)>();
         var started = DateTimeOffset.UtcNow;
         var root = Path.Combine(Path.GetTempPath(), "martlet-creation-rehearsal-" + Guid.NewGuid().ToString("N"));
+        // The household's account directory on the hosts: a host lets a device use an account's list only where that account is
+        // signed in (GatewayMemorySpaceAccess.cs). Sam, the owner, is signed in on lab-desktop-sam; Alex on lab-desktop-alex.
+        var now = DateTimeOffset.UtcNow;
+        using (var founder = NetworkKey.Create("lab-desktop-sam"))
+            CreationHost.Accounts = AccountDirectory.Empty
+                .Put(founder, Account.Create("Sam", AccountRoles.Owner, Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7"))
+                    .WithDevice(AccountDevice.For("lab-desktop-sam", AccountLoginKey.ForWindows("lab-desktop-sam", "S-1-5-21-1-2-3-1001"), now)), now)
+                .Put(founder, Account.Create("Alex", AccountRoles.Member, Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"))
+                    .WithDevice(AccountDevice.For("lab-desktop-alex", AccountLoginKey.ForWindows("lab-desktop-alex", "S-1-5-21-1-2-3-1002"), now)), now)
+                .Write();
         await using var h1 = await CreationHost.StartAsync("lab-host-1");
         await using var h2 = await CreationHost.StartAsync("lab-host-2");
         var a = new LabDesktop("lab-desktop-a", Path.Combine(root, "a"));
@@ -314,7 +326,8 @@ internal static class CreationRehearsal
                 "in a temporary folder, with the FIXTURE - NOT AI test-tone kind (generated tones as FLAC; nothing played). Not covered: the " +
                 "desktop window and its 30-second sync, the Linux host's files, a real song and a real LAN. Two accounts (Sam, the owner, and Alex) " +
                 "sync through their own lists on lab-host-1, and Sam's sync joins the old single list that desktop A uses (the owner bridge); the " +
-                "host's access hook that refuses other accounts' devices is checked by the gateway tests, not here.",
+                "hosts start with an account directory that signs each in on its own desktop, so the host's access hook admits each to its own " +
+                "list; its refusals of other accounts' devices are checked by the gateway tests, not here.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -494,6 +507,15 @@ internal static class CreationRehearsal
         internal Dictionary<Guid, byte[]> SavedAccountLists { get; } = [];
         internal int ChunkReads => Volatile.Read(ref chunkReads);
 
+        /// <summary>The household's account directory every lab host starts with (accounts.json).</summary>
+        internal static byte[]? Accounts { get; set; }
+
+        private sealed class AccountFile(byte[] bytes) : IGatewayAccountStorage
+        {
+            public byte[]? Load() => bytes;
+            public void Save(byte[] value) { }
+        }
+
         internal static async Task<CreationHost> StartAsync(string hostId)
         {
             var host = new CreationHost { HostId = hostId, certificate = Certificate() };
@@ -517,6 +539,7 @@ internal static class CreationRehearsal
             Server = new GatewayServer(Identity, origin, [], this);
             Server.AttachAccountCreationStorage(this);
             Server.AttachCreationStorage(this);
+            if (Accounts is { } accounts) Server.AttachAccountStorage(new AccountFile(accounts));
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
 

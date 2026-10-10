@@ -1334,8 +1334,13 @@ user's; the disposable one in `Invoke-MartletMcp.ps1`): `sync` as above,
 `state` (`none` before the first memory sync, else `loaded`), `syncedAt`,
 `facts` (how many facts the store had at the last sync), `byComputer` (how many
 of those each computer wrote) and `forgotten` (the tombstones every computer
-agreed on). It reads only `memory-sync.json` (IDs, revisions, digests and device
-IDs), never a fact, and contacts nothing.
+agreed on). Those top-level fields are the `memory-sync.json` from before
+accounts (until it moves to the owner's space). `spaces` lists each
+[memory space](MEMORY.md#memory-spaces-on-the-desktop) with a sync state
+(`memory-sync\<space>\memory-sync.json`): `space` (its ID) and `sync` with the
+same `state`, `syncedAt`, `facts`, `byComputer` and `forgotten`. It reads only
+those files (IDs, revisions, digests and device IDs), never a fact, and
+contacts nothing.
 
 `memory_status` reads what Martlet remembers and [whose](MEMORY.md#whose-memories)
 from a data directory (optional absolute `dataDirectory`, default the current
@@ -1347,9 +1352,16 @@ user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
 `everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
 by its tag such as `V3`, with `named`, `owner`, `linked` (to a person's
 account) and `facts`) and
-`forgottenVoices`. It reads the store's file as JSON without opening or
-locking the store (the desktop can keep running), and never returns a fact's
-text, a name, a voice ID or a path. It contacts nothing.
+`forgottenVoices`. Those top-level counts are the store in the memory setting's
+folder: this PC's memories from before accounts (until they move to the
+owner's space; then `state` is `none`) or a custom folder. `spaces` lists each
+[memory space](MEMORY.md#memory-spaces-on-the-desktop) kept in the data folder
+(an account's own space in `accounts\<32 hex>\memory`, the household and
+character spaces in `memory-spaces\<space>`): `space` (its ID) and `store` with
+the same `state`, `facts`, `typed`, `fromConversation`, `expiring` and `whose`.
+It reads each store's file as JSON without opening or locking a store (the
+desktop can keep running), and never returns a fact's text, a name, a voice ID
+or a path. It contacts nothing.
 
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in
@@ -1414,12 +1426,20 @@ forgets nothing; 600 old conversation facts from two computers end as the same
 spaces ([accounts](ACCOUNTS.md#memory-spaces)): A merges a fact into Sam's
 `account-<id>` space on both hosts with `MergeMemorySpaceAsync`, B reads it
 there (`ReadMemorySpaceAsync`) with the same digest
-(`ReadMemorySpaceDigestAsync`), Alex's space, `household` and the old document
-stay without it, it survives a host restart, a bad space ID is refused before
-anything is sent, and the step names the spaces the host keeps; no fact
-in any desktop data folder while the hosts' copy holds them; and an unsigned
-request refused (HTTP 401). Synthetic facts, loopback only; the folder is
-deleted.
+(`ReadMemorySpaceDigestAsync`), Alex's space is refused to B
+(`memories.space_denied`: Alex isn't signed in there), `household` and the old
+document stay without it, it survives a host restart, a bad space ID is refused
+before anything is sent, and the step names the spaces the host keeps;
+accounts (both hosts start with an account directory: Sam, the owner, signed in
+on A, B and C; Alex on `lab-desktop-d`; `lab-desktop-e` is an older Martlet with
+no account): A's store from before accounts moves into Sam's space
+(`MemoryStore.MoveStore`, its sync state too) and its next sync of Sam's space
+together with the old document records nothing new and gives both hosts every
+fact; B syncs Sam's space and the household; D shares the household fact but
+is refused Sam's space and the old document; E keeps using the old document,
+and A's next sync brings E's fact into Sam's space; no fact in any desktop data
+folder while the hosts' copy holds them; and an unsigned request refused (HTTP
+401). Synthetic facts, loopback only; the folder is deleted.
 
 `accounts_sync_selftest` (no arguments) rehearses the household's
 [account directory](ACCOUNTS.md#account-directory) end to end with the
@@ -3633,6 +3653,8 @@ default) and need `--allow-ui-effects`. Each editor's footer line, `CompanionSav
 character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 `MemoryFactStatus` reads how many facts it remembers, how many belong to how
 many people Martlet knows by voice and how many to forgotten voices, how many
+are kept in each [memory space](MEMORY.md#memory-spaces-on-the-desktop)
+besides yours (*3 in Household*), how many
 its *Show* choice (`MemoryPersonFilter`) and search (`MemorySearch`, set with
 `ui_set_text`; it only filters the list) list (*Showing N.*) and what the last
 action did, never a fact or a name; `MemoryStatus` (its bottom line) reads
@@ -6220,9 +6242,11 @@ default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
 settings are shared, on how many hosts they are the same, when checked and
 what was last taken from another computer), `MemorySyncStatus` (text: how many
-facts Martlet remembers, on how many hosts they are the same, when checked, how
-many were taken from or forgotten because of other computers, or why it waits:
-no host paired, the switch or memory off, the store in use; never a fact),
+facts Martlet remembers in each memory space (*42 yours, 3 household*), on how
+many hosts they are the same, when checked, how many were taken from or
+forgotten because of other computers, hosts that don't know this PC's account
+yet, or why it waits: no host paired, the switch or memory off, the store in
+use; never a fact),
 `SettingsSyncWaiting` (text, shown
 only when this PC can't follow a setting yet: which, and why),
 `SettingsSyncClaim` (*Use this PC's settings on all my computers*; it changes

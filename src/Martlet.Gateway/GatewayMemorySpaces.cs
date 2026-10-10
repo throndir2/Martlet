@@ -41,8 +41,8 @@ internal sealed class GatewayMemorySpaces
     private readonly Dictionary<string, GatewayMemoryStore> spaces = new(StringComparer.Ordinal);
     private IGatewayMemorySpaceStorage? storage;
 
-    /// <summary>Decides which device may use which space. Until the account directory sets it, every member device may use
-    /// every space, as every paired device can read the old single memory document.</summary>
+    /// <summary>Decides which device may use which space. The gateway application sets the account directory's rules
+    /// (GatewayMemorySpaceAccess.cs); a store on its own lets every member device use every space.</summary>
     internal GatewayMemorySpaceAccess Access { get; set; } = EveryMember;
 
     internal static bool EveryMember(GatewayPrincipal principal, string space, GatewayMemorySpaceUse use) =>

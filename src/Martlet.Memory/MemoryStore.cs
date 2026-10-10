@@ -180,6 +180,64 @@ public sealed class MemoryStore : IDisposable
         }
     }
 
+    /// <summary>Moves the store of <paramref name="sourceDirectory"/> into <paramref name="destinationDirectory"/> while nobody
+    /// owns it (its lock is held for the move, one rename on the same volume). Facts, IDs and the store ID move unchanged. False
+    /// when the source has no store or the destination already has one (nothing is changed then).</summary>
+    public static bool MoveStore(string sourceDirectory, string destinationDirectory)
+    {
+        try
+        {
+            var source = MemoryPaths.NormalizeLocalPath(sourceDirectory, directory: true, inspectFileSystem: true);
+            var destination = MemoryPaths.NormalizeLocalPath(destinationDirectory, directory: true, inspectFileSystem: true);
+            MemoryGuard.Require(!string.Equals(source, destination, StringComparison.OrdinalIgnoreCase), MemoryFailure.InvalidPath);
+            var from = Path.Combine(source, StoreFileName);
+            MemoryPaths.CheckEntry(from);
+            if (!File.Exists(from))
+                return false;
+            Directory.CreateDirectory(destination);
+            MemoryPaths.NormalizeLocalPath(destination, directory: true, inspectFileSystem: true);
+            var to = Path.Combine(destination, StoreFileName);
+            MemoryPaths.CheckEntry(to);
+            if (File.Exists(to))
+                return false;
+            var lockPath = Path.Combine(source, LockFileName);
+            MemoryPaths.CheckEntry(lockPath);
+            FileStream ownership;
+            try
+            {
+                ownership = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1,
+                    FileOptions.WriteThrough);
+            }
+            catch (IOException)
+            {
+                throw new MemoryException(MemoryFailure.Busy);
+            }
+            using (ownership)
+            {
+                MemoryGuard.Require(ownership.Length == 0, MemoryFailure.CorruptStore);
+                File.Move(from, to, overwrite: false);
+            }
+            foreach (var leftover in new[] { lockPath, Path.Combine(source, PendingFileName) })
+            {
+                try { File.Delete(leftover); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            }
+            return true;
+        }
+        catch (MemoryException)
+        {
+            throw;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            throw new MemoryException(MemoryFailure.AccessDenied);
+        }
+        catch (IOException)
+        {
+            throw new MemoryException(MemoryFailure.IoFailure);
+        }
+    }
+
     public async Task<MemoryInspection> InspectAsync(CancellationToken cancellationToken = default)
     {
         using var operation = BeginOperation();
@@ -194,6 +252,20 @@ public sealed class MemoryStore : IDisposable
                 .OrderBy(fact => fact.CreatedAtUtc)
                 .ThenBy(fact => fact.Id)
                 .ToArray());
+        }
+    }
+
+    /// <summary>A read-only copy of the current facts and lexical index (<see cref="MemorySnapshot"/>) that stays usable after
+    /// this store is closed.</summary>
+    public async Task<MemorySnapshot> SnapshotAsync(CancellationToken cancellationToken = default)
+    {
+        using var operation = BeginOperation();
+        await PurgeExpiredCoreAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            EnsureOpen();
+            return new(state.StoreId, state.Revision, state.Facts, state.Index);
         }
     }
 

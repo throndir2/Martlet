@@ -150,6 +150,12 @@ MCP: `pc_scope` and the desktop's `DeviceRoleWhere` ([MCP](MCP.md)).
   with the account. It loads them at sign-in or switch, so recall stays as fast
   as now.
 - Every host keeps every space. A device downloads only the spaces it may read.
+- Hosts decide from the account directory: `account-<id>` only for a device
+  where that account is signed in, `household` for every member device, and
+  `character-<id>` for a device where someone of the household is signed in
+  (sharing narrows it). Friends never. An account's own space is never shared,
+  because the same rule guards that account's settings on hosts.
+- Desktops: see [Memory spaces on the desktop](MEMORY.md#memory-spaces-on-the-desktop).
 
 ### Sharing
 
@@ -206,7 +212,10 @@ through the account-scoped `voice-id` section (W8).
 4. Each host's owner login and its `member` identities become logins of the
    owner account. Friends stay friends.
 5. Hosts keep serving the old `/martlet/v1/memories` document as the owner's
-   space to desktops on an older Martlet.
+   space to desktops on an older Martlet: to devices where the owner is signed
+   in and to devices with no account yet. Hosts never copy between it and
+   `account-<owner>`; the owner's desktops sync both, so they stay the same.
+   This PC's store from before accounts moves into the owner's space.
 
 ### Privacy
 
@@ -236,7 +245,8 @@ All workstreams use these forms. Change them here first.
 | Owner account ID | `OwnerAccount.IdFor(networkId)`: a UUID version 5 (RFC 9562) with the namespace `e44b5fc7-4473-46d2-9844-25457de2bfa8` and the name `"martlet-household-owner\n" + networkId` (one LF, no trailing newline). `"net-example"` gives `8a58da66-fddc-5c5b-9282-fb119c84915f`. Its `created_by` is the device that founded the network |
 | E-mail hint | Lowercase hex SHA-256 of the UTF-8 text `"martlet-email-hint-v1\n<network ID>\n<trimmed, lowercase e-mail>"` (`Account.EmailHintFor`). The directory keeps only hints, never an e-mail address |
 | Directory routes | `GET /martlet/v1/accounts`, `GET /martlet/v1/accounts/digest`, `POST /martlet/v1/accounts` (merge and return). Paired member devices only; friends are refused |
-| Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working. Answers name the `space`. A host keeps at most 64 spaces (`memories.spaces_full`). An access hook on the host (`GatewayMemorySpaces.Access`) may refuse a device (`memories.space_denied`); a POST needs read and write access. `Martlet.Core.Sync.MemorySpaceId` makes and checks space IDs. Client: `ReadMemorySpaceAsync`, `ReadMemorySpaceDigestAsync`, `MergeMemorySpaceAsync` |
+| Memory space routes | `GET /martlet/v1/memories/spaces/{space}`, `GET .../{space}/digest`, `POST .../{space}` (merge and return). The document is today's `SharedMemories`. The old `/martlet/v1/memories` keeps working. Answers name the `space`. A host keeps at most 64 spaces (`memories.spaces_full`). An access hook on the host (`GatewayMemorySpaces.Access`) may refuse a device (`memories.space_denied`); a POST needs read and write access. `Martlet.Core.Sync.MemorySpaceId` makes and checks space IDs. Client: `ReadMemorySpaceAsync`, `ReadMemorySpaceDigestAsync`, `MergeMemorySpaceAsync`. The hook's rules (`GatewayMemorySpaceRules`): `account-<id>` only for a device bound to that account in the directory, `household` for every member device, `character-<id>` for a device with an account signed in; the old document for the owner's devices and devices with no account |
+| Desktop memory folders | `Martlet.Core.Sync.MemorySpaceFolders`: an account's own space in its memory setting's folder (default `<account folder>\memory`, a custom folder stays custom), every other space in `<data>\memory-spaces\<space>`, each space's sync state in `<data>\memory-sync\<space>\memory-sync.json`. Desktop: `MemoryAccount` (account, folders, owner, active character's space, character spaces shared with the account) given to `DesktopMemoryService.UseAccount` at sign-in or switch |
 | Creation routes | `GET /martlet/v1/creations/accounts/{32 hex}`, `GET .../digest`, `POST ...` (merge and return), `GET` and `POST .../chunks/{sha256}`. The documents are today's `CreationLibrary` and pieces; answers name the `account`. A host keeps one list per account (`creations-account-<32 hex>.json` on Linux) and one pool of pieces for every list, and deletes a piece only when no list's live creation uses it; at most 64 account lists (`creations.accounts_full`). Paired member devices only, and only those that `GatewayMemorySpaces.Access` lets use `account-<32 hex>` (read; a POST read and write), else `creations.account_denied`. The old `/martlet/v1/creations` stays for older desktops; the owner's desktop joins it with the owner's list both ways (`CreationOwnerBridge`). Desktop: the account folder holds `creations.json`, `creations\`, `creations-incoming\` and `creations-sync.json`; `<data>\accounts\creations-moved.json` records the one move of the data folder's creations (`CreationAccounts.MoveDataFolderCreationsOnceAsync`). Client: `ReadAccountCreationsAsync`, `ReadAccountCreationsDigestAsync`, `MergeAccountCreationsAsync`, `ReadAccountCreationChunkAsync`, `SendAccountCreationChunkAsync`; `HostCreationPeer.ForAccount` |
 | Voice link | Each voice in `voices.json` may carry `link`: `{ "account": <Account ID or absent>, "revision", "updated_by" }`, a last-writer-wins register merged apart from the rest of the voice (an absent `account` with a revision is an unlink). Martlet before links refuses unknown fields, so `GET`/`POST /martlet/v1/voices` serve and return the list without links and merge a copy without links without removing any; `GET`/`POST /martlet/v1/voices/linked` carry them. The legacy `owner` flag stays true while the voice links to the owner account. `Martlet.Core.Speakers.VoiceRoster`: `SetAccount`, `LinkedTo`, `LinkOwnerVoices`, `WithoutLinks`. Client: `ReadVoicesAsync(linked: true)`, `MergeVoicesAsync(..., linked: true)`. The voice list is the only place links live: the account directory's `voices` field is not used for them |
 | Account attestation | `AccountAttestation` in `Martlet.Core.Accounts`: a host's signed statement that an account proved itself on a device. JSON (snake case): `schema_version` 1, `network_id`, `host_id`, `account_id`, `device_id`, `login` (an `AccountLoginKey`; never `windows`), `issued_at`, `expires_at` (1 minute to 30 days; 10 minutes by default), `algorithm` (`ES256` or `PS256`), `host_key` (base64url SubjectPublicKeyInfo of the host's **TLS key**, the key the roster pins as the host's `spki`) and `signature` over `"martlet-account-attestation-v1"` and the other fields, one per line (account ID as 32 hex digits, times as Unix milliseconds). `Check(roster, at)` accepts it only for an active host of that network whose pin is the SHA-256 of `host_key`, with a good signature, within its lifetime (5 minutes of clock skew). Its text form (`AccountAttestation.ToText()`, base64url of compact JSON, at most 4,096 ASCII characters) goes in a device binding's `attestation`. See [host sign-in](#host-sign-in-for-accounts) |
@@ -414,8 +424,8 @@ sections ([Scopes](#scopes)).
   (`AccountWorkingCopy.Seed`), so nothing is recorded again or lost.
 - **Access.** A host serves an account's settings only to a device that the
   memory-space access hook admits for `account-<id>`: the devices where that
-  account is signed in. Until W9 sets the hook, every member device is
-  admitted, as for memory spaces. Account settings never carry an API key.
+  account is signed in (W9 sets the hook from the account directory). Account
+  settings never carry an API key.
 - **Sharing (W10).** Each account's document, its route and
   `SettingScopes.IsAccountKey` are the seam. *Use a copy* runs on the receiving
   person's device and writes into that person's own document.
@@ -496,7 +506,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W6 | PC scope: companion or host role and host service machine-wide for all Windows users. **Shipped** ([PC scope](#pc-scope)) | `DeviceRole.cs` and its callers, `PcFolder.cs` | - |
 | W7 | Desktop account session, owner migration, account picker, *Add a person*, first start, directory sync. **Shipped** ([Desktop account session](#desktop-account-session)) | new `AccountSession.cs`, new `MainWindow.Accounts.cs` | W1, W2 |
 | W8 | Account-scoped settings: split `settings.json` and shared settings into household and account parts; characters per account. **Shipped** ([Account settings](#account-settings)); creations per account are W8b | `AppSettingsSections`, `SharedSettings*`, character profiles | W7 |
-| W9 | Desktop memory spaces: a store per space, recall over spaces, space sync, host access checks | `DesktopMemoryService`, `MainWindow.MemorySync.cs`, `MemorySyncNode` | W3, W7 |
+| W9 | Desktop memory spaces: a store per space, recall over spaces, space sync, host access checks. **Shipped** ([MEMORY.md](MEMORY.md#memory-spaces-on-the-desktop)); W10 starts from `MemoryAccount.Character`/`Shared` and the space on each Memory window fact | `DesktopMemoryService`, `MainWindow.MemorySync.cs`, `MemorySyncNode` | W3, W7 |
 | W10 | Sharing: character copy and together, the household space, fact sharing | Characters page, Memory window | W8, W9 |
 | W11 | Voice-to-account links on People; Voice ID filter per account | People page, `voices.json` | W7 |
 | W12 | Account security: password and authenticator per account, PIN and Windows Hello lock, sign in as someone else, remember on this PC, merge accounts | Account page | W4, W7 |

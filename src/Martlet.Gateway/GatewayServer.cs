@@ -103,7 +103,8 @@ public sealed class GatewayServer
     /// <summary>The IDs of the memory spaces this host keeps.</summary>
     public IReadOnlyList<string> MemorySpaces => application.MemorySpaces.Spaces;
 
-    /// <summary>Decides which paired device may read or write which memory space (default: every member device).</summary>
+    /// <summary>Decides which paired device may read or write which memory space (default: the account directory's rules,
+    /// GatewayMemorySpaceAccess.cs).</summary>
     internal GatewayMemorySpaceAccess MemorySpaceAccess
     {
         get => application.MemorySpaces.Access;
