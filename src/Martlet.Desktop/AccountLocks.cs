@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 #if MARTLET_MCP
+using Martlet.Mcp.Logging;
+
 namespace Martlet.Mcp.Shared;
 #else
 namespace Martlet.Desktop;

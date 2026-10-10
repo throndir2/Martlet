@@ -481,6 +481,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("account_security_status", "Read account security from a data directory (docs/ACCOUNTS.md): per account in accounts.json " +
+            "its role, whether it was removed or merged (mergedInto), how many logins of each kind it has (windows, martlet, oidc, " +
+            "discord, steam), whether it has this PC's Windows login, and each device binding (device ID, login kind, whether it " +
+            "carries a host attestation, and its proof under the binding rule: creator, attestation, migration, merged, or none when " +
+            "a host or desktop would refuse it); the accounts signed in on this PC; and per account with an unlock file here " +
+            "(account-locks\\<id>.json, this PC only) the ways it unlocks (pin, password, hello), Ask for my password on this PC, " +
+            "Remember me, Encrypt my files while locked with how many of its files are encrypted and plain, wrong tries and a wait. " +
+            "Read-only; contacts nothing; never a PIN, password, verifier, attestation, e-mail, login user name or SID.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("outside_reachability_check", "Check how each host in this PC's Martlet network (network.json in a data directory) can " +
             "be reached: its home address and each owner-set outside address (overlay or port forward), each dialed directly, checked " +
             "against the host key pinned in the roster and asked GET /health/live (no credential, nothing else). Returns per host which " +
@@ -2295,6 +2306,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
+                "account_security_status" => AccountSecurityStatus.Read(DataDirectory(arguments)),
                 "outside_reachability_check" => await OutsideReachabilityAsync(arguments, cancellation),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
             "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
