@@ -34,6 +34,9 @@ public interface ISharedSection
     Task<SharedLocal?> ReadAsync(CancellationToken token);
     /// <summary>Makes this computer use <paramref name="setting"/> (with its <paramref name="secret"/>).</summary>
     Task<SharedApply> ApplyAsync(SharedSetting setting, string? secret, CancellationToken token);
+    /// <summary>The value an account that never chose this setting starts with (canonical JSON, as <see cref="ReadAsync"/> gives
+    /// it), or null to keep what this computer has (<see cref="SharedSettingsNode.AdoptAsync(CancellationToken)"/>).</summary>
+    string? Default => null;
 }
 
 /// <summary>A setting this computer took from another computer during a sync.</summary>
@@ -138,6 +141,18 @@ public sealed class SharedSettingsNode
         (Document, observed) = SharedSettingsState.Load(directory);
     }
 
+    /// <summary>What <c>shared-settings.json</c> records for a setting this computer's files don't hold yet: an account's
+    /// setting <see cref="AdoptAsync"/> could not give the files yet. Such a setting is never recorded as a change made here
+    /// until the files hold the account's value.</summary>
+    public const string AdoptingDigest = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    /// <summary>The folder this node keeps its copy in.</summary>
+    public string Folder => directory;
+
+    /// <summary>The settings this computer's files don't hold yet (<see cref="AdoptingDigest"/>).</summary>
+    public IReadOnlyList<string> Adopting =>
+        [.. sections.Select(s => s.Key).Where(key => observed.GetValueOrDefault(key) == AdoptingDigest)];
+
     /// <summary>The merged copy, with the secrets this computer knows.</summary>
     public SharedSettings Document { get; private set; }
 
@@ -162,6 +177,13 @@ public sealed class SharedSettingsNode
         var waiting = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var section in sections)
         {
+            if (observed.GetValueOrDefault(section.Key) == AdoptingDigest)
+            {
+                // An account's setting the files don't hold yet: give it to them first; what they have now is not this
+                // account's, so it is never recorded.
+                if (await AdoptSectionAsync(section, document, waiting, token) is (true, var adopted)) locals[section.Key] = adopted;
+                continue;
+            }
             SharedLocal? local;
             try { local = await section.ReadAsync(token); }
             catch (Exception error) when (error is not OperationCanceledException)
@@ -263,6 +285,87 @@ public sealed class SharedSettingsNode
         return new(document, applied, recorded, waiting);
     }
 
+    /// <summary>Makes this computer's files hold this node's settings, as when an account signs in here: every section takes its
+    /// entry in this copy, or its <see cref="ISharedSection.Default"/> when the copy has none (a section without a default, or
+    /// already at its default, keeps what this computer has). What the files held before (another account's settings) is never
+    /// recorded as a change of this node's: a section that can't take its value yet waits, is tried again on every
+    /// <see cref="SyncAsync"/>, and is recorded only once the files hold it. Safe to run again. Returns the sections still
+    /// waiting, with why.</summary>
+    public Task<IReadOnlyDictionary<string, string>> AdoptAsync(CancellationToken token) => AdoptAsync([], token);
+
+    /// <summary>As <see cref="AdoptAsync(CancellationToken)"/>, after merging <paramref name="copies"/> (the hosts' copies of
+    /// this account's settings) into this node's copy, without looking at the files: what they hold is not this account's.</summary>
+    public async Task<IReadOnlyDictionary<string, string>> AdoptAsync(IEnumerable<SharedSettings> copies, CancellationToken token)
+    {
+        var document = Document;
+        foreach (var copy in copies)
+        {
+            foreach (var secret in copy.Secrets) secrets[secret.Sha256] = secret.Value;
+            document = SharedSettings.Merge(document, copy);
+        }
+        Document = document.WithSecrets(secrets.Values);
+        foreach (var section in sections) observed[section.Key] = AdoptingDigest;
+        mismatched.Clear();
+        SharedSettingsState.Save(directory, Document, observed);
+        invalidate?.Invoke();
+        var waiting = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var section in sections) await AdoptSectionAsync(section, Document, waiting, token);
+        Waiting = waiting;
+        SharedSettingsState.Save(directory, Document, observed);
+        return waiting;
+    }
+
+    // Gives one section this node's value (its entry, else its default) and records what then reads back as seen.
+    private async Task<(bool Adopted, SharedLocal? Local)> AdoptSectionAsync(ISharedSection section, SharedSettings document,
+        Dictionary<string, string> waiting, CancellationToken token)
+    {
+        var entry = document.Find(section.Key);
+        SharedLocal? local;
+        try { local = await section.ReadAsync(token); }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            waiting[section.Key] = error is ContractException ? error.Message : $"Couldn't read it here: {error.Message}";
+            return (false, null);
+        }
+        // Without an entry the files take the default, unless they hold nothing for this setting yet (nothing of another
+        // account's to replace, and a new computer's files are not made just for a default) or hold the default already.
+        var value = entry?.Value ?? (local is null or { IsDefault: true } ? null : section.Default);
+        var holds = local is not null && (entry is not null ? entry.Holds(local.Value, local.SecretSha256)
+            : string.Equals(local.Value, value, StringComparison.Ordinal) && local.Secret is null);
+        if (value is not null && !holds)
+        {
+            var secret = entry?.SecretSha256 is { } sha ? secrets.GetValueOrDefault(sha) : null;
+            if (entry?.SecretSha256 is not null && secret is null)
+            {
+                waiting[section.Key] = "Its API key hasn't reached this PC yet.";
+                return (false, null);
+            }
+            var setting = entry ?? new SharedSetting
+            {
+                Key = section.Key, Value = value, Revision = 1, UpdatedAt = DateTimeOffset.UnixEpoch, UpdatedBy = device
+            };
+            SharedApply result;
+            try { result = await section.ApplyAsync(setting, secret, token); }
+            catch (Exception error) when (error is not OperationCanceledException) { result = SharedApply.Waiting(error.Message); }
+            if (!result.Applied)
+            {
+                waiting[section.Key] = result.Note ?? "Not yet.";
+                return (false, null);
+            }
+            invalidate?.Invoke();
+            try { local = await section.ReadAsync(token); }
+            catch (Exception error) when (error is not OperationCanceledException) { local = null; }
+        }
+        if (local is null) observed.Remove(section.Key);
+        else
+        {
+            observed[section.Key] = local.Digest;
+            if (local.Secret is { } own) secrets[SharedSettings.Sha256(own)] = own;
+        }
+        mismatched.Remove(section.Key);
+        return (true, local);
+    }
+
     /// <summary>Records <paramref name="value"/> for <paramref name="key"/>, an entry this computer has no section for (asking
     /// another computer to become a host PC, for example: "role.desktop-b"), stamped as changed here now, so it wins over
     /// anything older. Call it between syncs; the next <see cref="SyncAsync"/> gives it to the hosts.</summary>
@@ -283,6 +386,7 @@ public sealed class SharedSettingsNode
         var count = 0;
         foreach (var section in sections)
         {
+            if (observed.GetValueOrDefault(section.Key) == AdoptingDigest) continue;
             if (await section.ReadAsync(token) is not { } local) continue;
             if (local.Secret is { } own) secrets[SharedSettings.Sha256(own)] = own;
             document = document.Put(section.Key, local.Value, local.Secret, device, now);

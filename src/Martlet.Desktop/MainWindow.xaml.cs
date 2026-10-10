@@ -79,7 +79,8 @@ public partial class MainWindow : ThemedWindow
         memory = store is null ? null : new DesktopMemoryService(store);
         conversationHistory = store is null ? null : new DesktopConversationHistory(store.DataDirectory);
         if (conversationHistory is not null) ConversationsPage.Attach(conversationHistory);
-        lorebooks = store is null ? null : new LorebookStore(store.DataDirectory);
+        // Lorebooks are each account's own, in its folder (docs/ACCOUNTS.md).
+        lorebooks = store is null ? null : new LorebookStore(accounts?.AccountFolder ?? store.DataDirectory);
         smartHome = new(store?.DataDirectory, vault);
         discord = new(store?.DataDirectory, vault);
         // A Discord message naming the companion (a persona's name) is meant for Martlet.
@@ -236,6 +237,8 @@ public partial class MainWindow : ThemedWindow
         // A host PC stays awake from the start, before its first network sync or host check (after a Wake-on-LAN wake, Windows
         // sleeps again within minutes otherwise).
         UpdateStayAwake();
+        // A switch between accounts cut short at the last start is finished before the character and the conversation load.
+        await FinishAccountSettingsAsync();
         ReadMachineAsync().Forget();
         await RefreshAsync();
         if (!closing) ContinueSetupAsync().Forget();

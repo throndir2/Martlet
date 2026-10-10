@@ -8,6 +8,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
+using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Credentials.Windows;
@@ -38,6 +39,17 @@ public partial class MainWindow
     private readonly DispatcherTimer settingsTimer = new() { Interval = ClusterSync.Interval };
     private SharedSettingsNode? settingsNode;
     private AppSettingsSections? appSections;
+    private readonly WindowsCredentialStore settingsVault = new();
+    /// <summary>The desktop's own sections each account keeps (the character, how you talk, the theme...): the same for every
+    /// account's node, since they read and write this PC's files in use.</summary>
+    private IReadOnlyList<ISharedSection> accountDesktopSections = [];
+    /// <summary>The signed-in account's own settings (docs/ACCOUNTS.md, "Account settings"), null without accounts or until a
+    /// switch cut short at the last start is finished.</summary>
+    private SharedSettingsNode? accountNode;
+    private Guid? accountNodeFor;
+    /// <summary>Each host's copy of the signed-in account's settings, with its digest.</summary>
+    private readonly Dictionary<string, (Guid Account, string Digest, SharedSettings Copy)> accountSettingsCopies = new(StringComparer.Ordinal);
+    private (int Current, int Hosts, int Old) accountHosts;
     private bool settingsBusy;
     private DateTimeOffset? settingsCheckedAt;
     /// <summary>Each host's copy as last read or merged, with its digest, so a copy is read again only when it changed.</summary>
@@ -55,10 +67,119 @@ public partial class MainWindow
             return;
         }
         var directory = store.DataDirectory;
-        appSections = new AppSettingsSections(setupService, new WindowsCredentialStore(), directory, lorebooks,
-            role => HostJob.For(role) is { } job ? JobSavedRoute.Load(directory, job.SavedFile) : null, RouteAvailableAsync);
-        settingsNode = new SharedSettingsNode(directory, ClusterDevice, [.. appSections.Sections, .. DesktopSections()], appSections.Invalidate);
+        Func<SetupRole, SetupRoute?> savedRoute = role => HostJob.For(role) is { } job ? JobSavedRoute.Load(directory, job.SavedFile) : null;
+        var desktop = DesktopSections().ToArray();
+        if (accounts is null)
+        {
+            // No account session (it couldn't be opened): every setting stays on the household's copy, as before accounts.
+            appSections = new AppSettingsSections(setupService, settingsVault, directory, lorebooks, savedRoute, RouteAvailableAsync);
+            settingsNode = new SharedSettingsNode(directory, ClusterDevice, [.. appSections.Sections, .. desktop], appSections.Invalidate);
+            ShowSettingsStatus();
+            return;
+        }
+        // The household's settings on one node; the signed-in account's on its own (AccountNode), each in its own document.
+        appSections = new AppSettingsSections(setupService, settingsVault, directory, null, savedRoute, RouteAvailableAsync);
+        settingsNode = new SharedSettingsNode(directory, ClusterDevice,
+            [.. appSections.Sections.Where(s => !SettingScopes.IsAccountKey(s.Key)), .. desktop.Where(s => !SettingScopes.IsAccountKey(s.Key))],
+            appSections.Invalidate);
+        accountDesktopSections = [.. desktop.Where(s => SettingScopes.IsAccountKey(s.Key))];
+        AccountSettingsStart.Prepare(directory, accounts.AccountId, DateTimeOffset.UtcNow);
+        // A switch cut short at the last start (the files still hold another account's settings) is finished before the
+        // conversation starts (FinishAccountSettingsAsync).
+        if (AccountWorkingCopy.Load(directory)?.Account == accounts.AccountId)
+        {
+            accountNode = AccountNode(accounts.AccountId);
+            accountNodeFor = accounts.AccountId;
+        }
+        accounts.AddChangeStep(SwitchSettingsStepAsync);
         ShowSettingsStatus();
+    }
+
+    /// <summary>The settings node of <paramref name="account"/>: its own copy in its folder, the account sections, and its
+    /// lorebooks (they live in its folder).</summary>
+    private SharedSettingsNode AccountNode(Guid account)
+    {
+        var folder = AccountWorkingCopy.Folder(store!.DataDirectory, account);
+        var sections = new AppSettingsSections(setupService!, settingsVault, store.DataDirectory, new LorebookStore(folder));
+        return new SharedSettingsNode(folder, ClusterDevice, [.. sections.Sections.Where(s => SettingScopes.IsAccountKey(s.Key)), .. accountDesktopSections],
+            sections.Invalidate);
+    }
+
+    /// <summary>The account change step: on a switch, gives this PC's settings files the incoming account's settings, on the
+    /// window's thread (the theme, the character and how you talk change with them). At start the files are ready already
+    /// (AccountSettingsStart) or are finished by <see cref="FinishAccountSettingsAsync"/>.</summary>
+    private Task SwitchSettingsStepAsync(AccountChange change, CancellationToken token) =>
+        change.From is null ? Task.CompletedTask : Dispatcher.InvokeAsync(() => UseAccountSettingsAsync(change.To, token)).Task.Unwrap();
+
+    /// <summary>Finishes a switch cut short at the last start, before the character and the conversation load.</summary>
+    private async Task FinishAccountSettingsAsync()
+    {
+        if (accounts is null || accountNode is not null || store is null || setupService is null || closing) return;
+        try { await UseAccountSettingsAsync(accounts.AccountId, lifetime.Token); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or InvalidOperationException or JsonException)
+        {
+            ErrorLog.Warn("Settings: couldn't give this PC the signed-in account's settings at start; they don't sync until it can.", error);
+        }
+    }
+
+    /// <summary>Gives this PC's settings files the settings of <paramref name="account"/>: records the files into the outgoing
+    /// account's copy, reads the incoming account's copies from the hosts (briefly), gives the files its settings (or each
+    /// setting's default) and writes the working-copy marker (<see cref="AccountSettingsSync.SwitchAsync"/>). Throws when it
+    /// can't; the files then hold the outgoing account's settings again.</summary>
+    private async Task UseAccountSettingsAsync(Guid account, CancellationToken token)
+    {
+        if (store is null || setupService is null) return;
+        while (settingsBusy && !closing) await Task.Delay(50, token);
+        settingsBusy = true;
+        IReadOnlyDictionary<string, string> waiting;
+        try
+        {
+            var directory = store.DataDirectory;
+            var marker = AccountWorkingCopy.Load(directory)?.Account;
+            var from = accountNodeFor == account ? null : accountNode ?? (marker is { } other && other != account ? AccountNode(other) : null);
+            var next = AccountNode(account);
+            var copies = clusterEnabled ? await ReadAccountCopiesAsync(account, token) : [];
+            waiting = await AccountSettingsSync.SwitchAsync(from, next, copies, directory, account, DateTimeOffset.UtcNow, token);
+            accountNode = next;
+            accountNodeFor = account;
+            accountSettingsCopies.Clear();
+            lorebooks?.UseDirectory(AccountWorkingCopy.Folder(directory, account));
+        }
+        finally { settingsBusy = false; }
+        ErrorLog.Info($"Settings: this PC now uses account {AccountSession.Short(account)}'s settings" +
+            (waiting.Count == 0 ? "." : $"; not yet: {string.Join(", ", waiting.Keys.Select(SharedTitle))}."));
+        homeLore = null;
+        settingsLastChange = null;
+        if (closing) return;
+        await RefreshHomeAsync();
+        if (characterChanged && avatar.IsShowing && Role == DeviceRole.Companion)
+        {
+            characterChanged = false;
+            if (await StopAvatarSafelyAsync()) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+        }
+        characterChanged = false;
+        if (openTab is not null && !tabEdited) RenderTab();
+        ShowSettingsStatus();
+    }
+
+    /// <summary>The hosts' copies of <paramref name="account"/>'s settings, read in parallel for a few seconds at most: a switch
+    /// takes what they have, and the next sync brings anything slower.</summary>
+    private async Task<IReadOnlyList<SharedSettings>> ReadAccountCopiesAsync(Guid account, CancellationToken token)
+    {
+        var reads = await Task.WhenAll(NetworkMap.Hosts(Inputs()).Select(async host =>
+        {
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(3));
+                return await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.ReadAccountSettingsAsync(account, timeout.Token));
+            }
+            catch (Exception error) when (error is OperationCanceledException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
+            {
+                return null;
+            }
+        }));
+        return [.. reads.OfType<SharedSettings>()];
     }
 
     /// <summary>Starts the settings sync. It runs (recording changes made here) even while sync is off; only then does it
@@ -88,22 +209,43 @@ public partial class MainWindow
             var shared = clusterEnabled;
             var hosts = shared ? NetworkMap.Hosts(Inputs()) : [];
             var reads = await Task.WhenAll(hosts.Select(ReadSettingsCopyAsync));
+            var account = accountNode;
+            var accountId = accountNodeFor;
+            var accountReads = account is not null && accountId is { } readFor
+                ? await Task.WhenAll(hosts.Select(host => ReadAccountCopyAsync(host, readFor)))
+                : [];
             if (closing) return;
             if (setupOperations.IsRunning || (turn = changes.TryTake()) is null) return;
-            result = await settingsNode.SyncAsync(reads.Select(r => r.Copy).OfType<SharedSettings>(), shared, DateTimeOffset.UtcNow, lifetime.Token);
+            // The owner keeps the account entries older Martlets leave in the household's copy (docs/ACCOUNTS.md).
+            var owner = accounts is { } session && accountId is { } signedIn && session.OwnerId == signedIn;
+            SharedSettingsResult? accountResult;
+            (result, accountResult) = await AccountSettingsSync.SyncAsync(settingsNode, account, owner,
+                [.. reads.Select(r => r.Copy).OfType<SharedSettings>()], [.. accountReads.Select(r => r.Copy).OfType<SharedSettings>()],
+                shared, DateTimeOffset.UtcNow, lifetime.Token);
             turn.Dispose();
             if (shared) await PushSettingsAsync(reads, result.Document);
+            if (shared && accountResult is not null && accountId is { } pushFor) await PushAccountSettingsAsync(accountReads, pushFor, accountResult.Document);
             if (shared) settingsCheckedAt = DateTimeOffset.UtcNow;
             var digest = settingsNode.Document.Digest();
             var reachable = reads.Where(r => r.Ok).ToArray();
             settingsHosts = (reachable.Count(r => settingsCopies.GetValueOrDefault(r.HostId).Digest == digest), hosts.Count,
                 reads.Count(r => !r.Ok && !r.Old), reads.Count(r => r.Old));
+            if (accountResult is not null)
+            {
+                var accountDigest = accountResult.Document.Digest();
+                accountHosts = (accountReads.Count(r => r.Ok && accountSettingsCopies.GetValueOrDefault(r.HostId).Digest == accountDigest), hosts.Count,
+                    accountReads.Count(r => r.Old));
+            }
             foreach (var key in result.Recorded.Where(k => !SharedPc.IsRoleKey(k)))
                 ErrorLog.Info(SharedPc.IsKey(key)
                     ? $"Shared settings: told your other computers that this PC is a {(Role == DeviceRole.Host ? "host" : "companion")} PC" +
                       (OwnHostServiceId() is { } own ? $" and runs {own}." : ".")
                     : $"Shared settings: {SharedTitle(key)} changed on this PC; your other computers follow it.");
-            if (result.Applied.Count > 0) await AfterSettingsAppliedAsync(result.Applied);
+            foreach (var key in accountResult?.Recorded.Where(k => !k.StartsWith(SharedSettings.RemindersPrefix, StringComparison.Ordinal)) ?? [])
+                ErrorLog.Info($"Shared settings: {SharedTitle(key)} changed on this PC for account {AccountSession.Short(accountId!.Value)}; " +
+                    "the computers where it is signed in follow it.");
+            IReadOnlyList<SharedSettingsChange> applied = [.. result.Applied, .. accountResult?.Applied ?? []];
+            if (applied.Count > 0) await AfterSettingsAppliedAsync(applied);
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or InvalidOperationException or JsonException)
@@ -207,6 +349,57 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>A host's copy of <paramref name="account"/>'s own settings: read again only when its digest changed. Hosts older
+    /// than account settings answer route.not_found or request.invalid (Old); a host that refuses this PC for the account
+    /// answers settings.account_denied (not Ok).</summary>
+    private async Task<(string HostId, PairedHost Host, SharedSettings? Copy, bool Ok, bool Old)> ReadAccountCopyAsync(PairedHost host, Guid account)
+    {
+        try
+        {
+            var copy = await ClusterSync.WithConnectionAsync(host.Pairing, async connection =>
+            {
+                var digest = await connection.ReadAccountSettingsDigestAsync(account, lifetime.Token);
+                if (accountSettingsCopies.TryGetValue(host.HostId, out var known) && known.Account == account && known.Digest == digest) return known.Copy;
+                var read = await connection.ReadAccountSettingsAsync(account, lifetime.Token);
+                accountSettingsCopies[host.HostId] = (account, read.Digest(), read);
+                return read;
+            });
+            return (host.HostId, host, copy, true, false);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
+        catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
+        {
+            return (host.HostId, host, null, false, true);
+        }
+        catch (Exception error) when (error is OperationCanceledException or ArgumentException or Audio2FaceHostException || ClusterSync.IsHostFailure(error))
+        {
+            return (host.HostId, host, null, false, false);
+        }
+    }
+
+    /// <summary>Gives every reachable host whose copy of <paramref name="account"/>'s settings differs the merged copy.</summary>
+    private async Task PushAccountSettingsAsync(IEnumerable<(string HostId, PairedHost Host, SharedSettings? Copy, bool Ok, bool Old)> reads,
+        Guid account, SharedSettings merged)
+    {
+        var digest = merged.Digest();
+        foreach (var read in reads.Where(r => r.Ok))
+        {
+            if (closing || accountNodeFor != account) return;
+            if (accountSettingsCopies.GetValueOrDefault(read.HostId) is var known && known.Account == account && known.Digest == digest) continue;
+            try
+            {
+                var copy = await ClusterSync.WithConnectionAsync(read.Host.Pairing, connection =>
+                    connection.MergeAccountSettingsAsync(account, merged, lifetime.Token));
+                accountSettingsCopies[read.HostId] = (account, copy.Digest(), copy);
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is OperationCanceledException or ArgumentException || ClusterSync.IsHostFailure(error))
+            {
+                ErrorLog.Warn($"Couldn't give {read.HostId} account {AccountSession.Short(account)}'s settings; trying again on the next check.", error);
+            }
+        }
+    }
+
     /// <summary>Brings the rest of Martlet up to date after this PC took settings from another computer.</summary>
     private async Task AfterSettingsAppliedAsync(IReadOnlyList<SharedSettingsChange> applied)
     {
@@ -245,22 +438,28 @@ public partial class MainWindow
             SettingsSyncWaitingText.Visibility = Visibility.Collapsed;
             return;
         }
-        var shared = settingsNode.Document.Settings.Count(s => !SharedSettings.IsDeviceKey(s.Key));
+        var shared = settingsNode.Document.Settings.Count(s => !SharedSettings.IsDeviceKey(s.Key) && (accounts is null || !SettingScopes.IsAccountKey(s.Key)));
+        var own = accountNode?.Document.Settings.Count(s => !SharedSettings.IsDeviceKey(s.Key)) ?? 0;
         string text;
         if (!clusterEnabled) text = "Settings stay on this PC while this is off; changes made here are shared when you turn it on.";
         else if (settingsCheckedAt is not { } checkedAt) text = "Settings: checking your hosts...";
         else if (settingsHosts.Hosts == 0) text = "Settings: pair a Martlet host to share them with your other computers.";
         else
-            text = $"Settings: {shared} shared, the same on {settingsHosts.Current} of {settingsHosts.Hosts} host{(settingsHosts.Hosts == 1 ? "" : "s")}; " +
+            text = $"Settings: {shared} shared{(accounts is null ? "" : $" by the household and {own} of yours")}, the same on " +
+                $"{settingsHosts.Current} of {settingsHosts.Hosts} host{(settingsHosts.Hosts == 1 ? "" : "s")}; " +
                 $"checked {checkedAt.ToLocalTime():t}." +
                 (settingsHosts.Down > 0 ? $" {settingsHosts.Down} not responding." : "") +
-                (settingsHosts.Old > 0 ? $" Update {(settingsHosts.Old == 1 ? "one host" : settingsHosts.Old + " hosts")} to share settings." : "");
+                (settingsHosts.Old > 0 ? $" Update {(settingsHosts.Old == 1 ? "one host" : settingsHosts.Old + " hosts")} to share settings." : "") +
+                (accountNode is not null && accountHosts.Old > settingsHosts.Old
+                    ? $" Update {(accountHosts.Old == 1 ? "one host" : accountHosts.Old + " hosts")} to keep each person's settings on all " +
+                      "your computers." : "");
+        if (accounts is not null && accountNode is null) text += " Your own settings don't sync until this PC finishes switching to you.";
         if (settingsLastChange is not null && clusterEnabled) text += " " + settingsLastChange;
         SettingsSyncStatusText.Text = text;
-        var waiting = settingsNode.Waiting;
-        SettingsSyncWaitingText.Text = waiting.Count == 0 ? "" :
+        var waiting = settingsNode.Waiting.Concat(accountNode?.Waiting ?? new Dictionary<string, string>()).ToArray();
+        SettingsSyncWaitingText.Text = waiting.Length == 0 ? "" :
             "Not followed here yet: " + string.Join(" ", waiting.Select(w => $"{Sentence(SharedTitle(w.Key))}: {w.Value}"));
-        SettingsSyncWaitingText.Visibility = waiting.Count == 0 || !clusterEnabled ? Visibility.Collapsed : Visibility.Visible;
+        SettingsSyncWaitingText.Visibility = waiting.Length == 0 || !clusterEnabled ? Visibility.Collapsed : Visibility.Visible;
         SettingsSyncClaimButton.IsEnabled = clusterEnabled;
     }
 
@@ -271,12 +470,16 @@ public partial class MainWindow
                 "(with this PC's API keys), its character with its emotes and motions, personality, replies, prompts, lorebooks, how you " +
                 "talk, the theme, Voice ID, recognizing voices, what Martlet may do with Home Assistant, app updates and what Thinking models " +
                 "hear and see are copied from " +
-                "this PC to every paired computer, replacing what they have.", "Use this PC's settings"))
+                "this PC to every paired computer, replacing what they have." +
+                (accountNode is null ? "" : " Your own settings (personality, replies, prompts, lorebooks, the character, how you talk, " +
+                    "the theme and Voice ID) go to the computers where you are signed in; other people's stay as they are."),
+                "Use this PC's settings"))
             return;
         while (settingsBusy && !closing) await Task.Delay(100);
         try
         {
             var count = await settingsNode.ClaimAllAsync(DateTimeOffset.UtcNow, lifetime.Token);
+            if (accountNode is { } own) count += await own.ClaimAllAsync(DateTimeOffset.UtcNow, lifetime.Token);
             ErrorLog.Info($"Shared settings: the owner made {count} settings from this PC the ones every computer uses.");
             ActionText.Text = $"Your other computers now take {count} settings from this PC.";
             settingsLastChange = null;
@@ -305,14 +508,11 @@ public partial class MainWindow
         yield return new DelegateSection(SharedPc.RoleKey(ClusterDevice), "Companion or host PC", _ =>
             Task.FromResult<SharedLocal?>(new(SharedPc.WriteRole(Role), null, deviceRole is null, FileTime(PcRole.FilePath(Pc!)))),
             (setting, _) => Task.FromResult(FollowRoleRequest(setting)));
-        yield return new DelegateSection(CharacterKey, "Character", ReadCharacterAsync, ApplyCharacterAsync);
+        yield return new DelegateSection(CharacterKey, "Character", ReadCharacterAsync, ApplyCharacterAsync, DefaultCharacter);
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
-            var prefs = Talk;
-            var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice == true, prefs.BargeIn, prefs.ScreenChattiness,
-                prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing, prefs.BargeInStyle);
             var path = Path.Combine(directory, "talk-preferences.json");
-            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !File.Exists(path), FileTime(path)));
+            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(TalkShare(Talk), SharedJson), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
         {
             var value = JsonSerializer.Deserialize<SharedTalk>(setting.Value, SharedJson) ?? throw new JsonException();
@@ -326,7 +526,7 @@ public partial class MainWindow
                 BargeInStyle = Enum.IsDefined(value.BargeInStyle) ? value.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide
             });
             return Task.FromResult(SharedApply.Done);
-        });
+        }, () => JsonSerializer.Serialize(TalkShare(new TalkPreferences()), SharedJson));
         yield return new DelegateSection(SpeechDisplayKey, "Speech bubbles", _ =>
         {
             // Where the bubble sits (beside the character or in one place, and its offsets) depends on this PC's screens, like
@@ -340,7 +540,8 @@ public partial class MainWindow
             var value = JsonSerializer.Deserialize<SharedSpeechDisplay>(setting.Value, SharedJson) ?? throw new JsonException();
             return Task.FromResult(captions.Update(captions.Preferences with { SpeechBubbles = value.SpeechBubbles, Subtitles = value.Subtitles })
                 ? SharedApply.Done : SharedApply.Waiting("They couldn't be saved on this PC."));
-        });
+        }, () => JsonSerializer.Serialize(new SharedSpeechDisplay(new SpeechDisplayPreferences().SpeechBubbles, new SpeechDisplayPreferences().Subtitles),
+            SharedJson));
         // The owner's custom palette travels before the theme, so a computer that switches to Custom has its colors.
         yield return new DelegateSection(AppearanceCustomKey, "Custom palette", _ =>
         {
@@ -370,7 +571,7 @@ public partial class MainWindow
             else (Application.Current as App)?.ApplyTheme(theme,
                 theme == AppearanceTheme.Custom ? Appearance.LoadColors(directory, theme) : characterThemes.Colors(theme));
             return Task.FromResult(SharedApply.Done);
-        });
+        }, () => JsonSerializer.Serialize(AppearanceTheme.Light.ToString()));
         yield return new DelegateSection(CharacterActionsKey, "Emotes and motions", _ =>
         {
             var path = CharacterActions.Path(directory);
@@ -394,7 +595,7 @@ public partial class MainWindow
             await CharacterTouchTemperaments.ReplaceAllAsync(directory, setting.Value, token);
             characterTemperaments.Reload();
             return SharedApply.Done;
-        });
+        }, () => CharacterTouchTemperaments.Share(Path.Combine(directory, AccountWorkingCopy.DirectoryName, "no-temperaments")));
         yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
             Task.FromResult<SharedLocal?>(localVoices.Available
                 ? new(JsonSerializer.Serialize(new SharedSwitch(localVoices.Enabled), SharedJson), null, localVoices.EnabledChangedAt is null,
@@ -431,7 +632,7 @@ public partial class MainWindow
             else if (voiceIdentity.Current is not null) voiceIdentity.Delete();
             if (Talk.VoiceId != value.On) SaveTalk(Talk with { VoiceId = value.On });
             return Task.FromResult(SharedApply.Done);
-        });
+        }, () => JsonSerializer.Serialize(new SharedVoiceId(false, null), SharedJson));
         yield return new DelegateSection(SmartHomeKey, "Smart home permissions", _ =>
         {
             if (!smartHome.Connected) return Task.FromResult<SharedLocal?>(null);
@@ -559,6 +760,21 @@ public partial class MainWindow
     }
 
     private const string SharedModelPrefix = "shared:";
+
+    /// <summary>How you talk as it travels (<see cref="SharedTalk"/>).</summary>
+    private static SharedTalk TalkShare(TalkPreferences prefs) =>
+        new(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice == true, prefs.BargeIn, prefs.ScreenChattiness,
+            prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing, prefs.BargeInStyle);
+
+    /// <summary>The character an account that never chose one starts with: Martlet's built-in one, not shown at start.</summary>
+    private static string DefaultCharacter()
+    {
+        var builtIn = AvatarProfile.BuiltIn(Guid.NewGuid());
+        return JsonSerializer.Serialize(new SharedCharacter
+        {
+            Renderer = builtIn.Renderer, Model = builtIn.ModelPath, Configuration = builtIn.Configuration, AutoShow = false
+        }, SharedJson);
+    }
 
     private async Task<SharedLocal?> ReadCharacterAsync(CancellationToken token)
     {

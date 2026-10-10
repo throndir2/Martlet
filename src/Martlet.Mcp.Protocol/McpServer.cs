@@ -969,10 +969,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
             "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
             "companion, replies, prompts, memory, lorebooks, character, character-actions, talk, speech-display, appearance, " +
-            "voice-recognition, voice-id, smart-home, updates) with which computer changed it and when, its revision, whether it uses an " +
+            "voice-recognition, voice-id, smart-home, updates) with its scope (household or account), which computer changed it and when, " +
+            "its revision, whether it uses an " +
             "API key (never the key or its digest), the provider and model of each job's route, the values of non-personal settings, " +
-            "and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
-            "contacts nothing and reads no credentials.", new
+            "and whether this PC still has the same value (\"same\", \"different\", \"adopting\" while the files don't hold the signed-in " +
+            "account's value yet, or \"unknown\" for its own files). With accounts it also reads accounts\\working-copy.json (whose " +
+            "settings the files hold, and since when) and that account's own copy in accounts\\<id>\\shared-settings.json with the same " +
+            "fields, and lists the account folders on this PC (IDs only). Read-only; contacts nothing and reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1737,7 +1740,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             live = new { type = "boolean" }
         }),
         Tool("reminders_status", "Martlet's reminders (the reply model's reminders tool: set, list, cancel; docs/CONVERSATION.md#reminders), " +
-            "from a data directory's shared-settings.json: every computer's reminders entry, each reminder's text, due and set times, " +
+            "from the shared-settings.json of the account signed in on a data directory (accounts\\<id>, named by accounts\\working-copy.json; " +
+            "the data directory's own for a folder from before accounts), with which account and copy it read: every computer's reminders entry, each reminder's text, due and set times, " +
             "the computer it was set on, its state (Pending, Done, Canceled, Missed) and who settled it, and each computer's marks " +
             "(Bid with its idle seconds, Claim, Done, Cancel, Missed), plus the tool exactly as the model gets it. Read-only.", new
         {
@@ -4055,7 +4059,43 @@ internal sealed class McpServer(DesktopAutomation desktop)
         try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
         var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
-        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.SharedSettingsState.FileName))) return new { sync, state = "none" };
+        // Each account's settings (docs/ACCOUNTS.md): the account whose settings the data folder's files hold, its own copy, and
+        // the accounts that have a folder here (IDs only).
+        var marker = Martlet.Core.Sync.AccountWorkingCopy.Load(directory);
+        string[] folders;
+        try
+        {
+            var accountsDirectory = Path.Combine(directory, Martlet.Core.Sync.AccountWorkingCopy.DirectoryName);
+            folders = Directory.Exists(accountsDirectory)
+                ? [.. Directory.GetDirectories(accountsDirectory).Select(Path.GetFileName).OfType<string>()
+                    .Where(n => n.Length == 32 && n.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')).Order(StringComparer.Ordinal)]
+                : [];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { folders = []; }
+        object? Account()
+        {
+            if (marker is not { } m) return null;
+            var folder = Martlet.Core.Sync.AccountWorkingCopy.Folder(directory, m.Account);
+            if (!File.Exists(Path.Combine(folder, Martlet.Core.Sync.SharedSettingsState.FileName)))
+                return new { id = m.Account.ToString("N"), filesSince = m.Since, state = "none" };
+            var (own, seen) = Martlet.Core.Sync.SharedSettingsState.Load(folder);
+            return new
+            {
+                id = m.Account.ToString("N"), filesSince = m.Since, state = "loaded", revision = own.Revision, count = own.Settings.Count,
+                settings = Describe(own, seen)
+            };
+        }
+        object Accounts() => new
+        {
+            filesHold = marker?.Account.ToString("N"),
+            folders = folders.Select(id => new
+            {
+                id, settingsCopy = File.Exists(Path.Combine(directory, Martlet.Core.Sync.AccountWorkingCopy.DirectoryName, id,
+                    Martlet.Core.Sync.SharedSettingsState.FileName))
+            }).ToArray()
+        };
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.SharedSettingsState.FileName)))
+            return new { sync, state = "none", account = Account(), accounts = Accounts() };
         var (document, observed) = Martlet.Core.Sync.SharedSettingsState.Load(directory);
         object? Route(Martlet.Core.Sync.SharedSetting setting)
         {
@@ -4081,17 +4121,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             catch (Exception error) when (error is JsonException or Martlet.Core.Contracts.ContractException or KeyNotFoundException or InvalidOperationException) { }
             return null;
         }
+        object[] Describe(Martlet.Core.Sync.SharedSettings copy, IReadOnlyDictionary<string, string> seenHere) => [.. copy.Settings.Select(s => new
+        {
+            key = s.Key, scope = Martlet.Core.Sync.SettingScopes.Of(s.Key), updatedBy = s.UpdatedBy, updatedAt = s.UpdatedAt, revision = s.Revision,
+            usesKey = s.SecretSha256 is not null, characters = s.Value.Length, off = s.Value == "null",
+            here = !seenHere.TryGetValue(s.Key, out var seen) ? "unknown"
+                : seen == Martlet.Core.Sync.SharedSettingsNode.AdoptingDigest ? "adopting"
+                : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
+            value = Route(s)
+        })];
         return new
         {
             sync, state = "loaded", revision = document.Revision, count = document.Settings.Count,
-            settings = document.Settings.Select(s => new
-            {
-                key = s.Key, updatedBy = s.UpdatedBy, updatedAt = s.UpdatedAt, revision = s.Revision, usesKey = s.SecretSha256 is not null,
-                characters = s.Value.Length, off = s.Value == "null",
-                here = !observed.TryGetValue(s.Key, out var seen) ? "unknown"
-                    : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
-                value = Route(s)
-            }).ToArray()
+            settings = Describe(document, observed),
+            account = Account(),
+            accounts = Accounts()
         };
     }
 
@@ -4567,10 +4611,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
 
-        var lore = await new Martlet.Core.Lorebooks.LorebookStore(directory).LoadAsync(cancellation);
+        // Lorebooks live in the folder of the account whose settings the data folder holds (docs/ACCOUNTS.md); a data folder from
+        // before accounts keeps them itself.
+        var loreFolder = Martlet.Core.Sync.AccountWorkingCopy.Load(directory) is { } signedIn
+            ? Martlet.Core.Sync.AccountWorkingCopy.Folder(directory, signedIn.Account) : directory;
+        var lore = await new Martlet.Core.Lorebooks.LorebookStore(loreFolder).LoadAsync(cancellation);
         object lorebooks = new
         {
-            state = lore.Loaded ? File.Exists(Path.Combine(directory, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            state = lore.Loaded ? File.Exists(Path.Combine(loreFolder, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            account = loreFolder == directory ? null : Path.GetFileName(loreFolder),
             books = lore.Library.Books.Count,
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)

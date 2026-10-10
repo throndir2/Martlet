@@ -103,10 +103,10 @@ public sealed class AppSettingsSections
             new Section(Listening, "Listening", t => ReadRouteAsync(SetupRole.Stt, t), (s, k, t) => ApplyRouteAsync(SetupRole.Stt, "Listening", s, k, t)),
             new Section(Speaking, "Speaking", t => ReadRouteAsync(SetupRole.Tts, t), (s, k, t) => ApplyRouteAsync(SetupRole.Tts, "Speaking", s, k, t)),
             new Section(ThinkingFallback, "Thinking fallback", ReadFallbackAsync, ApplyFallbackAsync),
-            new Section(Companion, "Personality", ReadCompanionAsync, ApplyCompanionAsync),
-            new Section(Replies, "Replies", ReadRepliesAsync, ApplyRepliesAsync),
-            new Section(Prompts, "Prompts", ReadPromptsAsync, ApplyPromptsAsync),
-            new Section(Memory, "Memory", ReadMemoryAsync, ApplyMemoryAsync),
+            new Section(Companion, "Personality", ReadCompanionAsync, ApplyCompanionAsync, () => Write(CompanionSettings.Create())),
+            new Section(Replies, "Replies", ReadRepliesAsync, ApplyRepliesAsync, () => "null"),
+            new Section(Prompts, "Prompts", ReadPromptsAsync, ApplyPromptsAsync, () => "null"),
+            new Section(Memory, "Memory", ReadMemoryAsync, ApplyMemoryAsync, () => Write(new SharedMemory { Enabled = true })),
             .. lorebooks is null ? Array.Empty<ISharedSection>() : [new Section(Lorebooks, "Lorebooks", ReadLorebooksAsync, ApplyLorebooksAsync)]
         ];
     }
@@ -519,21 +519,24 @@ public sealed class AppSettingsSections
     }
 
     private sealed class Section(string key, string title, Func<CancellationToken, Task<SharedLocal?>> read,
-        Func<SharedSetting, string?, CancellationToken, Task<SharedApply>> apply) : ISharedSection
+        Func<SharedSetting, string?, CancellationToken, Task<SharedApply>> apply, Func<string?>? defaultValue = null) : ISharedSection
     {
         public string Key => key;
         public string Title => title;
+        public string? Default => defaultValue?.Invoke();
         public Task<SharedLocal?> ReadAsync(CancellationToken token) => read(token);
         public Task<SharedApply> ApplyAsync(SharedSetting setting, string? secret, CancellationToken token) => apply(setting, secret, token);
     }
 }
 
-/// <summary>A shared setting backed by one of the desktop's own preference files, from plain delegates.</summary>
+/// <summary>A shared setting backed by one of the desktop's own preference files, from plain delegates, with the value an
+/// account that never chose it starts with (<see cref="ISharedSection.Default"/>; null keeps what the computer has).</summary>
 public sealed class DelegateSection(string key, string title, Func<CancellationToken, Task<SharedLocal?>> read,
-    Func<SharedSetting, CancellationToken, Task<SharedApply>> apply) : ISharedSection
+    Func<SharedSetting, CancellationToken, Task<SharedApply>> apply, Func<string?>? defaultValue = null) : ISharedSection
 {
     public string Key => key;
     public string Title => title;
+    public string? Default => defaultValue?.Invoke();
     public Task<SharedLocal?> ReadAsync(CancellationToken token) => read(token);
     public Task<SharedApply> ApplyAsync(SharedSetting setting, string? secret, CancellationToken token) => apply(setting, token);
 }

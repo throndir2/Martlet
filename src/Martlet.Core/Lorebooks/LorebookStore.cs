@@ -27,11 +27,29 @@ public sealed class LorebookStore
     public LorebookStore(string dataDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
-        DataDirectory = dataDirectory;
+        directory = dataDirectory;
     }
 
-    public string DataDirectory { get; }
+    private volatile string directory;
+
+    /// <summary>The folder the lorebooks are in: the data directory, or the folder of the account signed in
+    /// (docs/ACCOUNTS.md, "Account settings").</summary>
+    public string DataDirectory => directory;
     public string FilePath => Path.Combine(DataDirectory, FileName);
+
+    /// <summary>Uses the lorebooks in <paramref name="folder"/> from now on (another account's, after a switch); the next load
+    /// reads them.</summary>
+    public void UseDirectory(string folder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+        gate.Wait();
+        try
+        {
+            directory = folder;
+            cache = null;
+        }
+        finally { gate.Release(); }
+    }
 
     private static JsonSerializerOptions CreateOptions()
     {
