@@ -13,7 +13,8 @@ namespace Martlet.Gateway.Host.Linux;
 internal static class HostSignIn
 {
     internal static bool Handles(string command) =>
-        command is "owner-signin-status" or "owner-signin-owner" or "owner-signin-allow" or "owner-signin-disallow" or "owner-invite";
+        command is "owner-signin-status" or "owner-signin-owner" or "owner-signin-allow" or "owner-signin-disallow" or "owner-signin-account" or
+            "owner-signin-remove-account" or "owner-invite";
 
     internal static int Run(HostOptions options, HostConfiguration config, ServiceApproval? approval, LinuxControlDirectory directory,
         TextReader input, TextWriter output)
@@ -56,9 +57,15 @@ internal static class HostSignIn
                     schemaVersion = 1,
                     usable = GatewaySignInSettings.BlockedReason(document) is null,
                     blockedReason = GatewaySignInSettings.BlockedReason(document),
+                    // The owner's account set here; when none is, the service uses the one derived from the host's network.
+                    ownerAccountId = document.OwnerAccountId,
                     owner = document.Owner is { } owner ? new { user = owner.User, recoveryCodesLeft = owner.RecoveryCodes.Count } : null,
+                    accounts = document.Accounts.Select(a => new
+                    {
+                        accountId = a.AccountId, user = a.User, hasAuthenticator = a.TotpSecret is not null, recoveryCodesLeft = a.RecoveryCodes.Count
+                    }),
                     providers = document.Providers.Select(p => new { p.Id, p.Kind, p.Name, p.Issuer, p.ClientId, hasClientSecret = p.ClientSecret is not null }),
-                    allowed = document.Allowed.Select(a => new { a.Provider, a.Subject, a.Label, Access = a.Access ?? "member" }),
+                    allowed = document.Allowed.Select(a => new { a.Provider, a.Subject, a.Label, Access = a.Access ?? "member", a.AccountId }),
                     enrolled = document.Enrolled.Select(e => new { e.DeviceId, e.Provider, e.Subject, e.Label, e.EnrolledAt, Access = e.Access ?? "member" }),
                     // Computers of sign-ins no longer allowed: the service revokes them here and member desktops remove them from
                     // the network on their next sync (removedFromNetwork until the roster shows it; pendingRemoval until the
@@ -78,18 +85,53 @@ internal static class HostSignIn
                 var code = input.ReadLine() ?? throw new HostEofException();
                 var codes = GatewaySignInSettings.Apply(document, new()
                 {
-                    Action = "owner", User = options.User, Password = password, TotpSecret = secret, Code = code
+                    Action = "owner", User = options.User, Password = password, TotpSecret = secret, Code = code, AccountId = options.Account
                 }, now);
                 Save(directory, document);
                 output.WriteLine($"Owner account {options.User} set. Recovery codes (each works once; keep them somewhere safe, they are not shown again):");
                 foreach (var recovery in codes!) output.WriteLine(recovery);
                 return 0;
             }
+            case "owner-signin-account":
+            {
+                var password = input.ReadLine() ?? throw new HostEofException();
+                string? secret = null, code = null;
+                if (options.Authenticator)
+                {
+                    secret = Totp.NewSecret();
+                    output.WriteLine($"Add this to the authenticator app of {options.User} (scan or open the link, or type the secret):");
+                    output.WriteLine($"otpauth: {Totp.Uri("Martlet " + config.HostId, options.User!, secret)}");
+                    output.WriteLine($"secret: {secret}");
+                    output.WriteLine("Then type the 6-digit code it shows:");
+                    code = input.ReadLine() ?? throw new HostEofException();
+                }
+                var codes = GatewaySignInSettings.Apply(document, new()
+                {
+                    Action = "account", AccountId = options.Account, User = options.User, Password = password, TotpSecret = secret, Code = code
+                }, now);
+                Save(directory, document);
+                output.WriteLine($"Martlet login {options.User} set for account {options.Account}." + (codes is null
+                    ? " It has no authenticator: signing in with it proves the account on a paired computer, but never adds a computer."
+                    : " Recovery codes (each works once; keep them somewhere safe, they are not shown again):"));
+                foreach (var recovery in codes ?? []) output.WriteLine(recovery);
+                return 0;
+            }
+            case "owner-signin-remove-account":
+            {
+                GatewaySignInSettings.Apply(document, new() { Action = "remove-account", AccountId = options.Account }, now);
+                var computers = document.WouldSweep().Select(e => e.DeviceId).ToArray();
+                Save(directory, document);
+                output.WriteLine($"Removed the Martlet login of account {options.Account}: " + (computers.Length == 0
+                    ? "it signed in no computer here."
+                    : $"the service revokes {string.Join(", ", computers)} and your member computers remove them from the Martlet network on their next sync."));
+                return 0;
+            }
             case "owner-signin-allow":
             {
                 GatewaySignInSettings.Apply(document, new()
                 {
-                    Action = "allow", Provider = options.Provider, Subject = options.Subject, Label = options.Label, Access = options.Access
+                    Action = "allow", Provider = options.Provider, Subject = options.Subject, Label = options.Label, Access = options.Access,
+                    AccountId = options.Account
                 }, now);
                 // Changing an identity's access revokes the computers it signed in with the old one (they sign in again).
                 var changed = document.WouldSweep().Select(e => e.DeviceId).ToArray();
