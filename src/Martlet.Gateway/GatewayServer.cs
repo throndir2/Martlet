@@ -77,6 +77,10 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachMemoryStorage(IGatewayMemoryStorage storage) => application.Memories.Attach(storage);
 
+    /// <summary>Keeps this host's copy of the household's account directory (served at /martlet/v1/accounts) in
+    /// <paramref name="storage"/> and loads the copy saved there.</summary>
+    public void AttachAccountStorage(IGatewayAccountStorage storage) => application.Accounts.Attach(storage);
+
     /// <summary>Keeps this host's copy of the network's API keys (served to paired desktops at /martlet/v1/api-keys and
     /// checked for every Authorization: Bearer request) in <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachApiKeyStorage(IGatewayApiKeyStorage storage) => application.ApiKeys.Attach(storage);

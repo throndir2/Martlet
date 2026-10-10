@@ -1397,6 +1397,26 @@ in any desktop data folder while the hosts' copy holds them; and an unsigned
 request refused (HTTP 401). Synthetic facts, loopback only; the folder is
 deleted.
 
+`accounts_sync_selftest` (no arguments) rehearses the household's
+[account directory](ACCOUNTS.md#account-directory) end to end with the
+production code (`src\Martlet.NodeLinkCheck`, mode `accounts`,
+`AccountRehearsal.cs`; returns `{exitCode, report}`): two real gateways
+(`lab-accounts-1`, `lab-accounts-2`; Kestrel, pinned TLS, signed requests, an
+in-memory `network.json` and `accounts.json`) bound to one lab network, two
+member desktops (`lab-desktop-a`, `lab-desktop-b`) and one outside computer
+(`lab-intruder`) with real network keys and the desktop's paired client
+(`HostAccounts.cs`). Its steps: A founds the network and binds both hosts; A
+adds the owner account (ID from `OwnerAccount.IdFor`, created by the founder,
+its Windows login signed in on A) and both hosts keep it, signed by A, with
+digests that match A's copy; B checks every entry against its roster and takes
+it; B adds a person through one host only and every copy ends the same; offline
+renames on A and B (the later wins, the creator stays); an offline edit can't
+undo a removal; the outside computer's own entry and a forged change of the
+owner account are refused (`rejected` 2, the host copy unchanged); a restarted
+host serves the same directory from its saved `accounts.json`; and an unsigned
+request is refused (HTTP 401). Synthetic accounts, loopback only. A friend's
+credential is covered by `Martlet.Gateway.Tests` (`AccountDirectoryRouteTests`).
+
 `settings_sync_selftest` (no arguments) rehearses shared settings end to end
 with the production code (`src\Martlet.NodeLinkCheck`, mode `settings`,
 `SettingsRehearsal.cs`, run as its own process like `node_link_check`; returns

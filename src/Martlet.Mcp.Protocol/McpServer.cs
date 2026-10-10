@@ -960,6 +960,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "offline edits on two computers, a host that missed changes, a new computer taking everything, an expired fact, a full store " +
             "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
+        Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
+            "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +
+            "network, two member desktops and one outside computer with real network keys and the desktop's paired client " +
+            "(HostAccounts.cs). Walks binding both hosts, migrating to the owner account (the ID derived from the network ID, created by " +
+            "the founder), a second desktop checking signatures against its roster, a new person synced through one host only, offline " +
+            "renames (the later wins), a removal that an offline edit can't undo, an outside computer's entry and a forged change refused " +
+            "(rejected count), a restarted host keeping accounts.json, digests matching on every copy and an unsigned request refused. " +
+            "Synthetic accounts only; loopback only.", new { }),
         Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
             "lorebooks.json and shared-settings.json in a temporary folder, an in-memory stand-in for Windows Credential Manager, the " +
@@ -2329,6 +2337,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
+                "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),

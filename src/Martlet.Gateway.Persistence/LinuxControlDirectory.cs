@@ -67,6 +67,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>Everything Martlet remembers, the same on the owner's computers (not part of the approved configuration).</summary>
     internal const string Memories = "memories.json", MemoriesStaging = "memories.staging";
     internal const int MaximumMemoriesBytes = Martlet.Core.Sync.SharedMemories.MaximumBytes;
+    /// <summary>The household's account directory: public facts only (not part of the approved configuration).</summary>
+    internal const string Accounts = "accounts.json", AccountsStaging = "accounts.staging";
+    internal const int MaximumAccountsBytes = Martlet.Core.Accounts.AccountDirectory.MaximumBytes;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -127,6 +130,7 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal byte[]? Read(string name, int maximum)
     {
         if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
+            name != Accounts &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
@@ -343,6 +347,9 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces memories.json (0600, service owner).</summary>
     internal void WriteMemories(byte[] bytes) => ReplaceRecovering(Memories, MemoriesStaging, bytes, MaximumMemoriesBytes);
+
+    /// <summary>Atomically replaces accounts.json (0600, service owner).</summary>
+    internal void WriteAccounts(byte[] bytes) => ReplaceRecovering(Accounts, AccountsStaging, bytes, MaximumAccountsBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()
