@@ -12,7 +12,8 @@ namespace Martlet.Desktop;
 
 /// <summary>Thinking requests: every request for the Thinking pool's slots since Martlet started (<see cref="ThinkingRequests"/>):
 /// the waiting and running ones first, then the newest ended ones, each with its type, task, companion, member, tries and how long
-/// it waited and ran. Selecting one shows everything known about it; Timing by type sums up every request that ended. The
+/// it waited and ran. Selecting one shows everything known about it and what it answered (its output, private to this PC: never
+/// in a log, a status file or MCP); Timing by type sums up every request that ended. The
 /// navigation rail's count shows how many wait or run now. Nothing here sends anything: Clear finished only forgets the list.</summary>
 public partial class MainWindow
 {
@@ -168,6 +169,24 @@ public partial class MainWindow
         ThinkingRequestTopic.Visibility = request.Start.Topic is null ? Visibility.Collapsed : Visibility.Visible;
         var text = Describe(request);
         if (ThinkingRequestDetail.Text != text) ThinkingRequestDetail.Text = text;
+        // What it answered (private, as the topic). Set only when it changes, so the regular refresh keeps the scroll and selection.
+        var output = request.Output ?? "";
+        if (ThinkingRequestOutput.Text != output) ThinkingRequestOutput.Text = output;
+        var state = OutputLine(request);
+        if (ThinkingRequestOutputState.Text != state) ThinkingRequestOutputState.Text = state;
+    }
+
+    /// <summary>The line over the selected request's output: how long it is, or why there is none (never the output itself).</summary>
+    internal static string OutputLine(ThinkingRequestInfo request)
+    {
+        if (request.Active) return "Output: none yet. It shows here when the request ends.";
+        if (request.Output is not { } output)
+            return request.State == ThinkingRequestState.Succeeded ? "Output: none. The answer was empty."
+                : $"Output: none. It ended: {ThinkingRequestWords.State(request).ToLowerInvariant()}.";
+        var length = request.AnswerLength is { } all && all > output.Length
+            ? string.Create(CultureInfo.CurrentCulture, $"the first {output.Length:N0} of {all:N0} characters")
+            : string.Create(CultureInfo.CurrentCulture, $"{output.Length:N0} character{(output.Length == 1 ? "" : "s")}");
+        return $"Output: {length}{(request.Cut ? ", cut at the token limit" : "")}.";
     }
 
     /// <summary>Everything known about <paramref name="request"/> in plain lines (never its text, answer or topic).</summary>
@@ -244,6 +263,8 @@ public partial class MainWindow
                 await Task.Delay(TimeSpan.FromMilliseconds(400 + number * 700));
                 request.Begin(number % 2 == 0 ? gpu : laptop);
                 await Task.Delay(TimeSpan.FromMilliseconds(900 + number % 4 * 600));
+                var answer = $"Simulated answer {number + 1} ({ThinkingRequestWords.Kind(kind).ToLowerInvariant()}). " +
+                    "No model was asked and nothing was sent.";
                 switch (number % 5)
                 {
                     case 1:
@@ -251,7 +272,7 @@ public partial class MainWindow
                         await Task.Delay(TimeSpan.FromMilliseconds(500));
                         request.Begin(gpu);
                         await Task.Delay(TimeSpan.FromMilliseconds(1200));
-                        request.Finish(ThinkingRequestState.Succeeded, answer: 180);
+                        request.Finish(ThinkingRequestState.Succeeded, text: answer);
                         break;
                     case 3:
                         request.Finish(ThinkingRequestState.Failed, $"{laptop.Name} came back empty (simulated)");
@@ -259,10 +280,11 @@ public partial class MainWindow
                     case 4:
                         // Stays running a while, so the page shows a request in progress.
                         await Task.Delay(TimeSpan.FromSeconds(20));
-                        request.Finish(ThinkingRequestState.Succeeded, answer: 1200, wasCut: true);
+                        request.Finish(ThinkingRequestState.Succeeded, wasCut: true,
+                            text: string.Join(Environment.NewLine + Environment.NewLine, Enumerable.Repeat(answer, 8)));
                         break;
                     default:
-                        request.Finish(ThinkingRequestState.Succeeded, answer: 40 + number);
+                        request.Finish(ThinkingRequestState.Succeeded, text: answer);
                         break;
                 }
             }).Forget();

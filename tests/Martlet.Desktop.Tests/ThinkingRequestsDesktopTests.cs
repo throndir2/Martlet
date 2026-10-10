@@ -7,6 +7,7 @@ namespace Martlet.Desktop.Tests;
 public sealed class ThinkingRequestsDesktopTests
 {
     private const string Topic = "the user's secret plans for Friday";
+    private const string Output = "The user plans a picnic on Friday at noon.";
 
     private static ThinkingRequests Requests()
     {
@@ -19,7 +20,7 @@ public sealed class ThinkingRequestsDesktopTests
         request.Begin(busy);
         request.End("stopped for the conversation", paused: true, preempted: true);
         request.Begin(ok);
-        request.Finish(ThinkingRequestState.Succeeded, answer: 42);
+        request.Finish(ThinkingRequestState.Succeeded, text: Output);
         requests.Post(new(ThinkingJobKind.Digest, ThinkingRequestSource.Pool, "digest-1") { Task = "a summary of the screen" });
         return requests;
     }
@@ -31,6 +32,7 @@ public sealed class ThinkingRequestsDesktopTests
         var json = LiveConversationController.RequestsJson(requests, new BackgroundPlaces(), DateTimeOffset.UtcNow);
         Assert.DoesNotContain(Topic, json, StringComparison.Ordinal);
         Assert.DoesNotContain("secret", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("picnic", json, StringComparison.Ordinal);
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
@@ -50,7 +52,7 @@ public sealed class ThinkingRequestsDesktopTests
         Assert.Equal(("host:busy", "qwen3:8b", "stopped for the conversation"), (attempts[0].GetProperty("memberId").GetString(),
             attempts[0].GetProperty("model").GetString(), attempts[0].GetProperty("ending").GetString()));
         Assert.Equal(("ok", "answered"), (attempts[1].GetProperty("member").GetString(), attempts[1].GetProperty("ending").GetString()));
-        Assert.Equal((1, 1, 42), (done.GetProperty("retries").GetInt32(), done.GetProperty("preemptions").GetInt32(),
+        Assert.Equal((1, 1, Output.Length), (done.GetProperty("retries").GetInt32(), done.GetProperty("preemptions").GetInt32(),
             done.GetProperty("answerCharacters").GetInt32()));
         Assert.Equal(300_000, done.GetProperty("timeoutMs").GetDouble());
         foreach (var name in new[] { "firstWaitMs", "waitedMs", "ranMs", "totalMs" })
@@ -63,14 +65,38 @@ public sealed class ThinkingRequestsDesktopTests
         var done = Requests().List().Single(r => r.Done);
         var text = MainWindow.Describe(done);
         Assert.DoesNotContain(Topic, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("picnic", text, StringComparison.Ordinal);
         Assert.StartsWith($"{done.Id}  Think longer", text, StringComparison.Ordinal);
         Assert.Contains("State:       Done", text, StringComparison.Ordinal);
         Assert.Contains("For:         Diva (Conversation's background work think-1)", text, StringComparison.Ordinal);
         Assert.Contains("Tries:       2 (1 retry), stopped for the conversation 1 time", text, StringComparison.Ordinal);
-        Assert.Contains("Answer:      42 characters", text, StringComparison.Ordinal);
+        Assert.Contains($"Answer:      {Output.Length} characters", text, StringComparison.Ordinal);
         Assert.Contains("1. busy (qwen3:8b) at ", text, StringComparison.Ordinal);
         Assert.Contains(": stopped for the conversation", text, StringComparison.Ordinal);
         Assert.Contains("2. ok (gemma4:e4b) at ", text, StringComparison.Ordinal);
         Assert.Contains("Limits:      time limit ", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ThinkingRequests_output_line_gives_the_length_or_why_there_is_none_but_never_the_output()
+    {
+        var requests = Requests();
+        var done = requests.List().Single(r => r.Done);
+        Assert.Equal(Output, done.Output);
+        Assert.Equal($"Output: {Output.Length} characters.", MainWindow.OutputLine(done));
+        Assert.Equal("Output: none yet. It shows here when the request ends.", MainWindow.OutputLine(requests.List().Single(r => r.Active)));
+
+        var cut = requests.Post(new(ThinkingJobKind.Research, ThinkingRequestSource.Conversation, "research-1"));
+        cut.Finish(ThinkingRequestState.Succeeded, wasCut: true, text: new string('y', ThinkingRequests.OutputKept + 1));
+        var failed = requests.Post(new(ThinkingJobKind.Memory, ThinkingRequestSource.Pool, "memory-1"));
+        failed.Finish(ThinkingRequestState.TimedOut);
+        var empty = requests.Post(new(ThinkingJobKind.Naming, ThinkingRequestSource.Pool, "naming-1"));
+        empty.Finish(ThinkingRequestState.Succeeded, text: "");
+        var list = requests.List();
+        Assert.Equal($"Output: the first {ThinkingRequests.OutputKept:N0} of {ThinkingRequests.OutputKept + 1:N0} characters, cut at the token limit.",
+            MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Research)));
+        Assert.Equal("Output: none. It ended: timed out.", MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Memory)));
+        Assert.Equal("Output: none. The answer was empty.", MainWindow.OutputLine(list.Single(r => r.Kind == ThinkingJobKind.Naming)));
+        Assert.All(list, r => Assert.DoesNotContain("picnic", MainWindow.OutputLine(r), StringComparison.Ordinal));
     }
 }
