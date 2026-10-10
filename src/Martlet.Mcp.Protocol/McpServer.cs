@@ -1028,7 +1028,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("pictures_status", "Read Companion › Pictures for a data directory: where Martlet draws (pictures.json: off, " +
             "Martlet's Pictures host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
-            "model; whether an own key is saved, never the key), the loaded custom workflow's node count, the picture creations " +
+            "model; whether an own key is saved, never the key), the Pictures list (pool: pools-local.json's members with their keys, " +
+            "settings and agreement, or the list the desktop would make from pictures.json; tries: the places a picture tries now, in " +
+            "order), the loaded custom workflow's node count, the picture creations " +
             "(shape, size, engine, model, seconds, fixture, assets, whether they're on this PC; never titles or descriptions) and the " +
             "draw_picture tool and job kind the conversation offers. Read-only.", new
         {
@@ -1040,9 +1042,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "custom with workflowFile, an absolute path to an Export (API) file), queue, history, the picture fetched). Returns " +
             "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
             "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
-            "does; with saveDirectory (absolute) it writes the picture there. Never calls a paid cloud provider.", new
+            "does; with saveDirectory (absolute) it writes the picture there. Place \"pool\" instead rehearses the Pictures list's " +
+            "routing (PicturePool and WorkQueue) on simulated ComfyUI computers (FIXTURE): busy, absent or unsuitable computers " +
+            "passed over, all busy waiting in the shortest queue, two pictures on two computers and the first list made from " +
+            "pictures.json; it returns ok and each step. Never calls a paid cloud provider.", new
         {
-            place = new { type = "string", @enum = new[] { "fixture", "comfyui" } },
+            place = new { type = "string", @enum = new[] { "fixture", "comfyui", "pool" } },
             address = new { type = "string", maxLength = 512 },
             workflow = new { type = "string", @enum = new[] { "z-image-turbo", "checkpoint", "custom" } },
             checkpoint = new { type = "string", maxLength = 255 },
@@ -1059,7 +1064,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "voice match) and, when that directory is paired with hosts (hosts.json), Singing on each paired host read through its " +
             "own gateway as the card reads it (reachable, offers the song route, the service's state, voice matches, models and " +
             "their size, worker and GPU; a role in Docker on this PC listens only inside the gateway's network, so this is how " +
-            "to read it) plus what this PC's Docker shows of the role (container, images, models volume, and whether a " +
+            "to read it), the singing pool as the desktop's SongClient uses it (pool: the order songs try the owner's own paired " +
+            "computers, what the pool does with each now for the saved voice match, and where the next song goes) " +
+            "plus what this PC's Docker shows of the role (container, images, models volume, and whether a " +
             "\"martlet-host add singing\" is running now: a setup in progress). Read-only; the pairing secret from Windows " +
             "Credential Manager only signs the requests and is never returned.", new
         {
@@ -1097,6 +1104,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             bpm = new { type = "integer", minimum = 0, maximum = 240 },
             key = new { type = "string", maxLength = 16 }
         }),
+        Tool("singing_pool_check", "Rehearse the singing pool (SingingPool through WorkQueue, what the desktop's SongClient runs) with " +
+            "simulated singing computers, NOT real hosts or models: the order (the computer Martlet sings on first, then the shared " +
+            "plan's singers, fewest jobs first, then the other paired computers), a free first computer taking the song with no other " +
+            "asked, a computer singing another song passed over at once, a VevoSing song passing over a computer without VevoSing " +
+            "(and failing with singing.voice_match_unavailable where none has it), computers that don't answer or don't sing passed " +
+            "over, every computer busy so the song waits in line on the one with the fewest songs before it, every line full " +
+            "(singing.busy), a failed song not made again elsewhere, and a computer that stops answering during the song replaced " +
+            "by the next. In-process; reads nothing.", new { }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
@@ -1824,7 +1839,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "text model's own request; Described: the model of its own puts them into words for Thinking; None: nowhere) and why, " +
             "with what the chosen model is known to do (model-abilities.json, with where that came from). With the desktop's " +
             "sense-models-status.json: each lane's recent jobs (purposes, outcomes and times; never what was sent or said) and " +
-            "whether the model shares the conversation's computer. Read-only.", new
+            "whether the model shares the conversation's computer. Each kind's pool (SensePool, lane vision or hearing): the members " +
+            "a job tries in order (the chosen model, then the Thinking pool's members known to see or hear that may receive " +
+            "pictures and recordings, never the Thinking model), and from the desktop how many jobs went to another member or " +
+            "waited and which member took the last one (position, busy and unavailable counts, wait). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1837,7 +1855,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "waiting, priorities, a stale job dropped, refusals, failures, timeouts, the kind check, one lane for one model used " +
             "for both kinds, and the conversation first (a job waits while a reply holds the model's hardware, a running job is " +
             "stopped when a reply starts, a job the hold outlasts is dropped), and a background job (a helper, priority below zero) " +
-            "giving way to a reply's picture and starting again, while a summary waits behind it. In-process; reads nothing.", new { }),
+            "giving way to a reply's picture and starting again, while a summary waits behind it. Then the pools (SensePool) with " +
+            "simulated members on their own queue: who is a member (the chosen model first; members that don't see, external " +
+            "members without the owner's agreement and the Thinking model left out; the audio pool hears), a free chosen model " +
+            "taking the job with one request, a busy or unreachable member passing it on at once, a busy pool waiting for whichever " +
+            "member frees first, and a member held for a live turn passed over. In-process; reads nothing.", new { }),
         Tool("image_model_check", "The image model (docs/SENSE_MODELS.md, Pictures: the image model) from a data directory: where " +
             "pictures go now (sense-models.json, the Thinking route and model-abilities.json through the production SenseRouting, or " +
             "an image model of its own given as imageOrigin and imageModel), the state of its three prompts, the desktop's " +
@@ -2302,6 +2324,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "model"), cancellation),
                 "singing_status" => await SingingStatusAsync(arguments, cancellation),
                 "singing_check" => await SingingCheckAsync(arguments, cancellation),
+                "singing_pool_check" => await SingingPoolCheck.RunAsync(cancellation),
                 "reading_check" => await ReadingCheck.RunAsync(
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments),
                     OptionalString(arguments, "endpoint"), cancellation),

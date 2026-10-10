@@ -244,10 +244,43 @@ For other code (the conversation's `sing_song` tool), `Martlet.Core.Singing` hol
 `BeatsPerBar`, `Beats`, `Downbeats`, `StageTimings`), `SongLyrics.Parse`, `SongException` codes and the FIXTURE - NOT AI
 `FixtureSongMaker`. The desktop's implementation is `SongClient` (`SongClient.For(dataDirectory)`, also
 `MainWindow.SongMaker`); `MARTLET_SINGING_FIXTURE=1` makes it the fixture. `SongClient.IsSetUp(dataDirectory)` answers
-without the network whether singing is set up (the fixture is on, or a computer still paired with this PC ran Singing when
+without the network whether singing is set up (the fixture is on, or the singing pool list has a member on that is paired
+here, or, without a list yet, a computer still paired with this PC ran Singing when
 the desktop last checked its computers: `host` in `singing.json`, kept while that computer is unreachable and cleared once
 it answers without Singing), `SongClient.SpeakingVoiceId(dataDirectory)` is the voice Martlet speaks with, and
 `SingingPreferences.Load(dataDirectory)` holds the card's choices.
+
+### The singing pool
+
+Songs go to a pool of the owner's own computers that run the singing role, not to one computer (`SingingPool` in
+`Martlet.Core.Singing`, used by `SongClient`). Hosts that friends share are never in it.
+
+1. **Members.** With a singing pool list (the `singing` area of `pools.json`,
+   [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)), its members that are on, kept for this PC and paired
+   here, in the owner's order: `this-pc` is this PC's own host service, a card is its computer. An empty list, or one with
+   no member on, is off. Without a list yet, the older choices: the computer Martlet sings on (`host` in `singing.json`)
+   first, then the computers the shared plan says run Singing (fewest plan jobs first), then the other paired computers
+   (`SongClient.Members`).
+2. **Choosing.** The song goes through `WorkQueue.Shared` (lane `singing`, background priority; the member key is the
+   computer). Each member in order is asked for its singing status. The first that sings nothing now and has the song's
+   voice match takes it; while the first member is free, nothing else is asked.
+3. **Passed over.** A member that sings another song, doesn't answer, doesn't sing, isn't set up, or lacks the voice
+   match (VevoSing is set up only on some computers) is passed over for the next.
+4. **All busy.** The song waits in line on the member with the fewest songs before it (the first of those in order).
+   The singing host keeps the line, so this PC doesn't ask again and again. A full line (`singing.busy`) passes the song
+   to the next; when every line is full the song fails with `singing.busy`.
+5. **During the song.** A member that stops answering is replaced by the next, and the song is made again there. A song
+   that fails on its computer (`song.failed`) is not made again elsewhere. The voice recording goes to whichever member
+   takes the song, when it lacks it.
+6. **Availability.** `GetAvailabilityAsync` reads every member's status at once. Its host is where the next song would
+   go (`SingingPool.Pick`), and its voice matches are those set up on any member, so a VevoSing song goes to a member
+   with VevoSing.
+
+The song job holds the member that makes the song from background thinks (it starts with the computer Martlet sings on
+and moves when `SongProgress.Host` names another). The desktop log says where each song went
+(`Singing: m4-host makes the song (number 2 of 3 in the singing pool).`, and `Sharing work: singing went to host:m4-host
+(1 busy).` when the first member was passed over). Companion › Singing still chooses one computer; its pool list editor
+comes with the shared list control.
 
 ## Verification
 
@@ -259,8 +292,11 @@ it answers without Singing), `SongClient.SpeakingVoiceId(dataDirectory)` is the 
   the loopback-only relay. `tests/Martlet.Core.Tests/SongContractsTests.cs` checks the contract and the fixture.
 - MCP `singing_check` makes a song through the production path (fixture service, or a live one on loopback, or with
   `dataDirectory` a real paired host through its own gateway, as the desktop does); `singing_status` reads a live service,
-  and with a paired data directory each host's singing through its gateway and this PC's Docker side of the role (a setup
-  in progress included). See [MCP](MCP.md).
+  and with a paired data directory each host's singing through its gateway, the singing pool (`pool`: the list or the
+  older choices, each member's verdict now and where the next song goes) and this PC's Docker side of the role (a setup
+  in progress included). `singing_pool_check` rehearses the pool with simulated computers. See [MCP](MCP.md).
+- `tests/Martlet.Core.Tests/SingingPoolTests.cs` and `tests/Martlet.Desktop.Tests/SingingPoolMembersTests.cs` check the
+  pool's order, list, choices, lines and failures. Songs between real hosts in a pool are **NOT RUN**.
 
 ## Singing in conversation
 

@@ -17,6 +17,9 @@ public static class WorkSharingJobs
     /// <summary>Lip-sync's lane in <see cref="WorkQueue"/> (<see cref="LipSyncSharing"/>). Not in <see cref="All"/>: its pool
     /// list lives on its own page, not a Devices › Sharing work card.</summary>
     public const string LipSync = ClusterJobs.LipSync;
+    /// <summary>Drawing pictures (Companion › Pictures): each PC's Pictures list (<see cref="PoolAreas.Pictures"/>). Not in
+    /// <see cref="All"/>: Companion › Pictures keeps its own list, not a Devices › Sharing work card.</summary>
+    public const string Pictures = "pictures";
     public static readonly IReadOnlyList<string> All = [Speaking, Thinking, Listening, DeepThinking];
 
     /// <summary>Speaking, Listening, Reading and Lip-sync are shared unless turned off: each request stands alone. Thinking is
@@ -32,6 +35,7 @@ public static class WorkSharingJobs
         DeepThinking => "Thinking pool",
         LipSync => "Lip-sync",
         Reading => "Reading",
+        Pictures => "Pictures",
         _ => job
     };
 }

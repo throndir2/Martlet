@@ -500,6 +500,18 @@ path, model and why, `sharesConversation`, and its line (`busy`, `waiting`,
 `held` for a reply, `runs` and the `last` job's purpose, outcome,
 milliseconds, model and problem; never what was sent or said).
 
+Each kind's `pool` ([The image and audio pools](SENSE_MODELS.md#the-image-and-audio-pools))
+is in both parts. From the data directory, while a model of its own describes
+the kind: its `lane` (`vision` or `hearing`) and the `members` a job tries in
+order (`position`, `key`, `name`, `place`, `chosen`): the chosen model, then the
+Thinking pool's members known to see or hear, without the Thinking model and
+without external members the owner didn't allow pictures and recordings. The
+desktop's `pool` also leaves out computers a friend shares, computers kept for
+other companion PCs and members on the conversation's own computer and
+graphics card. It adds `jobs`, `elsewhere` (another member took the job),
+`waited` (the job waited for a busy pool) and the `last` job's `member`, `name`,
+`position`, `chosen`, `busy`, `unavailable`, `waitedMs` and `at`.
+
 `sense_models_check` rehearses the production routing (`SenseRouting`) over
 the combinations of text, image and audio models with fixture model names, the
 `sense-models.json` round trip, and the production lines (`SenseLanes`) with a
@@ -509,8 +521,14 @@ failures, a timeout, the kind check, one line for one model used for both
 kinds, and the conversation first (`lanes-hold`: a job waits while a reply
 holds the model's hardware, a running job is stopped, and a job the hold
 outlasts is dropped; `lanes-yield`: a helper job gives way to a reply's
-picture and starts again, while a summary waits behind it). In-process; it
-reads nothing.
+picture and starts again, while a summary waits behind it). Then the pools
+(`SensePool`) with simulated members on a queue of their own: `pool-members`
+(who is a member, for pictures and for recordings), `pool-first-free` (a free
+chosen model takes the job with one request), `pool-busy-next` (a busy and an
+unreachable member pass it on at once), `pool-all-busy-waits` (the first
+member to free takes it) and `pool-held` (a member held for a live turn is
+passed over; a pool held everywhere ends at once). In-process; it reads
+nothing.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
@@ -818,6 +836,10 @@ lines (where, size, seconds; never the description).
 
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
+its Pictures list as `pool` (`pools-local.json`: `configured`, `off`, each
+member's `key`, `kind`, `name`, `settings`, `consented`, `ownKeySaved` and the
+`place` it reads as; without a list yet, the list the desktop would make from
+`pictures.json`) and `tries` (the places a picture tries now, in order),
 the loaded workflow's node count, the picture creations (shape, size, engine,
 model, seconds, fixture; never titles or descriptions), the tool and job kind,
 and `afterReply` (the Songs, pictures and creations check-in tool set, as
@@ -827,13 +849,21 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 `z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
-back, with `saveDirectory` it writes the file. It never calls OpenRouter or NVIDIA
+back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
+Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
+or unsuitable computer is passed over, every one busy waits in the shortest
+queue, two pictures go to two computers, one computer gets no extra request, and
+the first list is made from `pictures.json`. It returns `ok` and each step. It
+never calls OpenRouter or NVIDIA
 Build (a picture costs money). Desktop automation: Companion › Pictures' main
 choice is an option picker, `Picker-Pictures-<place>` (`Off`, `Host`,
 `ComfyUi`, `OpenRouter`, `NvidiaBuild`), whose rows only show that place's
 details (its facts, such as `PickerFact-Pictures-cost`, and its fields and
 button); they, the `PicturesHost-<host>` pills, `PicturesCheck` and
-`PicturesComfyConnect` are passive clicks; `PicturesNow`, `PicturesTestState`,
+`PicturesComfyConnect` are passive clicks; `PicturesNow` (where it draws and,
+with more than one place in the Pictures list, the places that draw when the first
+is busy), `PicturesTestState`,
 `PicturesHostState`, `PicturesSetUp`,
 `PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
 `PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
@@ -3058,7 +3088,15 @@ is paired with hosts (`hosts.json`), it adds `paired` (Martlet.NodeLinkCheck's
 Singing card reads it (the pairing secret from Windows Credential Manager only
 signs the requests), `reachable`, `offersSinging`, `model` and `service` (the same
 status fields as above plus the models' count, total bytes and licences), or the
-`problem`; and `thisPcDocker`, what this PC's Docker shows of the role:
+`problem`; `pool`, the singing pool as the desktop's `SongClient` uses it
+(`SingingPool.Members`): `configured` (the `singing` area of `pools.json` has a
+list), `off` (that list has no member on), `saved`, `voiceMatch`, `order` (the
+computers songs try), `members` (each one's `position`, member `key`, `host`,
+`plannedSinger` (the shared plan says it runs Singing), `settings` and
+`verdict` now: `takes a song now`, `busy: N songs before a new one` or `passed
+over: ...`) and `nextSong` (`host`, `ahead`, `waitsInLine`: where the next
+song goes, `SingingPool.Pick`; null when no member can sing it); and
+`thisPcDocker`, what this PC's Docker shows of the role:
 `containers` (name, image, state, status), `images` (`martlet-singing` tags,
 sizes), `modelsVolume` (whether `martlet-singing-models` exists) and
 `setupRunning` with `setup` (a `martlet-host add singing` engine session running
@@ -3067,6 +3105,26 @@ in Docker listens only inside its gateway's network, so `paired` is how to read
 it from this PC. Read-only. As with `voice_engine_check`, a role service on a host
 listens only in the host's loopback, so `endpoint` reads it only there or through
 a forwarded port.
+
+`singing_pool_check` rehearses the singing pool
+([Singing](SINGING.md#the-singing-pool)) with the production code
+(`SingingPool` through `WorkQueue`, what `SongClient` runs) on simulated
+singing computers that answer the singing status (state, line, voice
+matches) and make a song as a host does (a full line refuses with
+`singing.busy`; a computer that is off doesn't answer). It returns `ok`,
+`fixture` (`simulated singing computers (NOT real hosts or models)`) and
+`steps`, each with `name`, `passed` and `detail`: the order without a list
+(the computer Martlet sings on, then the plan's singers, then the other
+paired computers), a `pools.json` list winning (this PC as its own host
+service, a card as its computer; off, unpaired and kept-for-others members
+left out; an empty list off), a free first computer taking the song with no
+other asked, a busy one passed over at once, a VevoSing song passing over a
+computer without VevoSing (and `singing.voice_match_unavailable` where none
+has it), computers that don't answer or don't sing passed over, every
+computer busy so the song waits on the shortest line, every line full
+(`singing.busy`), a failed song not made again elsewhere, and a computer that
+stops answering during the song replaced by the next. In-process; reads
+nothing.
 
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts

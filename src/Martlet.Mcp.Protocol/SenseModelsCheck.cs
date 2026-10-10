@@ -26,6 +26,7 @@ internal static class SenseModelsCheck
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var (senses, state) = SenseModels.Read(dataDirectory);
         var abilities = ModelAbilities.Load(dataDirectory);
+        var thinkingPool = ThinkingPoolSettings.Load(dataDirectory);
         return new
         {
             file = state,
@@ -51,7 +52,15 @@ internal static class SenseModelsCheck
                         sees = SenseRouting.Sees(own, abilities).ToString(), hears = SenseRouting.Hears(own, abilities).ToString(),
                         found = found is null ? null : new { sees = found.Sees, hears = found.Hears, source = found.Source, checkedAt = found.CheckedAt }
                     },
-                    path = route.Path.ToString(), model = route.Model?.Describe(), unknown = route.Unknown, why = route.Why
+                    path = route.Path.ToString(), model = route.Model?.Describe(), unknown = route.Unknown, why = route.Why,
+                    // The desktop also leaves out computers a friend shares, computers kept for other companion PCs and members
+                    // on the conversation's own computer and graphics card (desktop.file.senses[].pool).
+                    pool = route is { Described: true, Model: { } chosenModel } ? new
+                    {
+                        lane = SensePool.Lane(kind),
+                        members = SensePool.Members(kind, chosenModel, thinkingPool, thinking, abilities)
+                            .Select((m, i) => new { position = i, key = m.Key, name = m.Describe(), place = m.Place.ToString(), chosen = i == 0 })
+                    } : null
                 };
             }),
             desktop = DesktopStatus(dataDirectory)
@@ -336,10 +345,72 @@ internal static class SenseModelsCheck
                 $"ran {string.Join(", ", ran)}; the summary waited behind the eyes: {waited}");
         }
 
+        // The pools (SensePool) with simulated members on a queue of their own, NOT models.
+        var diva = Host("diva", "qwen2.5vl:7b");
+        var ripley = Host("ripley", "qwen2.5vl:7b");
+        var kirk = Host("kirk", "qwen2.5vl:7b");
+        Task<(SenseAnswer Answer, SensePoolRoute Route)> Pool(Func<DeepThinkingSettings, SenseAttempt> answer, TimeSpan? until = null) =>
+            SensePool.RunAsync(SenseKind.Image, [diva, ripley, kirk], (member, _) => Task.FromResult(answer(member)),
+                DateTimeOffset.UtcNow + (until ?? TimeSpan.FromSeconds(5)), null, cancellation,
+                new Martlet.Core.Cluster.WorkQueue { Retry = TimeSpan.FromMilliseconds(10) });
+        // 19. Who is a member: the chosen model first, then the Thinking pool's members that see, in order; left out: a member that
+        //     doesn't see, an external member without the owner's agreement, the conversation's own Thinking model. The audio pool
+        //     has only members that hear.
+        {
+            var cloud = Endpoint("qwen2.5vl:72b", "https://openrouter.ai/api/v1");
+            var pool = new ThinkingPoolSettings { Members = [Host("text-only", "qwen3:8b"), cloud, Endpoint("gemma4:e2b"), ripley, Endpoint("gemma3n:e4b")] };
+            var image = SensePool.Members(SenseKind.Image, diva, pool, omni, null).Select(m => m.Key).ToArray();
+            var agreed = SensePool.Members(SenseKind.Image, diva, pool.WithMedia(cloud.Key, true), omni, null).Select(m => m.Key).ToArray();
+            var audio = SensePool.Members(SenseKind.Audio, ears.Own!, pool, omni, null).Select(m => m.Key).ToArray();
+            Check("pool-members", image.SequenceEqual([diva.Key, ripley.Key]) && agreed.SequenceEqual([diva.Key, cloud.Key, ripley.Key]) &&
+                audio.SequenceEqual([ears.Own!.Key]),
+                $"pictures: {string.Join(", ", image)}; with the cloud member allowed: {string.Join(", ", agreed)}; recordings: {string.Join(", ", audio)}");
+        }
+        // 20. A free chosen model takes the job with one request and no wait.
+        {
+            var asked = 0;
+            var (answer, taken) = await Pool(_ =>
+            {
+                asked++;
+                return SenseAttempt.Done(SenseAnswer.Done("described"));
+            });
+            Check("pool-first-free", answer.Text == "described" && asked == 1 && taken is { Position: 0, Busy: 0, Unavailable: 0 },
+                $"{asked} request(s), taken by member {taken.Position} after {taken.Waited.TotalMilliseconds:0} ms");
+        }
+        // 21. A busy chosen model and an unreachable member pass the job on at once.
+        {
+            var (answer, taken) = await Pool(member => member.HostId switch
+            {
+                "diva" => SenseAttempt.Busy("diva is busy"),
+                "ripley" => SenseAttempt.Unavailable("ripley is offline"),
+                _ => SenseAttempt.Done(SenseAnswer.Done("kirk described it"))
+            });
+            Check("pool-busy-next", answer.Text == "kirk described it" && taken is { Position: 2, Busy: 1, Unavailable: 1, Elsewhere: true },
+                $"taken by {taken.Name} (member {taken.Position}); {taken.Busy} busy, {taken.Unavailable} unavailable");
+        }
+        // 22. Every member busy: the job waits and the first to free takes it.
+        {
+            var freed = DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(120);
+            var (answer, taken) = await Pool(member => member.HostId == "ripley" && DateTimeOffset.UtcNow >= freed
+                ? SenseAttempt.Done(SenseAnswer.Done("ripley described it")) : SenseAttempt.Busy($"{member.HostId} is busy"));
+            Check("pool-all-busy-waits", answer.Text == "ripley described it" && taken.Position == 1 && taken.Waited >= TimeSpan.FromMilliseconds(80),
+                $"taken by {taken.Name} after waiting {taken.Waited.TotalMilliseconds:0} ms ({taken.Busy} busy tries)");
+        }
+        // 23. A member held for a live turn is passed over; a pool held everywhere ends at once, without words.
+        {
+            var (answer, taken) = await Pool(member => member.HostId == "diva"
+                ? SenseAttempt.Held("diva keeps its graphics card for a live conversation") : SenseAttempt.Done(SenseAnswer.Done("ripley described it")));
+            var clock = Stopwatch.StartNew();
+            var (held, _) = await Pool(member => SenseAttempt.Held($"{member.HostId} keeps its graphics card"));
+            Check("pool-held", answer.Text == "ripley described it" && taken.Position == 1 && held.Text is null &&
+                held.Problem?.Contains("live conversation") == true && clock.Elapsed < TimeSpan.FromSeconds(2),
+                $"taken by {taken.Name}; held everywhere: {held.Problem} after {clock.ElapsedMilliseconds} ms");
+        }
+
         return new
         {
             passed = steps.All(s => s.Passed), steps, milliseconds = watch.ElapsedMilliseconds,
-            note = "Routing and lanes rehearsed in process with simulated runners, NOT models; nothing was sent."
+            note = "Routing, lanes and pools rehearsed in process with simulated runners and members, NOT models; nothing was sent."
         };
     }
 

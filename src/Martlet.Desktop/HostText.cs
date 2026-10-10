@@ -42,7 +42,7 @@ internal sealed class HostTextClient : IHostTextClient
         TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline, GenerationSettings? generation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        if (target.RouteId != SelfHostSetup.OllamaRouteId)
+        if (target.RouteId != SelfHostSetup.OllamaRouteId || target.Pooled)
         {
             await foreach (var delta in ReplyAsync(target, model, input, limits, ids, epoch, deadline, generation, cancellationToken, true)
                 .ConfigureAwait(false))
@@ -148,6 +148,8 @@ internal sealed class HostTextClient : IHostTextClient
         {
             // The host keeps its graphics card for a live turn: pool work there waits and goes on later (HostLiveHolds).
             if (hostId is not null && error is Audio2FaceHostException { HeldForLive: true }) HostLiveHolds.Note(hostId);
+            // The host does another job now: a sense job's pool tries another computer, then waits (HostBusy).
+            else if (hostId is not null && error is Audio2FaceHostException { Code: "job.busy" or "worker.busy", OwnerFirst: false }) HostBusy.Note(hostId);
             throw failure;
         }
     }
@@ -264,6 +266,20 @@ internal static class HostLiveHolds
     internal static void Note(string hostId) => Last[hostId] = System.Diagnostics.Stopwatch.GetTimestamp();
 
     /// <summary>Whether <paramref name="hostId"/> held its graphics card for a live turn since <paramref name="timestamp"/>
+    /// (<see cref="System.Diagnostics.Stopwatch.GetTimestamp"/>).</summary>
+    internal static bool Since(string hostId, long timestamp) => Last.TryGetValue(hostId, out var at) && at >= timestamp;
+}
+
+/// <summary>When each paired host last turned this PC's request away because it does another job (job.busy, not for a live turn
+/// or its owner): a sense job's pool (<see cref="Martlet.Conversation.SensePool"/>) then tries another computer and waits for
+/// whichever frees first, instead of failing.</summary>
+internal static class HostBusy
+{
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> Last = new(StringComparer.Ordinal);
+
+    internal static void Note(string hostId) => Last[hostId] = System.Diagnostics.Stopwatch.GetTimestamp();
+
+    /// <summary>Whether <paramref name="hostId"/> was busy for this PC since <paramref name="timestamp"/>
     /// (<see cref="System.Diagnostics.Stopwatch.GetTimestamp"/>).</summary>
     internal static bool Since(string hostId, long timestamp) => Last.TryGetValue(hostId, out var at) && at >= timestamp;
 }

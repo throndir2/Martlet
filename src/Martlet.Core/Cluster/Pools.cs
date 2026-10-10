@@ -217,21 +217,30 @@ public static class PoolAreas
         Id = ClusterJobs.LipSync, Title = "Lip-sync", Page = "Companion › Lip-sync", HostRole = "audio2face", Kinds = Local,
         Required = true, Fallback = "Voice loudness on this PC"
     };
+    /// <summary>Pictures: Martlet's pictures role on this PC's host service or a paired computer (one ComfyUI per computer, so
+    /// no card members), a ComfyUI the owner runs at an address, or a cloud provider ("openrouter", "nvidia-build"). Each PC
+    /// keeps its own list. Member settings: workflow, checkpoint and file (a custom workflow in the data directory).</summary>
     public static readonly PoolArea Pictures = new()
     {
-        Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures", Kinds = AllKinds, Shared = false
+        Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures",
+        Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
     };
     public static readonly PoolArea Singing = new()
     {
-        Id = "singing", Title = "Singing", Page = "Companion › Singing", Kinds = Local
+        Id = "singing", Title = "Singing", Page = "Companion › Singing", HostRole = "singing", Kinds = Local
     };
+    /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.
+    /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware, as sense-models.json). An empty list
+    /// means no model of its own: Thinking's own model takes the pictures or recordings itself, as before pools.</summary>
     public static readonly PoolArea Vision = new()
     {
-        Id = "vision", Title = "Vision", Page = "Companion › Vision", Kinds = [.. Local, PoolMemberKind.Cloud]
+        Id = "vision", Title = "Vision", Page = "Companion › Vision", Kinds = AllKinds, Shared = false, Required = true,
+        Fallback = "Thinking's own model takes the pictures"
     };
     public static readonly PoolArea Hearing = new()
     {
-        Id = "hearing", Title = "Hearing", Page = "Companion › Hearing", Kinds = [.. Local, PoolMemberKind.Cloud]
+        Id = "hearing", Title = "Hearing", Page = "Companion › Hearing", Kinds = AllKinds, Shared = false, Required = true,
+        Fallback = "Thinking's own model takes the recordings"
     };
     public static readonly PoolArea Reading = new()
     {

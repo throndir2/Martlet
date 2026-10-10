@@ -11,13 +11,15 @@ namespace Martlet.Desktop;
 
 // Image and audio models (docs/SENSE_MODELS.md). Thinking, the text model, always writes the reply. A picture or recording whose
 // kind has a model of its own (sense-models.json, Companion › Vision and Listening) goes to that model, which puts it into words
-// for Thinking. Callers send such work here as sense jobs: one lane for each kind (SenseLanes), each job on the kind's own
-// runtime slot with a one-use authorization bound to that model, as a Thinking pool job runs on its member. A reply never waits
-// for a sense job.
+// for Thinking. Callers send such work here as sense jobs: one lane for each kind (SenseLanes), each job on its kind's pool
+// (SensePool: the chosen model first, then other models that see or hear when it is busy or can't take it), each attempt on its
+// own runtime slot with a one-use authorization bound to that model, as a Thinking pool job runs on its member. A reply never
+// waits for a sense job.
 internal sealed partial class LiveConversationController
 {
     /// <summary>sense-models-status.json in the data directory: where pictures and recordings go now and how the image and audio
-    /// models' recent jobs went (purposes, outcomes and times; never what was sent or said), which MCP's sense_models_status reads.</summary>
+    /// models' recent jobs went (purposes, outcomes and times; never what was sent or said), and each kind's pool (the members the
+    /// next job tries and which member took the last one), which MCP's sense_models_status reads.</summary>
     internal const string SenseStatusFile = "sense-models-status.json";
 
     private SenseModels senseModels = new();
@@ -116,57 +118,152 @@ internal sealed partial class LiveConversationController
             Gpus = HostRouteGpus.For(model) is { Count: > 0 } cards ? [.. cards.Take(16)] : []
         };
 
-    // One attempt of a sense job on the kind's model of its own: the request fitted to the model, on the kind's own runtime and
-    // one-use authorization (as RunPoolJobAsync runs a pool job).
+    // A sense job on the kind's pool (SensePool): the chosen model first, then the members whose model takes the kind. A free
+    // chosen model gets the job at once, as before the pool: nothing is added on the way.
     private async Task<SenseAnswer> RunSenseJobAsync(SenseKind kind, DeepThinkingSettings model, SenseJob job, CancellationToken token)
+    {
+        IReadOnlyList<DeepThinkingSettings> members = job.OnlyChosen ? [model] : SenseMembers(kind, model);
+        var (answer, route) = await SensePool.RunAsync(kind, members,
+            (member, t) => (SenseAttemptRunner ?? AttemptSenseAsync)(kind, member, member.Key != model.Key, job, t),
+            clock.GetUtcNow() + job.Timeout, clock, token).ConfigureAwait(false);
+        NoteSensePool(kind, model, members.Count, route);
+        return answer;
+    }
+
+    /// <summary>Tests: answers one attempt of a sense job on one pool member (kind, member, whether it comes after the chosen
+    /// model, job) in place of <see cref="AttemptSenseAsync"/>; null (the default) sends it to the member.</summary>
+    internal Func<SenseKind, DeepThinkingSettings, bool, SenseJob, CancellationToken, Task<SenseAttempt>>? SenseAttemptRunner { get; set; }
+
+    /// <summary>The members a job of <paramref name="kind"/> tries now, first to last (<see cref="SensePool.Members"/>): the
+    /// chosen model, then the Thinking pool's members whose model takes the kind. Left out: a computer a friend shares, a
+    /// computer Devices › Sharing work keeps for other companion PCs, and a member on the conversation's own computer and graphics
+    /// card (its Thinking, voice or listening), so the conversation keeps its model's cache. No request and no file read.</summary>
+    internal IReadOnlyList<DeepThinkingSettings> SenseMembers(SenseKind kind, DeepThinkingSettings chosen, ThinkingPoolSettings? pool = null)
+    {
+        var configured = Configuration;
+        var thinking = configured?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var abilities = configured?.Abilities ?? Volatile.Read(ref poolAbilities);
+        return SensePool.Members(kind, chosen, pool ?? Volatile.Read(ref thinkingPool), thinking, abilities, member =>
+            member is { Place: DeepThinkingPlace.Host, HostId: { } host } &&
+                (WorkSharingRoster.IsShared(host) || !WorkSharingRoster.Settings(dataDirectory).Allows(host, WorkSharingRoster.Device)) ||
+            floorRules.Resources.Shares(SensePlace(kind, member)));
+    }
+
+    // One attempt of a sense job on one pool member: the request fitted to the member's model, on its own runtime slot and one-use
+    // authorization (as RunPoolJobAsync runs a pool job). A member that can't take it now passes it on (SenseAttempt); a member after
+    // the chosen model that refuses the picture or recording is remembered as not seeing or hearing and passes it on too.
+    private async Task<SenseAttempt> AttemptSenseAsync(SenseKind kind, DeepThinkingSettings model, bool fallback, SenseJob job,
+        CancellationToken token)
     {
         var configured = Configuration;
         var routes = configured?.Routes ?? [];
         var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var name = model.Describe();
         if (model is { Place: DeepThinkingPlace.Host, HostId: { } host } && HostPresence.IsOffline(host))
-            return SenseAnswer.Failed($"{host} is offline");
+            return SenseAttempt.Unavailable($"{host} is offline");
         // A second model in Ollama on this PC runs only while it fits beside Thinking's, so the conversation keeps its cache.
         if (DeepThinkingPlan.For(model, routes).ChecksFit && thinking?.ModelId is { } thinkingModel)
         {
             var fit = await (SenseFit is { } check ? check(thinkingModel, model.ModelId!, token)
                 : LocalDeepThinking.CheckAsync(thinkingModel, model.ModelId!, loadThinking: false, token)).ConfigureAwait(false);
-            if (!fit.Fits) return SenseAnswer.Failed(fit.Why.TrimEnd('.'));
+            if (!fit.Fits) return SenseAttempt.Unavailable(fit.Why.TrimEnd('.'));
         }
         BoundedTextInput input;
         try { input = new(job.Text, job.Instructions, image: job.Image, audio: job.Audio); }
-        catch (ContractException) { return SenseAnswer.Failed("the job is too large"); }
-        var target = DeepThinkTarget.For(model, ThinkEffort.Medium, thinking, ModelLimits.Load(dataDirectory));
+        catch (ContractException) { return SenseAttempt.Done(SenseAnswer.Failed("the job is too large")); }
+        var target = DeepThinkTarget.For(model, ThinkEffort.Medium, thinking, ModelLimits.Load(dataDirectory), pooled: true);
         if (input.Utf8Bytes > target.Input.MaxInputBytes || input.InputTokenReservation > target.Input.MaxInputTokens)
-            return SenseAnswer.Failed($"the job is too long for {name}");
+            return SenseAttempt.Unavailable($"the job is too long for {name}");
         var request = target.OneShot(input, job.MaxOutputTokens, job.Reasoning, job.Timeout);
-        var slot = senseSlots.GetOrAdd(model.Key, _ => NewSenseSlot());
+        // One slot for each kind and member: a kind runs one job at a time (SenseLanes), so a slot never has two.
+        var slot = senseSlots.GetOrAdd(Word(kind) + "|" + model.Key, _ => NewSenseSlot());
         try
         {
             var own = new DeepThinkAuthorization(target, request, configured?.Profile ?? Guid.Empty, thinking, vault, clock,
                 clock.GetUtcNow() + job.Timeout + TimeSpan.FromSeconds(5), media: true);
             Volatile.Write(ref slot.Authorization, own);
+            var began = System.Diagnostics.Stopwatch.GetTimestamp();
             var started = ThinkRuntime(slot).Start(request, own, token, $"{kind} sense job on {name}");
             var terminal = await started.Completion.ConfigureAwait(false);
             await started.OwnershipRelease.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             var text = started.Content.Text;
             // A model that refuses the recording is asked again without it, so that answer isn't about the recording.
-            if (job.Audio is not null && terminal.AudioRejected) return SenseAnswer.Rejected($"{name} refused the recording");
-            if (job.Image is not null && string.IsNullOrWhiteSpace(text) && terminal.ProviderFailure is ProviderFailureCode.RequestRejected or
-                ProviderFailureCode.ModelUnsupported or ProviderFailureCode.FormatRejected)
-                return SenseAnswer.Rejected($"{name} refused the picture");
-            var outcome = ThinkLonger.Outcome(terminal, text);
-            // Its computer didn't answer: offline at once, so the next job finds out without a request.
-            if (outcome.Result is null && model is { Place: DeepThinkingPlace.Host, HostId: { } away } &&
-                terminal.ProviderFailure == ProviderFailureCode.Network && !HostPresence.IsOffline(away))
+            var refused = job.Audio is not null && terminal.AudioRejected ? SenseAnswer.Rejected($"{name} refused the recording")
+                : job.Image is not null && string.IsNullOrWhiteSpace(text) && terminal.ProviderFailure is ProviderFailureCode.RequestRejected or
+                    ProviderFailureCode.ModelUnsupported or ProviderFailureCode.FormatRejected ? SenseAnswer.Rejected($"{name} refused the picture")
+                : null;
+            if (refused is not null)
             {
-                ErrorLog.Warn($"The {Word(kind)} model couldn't reach {away}.");
-                HostPresence.Note(away, false);
+                if (!fallback) return SenseAttempt.Done(refused);
+                SenseRefused(model, sees: kind == SenseKind.Image ? false : null, hears: kind == SenseKind.Audio ? false : null);
+                return SenseAttempt.Unavailable(refused.Problem!);
             }
-            return outcome.Result is { } words ? SenseAnswer.Done(words) : SenseAnswer.Failed($"{name}: {outcome.Problem}");
+            var outcome = ThinkLonger.Outcome(terminal, text);
+            if (outcome.Result is { } words) return SenseAttempt.Done(SenseAnswer.Done(words));
+            var problem = $"{name}: {outcome.Problem}";
+            if (model is { Place: DeepThinkingPlace.Host, HostId: { } on })
+            {
+                // Its computer keeps its graphics card for a live turn, or does another job: another member, or a wait.
+                if (HostLiveHolds.Since(on, began)) return SenseAttempt.Held($"{name} keeps its graphics card for a live conversation");
+                if (HostBusy.Since(on, began)) return SenseAttempt.Busy($"{name} is busy with another job");
+                // Its computer didn't answer: offline at once, so the next job finds out without a request.
+                if (terminal.ProviderFailure == ProviderFailureCode.Network && !HostPresence.IsOffline(on))
+                {
+                    ErrorLog.Warn($"The {Word(kind)} model couldn't reach {on}.");
+                    HostPresence.Note(on, false);
+                }
+            }
+            // Its computer or provider can't take it now: the next member may.
+            return terminal.ProviderFailure is ProviderFailureCode.Network or ProviderFailureCode.Server or ProviderFailureCode.RateLimited or
+                ProviderFailureCode.QuotaExceeded or ProviderFailureCode.ModelNotFound or ProviderFailureCode.ModelRetired or
+                ProviderFailureCode.CredentialUnavailable or ProviderFailureCode.Authentication or ProviderFailureCode.PermissionDenied
+                ? SenseAttempt.Unavailable(problem) : SenseAttempt.Done(SenseAnswer.Failed(problem));
         }
         finally { Volatile.Write(ref slot.Authorization, null); }
+    }
+
+    private readonly object sensePoolGate = new();
+    private readonly (int Jobs, int Elsewhere, int Waited, SensePoolRoute? Last, DateTimeOffset? At, string? Chosen)[] sensePool = new
+        (int, int, int, SensePoolRoute?, DateTimeOffset?, string?)[2];
+
+    // A job went through its pool: the counts and the last route for the status file, and a log line when a member other than the
+    // chosen model took it or it waited for one (never what was sent).
+    private void NoteSensePool(SenseKind kind, DeepThinkingSettings chosen, int members, SensePoolRoute route)
+    {
+        var waited = route.Waited >= TimeSpan.FromMilliseconds(50) && route.Busy > 0;
+        lock (sensePoolGate)
+        {
+            var now = sensePool[(int)kind];
+            sensePool[(int)kind] = (now.Jobs + 1, now.Elsewhere + (route.Elsewhere ? 1 : 0), now.Waited + (waited ? 1 : 0), route,
+                clock.GetUtcNow(), chosen.Describe());
+        }
+        if (route.Elsewhere || waited)
+            ErrorLog.Info($"{(kind == SenseKind.Image ? "Image" : "Audio")} model pool: " +
+                (route.Member is null ? $"no model of {members} took a job" : $"{route.Name} took a job" +
+                    (route.Elsewhere ? $" in place of {chosen.Describe()}" : "")) +
+                $" ({route.Busy} busy, {route.Unavailable} not able to take it{(waited ? $", waited {route.Waited.TotalMilliseconds:0} ms" : "")}).");
+    }
+
+    // The pool's part of sense-models-status.json for one kind: the members the next job tries, in order, and how jobs went.
+    private object SensePoolStatus(SenseKind kind, SenseRoute route)
+    {
+        (int Jobs, int Elsewhere, int Waited, SensePoolRoute? Last, DateTimeOffset? At, string? Chosen) now;
+        lock (sensePoolGate) now = sensePool[(int)kind];
+        // Before a talk window read the Thinking pool, the status reads its file itself (off the job's path) and keeps nothing.
+        var pool = Volatile.Read(ref poolRead) == 0 && dataDirectory is not null ? ThinkingPoolSettings.Load(dataDirectory) : null;
+        IReadOnlyList<DeepThinkingSettings> members = route is { Described: true, Model: { } model } ? SenseMembers(kind, model, pool) : [];
+        return new
+        {
+            lane = SensePool.Lane(kind),
+            members = members.Select((m, i) => new { position = i, key = m.Key, name = m.Describe(), place = m.Place.ToString(), chosen = i == 0 }),
+            jobs = now.Jobs, elsewhere = now.Elsewhere, waited = now.Waited,
+            last = now.Last is not { } last ? null : new
+            {
+                member = last.Member, name = last.Name, position = last.Position, chosen = now.Chosen, busy = last.Busy,
+                unavailable = last.Unavailable, waitedMs = Math.Round(last.Waited.TotalMilliseconds), at = now.At
+            }
+        };
     }
 
     private static ThinkSlot NewSenseSlot()
@@ -286,7 +383,8 @@ internal sealed partial class LiveConversationController
                     {
                         purpose = lane.LastPurpose, outcome = lane.LastOutcome.ToString(), ms = lane.LastMilliseconds, at = lane.LastAt,
                         model = lane.LastModel, problem = lane.LastProblem
-                    }
+                    },
+                    pool = SensePoolStatus(kind, route)
                 };
             })
         }, new JsonSerializerOptions { WriteIndented = true });
