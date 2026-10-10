@@ -255,6 +255,47 @@ pool from the hardware of every computer. It keeps companion PCs light and
 never adds conversation latency. See
 [Recommended setup for all your computers](RECOMMENDED_SETUPS.md#recommended-setup-for-all-your-computers).
 
+### Pools: one ordered list of members per area
+
+Each area whose requests can go to more than one place (Speaking, Listening,
+Thinking, lip-sync, pictures, singing, vision, hearing and reading) uses one
+contract, `Martlet.Core.Cluster.Pools` (src\Martlet.Core\Cluster\Pools.cs).
+The area's own page shows and edits its list. There is no separate on/off
+switch and no single-computer choice.
+
+| Part | Contract |
+| --- | --- |
+| Member (`PoolMember`) | `this-pc` (each companion PC itself), `computer` (a paired host; it picks the card), `gpu` (one card of a paired host, `card` 1 to 8), `address` (a service the owner runs at an http or https address) or `cloud` (a provider, its origin and its model) |
+| Member key (`PoolMember.Key`) | `this-pc`, `host:<id>`, `host:<id>#gpu<n>`, `address:<url>`, `cloud:<provider>[@<origin>][/<model>]`. The key is the member's "computer" in `WorkQueue` |
+| Per-member settings | `PoolMember.Settings`: the area's technology choices (engine, model, voice, workflow, slots), nonsecret. Shared key names are in `PoolSettingKeys`; an area can add its own keys |
+| Order | The list order is the order a request tries the members in |
+| On and off | A member that is `off` keeps its place and its settings and takes no work |
+| Kept for | `PoolMember.OnlyFor`: the companion PCs (device IDs) that may use the member; empty means every one |
+| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync) |
+| Area (`PoolAreas`) | Its ID (also its `WorkQueue` lane), page, member kinds, host role, required or optional, shared or per PC. Thinking has `ConversationFirst`: the conversation's own model always goes first and is not a member |
+| Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures). An area with no list yet makes it once from its older choices (`PoolMigration`) |
+| Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
+| Cloud consent | `PoolMember.Consent` binds the owner's agreement (data leaves this PC, requests may cost money) to the area and the member key. A cloud member without a matching agreement takes no work |
+| Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the member key |
+| Cloud refusals | `PoolRefusals.Http`: 429 and 503 are busy (try the next, then wait); 401, 403, 404, 408 and other 5xx are unavailable (try the next); the rest is a real failure |
+
+An area adds itself in four steps:
+
+1. Set its entry in `PoolAreas` (kinds, host role, required and fallback,
+   shared or per PC).
+2. Make its first list from its older choices with `PoolMigration` (or its
+   own code), then save it with `PoolSettings.SaveFor`.
+3. On the request path, read the list from local files only (cache it and
+   read it again only when the file changed), call `PoolRouting.Order`, and
+   send the request through `WorkQueue.Shared`. When `PoolOrder.Fallback` is
+   true, run the area's fallback.
+4. Show the list on the area's page with the shared list control, and give
+   each member's settings editor to that control.
+
+**Qualification:** the contract, its storage, migration, routing and the
+queue's handling of member keys are checked locally (`PoolsTests`). Each
+area's own move to a pool is qualified in its own change.
+
 ### Live turn first on a shared graphics card
 
 A host's live work (replies, voices, listening, lip-sync, reading) and its
