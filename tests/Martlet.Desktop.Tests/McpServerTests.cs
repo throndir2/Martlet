@@ -367,6 +367,63 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task HouseholdSharingReadsWhatEachAccountSharesWithoutNamesOrText()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Sharing." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var none = ToolResult((await SendAsync(DataCall("household_sharing", directory)))[0]);
+            Assert.Equal("none", none.GetProperty("state").GetString());
+
+            var sam = Guid.NewGuid();
+            var alex = Guid.NewGuid();
+            var settings = Martlet.Core.Settings.CompanionSettings.Begin(null);
+            var samsCompanion = settings.Companion!.Update(settings.Companion.ActivePersonaId, "Secret persona", "Secret text")
+                .AddCharacter("Secret Aria", settings.Companion.ActivePersonaId, Martlet.Core.Settings.CharacterProfile.BuiltInModel, null, out var aria)
+                .AddCharacter("Secret Bo", settings.Companion.ActivePersonaId, null, "voice-1", out var bo);
+            var lore = Martlet.Core.Lorebooks.LorebookLibrary.Create();
+            var samsSharing = Martlet.Core.Sharing.HouseholdSharing.Empty(sam)
+                .WithMode(aria.Id, Martlet.Core.Sharing.CharacterShareMode.Together, samsCompanion, lore)
+                .WithMode(bo.Id, Martlet.Core.Sharing.CharacterShareMode.Copy, samsCompanion, lore);
+            var alexsSharing = Martlet.Core.Sharing.HouseholdSharing.Empty(alex).WithJoined(sam, aria.Id).WithNewFactsAboutMe(true);
+            var document = Martlet.Core.Sync.SharedSettings.Empty
+                .Put(Martlet.Core.Sharing.HouseholdSharing.Key(sam), samsSharing.Write(), null, "sams-pc", DateTimeOffset.UtcNow)
+                .Put(Martlet.Core.Sharing.HouseholdSharing.Key(alex), alexsSharing.Write(), null, "alexs-pc", DateTimeOffset.UtcNow)
+                .Put("sharing.00000000000000000000000000000001", "{\"schema_version\":9}", null, "old-pc", DateTimeOffset.UtcNow);
+            Martlet.Core.Sync.SharedSettingsState.Save(directory, document, new Dictionary<string, string>());
+            Directory.CreateDirectory(Path.Combine(directory, "accounts"));
+            File.WriteAllText(Path.Combine(directory, "accounts", "session.json"), JsonSerializer.Serialize(new { current = alex }));
+            // Alex's PC holds the mirror of Aria (same ID) in Alex's characters.
+            var alexsCompanion = Martlet.Core.Sharing.SharedCharacters.Join(Martlet.Core.Settings.CompanionSettings.Create(), samsSharing.Find(aria.Id)!);
+            File.WriteAllBytes(Path.Combine(directory, "settings.json"), Martlet.Core.Contracts.ContractJson.Write(settings with { Companion = alexsCompanion }));
+
+            var message = (await SendAsync(DataCall("household_sharing", directory)))[0];
+            Assert.DoesNotContain("Secret", message.GetRawText());
+            var result = ToolResult(message);
+            Assert.Equal(("loaded", alex.ToString("N"), 3, 1), (result.GetProperty("state").GetString(), result.GetProperty("currentAccount").GetString(),
+                result.GetProperty("entries").GetInt32(), result.GetProperty("unreadable").GetInt32()));
+            Assert.Equal((2, 0, 1, true), (result.GetProperty("householdCharacters").GetInt32(), result.GetProperty("ownShared").GetInt32(),
+                result.GetProperty("ownJoined").GetInt32(), result.GetProperty("newFactsAboutMe").GetBoolean()));
+            var accounts = result.GetProperty("accounts").EnumerateArray().ToArray();
+            var sams = accounts.Single(a => a.GetProperty("account").GetString() == sam.ToString("N"));
+            Assert.Equal((1, 1, "sams-pc"), (sams.GetProperty("copy").GetInt32(), sams.GetProperty("together").GetInt32(), sams.GetProperty("updatedBy").GetString()));
+            var shared = sams.GetProperty("characters").EnumerateArray().Single(c => c.GetProperty("key").GetString() == aria.Key);
+            Assert.Equal(("together", "character-" + aria.Id.ToString("N"), "builtin"),
+                (shared.GetProperty("mode").GetString(), shared.GetProperty("space").GetString(), shared.GetProperty("look").GetString()));
+            var joined = accounts.Single(a => a.GetProperty("account").GetString() == alex.ToString("N")).GetProperty("joinedCharacters")[0];
+            Assert.Equal((aria.Key, true), (joined.GetProperty("key").GetString(), joined.GetProperty("stillShared").GetBoolean()));
+
+            var profiles = ToolResult((await SendAsync(DataCall("character_profiles", directory)))[0]).GetProperty("profiles").EnumerateArray().ToArray();
+            Assert.Equal("joined", profiles.Single(p => p.GetProperty("key").GetString() == aria.Key).GetProperty("sharing").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task CharacterStatusReadsWhetherClicksPassThroughTheCharacter()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.ClickThrough." + Guid.NewGuid().ToString("N"));

@@ -711,7 +711,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "missing); the profile switched to last; which profile matches what Martlet uses now (the active persona, the look " +
             "in avatar.json and the voice the speaking route keeps or the shared list chose); and what each profile keeps on this " +
             "PC (character-profiles-local.json: its place, size, monitor and lock, its usual gaze and whether replies may change " +
-            "it, and which touches stop it while it talks) with the profile whose choices this PC uses. Never returns names. " +
+            "it, and which touches stop it while it talks) with the profile whose choices this PC uses; and how the account in use shares " +
+            "each profile with the household (sharing: private, copy, together, or joined for someone else's character shared together; " +
+            "null without accounts). Never returns names. " +
             "Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -963,6 +965,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "whose they are: everyone's, each voice they belong to by its tag from voices.json (V3, whether it is named or the owner's) " +
             "and those of forgotten voices. Never a fact's text, a name, a voice ID or a path. Read-only (it never opens or locks the " +
             "store); contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("household_sharing", "Read what each account of a household shares (docs/ACCOUNTS.md \"Sharing\") from a desktop's data " +
+            "directory: its copy of the household settings (shared-settings.json, the sharing.<account> entries) and the account in use " +
+            "(accounts\\session.json). Per account: its ID (32 hex), how many characters it shares as a copy and together, each shared " +
+            "character's key (first 8 hex digits), mode, memory space when shared together, lorebook and entry counts and whether it sets " +
+            "a look and a voice, the characters shared together it talks to (and whether their owner still shares them), whether new " +
+            "facts about this person go to the household space, the entry's size, writer and time; plus how many household characters " +
+            "the account in use sees and entries that can't be read. Never a name, a personality's text or a lorebook entry. Read-only; " +
+            "contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -2351,6 +2364,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
+                "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
@@ -3594,6 +3608,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var current = companion?.CurrentCharacter(modelNow, voiceNow);
         var profiles = companion?.CharacterList ?? [];
         var (hereState, hereInUse, here) = ProfilesHere(directory);
+        var sharing = HouseholdSharingStatus.Own(directory);
         return new
         {
             state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
@@ -3620,7 +3635,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 },
                 voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
                 inUse = p.Id == current?.Id,
-                here = here.GetValueOrDefault(p.Id)
+                here = here.GetValueOrDefault(p.Id),
+                // How the account in use shares it with the household (household_sharing); null without accounts.
+                sharing = HouseholdSharingStatus.ModeOf(sharing, p.Id)
             }).ToArray()
         };
     }

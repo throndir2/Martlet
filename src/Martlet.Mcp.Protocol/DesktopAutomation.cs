@@ -309,6 +309,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Profiles: how many profiles there are and whether one is in use ("2 profiles. One of them is in use."),
         // and the profile form's problem ("Give the profile a name."). Never a profile's name.
         "CharacterProfilesStatus", "CharacterProfileEditorProblem",
+        // Companion › Profiles › Household characters: how many characters other people share ("2 characters shared by 1 person in
+        // your household."; counts only, never a name). Each character's Use a copy (HouseholdCharacterCopy-<key>) and Talk to it
+        // (HouseholdCharacterJoin-<key>), each profile's sharing choice (CharacterProfileSharing-<key>) and Leave
+        // (CharacterProfileLeave-<key>) change your characters or what the household sees, so they need --allow-ui-effects.
+        "HouseholdCharactersStatus",
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
         // lock buttons' labels, which carry the state: Companion's SetupCharacterLock ("Lock position" / "Unlock position") and
         // the overlay menu's CharacterLockPosition ("Lock position" / "Unlock position"). Clicking either of them saves
@@ -1078,6 +1083,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // it keeps on this PC ("CharacterProfileHere-3f2a9c1b" reads "On this PC: its own spot and size (420 × 560, locked) ·
         // Eyes: Follow your mouse · While it talks: any touch stops it."; sizes and fixed labels only).
         "CharacterProfileState-", "CharacterProfileHere-",
+        // Companion › Profiles › sharing: how each of your profiles is shared ("CharacterProfileShared-3f2a9c1b" reads "Private: only
+        // you see and use it.", "Shared as a copy: ..." or "Shared together: ...", or for someone else's character shared together
+        // "Shared with you together: ...") and each household character's state ("HouseholdCharacterState-3f2a9c1b" reads
+        // "Shared as a copy.", "Shared together. Talk to it to add it to your profiles." and why a part can't switch here). Fixed
+        // text only, never a name.
+        "CharacterProfileShared-", "HouseholdCharacterState-",
         // Devices › Sharing work: each job's line ("WorkSharingJob-speaking" reads "Speaking. When the computer doing it is busy
         // ..."), each computer in its order ("WorkSharingPlace-speaking-diva-host" reads "1. diva-host. this PC's own; does it for
         // this PC now."), each computer's keep line ("WorkSharingHost-diva-host" reads "diva-host. Kept for desk-1.") and its
