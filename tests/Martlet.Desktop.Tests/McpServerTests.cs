@@ -487,6 +487,10 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Equal(2, counts.GetProperty("linked").GetInt32());
             Assert.Equal(1, counts.GetProperty("accounts").GetInt32());
             Assert.Equal(2, counts.GetProperty("owner").GetInt32());
+            Assert.True(!counts.TryGetProperty("yours", out var before) || before.ValueKind == JsonValueKind.Null);
+            Martlet.Core.Accounts.AccountSessionState.For("S-1-5-21-1000-1000-1000-1001", account).Save(directory);
+            var signedIn = ToolResult((await SendAsync(DataCall("voices_status", directory)))[0]).GetProperty("roster");
+            Assert.Equal(2, signedIn.GetProperty("yours").GetInt32());
         }
         finally
         {

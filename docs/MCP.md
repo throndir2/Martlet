@@ -1091,7 +1091,9 @@ and `models`, each with `id`, `name`, `languages`, `englishOnly`,
 `downloadMb`, `revision`, `downloaded`, `notice` (its NOTICE file is there),
 `recommended` and `inUse`), and counts from `voices.json` (voices, named, owner
 (the legacy *This is me* flag, kept for older desktops), `linked`: voices linked
-to a person's account, `accounts`: how many accounts they link to, never which, with
+to a person's account, `accounts`: how many accounts they link to, never which,
+`yours`: how many link to the account signed in on this PC (`accounts\session.json`;
+null before accounts), with
 learned names, `withCompanionName`: voices that learned one of the companion's
 own names from the saved personas, which Martlet drops when it next hears them,
 `withPlaceholderName`: voices that learned a placeholder such as "no name

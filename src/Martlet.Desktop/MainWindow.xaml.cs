@@ -205,6 +205,7 @@ public partial class MainWindow : ThemedWindow
         InitializeFriends();
         InitializeNearby();
         InitializeVoiceSync();
+        InitializeVoiceLinks();
         InitializeSpeakingVoices();
         InitializeCharacterModels();
         InitializeCreations();
