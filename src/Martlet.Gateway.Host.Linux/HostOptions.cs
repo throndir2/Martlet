@@ -38,14 +38,21 @@ internal sealed record HostOptions(string Command, string ConfigPath)
         Sign-in from outside home (signin.json; the running service picks changes up by itself):
           owner-signin-status    show the owner account, providers, allowed identities and computers that signed in
                                  (never a secret)
-          owner-signin-owner     ... --user <name>: set the owner account. Reads the password (12+ characters) from
-                                 the first stdin line, prints an authenticator secret and otpauth link, reads a current
-                                 authenticator code from the next line, then prints ten one-use recovery codes once
-          owner-signin-allow     ... --provider <id> --subject <subject> [--label <text>] [--access member|friend]: allow
-                                 an identity. member (the default): its computers join your Martlet network. friend:
-                                 share this host's engines only (never the network, your settings or your logs)
+          owner-signin-owner     ... --user <name> [--account <account ID>]: set the owner account. Reads the password (12+
+                                 characters) from the first stdin line, prints an authenticator secret and otpauth link,
+                                 reads a current authenticator code from the next line, then prints ten one-use recovery
+                                 codes once. --account names the household owner's account (docs/ACCOUNTS.md)
+          owner-signin-allow     ... --provider <id> --subject <subject> [--label <text>] [--access member|friend]
+                                 [--account <account ID>]: allow an identity. member (the default): its computers join your
+                                 Martlet network, signing in as --account (the owner's account when absent). friend: share
+                                 this host's engines only (never the network, your settings or your logs)
           owner-signin-disallow  ... --provider <id> --subject <subject>: remove it and its computers from the network
                                  (this host revokes them; member desktops remove them from the roster on their next sync)
+          owner-signin-account   ... --user <name> --account <account ID> [--authenticator yes|no]: set another household
+                                 account's Martlet password login. Reads the password from the first stdin line; with an
+                                 authenticator (yes, the default) prints its secret, reads a current code and prints ten
+                                 recovery codes once. Without one the login proves the account but never adds a computer
+          owner-signin-remove-account ... --account <account ID>: remove that account's login and its computers
           owner-invite           ... [--address <name:port>]... [--label <text>]: print a martlet-invite-v1 line (this
                                  host's ID, TLS pin, home address and the outside addresses; no secret)
         Config alone grants no authority. Never put secrets in arguments, environment or logs.
@@ -66,6 +73,8 @@ internal sealed record HostOptions(string Command, string ConfigPath)
     internal string? Subject { get; init; }
     internal string? Label { get; init; }
     internal string? Access { get; init; }
+    internal Guid? Account { get; init; }
+    internal bool Authenticator { get; init; } = true;
     internal IReadOnlyList<string> Addresses { get; init; } = [];
 
     internal static HostOptions? Parse(string[] args)
@@ -74,13 +83,15 @@ internal sealed record HostOptions(string Command, string ConfigPath)
         if (args.Length < 3 || args[0] is not
             ("validate" or "status" or "init" or "admin" or "rebind" or "serve" or "health" or
              "owner-init" or "owner-approve" or "owner-pair" or "owner-network-reset" or "owner-exposure" or "owner-signin-status" or
-             "owner-signin-owner" or "owner-signin-allow" or "owner-signin-disallow" or "owner-invite") ||
+             "owner-signin-owner" or "owner-signin-allow" or "owner-signin-disallow" or "owner-signin-account" or
+             "owner-signin-remove-account" or "owner-invite") ||
             args[1] != "--config" || !LinuxControlDirectory.ValidPath(args[2]) ||
             !args[2].EndsWith("/host.json", StringComparison.Ordinal))
             throw new HostInputException();
         if (args[0] == "owner-exposure") return ParseExposure(new HostOptions(args[0], args[2]), args);
         var command = args[0];
-        if (command is not ("owner-pair" or "owner-signin-owner" or "owner-signin-allow" or "owner-signin-disallow" or "owner-invite"))
+        if (command is not ("owner-pair" or "owner-signin-owner" or "owner-signin-allow" or "owner-signin-disallow" or "owner-signin-account" or
+            "owner-signin-remove-account" or "owner-invite"))
             return args.Length == 3 ? new(command, args[2]) : throw new HostInputException();
         var options = new HostOptions(command, args[2]);
         var pair = command == "owner-pair";
@@ -94,7 +105,11 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                 "--device-id" when pair && options.DeviceId is null && HostConfiguration.Identifier(value) => options with { DeviceId = value },
                 "--name" when pair && options.Name is null && DisplayName(value) => options with { Name = value },
                 "--roles" when pair => options with { Roles = value },
-                "--user" when command == "owner-signin-owner" && options.User is null && DisplayName(value) => options with { User = value },
+                "--user" when command is "owner-signin-owner" or "owner-signin-account" && options.User is null && DisplayName(value) =>
+                    options with { User = value },
+                "--account" when command is "owner-signin-owner" or "owner-signin-allow" or "owner-signin-account" or "owner-signin-remove-account" &&
+                    options.Account is null && Guid.TryParse(value, out var account) && account != Guid.Empty => options with { Account = account },
+                "--authenticator" when command == "owner-signin-account" && value is "yes" or "no" => options with { Authenticator = value == "yes" },
                 "--provider" when identity && options.Provider is null && DisplayName(value) => options with { Provider = value },
                 "--subject" when identity && options.Subject is null && DisplayName(value) => options with { Subject = value },
                 "--label" when (identity && command != "owner-signin-disallow" || command == "owner-invite") && options.Label is null &&
@@ -106,7 +121,9 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                 _ => throw new HostInputException()
             };
         }
-        if (command == "owner-signin-owner" && options.User is null || identity && (options.Provider is null || options.Subject is null))
+        if (command is "owner-signin-owner" or "owner-signin-account" && options.User is null || identity && (options.Provider is null || options.Subject is null) ||
+            command is "owner-signin-account" or "owner-signin-remove-account" && options.Account is null ||
+            options.Account is not null && options.Access == "friend")
             throw new HostInputException();
         if (!pair) return options;
         // Neither --device-id nor --name: a short typed code that any desktop can redeem once.

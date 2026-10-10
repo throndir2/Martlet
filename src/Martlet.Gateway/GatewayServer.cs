@@ -181,6 +181,8 @@ public sealed class GatewayServer
         GatewayRules.Require(binding.Identity == identity &&
             binding.Origin.CanonicalOrigin == origin.CanonicalOrigin, "binding.unsafe");
         GatewayRules.Require(Interlocked.CompareExchange(ref started, 1, 0) == 0, "request.invalid");
+        // Account attestations are signed with the key the roster pins: this listener's TLS key (renewals keep the key).
+        application.SigningCertificate = binding.CertificateSelector ?? (() => binding.Certificate);
         try
         {
             var listener = await listenerFactory.StartAsync(

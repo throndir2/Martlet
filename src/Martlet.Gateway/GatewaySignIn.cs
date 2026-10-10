@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Martlet.Core.Access;
+using Martlet.Core.Accounts;
 using Martlet.Core.Logs;
 
 namespace Martlet.Gateway;
@@ -50,6 +51,19 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     IGatewayCrypto crypto, Action<string, string> log)
 {
     internal const string OwnerProvider = "owner";
+    /// <summary>Any Martlet password login on this host (the owner's or another household account's), by user name.</summary>
+    internal const string MartletProvider = "martlet";
+    /// <summary>The household owner's account ID of a network (docs/ACCOUNTS.md: <c>OwnerAccount.IdFor</c>, UUID version 5 of
+    /// "martlet-household-owner\n&lt;network ID&gt;"), used when signin.json names no owner account.</summary>
+    // Until Martlet.Core.Accounts.OwnerAccount.IdFor (W2) is on main: RFC 9562 version 5 over the fixed Martlet namespace.
+    internal static Guid OwnerAccountIdFor(string networkId)
+    {
+        var name = System.Text.Encoding.UTF8.GetBytes("martlet-household-owner\n" + networkId);
+        var hash = System.Security.Cryptography.SHA1.HashData([.. new Guid("e44b5fc7-4473-46d2-9844-25457de2bfa8").ToByteArray(bigEndian: true), .. name]);
+        hash[6] = (byte)(hash[6] & 0x0F | 0x50);
+        hash[8] = (byte)(hash[8] & 0x3F | 0x80);
+        return new Guid(hash.AsSpan(0, 16), bigEndian: true);
+    }
     internal static readonly TimeSpan AttemptLifetime = TimeSpan.FromMinutes(10);
     internal const int MaximumAttempts = 32;
     internal const int MaximumEnrolled = 64;
@@ -132,6 +146,13 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
         }
     }
 
+    /// <summary>Whether the "martlet" provider (any household account's Martlet password) takes sign-ins here. It is not in
+    /// <see cref="Available"/>, which desktops older than accounts take as a list of browser providers.</summary>
+    internal bool MartletAvailable()
+    {
+        lock (gate) return storage is not null && document.PasswordLogins().Any();
+    }
+
     internal async ValueTask<(GatewaySignInAttempt Attempt, string? AuthorizeUrl)> BeginAsync(string provider, string? codeChallenge,
         string? redirectUri, CancellationToken cancellationToken)
     {
@@ -142,6 +163,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             GatewayRules.Require(storage is not null, "signin.unavailable");
             var current = document = LoadLocked();
             if (provider == OwnerProvider) GatewayRules.Require(current.Owner is not null, "signin.unavailable");
+            else if (provider == MartletProvider) GatewayRules.Require(current.PasswordLogins().Any(), "signin.unavailable");
             else
             {
                 var config = current.Providers.FirstOrDefault(p => p.Id == provider);
@@ -161,42 +183,17 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     }
 
     /// <summary>Finishes a sign-in: verifies the proof, checks the allow list and issues this device a credential. Throws
-    /// <c>signin.expired</c>, <c>signin.invalid</c>, <c>signin.not_allowed</c> or <c>signin.provider</c>; the attempt is used
-    /// up either way.</summary>
+    /// <c>signin.expired</c>, <c>signin.invalid</c>, <c>signin.not_allowed</c>, <c>signin.needs_authenticator</c> (a Martlet
+    /// password login without an authenticator never adds a computer) or <c>signin.provider</c>; the attempt is used up either
+    /// way.</summary>
     internal async ValueTask<(IssuedDeviceCredential Credential, GatewaySignInIdentity Identity)> CompleteAsync(string attemptId,
         string deviceId, string displayName, JsonElement proof, CancellationToken cancellationToken)
     {
-        GatewaySignInAttempt? attempt;
-        GatewaySignInDocument current;
+        var who = await VerifyAttemptAsync(attemptId, proof, enroll: true, cancellationToken).ConfigureAwait(false);
         lock (gate)
         {
-            GatewayRules.Require(storage is not null, "signin.unavailable");
-            attempts.Remove(attemptId, out attempt);
-            GatewayRules.Require(attempt is not null && attempt.ExpiresAt > clock.GetUtcNow(), "signin.expired");
-            current = document = LoadLocked();
-        }
-        GatewaySignInIdentity who;
-        if (attempt!.Provider == OwnerProvider) who = VerifyOwner(current, proof);
-        else
-        {
-            var config = current.Providers.FirstOrDefault(p => p.Id == attempt.Provider);
-            var provider = config is null ? null : Providers(config);
-            GatewayRules.Require(provider is not null, "signin.unavailable");
-            who = await provider!.VerifyAsync(attempt, proof, cancellationToken).ConfigureAwait(false);
-            GatewayRules.Require(who.Provider == attempt.Provider && who.Subject is { Length: > 0 and <= 256 }, "signin.invalid");
-        }
-        lock (gate)
-        {
-            current = document = LoadLocked();
-            if (who.Provider == OwnerProvider) GatewayRules.Require(current.Owner?.User == who.Subject, "signin.invalid");
-            else if (!current.Allowed.Any(a => a.Provider == who.Provider && a.Subject == who.Subject))
-            {
-                log(LogLevels.Warn, $"Sign-in by {Display(who)} for {deviceId} refused: that identity is not on this host's allow list.");
-                refused.RemoveAll(r => r.Identity.Provider == who.Provider && r.Identity.Subject == who.Subject);
-                refused.Insert(0, (deviceId, who, clock.GetUtcNow()));
-                if (refused.Count > MaximumRefused) refused.RemoveAt(refused.Count - 1);
-                throw new GatewayProtocolException("signin.not_allowed");
-            }
+            var current = document = LoadLocked();
+            RequireAllowedLocked(current, who, deviceId);
             var access = current.AccessOf(who.Provider, who.Subject);
             RequireDeviceFreeLocked(current, deviceId, who);
             List<GatewaySignInEnrollment> evicted = access is null ? [] : MakeRoomForFriendLocked(current, deviceId, who);
@@ -289,38 +286,135 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             GatewayRules.Require(same && (enrolled!.CredentialId is null || enrolled.CredentialId == live.CredentialId), "signin.device_taken");
     }
 
-    /// <summary>Checks the owner account: account name (any case), password and a current authenticator code that wasn't used
-    /// yet, or an unused recovery code (used up here).</summary>
-    private GatewaySignInIdentity VerifyOwner(GatewaySignInDocument current, JsonElement proof)
+    /// <summary>Uses up attempt <paramref name="attemptId"/> and checks its proof: a Martlet password login ("owner": the owner's
+    /// only; "martlet": any household account's, by user name) or a provider's answer. Returns who signed in; the allow list is
+    /// the caller's to check. <paramref name="enroll"/>: the sign-in adds a computer, which a password login without an
+    /// authenticator may not do.</summary>
+    private async ValueTask<GatewaySignInIdentity> VerifyAttemptAsync(string attemptId, JsonElement proof, bool enroll,
+        CancellationToken cancellationToken)
     {
-        var owner = current.Owner ?? throw new GatewayProtocolException("signin.unavailable");
-        string? Text(string name) => proof.ValueKind == JsonValueKind.Object && proof.TryGetProperty(name, out var value) &&
-            value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-        var user = Text("user");
-        var password = Text("password");
-        var code = Text("code");
-        var passwordOk = GatewayAccounts.VerifyPassword(password, owner.Password);
-        var userOk = string.Equals(user?.Trim(), owner.User, StringComparison.OrdinalIgnoreCase);
-        if (!passwordOk || !userOk) throw new GatewayProtocolException("signin.invalid");
+        GatewaySignInAttempt? attempt;
+        GatewaySignInDocument current;
         lock (gate)
         {
-            var latest = LoadLocked();
-            var account = latest.Owner;
-            GatewayRules.Require(account is not null && account.User == owner.User, "signin.invalid");
-            var next = latest.Clone();
-            var step = Totp.Verify(account!.TotpSecret, code, clock.GetUtcNow(), account.LastTotpStep);
-            if (step is { } used) next.Owner!.LastTotpStep = used;
-            else if (GatewayAccounts.RecoveryVerifier(code) is { } verifier &&
-                next.Owner!.RecoveryCodes.FindIndex(r => crypto.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(r),
-                    System.Text.Encoding.ASCII.GetBytes(verifier))) is >= 0 and var index)
-            {
-                next.Owner.RecoveryCodes.RemoveAt(index);
-                log(LogLevels.Warn, $"The owner account signed in with a recovery code; {next.Owner.RecoveryCodes.Count} left.");
-            }
-            else throw new GatewayProtocolException("signin.invalid");
-            SaveLocked(next);
+            GatewayRules.Require(storage is not null, "signin.unavailable");
+            attempts.Remove(attemptId, out attempt);
+            GatewayRules.Require(attempt is not null && attempt.ExpiresAt > clock.GetUtcNow(), "signin.expired");
+            current = document = LoadLocked();
         }
-        return new(OwnerProvider, owner.User, owner.User);
+        if (attempt!.Provider is OwnerProvider or MartletProvider) return VerifyPassword(current, proof, attempt.Provider, enroll);
+        var config = current.Providers.FirstOrDefault(p => p.Id == attempt.Provider);
+        var provider = config is null ? null : Providers(config);
+        GatewayRules.Require(provider is not null, "signin.unavailable");
+        var who = await provider!.VerifyAsync(attempt, proof, cancellationToken).ConfigureAwait(false);
+        GatewayRules.Require(who.Provider == attempt.Provider && who.Subject is { Length: > 0 and <= 256 }, "signin.invalid");
+        return who;
+    }
+
+    // The owner login and household password logins are always allowed while they exist; any other identity must be on the
+    // allow list, and one that isn't is remembered under Refused so the owner can allow it.
+    private void RequireAllowedLocked(GatewaySignInDocument current, GatewaySignInIdentity who, string deviceId)
+    {
+        if (who.Provider is OwnerProvider or MartletProvider)
+        {
+            GatewayRules.Require(current.Allows(who.Provider, who.Subject), "signin.invalid");
+            return;
+        }
+        if (current.Allowed.Any(a => a.Provider == who.Provider && a.Subject == who.Subject)) return;
+        log(LogLevels.Warn, $"Sign-in by {Display(who)} for {deviceId} refused: that identity is not on this host's allow list.");
+        refused.RemoveAll(r => r.Identity.Provider == who.Provider && r.Identity.Subject == who.Subject);
+        refused.Insert(0, (deviceId, who, clock.GetUtcNow()));
+        if (refused.Count > MaximumRefused) refused.RemoveAt(refused.Count - 1);
+        throw new GatewayProtocolException("signin.not_allowed");
+    }
+
+    /// <summary>Checks a Martlet password login: user name (any case), password and, when the login has an authenticator (the
+    /// owner's always does), a current authenticator code that wasn't used yet or an unused recovery code (used up here). The
+    /// owner's login signs in as the owner (provider "owner") whichever provider was asked; another account's as
+    /// "martlet:&lt;lowercase user name&gt;".</summary>
+    private GatewaySignInIdentity VerifyPassword(GatewaySignInDocument current, JsonElement proof, string provider, bool enroll)
+    {
+        string? Text(string name) => proof.ValueKind == JsonValueKind.Object && proof.TryGetProperty(name, out var value) &&
+            value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        var user = Text("user")?.Trim();
+        var password = Text("password");
+        var code = Text("code");
+        IGatewayPasswordLogin? login = provider == OwnerProvider ? current.Owner : current.PasswordLogin(user);
+        // An unknown user name costs the same verifier work as a known one.
+        var verifier = (login ?? current.PasswordLogins().FirstOrDefault())?.Password ?? throw new GatewayProtocolException("signin.unavailable");
+        var passwordOk = GatewayAccounts.VerifyPassword(password, verifier);
+        var userOk = login is not null && string.Equals(user, login.User, StringComparison.OrdinalIgnoreCase);
+        if (!passwordOk || !userOk) throw new GatewayProtocolException("signin.invalid");
+        var owner = login is GatewayOwnerAccount;
+        lock (gate)
+        {
+            var next = LoadLocked().Clone();
+            var account = owner ? next.Owner : next.PasswordLogin(login!.User);
+            // The same login with the same password as checked above (not removed or changed meanwhile).
+            GatewayRules.Require(account is not null && account.User == login!.User && account.Password == login.Password &&
+                account is GatewayOwnerAccount == owner, "signin.invalid");
+            if (account!.TotpSecret is { } secret)
+            {
+                var step = Totp.Verify(secret, code, clock.GetUtcNow(), account.LastTotpStep);
+                if (step is { } used) account.LastTotpStep = used;
+                else if (GatewayAccounts.RecoveryVerifier(code) is { } typed &&
+                    account.RecoveryCodes.FindIndex(r => crypto.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(r),
+                        System.Text.Encoding.ASCII.GetBytes(typed))) is >= 0 and var index)
+                {
+                    account.RecoveryCodes.RemoveAt(index);
+                    log(LogLevels.Warn, (owner ? "The owner account" : $"Account login {account.User}") +
+                        $" signed in with a recovery code; {account.RecoveryCodes.Count} left.");
+                }
+                else throw new GatewayProtocolException("signin.invalid");
+                SaveLocked(next);
+            }
+            else GatewayRules.Require(!enroll, "signin.needs_authenticator");
+        }
+        return owner ? new(OwnerProvider, login!.User, login.User) : new(MartletProvider, GatewaySignInDocument.MartletSubject(login!.User), login.User);
+    }
+
+    /// <summary>A Prove sign-in on an already paired computer (<paramref name="deviceId"/>, the signed caller): checks the proof
+    /// like <see cref="CompleteAsync"/> (a Martlet password login needs its authenticator only when it has one) and returns the
+    /// account it proves and the login, for the host's attestation. Issues no credential. Throws what CompleteAsync throws,
+    /// and <c>signin.no_account</c> when the identity is a friend's or is linked to no account here.</summary>
+    internal async ValueTask<(GatewaySignInIdentity Identity, Guid AccountId, AccountAttestationLogin Login)> ProveAsync(string attemptId,
+        string deviceId, JsonElement proof, CancellationToken cancellationToken)
+    {
+        var who = await VerifyAttemptAsync(attemptId, proof, enroll: false, cancellationToken).ConfigureAwait(false);
+        lock (gate)
+        {
+            var current = document = LoadLocked();
+            RequireAllowedLocked(current, who, deviceId);
+            if (current.AccountOf(who.Provider, who.Subject, DefaultOwnerAccount?.Invoke()) is not { } account)
+            {
+                log(LogLevels.Warn, $"{deviceId} signed in as {Display(who)}, which is linked to no account here, so no account was proved.");
+                throw new GatewayProtocolException("signin.no_account");
+            }
+            log(LogLevels.Info, $"{deviceId} proved account {account:N} by signing in as {Display(who)}.");
+            return (who, account, current.LoginOf(who));
+        }
+    }
+
+    /// <summary>The account <paramref name="who"/> signs in as here and its login (null for a friend, or an identity linked to no
+    /// account yet).</summary>
+    internal (Guid AccountId, AccountAttestationLogin Login)? AccountFor(GatewaySignInIdentity who)
+    {
+        lock (gate)
+        {
+            var current = document;
+            return current.AccountOf(who.Provider, who.Subject, DefaultOwnerAccount?.Invoke()) is { } account ? (account, current.LoginOf(who)) : null;
+        }
+    }
+
+    /// <summary>The owner's account when signin.json names none: derived from the network this host is in (docs/ACCOUNTS.md,
+    /// migration), so a host links its existing owner login without waiting for a desktop. Set by the gateway; null result
+    /// while the host is in no network.</summary>
+    internal Func<Guid?>? DefaultOwnerAccount { get; set; }
+
+    /// <summary>The effective owner account: signin.json's, else <see cref="DefaultOwnerAccount"/>.</summary>
+    internal Guid? OwnerAccount()
+    {
+        lock (gate) return document.OwnerAccountId ?? DefaultOwnerAccount?.Invoke();
     }
 
     /// <summary>The identity that enrolled <paramref name="deviceId"/> by signing in as one of the owner's computers, while that
@@ -478,27 +572,86 @@ internal static class GatewaySignInSettings
         {
             case "owner":
             {
-                var user = change.User?.Trim();
-                GatewayRules.Require(user is { Length: > 0 and <= 64 } && user.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '@'),
-                    "request.invalid");
+                var user = RequireUser(change.User);
+                GatewayRules.Require(!next.Accounts.Any(a => SameUser(a.User, user)), "signin.user_taken");
                 GatewayAccounts.RequirePassword(change.Password);
                 GatewayAccounts.RequireTotpSecret(change.TotpSecret);
                 // The owner proves the authenticator app took the secret before it becomes mandatory.
                 var step = Totp.Verify(change.TotpSecret!, change.Code, now, -1);
                 GatewayRules.Require(step is not null, "signin.invalid");
+                if (change.AccountId is { } account) SetOwnerAccount(next, account);
                 var (codes, verifiers) = GatewayAccounts.NewRecoveryCodes();
                 next.Owner = new()
                 {
-                    User = user!, Password = GatewayAccounts.HashPassword(change.Password!), TotpSecret = change.TotpSecret!.ToUpperInvariant(),
+                    User = user, Password = GatewayAccounts.HashPassword(change.Password!), TotpSecret = change.TotpSecret!.ToUpperInvariant(),
                     LastTotpStep = step!.Value, RecoveryCodes = verifiers, CreatedAt = now
                 };
                 return codes;
             }
+            case "owner-account":
+            {
+                SetOwnerAccount(next, change.AccountId ?? throw new GatewayProtocolException("request.invalid"));
+                return null;
+            }
+            case "account":
+            {
+                // Another household account's Martlet password login: a password (12+ characters, needed for a new login, kept
+                // when an existing login's change leaves it out) and, optionally, an authenticator proven by a current code.
+                var id = change.AccountId;
+                GatewayRules.Require(id is { } value && value != Guid.Empty && value != next.OwnerAccountId, "request.invalid");
+                var user = RequireUser(change.User);
+                GatewayRules.Require(!(next.Owner is { } owner && SameUser(owner.User, user)) &&
+                    !next.Accounts.Any(a => a.AccountId != id && SameUser(a.User, user)), "signin.user_taken");
+                var existing = next.Accounts.FirstOrDefault(a => a.AccountId == id);
+                GatewayRules.Require(existing is not null || change.Password is not null && next.Accounts.Count < MaximumAccounts, "request.invalid");
+                long? step = null;
+                if (change.TotpSecret is not null)
+                {
+                    GatewayAccounts.RequireTotpSecret(change.TotpSecret);
+                    step = Totp.Verify(change.TotpSecret, change.Code, now, -1);
+                    GatewayRules.Require(step is not null, "signin.invalid");
+                }
+                var login = existing ?? new GatewayAccountLogin
+                {
+                    AccountId = id!.Value, User = user, Password = GatewayAccounts.HashPassword(change.Password!), CreatedAt = now
+                };
+                login.User = user;
+                if (existing is not null && change.Password is not null) login.Password = GatewayAccounts.HashPassword(change.Password);
+                IReadOnlyList<string>? codes = null;
+                if (step is { } proven)
+                {
+                    List<string> verifiers;
+                    (codes, verifiers) = GatewayAccounts.NewRecoveryCodes();
+                    login.TotpSecret = change.TotpSecret!.ToUpperInvariant();
+                    login.LastTotpStep = proven;
+                    login.RecoveryCodes = verifiers;
+                }
+                if (existing is null) next.Accounts.Add(login);
+                return codes;
+            }
+            case "remove-account-authenticator":
+            {
+                var login = next.Accounts.FirstOrDefault(a => a.AccountId == change.AccountId) ?? throw new GatewayProtocolException("signin.unavailable");
+                login.TotpSecret = null;
+                login.LastTotpStep = 0;
+                login.RecoveryCodes = [];
+                return null;
+            }
+            case "remove-account":
+            {
+                GatewayRules.Require(change.AccountId is not null, "request.invalid");
+                next.Accounts.RemoveAll(a => a.AccountId == change.AccountId);
+                return null;
+            }
             case "recovery-codes":
             {
-                GatewayRules.Require(next.Owner is not null, "signin.unavailable");
+                // The owner's login, or (with account_id) another account's login that has an authenticator.
+                IGatewayPasswordLogin? login = change.AccountId is { } id && id != next.OwnerAccountId
+                    ? next.Accounts.FirstOrDefault(a => a.AccountId == id)
+                    : next.Owner;
+                GatewayRules.Require(login?.TotpSecret is not null, "signin.unavailable");
                 var (codes, verifiers) = GatewayAccounts.NewRecoveryCodes();
-                next.Owner!.RecoveryCodes = verifiers;
+                login!.RecoveryCodes = verifiers;
                 return codes;
             }
             case "remove-owner":
@@ -509,16 +662,33 @@ internal static class GatewaySignInSettings
             case "allow":
             {
                 GatewayRules.Require(change.Provider is { Length: > 0 and <= 32 } && change.Provider != GatewaySignInService.OwnerProvider &&
+                    change.Provider != GatewaySignInService.MartletProvider &&
                     change.Subject is { Length: > 0 and <= 256 } && change.Subject.All(c => !char.IsControl(c)) &&
                     (change.Label is null || change.Label.Length <= 128 && change.Label.All(c => !char.IsControl(c))) &&
                     change.Access is null or "member" or GatewaySignInDocument.FriendAccess, "request.invalid");
+                // A household member's identity names the account it signs in as; a friend's never has one.
+                GatewayRules.Require(change.AccountId is null || change.AccountId != Guid.Empty && change.Access != GatewaySignInDocument.FriendAccess,
+                    "request.invalid");
+                var previous = next.Allowed.LastOrDefault(a => a.Provider == change.Provider && a.Subject == change.Subject);
                 next.Allowed.RemoveAll(a => a.Provider == change.Provider && a.Subject == change.Subject);
                 GatewayRules.Require(next.Allowed.Count < MaximumAllowed, "request.invalid");
+                var friend = change.Access == GatewaySignInDocument.FriendAccess;
                 next.Allowed.Add(new()
                 {
                     Provider = change.Provider!, Subject = change.Subject!, Label = change.Label, AddedAt = now,
-                    Access = change.Access == GatewaySignInDocument.FriendAccess ? GatewaySignInDocument.FriendAccess : null
+                    Access = friend ? GatewaySignInDocument.FriendAccess : null,
+                    // Allowing again without an account keeps the account the identity was linked to.
+                    AccountId = friend ? null : change.AccountId ?? previous?.AccountId
                 });
+                return null;
+            }
+            case "link":
+            {
+                // Links an allowed identity to the account it signs in as (no account_id: back to the owner's account).
+                var index = next.Allowed.FindLastIndex(a => a.Provider == change.Provider && a.Subject == change.Subject);
+                GatewayRules.Require(index >= 0, "signin.unavailable");
+                GatewayRules.Require(change.AccountId is null || change.AccountId != Guid.Empty && next.Allowed[index].Access is null, "request.invalid");
+                next.Allowed[index] = next.Allowed[index] with { AccountId = change.AccountId };
                 return null;
             }
             case "disallow":
@@ -548,6 +718,27 @@ internal static class GatewaySignInSettings
                 throw new GatewayProtocolException("request.invalid");
         }
     }
+
+    /// <summary>Martlet password logins of household accounts besides the owner's.</summary>
+    internal const int MaximumAccounts = 16;
+
+    private static string RequireUser(string? value)
+    {
+        var user = value?.Trim();
+        GatewayRules.Require(user is { Length: > 0 and <= 64 } && user.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '@'),
+            "request.invalid");
+        return user!;
+    }
+
+    private static bool SameUser(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    // The household owner's account (docs/ACCOUNTS.md): the owner login and every member identity without an account of its
+    // own sign in as it. Another account's password login can't hold that ID.
+    private static void SetOwnerAccount(GatewaySignInDocument next, Guid account)
+    {
+        GatewayRules.Require(account != Guid.Empty && !next.Accounts.Any(a => a.AccountId == account), "request.invalid");
+        next.OwnerAccountId = account;
+    }
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -565,6 +756,9 @@ internal sealed record GatewaySignInChange
     /// <summary>For <c>allow</c>: "member" (or absent) lets the identity's computers join the network as the owner's own;
     /// "friend" shares only this host's engines with them.</summary>
     public string? Access { get; init; }
+    /// <summary>The household account (docs/ACCOUNTS.md) of <c>owner</c>, <c>owner-account</c>, <c>account</c>,
+    /// <c>remove-account</c>, <c>remove-account-authenticator</c>, <c>recovery-codes</c>, <c>allow</c> and <c>link</c>.</summary>
+    public Guid? AccountId { get; init; }
     [JsonPropertyName("provider_config")]
     public GatewaySignInProviderConfig? ProviderConfig { get; init; }
 }
@@ -587,7 +781,7 @@ internal sealed record GatewaySignInProviderConfig
     internal void Validate()
     {
         GatewayRules.Require(RedirectPort is null or (>= 1024 and <= 65535), "request.invalid");
-        GatewayRules.Require(Id is { Length: > 0 and <= 32 } && Id != GatewaySignInService.OwnerProvider &&
+        GatewayRules.Require(Id is { Length: > 0 and <= 32 } && Id != GatewaySignInService.OwnerProvider && Id != GatewaySignInService.MartletProvider &&
             Id.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-'), "request.invalid");
         GatewayRules.Require(Kind is "oidc" or "discord" or "steam", "request.invalid");
         GatewayRules.Require(Name is { Length: > 0 and <= 64 } && Name.All(c => !char.IsControl(c)), "request.invalid");
@@ -602,11 +796,36 @@ internal sealed record GatewaySignInProviderConfig
     }
 }
 
-internal sealed class GatewayOwnerAccount
+/// <summary>A Martlet password login on a host: the owner's (<see cref="GatewayOwnerAccount"/>, authenticator mandatory) or
+/// another household account's (<see cref="GatewayAccountLogin"/>, authenticator optional).</summary>
+internal interface IGatewayPasswordLogin
+{
+    string User { get; }
+    GatewayPasswordVerifier Password { get; }
+    string? TotpSecret { get; }
+    long LastTotpStep { get; set; }
+    List<string> RecoveryCodes { get; set; }
+}
+
+internal sealed class GatewayOwnerAccount : IGatewayPasswordLogin
 {
     public required string User { get; set; }
     public required GatewayPasswordVerifier Password { get; set; }
     public required string TotpSecret { get; set; }
+    public long LastTotpStep { get; set; }
+    public List<string> RecoveryCodes { get; set; } = [];
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>Another household account's Martlet password login (docs/ACCOUNTS.md): the account it proves, a user name unique
+/// on the host (any case), the password verifier and an optional authenticator with its recovery codes. Signing in with it
+/// proves the account (an attestation); adding a computer with it needs the authenticator.</summary>
+internal sealed class GatewayAccountLogin : IGatewayPasswordLogin
+{
+    public required Guid AccountId { get; set; }
+    public required string User { get; set; }
+    public required GatewayPasswordVerifier Password { get; set; }
+    public string? TotpSecret { get; set; }
     public long LastTotpStep { get; set; }
     public List<string> RecoveryCodes { get; set; } = [];
     public DateTimeOffset CreatedAt { get; set; }
@@ -621,6 +840,9 @@ internal sealed record GatewayAllowedSignIn
     /// <summary>Null: the owner's own computers (they join the network). <see cref="GatewaySignInDocument.FriendAccess"/>: a friend
     /// the owner shares this host with (this host's engines only, never the network).</summary>
     public string? Access { get; init; }
+    /// <summary>For a household member's identity (access null): the account it signs in as; null means the owner's account
+    /// (<see cref="GatewaySignInDocument.OwnerAccountId"/>), as before accounts. Always null for a friend.</summary>
+    public Guid? AccountId { get; init; }
 }
 
 internal sealed record GatewaySignInEnrollment
@@ -665,7 +887,12 @@ internal sealed class GatewaySignInDocument
     };
 
     public int SchemaVersion { get; set; } = 1;
+    /// <summary>The household owner's account ID (docs/ACCOUNTS.md): the owner login and member identities without an account
+    /// of their own prove it. Null until a member desktop (or martlet-host) sets it.</summary>
+    public Guid? OwnerAccountId { get; set; }
     public GatewayOwnerAccount? Owner { get; set; }
+    /// <summary>Other household accounts' Martlet password logins.</summary>
+    public List<GatewayAccountLogin> Accounts { get; set; } = [];
     public List<GatewaySignInProviderConfig> Providers { get; set; } = [];
     public List<GatewayAllowedSignIn> Allowed { get; set; } = [];
     public List<GatewaySignInEnrollment> Enrolled { get; set; } = [];
@@ -685,6 +912,7 @@ internal sealed class GatewaySignInDocument
         var parsed = JsonSerializer.Deserialize<GatewaySignInDocument>(bytes, Json) ?? throw new InvalidDataException("signin.json is empty.");
         if (parsed.SchemaVersion != 1) throw new InvalidDataException("signin.json was written by a newer Martlet.");
         parsed.Providers ??= [];
+        parsed.Accounts ??= [];
         parsed.Allowed ??= [];
         parsed.Enrolled ??= [];
         parsed.Removed ??= [];
@@ -697,16 +925,46 @@ internal sealed class GatewaySignInDocument
     /// <summary>The access value of an identity allowed as a friend.</summary>
     internal const string FriendAccess = "friend";
 
-    /// <summary>Whether <paramref name="provider"/>/<paramref name="subject"/> may sign in: the owner account's own name, or an
-    /// identity on the allow list.</summary>
-    internal bool Allows(string provider, string subject) => provider == GatewaySignInService.OwnerProvider
-        ? Owner?.User == subject
-        : Allowed.Any(a => a.Provider == provider && a.Subject == subject);
+    /// <summary>Whether <paramref name="provider"/>/<paramref name="subject"/> may sign in: the owner account's own name, a
+    /// household password login ("martlet", lowercase user name), or an identity on the allow list.</summary>
+    internal bool Allows(string provider, string subject) => provider switch
+    {
+        GatewaySignInService.OwnerProvider => Owner?.User == subject,
+        GatewaySignInService.MartletProvider => Accounts.Any(a => MartletSubject(a.User) == subject),
+        _ => Allowed.Any(a => a.Provider == provider && a.Subject == subject)
+    };
 
     /// <summary>What an allowed identity gets: null for the owner's computers (the owner account always), "friend" for a friend.</summary>
-    internal string? AccessOf(string provider, string subject) => provider == GatewaySignInService.OwnerProvider
+    internal string? AccessOf(string provider, string subject) => provider is GatewaySignInService.OwnerProvider or GatewaySignInService.MartletProvider
         ? null
         : Allowed.LastOrDefault(a => a.Provider == provider && a.Subject == subject)?.Access;
+
+    /// <summary>The account an allowed identity signs in as: the owner login's and member identities' without their own is
+    /// <see cref="OwnerAccountId"/> (or <paramref name="defaultOwner"/>, the owner account derived from the host's network, when
+    /// none is set); a household password login's is its account; a friend has none.</summary>
+    internal Guid? AccountOf(string provider, string subject, Guid? defaultOwner = null) => provider switch
+    {
+        GatewaySignInService.OwnerProvider => Owner?.User == subject ? OwnerAccountId ?? defaultOwner : null,
+        GatewaySignInService.MartletProvider => Accounts.FirstOrDefault(a => MartletSubject(a.User) == subject)?.AccountId,
+        _ => Allowed.LastOrDefault(a => a.Provider == provider && a.Subject == subject) is { Access: null } member
+            ? member.AccountId ?? OwnerAccountId ?? defaultOwner
+            : null
+    };
+
+    /// <summary>The login of docs/ACCOUNTS.md an identity signed in with: "martlet" for a password login (the owner's too), else
+    /// the provider's kind and ID.</summary>
+    internal AccountAttestationLogin LoginOf(GatewaySignInIdentity who) => who.Provider is GatewaySignInService.OwnerProvider or GatewaySignInService.MartletProvider
+        ? new() { Kind = "martlet", Provider = "martlet", Subject = MartletSubject(who.Label ?? who.Subject) }
+        : new() { Kind = Providers.FirstOrDefault(p => p.Id == who.Provider)?.Kind ?? "oidc", Provider = who.Provider, Subject = who.Subject };
+
+    /// <summary>The password logins: the owner's first, then the other accounts'.</summary>
+    internal IEnumerable<IGatewayPasswordLogin> PasswordLogins() => Owner is null ? Accounts : Accounts.Prepend<IGatewayPasswordLogin>(Owner);
+
+    internal IGatewayPasswordLogin? PasswordLogin(string? user) =>
+        user is null ? null : PasswordLogins().FirstOrDefault(l => string.Equals(l.User, user.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>A password login's subject in the Login contract: its user name in lowercase.</summary>
+    internal static string MartletSubject(string user) => user.Trim().ToLowerInvariant();
 
     // An enrollment stays while its identity may still sign in with the access it signed in with.
     private bool Current(GatewaySignInEnrollment e) => Allows(e.Provider, e.Subject) && AccessOf(e.Provider, e.Subject) == e.Access;
