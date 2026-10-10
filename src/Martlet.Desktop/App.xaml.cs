@@ -22,6 +22,19 @@ public partial class App : Application
     internal bool CrashedLastTime { get; private set; }
     /// <summary>This process owns its data folder (<see cref="SingleInstance"/>).</summary>
     private SingleInstance? instance;
+    /// <summary>The account signed in on this device (null when the data folder couldn't be opened).</summary>
+    internal AccountSession? Accounts { get; private set; }
+
+    private static AccountSession? OpenAccounts(string dataDirectory)
+    {
+        try { return AccountSession.OpenForThisLogin(dataDirectory); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException or
+            InvalidOperationException)
+        {
+            ErrorLog.Error("Accounts: couldn't open this PC's account session", error);
+            return null;
+        }
+    }
 
     internal void ApplyTheme(AppearanceTheme theme, IReadOnlyDictionary<string, string>? colors = null)
     {
@@ -113,6 +126,12 @@ public partial class App : Application
                 ErrorLog.Info($"Device ID: {device.Id} ({device.Source.ToString().ToLowerInvariant()}).");
                 // The kind only, never the e-mail or name; a work account's details can need the domain, so off this thread.
                 _ = Task.Run(() => ErrorLog.Info($"Signed in to Windows with a {WindowsLogin.Current}."));
+                // Who uses Martlet now (docs/ACCOUNTS.md): signs in for the first time when needed, then runs the account change
+                // steps (added here, before StartAsync) before the theme, character and conversation load.
+                Accounts = OpenAccounts(store.DataDirectory);
+                // Each account's settings (docs/ACCOUNTS.md): the first account on a data folder from before accounts gets its files.
+                if (Accounts is { } owner) AccountSettingsStart.Register(owner);
+                if (Accounts is { } accounts) Task.Run(() => accounts.StartAsync(CancellationToken.None)).GetAwaiter().GetResult();
                 (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
                 ThemeColors = Appearance.LoadColors(store.DataDirectory, SelectedTheme);
                 HostShells.Current = new SshHostShell(store.DataDirectory);
