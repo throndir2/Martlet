@@ -283,9 +283,9 @@ and when all are busy the picture waits in the shortest queue
 Songs go through the singing pool (`SingingPool`, lane `singing`): a computer
 that sings another song is passed over for a free one, and when all are busy
 the song waits on the shortest line ([Singing](SINGING.md#the-singing-pool)).
-Reading the screen goes to a pool of your computers that run the
-Reading role through the same queue, without a card here
-([the Reading pool](READING.md#the-reading-pool)). Thinking with Ollama on a companion PC itself talks to that Ollama
+Reading the screen goes through each PC's Reading list on Companion › Reading
+(lane `reading`): Windows OCR on this PC and your computers' Reading role, in
+order ([the Reading pool](READING.md#the-reading-pool)). Thinking with Ollama on a companion PC itself talks to that Ollama
 directly, so the queue can't see those replies; Ollama queues them. The
 Devices card's status line (`WorkSharingStatus`) and the desktop log
 (`Sharing work: Speaking went to m3-host (1 busy) after 240 ms.`) say when a
@@ -319,7 +319,7 @@ switch and no single-computer choice.
 | Kept for | `PoolMember.OnlyFor`: the companion PCs (device IDs) that may use the member; empty means every one |
 | Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings) |
 | Area (`PoolAreas`) | Its ID (also its `WorkQueue` lane), page, member kinds, host role, required or optional, shared or per PC. Thinking has `ConversationFirst`: the conversation's own model always goes first and is not a member |
-| Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision and hearing). An area with no list yet makes it once from its older choices (`PoolMigration`) |
+| Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision, hearing and reading). An area with no list yet makes it once from its older choices (`PoolMigration`) |
 | Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
 | Cloud consent | `PoolMember.Consent` binds the owner's agreement (data leaves this PC, requests may cost money) to the area and the member key. A cloud member without a matching agreement takes no work |
 | Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the member key |

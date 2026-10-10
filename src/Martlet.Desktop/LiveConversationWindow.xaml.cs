@@ -2614,8 +2614,8 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>How fresh the newest picture must be to go with what you type or say.</summary>
     internal static TimeSpan SeenFreshness => TimeSpan.FromSeconds(10);
 
-    /// <summary>Reads the text on the screen the way Companion › Reading chose (reading.json): Windows OCR on this PC by default,
-    /// a host's Reading role, or not at all. Only the screen is read, never a camera.</summary>
+    /// <summary>Reads the text on the screen with Companion › Reading's list (pools-local.json): Windows OCR on this PC by default,
+    /// your computers' Reading role, or not at all when nothing in the list is on. Only the screen is read, never a camera.</summary>
     private void StartReading()
     {
         reader?.Dispose();
@@ -2628,8 +2628,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private static DateTime ReadingWritten(string? directory)
     {
-        if (directory is null) return default;
-        try { return System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(directory, Martlet.Core.Reading.ReadingSettings.FileName)); }
+        if (ReadingList.File(directory) is not { } path) return default;
+        try { return System.IO.File.GetLastWriteTimeUtc(path); }
         catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { return default; }
     }
 

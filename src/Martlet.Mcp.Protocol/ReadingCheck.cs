@@ -37,7 +37,7 @@ internal static class ReadingCheck
             {
                 file = state, place = settings.Place.ToString(), on = settings.On, hostId = settings.HostId, describe = settings.Describe()
             },
-            pool = dataDirectory is null ? null : ReadingPoolCheck.Status(dataDirectory, settings),
+            pool = dataDirectory is null ? null : ReadingPoolCheck.Status(dataDirectory),
             poolCheck,
             picture = new { width, height, expected = Expected },
             windowsOcr = windows,

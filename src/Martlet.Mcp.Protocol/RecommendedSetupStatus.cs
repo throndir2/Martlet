@@ -221,14 +221,15 @@ internal static class RecommendedSetupStatus
         {
             Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Pools = PoolSettings.Load(directory), Device = device, ThinkingPool = pool,
             PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers,
-            Off = RecommendedSetupMemory.Load(directory).OffParts, Choices = Choices(directory)
+            Off = RecommendedSetupMemory.Load(directory).OffParts, Choices = Choices(directory, own)
         };
     }
 
     /// <summary>This PC's choices for the parts it sets on their Companion pages, as the desktop reads them: vision on and Let ...
-    /// hear my voice (talk-preferences.json), the image and audio models (sense-models.json), Reading (reading.json) and the
-    /// Home Assistant address (smart-home.json; never its token).</summary>
-    private static IReadOnlyList<PartChoice> Choices(string directory)
+    /// hear my voice (talk-preferences.json), the image and audio models (sense-models.json), Reading (its list in
+    /// pools-local.json, else the older reading.json; <paramref name="own"/> is this PC's own host service) and the Home
+    /// Assistant address (smart-home.json; never its token).</summary>
+    private static IReadOnlyList<PartChoice> Choices(string directory, string? own)
     {
         var talk = Json(directory, "talk-preferences.json");
         var watch = talk?["Watch"] is JsonValue w && w.TryGetValue<bool>(out var watching) ? watching : true;
@@ -236,7 +237,9 @@ internal static class RecommendedSetupStatus
         // Version 4 made Let Thinking hear my voice three-way; an older "false" was only the old default (never chosen).
         if (hear == false && !(talk?["Version"] is JsonValue v && v.TryGetValue<int>(out var version) && version >= 4)) hear = null;
         var home = Json(directory, "smart-home.json")?["Address"] is JsonValue a && a.TryGetValue<string>(out var address) ? address : null;
-        return RecommendedSetupInputs.Choices(watch, hear, SenseModels.Load(directory), Martlet.Core.Reading.ReadingSettings.Load(directory), home);
+        var reading = PoolSettings.LoadFor(directory, PoolAreas.Reading) is { } list
+            ? Martlet.Core.Reading.ReadingPool.Choice(list, own) : Martlet.Core.Reading.ReadingSettings.Load(directory);
+        return RecommendedSetupInputs.Choices(watch, hear, SenseModels.Load(directory), reading, home);
     }
 
     private static JsonObject? Json(string directory, string file)

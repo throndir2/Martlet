@@ -5,40 +5,54 @@ using Martlet.Core.Reading;
 
 namespace Martlet.Mcp;
 
-/// <summary>reading_check's pool (docs/READING.md#the-reading-pool): with the Reading role, each read goes through the queue
-/// (<see cref="WorkQueue"/>) at background priority to the computer named in Companion › Reading first, then the owner's other
-/// computers that the shared plan says run the Reading role (<see cref="WorkSharing.Order"/> for
-/// <see cref="WorkSharingJobs.Reading"/>), as the desktop's HostScreenTextReader does. <see cref="Status"/> gives that order for
-/// a data directory from its files; <see cref="RunAsync"/> rehearses the production planner and queue with simulated computers
-/// that read one screenshot at a time and turn another away at once (job.busy), NOT real hosts. Nothing leaves the process.</summary>
+/// <summary>reading_check's pool (docs/READING.md#the-reading-pool): Companion › Reading's list on this PC (pools-local.json,
+/// <see cref="PoolAreas.Reading"/>; until the page saves one, the list made from reading.json). Each read goes through the queue
+/// (<see cref="WorkQueue"/>, lane reading) at background priority to the list's places in order (<see cref="ReadingPool.Targets"/>),
+/// as the desktop's PoolScreenTextReader does. <see cref="Status"/> gives the list and those places for a data directory from its
+/// files; <see cref="RunAsync"/> rehearses the production list code, planner and queue with simulated computers that read one
+/// screenshot at a time and turn another away at once (job.busy), NOT real hosts. Nothing leaves the process.</summary>
 internal static class ReadingPoolCheck
 {
-    internal const string Role = "ocr";
+    internal const string Role = ReadingPool.Role;
 
-    /// <summary>The order this PC's reads try the computers in, from reading.json, cluster.json, hosts.json and work-sharing.json.</summary>
-    internal static object Status(string dataDirectory, ReadingSettings reading, string? device = null)
+    /// <summary>This PC's Reading list and the places a read tries, from pools-local.json (else reading.json, cluster.json and
+    /// work-sharing.json, as the desktop makes the list once) and hosts.json.</summary>
+    internal static object Status(string dataDirectory, string? device = null)
     {
         device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+        var (own, friends, ownHost) = Paired(dataDirectory);
+        var saved = PoolSettings.LoadFor(dataDirectory, PoolAreas.Reading);
+        var list = saved ?? ReadingPool.FromChoice(ReadingSettings.Load(dataDirectory), ownHost, Others(dataDirectory, device, own, friends, ownHost));
+        var paired = own.Concat(friends).ToHashSet(StringComparer.Ordinal);
+        return new
+        {
+            area = PoolAreas.Reading.Id, file = PoolSettings.File(PoolAreas.Reading.Shared),
+            list = saved is null ? "made from reading.json (not saved yet)" : "saved", off = list.NoneOn,
+            lane = PoolAreas.Reading.Id, priority = nameof(WorkPriority.Background), waitSeconds = 3, device, ownHost,
+            members = list.Members.Select((m, i) => new
+            {
+                index = i, key = m.Key, name = m.Name, kind = m.Kind.ToString(), on = !m.Off, reads = ReadingPool.Describe(m),
+                engine = m.Setting(PoolSettingKeys.Engine), model = m.Setting(PoolSettingKeys.Model), onlyFor = m.OnlyFor,
+                paired = m.HostId is null || paired.Contains(m.HostId)
+            }),
+            tries = ReadingPool.Targets(list, device, ownHost, paired.Contains).Select(t => new { key = t.Key, hostId = t.HostId, member = t.Member.Key })
+        };
+    }
+
+    // The other computers reading.json's Reading role tried after the one chosen, as the desktop makes the list: the shared
+    // plan's computers that run the role (Devices › Sharing work's order); with none chosen and none there, every own computer.
+    private static IReadOnlyList<string> Others(string dataDirectory, string device, string[] own, string[] friends, string? ownHost)
+    {
+        var reading = ReadingSettings.Load(dataDirectory);
+        if (reading.Place != ReadingPlace.Host) return [];
         var sharing = WorkSharingSettings.Load(dataDirectory);
         var plan = Plan(dataDirectory);
-        var (own, friends, ownHost) = Paired(dataDirectory);
-        var chosen = reading.Place == ReadingPlace.Host ? reading.HostId : null;
-        var places = plan.Nodes.Where(n => !n.Removed && n.HostId != chosen && n.Roles.Any(r => r.Kind == Role) &&
+        var places = plan.Nodes.Where(n => !n.Removed && n.HostId != reading.HostId && n.Roles.Any(r => r.Kind == Role) &&
                 (own.Contains(n.HostId) || friends.Contains(n.HostId)))
             .Select(n => new WorkPlace(n.HostId, n.HostId == ownHost, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))
             .ToArray();
-        IReadOnlyList<string> tries = reading.Place != ReadingPlace.Host ? []
-            : [.. WorkSharing.Order(sharing, WorkSharingJobs.Reading, device, chosen, places).Where(id => !friends.Contains(id) || id == chosen)];
-        // With no computer named and none in the plan, the desktop tries every computer of the owner's own.
-        var everyOwn = reading.Place == ReadingPlace.Host && chosen is null && tries.Count == 0;
-        if (everyOwn) tries = [.. own.Where(id => sharing.Allows(id, device))];
-        return new
-        {
-            pooled = reading.Place == ReadingPlace.Host, job = WorkSharingJobs.Reading, role = Role, priority = nameof(WorkPriority.Background),
-            waitSeconds = 3, device, chosen, chosenIsFriends = chosen is not null && friends.Contains(chosen), ownHost,
-            runs = places.Select(p => p.HostId), tries, everyOwn,
-            kept = sharing.Hosts.Select(h => new { hostId = h.HostId, onlyFor = h.OnlyFor, usableHere = sharing.Allows(h.HostId, device) })
-        };
+        var others = WorkSharing.Order(sharing, WorkSharingJobs.Reading, device, reading.HostId, places).Where(id => id != reading.HostId).ToList();
+        return reading.HostId is null && others.Count == 0 ? own : others;
     }
 
     private static ClusterPlan Plan(string dataDirectory)
@@ -128,32 +142,52 @@ internal static class ReadingPoolCheck
             steps.Add(new { name, passed, detail });
         }
 
-        // The owner names gpu-pc in Companion › Reading; desk-host (this PC's own host service) and nas-host also run the role,
-        // nas-host with more plan jobs. A friend's host is never in the owner's shared plan.
-        WorkPlace[] places = [new("desk-host", Own: true, Jobs: 2), new("nas-host", Jobs: 3), new("spare-host", Jobs: 0)];
-        var none = new WorkSharingSettings();
-        var order = WorkSharing.Order(none, WorkSharingJobs.Reading, "desk-1", "gpu-pc", places);
-        Step("The named computer first, then this PC's own host service, then the rest fewest jobs first",
-            order.SequenceEqual(["gpu-pc", "desk-host", "spare-host", "nas-host"]), new { order });
-        var kept = WorkSharing.Order(none.With(new WorkSharingHost { HostId = "desk-host", OnlyFor = ["desk-2"] }), WorkSharingJobs.Reading,
-            "desk-1", "gpu-pc", places);
-        Step("A computer kept for another companion PC is left out", kept.SequenceEqual(["gpu-pc", "spare-host", "nas-host"]), new { kept });
-        Step("Reading is shared by default but has no Devices › Sharing work card",
-            WorkSharingJobs.SharedByDefault(WorkSharingJobs.Reading) && !WorkSharingJobs.All.Contains(WorkSharingJobs.Reading),
-            new { sharedByDefault = WorkSharingJobs.SharedByDefault(WorkSharingJobs.Reading), all = WorkSharingJobs.All });
+        // This PC (desk-1, its own host service desk-host) lists Windows OCR, gpu-pc and more; nas-host isn't paired here.
+        bool Paired(string id) => id is "gpu-pc" or "desk-host" or "kept-pc" or "off-pc";
+        var list = new PoolList
+        {
+            Area = PoolAreas.Reading.Id,
+            Members =
+            [
+                ReadingPool.Windows(), PoolMember.Computer("gpu-pc"), PoolMember.Gpu("gpu-pc", 2), PoolMember.Computer("off-pc") with { Off = true },
+                PoolMember.Computer("kept-pc") with { OnlyFor = ["desk-2"] }, PoolMember.Computer("nas-host"), PoolMember.Computer("desk-host")
+            ]
+        };
+        var tries = ReadingPool.Targets(list, "desk-1", "desk-host", Paired).Select(t => t.Key).ToArray();
+        Step("The list's order: Windows OCR on this PC, then gpu-pc once (a card is its computer), then desk-host; a member that is " +
+            "off, kept for another companion PC or not paired here is left out",
+            tries.SequenceEqual(["this-pc", "host:gpu-pc", "host:desk-host"]), new { tries });
+        var role = ReadingPool.Targets(new PoolList { Area = PoolAreas.Reading.Id, Members = [ReadingPool.ThisPcRole(), PoolMember.Computer("desk-host")] },
+            "desk-1", "desk-host", Paired).Select(t => t.Key).ToArray();
+        Step("This PC with the Reading role is its own host service, counted once", role.SequenceEqual(["host:desk-host"]), new { role });
+        var allOff = new PoolList { Area = PoolAreas.Reading.Id, Members = [ReadingPool.Windows() with { Off = true }] };
+        Step("Nothing on, or an empty list: reading is off",
+            allOff.NoneOn && new PoolList { Area = PoolAreas.Reading.Id }.NoneOn && ReadingPool.Targets(allOff, "desk-1", null, Paired).Count == 0,
+            new { allOff = allOff.NoneOn });
+        string[] Keys(PoolList made) => [.. made.Members.Select(m => m.Key + (m.Setting(PoolSettingKeys.Engine) is { } e ? "=" + e : ""))];
+        var windows = Keys(ReadingPool.FromChoice(new ReadingSettings(), "desk-host", []));
+        var host = Keys(ReadingPool.FromChoice(new ReadingSettings { Place = ReadingPlace.Host, HostId = "gpu-pc" }, "desk-host", ["desk-host", "nas-host"]));
+        var off = Keys(ReadingPool.FromChoice(new ReadingSettings { Place = ReadingPlace.Off }, "desk-host", []));
+        Step("The older choice (reading.json) becomes the list once: Windows OCR as This PC; the Reading role's computer first, " +
+            "this PC's own host service as This PC with the role; off as an empty list",
+            windows.SequenceEqual(["this-pc=windows-ocr"]) && host.SequenceEqual(["host:gpu-pc", "this-pc=ocr", "host:nas-host"]) && off.Length == 0,
+            new { windows, host, off });
+        Step("Each PC keeps its own Reading list (pools-local.json), as reading.json was never shared",
+            !PoolAreas.Reading.Shared && !PoolAreas.Reading.Required && PoolSettings.File(PoolAreas.Reading.Shared) == PoolSettings.LocalFileName,
+            new { shared = PoolAreas.Reading.Shared, file = PoolSettings.File(PoolAreas.Reading.Shared) });
 
         var work = TimeSpan.FromMilliseconds(150);
         var wait = TimeSpan.FromSeconds(3);
         var gpu = new Reader("gpu-pc", work);
         var desk = new Reader("desk-host", work);
         var free = await ReadAsync(new WorkQueue(), [gpu, desk], wait, work);
-        Step("The named computer is free: it reads, with no wait", free.By == "gpu-pc" && free.WaitedMs < 100, free);
+        Step("The first in the list is free: it reads, with no wait", free.By == "gpu-pc" && free.WaitedMs < 100, free);
 
         var holding = ReadAsync(new WorkQueue(), [gpu], wait, work);
         await Task.Delay(20, cancellation);
         var passed = await ReadAsync(new WorkQueue(), [gpu, desk], wait, work);
         await holding;
-        Step("The named computer is busy: the next computer reads at once", passed.By == "desk-host" && passed.WaitedMs < 100, passed);
+        Step("The first in the list is busy: the next one reads at once", passed.By == "desk-host" && passed.WaitedMs < 100, passed);
 
         var slow = new Reader("gpu-pc", TimeSpan.FromMilliseconds(400));
         var quick = new Reader("desk-host", TimeSpan.FromMilliseconds(200));
@@ -162,7 +196,7 @@ internal static class ReadingPoolCheck
         await Task.Delay(20, cancellation);
         var waited = await ReadAsync(new WorkQueue { Retry = TimeSpan.FromMilliseconds(20) }, [slow, quick], wait, TimeSpan.FromMilliseconds(200));
         await Task.WhenAll(one, two);
-        Step("Every computer is busy: the read waits and the first to free reads it",
+        Step("Every one is busy: the read waits and the first to free reads it",
             waited.By == "desk-host" && waited.WaitedMs is > 100 and < 400, waited);
 
         var stuck = new Reader("gpu-pc", TimeSpan.FromMilliseconds(500));
@@ -176,7 +210,7 @@ internal static class ReadingPoolCheck
         Step("A computer that doesn't answer is passed over at once", down.By == "desk-host" && down.WaitedMs < 100, down);
 
         var friend = await ReadAsync(new WorkQueue(), [new Reader("friend-pc", work) { OwnersWork = true }, new Reader("desk-host", work)], wait, work);
-        Step("A friend's host named in Companion › Reading is busy with its owner's work: your own computer reads",
+        Step("A friend's host first in the list is busy with its owner's work: your own computer reads",
             friend.By == "desk-host", friend);
         var friendOnly = await ReadAsync(new WorkQueue(), [new Reader("friend-pc", work) { OwnersWork = true }], wait, work);
         Step("Only that friend's host: the read waits for later, never a failure", friendOnly.Refusal == "later", friendOnly);
