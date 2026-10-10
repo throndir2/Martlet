@@ -52,35 +52,19 @@ cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.64.0
+## 🆕 What's new in 0.65.0
 
-- 😤 **A character with moods of its own**: when it gets angry with you or warms up to you, the new **How I react** check-in can change how it takes your touches for a few hours, and you can see and undo every change.
-- 🖐️ **Touches it can put into words**: right after your touches end, Martlet describes what you have been doing, true to the character, and its next reply can draw on it.
-- 😆 **Sounds in Martlet's own voice**: touch zones can laugh, gasp, sigh or giggle with the voices that can make those sounds.
-- 🧰 **Check-ins that act**: a check-in can now use tools such as emotes and gaze, Martlet's next words or reminders, and it can start when you touch the character instead of every few minutes.
-- 📖 **Sharper screen reading**: Martlet can read your screen with PP-OCRv5, which reads small text that Windows OCR misses.
+- 🧵 **Replies that start sooner**: right after each reply, your Thinking pool does what you asked or Martlet promised (reminders, memories, songs and pictures, Discord calls, long thinking and research), so Martlet doesn't stop mid-answer to do it.
+- 🧭 **Smarter pool routing**: each pool machine shows how smart its model is, and **Runs on** sends each kind of job to the machines you choose, so a small model keeps talk fast while a bigger one thinks.
+- 🖥️🖥️ **One model per graphics card**: a PC with two or more NVIDIA cards can think on each card at full speed at once.
+- 📋 **Thinking requests**: a new page shows everything your companions ask the Thinking pool to do, where it ran and how long it took.
+- 💬 **Conversations get their own page** in the side menu, to read, search, edit and delete every conversation.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
 ## 🔮 Coming soon
 
-Already finished and on the way in the next release:
-
-- 🧵 **Replies that start sooner**: after each reply, your Thinking pool takes care of the follow-up work (reminders, memories, songs and pictures, Discord calls, long thinking and research), so Martlet doesn't stop mid-answer to do it.
-- 🖥️🖥️ **One model per graphics card**: a PC with two or more NVIDIA cards can think on each card at full speed at once.
-- 📋 **Thinking requests**: a new page shows everything your companions ask the Thinking pool to do, where it ran and how long it took.
-- 🚦 **A fair, busy pool**: important requests can go first when the pool is full, and failed ones are tried again.
-- 💬 **Conversations get their own page** in the side menu, to read, search, edit and delete every conversation.
-- 🔐 **Pictures stay closer to home**: cloud and other outside pool models get screenshots and recordings only after you allow it.
-- 🧊 **Pools that keep their cool**: a cloud model that limits requests (such as NVIDIA Build's free tier) cools down and tries again instead of failing the job.
-- ❔ **Tidier pages**: long explanations wait behind a small **?**, and check-ins fold their extra settings away.
-
-And still being worked on:
-
-- 🗣️ **Act on what was said**: a check-in right after each exchange does what you asked, so the reply itself carries fewer tools.
-- 🧭 **Smarter pool routing**: each job goes to the pool model that is best at it and has room.
-
-See [Unreleased](CHANGELOG.md#unreleased) in the changelog for the details.
+Everything finished so far shipped in 0.65.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
 
 ## 💬 Things you can say
 
