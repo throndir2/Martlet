@@ -65,6 +65,14 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and loads what was saved there.</summary>
     public void AttachCreationStorage(IGatewayCreationStorage storage) => application.Creations.Attach(storage);
 
+    /// <summary>Keeps this host's creation list of each account (served at /martlet/v1/creations/accounts/{32 hex}) in
+    /// <paramref name="storage"/> and loads the lists saved there. Attach it before <see cref="AttachCreationStorage"/>, which
+    /// keeps the pieces of every list.</summary>
+    public void AttachAccountCreationStorage(IGatewayAccountCreationStorage storage) => application.Creations.AttachAccounts(storage);
+
+    /// <summary>The accounts this host keeps a creation list for.</summary>
+    public IReadOnlyList<Guid> CreationAccounts => application.Creations.Accounts;
+
     /// <summary>Keeps this host's shared Home Assistant connection (served at /martlet/v1/home-assistant) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachHomeAssistantStorage(IGatewayHomeAssistantStorage storage) => application.HomeAssistant.Attach(storage);
