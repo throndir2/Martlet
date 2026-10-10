@@ -52,19 +52,19 @@ cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.65.0
+## 🆕 What's new in 0.66.0
 
-- 🧵 **Replies that start sooner**: right after each reply, your Thinking pool does what you asked or Martlet promised (reminders, memories, songs and pictures, Discord calls, long thinking and research), so Martlet doesn't stop mid-answer to do it.
-- 🧭 **Smarter pool routing**: each pool machine shows how smart its model is, and **Runs on** sends each kind of job to the machines you choose, so a small model keeps talk fast while a bigger one thinks.
-- 🖥️🖥️ **One model per graphics card**: a PC with two or more NVIDIA cards can think on each card at full speed at once.
-- 📋 **Thinking requests**: a new page shows everything your companions ask the Thinking pool to do, where it ran and how long it took.
-- 💬 **Conversations get their own page** in the side menu, to read, search, edit and delete every conversation.
+- 📋 **A list of machines for every job**: Voice, Listening, Thinking, Vision, Hearing, Pictures, Reading, Singing and Lip-sync each show the PCs, graphics cards and cloud providers that do the job, in your order, each with its own On box and settings.
+- 🤝 **Busy helpers hand off**: when the first machine is busy or doesn't answer, the next one speaks, listens, draws, sings, reads or looks instead, so jobs keep coming.
+- 🔎 **See what each Thinking request answered** on the Thinking requests page, beside its details.
+- 😊 **Emotes in the right place**: Martlet measures a new character's eyes, cheeks and mouth, so blushes and heart eyes land where they should.
+- 🎙️ **Always listening keeps listening** when Windows only reports a property change on your microphone, and the log says why a microphone stopped.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
 ## 🔮 Coming soon
 
-Everything finished so far shipped in 0.65.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
+Everything finished so far shipped in 0.66.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
 
 ## 💬 Things you can say
 
