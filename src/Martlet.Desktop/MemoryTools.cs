@@ -63,9 +63,10 @@ internal static class MemoryTools
     private static readonly string[] Everyone = ["everyone", "everybody", "no one", "noone", "nobody", "none", "general", "anyone"];
     private static readonly string[] Me = ["me", "i", "myself", "user", "the user", "speaker", "the speaker"];
 
-    /// <param name="speaker">The voice speaking now, whose a fact is for "me" (else the owner's voice).</param>
+    /// <param name="speaker">The voice speaking now, whose a fact is for "me" (else <paramref name="yours"/>: the signed-in
+    /// person's voice).</param>
     internal static async Task<MemoryToolOutcome> RunAsync(DesktopMemoryService service, Guid configurationRevision, string argumentsJson,
-        VoiceRoster? roster, KnownVoice? speaker, CancellationToken token)
+        VoiceRoster? roster, KnownVoice? speaker, CancellationToken token, KnownVoice? yours = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         JsonObject? arguments;
@@ -79,7 +80,7 @@ internal static class MemoryTools
         string? voice = null;
         if (person is not null)
         {
-            var (resolved, problem) = Person(person, roster, speaker);
+            var (resolved, problem) = Person(person, roster, speaker, yours);
             if (problem is not null) return Refused(problem);
             voice = resolved;
         }
@@ -230,14 +231,15 @@ internal static class MemoryTools
         return new(new(matches.Length == 0 ? json + "\nNothing matches." : json), $"found {matches.Length}", []);
     }
 
-    /// <summary>Whose a fact is from what the model wrote: (voice ID or null for everyone, null) or (null, why not).</summary>
-    internal static (string? Voice, string? Problem) Person(string text, VoiceRoster? roster, KnownVoice? speaker)
+    /// <summary>Whose a fact is from what the model wrote: (voice ID or null for everyone, null) or (null, why not). "Me" is the
+    /// <paramref name="speaker"/>, else <paramref name="yours"/> (the signed-in person's voice, <see cref="LocalVoices.Yours"/>).</summary>
+    internal static (string? Voice, string? Problem) Person(string text, VoiceRoster? roster, KnownVoice? speaker, KnownVoice? yours = null)
     {
         var name = text.Trim().Trim('"', '\'', '[', ']').Trim();
         if (Everyone.Contains(name, StringComparer.OrdinalIgnoreCase)) return (null, null);
         var live = roster?.Live ?? [];
         if (Me.Contains(name, StringComparer.OrdinalIgnoreCase))
-            return (speaker?.Id ?? live.FirstOrDefault(v => v.Owner)?.Id, null);
+            return (speaker?.Id ?? yours?.Id, null);
         var tagged = name.Length > 1 && name[0] is 'V' or 'v' && int.TryParse(name[1..], NumberStyles.None, CultureInfo.InvariantCulture, out var number)
             ? live.FirstOrDefault(v => v.Number == number) : null;
         if (tagged is not null) return (tagged.Id, null);

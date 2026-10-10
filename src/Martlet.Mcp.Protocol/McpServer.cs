@@ -2543,6 +2543,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 roster = new
                 {
                     state = "loaded", voices = list.Live.Count, named = list.Live.Count(v => v.Named), owner = list.Live.Count(v => v.Owner),
+                    // Voices linked to a person's account (docs/ACCOUNTS.md, Voices), how many accounts they link to, and how many
+                    // are the account signed in on this PC (accounts\session.json); null before accounts.
+                    linked = list.Live.Count(v => v.Account is not null),
+                    accounts = list.Live.Select(v => v.Account).OfType<Guid>().Distinct().Count(),
+                    yours = SignedInAccount(directory) is { } signedIn ? list.Live.Count(v => v.Account == signedIn) : (int?)null,
                     withLearnedNames = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation)),
                     // Voices that learned one of the companion's own names; Martlet drops it when it next hears them.
                     withCompanionName = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation &&
@@ -2586,6 +2591,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { counts = []; }
             return new { keep = Choice("voice-clips.txt") ?? "on (default)", voices = counts.Length, clips = counts.Sum() };
         }
+    }
+
+    /// <summary>The account signed in on this device (accounts\session.json), or null before accounts or when unreadable.</summary>
+    private static Guid? SignedInAccount(string directory)
+    {
+        try { return Martlet.Core.Accounts.AccountSessionState.Load(directory)?.Current; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { return null; }
     }
 
     /// <summary>voices_status's sharing: the voice list syncs with every paired host of yours (hosts.json entries that aren't
@@ -4228,7 +4240,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 everyone = facts.Count(f => f.Voice is null),
                 voices = owned.OfType<Martlet.Core.Speakers.KnownVoice>().GroupBy(v => v.Id, StringComparer.Ordinal)
                     .OrderBy(g => g.First().Number)
-                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, facts = g.Count() }).ToArray(),
+                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, linked = g.First().Account is not null, facts = g.Count() }).ToArray(),
                 forgottenVoices = owned.Count(v => v is null)
             });
     }

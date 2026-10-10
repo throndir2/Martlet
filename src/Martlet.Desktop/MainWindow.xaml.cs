@@ -205,6 +205,7 @@ public partial class MainWindow : ThemedWindow
         InitializeFriends();
         InitializeNearby();
         InitializeVoiceSync();
+        InitializeVoiceLinks();
         InitializeSpeakingVoices();
         InitializeCharacterModels();
         InitializeCreations();
@@ -343,7 +344,7 @@ public partial class MainWindow : ThemedWindow
     {
         if (memory is null || closing || model?.IsRunning == true) return;
         memoryWindowOpen = true;
-        try { new MemoryWindow(memory, setupOperations, voices: () => localVoices.Roster, person: person) { Owner = this }.ShowDialog(); }
+        try { new MemoryWindow(memory, setupOperations, voices: () => localVoices.Roster, person: person, yours: localVoices.IsYours) { Owner = this }.ShowDialog(); }
         finally { memoryWindowOpen = false; }
         QueueMemorySync();
         await RefreshAsync();
