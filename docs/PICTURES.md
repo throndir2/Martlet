@@ -76,7 +76,7 @@ Each picture tries the places in order and draws on the first that is free:
 - With one place, it draws there exactly as before, with no extra request.
 
 Pictures go through Martlet's queue for shared work (lane `pictures`, each place by its key, such as `host:m3-host`), so the
-desktop log says when a picture went elsewhere (`Sharing work: pictures went to host:m3-host (1 busy).`, `Pictures: drawn
+desktop log says when a picture went elsewhere (`Sharing work: Pictures went to host:m3-host (1 busy).`, `Pictures: drawn
 on m3-host's Pictures role, place 2 in the Pictures list ...`). The computer that draws holds its place against background
 thinks while it draws, and each computer frees its own graphics card three minutes after its last picture. The places'
 order is kept as it is: a computer whose model is still loaded is not moved first.
