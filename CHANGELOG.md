@@ -12,6 +12,10 @@ Each release's section here is also its notes on GitHub.
 
 - Martlet now treats background sounds and voices as context instead of ignoring them, and answers someone in your call or room who clearly talks to it. ([#711](https://github.com/throndir2/Martlet/pull/711))
 
+### Fixed
+
+- A computer in the Thinking pool whose model also answers you now says why pool jobs stay off it (your replies would wait), and no longer shows a wrong "shares the graphics card" warning. ([#713](https://github.com/throndir2/Martlet/pull/713))
+
 ## [0.65.0] - 2026-10-09
 
 ### Added
