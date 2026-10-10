@@ -117,4 +117,50 @@ public static class PicturePoolMembers
 
     /// <summary>The custom workflow file a member names, or the one older choices use.</summary>
     public static string WorkflowFile(PoolMember member) => member?.Setting(PoolSettingKeys.File) ?? PicturesSettings.WorkflowFile;
+
+    /// <summary>The file a member's own custom workflow is saved in (pictures-workflow-&lt;10 hex digits of its key&gt;.json), so
+    /// each place in the list can run its own workflow.</summary>
+    public static string WorkflowFileFor(PoolMember member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(member.Key));
+        return $"pictures-workflow-{Convert.ToHexStringLower(hash)[..10]}.json";
+    }
+
+    /// <summary>A cloud provider's name in plain words ("OpenRouter", "NVIDIA Build").</summary>
+    public static string ProviderName(string? provider) => provider switch
+    {
+        OpenRouter => "OpenRouter",
+        NvidiaBuild => "NVIDIA Build",
+        _ => provider ?? "a cloud provider"
+    };
+
+    /// <summary>Where the member draws, in plain words: "this PC's Pictures role", "m3-host's Pictures role", "ComfyUI at
+    /// http://lab:8188", "OpenRouter (google/...)".</summary>
+    public static string Describe(PoolMember member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return member.Kind switch
+        {
+            PoolMemberKind.ThisPc => "this PC's Pictures role",
+            PoolMemberKind.Computer => $"{member.HostId}'s Pictures role",
+            PoolMemberKind.Address => $"ComfyUI at {member.Address}",
+            _ => ProviderName(member.Provider) + (member.Model is null ? "" : $" ({member.Model})")
+        };
+    }
+
+    /// <summary>A ComfyUI member's workflow in plain words: "Z-Image Turbo", "checkpoint dreamshaper_8.safetensors" or "your
+    /// own workflow"; null for a cloud member.</summary>
+    public static string? WorkflowText(PoolMember member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        if (member.Kind == PoolMemberKind.Cloud) return null;
+        return Workflow(member.Setting(PoolSettingKeys.Workflow)) switch
+        {
+            PictureWorkflow.Checkpoint => "checkpoint " + (member.Setting(PoolSettingKeys.Checkpoint) ?? "(none chosen)"),
+            PictureWorkflow.Custom => "your own workflow",
+            PictureWorkflow.ZImageTurbo => "Z-Image Turbo",
+            _ => "an unknown workflow"
+        };
+    }
 }
