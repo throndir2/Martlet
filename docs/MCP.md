@@ -1314,6 +1314,16 @@ voices (`on`), what Martlet may do with Home Assistant (`control`,
 key digests, personality, prompt, lorebook or emote text, or the Voice ID
 voiceprint, and contacts nothing.
 
+With [accounts](ACCOUNTS.md#account-settings), each setting also has a `scope`
+(`household` or `account`), and `here` can be `adopting`: the files don't hold
+the signed-in account's value yet (a switch waits for it). `account` describes
+the account whose settings the data folder's files hold
+(`accounts\working-copy.json`): its `id` (32 hex digits), `filesSince`, and
+its own copy in `accounts\<id>\shared-settings.json` (`state`, `revision`,
+`count` and `settings` with the same fields). `accounts` lists `filesHold` and
+the account `folders` on this PC (`id`, `settingsCopy`), IDs only. Both are
+null or empty for a data folder from before accounts.
+
 `memory_sync_status` reads [one memory on every computer](MEMORY.md#one-memory-on-every-computer)
 from a data directory (optional absolute `dataDirectory`, default the current
 user's; the disposable one in `Invoke-MartletMcp.ps1`): `sync` as above,
@@ -1450,8 +1460,17 @@ Parakeet model a new computer lacks (it waits, records nothing, then follows); a
 new computer taking everything without its defaults overriding anything; the
 Thinking fallback with its own key, turned off again (the key removed); lorebooks;
 no key in any desktop file while the hosts' private copy holds them and every
-copy ends the same; and an unsigned request refused (HTTP 401). Loopback only;
-the folder is deleted and the real vault is never touched.
+copy ends the same; and an unsigned request refused (HTTP 401). Then a fourth
+simulated desktop on this Martlet (`lab-desktop-d`) keeps each person's
+settings apart ([account settings](ACCOUNTS.md#account-settings)): the owner
+(Sam) signs in and Sam's own copy takes the personality the older desktops
+share; edits on older desktop B and on D reach each other through the owner's
+bridge; Alex signs in and the files take the default personality with nothing
+of Sam's in Alex's copy; Alex's personality goes only to Alex's copy while the
+household copy and B keep Sam's; back to Sam, Sam's personality returns and the
+hosts keep both people's copies apart; a copy with an API key is refused before
+sending and an unsigned request for a person's settings is refused. Loopback
+only; the folder is deleted and the real vault is never touched.
 
 `network_status` reads the [Martlet network](NETWORK.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `state`
@@ -5050,8 +5069,10 @@ pool*) read; changing one saves `thinking-pool.json`, so it needs
 `--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
-from a data directory's `shared-settings.json` (optional absolute
-`dataDirectory`): `computers` with a reminders entry, `unreadable` entries
+from the `shared-settings.json` of the account signed in on a data directory
+(`accounts\<id>`, named by `accounts\working-copy.json`; the data directory's
+own for a folder from before accounts; optional absolute `dataDirectory`):
+`account` and `source` (which copy it read), `computers` with a reminders entry, `unreadable` entries
 (a newer Martlet's), `pending`, and each reminder's `id`, `text`, `due`, `set`,
 `setOn`, `state` (*Pending*, *Done*, *Canceled*, *Missed*), `settledBy`,
 `settledAt`, `dueIn` and `marks` (`kind` *Bid* with `idleSeconds`, *Claim*,
