@@ -1699,7 +1699,26 @@ pairing as **Join with an invite** does (`hosts.json` with `access` `friend`),
 so a desktop started on that data directory afterwards runs with a shared host;
 `shareWithFriend` `true` (with `mode` `owner`) has the lab's own admin desktop
 share the host with the simulated friend from the start, so the friend's
-computer is in the host's network answer from the desktop's first sync. It needs
+computer is in the host's network answer from the desktop's first sync. Mode
+`account` (`SignInLab.RunAccountAsync`, headless: no desktop is involved and the
+data directory only takes `signin-lab.json`) rehearses [household accounts on a
+host](NETWORK.md#household-accounts-on-a-host) and [host
+attestations](NETWORK.md#proving-an-account-host-attestations): a gateway
+(`lab-account-host`) with an ECDSA P-256 TLS key like every Martlet host; its
+owner (`lab-owner`) pairs, starts a network with it and sets up the owner login
+(its account derived from the network), Sam's login (`5a6e…005a`, password and
+authenticator), Alex's (`a1e4…00a1`, password only), the lab OpenID Connect
+provider with `lab-user-42` linked to Sam and `lab-friend-7` as a friend. Each
+Prove sign-in (`/signin/prove`: the owner, Sam, Alex and Sam through the
+provider) and a laptop's sign-in as Sam with a recovery code must give an
+attestation that `AccountAttestation.Check` accepts against the owner's roster;
+a friend's identity (`signin.no_account`), a wrong password (`signin.invalid`)
+and Alex adding a computer (`signin.needs_authenticator`) must be refused, and a
+changed attestation (`BadSignature`), an expired one (`Expired`) and another key
+than the roster's pin (`KeyNotPinned`) must fail. The start answer and `status`
+carry `ok`, the 14 `checks` (`name`, `ok`, `detail`) and the `attestations`
+(account, device, login, algorithm, times, check, text length). Example: start
+with `mode` `account`, then check `"ok":true`. It needs
 `Invoke-MartletMcp.ps1 -LabCredentials`, which points `MARTLET_LAB_CREDENTIALS`
 of the desktop and MCP server at a `lab-credentials` folder in the data
 directory, so pairing secrets go there (plaintext, thrown away with the folder)
