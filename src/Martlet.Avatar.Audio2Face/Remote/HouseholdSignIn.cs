@@ -62,7 +62,9 @@ public sealed record HouseholdProviderState(HouseholdProvider Provider, IReadOnl
 /// <see cref="Problem"/>.</summary>
 public sealed record HouseholdChangeResult(string HostId, HostSignInSettings? Settings, string? Problem)
 {
-    public bool Saved => Settings is not null;
+    /// <summary>The host that checked a linked sign-in and saved it then (no settings read back).</summary>
+    public bool LinkedHere { get; init; }
+    public bool Saved => Settings is not null || LinkedHere;
 }
 
 /// <summary>A provider login of a household account (docs/ACCOUNTS.md): an identity at a household provider that the hosts in
@@ -73,9 +75,9 @@ public sealed record HouseholdLogin(string Provider, string Subject, string? Lab
     public override string ToString() => Label is { Length: > 0 } ? $"{Label} ({Provider})" : $"{Subject} ({Provider})";
 }
 
-/// <summary>What linking a login did: the identity (with the account), whether a host already had it as that account's login,
-/// and what each host answered.</summary>
-public sealed record HouseholdLinkResult(HostSignInIdentity Identity, bool AlreadyLinked, IReadOnlyList<HouseholdChangeResult> Results);
+/// <summary>What linking a login did: the identity (with the account) and what each host answered (the host that checked it
+/// first, <see cref="HouseholdChangeResult.LinkedHere"/>).</summary>
+public sealed record HouseholdLinkResult(HostSignInIdentity Identity, IReadOnlyList<HouseholdChangeResult> Results);
 
 /// <summary>
 /// Sign-in providers for the whole household (docs/NETWORK.md): an admin sets a provider up once and the PC where it was set up
@@ -248,12 +250,13 @@ public static class HouseholdSignIn
     }
 
     /// <summary>Why <paramref name="login"/> can't be unlinked from <paramref name="account"/>, or null: an account keeps at least
-    /// one login that proves it on another computer (a Martlet password or another provider login).</summary>
-    public static string? UnlinkRefusal(IReadOnlyDictionary<string, HostSignInSettings> read, Guid account, HouseholdLogin login) =>
-        HasPassword(read, account) || Logins(read, account).Any(l => (l.Provider, l.Subject) != (login.Provider, login.Subject))
+    /// one login (<paramref name="keepsAnotherLogin"/>: one the account directory lists, such as a Windows login; or a Martlet
+    /// password or another provider login on the hosts).</summary>
+    public static string? UnlinkRefusal(IReadOnlyDictionary<string, HostSignInSettings> read, Guid account, HouseholdLogin login,
+        bool keepsAnotherLogin = false) =>
+        keepsAnotherLogin || HasPassword(read, account) || Logins(read, account).Any(l => (l.Provider, l.Subject) != (login.Provider, login.Subject))
             ? null
-            : $"{login.Label ?? login.Subject} ({login.Provider}) is the only sign-in that proves this account on another computer. Add a " +
-              "password or link another sign-in first.";
+            : $"{login} is this account's only sign-in. Add a password or link another sign-in first, so the account keeps a way in.";
 
     /// <summary>The settings change that makes an identity a login of <paramref name="account"/> on a host (an allowed member
     /// identity with that account; docs/ACCOUNTS.md).</summary>
@@ -269,55 +272,51 @@ public static class HouseholdSignIn
         ["action"] = "disallow", ["provider"] = provider, ["subject"] = subject
     };
 
+    /// <summary>The settings change that allows, on another host, a provider identity as the login of the account
+    /// <paramref name="attested"/> names (<c>link-login</c>, W13): the attestation is the host's statement, from the Prove sign-in
+    /// that linked it, that the identity proved that account on this computer. A member computer may send it for an account it acts
+    /// for; the host checks the attestation against its roster.</summary>
+    public static JsonObject LinkLoginChange(AccountAttestation attested, string? label)
+    {
+        ArgumentNullException.ThrowIfNull(attested);
+        return new()
+        {
+            ["action"] = "link-login", ["attestation"] = JsonNode.Parse(attested.Write()), ["label"] = label
+        };
+    }
+
     /// <summary>
-    /// Links a provider login to the account this computer proved (<paramref name="proved"/>, a fresh attestation from a Prove
-    /// sign-in on this computer, checked here against <paramref name="roster"/>): the person signs in with
-    /// <paramref name="provider"/> in the browser through the host of <paramref name="at"/>, which checks the identity with the
-    /// provider (a Prove sign-in, so it issues no credential), and every host in <paramref name="hosts"/> then allows that identity
-    /// as a login of the account. An identity the host doesn't allow yet is refused there and listed under the host's refused
-    /// sign-ins with this computer's device ID; that entry, read back over this computer's signed connection, names it. An
-    /// identity that already proves another account (or is a friend's) is refused with <c>signin.login_taken</c>.
+    /// Links a provider login to <paramref name="account"/>, which this computer proved (<paramref name="proved"/>, a fresh
+    /// attestation from a Prove sign-in on this computer, checked here against <paramref name="roster"/>) or, with no attestation,
+    /// which the caller vouches for (an account that has no login that proves it elsewhere yet and that this Windows login signs in
+    /// as on this computer: its Windows login is checked by this computer). The person signs in with
+    /// <paramref name="provider"/> in the browser through the host of <paramref name="at"/> in a Prove sign-in that asks to link
+    /// (<c>link_account_id</c>): the host checks the identity with the provider, allows it as the account's login when it allows it
+    /// for nobody yet, and attests the account with that login. Every other host in <paramref name="hosts"/> then takes the
+    /// attestation (<see cref="LinkLoginChange"/>). An identity that already proves another account, or is a friend's, is refused
+    /// with <c>signin.login_taken</c>; a computer that may not act for the account, with <c>signin.denied</c>.
     /// </summary>
-    public static async Task<HouseholdLinkResult> LinkInBrowserAsync(Audio2FaceHostConnection at, AccountAttestation proved,
+    public static async Task<HouseholdLinkResult> LinkInBrowserAsync(Audio2FaceHostConnection at, Guid account, AccountAttestation? proved,
         Martlet.Core.Network.NetworkRoster roster, string provider, Action<string> openBrowser, TimeSpan timeout, IEnumerable<string> hosts,
         Func<string, Audio2FaceHostConnection> connect, int? redirectPort = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(at);
-        ArgumentNullException.ThrowIfNull(proved);
         ArgumentNullException.ThrowIfNull(roster);
         var device = at.Pairing.DeviceId;
-        var checkedAt = DateTimeOffset.UtcNow;
-        if (proved.DeviceId != device || proved.Check(roster, checkedAt) != Martlet.Core.Accounts.AccountAttestationCheck.Valid)
+        if (proved is not null && (proved.DeviceId != device || proved.AccountId != account ||
+            proved.Check(roster, DateTimeOffset.UtcNow) != AccountAttestationCheck.Valid))
             throw new Audio2FaceHostException("signin.prove_first", "Prove it's you first (your password, or a sign-in already linked), then link again.");
-        var started = DateTimeOffset.UtcNow;
-        HostSignInIdentity who;
-        var already = false;
-        try
-        {
-            var proof = await at.ProveInBrowserAsync(provider, openBrowser, timeout, redirectPort: redirectPort, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            if (proof.AccountId != proved.AccountId)
-                throw new Audio2FaceHostException("signin.login_taken", $"{proof.Identity} already signs in to another account of your household. " +
-                    "Unlink it there first.");
-            who = proof.Identity;
-            already = true;
-        }
-        catch (Audio2FaceHostException error) when (error.Code == "signin.no_account")
-        {
-            throw new Audio2FaceHostException("signin.login_taken", "That sign-in is a friend's on this host, so it can't be a login of your account.");
-        }
-        catch (Audio2FaceHostException error) when (error.Code == "signin.not_allowed")
-        {
-            // The host checked the identity with the provider and listed it as refused for this computer: read it back.
-            var settings = await at.ReadSignInSettingsAsync(cancellationToken).ConfigureAwait(false);
-            var refused = settings.Refused.Where(r => r.Provider == provider && r.DeviceId == device && r.EnrolledAt >= started.AddMinutes(-1))
-                .OrderByDescending(r => r.EnrolledAt).FirstOrDefault()
-                ?? throw new Audio2FaceHostException("response.invalid", "The host checked the sign-in but didn't say whose it was. Try again.");
-            who = new HostSignInIdentity(refused.Provider, refused.Subject, refused.Label);
-        }
-        var results = await SendAsync(hosts.Append(at.Pairing.HostId), connect, _ => LinkChange(who.Provider, who.Subject, who.Label, proved.AccountId),
-            cancellationToken).ConfigureAwait(false);
-        return new(who with { AccountId = proved.AccountId }, already, results);
+        var proof = await at.ProveInBrowserAsync(provider, openBrowser, timeout, redirectPort: redirectPort, cancellationToken: cancellationToken,
+            linkAccount: account).ConfigureAwait(false);
+        if (proof.AccountId != account)
+            throw new Audio2FaceHostException("signin.login_taken", $"{proof.Identity} already signs in to another account of your household. " +
+                "Unlink it there first.");
+        if (proof.Attestation.Check(roster, DateTimeOffset.UtcNow) != AccountAttestationCheck.Valid || proof.Attestation.DeviceId != device)
+            throw new Audio2FaceHostException("response.invalid", "The host's answer to the sign-in didn't check out. Try another host.");
+        var others = hosts.Where(h => h != at.Pairing.HostId).ToArray();
+        var results = await SendAsync(others, connect, _ => LinkLoginChange(proof.Attestation, proof.Identity.Label), cancellationToken).ConfigureAwait(false);
+        var linkedAt = new HouseholdChangeResult(at.Pairing.HostId, null, null) { LinkedHere = true };
+        return new(proof.Identity with { AccountId = account }, [linkedAt, .. results]);
     }
 
     /// <summary>Removes a login of an account from every host in <paramref name="hosts"/>.</summary>

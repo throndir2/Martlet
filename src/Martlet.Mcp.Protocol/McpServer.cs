@@ -549,7 +549,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(lab-host-a and lab-host-b, both routed to the lab issuer) paired with that desktop; the lab's admin desktop set the " +
             "household provider authentik up on lab-host-a only (a public client), so the desktop adds it to lab-host-b by itself " +
             "when it reads its hosts' sign-in settings, and Save provider in Sign-in from outside saves it on both; status says " +
-            "which hosts have it (providerOnHosts) and keep a client secret (clientSecretOnHosts), never the secret. With joinDesktop " +
+            "which hosts have it (providerOnHosts) and keep a client secret (clientSecretOnHosts), never the secret; once both are bound, " +
+            "acting for that desktop it links a provider login to Sam, and two new computers join as Sam's (newDeviceMember, " +
+            "secondDeviceMember); it answers the desktop's own browser sign-ins (MARTLET_LAB_BROWSER: first as the desktop's person, for " +
+            "the Account page's Link, then as Sam, for Sign in as someone else). With joinDesktop " +
             "true (mode \"account\"; the desktop of dataDirectory and -LabCredentials): that desktop is a new computer that joins a " +
             "household as Sam's: the lab host belongs to a simulated owner who linked the lab provider login to Sam, the lab signs the " +
             "desktop in as Sam for it (as Join with an invite does, under its device ID: hosts.json and joined-account.json), and once " +

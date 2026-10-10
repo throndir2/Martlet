@@ -340,6 +340,10 @@ public static class HostSignInClient
             "That sign-in isn't linked to a Martlet account on the host. Sign in with a login of your own account."),
         "signin.no_network" => new Audio2FaceHostException(code,
             "The host isn't in your Martlet network yet, so it can't vouch for an account. Pair it with a computer in your network first."),
+        "signin.login_taken" => new Audio2FaceHostException(code,
+            "That sign-in is already another account's login in your household, or a friend's. Unlink it there first, or use another one."),
+        "signin.denied" => new Audio2FaceHostException(code,
+            "This PC may not change that on the host. Sign in on this PC as the account first, or ask an admin of your household."),
         "signin.unavailable" => new Audio2FaceHostException(code, "Signing in that way isn't set up on this host."),
         "signin.expired" => new Audio2FaceHostException(code, "That sign-in took too long. Start again."),
         "auth.throttled" or "auth.locked" or "auth.rate" => new Audio2FaceHostException(code,
@@ -496,7 +500,7 @@ public sealed partial class Audio2FaceHostConnection
     /// the proof and answers its signed attestation that the account proved itself on this computer, valid for
     /// <paramref name="lifetime"/> (ten minutes when null; one minute to 30 days). Issues no new credential.</summary>
     public async Task<HostAccountProof> ProveAsync(HostSignInAttempt attempt, JsonObject proof, TimeSpan? lifetime = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Guid? linkAccount = null)
     {
         ArgumentNullException.ThrowIfNull(attempt);
         ArgumentNullException.ThrowIfNull(proof);
@@ -505,6 +509,8 @@ public sealed partial class Audio2FaceHostConnection
             ["protocol_version"] = new JsonObject { ["major"] = 2, ["minor"] = 0 }, ["attempt_id"] = attempt.AttemptId, ["proof"] = proof.DeepClone()
         };
         if (lifetime is { } wanted) change["lifetime_seconds"] = (int)wanted.TotalSeconds;
+        // W13: a provider identity the host doesn't allow yet becomes a login of this account (docs/ACCOUNTS.md).
+        if (linkAccount is { } link) change["link_account_id"] = link.ToString();
         var body = JsonSerializer.SerializeToUtf8Bytes(change);
         try
         {
@@ -545,7 +551,7 @@ public sealed partial class Audio2FaceHostConnection
     /// <summary>A Prove sign-in at a provider in the browser, as <see cref="HostSignInClient.SignInInBrowserAsync"/> does for
     /// joining.</summary>
     public async Task<HostAccountProof> ProveInBrowserAsync(string provider, Action<string> openBrowser, TimeSpan timeout, TimeSpan? lifetime = null,
-        int? redirectPort = null, CancellationToken cancellationToken = default)
+        int? redirectPort = null, CancellationToken cancellationToken = default, Guid? linkAccount = null)
     {
         ArgumentNullException.ThrowIfNull(openBrowser);
         var (verifier, challenge) = HostSignInClient.NewPkce();
@@ -565,7 +571,7 @@ public sealed partial class Audio2FaceHostConnection
             throw new Audio2FaceHostException("signin.invalid", $"The sign-in was canceled or refused in the browser ({HostSignInClient.Clean(error)}).");
         var answer = new JsonObject();
         foreach (var (name, value) in query) answer[name] = value;
-        return await ProveAsync(attempt, new JsonObject { ["query"] = answer, ["code_verifier"] = verifier }, lifetime, cancellationToken)
+        return await ProveAsync(attempt, new JsonObject { ["query"] = answer, ["code_verifier"] = verifier }, lifetime, cancellationToken, linkAccount)
             .ConfigureAwait(false);
     }
 
@@ -639,7 +645,10 @@ public sealed partial class Audio2FaceHostConnection
                         $"{pairing.HostId} runs an older Martlet that can't share with friends yet. Update it first."),
                 "signin.invalid" => new Audio2FaceHostException(code, "The authenticator code didn't match. Check the app shows this host's entry and try the current code."),
                 "signin.weak_password" => new Audio2FaceHostException(code, "Use a password of at least 12 characters."),
-                "signin.denied" => new Audio2FaceHostException(code, "Only a computer in your Martlet network can change this host's sign-in."),
+                "signin.denied" => new Audio2FaceHostException(code, "Only a computer in your Martlet network can change this host's sign-in, and only one " +
+                    "signed in as an owner or admin of your household (or as the account itself, for its own sign-ins)."),
+                "signin.login_taken" => new Audio2FaceHostException(code,
+                    "That sign-in is already another account's login in your household, or a friend's. Unlink it there first."),
                 "signin.unavailable" => new Audio2FaceHostException(code, $"{pairing.HostId} doesn't keep sign-in settings yet; update its host service."),
                 _ => Audio2FaceHostClient.Remote(root)
             };

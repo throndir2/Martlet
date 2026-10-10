@@ -1530,9 +1530,12 @@ changes or proves something, so it needs `--allow-ui-effects`: the password
 `AccountAuthenticatorRemove`), `AccountLinkWindows`, `AccountUnlinkWindows`,
 `AccountAskPassword`, `AccountPin`, `AccountPinSet`, `AccountPinRemove`,
 `AccountHello`, `AccountEncrypt`, `AccountRemember`, `AccountLockNow`,
-`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`; Unlock's `UnlockPin`,
+`AccountSignOut`, `AccountMergeChoice`, `AccountMerge`, and (W13) each
+household provider's **Link** (`AccountLinkProvider-<provider ID>`) and each
+linked login's **Unlink** (`AccountUnlinkLogin-<provider>-<subject>`); Unlock's `UnlockPin`,
 `UnlockPassword`, `UnlockSubmit`, `UnlockHello`, `UnlockSignIn`; Prove's
-`ProveHost`, `ProveMethod-martlet`, `ProveUser`, `ProvePassword`, `ProveCode`,
+`ProveHost`, `ProveMethod-martlet`, each household provider
+(`ProveMethod-<provider ID>`, signed in in the browser), `ProveUser`, `ProvePassword`, `ProveCode`,
 `ProveRemember`, `ProveSubmit`; the account menu's `AccountSignInOther`
 and `AccountLock`; *Continue as ...?* (`ContinueAsDialog`: `ContinueAsYes`,
 `ContinueAsNo`) and *Choose an account* (`AccountChooseDialog`:
@@ -1541,7 +1544,9 @@ while one of these windows shows at start, before the main window (Unlock,
 *Continue as*, *Choose an account*, Prove). `ui_snapshot` returns these values: `AccountName`,
 `AccountLogins`, `AccountLockState`, `AccountUnlockMethods`,
 `AccountPasswordState`, `AccountWindowsState`, `AccountHelloState`,
-`AccountEncryptState`, `AccountStatus`, `UnlockAccountName`, `UnlockStatus`,
+`AccountEncryptState`, `AccountStatus`, `AccountProviderLogins` (the linked
+provider logins, *Linked: Authentik (lab) as me@example.net.*, and the result
+of the last Link or Unlink), `UnlockAccountName`, `UnlockStatus`,
 `ProveTitle` and `ProveStatus`; never the user name, the authenticator key
 (`AccountAuthenticatorSecret`) or the recovery codes (`AccountRecoveryCodes`).
 
@@ -1874,12 +1879,15 @@ computer each is. `status` returns `phase` (`done` once both are members), `fail
 `providers` (per host: `Id`, `Kind`, `Name`, `HasClientSecret`; never the
 secret), `providerOnHosts`, `clientSecretOnHosts`, `linkedLogins` (per host:
 `provider`, `subject`, `account`), `link` (`account`, `provedWith`,
-`identity`, `alreadyLinked`, `savedOn`, `problems`), `providerProve`,
+`identity`, `savedOn`, `problems`), `providerProve`,
 `accountSignIn` and `passwordSignIn` (`account`, `check` or `attestation`,
 `verified`), `joinChoices`, `joinAttested` (the join request's `sign_in` as the
 desktop's client read it, with `account`), `newDeviceMember`,
-`newDeviceWasMember`, `newDeviceWaiting`, `secondDeviceMember`
-and `events`. Example (with `-Desktop -LabCredentials -AllowUiEffects`): start
+`newDeviceWasMember`, `newDeviceWaiting`, `secondDeviceMember`, `browsedAs`
+(whom the lab's simulated browser signed in as for the desktop) and `events`.
+The desktop hands its browser sign-in pages to the lab (`MARTLET_LAB_BROWSER`):
+the first one signs in as the desktop's own person (`lab-desktop-7`,
+`owner@example.net`), the next ones as Sam (`lab-user-42`). Example (with `-Desktop -LabCredentials -AllowUiEffects`): start
 with `mode` `account` and `household` `true`, click `TourSkip`, `NavDevices`
 and `RefreshDevices` (the desktop reads `hosts.json` again), poll
 `network_status` until `"state":"member"` and `signin_lab status` until
@@ -1895,7 +1903,20 @@ open Add a computer › `HostsStepRoles` › `HostSignInSettings`, poll
 `SignInProviderSave`, poll `SignInSettingsStatus` until *Saved Authentik (lab)
 on lab-host-a and lab-host-b.*, `signin_lab status` until
 `"clientSecretOnHosts":["lab-host-a","lab-host-b"]` and `network_status` until
-`"keptHere":true`. With `joinDesktop` `true` (mode `account`, not with
+`"keptHere":true`. The Account page: once `accounts_status` reads
+`"pending":0`, click `AccountButton` and `AccountOpen`, poll `ui_snapshot` until
+`AccountProviderLogins` reads *No sign-in from a provider is linked*, click
+`AccountLinkProvider-authentik` (the desktop's account has only its Windows
+login, so no Prove first; the lab browser signs in as `owner@example.net`),
+poll until *Linked owner@example.net (authentik) on lab-host-a and lab-host-b.*,
+`signin_lab status` until `lab-desktop-7` is in `linkedLogins` and
+`accounts_status` until the account's `logins` list `oidc`; click
+`AccountUnlinkLogin-authentik-lab-desktop-7` and `ConfirmationYes`, poll until
+*Unlinked owner@example.net ...* and `"logins":["windows"]`. Signing in with a
+provider: click `AccountClose`, `AccountButton`, wait for and click
+`AccountSignInOther`, then `ProveMethod-authentik` and `ProveSubmit` (the lab
+browser signs in as Sam) and poll `accounts_status` until `current` is Sam
+(`5a6e…005a`). With `joinDesktop` `true` (mode `account`, not with
 `household`; `SignInAccountLab.RunJoinAsync`) the desktop of the data
 directory is a new computer that joins a household as Sam's: the gateway
 (`lab-home-host`, ECDSA) belongs to a simulated owner (`lab-owner`) who started

@@ -117,6 +117,7 @@ public sealed class HouseholdSignInTests
 
         // Sam's only login that proves Sam elsewhere can't go; with a Martlet password (or another login) it can.
         Assert.Contains("only sign-in", HouseholdSignIn.UnlinkRefusal(read, Sam, sams));
+        Assert.Null(HouseholdSignIn.UnlinkRefusal(read, Sam, sams, keepsAnotherLogin: true));
         Assert.False(HouseholdSignIn.HasPassword(read, Sam));
         Assert.True(HouseholdSignIn.HasPassword(read, Owner));
         read["linux-box"] = Household("linux-box", samPassword: true);

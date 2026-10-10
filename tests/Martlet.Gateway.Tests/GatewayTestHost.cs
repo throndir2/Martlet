@@ -86,12 +86,13 @@ internal sealed class GatewayTestHost : IAsyncDisposable
     private GatewayTestHost(
         IEnumerable<IGatewayWorker>? workers,
         IEnumerable<IGatewayInferenceWorker>? inferenceWorkers,
-        ManualGatewayClock? clock)
+        ManualGatewayClock? clock,
+        string hostId)
     {
         Clock = clock ?? new(new DateTimeOffset(2026, 9, 21, 20, 0, 0, TimeSpan.Zero));
         Certificate = CreateCertificate(Clock.GetUtcNow());
         Origin = new($"https://127.0.0.1:{ReserveLoopbackPort()}");
-        Identity = GatewayHostIdentity.FromCertificate("fixture-host", Certificate);
+        Identity = GatewayHostIdentity.FromCertificate(hostId, Certificate);
         Audit = new();
         Server = new(Identity, Origin, workers ?? DefaultWorkers(Clock), Audit, Clock,
             inferenceWorkers: inferenceWorkers);
@@ -100,9 +101,10 @@ internal sealed class GatewayTestHost : IAsyncDisposable
     internal static async ValueTask<GatewayTestHost> StartAsync(
         IEnumerable<IGatewayWorker>? workers = null,
         IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null,
-        ManualGatewayClock? clock = null)
+        ManualGatewayClock? clock = null,
+        string hostId = "fixture-host")
     {
-        var host = new GatewayTestHost(workers, inferenceWorkers, clock);
+        var host = new GatewayTestHost(workers, inferenceWorkers, clock, hostId);
         try
         {
             var binding = new GatewayTlsBinding(

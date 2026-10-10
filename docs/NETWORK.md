@@ -562,7 +562,9 @@ host.
 
 - **Save provider** and **Remove provider** in any host's **Sign-in from
   outside** change every host of your network at once (every paired host of
-  yours while this PC is in no network). The status line names the hosts that
+  yours while this PC is in no network). Once your household has accounts, only
+  a PC signed in as an owner or admin may change them (`signin.denied`
+  otherwise). The status line names the hosts that
   saved it and why the others didn't (*Not changed on linux-box (didn't answer
   in time)*). Removing asks first: computers and friends that sign in with it
   lose access to those hosts.
@@ -615,15 +617,23 @@ household account ([accounts](ACCOUNTS.md)) instead of as one of the owner's.
   way: an admin makes an invite (**Make invite**) and the new user pastes it.
   Joining at home without an invite is not offered: a host found on the network
   has no pinned key yet, so a password or code could go to the wrong computer.
-- To link a provider login to an account, Martlet proves the account first
-  (an attestation from a Prove sign-in on this computer), then signs in with
-  the provider through a host (a Prove sign-in too). A login the host doesn't
-  allow yet is refused there and listed for this computer, which reads it back
-  and allows it as that account's login on every host
-  (`HouseholdSignIn.LinkInBrowserAsync`). A login that already proves another
-  account, or is a friend's, is refused (`signin.login_taken`). Unlinking
-  removes it from every host like any removed sign-in, and Martlet keeps at
-  least one login that proves the account on another computer.
+- **Link and unlink on the Account page.** *Sign-ins from your household's
+  providers* (on the Account page) lists the account's provider logins, with
+  **Link** for each household provider and **Unlink** for each login. Martlet
+  asks you to prove it's you first (your password or a sign-in already linked;
+  an account that so far only has Windows logins is checked by this PC), then
+  you sign in with the provider in the browser through one of your hosts. That
+  host checks the identity with the provider and, when nobody has it yet,
+  allows it as your account's login and vouches for it (a Prove sign-in with
+  `link_account_id`); every other host takes that host's attestation
+  (`link-login`). A login that is already another account's, or a friend's, is
+  refused (`signin.login_taken`). A computer signed in only as a member may link
+  and unlink its own account's logins; owners and admins may change everyone's.
+  Unlinking removes the login from every host like any removed sign-in, and
+  Martlet keeps at least one login on the account.
+- **Signing in with a linked provider.** *Sign in as someone else* (and every
+  other Prove sign-in) offers each household provider beside the Martlet
+  password; the host's attestation signs the account in on this PC.
 
 ### Household accounts on a host
 

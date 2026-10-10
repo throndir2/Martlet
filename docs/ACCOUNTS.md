@@ -732,7 +732,7 @@ button, the picker and the directory sync), `AddPersonDialog.cs` and
 
 ## Provider logins and household providers
 
-Built by W13 (first part). Code: `src\Martlet.Avatar.Audio2Face\Remote\HouseholdSignIn.cs`
+Built by W13. Code: `src\Martlet.Avatar.Audio2Face\Remote\HouseholdSignIn.cs`
 (the household view, sending to every host, linking), the desktop's
 `SignInSettingsWindow`, `SignInJoinWindow`, `HouseholdSignInStore.cs`,
 `MainWindow.HouseholdSignIn.cs` and `JoinedAccount.cs`. The user guide is
@@ -747,18 +747,41 @@ desktop ([MCP](MCP.md)).
   the provider to hosts that miss it. Allowed identities stay per host, so
   friends stay friends.
 - **A provider login of an account** is an allowed member identity with
-  `account_id` (W4) on every host. Linking needs a fresh attestation of the
-  account from a Prove sign-in on this device (`signin.prove_first` without
-  one), then a Prove sign-in with the provider through one host: a login the
-  host doesn't allow yet comes back as `signin.not_allowed`, and the desktop
-  reads the identity from that host's `refused` list (its own device ID, this
-  attempt) and sends `allow` with `account_id` to every host. A login that
-  proves another account, or a friend's, is `signin.login_taken`. Unlinking
-  sends `disallow` to every host (the host revokes the computers the login
-  added, as for any removed sign-in); an account keeps at least one login that
-  proves it on another device (a `martlet` password or another provider login).
+  `account_id` (W4) on every host. Linking is a Prove sign-in with the
+  provider that asks to link: `POST /martlet/v1/signin/prove` with
+  `link_account_id`. The host checks the identity with the provider; when it
+  allows that identity for nobody yet, it allows it as the account's login and
+  answers the account's attestation with that login. The caller must be able to
+  act for the account: a computer bound to it in the host's account directory,
+  or to an owner or admin account (any member computer while the household has
+  no accounts yet); else `signin.denied`. A login that proves another account,
+  or a friend's, is `signin.login_taken` (409). The desktop then sends
+  `{"action":"link-login","attestation":...,"label":...}` to every other host:
+  each checks the attestation against its roster (`signin.invalid` when it
+  doesn't check or names another computer) and that the identity proves no
+  other account there, and allows it. A computer bound only to member accounts
+  may send `link-login` for those accounts and `disallow` for identities linked
+  to them (`GatewaySignInRoles`). Before the provider sign-in the desktop asks
+  for a Prove sign-in of the account (`signin.prove_first` when it doesn't
+  check), unless the account has only Windows logins so far, which this PC
+  checks itself. Unlinking sends `disallow` to every host (the host revokes the
+  computers the login added, as for any removed sign-in); an account keeps at
+  least one login.
 - **Signing in with a linked provider** is W4's Prove sign-in
-  (`ProveInBrowserAsync`) and returns the account's attestation.
+  (`ProveInBrowserAsync`) and returns the account's attestation. The Prove
+  window (`AccountProveWindow`, W12) lists each household provider as a method
+  (`ProveMethod-<id>`, in the browser), so *Sign in as someone else*,
+  *Continue as ...?* and linking take a provider as well as a password. A
+  provider sign-in keeps no password on the PC.
+- **The Account page** (`AccountWindow.ProviderLogins.cs`): *Sign-ins from your
+  household's providers* lists the active account's provider logins (read from
+  every host), **Link** for each household provider and **Unlink** for each
+  login. Link asks for a Prove sign-in first when the account has a password
+  or a provider login (or signed in here with a Prove); an account that so far
+  has only Windows logins is vouched for by this PC, where its Windows login
+  signs in. The directory entry lists the login (`AccountLoginKey.ForProvider`);
+  Unlink removes it there and on every host, and refuses the account's last
+  login.
 - **Joining as an account's computer.** *Join with an invite* offers the
   `martlet` login when the host lists `martlet_sign_in`. The host's join
   answer to members carries `sign_in.account_id`, and a member desktop lets the
@@ -767,8 +790,6 @@ desktop ([MCP](MCP.md)).
   once it is a member it calls `AccountSession.SignIn` (W7) with it, syncs the
   directory and switches to the account. The account W7 made at its first
   start (before it joined) stays signed in on that PC too.
-- **Still to come (after W12):** the Account page's *Link* / *Unlink* buttons and
-  provider choices in *Sign in as someone else*, which call these.
 
 ## Work plan
 
@@ -792,7 +813,7 @@ host client in `src/Martlet.Avatar.Audio2Face/Remote`, route registration in
 | W10 | Sharing: character copy and together, the household space, fact sharing. **Shipped** ([Sharing](#sharing)) | Characters page, Memory window | W8, W9 |
 | W11 | Voice-to-account links on People; Voice ID filter per account | People page, `voices.json` | W7 |
 | W12 | Account security: password and authenticator per account, PIN and Windows Hello lock, sign in as someone else, remember on this PC, merge accounts. **Shipped** ([Account security](#account-security)) | Account page | W4, W7 |
-| W13 | Provider logins linked to accounts; new devices join by account sign-in. **First part shipped** ([Provider logins](#provider-logins-and-household-providers)): household providers, linking, joining as an account's computer; the Account page buttons follow W12 | Sign-in windows, `HouseholdSignIn.cs` | W4, W12 |
+| W13 | Provider logins linked to accounts; new devices join by account sign-in. **Shipped** ([Provider logins](#provider-logins-and-household-providers)) | Sign-in windows, `HouseholdSignIn.cs` | W4, W12 |
 
 ```mermaid
 flowchart LR

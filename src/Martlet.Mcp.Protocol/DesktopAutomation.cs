@@ -303,6 +303,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (AccountPasswordUser, AccountAuthenticatorSecret and AccountRecoveryCodes are not listed).
         "AccountName", "AccountLogins", "AccountLockState", "AccountUnlockMethods", "AccountPasswordState", "AccountWindowsState",
         "AccountHelloState", "AccountEncryptState", "AccountStatus", "UnlockAccountName", "UnlockStatus", "ProveStatus", "ProveTitle",
+        // The Account page's linked provider logins (W13): provider names and the labels the hosts list ("Linked: Authentik (lab) as
+        // me@example.net."), as Sign-in from outside's allowed list shows them; never a secret. Link (AccountLinkProvider-<id>), Unlink
+        // (AccountUnlinkLogin-<key>) and the Prove window's provider methods (ProveMethod-<id>) sign in or change things, so they
+        // need --allow-ui-effects.
+        "AccountProviderLogins",
         // Devices › Friends: how many hosts are shared with how many friends and who asked ("You share 1 host with 1 friend. ...
         // Checked 14:02."), and Hosts shared with this PC: how many hosts friends share with this PC. Counts and fixed wording.
         "FriendsStatus", "SharedHostsStatus",

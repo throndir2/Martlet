@@ -33,6 +33,9 @@ internal static class SignInAccountLab
     internal const string Provider = "authentik";
     internal const string NewDevice = "lab-new-pc";
     internal const string SecondDevice = "lab-sam-pc";
+    /// <summary>The desktop's own person at the lab provider: the identity its Account page links.</summary>
+    internal const string DesktopSubject = "lab-desktop-7";
+    internal const string DesktopEmail = "owner@example.net";
 
     internal static async Task<int> RunAsync(string dataDirectory)
     {
@@ -65,13 +68,15 @@ internal static class SignInAccountLab
         await admin.ChangeAsync(HostA, new HouseholdProvider(Provider, "oidc", "Authentik (lab)", SignInRehearsal.LabIssuer.Issuer,
             SignInRehearsal.LabIssuer.ClientId, null, null).Change(null), token);
 
-        // The desktop on the data directory: paired with both hosts by a code, its secrets in the lab folder, both in its hosts.json.
+        // The desktop on the data directory: paired with both hosts by a code under the device ID it names itself by (device.json),
+        // its secrets in the lab folder, both in its hosts.json.
+        var desktopDevice = DeviceIds.Ensure(dataDirectory).Id;
         var desktop = new Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)>(StringComparer.Ordinal);
         var entries = new List<object>();
         foreach (var host in hosts)
         {
             var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
-            var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), SignInLab.DesktopDevice, "LAB-DESKTOP", token);
+            var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice, "LAB-DESKTOP", token);
             using (var lease = new SecretLease(secret))
             {
                 var stored = new WindowsCredentialStore().WriteAvatarHostSecret(pairing.HostId, pairing.CredentialId, lease);
@@ -109,6 +114,12 @@ internal static class SignInAccountLab
         string? recoveryOnB = null;
         string[]? joinChoices = null;
         object? passwordSignIn = null;
+        // In a run with the desktop's window, the desktop hands its browser sign-in pages here (MARTLET_LAB_BROWSER): the first
+        // one signs in as the desktop's own person (Link on the Account page), the next ones as Sam (Sign in as someone else).
+        var browserFolder = Environment.GetEnvironmentVariable(SignInLab.BrowserVariable) is { Length: > 0 } folder && Path.IsPathFullyQualified(folder)
+            ? folder : null;
+        if (browserFolder is not null) Directory.CreateDirectory(browserFolder);
+        var browsed = new List<string>();
         while (!token.IsCancellationRequested && !File.Exists(Path.Combine(dataDirectory, SignInLab.StopFile)))
         {
             var on = hosts.OnHosts(Provider);
@@ -118,6 +129,20 @@ internal static class SignInAccountLab
                 seen = on;
             }
             var roster = Roster(dataDirectory);
+            if (browserFolder is not null && File.Exists(Path.Combine(browserFolder, SignInLab.BrowserFile)))
+            {
+                try
+                {
+                    var page = Path.Combine(browserFolder, SignInLab.BrowserFile);
+                    var url = (await File.ReadAllTextAsync(page, token)).Trim();
+                    File.Delete(page);
+                    var (subject, email) = browsed.Count == 0 ? (DesktopSubject, DesktopEmail) : ("lab-user-42", "me@example.net");
+                    issuer.Browse(url, subject, email);
+                    browsed.Add(email);
+                    events.Add($"browser: signed in at the lab provider as {email} for the desktop");
+                }
+                catch (Exception error) when (error is IOException or KeyNotFoundException or UriFormatException) { events.Add("browser: " + error.Message); }
+            }
             try
             {
                 if (link is null && roster is not null && hosts.All(h => h.Server.NetworkState.State == "bound" && roster.Host(h.HostId) is { Removed: false }))
@@ -138,12 +163,12 @@ internal static class SignInAccountLab
                     using var atA = AsDesktop(HostA);
                     var proved = await atA.ProveWithPasswordAsync("sam", SignInLab.AccountPassword, Totp.Code(samSecret, now.AddSeconds(Totp.StepSeconds)),
                         cancellationToken: token);
-                    var linked = await HouseholdSignIn.LinkInBrowserAsync(atA, proved.Attestation, roster, Provider, issuer.Browse, TimeSpan.FromSeconds(30),
+                    var linked = await HouseholdSignIn.LinkInBrowserAsync(atA, SignInLab.SamAccount, proved.Attestation, roster, Provider, issuer.Browse, TimeSpan.FromSeconds(30),
                         hosts.Select(h => h.HostId), AsDesktop, cancellationToken: token);
                     link = new
                     {
                         account = SignInLab.SamAccount, provedWith = proved.Attestation.Login.ToString(), identity = linked.Identity.ToString(),
-                        alreadyLinked = linked.AlreadyLinked, savedOn = linked.Results.Where(r => r.Saved).Select(r => r.HostId).ToArray(),
+                        savedOn = linked.Results.Where(r => r.Saved).Select(r => r.HostId).ToArray(),
                         problems = linked.Results.Where(r => !r.Saved).Select(r => $"{r.HostId}: {r.Problem}").ToArray()
                     };
                     events.Add($"linked {linked.Identity} to Sam on {string.Join(" and ", linked.Results.Where(r => r.Saved).Select(r => r.HostId))}");
@@ -227,7 +252,7 @@ internal static class SignInAccountLab
                 providerOnHosts = on,
                 clientSecretOnHosts = hosts.Where(h => Providers(h.SignInBytes).Any(p => p.Id == Provider && p.HasClientSecret)).Select(h => h.HostId).ToArray(),
                 linkedLogins = hosts.ToDictionary(h => h.HostId, h => LinkedLogins(h.SignInBytes)),
-                link, providerProve, accountSignIn, joinAttested, joinChoices, passwordSignIn,
+                link, providerProve, accountSignIn, joinAttested, joinChoices, passwordSignIn, browsedAs = browsed,
                 newDeviceMember = member, newDeviceWasMember = newPcWasMember, newDeviceWaiting = newPc.State.Waiting?.CheckNumber,
                 secondDeviceMember = secondMember,
                 events = events.TakeLast(12).ToArray(), at = DateTimeOffset.UtcNow
