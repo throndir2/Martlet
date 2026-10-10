@@ -8,19 +8,19 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 /// <summary>Companion › Hearing (an optional extra, docs/SENSE_MODELS.md): whether a model hears how you say things, not only
-/// your words. In the standard order: Now (what hears your voice now, any problem, and the audio model's lines), then the main
-/// choice (Off, Thinking's own model, the image model, Ollama on this PC, or a cloud provider or server;
-/// <see cref="SenseChoiceCard"/>), then Hear how you say it (the consent check box, the voice path and Test hearing). Off is
-/// Let ... hear my voice turned off (talk-preferences.json), so Thinking gets only the transcript. Automation IDs:
-/// <c>HearingNow</c>, <c>TalkHearVoiceStatus</c>, the AudioModel lines, <c>Picker-Hearing-&lt;choice&gt;</c> and
-/// <c>HearingToggle</c> (Turn hearing off on Off, Turn hearing on on the saved option while you turned hearing off).</summary>
+/// your words. In the standard order: Now (what hears your voice now, any problem, the audio model's lines, and Turn hearing off
+/// or on), then the audio models' list (empty: Thinking's own model takes the recordings; MainWindow.SensePools.cs), then Hear how
+/// you say it (the consent check box, the voice path and Test hearing). Off is Let ... hear my voice turned off
+/// (talk-preferences.json), so Thinking gets only the transcript. Automation IDs: <c>HearingNow</c>, <c>TalkHearVoiceStatus</c>,
+/// the AudioModel lines, <c>HearingToggle</c> (Turn hearing off while a model hears you, Turn hearing on after you turned it off)
+/// and the list's <c>Pool-hearing-...</c>.</summary>
 public partial class MainWindow
 {
     private void RenderHearingPage(Panel page)
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = SavedModelAbilities();
-        var audio = SenseRouting.For(SenseKind.Audio, SenseModels.Load(store?.DataDirectory), thinking, abilities);
+        var audio = SenseRouting.For(SenseKind.Audio, SavedSenses(), thinking, abilities);
         var on = HearingOn(thinking, audio);
         var own = audio.Model;
         var hears = own is not null ? audio.Described : LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
@@ -31,23 +31,22 @@ public partial class MainWindow
         var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities, audio);
         var status = hears || !on ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
-        page.Children.Add(Card([Heading("Now"), now, status, .. SenseNowLines(SenseKind.Audio)]));
-
-        page.Children.Add(SenseChoiceCard(SenseKind.Audio, on,
-            () => PageButton("Turn hearing off", () =>
+        var toggle = on
+            ? PageButton("Turn hearing off", () =>
             {
                 SaveTalk(Talk with { HearVoice = false }, render: true);
                 ActionText.Text = "Hearing is off. Thinking gets only the transcript of what you say.";
-            }, primary: true, id: "HearingToggle"),
-            () => Talk.HearVoice != false ? null : PageButton("Turn hearing on", () =>
+            }, primary: true, id: "HearingToggle")
+            : Talk.HearVoice != false ? null : PageButton("Turn hearing on", () =>
             {
                 SaveTalk(Talk with { HearVoice = null }, render: true);
                 var nowOn = HearingOn(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), audio);
                 ActionText.Text = nowOn ? "Hearing is on: your voice stays on this PC."
                     : "Your recording would leave this PC, so hearing waits for your tick under Hear how you say it.";
-            }, primary: true, id: "HearingToggle"),
-            Talk.HearVoice == false ? "Hearing is off. Turn it on to use this model."
-                : "Off until you tick Let ... hear my voice below: your recording would leave this PC."));
+            }, primary: true, id: "HearingToggle");
+        page.Children.Add(Card([Heading("Now"), now, status, .. SenseNowLines(SenseKind.Audio), .. toggle is null ? Array.Empty<UIElement>() : [Row(toggle)]]));
+
+        page.Children.Add(SensePoolCard(SenseKind.Audio));
 
         page.Children.Add(HearVoiceCard());
     }

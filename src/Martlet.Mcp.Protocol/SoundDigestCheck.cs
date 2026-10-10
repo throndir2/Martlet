@@ -114,7 +114,7 @@ internal static class SoundDigestCheck
     {
         var loaded = await new SettingsStore(directory).LoadAsync(cancellation);
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
-        var (senses, file) = SenseModels.Read(directory);
+        var (senses, file) = SenseSetup.Read(directory);
         var audio = SenseRouting.For(SenseKind.Audio, senses, thinking, ModelAbilities.Load(directory));
         return new
         {

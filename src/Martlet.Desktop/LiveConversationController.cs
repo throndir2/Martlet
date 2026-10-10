@@ -923,10 +923,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         StartLiveFloor();
         StartPresence();
         StartRequests();
-        // The image and audio models this PC uses (docs/SENSE_MODELS.md), before anything can send them work, and what models were
-        // found to hear and see, which routes them before a talk window loads the settings.
-        senseModels = SenseModels.Load(dataDirectory);
+        // The image and audio models this PC uses (docs/SENSE_MODELS.md: the Vision and Hearing lists), before anything can send them
+        // work, and what models were found to hear and see, which routes them before a talk window loads the settings.
         poolAbilities = dataDirectory is null ? null : ModelAbilities.Load(dataDirectory);
+        if (dataDirectory is not null) senseSetup = LoadSenseSetup(dataDirectory, poolAbilities);
         helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
         songCredentials = new(() => Volatile.Read(ref songAuthorization));

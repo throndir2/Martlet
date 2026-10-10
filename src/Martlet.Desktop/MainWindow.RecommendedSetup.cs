@@ -113,7 +113,7 @@ public partial class MainWindow
     {
         var reading = Martlet.Core.Reading.ReadingPool.Choice(ReadingList.Load(directory), ThisPcHost()?.HostId);
         var model = reading.HostId is { } host ? hostChecks.GetValueOrDefault(host)?.Offers?.GetValueOrDefault(HostRoles.Ocr) : null;
-        return RecommendedSetupInputs.Choices(Talk.Watch, Talk.HearVoice, SenseModels.Load(directory), reading,
+        return RecommendedSetupInputs.Choices(Talk.Watch, Talk.HearVoice, SavedSenses(), reading,
             HomePreferences.Load(directory).Address, model);
     }
 

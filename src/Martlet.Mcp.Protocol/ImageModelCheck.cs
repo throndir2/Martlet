@@ -36,7 +36,7 @@ internal static class ImageModelCheck
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = ModelAbilities.Load(dataDirectory);
-        var (senses, sensesState) = SenseModels.Read(dataDirectory);
+        var (senses, sensesState) = SenseSetup.Read(dataDirectory);
         if (imageOrigin is not null)
         {
             try

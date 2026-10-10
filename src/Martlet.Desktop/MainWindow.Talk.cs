@@ -406,7 +406,7 @@ public partial class MainWindow
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = SavedModelAbilities();
-        var audio = Martlet.Conversation.SenseRouting.For(SenseKind.Audio, SenseModels.Load(store?.DataDirectory), thinking, abilities);
+        var audio = Martlet.Conversation.SenseRouting.For(SenseKind.Audio, SavedSenses(), thinking, abilities);
         // An audio model of its own takes recordings in Thinking's place: Thinking never gets one then.
         var own = audio.Model;
         var hears = own is not null ? audio.Described : LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
@@ -606,10 +606,10 @@ public partial class MainWindow
     };
 
     /// <summary>Companion › Vision (an optional extra, in the standard order): Now (whether vision is on, what Martlet looks at,
-    /// whether it can see and the image model's lines), then the main choice (Off, or the image model: Thinking's own model, the
-    /// audio model, Ollama on this PC, a cloud provider or server, or one of your computers), then what it looks at, how chatty it
-    /// is, its glances and screen summary, and what it sends. Vision is on by default, at your whole screen. Pressing Start
-    /// watching is the consent; What Martlet sends says exactly what is captured and where it is sent.</summary>
+    /// whether it can see, the image model's lines and Turn vision off or on), then the image models' list (empty: Thinking's own
+    /// model takes the pictures; MainWindow.SensePools.cs), then what it looks at, how chatty it is, its glances and screen summary,
+    /// and what it sends. Vision is on by default, at your whole screen. Pressing Start watching is the consent; What Martlet sends
+    /// says exactly what is captured and where it is sent.</summary>
     private void RenderVisionPage(Panel page)
     {
         var prefs = Talk;
@@ -637,34 +637,34 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
         now.Add(adviceText);
         now.AddRange(SenseNowLines(SenseKind.Image));
-        page.Children.Add(Card([.. now]));
-
-        // The main choice: Off, or the image model. Its buttons turn vision off or on (VisionToggle).
+        // Turn vision off or on (VisionToggle): whether Martlet looks at all. The list below says which models take the pictures.
         Button? turnOn = null;
-        page.Children.Add(SenseChoiceCard(SenseKind.Image, prefs.Watch,
-            () => PageButton("Turn vision off", () =>
+        if (prefs.Watch)
+            now.Add(Row(PageButton("Turn vision off", () =>
             {
                 SaveTalk(Talk with { Watch = false }, render: true);
                 ActionText.Text = "Vision is off.";
-            }, primary: true, id: "VisionToggle"),
-            () =>
+            }, primary: true, id: "VisionToggle")));
+        else
+        {
+            turnOn = PageButton("Turn vision on", () =>
             {
-                turnOn = PageButton("Turn vision on", () =>
-                {
-                    SaveTalk(Talk with { Watch = true }, render: true);
-                    ActionText.Text = "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look.";
-                }, primary: true, id: "VisionToggle");
-                turnOn.IsEnabled = canSee && chosen;
-                if (!turnOn.IsEnabled)
-                {
-                    var why = !canSee ? advice : source.Kind == WatchKind.Camera ? "Choose a camera below first." : "Enter the camera address below first.";
-                    turnOn.ToolTip = why;
-                    ToolTipService.SetShowOnDisabled(turnOn, true);
-                    AutomationProperties.SetHelpText(turnOn, why);
-                }
-                return turnOn;
-            },
-            "Vision is off. Turn it on to use this model."));
+                SaveTalk(Talk with { Watch = true }, render: true);
+                ActionText.Text = "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look.";
+            }, primary: true, id: "VisionToggle");
+            turnOn.IsEnabled = canSee && chosen;
+            if (!turnOn.IsEnabled)
+            {
+                var why = !canSee ? advice : source.Kind == WatchKind.Camera ? "Choose a camera below first." : "Enter the camera address below first.";
+                turnOn.ToolTip = why;
+                ToolTipService.SetShowOnDisabled(turnOn, true);
+                AutomationProperties.SetHelpText(turnOn, why);
+            }
+            now.Add(Row(turnOn));
+        }
+        page.Children.Add(Card([.. now]));
+
+        page.Children.Add(SensePoolCard(SenseKind.Image));
 
         var looks = new List<UIElement> { Heading("What Martlet looks at") };
         foreach (var (kind, title, detail) in new[]

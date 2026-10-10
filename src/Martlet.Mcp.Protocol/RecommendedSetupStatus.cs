@@ -1,3 +1,4 @@
+using Martlet.Conversation;
 using System.IO;
 using System.Text.Json.Nodes;
 using Martlet.Core.Cluster;
@@ -239,7 +240,7 @@ internal static class RecommendedSetupStatus
         var home = Json(directory, "smart-home.json")?["Address"] is JsonValue a && a.TryGetValue<string>(out var address) ? address : null;
         var reading = PoolSettings.LoadFor(directory, PoolAreas.Reading) is { } list
             ? Martlet.Core.Reading.ReadingPool.Choice(list, own) : Martlet.Core.Reading.ReadingSettings.Load(directory);
-        return RecommendedSetupInputs.Choices(watch, hear, SenseModels.Load(directory), reading, home);
+        return RecommendedSetupInputs.Choices(watch, hear, SenseSetup.Read(directory).Senses, reading, home);
     }
 
     private static JsonObject? Json(string directory, string file)

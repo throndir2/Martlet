@@ -35,44 +35,47 @@ public sealed class SensePoolTests
     });
 
     [Fact]
-    public void The_chosen_model_comes_first_then_the_thinking_pool_members_that_see_in_their_order()
+    public void The_chosen_model_comes_first_then_the_lists_other_models_that_may_take_the_kind()
     {
         var ripley = Host("ripley", "qwen2.5vl:32b");
-        var pool = new ThinkingPoolSettings
-        {
-            Members = [Host("text-only", "qwen3:8b"), CloudEyes, Endpoint("gemma4:e2b"), Chosen with { HostRouteId = SelfHostSetup.DeepThinkingRouteId },
-                ripley, Host("friend", "qwen2.5vl:7b"), Endpoint("qwen2.5vl:7b")]
-        };
+        IReadOnlyList<DeepThinkingSettings> list = [Host("text-only", "qwen3:8b"), CloudEyes, Endpoint("gemma4:e2b"), Chosen, ripley,
+            Host("friend", "qwen2.5vl:7b"), Endpoint("qwen2.5vl:7b")];
 
-        var members = SensePool.Members(SenseKind.Image, Chosen, pool, Thinking, Found, m => m.HostId == "friend");
+        // The first model that isn't known not to see is chosen: the text-only model is passed over.
+        Assert.Same(CloudEyes, SensePool.Chosen(SenseKind.Image, list, null));
+        Assert.Equal(list[0], SensePool.Chosen(SenseKind.Image, [list[0]], null));
+        Assert.Null(SensePool.Chosen(SenseKind.Image, [], null));
 
-        // Left out: the text-only model, the cloud model the owner didn't allow pictures, the conversation's own Thinking model,
-        // diva again (its Thinking pool role is the same computer), and the computer leaveOut names.
-        Assert.Equal([Chosen.Key, ripley.Key, "endpoint:" + Ollama + "|qwen2.5vl:7b"], members.Select(m => m.Key));
+        var members = SensePool.Members(SenseKind.Image, Chosen, list, Thinking, Found, m => m.HostId == "friend");
+
+        // Left out: the text-only model, the conversation's own Thinking model, diva again, and the computer leaveOut names. The
+        // owner put the cloud model in the list, so a model Martlet can't tell about is tried too.
+        Assert.Equal([Chosen.Key, CloudEyes.Key, ripley.Key, "endpoint:" + Ollama + "|qwen2.5vl:7b"], members.Select(m => m.Key));
         Assert.Same(Chosen, members[0]);
-
-        var allowed = pool.WithMedia(CloudEyes.Key, true);
-        Assert.Contains(CloudEyes.Key, SensePool.Members(SenseKind.Image, Chosen, allowed, Thinking, Found).Select(m => m.Key));
-        // A model Martlet can't tell about isn't a member.
-        Assert.DoesNotContain(CloudEyes.Key, SensePool.Members(SenseKind.Image, Chosen, allowed, Thinking, null).Select(m => m.Key));
+        Assert.Contains(CloudEyes.Key, SensePool.Members(SenseKind.Image, Chosen, list, Thinking, null).Select(m => m.Key));
+        // A model found not to see is left out.
+        var refused = new ModelAbilities().With(new() { Origin = Cloud, ModelId = "house-model-1", Sees = false, Source = "a refused picture", CheckedAt = DateTimeOffset.UtcNow });
+        Assert.DoesNotContain(CloudEyes.Key, SensePool.Members(SenseKind.Image, Chosen, list, Thinking, refused).Select(m => m.Key));
     }
 
     [Fact]
-    public void The_audio_pool_has_only_members_that_hear_and_none_without_a_thinking_pool()
+    public void The_audio_pool_leaves_out_models_that_dont_hear_and_a_paired_computer_hears_through_its_gateway()
     {
         var ears = Endpoint("gemma3n:e4b");
         var chosen = Endpoint("gemma3n:e2b", "https://10.77.0.20:8443/v1");
-        var pool = new ThinkingPoolSettings { Members = [Host("diva", "qwen2.5vl:7b"), Endpoint("qwen2.5vl:7b"), ears] };
+        var hostEars = Host("ripley", "gemma4:e4b");
 
-        Assert.Equal([chosen.Key, ears.Key], SensePool.Members(SenseKind.Audio, chosen, pool, Thinking, null).Select(m => m.Key));
+        Assert.Equal([chosen.Key, hostEars.Key, ears.Key],
+            SensePool.Members(SenseKind.Audio, chosen, [Host("diva", "qwen2.5vl:7b"), hostEars, Endpoint("qwen2.5vl:7b"), ears], Thinking, null).Select(m => m.Key));
         Assert.Equal([chosen.Key], SensePool.Members(SenseKind.Audio, chosen, null, Thinking, null).Select(m => m.Key));
+        Assert.Equal(HearingSupport.Supported, SenseRouting.Hears(hostEars, null));
     }
 
     [Fact]
     public void A_pool_never_has_more_than_its_maximum_members()
     {
-        var pool = new ThinkingPoolSettings { Members = [.. Enumerable.Range(1, 12).Select(i => Host($"pc{i}", "qwen2.5vl:7b"))] };
-        Assert.Equal(SensePool.MaximumMembers, SensePool.Members(SenseKind.Image, Chosen, pool, Thinking, null).Count);
+        var list = Enumerable.Range(1, 12).Select(i => Host($"pc{i}", "qwen2.5vl:7b")).ToArray();
+        Assert.Equal(SensePool.MaximumMembers, SensePool.Members(SenseKind.Image, Chosen, list, Thinking, null).Count);
     }
 
     private static readonly DeepThinkingSettings Ripley = Host("ripley", "qwen2.5vl:7b"), Kirk = Host("kirk", "qwen2.5vl:7b");

@@ -29,34 +29,20 @@ public sealed class SenseModelCardsTests
     private static SenseModel Own(DeepThinkingSettings model) => new() { Source = SenseSource.Own, Own = model, ChosenAt = At };
 
     [Fact]
-    public void Now_says_which_model_takes_each_kind()
+    public void Now_says_which_model_in_the_list_takes_each_kind()
     {
         var thinking = Thinking(GenerationSupport.LocalOllamaChatBaseUrl, "qwen3:8b");
-        Assert.Equal("Use the same model as the text model (Thinking: qwen3:8b).", MainWindow.SenseNow(SenseKind.Image, new(), thinking));
-        Assert.Equal("Use the same model as the text model (Thinking isn't set up yet).", MainWindow.SenseNow(SenseKind.Audio, new(), null));
+        Assert.Equal("Nothing in the list: the text model takes the pictures itself (Thinking: qwen3:8b).",
+            MainWindow.SenseNow(SenseKind.Image, new(), 0, thinking));
+        Assert.Equal("Nothing in the list: the text model takes the recordings (Thinking isn't set up yet).",
+            MainWindow.SenseNow(SenseKind.Audio, new(), 0, null));
 
-        var senses = new SenseModels
-        {
-            Image = Own(Endpoint(GenerationSupport.LocalOllamaChatBaseUrl, "qwen2.5vl:7b")),
-            Audio = new() { Source = SenseSource.OtherSense }
-        };
-        Assert.StartsWith("A model of its own: Ollama on this PC (qwen2.5vl:7b), chosen on ", MainWindow.SenseNow(SenseKind.Image, senses, thinking));
-        Assert.Equal("Use the same model as the image model, now Ollama on this PC (qwen2.5vl:7b).",
-            MainWindow.SenseNow(SenseKind.Audio, senses, thinking));
-        var circle = new SenseModels { Image = new() { Source = SenseSource.OtherSense }, Audio = new() { Source = SenseSource.OtherSense } };
-        Assert.Contains("the text model, because it uses the same model as this one", MainWindow.SenseNow(SenseKind.Image, circle, thinking));
-    }
-
-    [Fact]
-    public void The_saved_choice_shows_as_its_option()
-    {
-        Assert.Equal(MainWindow.SenseChoice.Thinking, MainWindow.ChoiceOf(new()));
-        Assert.Equal(MainWindow.SenseChoice.OtherSense, MainWindow.ChoiceOf(new() { Source = SenseSource.OtherSense }));
-        Assert.Equal(MainWindow.SenseChoice.ThisPc, MainWindow.ChoiceOf(Own(Endpoint(GenerationSupport.LocalOllamaChatBaseUrl, "qwen2.5vl:7b"))));
-        Assert.Equal(MainWindow.SenseChoice.Cloud, MainWindow.ChoiceOf(Own(Endpoint(OpenRouter, "google/gemini-2.5-flash"))));
-        // A model app on this PC is chosen like any server.
-        Assert.Equal(MainWindow.SenseChoice.Cloud, MainWindow.ChoiceOf(Own(Endpoint("http://127.0.0.1:1234/v1", "qwen2.5-vl-7b"))));
-        Assert.Equal(MainWindow.SenseChoice.Computer, MainWindow.ChoiceOf(Own(Diva)));
+        var senses = new SenseModels { Image = Own(Endpoint(GenerationSupport.LocalOllamaChatBaseUrl, "qwen2.5vl:7b")) };
+        Assert.Equal("Ollama on this PC (qwen2.5vl:7b) is first in the list.", MainWindow.SenseNow(SenseKind.Image, senses, 1, thinking));
+        Assert.Equal("Ollama on this PC (qwen2.5vl:7b) is first in the list; 1 more takes a job when it is busy.",
+            MainWindow.SenseNow(SenseKind.Image, senses, 2, thinking));
+        Assert.Equal("Ollama on this PC (qwen2.5vl:7b) is first in the list; 2 more take a job when it is busy.",
+            MainWindow.SenseNow(SenseKind.Image, senses, 3, thinking));
     }
 
     [Fact]
@@ -123,7 +109,7 @@ public sealed class SenseModelCardsTests
         var text = Thinking(GenerationSupport.LocalOllamaChatBaseUrl, "qwen3:8b");
         Assert.Equal("Thinking is the text model: it writes every reply. Pictures go to no model, so Martlet can't see (Companion › Vision), " +
             "and recordings go to no model, so Thinking gets the transcript only (Companion › Hearing).", MainWindow.TextModelText(new(), text, null));
-        // Recordings to the same model as a paired computer's image model go nowhere: its gateway takes no recordings.
+        // Recordings to the same model as a paired computer's image model go nowhere: that model doesn't hear.
         var host = new SenseModels { Image = Own(Diva), Audio = new() { Source = SenseSource.OtherSense } };
         Assert.Contains("recordings go to no model, so Thinking gets the transcript only", MainWindow.TextModelText(host, text, null));
     }

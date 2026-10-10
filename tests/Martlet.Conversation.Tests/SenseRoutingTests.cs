@@ -92,11 +92,13 @@ public sealed class SenseRoutingTests
     }
 
     [Fact]
-    public void A_paired_computers_model_describes_pictures_but_takes_no_recordings()
+    public void A_paired_computers_model_describes_pictures_and_takes_recordings_when_it_hears()
     {
         var senses = new SenseModels { Image = Own(Host("qwen2.5vl:7b")), Audio = SameAsOther };
         Assert.Equal((SensePath.Described, SensePath.None), Paths(senses, TextOnly));
-        Assert.Contains("paired computer", SenseRouting.For(SenseKind.Audio, senses, TextOnly, null).Why);
+        Assert.Contains("can't hear recordings", SenseRouting.For(SenseKind.Audio, senses, TextOnly, null).Why);
+        // Its gateway hands a recording to its Ollama: a model there that hears describes it.
+        Assert.Equal(SensePath.Described, SenseRouting.For(SenseKind.Audio, new SenseModels { Audio = Own(Host("gemma4:e4b")) }, TextOnly, null).Path);
         // What Martlet found out about it is kept by its gateway's origin, as for a Thinking route there.
         var refused = new ModelAbilities().With(new()
         {

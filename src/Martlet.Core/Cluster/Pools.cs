@@ -235,17 +235,17 @@ public static class PoolAreas
         Id = "singing", Title = "Singing", Page = "Companion › Singing", HostRole = "singing", Kinds = Local
     };
     /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.
-    /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware, as sense-models.json). An empty list
-    /// means no model of its own: Thinking's own model takes the pictures or recordings itself, as before pools.</summary>
+    /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware). An empty list means no model of its
+    /// own: the conversation's own model (Thinking) takes the pictures or recordings itself, as before pools.</summary>
     public static readonly PoolArea Vision = new()
     {
         Id = "vision", Title = "Vision", Page = "Companion › Vision", Kinds = AllKinds, Shared = false, Required = true,
-        Fallback = "Thinking's own model takes the pictures"
+        Fallback = "Thinking's own model takes the pictures itself"
     };
     public static readonly PoolArea Hearing = new()
     {
         Id = "hearing", Title = "Hearing", Page = "Companion › Hearing", Kinds = AllKinds, Shared = false, Required = true,
-        Fallback = "Thinking's own model takes the recordings"
+        Fallback = "Thinking's own model takes the recordings itself"
     };
     /// <summary>Reading the text on the screen (<see cref="Martlet.Core.Reading.ReadingPool"/>): This PC (Windows OCR, or the Reading
     /// role on its own host service: setting <c>engine</c>), a computer or a card (its Reading role: setting <c>model</c>). Each

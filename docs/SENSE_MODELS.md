@@ -24,9 +24,9 @@ audio model was NOT RUN; see [Checks](#checks).
 - **Why choose separate models?** To talk with a strong model that only reads
   text (for example Qwen3 8B) and to use a small vision model or a model that
   hears beside it. This needs enough hardware, or cloud models.
-- **What is the default?** "Use the same model as the text model", for pictures
-  and for recordings. With the default, nothing changes: every request is the
-  same, byte for byte.
+- **What is the default?** An empty Vision list and an empty Hearing list: the
+  text model takes pictures and recordings itself. With the default, nothing
+  changes: every request is the same, byte for byte.
 - **Does it make replies slower?** No. A reply never waits for an image or
   audio model (see [Latency rules](#latency-rules)).
 
@@ -65,71 +65,95 @@ and recordings.
 
 ## Choosing the models
 
-| Image model | Audio model |
-| --- | --- |
-| Use the same model as the text model (the default) | Use the same model as the text model (the default) |
-| Use the same model as the audio model | Use the same model as the image model |
-| Ollama on this PC | Ollama on this PC |
-| A cloud provider or an OpenAI-compatible server | A cloud provider or an OpenAI-compatible server |
-| One of your computers (a paired computer's Ollama) | Not offered: a paired computer's gateway takes no recordings |
+Each kind has an ordered list of models of its own: Companion › Vision for the
+image model and Companion › Hearing for the audio model
+([The image and audio pools](#the-image-and-audio-pools)). A list can hold:
 
-- "The same model as the other kind" in both directions means the text model.
-- A model of its own that is exactly Thinking's (the same endpoint and model,
-  or the same paired computer and model) counts as the text model.
-- The choice belongs to this PC (`sense-models.json` in the data folder). It is
-  never shared, because the models that fit beside Thinking depend on the
-  computer.
-- A model's key is in Windows Credential Manager. A model on the same base URL
-  as Thinking can use Thinking's key.
+| Member | Its settings | Pictures and recordings go |
+| --- | --- | --- |
+| This PC (Ollama on this PC) | The model, picked from what Ollama has, with whether it fits beside Thinking's on the graphics card | Nowhere: they stay on this PC |
+| One of your computers | The model, and its Thinking pool role or its Ollama | To that computer through its paired, pinned connection |
+| One graphics card of a computer | The model of its Thinking pool role on that card | To that computer |
+| A server you run (an address) | The model, an optional key, and **May receive pictures** (or recordings) when it isn't on this PC | To that server, only after you allow it |
+| A cloud provider or server | Provider, base URL and model, its key, and your agreement | To the provider, only with your agreement |
 
-### The choice on Vision and Hearing
+- **An empty list** (the default) means no model of its own: the text model
+  (Thinking) takes the pictures or recordings itself. With the default,
+  nothing changes: every request is the same, byte for byte.
+- **The first model in the list** that isn't known not to see (or hear) takes
+  the input. The next ones take a job when it is busy or can't take it.
+- A model that is exactly Thinking's (the same endpoint and model, or the same
+  paired computer and model) counts as the text model.
+- To use one model for both kinds, put it in both lists. Both kinds then share
+  that model's one job line.
+- The lists belong to this PC (`pools-local.json`, areas `vision` and
+  `hearing`). They are never shared, because the models that fit beside
+  Thinking depend on the computer.
+- A paired computer's model now takes recordings too: its gateway hands them
+  to its Ollama. A computer with a Martlet older than recordings gets none
+  until it is updated.
+
+### The pages
 
 Companion › Vision and Companion › Hearing are Optional extras with the
-standard page order (`MainWindow.SenseModels.cs`, `MainWindow.Hearing.cs`):
+standard page order (`MainWindow.SenseModels.cs`, `MainWindow.SensePools.cs`,
+`MainWindow.Hearing.cs`):
 
-1. **Now** says what takes the input now: the choice (`ImageModelNow`), where the input goes
-   and why (`ImageModelRoute`, the words of `SenseRouting.For`), what the
-   model is known to do (`ImageModelKnown`) and, for a model of its own, what
-   is sent and where (`ImageModelSent`). Then the card's test: **Test vision**
-   (`ImageModelTest`) asks the model that takes pictures, and **Test hearing**
-   (`AudioModelTest`) asks an audio model of its own. Thinking's own Test
-   hearing stays under *Hear how you say it* (`TalkHearVoiceTest`).
-2. **The main choice** is an option picker (*How Martlet sees*, *How Martlet
-   hears your tone*): **Off** first, then one option for each row of the
-   table above (`Picker-Vision-Off`, `-Thinking`, `-OtherSense`, `-ThisPc`,
-   `-Cloud` and `-Computer`; `Picker-Hearing-...` without `-Computer`). Each
-   row shows its key facts (where it runs, extra graphics memory, cost, where
-   the pictures or recordings go), and **Compare them** shows them side by
-   side. Choosing a row only shows its details and panel. The panel's own
-   button saves `sense-models.json`, and the running conversation follows at
-   once (`ReloadSenseModels`). Saving a model also turns vision on, and turns
-   hearing back to its usual rule if you turned it off.
-3. **Off** is vision off (`Watch` in `talk-preferences.json`: Martlet doesn't
-   look at your screen or camera) or hearing off (*Let ... hear my voice*
-   off: Martlet gets only the words you say). While the part is off, the
-   saved model's row reads *chosen*, and its details offer *Turn vision on*
-   or *Turn hearing on*. On Hearing, *Hear how you say it* follows: the
-   consent check box, the voice path and Test hearing. Listening links to
-   Hearing.
+1. **Now** says what takes the input now: the list in words (`ImageModelNow`:
+   the first model and how many more take a job when it is busy), where the
+   input goes and why (`ImageModelRoute`, the words of `SenseRouting.For`),
+   what the model is known to do (`ImageModelKnown`) and, for a model of its
+   own, what is sent and where (`ImageModelSent`). Then the card's test:
+   **Test vision** (`ImageModelTest`) asks the model that takes pictures, and
+   **Test hearing** (`AudioModelTest`) asks an audio model of its own on an
+   endpoint. Thinking's own Test hearing stays under *Hear how you say it*
+   (`TalkHearVoiceTest`). **Turn vision off** or **on** (`VisionToggle`) and
+   **Turn hearing off** or **on** (`HearingToggle`) end the card: vision off
+   means Martlet doesn't look at your screen or camera, and hearing off means
+   Martlet gets only the words you say.
+2. **Image models** or **Audio models** is the shared pool list
+   ([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)):
+   `Pool-vision-...` and `Pool-hearing-...`. Each member's **Settings** shows
+   its model and the rest of the table above. **A cloud provider or server**
+   (`Pool-vision-AddCloud`) shows the cloud form. Every change saves
+   `pools-local.json`, and the running conversation follows at once
+   (`ReloadSenseModels`).
+3. On Hearing, *Hear how you say it* follows: the consent check box, the voice
+   path and Test hearing. Listening links to Hearing.
 
-The panels:
+The settings:
 
-| Option | What you fill in | Saves with |
+| Member | What you fill in | Saves with |
 | --- | --- | --- |
-| The text model, the other kind's model | Nothing | `ImageModelUseThinking`, `ImageModelUseOther` |
-| Ollama on this PC | A model Ollama has (`ImageModelLocalModel`), with what each one takes (`ImageModelLocalStatus`, `ImageModelLocalKnown`) and whether it fits beside Thinking's on the graphics card (`ImageModelLocalFit`) | `ImageModelUseLocal` (`ImageModelPullModel` downloads it) |
-| A cloud provider or server | The provider (also a model app found on this PC), the base URL, the model ID, a key and the consent tick | `ImageModelSaveCloud` |
-| One of your computers | Nothing: each paired computer offers its Thinking pool role, or its Ollama when it doesn't do Thinking for this PC (`ImageModelHost-<host>`) | `ImageModelUseHost-<host>` |
+| This PC | A model Ollama has (`ImageModelLocalModel`), with what each one takes (`ImageModelLocalStatus`, `ImageModelLocalKnown`) and whether it fits beside Thinking's on the graphics card (`ImageModelLocalFit`) | `ImageModelUseLocal` (`ImageModelPullModel` downloads it) |
+| A computer or a card | The model (`Pool-vision-Model-<i>`, a computer's models as its last check saw them) and a computer's engine (`Pool-vision-Engine-<i>`) | `Pool-vision-Save-<i>` |
+| A server you run | The model, a key (`ImageModelKey-<i>`) and **May receive pictures** (`Pool-vision-Media-<i>`) | `Pool-vision-Save-<i>` |
+| A cloud provider | A new key (`ImageModelKey-<i>`) | `Pool-vision-Save-<i>` |
+| The cloud form | The provider (also a model app found on this PC), the base URL, the model ID, a key and the consent tick (`ImageModelConsent`) | `ImageModelSaveCloud` |
 
-Keys follow these rules (`SenseModelChoice`):
+A new member gets a model by itself when Martlet knows one: Ollama on this PC
+gets a downloaded model that takes the kind (not Thinking's), a computer gets
+its Thinking pool role's model (else its Ollama's) and a card its Thinking
+pool model. A member without a model shows its settings.
 
-- A model keeps its saved key for the same base URL. One key can serve both
-  kinds: an audio model on the image model's base URL uses the image model's
-  key.
+Keys follow these rules:
+
+- A cloud member or a server keeps its own key in Windows Credential Manager;
+  `pool-keys.json` (never shared) says which key each list member uses.
 - Without a key of its own, a model on Thinking's base URL uses Thinking's
   key.
 - A new key replaces the old one. Martlet deletes a key from Windows Credential
-  Manager when no choice uses it any more.
+  Manager when no list member uses it any more.
+
+**The first lists.** A PC that has no Vision or Hearing list yet makes them
+once from `sense-models.json` (`SenseLists.FromSenseModels`): the text model
+gives an empty list; Ollama on this PC gives *This PC*; a paired computer
+gives the computer (or its card) with its engine; any other endpoint gives a
+cloud member that you agreed to when you chose it, with its key. "The same
+model as the other kind" gives the other kind's member. After that the lists
+win, and `sense-models.json` is no longer read. A `pools-local.json` that
+Martlet can't read is never replaced: the text model takes both kinds, and the
+page says so.
 
 Companion › Thinking's *Now* card says that Thinking is the text model and
 where pictures and recordings go (`ThinkingSenses`), with links to Vision and
@@ -432,27 +456,26 @@ input` lines before and after.
 
 ## The image and audio pools
 
-Each job of the image model or the audio model goes through a pool
-(`SensePool`, Martlet.Conversation). A pool is an ordered list of models
-that see (pictures) or hear (recordings):
+Each job of the image model or the audio model goes through its kind's list
+(`SensePool`, Martlet.Conversation; the lists are `SenseLists`, Martlet.Core,
+and `SenseSetup` reads them):
 
-1. The chosen model (Companion › Vision or Companion › Hearing) is first.
-2. Then the Thinking pool's members whose model is known to see or hear
-   (Companion › Thinking pool), in the pool's order. A model that Martlet
-   can't tell about is not a member. Only the chosen model is tried without
-   that knowledge.
+1. The chosen model is first: the first model in the list that isn't known not
+   to see (or hear) (`SensePool.Chosen`).
+2. Then the list's other models, in its order. The owner put them in the list,
+   so a model Martlet can't tell about is tried, and a refusal is remembered.
 
 A member is left out when:
 
-- it is the conversation's own Thinking model, so the conversation keeps its
-  prompt cache;
+- it is off, or kept for other companion PCs;
+- it is a cloud provider without your agreement, or a server outside this PC
+  that you didn't allow pictures and recordings (`SenseLists.MayReceive`);
+- it has no model yet, or it is a computer this PC isn't paired with;
+- it is known not to see (or hear);
+- it is the conversation's own Thinking model (after the chosen one), so the
+  conversation keeps its prompt cache;
 - it runs on the conversation's own computer and graphics card (its
-  Thinking, voice or listening);
-- it is outside this PC and your paired computers (a cloud provider or a
-  server on the home network) and you didn't tick **May receive pictures and
-  recordings** for it on Companion › Thinking pool;
-- it is a computer a friend shares with you, or a computer Devices › Sharing
-  work keeps for other companion PCs.
+  Thinking, voice or listening).
 
 The job goes through `WorkQueue` (lane `vision` or `hearing`, the pool area's
 ID; each member's key is its "computer"):
@@ -474,8 +497,8 @@ The pool area entries are `PoolAreas.Vision` and `PoolAreas.Hearing`
 ([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). Each PC keeps
 its own list, because which models fit beside Thinking depends on its
 hardware. An empty list means no model of its own: Thinking's own model takes
-the pictures or recordings. Until the pages show these lists, the members come
-from the Thinking pool as above.
+the pictures or recordings (the list's summary says *Nothing in the list is
+on. Instead: Thinking's own model takes the pictures itself.*).
 
 ## Finding out what a model can do
 
@@ -536,23 +559,34 @@ computer that the conversation shares stops when a reply starts.
 
 ## Files
 
-`sense-models.json` (this PC's choice; DeepThinkingSettings fields not shown
-are null):
+The Vision and Hearing lists are in `pools-local.json` (this PC's own; never
+shared), areas `vision` and `hearing`. A member's model is its `model` setting
+(a cloud member's is part of the member), a computer's engine its `engine`
+setting (`deep-thinking`, the default, or `ollama`), and a server's
+permission its `media` setting (`allowed`):
 
 ```json
 {
-  "SchemaVersion": 1,
-  "Image": {
-    "Source": "Own",
-    "Own": { "Place": "Endpoint", "Origin": "http://127.0.0.1:11434/v1", "ModelId": "qwen2.5vl:7b" },
-    "ChosenAt": "2026-10-08T19:00:00+00:00"
-  },
-  "Audio": { "Source": "OtherSense" }
+  "schema_version": 1,
+  "pools": [
+    { "area": "hearing", "members": [] },
+    {
+      "area": "vision",
+      "members": [
+        { "kind": "this-pc", "off": false, "only_for": [], "settings": { "model": "qwen2.5vl:7b" } },
+        {
+          "kind": "cloud", "provider": "openrouter", "origin": "https://openrouter.ai/api/v1", "model": "google/gemini-2.5-flash",
+          "off": false, "only_for": [], "settings": {}, "consent": { "digest": "...", "at": "2026-10-09T19:00:00+00:00" }
+        }
+      ]
+    }
+  ]
 }
 ```
 
-`Source` is `Thinking` (the default), `OtherSense` or `Own`. A file Martlet
-can't read counts as the default for both kinds.
+`pool-keys.json` (never shared) says which key in Windows Credential Manager a
+cloud member or a server uses. `sense-models.json`, this PC's older single
+choice, is read only to make the first lists.
 
 `sense-models-status.json` is written by the desktop: whether a talk window
 loaded the settings (`conversation`), and for each kind its path, model and
@@ -561,7 +595,8 @@ waiting, held for a reply, runs, and the last job's purpose, outcome and
 time). Before a talk window loads the settings, a model of its own is routed
 by what Martlet found out about it (`model-abilities.json`), and a kind that
 goes to the text model says to set up Thinking. Each kind's `pool` has its
-`lane`, the `members` the next job tries (position, key, name, place, chosen),
+`lane`, its `list` as saved (each member's key, whether it is on, its model and
+whether pictures and recordings may go there), the `members` the next job tries (position, key, name, place, chosen),
 how many `jobs` went through it, how many went to another member
 (`elsewhere`) or `waited` for one, and the `last` job's member, position,
 busy and unavailable counts and wait in ms. A job that another member took,
@@ -570,8 +605,8 @@ line in the desktop log.
 
 ## For developers
 
-The types are `SenseModels` (Martlet.Core), `SenseRouting` and `SenseLanes`
-(Martlet.Conversation). The desktop's controller runs the jobs
+The types are `SenseModels` and `SenseLists` (Martlet.Core), `SenseRouting`,
+`SenseLanes`, `SensePool` and `SenseSetup` (Martlet.Conversation). The desktop's controller runs the jobs
 (`LiveConversationController.Senses.cs`).
 
 ```csharp
@@ -594,7 +629,7 @@ if (route.Described)
 }
 bool shares = conversation.SenseSharesConversation(SenseKind.Image); // on the conversation's computer and card
 bool held = conversation.SenseHeld(SenseKind.Image);                 // and a reply runs until its voice is made
-conversation.ReloadSenseModels();                                    // after Companion saves sense-models.json
+conversation.ReloadSenseModels();                                    // after Companion saves a Vision or Hearing list
 ```
 
 The runner sends each job with the kind's own runtime and a one-use
@@ -604,8 +639,10 @@ held; with `DropWhenStale` (the default) it ends `Stale` when it can't start
 within its `Timeout`, so a job that must outlast a long reply sets
 `DropWhenStale = false` and passes its own token.
 
-Tests replace four things on the controller: `SenseRunner` answers a job in
-place of the model's request (a refused answer is still remembered),
+Tests replace these on the controller: `SenseListsNow` sets the lists'
+places (a `SenseSetup`), `SenseModels` sets the choices without lists,
+`SenseRunner` answers a job in place of the model's request (a refused answer
+is still remembered),
 `SenseAttemptRunner` answers one attempt on one pool member (busy,
 unavailable, held or done), `SenseSharing` says whether a kind's model shares
 the conversation's hardware, and `SenseFit` replaces the check with Ollama.
@@ -621,12 +658,15 @@ Without a data folder, a refusal is kept in memory only.
   paths against fixture endpoints on 127.0.0.1 with the production code.
   `model_ability_check` rehearses Test vision and Test hearing, and
   `model_lab` runs a fixture endpoint for the desktop's cards.
-- Tests: `SenseModelsTests` and `SenseModelChoiceTests` (Martlet.Core.Tests),
-  `SenseRoutingTests`, `SenseLanesTests` and `SensePoolTests`
-  (Martlet.Conversation.Tests), `ModelVisionTestTests` (Martlet.Providers.Tests), and in
-  Martlet.Desktop.Tests `SensePoolDesktopTests` (a busy image model passes the
-  picture to a pool member, a free one gets it alone, Test vision stays on the
-  chosen model, the consent rule), `SenseModelsDesktopTests` (a fixture endpoint gets the
+- Tests: `SenseModelsTests` and `SenseListsTests` (members as places, the
+  consent rules, the first lists from `sense-models.json`, hosts.json;
+  Martlet.Core.Tests), `SenseRoutingTests`, `SenseLanesTests`,
+  `SensePoolTests` and `SenseSetupTests` (the lists made once, a damaged list
+  file never replaced; Martlet.Conversation.Tests), `ModelVisionTestTests`
+  (Martlet.Providers.Tests), and in Martlet.Desktop.Tests
+  `SensePoolDesktopTests` (a busy image model passes the picture to the next
+  model in the list, a free one gets it alone, Test vision stays on the chosen
+  model, the first model that sees is chosen), `SenseModelsDesktopTests` (a fixture endpoint gets the
   picture, a refused picture is remembered, a job waits for or stops for a
   reply on the same computer, helper jobs), `ImageModelPipelineTests` (no
   picture to Thinking, a reply never waits, two-step looks, the default

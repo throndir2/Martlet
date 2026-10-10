@@ -33,15 +33,15 @@ public sealed record SensePoolRoute(string? Member, string? Name, int Position, 
     public bool Elsewhere => Member is not null && Position > 0;
 }
 
-/// <summary>The image and audio models' pools (docs/SENSE_MODELS.md, The image and audio pools). A sense job goes to the chosen
-/// model first. When that model is busy (another companion PC's job, its computer's own pool work), its computer doesn't answer,
-/// has no room beside Thinking or keeps its graphics card for a live turn, the job goes to the next member whose model sees (for
-/// pictures) or hears (for recordings). When every member is busy the job waits for whichever frees first, until its timeout.
-/// Requests go through <see cref="WorkQueue"/>, so a free first member costs nothing extra: no request, file or wait is added.
-/// The members after the chosen model are the Thinking pool's members that take the kind (Companion › Thinking pool), until the
-/// image and audio models get lists of their own. A member outside this PC and your paired computers gets pictures and
-/// recordings only when the owner ticked May receive pictures and recordings for it. The conversation's own Thinking model is
-/// never a member, so the conversation keeps its prompt cache.</summary>
+/// <summary>The image and audio models' pools (docs/SENSE_MODELS.md, The image and audio pools). Each kind has a list of its own
+/// (Companion › Vision, Companion › Hearing; <see cref="SenseLists"/>). A sense job goes to the chosen model first: the first
+/// model in the list that isn't known not to take the kind (<see cref="Chosen"/>). When that model is busy (another companion
+/// PC's job, its computer's own pool work), its computer doesn't answer, has no room beside Thinking or keeps its graphics card
+/// for a live turn, the job goes to the next model in the list. When every member is busy the job waits for whichever frees
+/// first, until its timeout. Requests go through <see cref="WorkQueue"/>, so a free first member costs nothing extra: no request,
+/// file or wait is added. A member outside this PC and your paired computers gets pictures and recordings only with the owner's
+/// agreement (<see cref="SenseLists.MayReceive"/>). The conversation's own Thinking model is never a member after the chosen
+/// one, so the conversation keeps its prompt cache.</summary>
 public static class SensePool
 {
     /// <summary>The most members a job tries.</summary>
@@ -49,25 +49,39 @@ public static class SensePool
 
     /// <summary>The <see cref="WorkQueue"/> lane of <paramref name="kind"/>'s jobs: its pool area's ID (<see cref="PoolAreas.Vision"/>,
     /// <see cref="PoolAreas.Hearing"/>).</summary>
-    public static string Lane(SenseKind kind) => (kind == SenseKind.Image ? PoolAreas.Vision : PoolAreas.Hearing).Id;
+    public static string Lane(SenseKind kind) => SenseLists.Area(kind).Id;
 
-    /// <summary>The members a job of <paramref name="kind"/> tries, first to last: <paramref name="chosen"/> (the image or audio
-    /// model of its own), then <paramref name="pool"/>'s members whose model is known to see or hear (<see cref="Takes"/>),
-    /// in the pool's order. Left out: a member twice, the conversation's own Thinking model (<paramref name="thinking"/>), an
-    /// external member the owner didn't allow to receive pictures and recordings, and what <paramref name="leaveOut"/> says
-    /// (the desktop: a computer a friend shares, a computer kept for other companion PCs, the conversation's own computer and
-    /// graphics card).</summary>
-    public static IReadOnlyList<DeepThinkingSettings> Members(SenseKind kind, DeepThinkingSettings chosen, ThinkingPoolSettings? pool,
+    /// <summary>The model a job of <paramref name="kind"/> goes to first: the first of <paramref name="models"/> (the list's, in
+    /// order) not known not to take the kind; the first one when every one is (its route then says why); null for an empty list
+    /// (the text model takes it).</summary>
+    public static DeepThinkingSettings? Chosen(SenseKind kind, IReadOnlyList<DeepThinkingSettings> models, ModelAbilities? abilities)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+        return models.FirstOrDefault(m => !Refuses(kind, m, abilities)) ?? models.FirstOrDefault();
+    }
+
+    /// <summary>The choices as <see cref="SenseRouting"/> reads them: for each kind its <see cref="Chosen"/> model of its own, or
+    /// the text model for an empty list.</summary>
+    public static SenseModels Senses(IReadOnlyList<DeepThinkingSettings> image, IReadOnlyList<DeepThinkingSettings> audio, ModelAbilities? abilities)
+    {
+        static SenseModel Of(DeepThinkingSettings? own) => own is null ? new() : new() { Source = SenseSource.Own, Own = own };
+        return new() { Image = Of(Chosen(SenseKind.Image, image, abilities)), Audio = Of(Chosen(SenseKind.Audio, audio, abilities)) };
+    }
+
+    /// <summary>The members a job of <paramref name="kind"/> tries, first to last: <paramref name="chosen"/>, then the list's other
+    /// models (<paramref name="others"/>, in order). Left out: a model twice, one known not to see or hear (<see cref="Refuses"/>),
+    /// the conversation's own Thinking model (<paramref name="thinking"/>), and what <paramref name="leaveOut"/> says (the
+    /// desktop: one on the conversation's own computer and graphics card).</summary>
+    public static IReadOnlyList<DeepThinkingSettings> Members(SenseKind kind, DeepThinkingSettings chosen, IEnumerable<DeepThinkingSettings>? others,
         SetupRoute? thinking, ModelAbilities? abilities, Func<DeepThinkingSettings, bool>? leaveOut = null)
     {
         ArgumentNullException.ThrowIfNull(chosen);
         List<DeepThinkingSettings> members = [chosen];
-        if (pool is null) return members;
-        foreach (var candidate in pool.Members)
+        foreach (var candidate in others ?? [])
         {
             if (members.Count >= MaximumMembers) break;
             var member = candidate.Single;
-            if (!member.Separate || members.Any(m => m.Key == member.Key) || !Takes(kind, member, abilities) || !pool.MayReceiveMedia(member) ||
+            if (!member.Separate || members.Any(m => m.Key == member.Key) || Refuses(kind, member, abilities) ||
                 SenseRouting.IsThinking(member, thinking) || leaveOut?.Invoke(member) == true)
                 continue;
             members.Add(member);
@@ -75,15 +89,15 @@ public static class SensePool
         return members;
     }
 
-    /// <summary>Whether <paramref name="member"/>'s model is known to see (an image job) or hear (an audio job): what Martlet found
-    /// out about it, then its name (<see cref="SenseRouting.Sees"/>, <see cref="SenseRouting.Hears"/>). A model Martlet can't
-    /// tell about isn't a member: only the chosen model is tried without knowing.</summary>
-    public static bool Takes(SenseKind kind, DeepThinkingSettings member, ModelAbilities? abilities)
+    /// <summary>Whether <paramref name="member"/>'s model is known not to see (an image job) or hear (an audio job): what Martlet
+    /// found out about it, then its name (<see cref="SenseRouting.Sees"/>, <see cref="SenseRouting.Hears"/>). The owner put it in
+    /// the list, so a model Martlet can't tell about is tried, and a refusal is remembered.</summary>
+    public static bool Refuses(SenseKind kind, DeepThinkingSettings member, ModelAbilities? abilities)
     {
         ArgumentNullException.ThrowIfNull(member);
         return kind == SenseKind.Image
-            ? SenseRouting.Sees(member, abilities) == VisionSupport.Supported
-            : SenseRouting.Hears(member, abilities) == HearingSupport.Supported;
+            ? SenseRouting.Sees(member, abilities) == VisionSupport.Unsupported
+            : SenseRouting.Hears(member, abilities) == HearingSupport.Unsupported;
     }
 
     /// <summary>Runs one job of <paramref name="kind"/> on the first of <paramref name="members"/> that takes it
