@@ -4,7 +4,6 @@ using Martlet.Core.Network;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Credentials.Windows;
-using Martlet.Diagnostics;
 using Martlet.Gateway;
 
 namespace Martlet.NodeLinkCheck;
@@ -52,9 +51,9 @@ internal static class RoleLab
         {
             await using var host = await SignInRehearsal.LabHost.StartAsync("lab-role-host");
 
-            // The desktop on the data directory, under the device ID it names itself by (desktop-<computer>), so the entries it
-            // keeps about itself (pc.<device>, role.<device>) are the ones the network knows it by.
-            var desktopDevice = LocalLogs.ThisDeviceId();
+            // The desktop on the data directory, under the device ID it names itself by (chosen now and kept in its device.json),
+            // so the entries it keeps about itself (pc.<device>, role.<device>) are the ones the network knows it by.
+            var desktopDevice = DeviceIds.Ensure(dataDirectory).Id;
             var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
             var (pairing, pairingSecret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), desktopDevice,
                 "LAB-DESKTOP", token);

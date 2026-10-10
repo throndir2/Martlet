@@ -175,6 +175,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeMemoriesAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
+            if (IsAccountsTarget(rawTarget!))
+            {
+                await InvokeAccountsAsync(context, rawTarget!).ConfigureAwait(false);
+                return;
+            }
             if (rawTarget == ApiKeysPath)
             {
                 await InvokeApiKeysAsync(context).ConfigureAwait(false);

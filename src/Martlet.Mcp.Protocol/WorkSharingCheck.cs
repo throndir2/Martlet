@@ -20,7 +20,7 @@ internal static class WorkSharingCheck
     {
         var path = Path.Combine(dataDirectory, WorkSharingSettings.FileName);
         var settings = WorkSharingSettings.Load(dataDirectory);
-        device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId();
+        device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory);
         var plan = Plan(dataDirectory);
         var (paired, own) = Paired(dataDirectory);
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);

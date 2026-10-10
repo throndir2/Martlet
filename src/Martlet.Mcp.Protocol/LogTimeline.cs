@@ -26,7 +26,7 @@ internal static class LogTimeline
         if (contains is { Length: > LogTail.MaximumFilterLength }) throw new ArgumentException($"contains is limited to {LogTail.MaximumFilterLength} characters.");
         if (source is { Length: > 64 }) throw new ArgumentException("source is limited to 64 characters.");
         var root = Root(dataDirectory);
-        var device = LocalLogs.ThisDeviceId();
+        var device = LocalLogs.ThisDeviceId(root);
         var directory = LocalLogs.Directory(root);
         var local = Directory.Exists(directory) ? LocalLogs.Read(directory, device) : [];
         var network = Directory.Exists(directory) ? NetworkLogs.Load(directory) : new NetworkLogs();
@@ -69,7 +69,7 @@ internal static class LogTimeline
         if (folder is null || !Directory.Exists(folder)) throw new ArgumentException("outputPath's folder must exist.");
         if (File.Exists(outputPath)) throw new ArgumentException("outputPath already exists; choose a new file name.");
         var root = Root(dataDirectory);
-        var device = LocalLogs.ThisDeviceId();
+        var device = LocalLogs.ThisDeviceId(root);
         var directory = LocalLogs.Directory(root);
         var local = Directory.Exists(directory) ? LocalLogs.Read(directory, device) : [];
         var network = Directory.Exists(directory) ? NetworkLogs.Load(directory) : new NetworkLogs();
