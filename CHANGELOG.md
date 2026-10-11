@@ -19,6 +19,7 @@ Each release's section here is also its notes on GitHub.
 ### Fixed
 
 - **App guides**: a game Martlet said it read up on, such as Abiotic Factor, now always shows under *Your apps* with its guide, and its guide is used while the game is in front. Before, it read up only when its model called the right tool, so it could say it was ready when nothing was read. *"Read up on …"* now also works with Thinking models that can't call tools. ([#786](https://github.com/throndir2/Martlet/pull/786))
+- On Companion › App guides, typing a game's name in **Add an app** works again while Martlet reads up on a game or refreshes the page. The cursor no longer gets stuck after the first letter. ([#789](https://github.com/throndir2/Martlet/pull/789))
 
 ## [0.70.0] - 2026-10-11
 

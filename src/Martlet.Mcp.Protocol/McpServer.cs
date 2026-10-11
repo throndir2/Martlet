@@ -145,6 +145,19 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         {
             id = new { type = "string" }, text = new { type = "string" }
         }, ["id", "text"]),
+        Tool("ui_type", "Type the way a person does, one key at a time, to see how a page takes typing: with id that text box takes the " +
+            "keyboard focus first; without it the keys go to whatever has the focus, so you can type, let the page draw again and type " +
+            "on without clicking. Each character of text (at most " + DesktopAutomation.MaximumTyped + "), then each of keys (" +
+            string.Join(", ", DesktopAutomation.TypeKeys.Keys) + "), is a key posted to that Martlet window only (window names one; " +
+            "Martlet's main window by default), every stepMs (default 50). Returns the automation ID of the control that has the " +
+            "keyboard focus afterwards (null when none of Martlet's controls has it); ui_snapshot marks it focused. Requires " +
+            "--allow-ui-effects.", new
+        {
+            id = new { type = "string" }, text = new { type = "string", maxLength = DesktopAutomation.MaximumTyped },
+            keys = new { type = "array", maxItems = DesktopAutomation.MaximumTyped, items = new { type = "string", @enum = DesktopAutomation.TypeKeys.Keys.ToArray() } },
+            window = new { type = "string" },
+            stepMs = new { type = "integer", minimum = 0, maximum = DesktopAutomation.MaximumTypeStepMs }
+        }),
         Tool("ui_toggle", "Toggle an enabled checkbox (requires --allow-ui-effects).", new
         {
             id = new { type = "string" }
@@ -2540,6 +2553,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
+                "ui_type" => await desktop.TypeAsync(OptionalString(arguments, "id"), OptionalString(arguments, "text"),
+                    OptionalStrings(arguments, "keys"), OptionalString(arguments, "window"), OptionalInt(arguments, "stepMs")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
