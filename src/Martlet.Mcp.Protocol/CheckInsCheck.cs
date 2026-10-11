@@ -208,6 +208,7 @@ internal static class CheckInsCheck
             [CheckIns.Others] = "REMIND: Someone else is here; don't share private things about the user.",
             [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin.",
             [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome.",
+            [CheckIns.Ahead] = "PLAN: FIXTURE: They'll probably say the bug is fixed; I'll cheer, then tease them about how long it took.",
             [CheckIns.Actions] = "OK"
         };
         var places = new BackgroundPlaces();
@@ -360,6 +361,7 @@ internal static class CheckInsCheck
         AfterExchange(Step, now, facts);
         await ContextAsync(Step, now, facts, cancellation);
         await DescribeTouchesAsync(Step, now, facts, cancellation);
+        await ThinkAheadAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
         await ToolsAsync(Step, facts, cancellation);
         await ReactionsAsync(Step, facts, cancellation);
@@ -420,6 +422,76 @@ internal static class CheckInsCheck
             {
                 waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), message, verdict.Act, verdict.Text,
                 firstRequestNotes = first.Text, secondRequestSources = second.Sources
+            });
+    }
+
+    /// <summary>11b. The built-in Think ahead check-in end to end with FIXTURE facts and a canned answer (NOT AI): it waits for a
+    /// reply to end, a fired trigger runs it even while the conversation is busy, its message carries the personality, the
+    /// conversation and the PLAN: format, the answer is read on a production job board, the thoughts go on a production context
+    /// board for exactly one request, and another exchange that ends first drops them (<see cref="CheckIns.DropPlans"/>).</summary>
+    private static async Task ThinkAheadAsync(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts,
+        CancellationToken cancellation)
+    {
+        var ahead = CheckIns.All(null).Single(c => c.Id == CheckIns.Ahead);
+        var fired = CheckIns.ExchangeTrigger(now.AddSeconds(-1));
+        var waits = new Dictionary<string, string?>
+        {
+            ["no reply ended"] = CheckIns.Wait(ahead, facts, null),
+            ["a reply ended, the user talks"] = CheckIns.Wait(ahead, facts with { Quiet = TimeSpan.Zero }, null, fired: fired),
+            ["a reply ended, ran 10 s ago"] = CheckIns.Wait(ahead, facts, new(now.AddSeconds(-10), 3, "thoughts ahead wait for the next reply", false),
+                fired: fired),
+            ["nothing said yet"] = CheckIns.Wait(ahead, facts with { Exchanges = [], Exchanged = 0 }, null, fired: fired)
+        };
+        var job = CheckIns.Prepare(ahead, CheckIns.Focus(ahead, facts), null);
+        BackgroundPlace member = new("endpoint:fixture-ahead", "FIXTURE member") { Slots = 1, Model = "fixture-model" };
+        const string answer = "<think>They're stuck on a bug; they'll vent or say it's fixed.</think>\n" +
+            "- PLAN: FIXTURE: They'll probably say the bug is fixed; I'll cheer, then tease them about how long it took.";
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done(answer)));
+        var result = job is null ? null : await board.RunAsync(job, cancellation);
+        var verdict = CheckIns.Read(ahead, result?.Text, facts);
+        var context = new ContextBoard();
+        var source = CheckIns.Source(ahead.Id);
+        if (verdict is { Act: true, Text: { } text } && CheckIns.Plan(null, text) is { } note)
+            context.Post(source, note, now, CheckIns.PlanAge, consume: true);
+        var first = context.Snapshot(now.AddSeconds(30));
+        context.MarkSent(first);
+        var second = context.Snapshot(now.AddSeconds(40));
+        // Thoughts that came after the reply's request was built wait on the board; the reply's end drops them.
+        context.Post(source, CheckIns.Plan(null, verdict.Text ?? "x")!, now, CheckIns.PlanAge, consume: true);
+        var dropped = CheckIns.DropPlans(context, CheckIns.All(null));
+        var afterNextExchange = context.Snapshot(now.AddSeconds(50));
+        context.Post(source, CheckIns.Plan(null, verdict.Text ?? "x")!, now, CheckIns.PlanAge, consume: true);
+        var stale = context.Snapshot(now + CheckIns.PlanAge + TimeSpan.FromSeconds(1));
+        var nothing = new Dictionary<string, CheckInVerdict>
+        {
+            ["OK"] = CheckIns.Read(ahead, "OK", facts),
+            ["PLAN: nothing to plan"] = CheckIns.Read(ahead, "PLAN: nothing to plan.", facts),
+            ["KNOW: instead"] = CheckIns.Read(ahead, "KNOW: They're coding.", facts)
+        };
+        var emptied = CheckIns.Plan(new Martlet.Core.Settings.PromptSettings
+        {
+            Overrides = new Dictionary<string, string> { [Martlet.Core.Settings.PromptCatalog.CheckInPlan] = "" }
+        }, "x");
+        var message = job?.Text ?? "";
+        step("think ahead", ahead is { On: true, EveryMinutes: 1, Outcome: CheckInOutcome.Plan, Triggers: CheckInTriggers.ExchangeEnded } &&
+            waits["no reply ended"] == "it waits for a reply to end" && waits["a reply ended, the user talks"] is null &&
+            waits["a reply ended, ran 10 s ago"] == "next in 50 s" && waits["nothing said yet"] == "nothing was said in a conversation here yet" &&
+            job is { Kind: ThinkingJobKind.CheckIn, Reasoning: false } && message.Contains("Think ahead as Mira", StringComparison.Ordinal) &&
+            message.Contains("playful and teasing", StringComparison.Ordinal) && message.Contains("This bug is driving me crazy", StringComparison.Ordinal) &&
+            message.Contains("starts with PLAN:", StringComparison.Ordinal) && message.Contains("write only: OK", StringComparison.Ordinal) &&
+            !message.Contains("{persona}", StringComparison.Ordinal) && !message.Contains("{conversation}", StringComparison.Ordinal) &&
+            result is { Succeeded: true } && verdict is { Act: true, Text: { } read } && read.StartsWith("FIXTURE: They'll probably", StringComparison.Ordinal) &&
+            first.Sources.Contains(source) && first.Text!.Contains("Your own thoughts from just before this message", StringComparison.Ordinal) &&
+            first.Text.Contains("tease them about how long it took", StringComparison.Ordinal) && !second.Sources.Contains(source) &&
+            dropped == 1 && !afterNextExchange.Sources.Contains(source) && !stale.Sources.Contains(source) &&
+            nothing["OK"] is { Act: false, Readable: true } && nothing["PLAN: nothing to plan"] is { Act: false, Readable: true } &&
+            nothing["KNOW: instead"] is { Act: false, Readable: false } && emptied is null,
+            new
+            {
+                waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), message, verdict.Act, verdict.Text,
+                firstRequestNotes = first.Text, secondRequestSources = second.Sources, droppedByTheNextExchange = dropped,
+                planAgeMinutes = CheckIns.PlanAge.TotalMinutes,
+                nothing = nothing.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable })
             });
     }
 
@@ -523,7 +595,8 @@ internal static class CheckInsCheck
             step("triggers: saved and read back", wrote && state == "loaded" && all.Single(c => c.Id == "c4").Triggers == custom.Triggers &&
                 all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
                 CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
-                    : c.Id == CheckIns.Reactions ? CheckIns.ByTouches : c.Id == CheckIns.Actions ? CheckInTriggers.ExchangeEnded : CheckInTriggers.None)) && refused,
+                    : c.Id == CheckIns.Reactions ? CheckIns.ByTouches
+                    : c.Id is CheckIns.Actions or CheckIns.Ahead ? CheckInTriggers.ExchangeEnded : CheckInTriggers.None)) && refused,
                 new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
         }
         finally
