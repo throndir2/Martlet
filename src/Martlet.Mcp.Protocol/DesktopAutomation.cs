@@ -720,6 +720,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // picker (Picker-VoiceEngine-<key>); the shown engine's abilities and chips read through the VoiceEngine prefix below.
         "SpeakingEngineOthers", "SpeakingEngineSharedGpu", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
+        // Settings › App updates: the Install button's words, "Install x.y.z now", or "Restart into x.y.z" once the update is
+        // installed beside the running Martlet. Clicking it installs or restarts, so it needs --allow-ui-effects.
+        "InstallAppUpdate",
         // Settings › App updates: this PC's own host service following the app's version (shown only when this PC runs one):
         // current, being updated in the background, busy (and when Martlet tries again), stopped, not running, or why the
         // update stopped. Versions and fixed text only.

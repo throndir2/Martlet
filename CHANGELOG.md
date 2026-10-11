@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Updates now install in the background while you keep using Martlet. Restarting into the new version takes a second or so instead of closing Martlet for the whole install. If you choose **Later**, Martlet switches over when it exits. ([#777](https://github.com/throndir2/Martlet/pull/777))
+
 ## [0.69.0] - 2026-10-10
 
 ### Added

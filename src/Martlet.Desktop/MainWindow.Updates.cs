@@ -20,6 +20,20 @@ public partial class MainWindow
     private DateTimeOffset? lastUpdateCycle;
     private (string Path, GitHubUpdate Update)? readyUpdate;
     private (string Installer, Version Version, bool Relaunch, bool Unattended)? installOnExit;
+    /// <summary>The program folder the installer put this Martlet in; null for a development build. Updates are installed
+    /// beside it (in its ".next" folder) while Martlet runs, so switching to them takes only a restart.</summary>
+    private static readonly string? installRoot = SimulatedAppUpdate.InstallRoot ?? AppUpdateStaging.InstallRoot(AppContext.BaseDirectory);
+    /// <summary>The version installed beside this Martlet, ready to switch to with a restart of a few seconds.</summary>
+    private Version? stagedVersion;
+    /// <summary>A version that could not be installed beside this Martlet; it installs the classic way, with Martlet closed
+    /// for the whole install.</summary>
+    private Version? stagingFailedVersion;
+    /// <summary>A version whose install beside Martlet you canceled (Background tasks); it starts again by itself only at the
+    /// next update check.</summary>
+    private Version? stagingCanceledVersion;
+    private Task? stagingTask;
+    /// <summary>Removing what the last update left beside the program folder, which installing the next one waits for.</summary>
+    private Task besideCleanup = Task.CompletedTask;
     private string? announcedUpdate;
     /// <summary>A version whose install just failed; it is not installed automatically again until you press Install.</summary>
     private string? failedInstall;
@@ -125,6 +139,14 @@ public partial class MainWindow
     /// <summary>Whether the downloaded update may install without asking now or at exit.</summary>
     private bool AutoInstallReady => AutoInstalling && readyUpdate is { } ready && ready.Update.Version.ToString(3) != failedInstall;
 
+    /// <summary>Whether the downloaded update is installed beside this Martlet, so a restart of a few seconds switches to it.</summary>
+    private bool UpdateStaged => readyUpdate is { } ready && installRoot is not null && stagedVersion == ready.Update.Version;
+
+    /// <summary>Whether the downloaded update is ready to restart into: installed beside this Martlet, or it installs the
+    /// classic way (a development build, or installing it beside Martlet failed).</summary>
+    private bool UpdatePrepared => readyUpdate is { } ready &&
+        (installRoot is null || stagedVersion == ready.Update.Version || stagingFailedVersion == ready.Update.Version);
+
     private void ShowUpdateControls()
     {
         UpdateIntervalChoice.IsEnabled = store is not null && (updateChecksEnabled || updatePreferences.AutoUpdateHosts);
@@ -155,7 +177,7 @@ public partial class MainWindow
             failedInstall = last.Failed;
             if (last.Failed is not null) failedInstallMessage = last.Message;
         }
-        AppUpdateInstaller.CleanUp(store.DataDirectory, Version);
+        besideCleanup = AppUpdateInstaller.CleanUp(store.DataDirectory, Version, installRoot);
         updateTimer.Start();
         if (updateChecksEnabled || updatePreferences.AutoUpdateHosts) await RunUpdateCycleAsync();
     }
@@ -170,7 +192,12 @@ public partial class MainWindow
             InstallNow(unattended: false);
             return;
         }
-        if (AutoInstallReady && CanInstallNow())
+        if (AutoInstallReady && !UpdatePrepared)
+        {
+            if (stagingTask is not { IsCompleted: false } && stagingCanceledVersion != readyUpdate?.Update.Version)
+                StageAutomaticallyAsync().Forget();
+        }
+        else if (AutoInstallReady && CanInstallNow())
         {
             InstallNow(unattended: true);
             return;
@@ -192,7 +219,10 @@ public partial class MainWindow
     private void ShowInstallWaiting()
     {
         if (readyUpdate is not { } ready) return;
-        installWaitingText = $"Martlet {ready.Update.Version.ToString(3)} is downloaded and installs as soon as Martlet isn't busy." +
+        installWaitingText = (UpdateStaged
+                ? $"Martlet {ready.Update.Version.ToString(3)} is installed beside this one. Martlet restarts into it, in a few " +
+                  "seconds, as soon as it isn't busy."
+                : $"Martlet {ready.Update.Version.ToString(3)} is downloaded and installs as soon as Martlet isn't busy.") +
             (InstallBlocker() is { } why ? $" Waiting: {why}." : "");
         UpdateStatusText.Text = installWaitingText;
     }
@@ -218,9 +248,14 @@ public partial class MainWindow
             }
             if (AutoInstalling && availableUpdate is { } update && readyUpdate?.Update.Version != update.Version)
                 await DownloadUpdateAsync();
+            if (AutoInstallReady && !UpdatePrepared && !closing)
+            {
+                stagingCanceledVersion = null;
+                await StageUpdateAsync();
+            }
             if (AutoInstallReady && readyUpdate is { } ready && !closing)
             {
-                if (CanInstallNow())
+                if (UpdatePrepared && CanInstallNow())
                 {
                     InstallNow(unattended: true);
                     return;
@@ -377,16 +412,19 @@ public partial class MainWindow
             if (closing || cancellation.IsCancellationRequested) return;
             availableUpdate = result;
             if (readyUpdate is { } ready && ready.Update.Version != result?.Version) readyUpdate = null;
-            DownloadUpdateButton.Content = result is null ? "_Install update" : $"_Install {result.Version.ToString(3)} now";
-            DownloadUpdateButton.Visibility = ReviewUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
+            ShowInstallButton();
             if (result is null)
             {
                 UpdateStatusText.Text = $"You're up to date. Checked {DateTime.Now:t}.";
                 return;
             }
-            UpdateStatusText.Text = $"Martlet {result.Version.ToString(3)} is available ({Mib(result)})." + (AutoInstalling
-                ? " Downloading for automatic install."
-                : " Press Install to download and restart.");
+            UpdateStatusText.Text = UpdateStaged && !AutoInstalling
+                ? StagedText(result.Version.ToString(3))
+                : $"Martlet {result.Version.ToString(3)} is available ({Mib(result)})." + (AutoInstalling
+                    ? " Downloading for automatic install."
+                    : installRoot is null
+                        ? " Press Install to download and restart."
+                        : " Press Install to download it and install it while you keep using Martlet.");
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (OperationCanceledException)
@@ -484,47 +522,208 @@ public partial class MainWindow
         await ConfirmAndInstallAsync(update, prompted: false);
     }
 
-    /// <summary>Asks once, then downloads and verifies the installer, closes Martlet, runs the installer and starts again. Work
-    /// on hosts or for your other computers that is running then finishes first.</summary>
+    /// <summary>The Install button: hidden when there is no update, Restart once the update is installed beside Martlet.</summary>
+    private void ShowInstallButton()
+    {
+        var update = availableUpdate;
+        DownloadUpdateButton.Content = update is null ? "_Install update"
+            : UpdateStaged && readyUpdate?.Update.Version == update.Version ? $"_Restart into {update.Version.ToString(3)}"
+            : $"_Install {update.Version.ToString(3)} now";
+        DownloadUpdateButton.Visibility = ReviewUpdateButton.Visibility = update is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static string StagedText(string version) =>
+        $"Martlet {version} is installed. Restart Martlet to start using it (a few seconds), or it switches over when Martlet exits.";
+
+    /// <summary>Asks once, then downloads and verifies the installer. An installed Martlet then installs it beside itself while
+    /// you keep using it and asks to restart, which takes a few seconds; a development build (or when that install fails)
+    /// closes Martlet, runs the installer and starts again. Work on hosts or for your other computers that is running then
+    /// finishes first. Once the update is installed beside Martlet, this only restarts into it (Restart into x.y.z).</summary>
     private async Task ConfirmAndInstallAsync(GitHubUpdate update, bool prompted)
     {
-        var busy = BusyReason();
-        var work = HostWorkBlocker();
-        if (!ConfirmationDialog.Confirm(this,
-                $"Martlet {update.Version.ToString(3)} is available. Install it now?\n\n" +
-                $"The update is {Mib(update)}. Martlet will close, install it and restart." +
-                (busy is null ? "" : $"\n\n{busy} will pause until Martlet restarts.") +
-                (work is null ? "" : $"\n\nIt waits until this finishes: {work}.") +
-                (prompted ? "\n\nYou can also install it later from Settings." : ""),
-                "Install Martlet update"))
-            return;
-        if (readyUpdate?.Update.Version != update.Version) await DownloadUpdateAsync(shown: true);
-        if (readyUpdate?.Update.Version != update.Version || closing) return;
+        var version = update.Version.ToString(3);
+        // Asked or chosen once: the periodic check doesn't ask again for this version.
+        announcedUpdate = update.Tag;
+        if (UpdateStaged && readyUpdate?.Update.Version == update.Version)
+        {
+            // Restart into x.y.z restarts at once; the periodic check only asks.
+            if (prompted && !AskToRestart(update))
+            {
+                UpdateStatusText.Text = ActionText.Text = StagedText(version);
+                return;
+            }
+        }
+        else
+        {
+            var beside = installRoot is not null && stagingFailedVersion != update.Version;
+            var busy = BusyReason();
+            var work = HostWorkBlocker();
+            if (!ConfirmationDialog.Confirm(this,
+                    $"Martlet {version} is available. Install it now?\n\n" +
+                    (beside
+                        ? $"The update is {Mib(update)}. Martlet installs it in the background while you keep using it, then asks " +
+                          "you to restart, which takes a few seconds."
+                        : $"The update is {Mib(update)}. Martlet will close, install it and restart." +
+                          (busy is null ? "" : $"\n\n{busy} will pause until Martlet restarts.") +
+                          (work is null ? "" : $"\n\nIt waits until this finishes: {work}.")) +
+                    (prompted ? "\n\nYou can also install it later from Settings." : ""),
+                    "Install Martlet update"))
+                return;
+            if (readyUpdate?.Update.Version != update.Version) await DownloadUpdateAsync(shown: true);
+            if (readyUpdate?.Update.Version != update.Version || closing) return;
+            if (beside)
+            {
+                stagingCanceledVersion = null;
+                await StageUpdateAsync(shown: true);
+                if (readyUpdate?.Update.Version != update.Version || closing) return;
+                // Canceled in Background tasks: nothing more happens until you press Install again.
+                if (!UpdatePrepared) return;
+                if (!UpdateStaged)
+                {
+                    if (!ConfirmationDialog.Confirm(this,
+                            $"Martlet couldn't install {version} while it runs. Install it the usual way instead?\n\n" +
+                            "Martlet will close, install it and restart." +
+                            (BusyReason() is { } busyNow ? $"\n\n{busyNow} will pause until Martlet restarts." : ""),
+                            "Install Martlet update"))
+                        return;
+                }
+                else if (!AskToRestart(update))
+                {
+                    UpdateStatusText.Text = ActionText.Text = StagedText(version);
+                    return;
+                }
+            }
+        }
         if (HostWorkBlocker() is { } still)
         {
             installAfterHostWork = true;
-            UpdateStatusText.Text = ActionText.Text = $"Martlet {update.Version.ToString(3)} installs as soon as this finishes: {still}.";
+            UpdateStatusText.Text = ActionText.Text = UpdateStaged
+                ? $"Martlet restarts into {version} as soon as this finishes: {still}."
+                : $"Martlet {version} installs as soon as this finishes: {still}.";
             return;
         }
         InstallNow(unattended: false);
     }
 
+    /// <summary>The update is installed beside Martlet: asks whether to restart into it now; true to restart.</summary>
+    private bool AskToRestart(GitHubUpdate update)
+    {
+        var busy = BusyReason();
+        var work = HostWorkBlocker();
+        return ConfirmationDialog.Confirm(this,
+            $"Martlet {update.Version.ToString(3)} is installed. Restart Martlet now to start using it?\n\n" +
+            "The restart takes a few seconds." +
+            (busy is null ? "" : $"\n\n{busy} will pause until Martlet restarts.") +
+            (work is null ? "" : $"\n\nIt waits until this finishes: {work}.") +
+            "\n\nIf you restart later, Martlet switches to the new version when it exits.",
+            "Restart Martlet", yes: "_Restart now", no: "_Later", questionId: "RestartIntoUpdateQuestion");
+    }
+
+    /// <summary>Installs the downloaded update beside this Martlet (its program folder's ".next" folder) as a background task,
+    /// Install Martlet x.y.z: out of sight unless <paramref name="shown"/>, with no installer window and at idle priority,
+    /// while Martlet keeps working. Restarting into it then takes seconds instead of the whole install. When it fails, the
+    /// update installs the classic way. Unless you asked for it (<paramref name="shown"/>) or another computer did
+    /// (<paramref name="asked"/>), it starts only while Martlet isn't replying or hearing you. Joins one already running.</summary>
+    private async Task StageUpdateAsync(bool shown = false, bool asked = false)
+    {
+        if (stagingTask is { IsCompleted: false } running)
+        {
+            await running;
+            return;
+        }
+        if (closing || store is null || installRoot is not { } root || readyUpdate is not { } ready || UpdatePrepared) return;
+        if (!shown && !asked && (conversation?.Replying == true || openConversation?.HearingYou == true)) return;
+        stagingTask = StageAsync(store.DataDirectory, root, ready, shown);
+        await stagingTask;
+    }
+
+    /// <summary>The automatic install's first step (from the one-minute tick): installs the update beside Martlet, then
+    /// restarts into it when Martlet isn't busy.</summary>
+    private async Task StageAutomaticallyAsync()
+    {
+        await StageUpdateAsync();
+        if (closing || !AutoInstallReady || !UpdatePrepared) return;
+        if (CanInstallNow()) InstallNow(unattended: true);
+        else ShowInstallWaiting();
+    }
+
+    private async Task StageAsync(string dataDirectory, string root, (string Path, GitHubUpdate Update) ready, bool shown)
+    {
+        var version = ready.Update.Version.ToString(3);
+        var updates = AppUpdateInstaller.UpdatesDirectory(dataDirectory);
+        var started = Stopwatch.StartNew();
+        string? failure = null;
+        BackgroundTask? task = null;
+        UpdateStatusText.Text = $"Installing Martlet {version} beside this one. Keep using Martlet; this takes a minute or less.";
+        await HostRunWindow.RunAsync(this, $"Install Martlet {version}", async run =>
+        {
+            task = run.BackgroundTask;
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, run.Token);
+            run.Status(UpdateStatusText.Text);
+            run.Output.Report($"Installing Martlet {version} into {AppUpdateStaging.StagedRoot(root)} while Martlet keeps running, " +
+                "with no installer window and at low priority. Then restarting into it takes a few seconds, not the whole install.");
+            try
+            {
+                await besideCleanup;
+                var code = SimulatedAppUpdate.InstallRoot is not null && SimulatedAppUpdate.Update?.Version == ready.Update.Version
+                    ? await SimulatedAppUpdate.StageAsync(root, cancellation.Token)
+                    : await AppUpdateStaging.PrepareAsync(ready.Path, root, updates, cancellation.Token);
+                if (code != 0)
+                {
+                    var tail = AppUpdateHelper.InstallerLogTail(updates, 15, AppUpdateStaging.StageLogFile);
+                    throw new InvalidDataException($"The installer ended with exit code {code}" + (tail.Count == 0 ? "."
+                        : $". Last lines of its log ({AppUpdateStaging.StageLogFile} in the updates folder):\n" + string.Join("\n", tail)));
+                }
+                stagedVersion = ready.Update.Version;
+                ErrorLog.Info($"Installed Martlet {version} beside this one in {started.Elapsed.TotalSeconds:0} s. Restarting into it takes a few seconds.");
+                return $"Martlet {version} is installed. Restarting into it takes a few seconds.";
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or
+                InvalidDataException or InvalidOperationException)
+            {
+                stagingFailedVersion = ready.Update.Version;
+                failure = $"Couldn't install Martlet {version} while Martlet runs, so it installs the usual way: Martlet closes for " +
+                    "the whole install.";
+                ErrorLog.Warn(failure, error);
+                throw new InvalidOperationException(failure, error);
+            }
+        }, hidden: !shown);
+        if (closing) return;
+        if (task?.State == BackgroundTaskState.Canceled)
+        {
+            stagingCanceledVersion = ready.Update.Version;
+            UpdateStatusText.Text = $"Installing Martlet {version} was canceled. Press Install to try again.";
+        }
+        else if (failure is not null) UpdateStatusText.Text = failure;
+        else if (!AutoInstalling) UpdateStatusText.Text = StagedText(version);
+        ShowInstallButton();
+    }
+
     /// <summary>Closes Martlet; the installer runs once it has exited and then starts Martlet again. <paramref name="unattended"/>
     /// (an automatic install, or one another computer asked for): the installer shows no window at all and Martlet restarts
     /// minimized, so it does not take focus from what you are doing (in the notification area when it was there); its steps
-    /// still go to Martlet's log. Otherwise the installer shows its progress window.</summary>
+    /// still go to Martlet's log. Otherwise the installer shows its progress window. When the update is already installed
+    /// beside Martlet, closing only switches folders and Martlet is back in seconds.</summary>
     private void InstallNow(bool unattended)
     {
         if (readyUpdate is not { } ready || closing) return;
         var version = ready.Update.Version.ToString(3);
+        var staged = UpdateStaged;
         installOnExit = (ready.Path, ready.Update.Version, true, unattended);
         resumeAfterInstall = (avatar.IsShowing, openConversation is { HandsFree: true, ListeningStarted: true, Paused: false },
             openConversation is { WatchingStarted: true, Paused: false });
-        ErrorLog.Info($"Installing Martlet {version} {(unattended ? "automatically, with no installer window" : "as you confirmed")}. " +
-            "Martlet closes and restarts into it" + (ResumePhrase(resumeAfterInstall) is { } again ? $", {again} again." : "."));
-        UpdateStatusText.Text = ActionText.Text = unattended
-            ? $"Installing Martlet {version} in the background, with no installer window. Martlet restarts by itself when it's done."
-            : $"Installing Martlet {version}. Martlet will restart when it's done.";
+        var again = ResumePhrase(resumeAfterInstall) is { } on ? $", {on} again." : ".";
+        ErrorLog.Info(staged
+            ? $"Restarting into Martlet {version}, installed beside this one, {(unattended ? "automatically" : "as you confirmed")}. " +
+              "Martlet closes, switches folders and starts again in a few seconds" + again
+            : $"Installing Martlet {version} {(unattended ? "automatically, with no installer window" : "as you confirmed")}. " +
+              "Martlet closes and restarts into it" + again);
+        UpdateStatusText.Text = ActionText.Text = staged
+            ? $"Restarting into Martlet {version}. Martlet is back in a few seconds."
+            : unattended
+                ? $"Installing Martlet {version} in the background, with no installer window. Martlet restarts by itself when it's done."
+                : $"Installing Martlet {version}. Martlet will restart when it's done.";
         ExitMartlet();
     }
 
@@ -544,19 +743,22 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>At exit: runs the requested install, or a downloaded automatic update without restarting Martlet.</summary>
+    /// <summary>At exit: runs the requested install, or without restarting Martlet a downloaded automatic update or one already
+    /// installed beside Martlet (you agreed to it; switching to it takes seconds).</summary>
     private void LaunchPendingInstall()
     {
         if (store is null) return;
-        var install = installOnExit ?? (AutoInstallReady && readyUpdate is { } ready ? (ready.Path, ready.Update.Version, false, false) : null);
+        var install = installOnExit ?? ((AutoInstallReady || UpdateStaged) && readyUpdate is { } ready
+            ? (ready.Path, ready.Update.Version, false, false) : null);
         if (install is not { } run) return;
         var updates = AppUpdateInstaller.UpdatesDirectory(store.DataDirectory);
+        var staged = installRoot is not null && stagedVersion == run.Version && AppUpdateStaging.IsStaged(installRoot);
         try
         {
             if (run.Relaunch) AppUpdateResume.Save(updates, resumeAfterInstall.Character, resumeAfterInstall.Listening, DateTimeOffset.UtcNow,
                 resumeAfterInstall.Watching);
             AppUpdateInstaller.Launch(run.Installer, run.Version, store.DataDirectory, run.Relaunch, run.Unattended,
-                (Application.Current as App)?.DataDirectoryArgument, inTray);
+                (Application.Current as App)?.DataDirectoryArgument, inTray, installRoot, staged);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {

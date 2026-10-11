@@ -304,6 +304,13 @@ running on a Windows on Arm PC has not been run yet. There is no native ARM64
 payload yet ([PL06](../../docs/PLATFORMS.md#delivery-slices)).
 `PrivilegesRequired=lowest` has no elevation override. Command-line `/DIR`
 overrides and previous installer locations cannot redirect the installation.
+The one exception is Martlet's own update: `/STAGE=prepare` must install into
+the standard program folder's `.next` sibling, and registers nothing there (no
+uninstaller, shortcuts or entry in Windows' installed apps). After Martlet exits,
+its update helper renames `.next` into place and runs `/STAGE=finish`, which
+installs no files (every `[Files]` entry has `Check: InstallPayload`) and
+updates the uninstaller, shortcuts and installed-apps entry. Martlet is then
+away for about a second instead of the whole install.
 
 Start menu entries expose Desktop, a persistent command window for Doctor,
 local help, and the normal registered uninstaller. There is no automatic app
@@ -314,9 +321,12 @@ Inno's normal per-user uninstall/installation bookkeeping.
 Mutable data remains `%LocalAppData%\Martlet`; it is neither an installer input
 nor a destination. The file list is generated **only** from the verified payload,
 one explicit `[Files]` entry per file, without globs/optional-source flags. There
-are no `[InstallDelete]` or `[UninstallDelete]` sections and no recursive deletion
-code. Inno uninstalls its recorded files and removes empty owned directories,
-not unrecorded user files. No data purge option is provided.
+is no `[InstallDelete]` section and no recursive deletion code. Because a staged
+update moves a whole folder into place, the uninstall log can't list every file,
+so `[UninstallDelete]` removes exactly the program folder and its `.next` and
+`.previous` update folders (`Test-Packaging.ps1` allows nothing else). The
+program folder is always the standard per-user one and holds no user files.
+No data purge option is provided.
 
 Same-version reinstall replaces the same owned files and shortcuts; close both
 apps first. This is an idempotent **skeleton**, not an application-aware repair

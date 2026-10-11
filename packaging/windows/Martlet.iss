@@ -46,7 +46,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupArchitecture=x86
 MinVersion=10.0.19041
-Uninstallable=yes
+; /STAGE=prepare (Martlet's update, while Martlet runs) installs only the files, into {app}.next, and registers nothing.
+Uninstallable=not StagePrepare
+CreateUninstallRegKey=not StagePrepare
 #ifdef PublicRelease
 UninstallDisplayName=Martlet
 #else
@@ -77,7 +79,15 @@ TouchDate=2026-01-01
 TouchTime=00:00
 
 [Files]
+; Every entry has Check: InstallPayload, so /STAGE=finish installs no files.
 #include PayloadFiles
+
+; A staged update moves a whole new folder into {app}, so the uninstall log can't list every file: remove the folder,
+; and the staging folders an update can leave beside it. PrepareToInstall keeps {app} the standard program folder.
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}"
+Type: filesandordirs; Name: "{app}.next"
+Type: filesandordirs; Name: "{app}.previous"
 
 [Messages]
 OnlyOnTheseArchitectures=Martlet needs an x64 PC with Windows 10 version 2004 or newer, or a Windows 11 on Arm PC (Snapdragon X and similar), which runs Martlet under its x64 emulation.%n%nWindows 10 on Arm can't run x64 apps, so Martlet can't be installed on this PC. Update it to Windows 11 to install Martlet.
@@ -90,30 +100,63 @@ Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"; Desc
 
 [Icons]
 #ifdef PublicRelease
-Name: "{group}\Martlet"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"
-Name: "{group}\Martlet Doctor"; Filename: "{cmd}"; Parameters: "/D /K """"{app}\Doctor\Martlet.Doctor.exe"" status"""; WorkingDir: "{app}\Doctor"; IconFilename: "{app}\Doctor\Martlet.Doctor.exe"
-Name: "{group}\Martlet prerequisites"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\prerequisites\Install-Prerequisites.ps1"""; WorkingDir: "{app}\prerequisites"; IconFilename: "{app}\Desktop\Martlet.Desktop.exe"
-Name: "{group}\Read me"; Filename: "{app}\help\RELEASE.txt"
-Name: "{group}\Uninstall Martlet"; Filename: "{uninstallexe}"
+Name: "{group}\Martlet"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"; Check: not StagePrepare
+Name: "{group}\Martlet Doctor"; Filename: "{cmd}"; Parameters: "/D /K """"{app}\Doctor\Martlet.Doctor.exe"" status"""; WorkingDir: "{app}\Doctor"; IconFilename: "{app}\Doctor\Martlet.Doctor.exe"; Check: not StagePrepare
+Name: "{group}\Martlet prerequisites"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\prerequisites\Install-Prerequisites.ps1"""; WorkingDir: "{app}\prerequisites"; IconFilename: "{app}\Desktop\Martlet.Desktop.exe"; Check: not StagePrepare
+Name: "{group}\Read me"; Filename: "{app}\help\RELEASE.txt"; Check: not StagePrepare
+Name: "{group}\Uninstall Martlet"; Filename: "{uninstallexe}"; Check: not StagePrepare
 #else
-Name: "{group}\Martlet (Internal)"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"
-Name: "{group}\Martlet Doctor (Internal)"; Filename: "{cmd}"; Parameters: "/D /K """"{app}\Doctor\Martlet.Doctor.exe"" status"""; WorkingDir: "{app}\Doctor"; IconFilename: "{app}\Doctor\Martlet.Doctor.exe"
-Name: "{group}\Martlet prerequisites (Internal)"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\prerequisites\Install-Prerequisites.ps1"""; WorkingDir: "{app}\prerequisites"; IconFilename: "{app}\Desktop\Martlet.Desktop.exe"
-Name: "{group}\Read me - Internal build"; Filename: "{app}\help\INTERNAL.txt"
-Name: "{group}\Uninstall Martlet (Internal)"; Filename: "{uninstallexe}"
+Name: "{group}\Martlet (Internal)"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"; Check: not StagePrepare
+Name: "{group}\Martlet Doctor (Internal)"; Filename: "{cmd}"; Parameters: "/D /K """"{app}\Doctor\Martlet.Doctor.exe"" status"""; WorkingDir: "{app}\Doctor"; IconFilename: "{app}\Doctor\Martlet.Doctor.exe"; Check: not StagePrepare
+Name: "{group}\Martlet prerequisites (Internal)"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\prerequisites\Install-Prerequisites.ps1"""; WorkingDir: "{app}\prerequisites"; IconFilename: "{app}\Desktop\Martlet.Desktop.exe"; Check: not StagePrepare
+Name: "{group}\Read me - Internal build"; Filename: "{app}\help\INTERNAL.txt"; Check: not StagePrepare
+Name: "{group}\Uninstall Martlet (Internal)"; Filename: "{uninstallexe}"; Check: not StagePrepare
 #endif
 
 [Code]
+// Martlet's own updates install in two steps, so Martlet is away only for a restart, not for the whole install:
+// /STAGE=prepare /DIR=<program folder>.next installs the files beside the running Martlet and registers nothing; after
+// Martlet exits its update helper renames the folders, then /STAGE=finish installs no files and updates the shortcuts,
+// the uninstaller and Windows' list of installed apps.
+function StageMode: String;
+begin
+  Result := Lowercase(ExpandConstant('{param:STAGE|}'));
+end;
+
+function StagePrepare: Boolean;
+begin
+  Result := StageMode = 'prepare';
+end;
+
+function InstallPayload: Boolean;
+begin
+  Result := StageMode <> 'finish';
+end;
+
+function InitializeSetup: Boolean;
+begin
+  Result := (StageMode = '') or (StageMode = 'prepare') or (StageMode = 'finish');
+  if not Result then
+    SuppressibleMsgBox('Unknown /STAGE value: ' + StageMode + '.', mbError, MB_OK, IDOK);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Expected: String;
 begin
   Result := '';
-  // Keep /DIR overrides and old installer registry values away from user data.
-  if CompareText(RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}'))),
 #ifdef PublicRelease
-      RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet')))) <> 0 then
+  Expected := RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet')));
+#else
+  Expected := RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet Internal')));
+#endif
+  if StagePrepare then
+    Expected := Expected + '.next';
+  // Keep /DIR overrides and old installer registry values away from user data.
+  if CompareText(RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}'))), Expected) <> 0 then
+#ifdef PublicRelease
     Result := 'Martlet installs to its standard per-user program folder. User settings are stored separately.';
 #else
-      RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet Internal')))) <> 0 then
     Result := 'This internal build installs to its standard per-user program folder. User settings are stored separately.';
 #endif
 end;

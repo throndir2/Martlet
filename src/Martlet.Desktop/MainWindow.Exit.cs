@@ -194,6 +194,10 @@ public partial class MainWindow
         if (updateDrain is { Task.IsCompleted: false } update)
             await StepAsync("stopping the update download", "The update downloads again later.",
                 () => update.Task.WaitAsync(InterruptWait));
+        // Its run window was interrupted above; the installer it started ends and what it wrote goes.
+        if (stagingTask is { IsCompleted: false } staging)
+            await StepAsync("stopping the update install", "The update installs the usual way instead.",
+                () => staging.WaitAsync(TimeSpan.FromSeconds(15)));
         if (support.HasResources)
             await StepAsync("stopping troubleshooting", "The records it already saved stay on this PC.",
                 () => UntilAsync(() => !support.HasResources, InterruptWait));

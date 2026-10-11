@@ -3362,8 +3362,10 @@ disposable temp folder, and returns `{exitCode, report: {passed, total, steps:
 two seconds stands in for Martlet; `Martlet.NodeLinkCheck` (built with
 `Martlet.Mcp`) stands in for the installer and for the restarted Martlet
 (FIXTURE: with `MARTLET_UPDATE_CHECK_RECORD` set it records its arguments,
-whether its console window shows and which processes share its console, writes
-one line to the `/LOG` file and exits with `MARTLET_UPDATE_CHECK_EXIT`). Three
+whether its console window shows, which processes share its console, its
+priority and its working folder, writes one line to the `/LOG` file, for
+`/STAGE=prepare` puts a text file where the staged Desktop app goes, and exits with
+`MARTLET_UPDATE_CHECK_EXIT`). Three
 installs run side by side: one another computer asked for
 (`asked-by-another-computer`), an automatic one from the notification area whose
 installer fails with exit 5 (`automatic-from-tray-fails`) and one you confirmed
@@ -3396,6 +3398,53 @@ character and starts listening and watching again: it is read once
 didn't save watching yet (`reads-note-without-watching`), leaves nothing when nothing was on
 (`nothing-on-leaves-no-note`) and is ignored after 15 minutes, when you started
 Martlet yourself rather than the update (`stale-note-ignored`).
+
+Two more scenarios check an update installed beside the running Martlet
+(`AppUpdateStaging`), in a disposable program folder that holds an old Desktop
+file and an `uninstall` folder. `<scenario>: prepares-beside-martlet` runs the
+prepare step as the desktop does while it keeps working: the stand-in installer
+gets `/VERYSILENT ... /STAGE=prepare /DIR=<program folder>.next
+/LOG=...\stage.log`, runs at `Idle` priority with no console window, and leaves
+the running version untouched. Then the helper runs with `staged: true`. In
+`staged-switch` it renames the folders, moves the `uninstall` folder over and
+removes the staging and previous folders (`switches-folders`); it runs only the
+installer's quick `/STAGE=finish /VERYSILENT` step (`runs-only-finish-step`); the
+helper and that step work in the updates folder, not in the program folder that
+Martlet usually works in (a process working there stops the rename), and Martlet
+starts again in its own folder (`works-outside-program-folder`); and
+Martlet starts again within 5 seconds of exiting, with `last-install.txt` `0`
+and an `update.log` line *Switched to Martlet ...* (`back-in-seconds`, with the
+measured seconds). In `staged-folder-in-use` a file in the program folder is
+held open, as a Doctor window or a tool server would. The helper tries the
+rename for about ten seconds, logs *Martlet's program folder is still in use,
+so it could not be switched. Running the whole installer instead.*, runs the
+whole installer on the unchanged program folder, removes the staging folder and
+starts Martlet again (`falls-back-to-whole-install`).
+
+**Updates installed beside Martlet.** An installed Martlet (its Desktop folder
+is beside the installer's `uninstall` folder) installs a downloaded update into
+`<program folder>.next` while it keeps running, as a background task *Install
+Martlet x.y.z*: the installer's `/STAGE=prepare` step, with no window and at
+idle priority. An automatic one starts only while Martlet isn't replying or
+hearing you. It logs *Installed Martlet x.y.z beside this one in n s.* When
+Martlet then closes for the update, the helper switches folders and runs
+`/STAGE=finish`, so Martlet is back in about a second instead of after the whole
+install. It logs *Restarting into Martlet x.y.z, installed beside this one, ...*.
+If that install fails, the update installs the classic way. With automatic
+installs off, Install first asks *Install it now?* (Martlet installs it in the
+background), then asks `RestartIntoUpdateQuestion`, *Martlet x.y.z is installed.
+Restart Martlet now to start using it?*; `ConfirmationYes` (*Restart now*)
+restarts and `ConfirmationNo` (*Later*) leaves `AppUpdateStatus` reading
+*Martlet x.y.z is installed. Restart Martlet to start using it (a few seconds),
+or it switches over when Martlet exits.* `InstallAppUpdate` reads *Install x.y.z
+now*, then *Restart into x.y.z*; clicking it needs `--allow-ui-effects`. A
+development build has no program folder and installs the classic way. To
+exercise this with the `MARTLET_SIMULATE_APP_UPDATE` fixture below, also set
+`MARTLET_SIMULATE_INSTALL_ROOT` to a disposable folder with `Desktop` and
+`uninstall` folders (FIXTURE): its install beside Martlet writes a text file as
+the staged Desktop app after two seconds, and the restart renames that folder
+for real. The finish step then fails at once (exit 216, the stand-in is not a
+program), so the restarted Martlet logs *The update to 9.9.9 didn't finish*.
 
 **Automatic installs in the desktop.** With *Install updates automatically*
 (`AutomaticUpdateInstall`), a downloaded update installs at once, even with

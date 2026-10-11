@@ -105,16 +105,18 @@ internal static class AppUpdateInstaller
     /// the installer, records the result and, when asked, starts Martlet again (in the notification area when
     /// <paramref name="inTray"/>). <paramref name="unattended"/> (an automatic install, or one another computer asked for):
     /// no installer window at all (/VERYSILENT) and Martlet restarts minimized; otherwise the installer shows its progress
-    /// window (/SILENT). Neither asks anything or runs optional prerequisite tasks.</summary>
+    /// window (/SILENT). Neither asks anything or runs optional prerequisite tasks. <paramref name="staged"/>: the release is
+    /// already installed beside this one (<see cref="AppUpdateStaging"/>), so the helper only switches folders.</summary>
     internal static void Launch(string installer, Version version, string dataDirectory, bool relaunch, bool unattended,
-        string? dataDirectoryArgument, bool inTray = false)
+        string? dataDirectoryArgument, bool inTray = false, string? installRoot = null, bool staged = false)
     {
         var directory = UpdatesDirectory(dataDirectory);
         var flags = new List<string>();
         if (unattended) flags.Add(AppUpdateHelper.AfterUpdateArgument);
         if (inTray) flags.Add(WindowsStartup.TrayArgument);
         var script = AppUpdateHelper.Script(directory, installer, version.ToString(3), Environment.ProcessId, unattended,
-            relaunch ? Environment.ProcessPath! : null, AppUpdateHelper.RelaunchArguments(dataDirectoryArgument, [.. flags]));
+            relaunch ? Environment.ProcessPath! : null, AppUpdateHelper.RelaunchArguments(dataDirectoryArgument, [.. flags]),
+            installRoot, staged);
         AppUpdateHelper.Start(directory, script)?.Dispose();
     }
 
@@ -158,13 +160,16 @@ internal static class AppUpdateInstaller
         }
     }
 
-    /// <summary>Deletes downloaded installers for this version or older once they are no longer needed.</summary>
-    internal static void CleanUp(string dataDirectory, string running)
+    /// <summary>Deletes downloaded installers for this version or older once they are no longer needed, and (in the
+    /// background; the returned task) what an update left beside <paramref name="installRoot"/>: the previous version, or a
+    /// staged one Martlet never switched to.</summary>
+    internal static Task CleanUp(string dataDirectory, string running, string? installRoot = null)
     {
+        var beside = installRoot is null ? Task.CompletedTask : Task.Run(() => AppUpdateStaging.CleanUp(installRoot));
         try
         {
             var directory = UpdatesDirectory(dataDirectory);
-            if (!Directory.Exists(directory)) return;
+            if (!Directory.Exists(directory)) return beside;
             foreach (var file in Directory.EnumerateFiles(directory, "Martlet-*-win-x64.exe"))
             {
                 var name = Path.GetFileName(file)["Martlet-".Length..^"-win-x64.exe".Length];
@@ -172,6 +177,7 @@ internal static class AppUpdateInstaller
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return beside;
     }
 }
 
@@ -193,6 +199,28 @@ internal static class SimulatedAppUpdate
             : null;
 
     private static byte[] Content => "FIXTURE: a simulated Martlet update (MARTLET_SIMULATE_APP_UPDATE). Not a program."u8.ToArray();
+
+    internal const string InstallRootVariable = "MARTLET_SIMULATE_INSTALL_ROOT";
+
+    /// <summary>FIXTURE: with <see cref="Update"/> set, a disposable folder (holding an <c>uninstall</c> folder) that Martlet
+    /// treats as its program folder, so installing the update beside Martlet and switching to it can be checked through MCP.
+    /// Its install beside Martlet is <see cref="StageAsync"/>; switching renames the folders for real; the finish step then
+    /// fails at once (the stand-in installer is not a program) and Martlet starts again.</summary>
+    internal static string? InstallRoot { get; } =
+        Update is not null && Environment.GetEnvironmentVariable(InstallRootVariable) is { Length: > 0 } root
+            ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) : null;
+
+    /// <summary>FIXTURE: stands in for the installer's prepare step. After two seconds, the staged folder beside
+    /// <paramref name="root"/> holds a "Desktop app" that is a text file.</summary>
+    internal static async Task<int> StageAsync(string root, CancellationToken token)
+    {
+        var staged = AppUpdateStaging.StagedRoot(root);
+        if (Directory.Exists(staged)) Directory.Delete(staged, recursive: true);
+        await Task.Delay(TimeSpan.FromSeconds(2), token);
+        var desktop = Directory.CreateDirectory(Path.Combine(staged, AppUpdateStaging.DesktopFolder)).FullName;
+        File.WriteAllBytes(Path.Combine(desktop, AppUpdateStaging.DesktopExecutable), Content);
+        return 0;
+    }
 
     /// <summary>Writes the stand-in installer into the updates folder in place of a download.</summary>
     internal static string Write(string dataDirectory, GitHubUpdate update)

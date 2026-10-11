@@ -1158,7 +1158,8 @@ its own host updates from colliding with its production update tracker, and how
 this PC's own host service follows the app's version after an update;
 `app_update_check` (MCP) runs the desktop's real update helper with stand-ins for
 Martlet and the installer (it waits for Martlet to exit, runs the installer with
-no window, logs each step and restarts Martlet minimized). The same client and agent ran against a real Linux
+no window, or switches to a version already installed beside Martlet, logs each
+step and restarts Martlet minimized). The same client and agent ran against a real Linux
 gateway container built from this source (token read with `docker exec`,
 `commands.json` without secrets, a new token after restart). The desktop's own
 runner on a real host PC (installing an update, `martlet-host` runs, real

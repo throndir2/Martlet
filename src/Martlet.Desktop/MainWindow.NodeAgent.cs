@@ -457,10 +457,25 @@ public partial class MainWindow
             var installing = readyUpdate!.Value.Update;
             var version = installing.Version.ToString(3);
             announcedUpdate = installing.Tag;
+            // Installed beside the running Martlet first, so Martlet there is away only for a restart of a few seconds.
+            if (!UpdatePrepared)
+            {
+                if (stagingCanceledVersion == installing.Version && stagingTask is not { IsCompleted: false })
+                {
+                    stagingCanceledVersion = null;
+                    return new(false, $"Installing Martlet {version} on {here} was canceled there (Background tasks).");
+                }
+                if (stagingTask is not { IsCompleted: false }) StageUpdateAsync(asked: true).Forget();
+                return Wait("Martlet is installing the update beside the running one",
+                    $"Installing Martlet {version} on {here} beside the running Martlet, so it restarts into it in seconds...");
+            }
             if (InstallBlocker(asked: true) is { } blocker)
                 return Wait(blocker, $"Martlet {version} installs on {here} as soon as nothing needs Martlet there. Waiting: {blocker}.");
-            output.Report($"Installing Martlet {version} on {here} in the background, with no installer window. Martlet restarts " +
-                "into it by itself and then brings its host service up to date.");
+            output.Report(UpdateStaged
+                ? $"Restarting Martlet on {here} into {version}, installed beside it. Martlet is back in a few seconds and then " +
+                  "brings its host service up to date."
+                : $"Installing Martlet {version} on {here} in the background, with no installer window. Martlet restarts " +
+                  "into it by itself and then brings its host service up to date.");
             nodeUpdateBlocker = null;
             installAfterNodeCommand = true;
             return null;
