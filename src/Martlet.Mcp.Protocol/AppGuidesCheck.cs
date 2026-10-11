@@ -98,7 +98,7 @@ internal static class AppGuidesCheck
             var tools = await ToolsAsync(again, fixture, cancellation);
             var latency = await LatencyAsync(directory, cancellation);
 
-            var buildOk = given is { Built: true, Pages: > 0, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
+            var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
                 fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && !defaults.On && defaults.AskWhenStarted &&
                 restarted is { loaded: >= 2, on: true, indexReady: true };
             var ok = buildOk && notesOk && offer.Ok && tools.Ok && latency.Ok;
@@ -115,7 +115,7 @@ internal static class AppGuidesCheck
                     ok = buildOk,
                     fromGivenPages = Build(given), fromSearch = Build(searched), guideFileBytes = File.Exists(file) ? new FileInfo(file).Length : 0,
                     searchQueries = fixture.Queries, pagesFetched = fixture.Paths.Where(p => p.StartsWith("/wiki", StringComparison.Ordinal)
-                        || p.StartsWith("/abyss", StringComparison.Ordinal)).Distinct().ToArray(),
+                        || p.StartsWith("/w/", StringComparison.Ordinal) || p == "/robots.txt").Distinct().ToArray(),
                     refusedOutsideLoopback = guard.Refused, restarted
                 },
                 notes = new { ok = notesOk, results = notes },
@@ -336,7 +336,7 @@ internal static class AppGuidesCheck
 
     /// <summary>The web client with every fetch outside loopback refused before it is sent (and counted), so nothing leaves this PC
     /// whatever the wiki reader tries.</summary>
-    private sealed class LoopbackOnly(WebAccess web) : IWebSearch, IWebFetch
+    private sealed class LoopbackOnly(WebAccess web) : IWebSearch, IWebFetch, IWebDocuments
     {
         private int refused;
         internal int Refused => Volatile.Read(ref refused);
@@ -350,10 +350,17 @@ internal static class AppGuidesCheck
             Interlocked.Increment(ref refused);
             throw new WebResearchException("not on this PC's fixture (app_guides_check reads loopback only)");
         }
+
+        public Task<WebDocument> ReadAsync(Uri url, int maxBytes, CancellationToken cancellationToken)
+        {
+            if (url.IsLoopback) return web.ReadAsync(url, maxBytes, cancellationToken);
+            Interlocked.Increment(ref refused);
+            throw new WebResearchException("not on this PC's fixture (app_guides_check reads loopback only)");
+        }
     }
 
     /// <summary>One HTTP server on 127.0.0.1 (NOT real sites): /search answers like DuckDuckGo's HTML search, /wiki/* is a tiny
-    /// wiki about a made-up game (sections about iron ore and a sword, links to more pages, navigation to leave out), /abyss/* a
+    /// wiki about a made-up game (sections about iron ore and a sword, links to more pages, navigation to leave out), /w/abyss/* a
     /// second wiki found only through the search, and /robots.txt allows everything.</summary>
     private sealed class Fixture : IAsyncDisposable
     {
@@ -421,10 +428,18 @@ internal static class AppGuidesCheck
                         "ore smelt into one iron bar, used for tools, sprinklers and the Moonstone sword.</p>")),
                     "/wiki/Moonstone_Sword" => ("text/html", Page("Moonstone Sword",
                         "<p>The Moonstone Sword is a late-game weapon in Starfall Valley (FIXTURE).</p><h2>How to get it</h2><p>Bring " +
-                        "three moonstones and one iron bar to Orla the blacksmith; she forges it overnight.</p>")),
-                    "/abyss/Main_Page" or "/abyss/" => ("text/html", Page("Moonlit Abyss Wiki",
+                        "three moonstones and one iron bar to Orla the blacksmith; she forges it overnight. It deals more damage at night " +
+                        "and glows near hidden doors, so many players carry it into the Frost Caves to find the secret rooms.</p>")),
+                    "/w/abyss/Main_Page" => ("text/html", Page("Moonlit Abyss Wiki",
                         "<p>The Moonlit Abyss Wiki is about the diving game Moonlit Abyss (FIXTURE).</p><h2>Oxygen</h2><p>Your tank " +
-                        "holds ninety seconds of air; blue coral refills it by ten seconds.</p>")),
+                        "holds ninety seconds of air; blue coral refills it by ten seconds. A bigger tank from the harbour shop holds three " +
+                        "minutes, and the rebreather perk makes each breath last a little longer.</p><h2>Getting started</h2><p>Your first " +
+                        "dives are in the shallow reef, where the currents are gentle and the fish are friendly.</p>" +
+                        "<ul><li><a href=\"/w/abyss/Trenches\">Trenches</a></li></ul>", "/w/abyss/Main_Page")),
+                    "/w/abyss/Trenches" => ("text/html", Page("Trenches",
+                        "<p>Trenches in Moonlit Abyss are the deepest dives (FIXTURE).</p><h2>Pressure</h2><p>Below two hundred " +
+                        "metres the hull creaks; upgrade it at the dock before diving. Lanterns attract the anglerfish, so dim them in the " +
+                        "Black Trench and follow the glowing kelp back to the surface when your air runs low.</p>", "/w/abyss/Main_Page")),
                     _ => ("", "")
                 };
                 if (type.Length == 0) await WriteAsync(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
@@ -442,16 +457,16 @@ internal static class AppGuidesCheck
         private string SearchPage() =>
             "<html><body><div class=\"results\">" +
             "<div class=\"result result--ad\"><a rel=\"nofollow\" class=\"result__a\" href=\"//duckduckgo.com/y.js?ad=1\">Sponsored</a></div>" +
-            Result("/abyss/Main_Page", "Moonlit Abyss Wiki", "The fan wiki about Moonlit Abyss.") +
+            Result("/w/abyss/Main_Page", "Moonlit Abyss Wiki", "The fan wiki about Moonlit Abyss.") +
             "</div></body></html>";
 
         private string Result(string path, string title, string snippet) =>
             $"<div class=\"result\"><h2 class=\"result__title\"><a rel=\"nofollow\" class=\"result__a\" href=\"{Link(path)}\">{title}</a></h2>" +
             $"<a class=\"result__snippet\" href=\"{Link(path)}\">{snippet}</a></div>";
 
-        private static string Page(string title, string content) =>
+        private static string Page(string title, string content, string home = "/wiki/Main_Page") =>
             $"<html><head><title>{title} - Fixture Wiki</title><script>var tracking = 1;</script></head><body>" +
-            "<nav><a href=\"/wiki/Main_Page\">Home</a> | <a href=\"/wiki/Special:RecentChanges\">Recent changes</a></nav>" +
+            $"<nav><a href=\"{home}\">Home</a> | <a href=\"/wiki/Special:RecentChanges\">Recent changes</a></nav>" +
             $"<main><article><h1>{title}</h1>{content}</article></main><footer>Fixture wiki for app_guides_check.</footer></body></html>";
 
         private static async Task<string> ReadAsync(NetworkStream stream)

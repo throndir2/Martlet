@@ -6267,8 +6267,11 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
 
 - `library`: App guides are off by default and *Ask when I start a game or app*
   is on by default.
-- `build`: reading up from the pages the owner gave (`fromGivenPages`) and from a
-  web search alone (`fromSearch`: `searchQueries` holds *<name> wiki*), each with
+- `build`: reading up from the pages the owner gave (`fromGivenPages`: the wiki's
+  `robots.txt` is read and the wiki is crawled through its own links, at least 2
+  pages) and from a web search alone (`fromSearch`: the wiki farms named after the
+  app are tried first and refused before they leave the PC, then `searchQueries`
+  holds *<name> wiki*, which finds the second wiki; `pagesFetched`), each with
   pages, sections, bytes kept, sites, unreadable pages, bytes downloaded and time;
   the guide file's size; and `restarted`: a new service on the same folder reads
   the library and builds the indexes again (`indexReady`).
