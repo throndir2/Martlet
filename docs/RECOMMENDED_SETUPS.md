@@ -177,7 +177,9 @@ same RAM and VRAM; it does not add capacity. Plan on **32 GB system RAM**
 **If you game on this PC**, a game and local models compete for the same VRAM
 and frame time. While gaming, the advisor's Balanced plan runs Thinking on
 another of your computers, or on this PC's processor (slower, but free and with
-no account). With an account, OpenRouter or NVIDIA Build is quicker (and
+no account). Martlet does this by itself while a game runs
+([the While gaming plan](#three-plans-normal-while-gaming-and-host-away)).
+With an account, OpenRouter or NVIDIA Build is quicker (and
 STT/TTS can use an API if you want). Use loudness lip-sync. Add local TTS and
 Audio2Face only if the game leaves enough VRAM free.
 
@@ -661,6 +663,41 @@ later (`PreferHostModels`).
 - **What changes.** Nothing downloads. The review says which host has the
   model and if its first word may come later.
 - **When none fits.** Martlet says so in a note and plans as usual.
+
+### Three plans: Normal, While gaming and Host away
+
+The review shows **Three plans** under *Who does each job*. Each plan says
+where each live job (Thinking, Speaking and Listening) goes in one situation.
+Martlet changes between the plans by itself while it runs
+([Recommendation design](RECOMMENDATION_DESIGN.md#build-stages), stage 2).
+
+| Plan | When | Where live Thinking goes |
+| --- | --- | --- |
+| Normal | Always, unless one of the other two applies | Where the recommended setup puts it |
+| While gaming | A game runs on a companion PC whose owner said it is used for games | A host that answers, then the hosted backup (Companion › Thinking › *If Thinking fails*) unless online services are *Never*, then the PC's own model |
+| Host away | The host that runs live Thinking hasn't answered for about 30 seconds | Another host that answers, then the allowed hosted backup, then the companion PC's own model in Ollama |
+
+- **Coming back.** Live Thinking comes back when the game ends (90 seconds
+  after Martlet last saw it) or when the host answers again for 30 seconds.
+- **No added latency.** An open conversation switches only when nothing runs
+  and nobody talks. A reply that has started keeps its route.
+- **The model stays loaded.** While gaming, the companion PC's model stays
+  loaded while the game leaves room on the card, so the change back is quick.
+  Martlet unloads it only when the card has less than 1 GB free. When no
+  other place can answer, the PC's own model answers: on the processor when
+  the game needs the card's memory.
+- **Speaking and Listening** follow their lists (Companion › Voice and
+  Listening). While gaming, this PC's own host service goes after the other
+  computers that come right after it on the list; a cloud member never moves
+  ahead of it. A computer that doesn't answer goes last.
+- **Where to see it.** Companion › Thinking's *Now* card says the situation
+  now and where live Thinking goes. The desktop log says each change
+  (*Situations: While gaming. ...*).
+
+**Qualification:** `LiveSituationsTests`, `GameWatchTests`,
+`LiveSituationTests` and the MCP tools `situation_check` and
+`situation_status` ([MCP](MCP.md)). A real game, a real host that goes away
+and a real reply through the moved route are **NOT RUN**.
 
 ### Keeping model choices current
 

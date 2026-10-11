@@ -244,6 +244,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // The conversation loads once: when the window first shows, or earlier when it starts hidden (Start listening on Home).
     private bool begun, loadPending, ending;
+    // The situation route (While gaming, Host away) the conversation used at its last load, for the log line when it changes.
+    private string? situationKey;
 
     private Task BeginAsync()
     {
@@ -279,6 +281,17 @@ public partial class LiveConversationWindow : ThemedWindow
         Pump();
     }
 
+    /// <summary>Picks up a situation's Thinking route (While gaming, Host away) once nothing runs and nobody talks: unlike
+    /// <see cref="ReloadWhenIdle"/>, it never lets a reply started early or a remark go, and never stops what you say.</summary>
+    internal void ReloadWhenQuiet(string reason)
+    {
+        if (closed) return;
+        situationReason = reason;
+        Pump();
+    }
+
+    private string? situationReason;
+
     private async Task LoadAsync()
     {
         if (closed) return;
@@ -290,6 +303,8 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         loadPending = false;
+        // Any load picks up the situation's Thinking route as it is now.
+        situationReason = null;
         ready = false;
         listening = false;
         StopListening(keepHeard: true);
@@ -323,6 +338,13 @@ public partial class LiveConversationWindow : ThemedWindow
                 ErrorLog.Info("The open conversation follows the changed setup between replies: " +
                     string.Join(", ", now.Routes.Select(r => $"{r.Role} {r.RouteType}{(r.ModelId is { Length: > 0 } id ? " " + id : "")}")) + ".");
             following = false;
+            // While gaming or Host away, live Thinking uses the situation's route (LiveSituation); say once when it switches.
+            if (controller.Configuration is { } configured && configured.Situation?.Key != situationKey)
+            {
+                if (configured.Situation is { } moved) ErrorLog.Info($"Situations: the conversation uses {moved.Text} for live Thinking from its next reply.");
+                else if (situationKey is not null) ErrorLog.Info("Situations: the conversation uses its usual Thinking route again from its next reply.");
+                situationKey = configured.Situation?.Key;
+            }
             Warm();
             StartLive();
             if (listenWhenReady && preferences.HandsFree && listenPaused && Available) Mic_Click(this, new RoutedEventArgs());
@@ -526,6 +548,14 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // The reply may have released the slot just now; settle it before anything replaces it.
         Settle();
+        // A situation change (a game started or ended, a host went away or came back) waits until nobody talks and nothing is
+        // being transcribed, so it never cuts off what you say, a reply started early or a remark.
+        if (situationReason is { } moved && reloadReason is null && !loadPending &&
+            listener is not { Hearing: true } && listener is not { Transcribing: > 0 } && pendingText is null)
+        {
+            situationReason = null;
+            reloadReason = moved;
+        }
         if (loadPending)
         {
             loadPending = false;

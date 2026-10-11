@@ -2287,6 +2287,23 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "after 10 minutes stays away once; 30 seconds of answers comes back once and the notice clears after 10 minutes or " +
             "when dismissed; a flapping computer stays one absence; the away time follows the per-PC choice; the report round trip; " +
             "an unpaired computer is forgotten. In-process; writes only a temporary folder.", new { }),
+        Tool("situation_status", "Situations (the While gaming and Host away plans), from a data directory: what the desktop decided " +
+            "last on this companion PC (situation.json: Normal, While gaming or Host away; where live Thinking runs normally and now; " +
+            "the whole order; why; whether the conversation uses it; the game; the hosts away; the online services preference; the " +
+            "graphics card note while gaming; FIXTURE when MARTLET_SIMULATE_SITUATION drove it) and the rules (a game looked for every 3 " +
+            "seconds and held 90 seconds, a host missing after 30 seconds, a card short of memory below 1 GB free). Host IDs, model " +
+            "and provider names and a game's name only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("situation_check", "Rehearse the While gaming and Host away plans with the production rules (LiveSituations, " +
+            "SituationRoutes, GameWatch, SituationPlans) on FIXTURE facts, apps and computers, NOT a real game, host or model: a game " +
+            "on a PC used for games moves live Thinking to a host that answers, then to the hosted backup unless online services are " +
+            "Never, then keeps this PC's own model; a PC not used for games and Thinking on a host move nothing; a host that is away " +
+            "moves live Thinking to another host, the hosted backup, then this PC's own model, and it comes back when the host answers; " +
+            "a card is short of memory below 1 GB free; the moved routes are valid, consented and keep If Thinking fails' key scope; " +
+            "the game watch finds a game from a Steam library, keeps it through a switch to another window and ends it after 90 " +
+            "seconds; Recommended setup's three plans (Normal, While gaming, Host away). In-process; reads and writes nothing.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -2678,6 +2695,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),
+                "situation_status" => SituationCheck.Status(DataDirectory(arguments)),
+                "situation_check" => SituationCheck.Run(),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),

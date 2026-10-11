@@ -172,6 +172,7 @@ public partial class MainWindow
             updateTimer.Stop();
             clusterTimer.Stop();
             StopNodePresence();
+            StopSituations();
             settingsTimer.Stop();
             StopSettingsWatch();
             networkTimer.Stop();

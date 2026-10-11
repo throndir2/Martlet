@@ -261,6 +261,7 @@ public partial class MainWindow : ThemedWindow
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
         StartNodePresence();
+        StartSituations();
         StartSettingsSync();
         StartSettingsWatch();
         StartHouseholdSharing();

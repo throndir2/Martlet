@@ -1007,7 +1007,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         bool changed;
         lock (gate)
         {
-            changed = configuration is not null && configuration.Revision != next?.Revision;
+            changed = configuration is not null && (configuration.Revision != next?.Revision ||
+                configuration.Situation?.Key != next?.Situation?.Key);
             memory?.Invalidate();
             // A settings change continues the conversation: what was said so far stays as context for the next reply.
             if (configuration?.Revision != next?.Revision) CancelCapturesLocked();

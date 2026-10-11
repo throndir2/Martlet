@@ -5407,6 +5407,12 @@ benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
 `RecommendedSetupBar-<n>-<vram|ram|cpu>` (its `help` is the bar's hover
 breakdown, as for `DeviceResource-<key>` on Devices), `RecommendedSetupJob-<n>`,
+`RecommendedSetupSituation-<i>` (the title of one of the three plans:
+*Normal*, *While gaming* or *Host away*) and `RecommendedSetupSituation-<i>-<j>`
+(where each live job goes in that plan, such as *On DESK: Thinking moves to
+gpu-box (qwen3:8b), then NVIDIA Build, then DESK's own model ... It comes back
+when the game ends.*; `recommended_setup_status` returns the same plans in
+`situations`),
 `RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
 `RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
 `RecommendedSetupSecret-<n>` (the label only; the key box `SetupSecretInput-<n>`
@@ -5570,6 +5576,58 @@ less: gpu-box isn't answering. It hasn't answered for 2 minutes. ...") and
 `PresenceAwayMinutes` and `PresenceAwayStatus`. Choosing another time with
 `ui_select` saves `node-presence.txt`, so it needs `--allow-ui-effects`. The
 back notice's Dismiss (`HealthOpen-presence-back-<hostId>-dismiss`) is passive.
+
+`situation_status` shows the situation a companion PC is in
+([Three plans](RECOMMENDED_SETUPS.md#three-plans-normal-while-gaming-and-host-away);
+optional absolute `dataDirectory`, default the current user's). It reads
+`situation.json`, which the desktop writes when it starts on a companion PC
+and when the situation changes. It gives `report` (`loaded` or `none`),
+`updatedAt`, `situation` (`Normal`, `Gaming` or `HostAway`) and its `title`,
+`normal` (where live Thinking runs normally), `now`, `nowKind` (`Host`,
+`Hosted` or `ThisPc`) and `nowHost` (where it runs now; null in the Normal
+plan), the whole `order`, `why`, `applied` (the conversation uses the moved
+route from its next reply), `playsGames`, `game`, `away` (the hosts that went
+missing), `backupAllowed`, `online`, `card` (while gaming, the graphics card
+note, such as *2.4 GB free of 12.0 GB: gemma4:e2b stays loaded, so the change
+back is quick.*) and `simulated` (FIXTURE). `rules` gives the game look (every
+3 seconds), the game hold (90 seconds), the host missing and back times (30
+seconds), the short-of-memory limit (1 GB) and the order. Host IDs, model and
+provider names and a game's name only.
+
+`situation_check` rehearses the production rules (`LiveSituations`,
+`SituationRoutes`, `GameWatch`, `SituationPlans`) on FIXTURE facts, apps and
+computers, **NOT a real game, host or model**. Its steps: Normal with no game;
+a game on a PC used for games moves live Thinking to a host that answers, then
+to the hosted backup when the host is away, then keeps this PC's own model when
+online services are *Never*; a PC not used for games and Thinking on a host
+move nothing; the game ends and live Thinking comes back; a host that is away
+moves live Thinking to another host, the hosted backup, then this PC's own
+model, or waits when nothing else can think; the host answers again; the card
+is short of memory only below 1 GB free; the moved routes are valid, consented,
+the same each time and keep *If Thinking fails*' key scope; the game watch
+finds ELDEN RING from a Steam library, keeps it 60 seconds after a switch to
+the browser and ends it after 90 seconds; and Recommended setup's three plans
+on a FIXTURE network. `ok` is true when every step passed.
+
+On the desktop, Companion › Thinking's *Now* card reads `ThinkingSituationNow`
+(*Situation: While gaming. A game (ELDEN RING) runs on this PC, so live
+Thinking leaves its graphics card for gpu-box (qwen3:8b). ...*). To drive it
+without a game or a host that goes away, set `MARTLET_SIMULATE_SITUATION`
+before you launch the desktop (FIXTURE): `1` uses this PC's own setup;
+`gaming` (live Thinking on this PC's gemma4:e2b, gpu-box with qwen3:8b, NVIDIA
+Build as the backup) and `host` (live Thinking on gpu-box, desk-host with
+gemma4:e4b) use made-up computers, so their decisions only show and the
+conversation keeps its route. Add `,game` or `,away` to start that way.
+Companion › Thinking then shows `SituationSimulateGame` (*Simulate a game*,
+*End the simulated game*) and `SituationSimulateAway` (*Simulate the Thinking
+host away*, *The simulated host answers again*). Both are safe clicks: they
+look at no real game or host and save nothing. `situation_status` then reads
+`simulated: true`, and `logs_tail` `contains` `Situations` gives each change.
+
+```powershell
+$env:MARTLET_SIMULATE_SITUATION = 'gaming'
+.\scripts\Invoke-MartletMcp.ps1 -Desktop -Calls '[{"name":"ui_click","arguments":{"id":"TourSkip"}},{"name":"ui_click","arguments":{"id":"NavCompanion"}},{"name":"ui_click","arguments":{"id":"CompanionTab-Thinking"},"waitMs":1500},{"name":"ui_click","arguments":{"id":"SituationSimulateGame"},"waitMs":1500},{"name":"ui_snapshot","arguments":{"idPrefix":"ThinkingSituation"}},{"name":"situation_status"}]'
+```
 
 `helper_jobs_status` (optional absolute `dataDirectory`, default the current
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
@@ -9087,7 +9145,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

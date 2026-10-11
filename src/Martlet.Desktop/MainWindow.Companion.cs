@@ -498,6 +498,8 @@ public partial class MainWindow
         var place = tabPlace.TryGetValue(section, out var chosen) ? chosen : current;
 
         page.Children.Add(JobNowCard(section, job, route));
+        // FIXTURE (MARTLET_SIMULATE_SITUATION): buttons that start a simulated game or make a host simulated away.
+        if (role == SetupRole.Llm && SituationFixtureCard() is { } fixture) page.Children.Add(fixture);
 
         // Speaking and Listening: the pool list replaces the single place; the chosen member's own card shows below it.
         if (role != SetupRole.Llm) page.Children.Add(JobPoolCard(section, role, route));
@@ -631,6 +633,8 @@ public partial class MainWindow
                 now.Children.Add(known);
             }
             foreach (var element in ToolsTestControls(route)) now.Children.Add(element);
+            // Where live Thinking goes in the situation now (Normal, While gaming, Host away).
+            now.Children.Add(SituationNowLine());
         }
         if (NetworkJobNote(job.Job) is { } network)
         {

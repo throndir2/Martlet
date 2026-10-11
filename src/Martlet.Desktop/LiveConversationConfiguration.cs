@@ -180,15 +180,28 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>The conversation configuration of loaded settings; <paramref name="limits"/> are the context windows found on
     /// this PC (model-limits.json), so the context size stays within the Thinking model's own, and <paramref name="abilities"/>
-    /// what Thinking models were found to hear and see (model-abilities.json).</summary>
-    internal static LiveConversationConfiguration? From(SettingsLoadResult loaded, ModelLimits? limits = null, ModelAbilities? abilities = null)
+    /// what Thinking models were found to hear and see (model-abilities.json). The situation now (<see cref="LiveSituation"/>:
+    /// While gaming or Host away) may move live Thinking to another route.</summary>
+    internal static LiveConversationConfiguration? From(SettingsLoadResult loaded, ModelLimits? limits = null, ModelAbilities? abilities = null) =>
+        From(loaded, limits, abilities, LiveSituation.Current);
+
+    /// <summary>As <see cref="From(SettingsLoadResult, ModelLimits, ModelAbilities)"/> with the situation's Thinking route
+    /// <paramref name="situation"/> (null: the saved route). A reply checks its settings again with the route it started with,
+    /// so a situation that changes during a reply never stops it; the conversation switches between replies.</summary>
+    internal static LiveConversationConfiguration? From(SettingsLoadResult loaded, ModelLimits? limits, ModelAbilities? abilities,
+        Martlet.Core.Planning.SituationOverride? situation)
     {
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null ||
             loaded.Revision is null || loaded.Settings is not { Setup: not null } settings ||
         settings.Profile.Kind != ProfileKind.Api) return null;
         settings.Validate();
-        return new(settings, loaded.Revision, limits, abilities);
+        var moved = Martlet.Core.Planning.SituationRoutes.Apply(settings, situation);
+        return new(moved, loaded.Revision, limits, abilities) { Situation = ReferenceEquals(moved, settings) ? null : situation };
     }
+
+    /// <summary>The situation's Thinking route this configuration uses instead of the saved one (While gaming or Host away), or
+    /// null.</summary>
+    internal Martlet.Core.Planning.SituationOverride? Situation { get; private init; }
 
     /// <summary>What Thinking models were found to hear and see (model-abilities.json): loaded with this configuration and
     /// replaced when Martlet finds out more (<see cref="UseAbilities"/>), so a conversation follows it at once.</summary>

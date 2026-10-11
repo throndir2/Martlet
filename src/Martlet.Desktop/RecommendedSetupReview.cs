@@ -59,6 +59,10 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     /// <summary>The companion PCs whose games answer Your preferences shows.</summary>
     public IReadOnlyList<GamesComputer> Games { get; init; } = [];
 
+    /// <summary>The three plans (Normal, While gaming, Host away): where each live job goes in each situation
+    /// (<see cref="SituationPlans"/>).</summary>
+    public IReadOnlyList<SituationPlan> Situations { get; init; } = [];
+
     /// <summary>The review of <paramref name="recommendation"/> for the computers in <paramref name="build"/>. Pure.</summary>
     internal static RecommendedSetupReview From(NetworkRecommendation recommendation, SetupRequestBuild build, FootprintCatalog? catalog = null)
     {
