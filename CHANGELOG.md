@@ -11,6 +11,7 @@ Each release's section here is also its notes on GitHub.
 ### Changed
 
 - Web research is now on by default, so asking Martlet to look something up just works. Earlier notes said it was on by default since 0.55.0, but it stayed off by mistake. If you turn it off in Companion › Thinking pool › **Web research**, it stays off. ([#784](https://github.com/throndir2/Martlet/pull/784))
+- Web research now researches as thoroughly as the 0.55.0 notes said: up to 30 searches and 60 pages each time you ask, taking notes as it reads, with no time limit and no hourly limit. Until now it still stopped after 8 pages and 12 minutes, and at 4 an hour. If the model stops partway, you still get its notes and sources. ([#788](https://github.com/throndir2/Martlet/pull/788))
 
 ## [0.70.0] - 2026-10-11
 
