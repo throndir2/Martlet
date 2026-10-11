@@ -40,7 +40,7 @@ public sealed class AppGuidesPageTests
             // The guide library changes (as when reading up starts, adds the app and ends): the page draws again, with the same boxes.
             var ask = Find<CheckBox>(main, "AppGuidesAsk")!;
             var guides = (AppGuideService)typeof(MainWindow).GetField("appGuides", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(main)!;
-            await guides.SetAskAsync(false);
+            await guides.SetReadUpWhenStartedAsync(false);
             await Eventually(() => Find<CheckBox>(main, "AppGuidesAsk") is { } drawn && !ReferenceEquals(drawn, ask) ? drawn : null);
             Kept();
 
