@@ -1549,7 +1549,12 @@ each app (Telegram for 48 hours, never your Discord DM messages, an edited
 reply cut to its pieces), editing and deleting single messages, the queue of
 changes for the apps (`PlatformChanges` with a fixture app, not Telegram or
 Discord: its pace, a slow-down waited out, a refusal dropped, an unconnected
-app waiting, kept over a restart, *Stop waiting changes*), and reading `bulkExchanges`
+app waiting, kept over a restart, *Stop waiting changes*), how recall ranks
+(*the apple tree I was planting* finding *planted three apple trees*, four
+near-identical exchanges coming back once and one already in the notes keeping
+its twins out, a follow-up ranked with the trip it follows, *yesterday* finding
+the evening before, an exact phrase and a speaker's name ranked first, the
+answer that follows a match coming with it), and reading `bulkExchanges`
 exchanges with the time recall takes (`recallMedianMs`, `recallMaxMs`) and the
 time an ordinary message's check takes (`ordinaryMessageCheckMs`). It is not a
 real conversation or Thinking model; the desktop's tests and `ui_*` tools cover
