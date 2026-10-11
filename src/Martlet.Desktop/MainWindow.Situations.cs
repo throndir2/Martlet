@@ -164,7 +164,7 @@ public partial class MainWindow
     private SituationFacts SituationFactsNow()
     {
         var directory = store?.DataDirectory;
-        var playsGames = SituationPreferences.PlaysGames(directory, ClusterDevice);
+        var playsGames = SituationPreferences.PlaysGames(directory, ClusterDevice, () => GamesHere);
         var backupAllowed = SituationPreferences.BackupAllowed(directory);
         var away = presenceWatch.Hosts(HostPresence.Clock.GetUtcNow())
             .Where(h => h.State is NodePresenceState.Missing or NodePresenceState.Away or NodePresenceState.Returning)

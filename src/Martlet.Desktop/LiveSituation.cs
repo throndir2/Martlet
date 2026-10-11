@@ -37,16 +37,21 @@ internal static class LiveSituation
     }
 }
 
-/// <summary>The recommendation preferences the situations read on this PC: whether the owner said this PC is used for games
-/// and whether online services may be a backup.</summary>
+/// <summary>The recommendation preferences the situations read on this PC (recommendation-preferences.json, read again only
+/// when it changed): whether the owner said this PC is used for games and whether online services may be a backup.</summary>
 internal static class SituationPreferences
 {
-    /// <summary>Whether this PC is used for games: the owner's answer, else Martlet's guess.</summary>
-    internal static bool PlaysGames(string? dataDirectory, string device) => true;
+    internal static RecommendationPreferences Load(string? dataDirectory) => dataDirectory is null ? new()
+        : WorkSharingRoster.Cached(System.IO.Path.Combine(dataDirectory, RecommendationPreferences.FileName),
+            () => RecommendationPreferences.Load(dataDirectory));
 
-    /// <summary>The online services preference allows the hosted backup (Only as a backup, the default, or Yes).</summary>
-    internal static bool BackupAllowed(string? dataDirectory) => true;
+    /// <summary>Whether this PC (<paramref name="device"/>) is used for games: the owner's answer, else Martlet's
+    /// <paramref name="guess"/> (a game library found here).</summary>
+    internal static bool PlaysGames(string? dataDirectory, string device, Func<bool> guess) => Load(dataDirectory).PlaysGames(device) ?? guess();
+
+    /// <summary>The online services preference allows the hosted backup (Only as a backup, the default, or Yes; not Never).</summary>
+    internal static bool BackupAllowed(string? dataDirectory) => Load(dataDirectory).Online != OnlineServices.Never;
 
     /// <summary>The online services preference in words.</summary>
-    internal static string Online(string? dataDirectory) => "Only as a backup";
+    internal static string Online(string? dataDirectory) => RecommendationPreferences.Words(Load(dataDirectory).Online);
 }
