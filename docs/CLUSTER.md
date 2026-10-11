@@ -482,6 +482,33 @@ states and times, and the notices) when a computer's state changes, for the
 `node_presence_status` MCP tool. Nothing here runs on the reply path: a
 5-second timer on the UI thread does nothing while every computer answers.
 
+### Live Thinking while a host is away or a game runs
+
+Failover moves a job in the shared plan, and only when you turned it on. The
+**Host away** and **While gaming** plans
+([Three plans](RECOMMENDED_SETUPS.md#three-plans-normal-while-gaming-and-host-away))
+move live Thinking on one companion PC only, for a short time, and never
+change the shared plan or your saved settings:
+
+1. When the host that runs live Thinking is **missing** (above), live Thinking
+   uses another paired host that answers and runs a Thinking model (the
+   computers in *When the Thinking model is busy* first), then the hosted backup
+   (*If Thinking fails*) unless online services are *Never*, then Ollama on this
+   PC. When the host is **back**, live Thinking goes back to it.
+2. While a game runs on a companion PC whose owner said it is used for games,
+   live Thinking on its own card moves the same way, and its model stays
+   loaded while the game leaves room.
+3. The conversation uses the moved route from its next reply
+   (`LiveSituation.Current`, `SituationRoutes`). A reply that has started keeps
+   its route, so a change never slows or stops it.
+4. Requests that go through the lists (`WorkSharingRoster.Places`: Speaking,
+   Listening, Thinking on a host, lip-sync, reading) try a computer that doesn't
+   answer now last, and while a game runs they try this PC's own host service
+   after the other computers.
+
+The desktop writes `situation.json` when the situation changes, for the
+`situation_status` MCP tool.
+
 ## Edge cases
 
 | Case | Behavior |

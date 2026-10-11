@@ -67,7 +67,9 @@ public partial class MainWindow
     {
         if (closing || Role != DeviceRole.Companion) return;
         var facts = SituationFactsNow();
-        FollowGameWatch(facts.PlaysGames && simulatedSituation is null);
+        // The game watch runs only while it can matter: live Thinking on this PC's card, or this PC's own host service.
+        var ownHost = WorkSharingRoster.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        FollowGameWatch(facts.PlaysGames && simulatedSituation is null && (facts.Home == LiveHome.ThisPc || ownHost is not null));
         facts = facts with { Game = simulatedSituation is { } fixture ? fixture.Game : gameWatch?.Game };
         situationFacts = facts;
         var decision = LiveSituations.Decide(facts);
