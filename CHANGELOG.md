@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.70.1] - 2026-10-11
+
 ### Changed
 
 - **Longer replies when you want them**: Companion › Replies › *Max reply length* now goes up to 32,768 tokens, the most any provider gives one reply. Before, it stopped at 2,048, below the 4,096 Martlet already used on most routes, so you could only make replies shorter. A reply too long to take now says so. ([#793](https://github.com/throndir2/Martlet/pull/793))
@@ -24,11 +26,9 @@ Each release's section here is also its notes on GitHub.
 - **Long replies are said aloud to the end**: Martlet's voice no longer stops after about 80 seconds or eight sentences, and a long sentence no longer stops it. ([#791](https://github.com/throndir2/Martlet/pull/791))
 - **Longer messages**: you can type a message of up to 262,144 characters (before, 4,096), and the record of conversations keeps long messages and replies whole instead of cutting them at 8,192 and 16,384 characters. ([#791](https://github.com/throndir2/Martlet/pull/791))
 - **App guides** keep only the guide you can use now in memory (the game in front, one you just asked about, the one being read), so big guides don't take memory a game needs. ([#790](https://github.com/throndir2/Martlet/pull/790))
-- **App guides** are now on by default, so Martlet reads up on your games without you having to find a setting. When you start a game it has no guide for, it looks up the game's name on DuckDuckGo and reads its wiki on its own. To stop it, press **Stop reading**, tell it no, or turn off *Read up when I start a game or app* on Companion › App guides. If you turned App guides off before, they stay off. ([#787](https://github.com/throndir2/Martlet/pull/787))
-- **App guides**: when you start a game Martlet has no guide for, it now reads up on it on its own and tells you, in character, instead of asking first. Tell it you'd rather it didn't, and it stops and won't do it for that game again; *Read up when I start a game or app* on Companion › App guides turns it off. ([#786](https://github.com/throndir2/Martlet/pull/786))
+- **App guides** are now on by default, so Martlet reads up on your games without you having to find a setting. When you start a game it has no guide for, it looks up the game's name on DuckDuckGo, reads its wiki on its own and tells you, in character, instead of asking first. To stop it, press **Stop reading** or tell it no, and it won't do it for that game again; *Read up when I start a game or app* on Companion › App guides turns it off. If you turned App guides off before, they stay off. ([#786](https://github.com/throndir2/Martlet/pull/786), [#787](https://github.com/throndir2/Martlet/pull/787))
 - **App guides** now read the whole wiki they find instead of stopping at 60 pages. The guide grows as Martlet reads, so you can ask about the game while it is still reading, and **Stop reading** on Companion › App guides ends a read and keeps what Martlet read. ([#785](https://github.com/throndir2/Martlet/pull/785))
-- Web research is now on by default, so asking Martlet to look something up just works. Earlier notes said it was on by default since 0.55.0, but it stayed off by mistake. If you turn it off in Companion › Thinking pool › **Web research**, it stays off. ([#784](https://github.com/throndir2/Martlet/pull/784))
-- Web research now researches as thoroughly as the 0.55.0 notes said: up to 30 searches and 60 pages each time you ask, taking notes as it reads, with no time limit and no hourly limit. Until now it still stopped after 8 pages and 12 minutes, and at 4 an hour. If the model stops partway, you still get its notes and sources. ([#788](https://github.com/throndir2/Martlet/pull/788))
+- **Web research** is now on by default, so asking Martlet to look something up just works, and it researches as thoroughly as the 0.55.0 notes said: up to 30 searches and 60 pages each time you ask, taking notes as it reads, with no time limit and no hourly limit. Earlier notes said it was on by default since 0.55.0, but it stayed off by mistake, and it still stopped after 8 pages and 12 minutes, and at 4 an hour. If the model stops partway, you still get its notes and sources. If you turn it off in Companion › Thinking pool › **Web research**, it stays off. ([#784](https://github.com/throndir2/Martlet/pull/784), [#788](https://github.com/throndir2/Martlet/pull/788))
 
 ### Fixed
 
