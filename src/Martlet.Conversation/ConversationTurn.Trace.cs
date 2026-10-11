@@ -230,11 +230,12 @@ public sealed partial class ConversationTurn
         return line.Append('.').ToString();
     }
 
-    // A tool round ended: each call and how long it took.
-    private void TraceTools(int round, IReadOnlyList<(string Name, TimeSpan Took, bool Failed)> calls, TimeSpan began)
+    // A tool round ended: each call, how long it took and whether its result was cut to fit the reply.
+    private void TraceTools(int round, IReadOnlyList<(string Name, TimeSpan Took, bool Failed, bool Cut)> calls, TimeSpan began)
     {
         if (trace is null || calls.Count == 0) return;
-        TraceLine(() => $": tool round {round}: " + string.Join(", ", calls.Select(c => $"{c.Name} {Ms(c.Took)} ms{(c.Failed ? " (failed)" : "")}")) +
+        TraceLine(() => $": tool round {round}: " + string.Join(", ", calls.Select(c => $"{c.Name} {Ms(c.Took)} ms{(c.Failed ? " (failed)" : "")}" +
+            (c.Cut ? " (its output was cut short to fit the reply; the model was told)" : ""))) +
             $"; {Ms(Clock.GetElapsedTime(startedAt) - began)} ms in all.");
     }
 

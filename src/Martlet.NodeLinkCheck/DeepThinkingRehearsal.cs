@@ -89,8 +89,8 @@ internal static class DeepThinkingRehearsal
             var think = Task.Run(async () =>
             {
                 await foreach (var delta in thinks.StreamChatAsync(deepRoute, Ids(), 1, deadline, "You are Martlet.", [new(false, "Plan my week.")],
-                    "Think it over: plan my week.", 0.7, 4_096, GenerationSettings.MaximumHostContextTokens,
-                    sampling: new GenerationSettings { Reasoning = true, ContextTokens = GenerationSettings.MaximumHostContextTokens },
+                    "Think it over: plan my week.", 0.7, 4_096, GenerationSettings.DeepThinkingContextTokens,
+                    sampling: new GenerationSettings { Reasoning = true, ContextTokens = GenerationSettings.DeepThinkingContextTokens },
                     cancellationToken: token))
                 {
                     thinkText.Append(delta);
@@ -113,7 +113,7 @@ internal static class DeepThinkingRehearsal
             var toDeep = deep.Requests.SingleOrDefault();
             var toConversation = conversation.Requests.SingleOrDefault();
             var ok = toDeep is not null && toConversation is not null &&
-                toDeep.Model == DeepModel && toDeep.Think == true && toDeep.ContextTokens == GenerationSettings.MaximumHostContextTokens &&
+                toDeep.Model == DeepModel && toDeep.Think == true && toDeep.ContextTokens == GenerationSettings.DeepThinkingContextTokens &&
                 toConversation.Model == ThinkingModel && toConversation.Think is null;
             return Task.FromResult((ok, $"Deep thinking's Ollama got {deep.Requests.Count} request(s): {toDeep}; " +
                 $"the conversation model's got {conversation.Requests.Count}: {toConversation}"));
@@ -124,7 +124,7 @@ internal static class DeepThinkingRehearsal
             // What the desktop's pool job asks a paired computer for (DeepThinkTarget.OneShot): its input bound (the window less
             // a medium think's 8,192 output tokens) plus its own 1,024, and the role's largest window so the model stays loaded.
             // Martlet 0.54.0 sent that budget as the bound and the gateway refused the pair as request.invalid.
-            const int window = GenerationSettings.MaximumHostContextTokens, output = 1_024, budget = window - 8_192 + output;
+            const int window = GenerationSettings.DeepThinkingContextTokens, output = 1_024, budget = window - 8_192 + output;
             var before = deep.Requests.Count;
             var text = new StringBuilder();
             await foreach (var delta in thinks.StreamChatAsync(deepRoute, Ids(), 4, DateTimeOffset.UtcNow.AddSeconds(30), "Pick what to remember.",

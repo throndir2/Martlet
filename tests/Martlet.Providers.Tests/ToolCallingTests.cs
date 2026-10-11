@@ -183,7 +183,16 @@ public sealed class ToolCallingTests
     {
         var bounded = TextToolResult.Bound(new string('x', 50_000), 1_000);
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(bounded) <= 1_000);
-        Assert.EndsWith("[output cut short]", bounded);
+        // The model is told the output was cut and how much of it it got.
+        Assert.EndsWith(" of 50,000 characters, as much as this reply has room for]", bounded);
+        Assert.Contains("\n[output cut short: the first ", bounded);
+        Assert.True(TextToolResult.WasCut(bounded));
+        Assert.False(TextToolResult.WasCut(TextToolResult.Bound("short", 1_000)));
+        // A tiny budget still says it was cut.
+        Assert.EndsWith("[output cut short]", TextToolResult.Bound(new string('x', 50_000), 64));
+        // Ten times the old 12,000 characters fit when the reply has room.
+        Assert.Equal(120_000, TextToolResult.MaxOutputCharacters);
+        Assert.Equal(100_000, TextToolResult.Bound(new string('x', 100_000), 1_000_000).Length);
         var input = new BoundedTextInput("Hi", tools: [Tool()]);
         var plain = input.WithoutTools();
         Assert.Empty(plain.Tools);

@@ -39,11 +39,19 @@ public static class WebResearch
     public const string Name = "research";
     /// <summary>The background job kind: research-1, research-2...</summary>
     public const string KindName = "research";
-    public const int MaxTopicCharacters = 300, MaxFindCharacters = 1_000;
+    /// <summary>The most of a topic (and of a search the model asks for) and of what to find out that is kept (characters).</summary>
+    public const int MaxTopicCharacters = 3_000, MaxFindCharacters = 10_000;
     /// <summary>The most a step's task may take (UTF-8), leaving room in a background message's 16 KiB for its wrapper.</summary>
     public const int MaxTaskBytes = 13_000;
-    /// <summary>The most of a report kept (characters, before its sources).</summary>
-    public const int MaxReportCharacters = 40_000;
+    /// <summary>The most of a report kept (characters, before its sources): more than one step's answer can hold, so a report is
+    /// kept whole; a longer one says where it was cut.</summary>
+    public const int MaxReportCharacters = 400_000;
+    /// <summary>What ends a report cut at <see cref="MaxReportCharacters"/>.</summary>
+    public const string ReportCut = "\n\n*The report was cut here: it was longer than Martlet keeps.*";
+    /// <summary>What follows a page's excerpt in a step's task when only its start is shown.</summary>
+    public const string ExcerptCut = "\n[Only the start of this page is shown; it has more.]";
+    /// <summary>What follows a source in the report when only the start of its page could be read.</summary>
+    public const string SourceCut = " (only the start of the page was read: it was too long)";
 
     /// <summary>A job's budget: about what a careful person reads and explores to research a subject thoroughly.</summary>
     public static ResearchLimits Budget { get; } = new();
@@ -203,7 +211,7 @@ public static class WebResearch
         var share = Math.Max(300, Math.Min(limits.ExcerptCharacters, fresh / count));
         for (var i = noted; i < pages.Count; i++)
             text.Append("\n[").Append(i + 1).Append("] ").Append(pages[i].Title).Append(" <").Append(pages[i].Url).Append(">\n")
-                .Append(Cut(pages[i].Text, share)).Append('\n');
+                .Append(Cut(pages[i].Text, share)).Append(pages[i].Text.Length > share || pages[i].Cut ? ExcerptCut : "").Append('\n');
         return text.ToString().TrimEnd();
     }
 
@@ -230,12 +238,12 @@ public static class WebResearch
         if (title.Length == 0) title = "Research";
         var summary = step.Summary is { Length: > 0 } s ? s : FirstSentence(body);
         if (summary.Length > 400) summary = summary[..397].TrimEnd() + "…";
-        if (body.Length > MaxReportCharacters) body = body[..MaxReportCharacters].TrimEnd() + "…";
+        if (body.Length > MaxReportCharacters) body = body[..MaxReportCharacters].TrimEnd() + "…" + ReportCut;
         var markdown = new StringBuilder("# ").Append(title).Append("\n\n").Append(body).Append("\n\n## Sources\n");
         if (pages.Count == 0) markdown.Append("No pages could be read; this comes from the search results only.\n");
         for (var i = 0; i < pages.Count; i++)
             markdown.Append(i + 1).Append(". [").Append(pages[i].Title.Replace("[", "(", StringComparison.Ordinal).Replace("]", ")", StringComparison.Ordinal))
-                .Append("](").Append(pages[i].Url).Append(")\n");
+                .Append("](").Append(pages[i].Url).Append(')').Append(pages[i].Cut ? SourceCut : "").Append('\n');
         return new(title, summary, markdown.ToString().TrimEnd() + "\n", pages);
     }
 

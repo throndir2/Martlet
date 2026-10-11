@@ -59,6 +59,16 @@ public static class SelfHostSetup
     /// screen image and one base64 recording (30 seconds of mono PCM16 WAV at up to 48 kHz) for a model that hears. A host older
     /// than recordings advertises less (room for the image only), so this PC sends it no recording.</summary>
     public const int OllamaRequestBytes = 5_400_000;
+    /// <summary>The most text a host's Ollama routes take in one request (UTF-8): the instructions, every earlier message and the
+    /// current message with its notes. About 350,000 tokens, above the largest context a host loads
+    /// (<see cref="GenerationSettings.MaximumHostContextTokens"/>), so the context size, not this bound, decides how much of the
+    /// conversation goes. A host route that advertises less is older (<see cref="LegacyOllamaInputBytes"/>).</summary>
+    public const int OllamaInputBytes = 1_048_576;
+    /// <summary>What a host older than <see cref="OllamaInputBytes"/> takes: 16 KiB of text in all, and each text at most that.
+    /// This PC sends such a host the notes with the instructions and leaves out the oldest messages that don't fit.</summary>
+    public const int LegacyOllamaInputBytes = 16_384;
+    /// <summary>The largest context window a host older than <see cref="OllamaInputBytes"/> loads; its gateway refuses more.</summary>
+    public const int LegacyOllamaContextTokens = 32_768;
     /// <summary>The deep-thinking host role's route: a second Ollama of its own on the host (Deep thinking's model), with the same
     /// native-chat contract as <see cref="OllamaRouteId"/>, so a host can think things over beside the conversation's model.</summary>
     public const string DeepThinkingRouteId = "martlet.gateway.deep-thinking-chat.v1";

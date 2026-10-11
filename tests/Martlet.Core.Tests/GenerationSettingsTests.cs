@@ -74,12 +74,26 @@ public sealed class GenerationSettingsTests
     [InlineData(null, 0.0, null, null)]
     [InlineData(null, null, 8, null)]
     [InlineData(null, null, 2048, 2048)]
+    [InlineData(null, null, GenerationSettings.MaximumReplyTokens + 1, null)]
+    [InlineData(null, null, GenerationSettings.MaximumReplyTokens, GenerationSettings.MaximumReplyTokens)]
     public void Out_of_range_values_are_rejected(double? temperature, double? topP, int? replyTokens, int? contextTokens) =>
         Assert.Throws<ContractException>(() => new GenerationSettings
         {
             Temperature = temperature, TopP = topP, MaxReplyTokens = replyTokens,
             ContextTokens = contextTokens
         }.Validate());
+
+    [Fact]
+    public void Max_reply_length_goes_up_to_the_providers_output_ceiling()
+    {
+        // Above every route's default (4,096 on Chat Completions and paired hosts), so a reply can be made longer, not only shorter.
+        Assert.Equal(32_768, GenerationSettings.MaximumReplyTokens);
+        Assert.True(GenerationSettings.MaximumReplyTokens > GenerationSettings.ChatReplyTokens);
+        new GenerationSettings { MaxReplyTokens = GenerationSettings.MaximumReplyTokens }.Validate();
+        new GenerationSettings { MaxReplyTokens = GenerationSettings.MaximumReplyTokens, ContextTokens = 65_536 }.Validate();
+        Assert.Equal(GenerationSettings.MaximumReplyTokens,
+            GenerationSupport.ReplyTokens(SetupRouteType.GatewayOllama, new() { MaxReplyTokens = GenerationSettings.MaximumReplyTokens }));
+    }
 
     [Fact]
     public void Each_route_marks_the_settings_its_api_cannot_use()
@@ -126,7 +140,10 @@ public sealed class GenerationSettingsTests
         var saved = ContextBudget.For(SetupRouteType.OpenAi, null, new() { ContextTokens = 1_000_000 }, ModelContextCatalog.Catalog(null, "gpt-4.1-2025-04-14"));
         Assert.Equal((1_000_000, ContextSource.Saved), (saved.Tokens, saved.Source));
 
-        var host = ContextBudget.For(SetupRouteType.GatewayOllama, null, new() { ContextTokens = 200_000 }, null);
+        // A paired host loads up to 262,144 tokens now (32,768 before); a larger saved size is capped there.
+        Assert.Equal(262_144, GenerationSettings.MaximumHostContextTokens);
+        Assert.Equal(200_000, ContextBudget.For(SetupRouteType.GatewayOllama, null, new() { ContextTokens = 200_000 }, null).Tokens);
+        var host = ContextBudget.For(SetupRouteType.GatewayOllama, null, new() { ContextTokens = 1_000_000 }, null);
         Assert.Equal(GenerationSettings.MaximumHostContextTokens, host.Tokens);
         Assert.Equal(GenerationSettings.DefaultHostContextTokens, ContextBudget.For(SetupRouteType.GatewayOllama, null, null, null).Tokens);
 

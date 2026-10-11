@@ -184,9 +184,11 @@ internal static class GatewayInferenceJson
             ["input", "temperature", "maximum_output_tokens", "maximum_context_tokens"],
             ["system", "history", "images", "audio", "top_p", "top_k", "min_p", "repeat_penalty", "frequency_penalty",
                 "presence_penalty", "context_tokens", "think"]);
-        var input = Text(fields, "input", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true);
+        // The current message carries its notes and the instructions are the persona (a desktop of this version); an older
+        // desktop sends at most 16 KiB in all. Each text, and all of them together, stay within the route's input bound.
+        var input = Text(fields, "input", Martlet.Core.Settings.SelfHostSetup.OllamaInputBytes, allowNewLines: true);
         string? system = fields.TryGetValue("system", out var systemElement)
-            ? Text(systemElement, BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true)
+            ? Text(systemElement, Martlet.Core.Settings.SelfHostSetup.OllamaInputBytes, allowNewLines: true)
             : null;
         var history = new List<TextHistoryMessage>();
         if (fields.TryGetValue("history", out var historyElement))
@@ -202,11 +204,20 @@ internal static class GatewayInferenceJson
                     "assistant" => TextHistoryRole.Assistant,
                     _ => throw new GatewayProtocolException("request.invalid")
                 };
-                history.Add(new(role, Text(message, "text", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true)));
+                history.Add(new(role, Text(message, "text", Martlet.Core.Settings.SelfHostSetup.OllamaInputBytes, allowNewLines: true)));
             }
         }
-        var bounded = new BoundedTextInput(input, system, history);
-        GatewayRules.Require(bounded.Utf8Bytes <= route.MaximumInputBytes,
+        long inputBytes;
+        try
+        {
+            inputBytes = (long)StrictUtf8.GetByteCount(input) + (system is null ? 0 : StrictUtf8.GetByteCount(system)) +
+                history.Sum(message => (long)StrictUtf8.GetByteCount(message.Text));
+        }
+        catch (ArgumentException)
+        {
+            throw new GatewayProtocolException("request.invalid");
+        }
+        GatewayRules.Require(inputBytes <= route.MaximumInputBytes,
             "request.too_large");
         var temperature = Number(fields, "temperature");
         GatewayRules.Require(double.IsFinite(temperature) &&
@@ -214,7 +225,7 @@ internal static class GatewayInferenceJson
         var outputTokens = checked((int)Integer(
             fields, "maximum_output_tokens", 1, GatewayInferenceProtocol.MaximumOllamaOutputTokens));
         var contextTokens = checked((int)Integer(
-            fields, "maximum_context_tokens", 1, 32_768));
+            fields, "maximum_context_tokens", 1, Martlet.Core.Settings.GenerationSettings.MaximumHostContextTokens));
         GatewayRules.Require(outputTokens <= contextTokens, "request.invalid");
         var images = new List<string>();
         if (fields.TryGetValue("images", out var imagesElement))

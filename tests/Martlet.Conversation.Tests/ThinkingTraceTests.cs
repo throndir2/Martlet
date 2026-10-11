@@ -69,6 +69,23 @@ public sealed class ThinkingTraceTests
     }
 
     [Fact]
+    public async Task A_tool_output_cut_to_fit_the_reply_is_noted_for_the_model_and_in_the_trace()
+    {
+        await using var harness = new Harness(textOnly: true);
+        var lines = new Lines();
+        harness.Runtime.Trace = lines.Add;
+        harness.Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(
+            harness.Llm.Calls == 1 ? ToolLoopTests.CallTrace() : Harness.Trace("Done.")));
+        var turn = harness.Runtime.Start(ToolLoopTests.Request(new ToolLoopTests.FixtureTools(new string('m', 200_000))), harness.Permissions);
+        var snapshot = await Harness.Finish(turn, harness.Clock);
+
+        Assert.Equal(ConversationState.Completed, snapshot.State);
+        Assert.Matches(@": tool round 1: read_file \d+ ms \(its output was cut short to fit the reply; the model was told\); \d+ ms in all\.$",
+            lines.Single(": tool round 1: "));
+        Assert.Contains("[output cut short: the first ", System.Text.Encoding.UTF8.GetString(harness.Llm.Body));
+    }
+
+    [Fact]
     public async Task A_slow_answer_says_what_the_turn_waits_for_while_it_waits()
     {
         await using var harness = new Harness(textOnly: true);

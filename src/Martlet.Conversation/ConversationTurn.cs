@@ -676,7 +676,7 @@ public sealed partial class ConversationTurn
                         Caption(captions => captions.Push("\n"));
                         if (segmenter is not null) await StageAsync(segmenter.Push("\n"), whole).ConfigureAwait(false);
                     }
-                    var results = await CallToolsAsync(tools, result.Calls, rounds).ConfigureAwait(false);
+                    var results = await CallToolsAsync(tools, result.Calls, rounds, input, result.Text).ConfigureAwait(false);
                     rounds.Add(new(result.Text, result.Calls, results));
                     input = request.Input.WithToolRounds(rounds, callsAllowed: rounds.Count < request.Limits.MaxToolRounds);
                     why = $"after tool round {rounds.Count}";
@@ -1109,18 +1109,22 @@ public sealed partial class ConversationTurn
         }
     }
 
-    // Tool calls run one at a time; each result is cut to its share of what is left of the reply's tool budget. A reply started
-    // early calls no tool until it is released: a tool may act on the world.
+    // Tool calls run one at a time; each result is cut to its share of what is left of the reply's tool budget: the tool exchange
+    // bytes and the request's input tokens (three bytes a token, as the estimate counts), less the calls, what the model wrote
+    // before them (said) and room for their reservations. A cut result tells the model so, and the Thinking trace notes it. A
+    // reply started early calls no tool until it is released: a tool may act on the world.
     private async Task<IReadOnlyList<TextToolResult>> CallToolsAsync(IConversationToolHost tools, IReadOnlyList<TextToolCall> calls,
-        IReadOnlyList<TextToolRound> earlier)
+        IReadOnlyList<TextToolRound> earlier, BoundedTextInput input, string said)
     {
         await HeldAsync().ConfigureAwait(false);
-        var available = BoundedTextInput.RemainingToolExchangeBytes(earlier) - calls.Sum(c => c.Utf8Bytes) - 4096;
+        var tokenRoom = (long)request.TextLimits.MaxInputTokens - input.InputTokenReservation - 64L * calls.Count - 64;
+        var available = (int)Math.Min(BoundedTextInput.RemainingToolExchangeBytes(earlier), Math.Max(0, tokenRoom * 3)) -
+            calls.Sum(c => c.Utf8Bytes) - System.Text.Encoding.UTF8.GetByteCount(said) - 4096;
         var share = Math.Max(256, available / calls.Count);
         var results = new List<TextToolResult>(calls.Count);
-        // Each call and how long it took, for the Thinking trace.
+        // Each call, how long it took and whether its result was cut, for the Thinking trace.
         var began = Clock.GetElapsedTime(startedAt);
-        var took = trace is null ? null : new List<(string Name, TimeSpan Took, bool Failed)>(calls.Count);
+        var took = trace is null ? null : new List<(string Name, TimeSpan Took, bool Failed, bool Cut)>(calls.Count);
         foreach (var call in calls)
         {
             lock (Sync)
@@ -1139,9 +1143,10 @@ public sealed partial class ConversationTurn
             // A tool host boundary can fail arbitrarily; the model hears that the tool failed, never the exception text.
             catch (Exception) { outcome = new("The tool failed on this PC.", true); }
             finally { TraceWaiting(null); }
-            took?.Add((call.Name, Clock.GetElapsedTime(called), outcome.IsError));
             lock (Sync) CheckActive();
-            results.Add(new(call.CallId, TextToolResult.Bound((outcome.IsError ? "Error: " : "") + outcome.Output, share)));
+            var bounded = TextToolResult.Bound((outcome.IsError ? "Error: " : "") + outcome.Output, share);
+            took?.Add((call.Name, Clock.GetElapsedTime(called), outcome.IsError, TextToolResult.WasCut(bounded)));
+            results.Add(new(call.CallId, bounded));
         }
         lock (Sync)
         {

@@ -20,8 +20,9 @@ public static class GatewayInferenceProtocol
     /// it, every route took at most two minutes (the conversation model one). A desktop saves the route with the same bound.</summary>
     public static readonly TimeSpan MaximumJobDuration =
         TimeSpan.FromSeconds(Martlet.Core.Settings.SelfHostSetup.MaximumGatewayRouteDurationSeconds);
-    /// <summary>The most output tokens a conversation-model request may ask for (a background think's budget); 4,096 before it.</summary>
-    public const int MaximumOllamaOutputTokens = 32_768;
+    /// <summary>The most output tokens a conversation-model request may ask for: the providers' own ceiling, the largest max
+    /// reply length and a background think's budget; 4,096 before thinks.</summary>
+    public const int MaximumOllamaOutputTokens = Martlet.Providers.TextGenerationLimits.HardMaxOutputTokens;
 }
 
 public enum GatewayInferenceKind
@@ -195,14 +196,18 @@ public sealed partial class GatewayInferenceRoute
                 selection.RequestModel,
                 modelRevision,
                 modelSha256),
-            // Room for JSON escaping of the bounded persona, history and user text, plus one base64 screen image and one base64
-            // recording. A client sends a recording only to a route this large (an older host advertises less).
+            // Room for JSON escaping of the persona, history and user text, plus one base64 screen image and one base64
+            // recording. A client sends a recording only to a route this large (an older host advertises less). The text may
+            // take OllamaInputBytes (the whole conversation that fits the context size); a client leaves out the oldest
+            // messages when an image and a recording leave less room.
             maximumRequestBytes: Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes,
-            maximumInputBytes: capabilities.MaxInputBytes,
-            maximumOutputBytes: 64 * 1024,
+            maximumInputBytes: Martlet.Core.Settings.SelfHostSetup.OllamaInputBytes,
+            // A reply of the largest budget (MaximumOllamaOutputTokens) at up to 16 bytes a token. Ollama streams a token a
+            // line; the relay joins them so the events stay within maximumEvents, which older desktops expect.
+            maximumOutputBytes: 512 * 1024,
             maximumEventBytes: 64 * 1024,
             maximumEvents: 4_096,
-            maximumStreamBytes: 4 * 1024 * 1024,
+            maximumStreamBytes: 8 * 1024 * 1024,
             // A reply's own deadline is far shorter; a background think (think_longer) may take up to fifteen minutes.
             maximumDuration: GatewayInferenceProtocol.MaximumJobDuration,
             GatewayCancellationCapability.RequestAbort,

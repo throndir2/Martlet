@@ -44,6 +44,12 @@ public sealed record HostRoute(
     public bool CarriesAudio => (RouteId == OllamaChatRouteId || SelfHostSetup.IsDeepThinkingRoute(RouteId)) &&
         MaximumRequestBytes >= SelfHostSetup.OllamaRequestBytes;
 
+    /// <summary>Whether the host's conversation model route takes the whole conversation (<see cref="SelfHostSetup.OllamaInputBytes"/>
+    /// of text, the notes with the current message and a context up to <see cref="GenerationSettings.MaximumHostContextTokens"/>).
+    /// An older host's route takes 16 KiB of text with the notes in its instructions, and at most
+    /// <see cref="SelfHostSetup.LegacyOllamaContextTokens"/> of context.</summary>
+    public bool TakesWholeConversation => MaximumInputBytes >= SelfHostSetup.OllamaInputBytes;
+
     /// <summary>The route as this PC saves it when a job moves to the host: its advertised identity and limits, observed now.</summary>
     public GatewayRouteSnapshot Snapshot(SetupRouteType routeType) => new()
     {
@@ -96,50 +102,81 @@ public sealed partial class Audio2FaceHostConnection
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);
         if (deadline > latest) deadline = latest;
         if (deadline <= now) throw new Audio2FaceHostException("job.deadline", "No time is left for the host's reply.");
-        // A saved context size above what the host's gateway loads is capped there.
-        int? contextTokens = sampling?.ContextTokens is { } saved ? Math.Min(saved, GenerationSettings.MaximumHostContextTokens) : null;
-        var payload = new Dictionary<string, object>
+        // A saved context size above what the host's gateway loads is capped there; an older host loads less.
+        var largest = route.TakesWholeConversation ? GenerationSettings.MaximumHostContextTokens : SelfHostSetup.LegacyOllamaContextTokens;
+        int? contextTokens = sampling?.ContextTokens is { } saved ? Math.Min(saved, largest) : null;
+        // A window the cap made smaller than the reply budget keeps half of it for the prompt.
+        if (sampling?.ContextTokens > contextTokens && maximumOutputTokens >= contextTokens) maximumOutputTokens = contextTokens.Value / 2;
+        // The desktop's context bound covers tool schemas the host never gets. The gateway refuses a context window larger
+        // than this bound (request.invalid), and a Thinking pool job asks the host's Ollama for its own window (so it keeps its
+        // model loaded) with a smaller budget of its own: the bound covers the window.
+        var window = Math.Max(Math.Min(maximumContextTokens, largest), contextTokens ?? 0);
+        var chatInput = ChatText(input);
+        var chatSystem = string.IsNullOrEmpty(system) ? null : ChatText(system);
+        var messages = history.Select(message => new Dictionary<string, string>
         {
-            ["input"] = ChatText(input),
-            ["temperature"] = temperature,
-            ["maximum_output_tokens"] = maximumOutputTokens,
-            // The desktop's context bound covers tool schemas the host never gets; the gateway takes at most 32,768. The gateway
-            // refuses a context window larger than this bound (request.invalid), and a Thinking pool job asks the host's Ollama
-            // for its largest window (so it keeps its model loaded) with a smaller budget of its own: the bound covers the window.
-            ["maximum_context_tokens"] = Math.Max(Math.Min(maximumContextTokens, GenerationSettings.MaximumHostContextTokens),
-                contextTokens ?? 0)
-        };
-        if (!string.IsNullOrEmpty(system)) payload["system"] = ChatText(system);
-        if (history.Count > 0)
-            payload["history"] = history.Select(message => new Dictionary<string, string>
+            ["role"] = message.Assistant ? "assistant" : "user", ["text"] = ChatText(message.Text)
+        }).ToArray();
+        byte[] Body(int first)
+        {
+            var payload = new Dictionary<string, object>
             {
-                ["role"] = message.Assistant ? "assistant" : "user", ["text"] = ChatText(message.Text)
-            }).ToArray();
-        if (images is { Count: > 0 }) payload["images"] = images.ToArray();
-        if (audio is not null) payload["audio"] = audio;
-        if (sampling is not null)
-        {
-            if (sampling.TopP is { } topP) payload["top_p"] = topP;
-            if (sampling.TopK is { } topK) payload["top_k"] = topK;
-            if (sampling.MinP is { } minP) payload["min_p"] = minP;
-            if (sampling.RepeatPenalty is { } repeat) payload["repeat_penalty"] = repeat;
-            if (sampling.FrequencyPenalty is { } frequency) payload["frequency_penalty"] = frequency;
-            if (sampling.PresencePenalty is { } presence) payload["presence_penalty"] = presence;
-            if (contextTokens is { } context) payload["context_tokens"] = context;
-            // Thinking steps; a host older than it refuses the request (request.invalid).
-            if (sampling.Reasoning is { } think) payload["think"] = think;
+                ["input"] = chatInput,
+                ["temperature"] = temperature,
+                ["maximum_output_tokens"] = maximumOutputTokens,
+                ["maximum_context_tokens"] = window
+            };
+            if (chatSystem is not null) payload["system"] = chatSystem;
+            if (first < messages.Length) payload["history"] = messages[first..];
+            if (images is { Count: > 0 }) payload["images"] = images.ToArray();
+            if (audio is not null) payload["audio"] = audio;
+            if (sampling is not null)
+            {
+                if (sampling.TopP is { } topP) payload["top_p"] = topP;
+                if (sampling.TopK is { } topK) payload["top_k"] = topK;
+                if (sampling.MinP is { } minP) payload["min_p"] = minP;
+                if (sampling.RepeatPenalty is { } repeat) payload["repeat_penalty"] = repeat;
+                if (sampling.FrequencyPenalty is { } frequency) payload["frequency_penalty"] = frequency;
+                if (sampling.PresencePenalty is { } presence) payload["presence_penalty"] = presence;
+                if (contextTokens is { } context) payload["context_tokens"] = context;
+                // Thinking steps; a host older than it refuses the request (request.invalid).
+                if (sampling.Reasoning is { } think) payload["think"] = think;
+            }
+            return JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
+            {
+                ["protocol_version"] = new Dictionary<string, int> { ["major"] = 2, ["minor"] = 0 },
+                ["route_id"] = route.RouteId, ["contract_id"] = route.ContractId, ["contract_version"] = route.ContractVersion,
+                ["destination_id"] = route.DestinationId, ["worker_id"] = route.WorkerId, ["adapter_version"] = route.AdapterVersion,
+                ["model_id"] = route.ModelId, ["model_revision"] = route.ModelRevision, ["model_sha256"] = route.ModelSha256,
+                ["artifact_identity_sha256"] = route.ArtifactIdentitySha256,
+                ["session_id"] = ids.SessionId, ["turn_id"] = ids.TurnId, ["request_id"] = ids.RequestId, ["epoch"] = epoch,
+                ["deadline_utc"] = deadline.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                ["payload"] = payload
+            }, ChatJson);
         }
-        var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
+        // The oldest earlier messages the route can't take are left out, two at a time so the history still starts with what
+        // the user said: an older host takes 16 KiB of text in all, and a request with a screen image and a recording has less
+        // room for text. The desktop already fits the conversation to the context size, so a current host normally takes it all.
+        var first = 0;
+        var textBytes = (long)Encoding.UTF8.GetByteCount(chatInput) + (chatSystem is null ? 0 : Encoding.UTF8.GetByteCount(chatSystem)) +
+            messages.Sum(message => (long)Encoding.UTF8.GetByteCount(message["text"]));
+        while (textBytes > route.MaximumInputBytes && first < messages.Length)
+            textBytes -= Encoding.UTF8.GetByteCount(messages[first++]["text"]) +
+                (first < messages.Length ? Encoding.UTF8.GetByteCount(messages[first++]["text"]) : 0);
+        if (textBytes > route.MaximumInputBytes)
+            throw new Audio2FaceHostException("request.too_large", route.TakesWholeConversation
+                ? "The message is too long for the host's model route."
+                : $"The message is too long for this host: it runs an older Martlet that takes {route.MaximumInputBytes / 1024:N0} KiB " +
+                  "of conversation in all. Update Martlet on the host.");
+        var body = Body(first);
+        if (body.Length > route.MaximumRequestBytes && first < messages.Length)
         {
-            ["protocol_version"] = new Dictionary<string, int> { ["major"] = 2, ["minor"] = 0 },
-            ["route_id"] = route.RouteId, ["contract_id"] = route.ContractId, ["contract_version"] = route.ContractVersion,
-            ["destination_id"] = route.DestinationId, ["worker_id"] = route.WorkerId, ["adapter_version"] = route.AdapterVersion,
-            ["model_id"] = route.ModelId, ["model_revision"] = route.ModelRevision, ["model_sha256"] = route.ModelSha256,
-            ["artifact_identity_sha256"] = route.ArtifactIdentitySha256,
-            ["session_id"] = ids.SessionId, ["turn_id"] = ids.TurnId, ["request_id"] = ids.RequestId, ["epoch"] = epoch,
-            ["deadline_utc"] = deadline.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-            ["payload"] = payload
-        }, ChatJson);
+            long over = body.Length - route.MaximumRequestBytes;
+            while (over > 0 && first < messages.Length)
+                over -= JsonSerializer.SerializeToUtf8Bytes(messages[first++], ChatJson).Length + 1;
+            if (first % 2 == 1 && first < messages.Length) first++;
+            body = Body(first);
+        }
         if (body.Length > route.MaximumRequestBytes)
             throw new Audio2FaceHostException("request.too_large", audio is not null
                 ? "The recording is too large for the host's model route; update the host so it takes recordings."

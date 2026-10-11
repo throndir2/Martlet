@@ -4783,7 +4783,13 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 hosts = new { state = "unreadable" };
             }
         }
-        return new { share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts };
+        // How Add a computer looks (Martlet.Desktop's Nearby): it lists each computer as it answers, for this long, and a
+        // computer offers at most as many hosts as Martlet can remember.
+        return new
+        {
+            share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts,
+            find = new { listensSeconds = 15, queriesSentAtSeconds = new[] { 0, 0.5, 1.5, 3.5, 7.5 }, hostsOfferedAtMost = 64 }
+        };
     }
 
     /// <summary>One Home Assistant's first-run state (no sign-in needed), as Smart home checks it before offering Set up.</summary>

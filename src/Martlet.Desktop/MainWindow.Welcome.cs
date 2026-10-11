@@ -53,8 +53,9 @@ public partial class MainWindow
         ScanForNetworkAsync().Forget();
     }
 
-    /// <summary>Looks for Martlet on this network the way Add a computer does (<see cref="Nearby.FindAsync"/>: about two
-    /// seconds of broadcast queries on the private subnets, never a scan). Discovery only lists; trust comes from pairing.</summary>
+    /// <summary>Looks for Martlet on this network the way Add a computer does (<see cref="Nearby.FindAsync"/>: broadcast queries
+    /// on the private subnets for <see cref="Nearby.FindWindow"/>, never a scan), listing each computer as soon as it answers.
+    /// Discovery only lists; trust comes from pairing.</summary>
     private async Task ScanForNetworkAsync()
     {
         if (welcomeScanning || closing) return;
@@ -62,7 +63,15 @@ public partial class MainWindow
         WizardScanAgainButton.IsEnabled = false;
         WizardFoundList.Children.Clear();
         WizardScanStatus.Text = "Looking for Martlet on your other computers...";
-        try { welcomeFound = await Nearby.FindAsync(lifetime.Token); }
+        try
+        {
+            welcomeFound = await Nearby.FindAsync(lifetime.Token, sofar =>
+            {
+                if (closing || welcomeJoined) return;
+                welcomeFound = sofar;
+                ShowFoundNetworks();
+            });
+        }
         catch (OperationCanceledException) { return; }
         catch (Exception error) when (error is SocketException or IOException)
         {
@@ -78,7 +87,7 @@ public partial class MainWindow
         if (closing) return;
         ErrorLog.Info($"Welcome: found {welcomeFound.Count} Martlet network computer(s)" +
             (welcomeFound.Count == 0 ? "." : ": " + string.Join(", ", welcomeFound.Select(m => $"{m.Name} at {m.Where}")) + "."));
-        ShowFoundNetworks();
+        if (!welcomeJoined) ShowFoundNetworks();
     }
 
     private void ShowFoundNetworks()
@@ -117,7 +126,7 @@ public partial class MainWindow
                 "find this PC on), then Look again, or enter its address and pairing code.",
             1 => "Found your Martlet network. Press Join, then Allow on that computer when both show the same check number.",
             _ => $"Found {welcomeFound.Count} computers with Martlet. Press Join on one, then Allow there when both show the same check number."
-        };
+        } + (welcomeScanning ? " Still looking for more..." : "");
     }
 
     /// <summary>Joins through Add a computer's check-number request (<see cref="HostsWindow"/>), so pairing and key pinning stay

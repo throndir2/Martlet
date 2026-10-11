@@ -24,7 +24,9 @@ public sealed record GenerationSettings : IContract
     /// answer itself short. It is also the host gateway's largest reply budget.</summary>
     public const int ChatReplyTokens = 4_096;
     public const int MinimumReplyTokens = 16;
-    public const int MaximumReplyTokens = 2_048;
+    /// <summary>The largest max reply length: the providers' own output ceiling (<c>TextGenerationLimits.HardMaxOutputTokens</c>),
+    /// so a reply can be as long as any route lets it be.</summary>
+    public const int MaximumReplyTokens = 32_768;
     /// <summary>The temperature a paired host's Ollama uses when it is left unset.</summary>
     public const double DefaultHostTemperature = 0.7;
     public const int MaximumTopK = 1_000;
@@ -36,8 +38,12 @@ public sealed record GenerationSettings : IContract
     public const int DefaultHostContextTokens = 8_192;
     public const int MinimumContextTokens = 2_048;
     public const int MaximumContextTokens = 2_000_000;
-    /// <summary>The largest context window a paired host's Ollama loads (its gateway's bound); a larger saved size is capped.</summary>
-    public const int MaximumHostContextTokens = 32_768;
+    /// <summary>The largest context window a paired host's Ollama loads (its gateway's bound); a larger saved size is capped. A
+    /// host older than this bound takes at most <see cref="SelfHostSetup.LegacyOllamaContextTokens"/>.</summary>
+    public const int MaximumHostContextTokens = 262_144;
+    /// <summary>The context window a paired computer's Deep thinking (Thinking pool) Ollama loads for every job, so long hidden
+    /// thinking fits and the model stays loaded with the same window.</summary>
+    public const int DeepThinkingContextTokens = 32_768;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? Temperature { get; init; }

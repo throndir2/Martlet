@@ -73,7 +73,10 @@ public sealed class TextToolCall
 /// <summary>What one tool call returned, as text for the model.</summary>
 public sealed class TextToolResult
 {
-    public const int MaxOutputCharacters = 12_000;
+    /// <summary>The most text one tool result keeps (characters). A reply's tool calls also share what is left of its tool
+    /// exchange bytes (<see cref="BoundedTextInput.HardMaxToolExchangeBytes"/>) and of its context, so a result is often cut
+    /// sooner; <see cref="Bound"/> always says so.</summary>
+    public const int MaxOutputCharacters = 120_000;
 
     public TextToolResult(string callId, string output)
     {
@@ -89,14 +92,19 @@ public sealed class TextToolResult
     public int Utf8Bytes => Encoding.UTF8.GetByteCount(CallId) + Encoding.UTF8.GetByteCount(Output);
 
     /// <summary>Shortens <paramref name="output"/> to at most <paramref name="maximumUtf8Bytes"/> UTF-8 bytes (and the
-    /// character cap), saying that it was cut, and replaces control characters a provider would reject.</summary>
+    /// character cap), saying that it was cut and how much of it is shown, and replaces control characters a provider would
+    /// reject.</summary>
     public static string Bound(string output, int maximumUtf8Bytes)
     {
         var clean = new string(output.Select(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t' ? ' ' : c).ToArray());
-        const string cut = "\n[output cut short]";
         var limit = Math.Max(64, maximumUtf8Bytes);
         if (clean.Length <= MaxOutputCharacters && Encoding.UTF8.GetByteCount(clean) <= limit) return clean;
-        var budget = Math.Min(MaxOutputCharacters - cut.Length, limit - cut.Length);
+        string Marker(int shown) => string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"\n[output cut short: the first {shown:N0} of {clean.Length:N0} characters, as much as this reply has room for]");
+        var room = Marker(clean.Length).Length;
+        var marked = room <= limit / 2;
+        if (!marked) room = CutShort.Length;
+        var budget = Math.Max(0, Math.Min(MaxOutputCharacters - room, limit - room));
         var builder = new StringBuilder();
         var bytes = 0;
         foreach (var rune in clean.EnumerateRunes())
@@ -105,8 +113,14 @@ public sealed class TextToolResult
             builder.Append(rune.ToString());
             bytes += rune.Utf8SequenceLength;
         }
-        return builder.Append(cut).ToString();
+        return builder.Append(marked ? Marker(builder.Length) : CutShort).ToString();
     }
+
+    private const string CutShort = "\n[output cut short]";
+
+    /// <summary>Whether <paramref name="bounded"/> (what <see cref="Bound"/> returned) was cut.</summary>
+    public static bool WasCut(string bounded) => bounded.EndsWith(CutShort, StringComparison.Ordinal) ||
+        bounded.Contains("\n[output cut short: ", StringComparison.Ordinal);
 
     public override string ToString() => nameof(TextToolResult);
 }

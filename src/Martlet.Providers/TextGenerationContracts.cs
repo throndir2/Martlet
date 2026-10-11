@@ -75,7 +75,9 @@ public sealed class BoundedTextInput
     public const int HardMaxTools = 128;
     public const int HardMaxToolDefinitionBytes = 98_304;
     public const int HardMaxToolRounds = 8;
-    public const int HardMaxToolExchangeBytes = 65_536;
+    /// <summary>The most tool calls and results one reply's rounds carry (UTF-8). The request's context binds first when it is
+    /// smaller: each result is cut to what is left of both, and says so.</summary>
+    public const int HardMaxToolExchangeBytes = 655_360;
     [JsonIgnore]
     public string UserText { get; }
     /// <summary>The instructions that stay the same from one request to the next (the persona, tools, voice tags), sent
@@ -359,10 +361,12 @@ public sealed record TextGenerationLimits : IContract
     /// <summary>The bound of a request's estimated input and context tokens: above the largest context size Martlet uses,
     /// with room for tool descriptions and results.</summary>
     public const int HardMaxContextTokens = 4_194_304;
-    /// <summary>The earlier messages a paired host's gateway takes (and the default bound).</summary>
+    /// <summary>The default bound of a request's earlier messages; the conversation's routes set their own (all of
+    /// <see cref="BoundedTextInput.HardMaxHistoryMessages"/>, within the context size).</summary>
     public const int DefaultMaxHistoryMessages = 16;
-    /// <summary>The largest output budget, event count, stream size and deadline any request may have: a reply uses far less
-    /// (at most 4,096 tokens and two minutes); only a background think (think_longer) reasons this long. A think has no time
+    /// <summary>The largest output budget, event count, stream size and deadline any request may have: a reply uses 4,096 tokens
+    /// and two minutes or less unless Companion › Replies › Max reply length asks for up to this many tokens; a background think
+    /// (think_longer) reasons this long. A think has no time
     /// limit of its own, so its deadline is this ceiling: a day, far beyond any think, and the think's Cancel stops it sooner.</summary>
     public const int HardMaxOutputTokens = 32_768;
     public const int HardMaxEvents = 65_534;

@@ -10,8 +10,10 @@ namespace Martlet.Conversation;
 public sealed record WebSearchResult(string Title, string Url, string Snippet);
 
 /// <summary>A page read for research: where it ended up (after redirects), its title, its readable text (at most
-/// <see cref="WebAccess.MaxPageCharacters"/>) and how many bytes were downloaded.</summary>
-public sealed record WebPage(string Url, string Title, string Text, long Bytes);
+/// <see cref="WebAccess.MaxPageCharacters"/>), how many bytes were downloaded and whether only the start of the page was read
+/// (<paramref name="Cut"/>: it was larger than <see cref="WebAccess.MaxPageBytes"/> or its text longer than
+/// <see cref="WebAccess.MaxPageCharacters"/>).</summary>
+public sealed record WebPage(string Url, string Title, string Text, long Bytes, bool Cut = false);
 
 /// <summary>A web search: the seam for search providers (the built-in one is <see cref="WebAccess"/>, DuckDuckGo's HTML page;
 /// a self-hosted SearXNG or a keyed search API can implement it; checks use fixtures).</summary>
@@ -56,13 +58,15 @@ public sealed class WebResearchException(string problem) : Exception(problem)
 public sealed class WebAccess : IWebSearch, IWebFetch, IWebDocuments, IDisposable
 {
     public const string DuckDuckGo = "https://html.duckduckgo.com/html/";
-    /// <summary>The most of one page (or search) downloaded; the rest is never read.</summary>
-    public const int MaxPageBytes = 400_000;
+    /// <summary>The most of one page (or search) downloaded; the rest is never read, and the page says so
+    /// (<see cref="WebPage.Cut"/>). A bound stays so one huge page can't fill memory.</summary>
+    public const int MaxPageBytes = 4_000_000;
     /// <summary>The most of one document (<see cref="ReadAsync"/>) downloaded: a big wiki page can be a megabyte.</summary>
     public const int MaxDocumentBytes = 2_000_000;
-    /// <summary>The most readable text kept of one page.</summary>
-    public const int MaxPageCharacters = 20_000;
-    public const int MaxResults = 8;
+    /// <summary>The most readable text kept of one page; a page cut here says so (<see cref="WebPage.Cut"/>).</summary>
+    public const int MaxPageCharacters = 200_000;
+    /// <summary>The most results kept of one search: more than a search page shows, so every result it gives is kept.</summary>
+    public const int MaxResults = 80;
     /// <summary>The user agent of documents read for app guides: an honest bot name with where to learn about it. Wiki hosts
     /// refuse browser-like agents from programs, and robots.txt rules name Martlet by its first word.</summary>
     public const string GuideAgent = "Martlet/1.0 (app guides; +https://github.com/throndir2/Martlet)";
@@ -100,12 +104,16 @@ public sealed class WebAccess : IWebSearch, IWebFetch, IWebDocuments, IDisposabl
     {
         ArgumentNullException.ThrowIfNull(url);
         if (!IsWeb(url)) throw new WebResearchException("it isn't a web link");
-        var (body, mediaType, final, bytes, _) = await GetAsync(url, MaxPageBytes, document: false, cancellationToken).ConfigureAwait(false);
+        var (body, mediaType, final, bytes, cut) = await GetAsync(url, MaxPageBytes, document: false, cancellationToken).ConfigureAwait(false);
         var html = mediaType is "text/html" or "application/xhtml+xml";
         var text = html ? HtmlText.Of(body) : Collapse(body);
-        if (text.Length > MaxPageCharacters) text = text[..MaxPageCharacters];
+        if (text.Length > MaxPageCharacters)
+        {
+            text = text[..MaxPageCharacters];
+            cut = true;
+        }
         var title = html ? HtmlText.Title(body) : null;
-        return new(final.AbsoluteUri, string.IsNullOrWhiteSpace(title) ? final.Host : title, text, bytes);
+        return new(final.AbsoluteUri, string.IsNullOrWhiteSpace(title) ? final.Host : title, text, bytes, cut);
     }
 
     public async Task<WebDocument> ReadAsync(Uri url, int maxBytes, CancellationToken cancellationToken)

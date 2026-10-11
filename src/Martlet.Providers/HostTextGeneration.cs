@@ -87,7 +87,7 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
             Role = ProviderRole.Llm, Provenance = EvidenceProvenance.Live, SttPartials = CapabilitySupport.Unsupported,
             LlmTextDeltas = CapabilitySupport.Supported, TtsAudioTransport = CapabilitySupport.Unsupported,
             TtsIncrementalSynthesis = CapabilitySupport.Unsupported, Cancellation = CancellationCapability.RequestAbort,
-            MaxInputBytes = BoundedTextInput.HardMaxUtf8Bytes
+            MaxInputBytes = SelfHostSetup.OllamaInputBytes
         };
     }
 

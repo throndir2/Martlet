@@ -255,6 +255,27 @@ public sealed class WebResearchTests
     }
 
     [Fact]
+    public void ResearchKeepsTenTimesMoreAndSaysWhereTextWasCut()
+    {
+        Assert.Equal((80, 4_000_000, 200_000), (WebAccess.MaxResults, WebAccess.MaxPageBytes, WebAccess.MaxPageCharacters));
+        Assert.Equal((3_000, 10_000, 400_000), (WebResearch.MaxTopicCharacters, WebResearch.MaxFindCharacters, WebResearch.MaxReportCharacters));
+        Assert.Equal(1_310_720, ResearchReports.MaximumReportBytes);
+        var pages = new List<WebPage>
+        {
+            new("https://a.example/", "A", new string('a', 5_000), 4_000_000, Cut: true), new("https://b.example/", "B", "Short page.", 11)
+        };
+        // A page shown only in part says so to the model.
+        var sources = WebResearch.Sources(["q"], [], pages, 0, [], WebResearch.Budget, 2_000);
+        Assert.Contains("a…" + WebResearch.ExcerptCut, sources, StringComparison.Ordinal);
+        Assert.EndsWith("[2] B <https://b.example/>\nShort page.", sources, StringComparison.Ordinal);
+        // The report says where it was cut and which pages were read only in part.
+        var report = WebResearch.Report(WebResearch.ParseStep("REPORT:\n" + new string('x', WebResearch.MaxReportCharacters + 10)), new("t", "f"), pages);
+        Assert.Contains(WebResearch.ReportCut, report.Markdown, StringComparison.Ordinal);
+        Assert.Contains("1. [A](https://a.example/)" + WebResearch.SourceCut + "\n", report.Markdown, StringComparison.Ordinal);
+        Assert.Contains("2. [B](https://b.example/)\n", report.Markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheReportPageLinksOnlyWebAddressesAndEscapesTheRest()
     {
         var html = ResearchReports.Html("A <title>", "# Heading\n- **bold** [site](https://a.example/x)\n[bad](javascript:alert(1))\n<script>x</script> see https://b.example/y.");

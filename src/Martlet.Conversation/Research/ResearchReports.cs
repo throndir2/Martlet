@@ -14,7 +14,9 @@ public static class ResearchReports
 {
     public const string KindName = "report";
     public const string FolderName = "research-reports";
-    public const int MaximumReportBytes = 128 * 1024;
+    /// <summary>The most of a report's Markdown kept as its asset: room for the longest report (<see cref="WebResearch.MaxReportCharacters"/>)
+    /// with its sources; a longer one says where it was cut.</summary>
+    public const int MaximumReportBytes = 1_310_720;
 
     public static CreationKind Kind { get; } = new()
     {
@@ -33,7 +35,9 @@ public static class ResearchReports
     public static CreationDraft Draft(ResearchReport report, CreationAuthor author)
     {
         var bytes = Encoding.UTF8.GetBytes(report.Markdown);
-        if (bytes.Length > MaximumReportBytes) bytes = Encoding.UTF8.GetBytes(Fit(report.Markdown, MaximumReportBytes));
+        if (bytes.Length > MaximumReportBytes)
+            bytes = Encoding.UTF8.GetBytes(Fit(report.Markdown, MaximumReportBytes - Encoding.UTF8.GetByteCount(WebResearch.ReportCut)) +
+                WebResearch.ReportCut);
         return new()
         {
             Kind = KindName,

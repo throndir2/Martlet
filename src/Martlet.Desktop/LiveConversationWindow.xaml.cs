@@ -3480,6 +3480,9 @@ public partial class LiveConversationWindow : ThemedWindow
                 $"Martlet couldn't use the voice from host {hostId}. Choose a voice again in Companion › Voice.",
             ProviderFailureCode.CredentialUnavailable or ProviderFailureCode.Authentication or ProviderFailureCode.PermissionDenied =>
                 $"Martlet couldn't use this PC's pairing with host {hostId}. Pair it again on Devices.",
+            ProviderFailureCode.InputLimit when job == ProviderRole.Llm =>
+                $"That's too long for Thinking on your Martlet host {hostId}. If that host runs an older Martlet, update it on Devices; " +
+                "otherwise send a shorter message.",
             _ => null
         };
     }
@@ -3521,6 +3524,10 @@ public partial class LiveConversationWindow : ThemedWindow
             "The provider's address didn't match the one you set up, so nothing was sent there. Review it in Companion.",
         ProviderFailureCode.OutputTokenLimit =>
             "The model hit the max reply length. Ask for a shorter answer, or raise the limit in Companion › Replies.",
+        ProviderFailureCode.InputLimit =>
+            "That's too long for the Thinking model. Send a shorter message, or raise the context size in Companion › Replies.",
+        ProviderFailureCode.ResponseTooLarge =>
+            "The answer was longer than Martlet takes from a provider in one reply. Ask for a shorter answer.",
         _ => "Martlet couldn't use the provider's answer. Try again."
     };
 

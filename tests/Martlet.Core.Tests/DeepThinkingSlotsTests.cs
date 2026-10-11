@@ -27,7 +27,7 @@ public sealed class DeepThinkingSlotsTests
     public void A_think_context_grows_with_the_model_and_its_context_size()
     {
         Assert.True(DeepThinkingSlots.ContextGb(17) > DeepThinkingSlots.ContextGb(5.7));
-        Assert.Equal(DeepThinkingSlots.ContextGb(8) / 4, DeepThinkingSlots.ContextGb(8, GenerationSettings.MaximumHostContextTokens / 4), 3);
+        Assert.Equal(DeepThinkingSlots.ContextGb(8) / 4, DeepThinkingSlots.ContextGb(8, GenerationSettings.DeepThinkingContextTokens / 4), 3);
         Assert.True(DeepThinkingSlots.ContextGb(0.1, 1_024) > 0);
     }
 

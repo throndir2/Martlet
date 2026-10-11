@@ -86,8 +86,8 @@ public partial class HostsWindow : ThemedWindow
 
     private void NearbyCancel_Click(object sender, RoutedEventArgs e) => nearbyRequest?.Cancel();
 
-    /// <summary>Asks the local network which Martlet desktops can share hosts (about two seconds) and lists those with a host
-    /// this PC isn't paired with yet.</summary>
+    /// <summary>Asks the local network which Martlet desktops can share hosts (<see cref="Nearby.FindWindow"/>) and lists those
+    /// with a host this PC isn't paired with yet, each as soon as it answers.</summary>
     private async Task FindNearbyAsync()
     {
         if (finding || nearbyRequest is not null) return;
@@ -95,7 +95,15 @@ public partial class HostsWindow : ThemedWindow
         searched = true;
         NearbyFindButton.IsEnabled = false;
         NearbyStatusText.Text = "Looking for Martlet on your network...";
-        try { nearbyFound = await Nearby.FindAsync(lifetime.Token); }
+        try
+        {
+            nearbyFound = await Nearby.FindAsync(lifetime.Token, sofar =>
+            {
+                nearbyFound = sofar;
+                // A request already under way keeps its own status; the list shows once it ends.
+                if (nearbyRequest is null) ShowNearby();
+            });
+        }
         catch (OperationCanceledException) { return; }
         catch (Exception error) when (error is SocketException or IOException)
         {
@@ -108,7 +116,7 @@ public partial class HostsWindow : ThemedWindow
             finding = false;
             NearbyFindButton.IsEnabled = nearbyRequest is null;
         }
-        ShowNearby();
+        if (nearbyRequest is null) ShowNearby();
         ErrorLog.Info($"Nearby: found {nearbyFound.Count} Martlet desktop(s) that can share hosts" +
             (nearbyFound.Count == 0 ? "." : ": " + string.Join(", ", nearbyFound.Select(m => $"{m.Name} at {m.Where} ({string.Join(", ", m.Hosts)})")) + "."));
     }
@@ -147,12 +155,13 @@ public partial class HostsWindow : ThemedWindow
         }
         var connected = offers.Length - listed.Length;
         var already = connected == 0 ? "" : connected == 1 ? " 1 more is already connected to this PC." : $" {connected} more are already connected to this PC.";
-        NearbyStatusText.Text = listed.Length > 0
+        NearbyStatusText.Text = (listed.Length > 0
             ? $"Found {listed.Length} {(listed.Length == 1 ? "computer" : "computers")} with a host this PC doesn't use yet.{already}"
             : offers.Length > 0
                 ? $"This PC already uses every host Martlet found on your network.{already}"
                 : "No other Martlet answered. Open Martlet on the computer with the host (it must run a host, with Let my other " +
-                  "computers find this PC on), then Find again, or enter its address and code.";
+                  "computers find this PC on), then Find again, or enter its address and code.") +
+            (finding ? " Still looking for more..." : "");
         if (listed.Length == 0 && offers.Length == 0) ManualPanel.Visibility = Visibility.Visible;
     }
 
