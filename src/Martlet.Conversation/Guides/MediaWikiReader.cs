@@ -56,12 +56,12 @@ internal sealed class MediaWikiSite
 
 /// <summary>Reads a MediaWiki site (Fandom, wiki.gg and most game wikis) through its api.php: the pages the main page links to
 /// and the site's most linked pages first (stubs, disambiguation, version history and very large pages left out), then the
-/// pages the pages read link to most, each read as clean article HTML (<c>action=parse</c>, redirects followed, edit links and
-/// the table of contents off) and turned into outline text.</summary>
+/// pages the pages read link to most, then every other content page (<c>generator=allpages</c>), each read as clean article HTML
+/// (<c>action=parse</c>, redirects followed, edit links and the table of contents off) and turned into outline text.</summary>
 internal static class MediaWikiReader
 {
-    /// <summary>Articles shorter than this (in wiki text) are stubs; longer than <see cref="LargestPage"/> they would take much
-    /// of the download cap (a huge table becomes a megabyte of HTML).</summary>
+    /// <summary>Articles shorter than this (in wiki text) are stubs; longer than <see cref="LargestPage"/> they are mostly one
+    /// huge table, and their HTML often passes the 2 MB a document cap.</summary>
     public const int SmallestPage = 1_500;
     public const int LargestPage = 150_000;
     /// <summary>Readable text shorter than this isn't kept as a page.</summary>
@@ -141,16 +141,22 @@ internal static class MediaWikiReader
         var linked = new Dictionary<string, (string Title, int Count)>(StringComparer.Ordinal);
         var asked = new HashSet<string>(StringComparer.Ordinal);
         var next = 0;
-        var rounds = 0;
         var blocked = 0;
+        var everyPage = new AllPages(site);
         while (!run.Full)
         {
             if (next >= queue.Count)
             {
-                // Out of pages: the ones the pages read so far link to most.
+                // Out of pages: the ones the pages read so far link to most, then every other content page of the wiki.
                 var more = linked.Where(l => !queued.Contains(l.Key) && !asked.Contains(l.Key)).OrderByDescending(l => l.Value.Count)
                     .Take(50).ToList();
-                if (more.Count == 0 || ++rounds > 4) break;
+                if (more.Count == 0)
+                {
+                    if (everyPage.Done) break;
+                    foreach (var title in await everyPage.NextAsync(run).ConfigureAwait(false))
+                        if (queued.Add(Key(title))) queue.Add(title);
+                    continue;
+                }
                 asked.UnionWith(more.Select(m => m.Key));
                 var (pages, redirects) = await PagesAsync(run, site, [("titles", string.Join('|', more.Select(m => m.Value.Title))),
                     ("prop", "info|pageprops"), ("ppprop", "disambiguation"), ("redirects", "1")]).ConfigureAwait(false);
@@ -268,16 +274,55 @@ internal static class MediaWikiReader
 
     private sealed record WikiPage(string Title, long Length, bool Missing, bool Disambiguation, int Namespace, IReadOnlyList<string> Categories);
 
+    // Every content page of the wiki, 500 at a time in title order (each content namespace in turn), as usable titles.
+    private sealed class AllPages(MediaWikiSite site)
+    {
+        private readonly Queue<int> namespaces = new(site.ContentNamespaces.Order());
+        private IReadOnlyDictionary<string, string> from = new Dictionary<string, string>();
+
+        public bool Done => namespaces.Count == 0;
+
+        public async Task<IReadOnlyList<string>> NextAsync(GuideRun run)
+        {
+            var ns = namespaces.Peek().ToString(System.Globalization.CultureInfo.InvariantCulture);
+            (string, string)[] parameters = [("generator", "allpages"), ("gapnamespace", ns), ("gapfilterredir", "nonredirects"),
+                ("gaplimit", "max"), ("gapminsize", SmallestPage.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("gapmaxsize", LargestPage.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("prop", "info|pageprops"),
+                ("ppprop", "disambiguation"), .. from.Select(c => (c.Key, c.Value))];
+            var (pages, _, next) = await ListAsync(run, site, parameters).ConfigureAwait(false);
+            // A list that ends, or can't be read, ends that namespace.
+            if (next is null)
+            {
+                namespaces.Dequeue();
+                from = new Dictionary<string, string>();
+            }
+            else from = next;
+            return pages.Where(p => Usable(site, p)).Select(p => p.Title).ToList();
+        }
+    }
+
     private static async Task<(IReadOnlyList<WikiPage> Pages, Dictionary<string, string> Redirects)> PagesAsync(GuideRun run, MediaWikiSite site,
         (string, string)[] parameters)
+    {
+        var (pages, redirects, _) = await ListAsync(run, site, parameters).ConfigureAwait(false);
+        return (pages, redirects);
+    }
+
+    // A query's pages, its redirects and, when the list goes on, the parameters that continue it.
+    private static async Task<(IReadOnlyList<WikiPage> Pages, Dictionary<string, string> Redirects, IReadOnlyDictionary<string, string>? Continue)>
+        ListAsync(GuideRun run, MediaWikiSite site, (string, string)[] parameters)
     {
         var redirects = new Dictionary<string, string>(StringComparer.Ordinal);
         try
         {
             var document = await run.GetAsync(Query(site.Api, [("action", "query"), .. parameters]), 600_000).ConfigureAwait(false);
-            if (document is null) return ([], redirects);
+            if (document is null) return ([], redirects, null);
             using var json = JsonDocument.Parse(document.Body);
-            if (!json.RootElement.TryGetProperty("query", out var query)) return ([], redirects);
+            Dictionary<string, string>? more = null;
+            if (json.RootElement.TryGetProperty("continue", out var continues) && continues.ValueKind == JsonValueKind.Object)
+                more = continues.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String)
+                    .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal);
+            if (!json.RootElement.TryGetProperty("query", out var query)) return ([], redirects, null);
             foreach (var list in new[] { "normalized", "redirects" })
                 if (query.TryGetProperty(list, out var entries) && entries.ValueKind == JsonValueKind.Array)
                     foreach (var entry in entries.EnumerateArray())
@@ -287,7 +332,7 @@ internal static class MediaWikiReader
                             foreach (var earlier in redirects.Where(r => r.Value == from).Select(r => r.Key).ToList()) redirects[earlier] = to;
                             redirects[from] = to;
                         }
-            if (!query.TryGetProperty("pages", out var pages) || pages.ValueKind != JsonValueKind.Array) return ([], redirects);
+            if (!query.TryGetProperty("pages", out var pages) || pages.ValueKind != JsonValueKind.Array) return ([], redirects, more is { Count: > 0 } ? more : null);
             return (pages.EnumerateArray().Select(p => new WikiPage(String(p, "title") ?? "",
                 p.TryGetProperty("length", out var length) && length.TryGetInt64(out var size) ? size : 0,
                 p.TryGetProperty("missing", out var missing) && missing.ValueKind != JsonValueKind.False || p.TryGetProperty("invalid", out _),
@@ -295,10 +340,10 @@ internal static class MediaWikiReader
                 p.TryGetProperty("ns", out var ns) && ns.TryGetInt32(out var id) ? id : 0,
                 p.TryGetProperty("categories", out var categories) && categories.ValueKind == JsonValueKind.Array
                     ? categories.EnumerateArray().Select(c => String(c, "title")).OfType<string>().ToArray() : []))
-                .Where(p => p.Title.Length > 0).ToList(), redirects);
+                .Where(p => p.Title.Length > 0).ToList(), redirects, more is { Count: > 0 } ? more : null);
         }
-        catch (WebResearchException) { return ([], redirects); }
-        catch (Exception error) when (Malformed(error)) { return ([], redirects); }
+        catch (WebResearchException) { return ([], redirects, null); }
+        catch (Exception error) when (Malformed(error)) { return ([], redirects, null); }
     }
 
     private static bool Usable(MediaWikiSite site, WikiPage page) =>

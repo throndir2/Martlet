@@ -2350,9 +2350,11 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "a search, keeps the guide, starts again from the folder, then the notes on a message while the game is in front (its " +
             "program named as Windows names it), for an unrelated message (none), for a message naming the game while another app " +
             "is in front, for a repeat the conversation already carries and while off; the offer (once a session, a no kept across " +
-            "starts, Ask again, a game with a guide, a listed app, Ask off) and its notice; and the tools (read_up_on, search_guide, " +
-            "skip_guide: arguments, search_guide's answer, the reading-up job, one at a time and 4 an hour). Reports counts, " +
-            "relevance and search time. Temporary folder, deleted afterwards; reads no credentials.", new { }),
+            "starts, Ask again, a game with a guide, a listed app, Ask off) and its notice; a read with the default caps (no page, " +
+            "download or time cap, so the whole fixture wiki), keeping what was read while reading and Stop reading; and the tools " +
+            "(read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one at a time and 4 an " +
+            "hour). Reports counts, relevance and search time, also on a whole-wiki-size guide. Temporary folder, deleted " +
+            "afterwards; reads no credentials.", new { }),
         Tool("app_guides_status", "Companion > App guides from a data directory (guides\\library.json): whether App guides are on and " +
             "ask when a game starts, and each app on the list with its program names, start pages, whether the owner said no to " +
             "the offer, its guide's pages, sections, size and time, and the last problem. Never a guide's text. Read-only.", new
