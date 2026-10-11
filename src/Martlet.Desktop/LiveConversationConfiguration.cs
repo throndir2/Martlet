@@ -268,9 +268,10 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The paired Martlet host whose Ollama answers, when Thinking was handed to a host on the Devices page.</summary>
     internal HostTextTarget? HostTarget() => Target(Route(SetupRole.Llm), SetupRouteType.GatewayOllama);
 
-    /// <summary>Whether replies can offer tools: OpenAI and Chat Completions routes do function calling, a host's gateway doesn't.</summary>
+    /// <summary>Whether replies can offer tools: OpenAI and Chat Completions routes do function calling, a host's gateway doesn't,
+    /// and a model Martlet found unable to call tools (its server's metadata or Test tools) isn't offered them.</summary>
     internal bool SupportsTools => Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is
-        { RouteType: SetupRouteType.ChatCompletions or SetupRouteType.OpenAi };
+        { RouteType: SetupRouteType.ChatCompletions or SetupRouteType.OpenAi } && Tools() != ToolSupport.Unsupported;
 
     /// <summary>Identifies the Thinking model for remembering that it rejected tools.</summary>
     internal string ToolModelKey()
@@ -374,8 +375,8 @@ internal sealed class LiveConversationConfiguration
                 if (route.Consent != route.Selection()) return "Review Thinking in Setup.";
                 if (route.CredentialId is null && ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named)
                     return $"Add your {named.Name} API key in Setup.";
-                if (ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
-                    return $"{retired.Name} retired this Thinking model. Choose {retired.DefaultModelId} in Companion › Thinking.";
+                if (ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId, Abilities) is { } retired)
+                    return $"{retired.Server} retired this Thinking model. {retired.Remedy}";
                 continue;
             }
             if (role == SetupRole.Stt && IsHostStt(route) && route.Enabled == true)
@@ -730,8 +731,12 @@ internal sealed class LiveConversationConfiguration
     /// (<paramref name="abilities"/>), otherwise its name.</summary>
     internal static VisionSupport Vision(SetupRoute? thinking, ModelAbilities? abilities = null) =>
         thinking is null ? VisionSupport.Unknown
-        : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities,
-            IsChat(thinking) && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
+        : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities) is not null);
+
+    /// <summary>The Thinking route's model when its server retired it: found on that route (an HTTP 410 Gone answer) or in
+    /// Martlet's built-in list; null otherwise or for a route that isn't a Chat Completions endpoint.</summary>
+    internal static RetiredModel? Retired(SetupRoute? thinking, ModelAbilities? abilities) =>
+        thinking is not null && IsChat(thinking) ? ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId, abilities) : null;
 
     /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
     internal string VisionAdvice() => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
@@ -755,8 +760,8 @@ internal sealed class LiveConversationConfiguration
     internal static string VisionAdvice(SetupRoute? route, ModelAbilities? abilities = null)
     {
         if (route is null) return "Set up Thinking so Martlet can see.";
-        if (IsChat(route) && ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
-            return $"{retired.Name} retired this Thinking model. Choose {retired.DefaultModelId} in Companion › Thinking.";
+        if (Retired(route, abilities) is { } retired)
+            return $"{retired.Server} retired this Thinking model. {retired.Remedy}";
         var found = abilities?.Find(route.Origin, route.ModelId) is { Sees: not null } ability ? $" ({Said(ability)})" : "";
         return Vision(route, abilities) switch
         {
@@ -782,13 +787,23 @@ internal sealed class LiveConversationConfiguration
 
     internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) =>
         thinking is null ? HearingSupport.Unknown
-        : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
-            IsChat(thinking) && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
+        : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities) is not null);
+
+    /// <summary>Whether the Thinking model calls tools (<see cref="RouteAbilities.Tools"/>): OpenAI's models and a Chat
+    /// Completions model Martlet didn't find unable to; a paired computer's gateway takes none.</summary>
+    internal ToolSupport Tools()
+    {
+        var thinking = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        return thinking is null ? ToolSupport.Unknown
+            : RouteAbilities.Tools(thinking.RouteType, thinking.Origin, thinking.ModelId, Abilities, Retired(thinking, Abilities) is not null);
+    }
 
     // Where what Martlet knows about a model came from, in a few words: "Ollama on this PC says so, checked 3 Oct".
-    private static string Said(ModelAbility ability) =>
-        $"{(ability.Source is "a test request" or "a refused recording" or "a refused picture" ? "found by " + ability.Source : ability.Source + " says so")}, " +
-        $"checked {ability.CheckedAt.LocalDateTime:d MMM}";
+    private static string Said(ModelAbility ability, ModelFact fact = ModelFact.Sees)
+    {
+        var said = ability.SourceOf(fact) ?? new(ability.Source, ability.CheckedAt);
+        return $"{(ModelAbility.IsTest(said.Source) ? "found by " + said.Source : said.Source + " says so")}, checked {said.At.LocalDateTime:d MMM}";
+    }
 
     /// <summary>Whether the Thinking model can hear your voice, and what to change when it can't. With an audio model of its own
     /// (<paramref name="audio"/> has one), where your recording goes instead (docs/SENSE_MODELS.md).</summary>
@@ -802,7 +817,7 @@ internal sealed class LiveConversationConfiguration
                 : own.Why;
         if (route is null) return "Set up Thinking before letting it hear your voice.";
         var ability = abilities?.Find(route.Origin, route.ModelId) is { Hears: not null } known ? known : null;
-        var found = ability is null ? "" : $" ({Said(ability)})";
+        var found = ability is null ? "" : $" ({Said(ability, ModelFact.Hears)})";
         return Hearing(route, abilities) switch
         {
             HearingSupport.Supported when IsHost(route) && HostAudio.IsOld(route.Gateway?.HostId) =>

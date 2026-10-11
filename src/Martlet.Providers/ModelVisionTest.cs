@@ -9,7 +9,11 @@ namespace Martlet.Providers;
 /// something else or its server refused the picture, null when the test couldn't tell (a key, a missing model, a busy or
 /// unreachable server). <see cref="Summary"/> says it in words, naming the model but never a key. <see cref="Reply"/> is what
 /// the model answered (at most 80 characters), <see cref="Milliseconds"/> how long it took.</summary>
-public sealed record VisionTestReport(bool? Sees, string Summary, bool Reached, string? Reply = null, long? Milliseconds = null);
+public sealed record VisionTestReport(bool? Sees, string Summary, bool Reached, string? Reply = null, long? Milliseconds = null)
+{
+    /// <summary>The server's HTTP status (2xx: the model answered; 410: the server retired it); null when it didn't answer.</summary>
+    public int? Status { get; init; }
+}
 
 /// <summary>Test vision (Companion › Vision): asks a model's own Chat Completions server, with one picture of a single word (drawn
 /// on this PC, never anyone's screen) sent as an <c>image_url</c> PNG part, which word it shows. A model that sees reads it; one
@@ -48,16 +52,22 @@ public static class ModelVisionTest
             var text = await ModelHearingTest.ReadAsync(response, limit.Token).ConfigureAwait(false);
             var took = started.ElapsedMilliseconds;
             var code = (int)response.StatusCode;
-            if (response.IsSuccessStatusCode) return Read(ModelHearingTest.ReplyOf(text), word, modelId, serverName, took);
-            if (code is 401 or 403)
-                return new(null, $"{serverName} refused the test (error {code}); check the API key.", true, null, took);
-            if (code is 400 or 404 or 415 or 422 or 500 or 501 && RefusesImage(ModelHearingTest.WithoutModel(text, modelId)))
-                return new(false, $"{serverName} refused the picture for {modelId} (error {code}{ModelHearingTest.Detail(text)}), so it can't see.",
+            return Answer() with { Status = code };
+            VisionTestReport Answer()
+            {
+                if (response.IsSuccessStatusCode) return Read(ModelHearingTest.ReplyOf(text), word, modelId, serverName, took);
+                if (code is 401 or 403)
+                    return new(null, $"{serverName} refused the test (error {code}); check the API key.", true, null, took);
+                if (code == 410)
+                    return new(null, $"{serverName} retired {modelId} (error 410).", true, null, took);
+                if (code is 400 or 404 or 415 or 422 or 500 or 501 && RefusesImage(ModelHearingTest.WithoutModel(text, modelId)))
+                    return new(false, $"{serverName} refused the picture for {modelId} (error {code}{ModelHearingTest.Detail(text)}), so it can't see.",
+                        true, null, took);
+                if (code == 404)
+                    return new(null, $"{serverName} doesn't have {modelId} (error 404).", true, null, took);
+                return new(null, $"{serverName} answered error {code}{ModelHearingTest.Detail(text)}, so Martlet can't tell whether {modelId} sees.",
                     true, null, took);
-            if (code == 404)
-                return new(null, $"{serverName} doesn't have {modelId} (error 404).", true, null, took);
-            return new(null, $"{serverName} answered error {code}{ModelHearingTest.Detail(text)}, so Martlet can't tell whether {modelId} sees.",
-                true, null, took);
+            }
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {

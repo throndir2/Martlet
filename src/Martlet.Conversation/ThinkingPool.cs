@@ -849,7 +849,7 @@ public sealed class ThinkingJobBoard
 /// <summary>What a Thinking pool member can do, from what Martlet knows of its model: pictures as Martlet's vision catalog and
 /// model abilities say, recordings only on an OpenAI-compatible endpoint whose model hears (a paired computer's Ollama takes no
 /// recordings), and tool calls only on an OpenAI-compatible endpoint (Chat Completions function calling; a paired computer's
-/// gateway has none).</summary>
+/// gateway has none) whose model Martlet didn't find unable to call tools.</summary>
 public static class ThinkingPoolCapabilities
 {
     public static ThinkingCapability For(DeepThinkingSettings member, ModelAbilities? abilities = null)
@@ -859,7 +859,8 @@ public static class ThinkingPoolCapabilities
         switch (member.Place)
         {
             case DeepThinkingPlace.Endpoint:
-                can |= ThinkingCapability.Tools;
+                if (RouteAbilities.Tools(SetupRouteType.ChatCompletions, member.Origin, member.ModelId, abilities) != ToolSupport.Unsupported)
+                    can |= ThinkingCapability.Tools;
                 if (VisionModelCatalog.ForRoute(member.Origin, member.ModelId, abilities) == VisionSupport.Supported) can |= ThinkingCapability.Vision;
                 if (HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, member.Origin, member.ModelId, abilities) == HearingSupport.Supported)
                     can |= ThinkingCapability.Audio;

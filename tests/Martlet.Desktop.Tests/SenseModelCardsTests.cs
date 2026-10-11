@@ -115,8 +115,32 @@ public sealed class SenseModelCardsTests
     }
 
     [Fact]
+    public void Thinking_says_what_its_model_takes_on_its_route_and_where_that_came_from()
+    {
+        var at = new DateTimeOffset(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
+        var gemma = Thinking(GenerationSupport.LocalOllamaChatBaseUrl, "gemma4:e2b");
+        // Nothing found yet: hearing and seeing by its name, video and tools not known, and the tests that find out.
+        var byName = MainWindow.ThinkingAbilitiesText(gemma, new());
+        Assert.Contains("hears recordings: yes, by its name; sees pictures: yes, by its name; takes video: not known; calls tools: not known", byName);
+        Assert.Contains("Test hearing (Companion › Listening), Test vision (Companion › Vision), Test tools", byName);
+        var found = new ModelAbilities()
+            .With(new() { Origin = gemma.Origin, ModelId = gemma.ModelId, Hears = true, Sees = true, Video = false, Tools = true,
+                Source = "Ollama on this PC", CheckedAt = at })
+            .With(new() { Origin = gemma.Origin, ModelId = gemma.ModelId, Tools = true, Source = ModelAbility.TestRequest, CheckedAt = at });
+        var known = MainWindow.ThinkingAbilitiesText(gemma, found);
+        Assert.Contains("hears recordings: yes (Ollama on this PC,", known);
+        Assert.Contains("takes video: no (Ollama on this PC,", known);
+        Assert.Contains("calls tools: yes (found by a test request,", known);
+        Assert.DoesNotContain("To find out", known);
+        var gone = found.With(new() { Origin = gemma.Origin, ModelId = gemma.ModelId, Retired = at, Source = ModelAbility.GoneAnswer, CheckedAt = at });
+        Assert.StartsWith("127.0.0.1 retired gemma4:e2b (an HTTP 410 Gone answer,", MainWindow.ThinkingAbilitiesText(gemma, gone));
+    }
+
+    [Fact]
     public void Each_test_says_what_it_sends_and_where()
     {
+        Assert.Equal("Sends gemma4:e2b one made-up tool and asks it to call the tool with a test word (never anything you said or typed); it " +
+            "stays on this PC.", MainWindow.ToolsTestAbout("gemma4:e2b", local: true, "Ollama on this PC"));
         Assert.Equal("Sends qwen2.5vl:7b one picture of a single word, drawn on this PC (never your screen), and asks which word it shows; " +
             "it stays on this PC. Choosing a model already asks its server what it takes, when the server says.",
             MainWindow.TestAbout(SenseKind.Image, "qwen2.5vl:7b", local: true, "Ollama on this PC"));

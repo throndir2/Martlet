@@ -4484,14 +4484,44 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     }
 
     // A reply the fallback answered: Thinking itself failed, so say so in the log (the provider's own explanation is
-    // logged just before it by ProviderDiagnostics); the reply still counts as working.
-    private static void NoteFallback(string what, LiveConversationConfiguration configured, ConversationSnapshot terminal)
+    // logged just before it by ProviderDiagnostics); the reply still counts as working. A model its server retired is noted too.
+    private void NoteFallback(string what, LiveConversationConfiguration configured, ConversationSnapshot terminal)
     {
+        NoteRetired(configured, terminal);
         if (terminal.FellBackAfter is not { } after || configured.Fallback is not { } fallback) return;
         var route = configured.Route(SetupRole.Llm);
         var answered = terminal.State is ConversationState.Completed or ConversationState.Refused;
         ErrorLog.Warn($"{what}: Thinking failed ({after}) on {route.Origin}, model {route.ModelId}; the Thinking fallback " +
             $"{fallback.Origin}, model {fallback.ModelId}, {(answered ? "answered instead" : "failed too")}.");
+    }
+
+    /// <summary>A Chat Completions model its server retired for good (HTTP 410 Gone: <see cref="ProviderFailureCode.ModelRetired"/>)
+    /// is remembered as retired on that route (model-abilities.json, shared with the owner's other computers), so Companion,
+    /// Health and the next conversation say so; a later reply from it clears that. It runs only after the request ended, from what
+    /// the reply already found, and touches the file only when that changes.</summary>
+    private void NoteRetired(LiveConversationConfiguration configured, ConversationSnapshot terminal)
+    {
+        var route = configured.Route(SetupRole.Llm);
+        if (route.RouteType != SetupRouteType.ChatCompletions) return;
+        var known = configured.Abilities.Find(route.Origin, route.ModelId)?.Retired;
+        var gone = terminal.FellBackAfter == nameof(ProviderFailureCode.ModelRetired) ||
+            terminal.FellBackAfter is null && terminal.FailedProvider == ProviderRole.Llm && terminal.ProviderFailure == ProviderFailureCode.ModelRetired;
+        if (gone && known is null)
+        {
+            var now = clock.GetUtcNow();
+            ModelAbility ability = new() { Origin = route.Origin, ModelId = route.ModelId, Retired = now, Source = ModelAbility.GoneAnswer, CheckedAt = now };
+            if (dataDirectory is not null) RecordAbility(ability);
+            else configured.UseAbilities(configured.Abilities.With(ability));
+            ErrorLog.Warn($"{route.Origin} answered that {route.ModelId} is gone (HTTP 410), so Martlet remembers it as retired there.");
+        }
+        else if (!gone && known is not null && terminal.FellBackAfter is null && terminal.State == ConversationState.Completed)
+        {
+            var cleared = (dataDirectory is null ? configured.Abilities : ModelAbilities.Load(dataDirectory)).Answered(route.Origin, route.ModelId);
+            if (dataDirectory is not null && !cleared.Save(dataDirectory))
+                ErrorLog.Warn("Martlet couldn't save what it found out about the Thinking model (model-abilities.json).");
+            else UseAbilities(cleared);
+            ErrorLog.Info($"{route.ModelId} answered again, so Martlet no longer counts it retired on {route.Origin}.");
+        }
     }
 
     // One local log line per failed request naming the route it used, never what was said. The provider's own
