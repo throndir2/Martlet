@@ -1,54 +1,54 @@
 {
   "facts": [
-    {
-      "key": "server-region",
-      "content": "The preferred game server region is Oregon west for lower latency."
-    },
-    {
-      "key": "tea",
-      "content": "Tea is taken without sugar and with oat milk."
-    },
-    {
-      "key": "raid-time",
-      "content": "The weekly raid starts Friday at 19:00 UTC."
-    },
-    {
-      "key": "headset",
-      "content": "The backup headset is the wired USB model."
-    },
-    {
-      "key": "keyboard",
-      "content": "Keyboard lighting should use the violet profile."
-    },
-    {
-      "key": "basil",
-      "content": "The garden basil needs water every two days."
-    }
+    { "key": "server-region", "content": "The preferred game server region is Oregon west for lower latency." },
+    { "key": "tea", "content": "Tea is taken without sugar and with oat milk." },
+    { "key": "raid-time", "content": "The weekly raid starts Friday at 19:00 UTC." },
+    { "key": "headset", "content": "The backup headset is the wired USB model." },
+    { "key": "keyboard", "content": "Keyboard lighting should use the violet profile." },
+    { "key": "basil", "content": "The garden basil needs water every two days." },
+    { "key": "cat", "content": "The user's cat is called Miso and loves sleeping on the radiator." },
+    { "key": "dog-walk", "content": "The dog is walked twice a day, after breakfast and after dinner." },
+    { "key": "allergy", "content": "The user is allergic to peanuts and tree nuts." },
+    { "key": "sister-birthday", "content": "The user's sister Ana has her birthday on March 3." },
+    { "key": "running", "content": "The user runs five kilometers every Sunday morning." },
+    { "key": "guitar", "content": "The user is learning to play the acoustic guitar." },
+    { "key": "coffee", "content": "Coffee is taken black with no sugar." },
+    { "key": "movies", "content": "The user enjoys watching horror movies with friends on weekends." },
+    { "key": "boots", "content": "The user's hiking boots are size 44 and need new laces." },
+    { "key": "berries", "content": "Last summer the user picked strawberries at a farm near the coast." },
+    { "key": "house-plants", "content": "The house plants are watered on Mondays." },
+    { "key": "server-backup", "content": "Nightly backups of the home server start at 02:00." },
+    { "key": "study-music", "content": "The user listens to lo-fi music while studying." },
+    { "key": "moving", "content": "The user is moving to a new apartment in Lisbon next month." },
+    { "key": "job", "content": "The user works night shifts as a nurse at the city hospital." },
+    { "key": "car", "content": "The user's car is a red hatchback that needs new tires." },
+    { "key": "raid-role", "content": "In raids the user plays a healer." },
+    { "key": "keyboard-switches", "content": "The keyboard has tactile brown switches." },
+    { "key": "tomatoes", "content": "The garden tomatoes need staking before the weekend." },
+    { "key": "japanese", "content": "The user studies Japanese with flashcards every evening." }
   ],
   "queries": [
-    {
-      "text": "game server region latency",
-      "expected_first": "server-region"
-    },
-    {
-      "text": "tea oat milk",
-      "expected_first": "tea"
-    },
-    {
-      "text": "Friday weekly raid",
-      "expected_first": "raid-time"
-    },
-    {
-      "text": "backup wired headset",
-      "expected_first": "headset"
-    },
-    {
-      "text": "keyboard violet lighting",
-      "expected_first": "keyboard"
-    },
-    {
-      "text": "basil water days",
-      "expected_first": "basil"
-    }
+    { "text": "game server region latency", "expected_first": "server-region", "kind": "same words" },
+    { "text": "tea oat milk", "expected_first": "tea", "kind": "same words" },
+    { "text": "Friday weekly raid", "expected_first": "raid-time", "kind": "same words" },
+    { "text": "backup wired headset", "expected_first": "headset", "kind": "same words" },
+    { "text": "keyboard violet lighting", "expected_first": "keyboard", "kind": "same words" },
+    { "text": "basil water days", "expected_first": "basil", "kind": "same words" },
+    { "text": "garden water schedule", "expected_first": "basil", "kind": "same words" },
+    { "text": "As a healer in raids, what role do I play?", "expected_first": "raid-role", "kind": "same words" },
+    { "text": "What music do I listen to while I study?", "expected_first": "study-music", "kind": "verb forms" },
+    { "text": "Do I have any cats?", "expected_first": "cat", "kind": "plurals" },
+    { "text": "Which nut allergies do I have?", "expected_first": "allergy", "kind": "plurals" },
+    { "text": "What size is my hiking boot?", "expected_first": "boots", "kind": "plurals" },
+    { "text": "When is the server backup?", "expected_first": "server-backup", "kind": "plurals" },
+    { "text": "Did the tomato plants get staked?", "expected_first": "tomatoes", "kind": "plurals" },
+    { "text": "Tell me about the strawberry picking trip", "expected_first": "berries", "kind": "plurals" },
+    { "text": "When do I usually go running?", "expected_first": "running", "kind": "verb forms" },
+    { "text": "How often do I water the house plant?", "expected_first": "house-plants", "kind": "verb forms" },
+    { "text": "What am I studying in the evenings?", "expected_first": "japanese", "kind": "verb forms" },
+    { "text": "Who walks the dog?", "expected_first": "dog-walk", "kind": "verb forms" },
+    { "text": "What job does the user work?", "expected_first": "job", "kind": "verb forms" },
+    { "text": "I like watching a horror movie", "expected_first": "movies", "kind": "verb forms" },
+    { "text": "What is it that I do on a Sunday?", "expected_first": "running", "kind": "grammar words" }
   ]
 }

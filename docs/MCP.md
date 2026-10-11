@@ -1516,6 +1516,27 @@ It reads each store's file as JSON without opening or locking a store (the
 desktop can keep running), and never returns a fact's text, a name, a voice ID
 or a path. It contacts nothing.
 
+`memory_recall_check` (optional `query`, optional `facts`: 1-512 strings)
+rehearses how recall ranks remembered facts
+([Lexical retrieval and reranking](MEMORY.md#lexical-retrieval-and-reranking))
+with the production code (`MemoryStore` and `LexicalIndex` in
+`src\Martlet.Memory`) on synthetic facts in disposable stores, and returns
+`{passed, failures, steps, query, note}`. The steps: plurals and verb forms
+find each other (*Do I have any cats?* finds the cat fact, *running* finds
+*runs*), grammar words are left out, the fact that holds more of the question
+comes first, a message of only grammar words has no words to look for, a
+snapshot ranks exactly like the store, a deleted fact is never recalled, query
+words next to each other and in order rank first, recency is a gentle boost
+(under 11%), a near-duplicate of a better match moves below a different match
+(never one of another person), and the time to rank one query on a full store
+of 512 facts (`rankMedianMicroseconds`, `rankP95Microseconds`,
+`rankMaxMicroseconds`, `storeRetrieveMedianMicroseconds`; the step passes when
+the median is under 1,000). With `query`, `query.ranked` lists the facts that
+query recalls (`fact`, `score`, `matchedTerms`, best first) from the sample
+facts, or from `facts` when given (a later fact counts as newer), and
+`query.words` shows the words recall looked for. It never opens the owner's
+memory and contacts nothing.
+
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in
 `Invoke-MartletMcp.ps1`): `memory` (`on`, `off` or `not chosen`), `preferences`

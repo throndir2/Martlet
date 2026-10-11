@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- Martlet now recalls what it remembers about you more reliably, also when you use another form of a word ("cats" finds your cat, "running" finds that you run), puts the memories that answer more of what you said first, and no longer fills its memory notes with near-copies of the same fact. Recall also got faster. ([#771](https://github.com/throndir2/Martlet/pull/771))
 - When you mention an earlier conversation, Martlet now finds what was said more reliably: other forms of your words count ("plants" finds "plant"), the time you name and who said it help, a follow-up stays with the conversation it belongs to, and the same thing said several times comes back once. ([#772](https://github.com/throndir2/Martlet/pull/772))
 
 ## [0.68.0] - 2026-10-10
