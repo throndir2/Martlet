@@ -48,25 +48,70 @@ flowchart LR
 ### Finding and reading the wiki (no model needed)
 
 Reading up needs no Thinking or Deep thinking model, so it never competes with
-the conversation for a graphics card.
+the conversation for a graphics card. The reader is `WebGuideBuilder` and the
+files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
+`MediaWikiReader`, `SiteCrawler`, `RobotsRules`, `GuideRun`, `HtmlOutline`).
 
-- **Start pages**: the addresses the owner gave. Otherwise Martlet tries the
-  usual wiki hosts by name (`<name>.fandom.com`, `<name>.wiki.gg`) and then a
-  web search for *"<name> wiki"*, and prefers wiki hosts (Fandom, wiki.gg,
-  Fextralife, official wikis) over shops and video sites.
+- **Start pages**: the addresses the owner gave. Martlet reads only those
+  sites, and looks for others only when none of them can be read.
+- **Wiki farms**: with no start pages, Martlet tries the app's name as a
+  Fandom or wiki.gg site (`<name>.fandom.com`, `<name>.wiki.gg`: the name run
+  together, with hyphens, and without a leading "the"). It asks each site's
+  `api.php` for its name and size, and uses a site whose name is about the app
+  and that has at least 10 articles, the biggest first.
+- **Web search**: then a search for *"<name> wiki"*, and for *"<name> help"*
+  and *"<name> guide"* when nothing was read yet. Wiki hosts (Fandom, wiki.gg,
+  Fextralife, `/wiki/` addresses) and help sites (`help.`, `support.`, `docs.`
+  hosts, `/help` and `/docs` addresses) score higher. Shops, video, social,
+  forum and encyclopedia sites (Wikipedia) are left out. A result counts only
+  when its title or address names the app (its whole name, or more than half
+  of its words).
 - **MediaWiki sites** (Fandom, wiki.gg and most game wikis) are read through
-  their `api.php`: the most linked and largest content pages first, as clean
-  HTML without menus. Other sites are crawled breadth first through links on
-  the same site and under the same path, with navigation, edit, talk, user,
-  file and special pages left out.
-- **Politeness and safety**: `robots.txt` is obeyed, one request at a time per
-  site with a delay between them, an honest user agent, and the same safe web
-  client as web research (`WebAccess`: public internet addresses only, every
-  redirect checked, size and time caps).
-- **Caps**: 60 pages, 12 MB downloaded, 2 sites and 15 minutes a guide by
-  default (`GuideBuildLimits`).
+  their `api.php`, found from the farm's address or from the page's `EditURI`
+  link, search link or script path. The pages to read are the main page's
+  links and the site's most linked pages (`Mostlinked`), scored by both and by
+  size. Stubs, disambiguation pages, version history and very large pages are
+  left out. Each page picked from a category lowers the score of the others in
+  that category, so a guide covers the game's different parts (fish, cooking,
+  minerals), not one navigation box (every villager). Then come the pages that
+  the pages read link to most. Each page comes from `action=parse` with
+  redirects followed and edit links and the table of contents off.
+- **Other sites** are read breadth first through links on the same site and
+  under the start page's folder (its parent while the folder has fewer than 5
+  of the page's links), each page once by its canonical address. Links with a
+  query, and edit, talk, user, file, special, media, login, search and shop
+  pages, are left out. A wiki whose `robots.txt` forbids its `api.php`
+  (minecraft.wiki) is read this way.
 - **Text**: each page keeps its headings as Markdown lines, so sections stay
   together when the page is cut into chunks of at most 1,200 characters.
+  Paragraphs, list items and table rows are lines of their own. A table cell
+  is named by its column heading ("Season: Spring; Price: 75g"), a cell that
+  spans rows is repeated on each row, and infobox facts are "Key: Value"
+  lines. Navigation boxes, references, edit links, galleries, images,
+  struck-through text and hidden parts are left out.
+- **Politeness and safety**: each site's `robots.txt` is read once and obeyed
+  (RFC 9309): the group that names Martlet, else the group for every agent,
+  with the longest rule deciding and `Allow` winning a tie. A
+  `Content-Signal` with `ai-input=no` means Martlet reads nothing there. A
+  site that refuses its `robots.txt` (4xx) has no rules; a site that can't
+  serve it (5xx or no answer) is left alone. A page a redirect took to
+  another place is kept only when that place's `robots.txt` allows it.
+  Martlet sends one request at a time to a site (a host), waits the longer of
+  `GuideBuildLimits.Delay` and the site's `Crawl-delay` between two, and asks
+  nothing more of a site that answers 429 or 503. Two web searches also have
+  that pause between them, and a refused search ends the searching. Its user
+  agent is honest:
+  `Martlet/1.0 (app guides; +https://github.com/throndir2/Martlet)` (wiki
+  hosts refuse browser-like agents from programs). Every request goes through
+  the same safe web client as web research (`WebAccess`: public internet
+  addresses only, every redirect checked, size and time caps, at most 2 MB a
+  document).
+- **Caps**: 60 pages, 12 MB downloaded, 2 sites and 15 minutes a guide by
+  default (`GuideBuildLimits`), and at most 3 requests a page (plus 30). A
+  pause that would pass the time cap ends the job, and cancelling stops it at
+  once.
+- **Progress** is a few plain words ("Looking for its wiki", "Reading the
+  wiki's page list", "Reading pages (3 of at most 60)"), never a link.
 
 ### Searching a guide (on the reply's path, with no added wait)
 

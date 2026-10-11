@@ -26,22 +26,46 @@ public interface IWebFetch
     Task<WebPage> FetchAsync(Uri url, CancellationToken cancellationToken);
 }
 
+/// <summary>A web document read as it came (HTML, JSON or text) for app guides: where it ended up (after redirects), its media
+/// type, its body, the bytes downloaded and whether the body was cut at the byte cap of the request.</summary>
+public sealed record WebDocument(string Url, string MediaType, string Body, long Bytes, bool Cut);
+
+/// <summary>Reads web documents as they came, for readers that need the links, the markup or JSON (app guides read wikis with
+/// it). <see cref="WebAccess"/> implements it with the same safety rules as <see cref="IWebFetch"/>.</summary>
+public interface IWebDocuments
+{
+    /// <summary>The document at <paramref name="url"/>, at most <paramref name="maxBytes"/> of it (and never more than
+    /// <see cref="WebAccess.MaxDocumentBytes"/>). Throws <see cref="WebResearchException"/> when it can't be read.</summary>
+    Task<WebDocument> ReadAsync(Uri url, int maxBytes, CancellationToken cancellationToken);
+}
+
 /// <summary>A search or page that didn't work out, in a few plain words for the research loop (never logged with a URL).</summary>
-public sealed class WebResearchException(string problem) : Exception(problem);
+public sealed class WebResearchException(string problem) : Exception(problem)
+{
+    public WebResearchException(string problem, int status) : this(problem) { Status = status; }
+
+    /// <summary>The HTTP status the site answered with, or 0 when it didn't answer.</summary>
+    public int Status { get; }
+}
 
 /// <summary>Martlet's own small web client for research: DuckDuckGo's HTML search (no key, no account; unofficial, so it may
 /// limit or refuse automated searches) and a page reader that keeps only readable text. It connects only to public internet
 /// addresses (never this PC, the local network or link-local addresses, checked on every connection, redirects included), uses
 /// no proxy and no cookies, follows at most 4 redirects, reads at most <see cref="MaxPageBytes"/> of a page and gives each
 /// request <see cref="RequestTimeout"/>.</summary>
-public sealed class WebAccess : IWebSearch, IWebFetch, IDisposable
+public sealed class WebAccess : IWebSearch, IWebFetch, IWebDocuments, IDisposable
 {
     public const string DuckDuckGo = "https://html.duckduckgo.com/html/";
     /// <summary>The most of one page (or search) downloaded; the rest is never read.</summary>
     public const int MaxPageBytes = 400_000;
+    /// <summary>The most of one document (<see cref="ReadAsync"/>) downloaded: a big wiki page can be a megabyte.</summary>
+    public const int MaxDocumentBytes = 2_000_000;
     /// <summary>The most readable text kept of one page.</summary>
     public const int MaxPageCharacters = 20_000;
     public const int MaxResults = 8;
+    /// <summary>The user agent of documents read for app guides: an honest bot name with where to learn about it. Wiki hosts
+    /// refuse browser-like agents from programs, and robots.txt rules name Martlet by its first word.</summary>
+    public const string GuideAgent = "Martlet/1.0 (app guides; +https://github.com/throndir2/Martlet)";
     public static TimeSpan RequestTimeout { get; } = TimeSpan.FromSeconds(15);
     private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Martlet/1.0 (web research)";
     private readonly HttpClient client;
@@ -68,7 +92,7 @@ public sealed class WebAccess : IWebSearch, IWebFetch, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         var url = new UriBuilder(searchEndpoint) { Query = "q=" + Uri.EscapeDataString(query.Trim()) }.Uri;
-        var (html, _, _, _) = await GetAsync(url, cancellationToken).ConfigureAwait(false);
+        var (html, _, _, _, _) = await GetAsync(url, MaxPageBytes, document: false, cancellationToken).ConfigureAwait(false);
         return ParseResults(html);
     }
 
@@ -76,7 +100,7 @@ public sealed class WebAccess : IWebSearch, IWebFetch, IDisposable
     {
         ArgumentNullException.ThrowIfNull(url);
         if (!IsWeb(url)) throw new WebResearchException("it isn't a web link");
-        var (body, mediaType, final, bytes) = await GetAsync(url, cancellationToken).ConfigureAwait(false);
+        var (body, mediaType, final, bytes, _) = await GetAsync(url, MaxPageBytes, document: false, cancellationToken).ConfigureAwait(false);
         var html = mediaType is "text/html" or "application/xhtml+xml";
         var text = html ? HtmlText.Of(body) : Collapse(body);
         if (text.Length > MaxPageCharacters) text = text[..MaxPageCharacters];
@@ -84,32 +108,55 @@ public sealed class WebAccess : IWebSearch, IWebFetch, IDisposable
         return new(final.AbsoluteUri, string.IsNullOrWhiteSpace(title) ? final.Host : title, text, bytes);
     }
 
-    private async Task<(string Body, string MediaType, Uri Final, long Bytes)> GetAsync(Uri url, CancellationToken token)
+    public async Task<WebDocument> ReadAsync(Uri url, int maxBytes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        if (!IsWeb(url)) throw new WebResearchException("it isn't a web link");
+        var (body, mediaType, final, bytes, cut) = await GetAsync(url, Math.Clamp(maxBytes, 1, MaxDocumentBytes), document: true,
+            cancellationToken).ConfigureAwait(false);
+        return new(final.AbsoluteUri, mediaType, body, bytes, cut);
+    }
+
+    // A document (app guides) may also be JSON or XML, is read with the guide agent and up to its own cap.
+    private static bool Readable(string mediaType, bool document) =>
+        mediaType is "text/html" or "application/xhtml+xml" or "text/plain" || document &&
+        (mediaType.StartsWith("text/", StringComparison.Ordinal) || mediaType is "application/json" or "application/xml" or "application/octet-stream" ||
+         mediaType.EndsWith("+json", StringComparison.Ordinal) || mediaType.EndsWith("+xml", StringComparison.Ordinal));
+
+    private async Task<(string Body, string MediaType, Uri Final, long Bytes, bool Cut)> GetAsync(Uri url, int maxBytes, bool document,
+        CancellationToken token)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(RequestTimeout);
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(maxBytes + 1);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,text/plain;q=0.9");
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) throw new WebResearchException($"it answered {(int)response.StatusCode}");
-            var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "text/html";
-            if (mediaType is not ("text/html" or "application/xhtml+xml" or "text/plain"))
-                throw new WebResearchException("it isn't a web page");
-            await using var stream = await response.Content.ReadAsStreamAsync(limit.Token).ConfigureAwait(false);
-            var buffer = new byte[MaxPageBytes];
-            var read = 0;
-            while (read < buffer.Length)
+            if (document)
             {
-                var n = await stream.ReadAsync(buffer.AsMemory(read), limit.Token).ConfigureAwait(false);
+                request.Headers.UserAgent.ParseAdd(GuideAgent);
+                request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.5");
+            }
+            else request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,text/plain;q=0.9");
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                throw new WebResearchException($"it answered {(int)response.StatusCode}", (int)response.StatusCode);
+            var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "text/html";
+            if (!Readable(mediaType, document)) throw new WebResearchException("it isn't a web page");
+            await using var stream = await response.Content.ReadAsStreamAsync(limit.Token).ConfigureAwait(false);
+            var read = 0;
+            while (read <= maxBytes)
+            {
+                var n = await stream.ReadAsync(buffer.AsMemory(read, maxBytes + 1 - read), limit.Token).ConfigureAwait(false);
                 if (n == 0) break;
                 read += n;
             }
+            var cut = read > maxBytes;
+            if (cut) read = maxBytes;
             Encoding encoding;
             try { encoding = response.Content.Headers.ContentType?.CharSet is { Length: > 0 } charset ? Encoding.GetEncoding(charset.Trim('"')) : Encoding.UTF8; }
             catch (ArgumentException) { encoding = Encoding.UTF8; }
-            return (encoding.GetString(buffer, 0, read), mediaType, response.RequestMessage?.RequestUri ?? url, read);
+            return (encoding.GetString(buffer, 0, read), mediaType, response.RequestMessage?.RequestUri ?? url, read, cut);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
@@ -122,6 +169,10 @@ public sealed class WebAccess : IWebSearch, IWebFetch, IDisposable
         catch (IOException)
         {
             throw new WebResearchException("the connection broke off");
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
