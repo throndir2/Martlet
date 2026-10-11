@@ -129,7 +129,8 @@ public partial class MainWindow
             stack.Add(VoiceRow(name, "No longer in your voice list. Use another voice; it is removed from this PC then.", true, mark,
                 inUseId[..16], status: false, () => PlayAppliedAsync(applied, name), () => Task.CompletedTask, null));
         }
-        stack.Add(Row(PageButton("Add a voice...", () => AddVoiceAsync(destination).Forget(), id: "F5AddVoice")));
+        stack.Add(Row(PageButton("Add a voice...", () => AddVoiceAsync(destination).Forget(), id: "F5AddVoice"),
+            PageButton("Record your own voice...", () => RecordVoiceAsync(destination).Forget(), id: "F5RecordVoice")));
         return Card([.. stack]);
     }
 
@@ -361,6 +362,21 @@ public partial class MainWindow
         // A Parakeet loaded just for the dialog waits for any transcription still running before it unloads.
         try { added = F5AddVoiceDialog.Add(this, store.DataDirectory, destination, transcriber); }
         finally { if (transcriber is not null) Task.Run(transcriber.Dispose).Forget(); }
+        if (added is null) return;
+        QueueSpeakingVoiceSync();
+        await UseVoiceAsync(F5SharedVoices.Id(added), destination);
+    }
+
+    /// <summary>Records the owner reading Martlet's lines out loud (Record your own voice), adds that voice, then switches to it.</summary>
+    private async Task RecordVoiceAsync(string destination)
+    {
+        if (store is null || closing) return;
+        if (setupOperations.IsRunning)
+        {
+            ActionText.Text = "Martlet is busy with another task. Try again when it finishes.";
+            return;
+        }
+        var added = OwnVoiceDialog.Record(this, store.DataDirectory, destination, setupOperations, audioSessionEvents, homeSettings?.Audio?.Input);
         if (added is null) return;
         QueueSpeakingVoiceSync();
         await UseVoiceAsync(F5SharedVoices.Id(added), destination);

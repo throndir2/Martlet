@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Companion › Voice › Voices › Record your own voice...**: read four short lines out loud and Martlet makes a voice from your own. The lines cover nearly every sound of spoken English and are long enough for every voice engine. Each line stops recording by itself when you pause, and you can play it back or record it again. ([#779](https://github.com/throndir2/Martlet/pull/779))
+
 ## [0.69.1] - 2026-10-10
 
 ### Changed

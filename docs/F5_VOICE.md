@@ -237,8 +237,9 @@ leaves the list.
 
 **Companion > Voice > Voices** is the voice list: every voice in the order it
 joined (the starter voices first), each with **Play** (this PC's copy or the
-starter clip, locally), **Use** and **Remove**, and **Add a voice...**
-(recording, name, exact transcript, whose voice and the rights confirmation).
+starter clip, locally), **Use** and **Remove**, **Add a voice...**
+(recording, name, exact transcript, whose voice and the rights confirmation)
+and **Record your own voice...** (see below).
 The transcript is required because F5-TTS, GPT-SoVITS and Dia read it along
 with the recording (Chatterbox and XTTS-v2 ignore it), and one voice serves
 every engine. Martlet fills it in when a recording is chosen, with
@@ -259,6 +260,26 @@ each recording and the other engines clone the joined one
 ([shared speaking voices](CLUSTER.md#the-shared-speaking-voices)). The list
 shows such a voice as "3 recordings, 10.5 seconds joined" and whether the
 speaking engine learns from each or hears them joined.
+
+**Record your own voice...** (`OwnVoiceDialog.cs`) makes the same kind of voice
+from the microphone. The owner reads four lines out loud
+(`OwnVoiceScript.Lines` in `Martlet.Core`). Martlet wrote the lines. Each line
+has 13 or 14 words, about 4 to 7 seconds at a normal pace, so each recording
+fits GPT-SoVITS's 3 to 10 seconds. Together they hold every English consonant
+(the two "th" sounds, "sh", "ch", "j", "ng" and the "zh" of *measure*) and the
+English vowels and glides. They are a calm line, a description, a question and
+an excited line, so the voice also hears how the owner's voice rises and falls.
+Nothing is recorded until the owner ticks the box that says it is their own
+voice. Each line records up to 20 seconds at 16 kHz from the talk microphone
+and stops after a 1.5 second pause once 2 seconds have passed since the voice
+began. `OwnVoiceTake` cuts the silence before and after the speech (it keeps
+0.2 s before and 0.3 s after). A line with less than 1.5 seconds of speech,
+or one that reaches 20 seconds, is refused. The four recordings are joined
+like *Add another recording* (the lines' words are their transcripts, the
+rights basis is *My own voice*), and the voice is shared and used. At a normal
+pace the joined voice lasts about 25 seconds. If it is longer than 30
+seconds, Martlet asks the owner to read the longest line again a little faster.
+Dia takes at most 20 seconds, so it can't use this voice.
 Each recording can be almost any audio or video file: Desktop's
 `VoiceRecordingImport` (Martlet.Audio) decodes it on that PC (Ogg Vorbis and Ogg
 Opus in managed code: NVorbis and Concentus' managed Opus decoder, since Windows

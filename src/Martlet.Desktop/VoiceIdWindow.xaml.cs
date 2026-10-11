@@ -12,23 +12,37 @@ using Martlet.Diagnostics;
 namespace Martlet.Desktop;
 
 // One bounded local recording that stops itself after the speaker pauses. The PCM never leaves memory.
+// Voice ID records a short phrase: up to 10 seconds, stopped by a 1-second pause after a 1-second stretch of speech.
+// Record your own voice records a whole line (Line): up to 20 seconds, stopped by a 1.5-second pause once 2 seconds have
+// passed since the voice first began, so a short breath inside the line does not stop it.
 internal sealed class VoiceSampleRecording
 {
     private static readonly Guid Session = Guid.NewGuid();
     private static long epoch;
     private double level = -100;
     internal static TimeSpan MaximumDuration => TimeSpan.FromSeconds(10);
+    internal static readonly VoiceSampleShape Phrase = new(MaximumDuration, TimeSpan.FromSeconds(1), 50, WholeTake: false);
+    internal static readonly VoiceSampleShape Line = new(TimeSpan.FromSeconds(20), TimeSpan.FromMilliseconds(1500), 100, WholeTake: true);
     internal double Level { get => Volatile.Read(ref level); private set => Volatile.Write(ref level, value); }
     internal byte[]? Pcm { get; private set; }
     internal string? Error { get; private set; }
     internal SetupOperation Worker { get; private set; } = null!;
+    internal VoiceSampleShape Shape { get; private init; } = Phrase;
     internal void Stop() => Worker.RequestCancellation();
     internal void Finish() => Volatile.Read(ref finish)?.Invoke();
     private Action? finish;
 
-    internal static VoiceSampleRecording? Start(SetupOperationRunner operations, ICaptureDeviceFactory devices, AudioChoice? input, TimeProvider clock)
+    /// <summary>How long a recording may last, the pause that ends it, and how many 20 ms frames of speech must come first:
+    /// in the last stretch of speech, or (<paramref name="WholeTake"/>) since the voice first began.</summary>
+    internal sealed record VoiceSampleShape(TimeSpan MaximumDuration, TimeSpan EndSilence, int SpeechFrames, bool WholeTake)
     {
-        var recording = new VoiceSampleRecording();
+        internal int MaximumPcmBytes => (int)(MaximumDuration.TotalSeconds * 32_000);
+    }
+
+    internal static VoiceSampleRecording? Start(SetupOperationRunner operations, ICaptureDeviceFactory devices, AudioChoice? input, TimeProvider clock,
+        VoiceSampleShape? shape = null)
+    {
+        var recording = new VoiceSampleRecording { Shape = shape ?? Phrase };
         var worker = operations.TryStart(async token =>
         {
             try
@@ -64,15 +78,18 @@ internal sealed class VoiceSampleRecording
 
     private async Task RecordAsync(ICaptureDeviceFactory devices, AudioChoice? input, TimeProvider clock, CancellationToken token)
     {
-        await using var microphone = new MicrophoneCapture(Session, devices, new() { MaximumDuration = MaximumDuration, MaximumPcmBytes = 320_000 }, clock);
+        await using var microphone = new MicrophoneCapture(Session, devices,
+            new() { MaximumDuration = Shape.MaximumDuration, MaximumPcmBytes = Shape.MaximumPcmBytes }, clock);
         var ids = new CorrelationIds { SessionId = Session, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
         var selection = input?.EndpointId is { } endpoint ? new InputSelection(InputPolicy.FixedEndpoint, endpoint)
             : new InputSelection(InputPolicy.FollowDefaultOnNextPress);
-        var request = new CaptureRequest(ids, Interlocked.Increment(ref epoch), selection, MaximumDuration, clock.GetUtcNow().AddSeconds(12));
+        var request = new CaptureRequest(ids, Interlocked.Increment(ref epoch), selection, Shape.MaximumDuration,
+            clock.GetUtcNow() + Shape.MaximumDuration + TimeSpan.FromSeconds(2));
         var run = microphone.Press(request, new(request, true), token);
         Volatile.Write(ref finish, () => run.ReleaseAsync().Forget());
-        var detector = new EnergyVoiceActivityDetector(new() { EndSilence = TimeSpan.FromSeconds(1) });
+        var detector = new EnergyVoiceActivityDetector(new() { EndSilence = Shape.EndSilence });
         var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
+        var firstSpeech = -1;
         try
         {
             var index = 0;
@@ -87,8 +104,9 @@ internal sealed class VoiceSampleRecording
                     index++;
                     var transition = detector.Process(frame);
                     Level = detector.LastLevelDb;
+                    if (transition == VoiceActivityTransition.SpeechStarted && firstSpeech < 0) firstSpeech = detector.SpeechStartFrame;
                     if (transition == VoiceActivityTransition.SpeechEnded &&
-                        detector.SpeechEndFrame - detector.SpeechStartFrame >= 50)
+                        detector.SpeechEndFrame - (Shape.WholeTake ? firstSpeech : detector.SpeechStartFrame) >= Shape.SpeechFrames)
                         await run.ReleaseAsync().ConfigureAwait(false);
                 }
                 await Task.WhenAny(run.Completion, Task.Delay(TimeSpan.FromMilliseconds(20), clock)).ConfigureAwait(false);

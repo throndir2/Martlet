@@ -572,6 +572,17 @@ the same way and then joined. Only the WAV is stored and shared
 with your other computers. The new voice is used right away. Up to 32 voices
 are kept.
 
+**Record your own voice...** makes a voice from your microphone instead of a
+file. Tick the box that says it is your own voice, then press **Record** beside
+each of the four lines and read the line out loud. The lines cover nearly every
+sound of spoken English. Recording stops by itself when you pause at the end of
+a line, and Martlet cuts the silence before and after it. Press **Play** to
+hear a line, or **Record again** to read it again. When all four lines are
+recorded, press **Add voice**. Martlet joins them into one voice of about 25
+seconds (30 seconds at most) and uses it right away. Use a quiet room and the
+microphone you talk to Martlet with. Dia takes at most 20 seconds, so it can't
+use this voice; the other engines can.
+
 Earlier versions included F5-TTS's English example clip. It is no longer
 included because where its recording comes from couldn't be confirmed, and it
 never joins your list. A route still speaking with it moves to your chosen (or
