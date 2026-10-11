@@ -108,6 +108,31 @@
             </DockPanel>
         </Border>
 
+        <!-- Warming up: what still loads before Martlet answers at full speed (the conversation, Thinking's model in Ollama on this
+             PC, Parakeet for listening, the character), how long it has taken and a progress bar (filled from the model's last load
+             time when Martlet knows it). You can talk and type while it shows; the first reply starts once the model has loaded. -->
+        <Border x:Name="WarmupBanner" DockPanel.Dock="Top" Visibility="Collapsed" Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="0,0,0,2" Padding="18,10"
+                AutomationProperties.AutomationId="LiveWarmupPanel" AutomationProperties.Name="Warming up">
+            <DockPanel>
+                <Grid DockPanel.Dock="Left" Width="18" Height="18" Margin="0,0,12,0" VerticalAlignment="Center">
+                    <Ellipse Stroke="{DynamicResource BorderBrush}" StrokeThickness="2"/>
+                    <Path x:Name="WarmupSpinner" Data="M 9,1 A 8,8 0 0 1 17,9" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                </Grid>
+                <StackPanel>
+                    <TextBlock Text="Warming up" FontWeight="SemiBold"/>
+                    <!-- No live setting: the seconds change every second, and the banner itself is enough to see. -->
+                    <TextBlock x:Name="WarmupText" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               AutomationProperties.AutomationId="LiveWarmup"/>
+                    <TextBlock x:Name="WarmupAdvice" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                    <ProgressBar x:Name="WarmupProgress" Height="4" Minimum="0" Maximum="1" Margin="0,6,0,0" IsIndeterminate="True"
+                                 Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SoftBrush}" BorderThickness="0"
+                                 AutomationProperties.Name="Warming up progress" AutomationProperties.AutomationId="LiveWarmupProgress"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
         <!-- The message box stays in view below the history. -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,12,16,14">
             <StackPanel>

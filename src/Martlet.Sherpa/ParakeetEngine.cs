@@ -38,6 +38,9 @@ public sealed class ParakeetEngine : IDisposable
     /// <summary>The model this engine runs.</summary>
     public ParakeetModel Model { get; }
 
+    /// <summary>The model is in memory now (it loads on the first use or <see cref="Warm"/>).</summary>
+    public bool IsLoaded => recognizer != IntPtr.Zero;
+
     /// <summary>The model <paramref name="modelId"/> is downloaded to <paramref name="root"/> and Martlet's folder has the
     /// sherpa-onnx runtime.</summary>
     public static bool Installed(string root, string modelId) =>

@@ -8760,7 +8760,35 @@ watching*, *Getting ready to watch…*, *Watching your active window.* (or *your
 whole screen*, a camera), *Taking a look…*, *Paused…* or why Martlet can't see,
 such as *Choose a camera in Companion › Vision.*). Listening and watching are
 separate: neither button starts or stops the other, and opening the talk window
-or turning vision on in Companion starts neither. While Martlet listens or watches, the talk window's close
+or turning vision on in Companion starts neither. Home's `HomeWarmupStatus`
+(the Warming up indicator, shown while something still loads for at least a
+second: *Warming up: loading gemma4:e4b on this PC (12 s of about 20 s).
+Martlet answers once the model has loaded.*, with *getting the conversation
+ready*, *loading Parakeet TDT 0.6B v3 for listening* or *starting the
+character* for the other parts, then *Warmed up in 18 s. Martlet is ready to
+talk.* for 8 s; the desktop log says *Martlet is warming up: ...* and *Martlet
+warmed up in 18.0 s.*) and the talk window's `LiveWarmup` (the banner's line
+under its *Warming up* title: *Loading gemma4:e4b on this PC (3 s of about
+12 s).*; `LiveWarmupProgress` is its progress bar) show what still loads; the
+talk window's `LiveStatus` reads *Warming up. You can talk or type now.*, or
+*Waiting for gemma4:e4b to load. Martlet answers once it's ready.* while a
+reply waits for the model. Home's Martlet on this PC card has `HomePcTitle`
+(*Martlet on this PC*, *Freeing up this PC…* or *Resting*), `HomePcStatus`
+(what Martlet holds on this PC now: *Martlet uses this PC for gemma4:e4b (4.9
+GB of graphics memory), Parakeet TDT 0.6B v3 for listening, the character and
+the conversation (listening).*, or *Martlet holds no models on this PC now.
+...*; while resting, what Free up this PC did: *Martlet ended the conversation
+and unloaded gemma4:e4b (4.9 GB of graphics memory). Start talking or Start
+listening warms it up again.*) and `HomeFreeUp` (*Free up this PC*, disabled
+while Martlet holds nothing; it ends the conversation, hides the character and
+unloads every model Ollama on this PC has loaded, Parakeet and the
+voice-recognition engine, so it needs `--allow-ui-effects`; the desktop log
+says *Free up this PC: ...*). Home reads Ollama's `/api/ps` on loopback every
+5 s while it shows. To check these without Ollama, run a fixture Ollama on
+`127.0.0.1:11434` that answers `/api/ps`, `/api/tags` and `/api/generate`
+(loading slowly, and unloading on `keep_alive` 0), and seed the disposable
+data directory's `settings.json` with Thinking on Ollama on this PC; say in
+the results that it is a fixture, NOT Ollama. While Martlet listens or watches, the talk window's close
 button only hides it (`ui_snapshot` stops listing *Talk with Martlet*;
 `OpenLiveConversation` shows it again),
 `LiveVision` (the talk window's *Start watching* / *Stop watching* button, or

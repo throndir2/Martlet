@@ -173,7 +173,10 @@ public partial class MainWindow : ThemedWindow
         {
             UpdateCharacterButton();
             RenderListening();
+            RenderWarmup();
+            RenderPcCard();
             if (!started) return;
+            PollPcModels();
             FollowCharacterActions();
             FollowCharacterTheme();
             TickCharacterEyes();
@@ -286,9 +289,7 @@ public partial class MainWindow : ThemedWindow
         StartNodeAgent();
         StartLogSharing();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
-        if (Role == DeviceRole.Companion &&
-            homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt) is { RouteType: SetupRouteType.LocalParakeet } listening)
-            parakeet?.WarmAsync(listening.ModelId).Forget();
+        WarmListening();
         // Martlet is usable now; this PC's own host service follows its version in the background (after an update, right away).
         FollowOwnHostAsync().Forget();
         if (!closing) await StartUpdatesAsync();
@@ -753,7 +754,9 @@ public partial class MainWindow : ThemedWindow
         {
             var (saved, profile) = await SavedCharacterAsync();
             if (onlyIfAutoShow && saved?.AutoShow != true) return;
-            await avatar.ShowAsync(profile with { ResourceRevision = null }, lifetime.Token);
+            characterStartingAt = System.Diagnostics.Stopwatch.GetTimestamp();
+            try { await avatar.ShowAsync(profile with { ResourceRevision = null }, lifetime.Token); }
+            finally { characterStartingAt = 0; }
             characterCleanupProblem = null;
             ActionText.Text = avatar.Status;
         }

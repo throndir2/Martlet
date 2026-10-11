@@ -26,6 +26,11 @@ public partial class MainWindow
             { Owner = this, Support = support, Gaze = avatar.Gaze, Calls = discordCalls };
         if (!IsVisible) window.UseOwnTaskbarButton();
         window.TouchStatusChanged += characterTouchZones.SetNoticed;
+        // Its warming-up banner also shows Parakeet and the character loading; a conversation after Free up this PC loads
+        // Parakeet again now rather than on the first thing said.
+        window.MoreWarmup = LocalWarmup;
+        resting = null;
+        WarmListening();
         window.Closed += async (_, _) =>
         {
             if (!ReferenceEquals(openConversation, window)) return;

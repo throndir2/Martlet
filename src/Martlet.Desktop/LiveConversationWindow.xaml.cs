@@ -295,6 +295,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private async Task LoadAsync()
     {
         if (closed) return;
+        loadingSince = clock.GetTimestamp();
         if (operations.IsRunning)
         {
             // Another Martlet task holds settings (often right after Martlet starts): load as soon as it finishes.
@@ -455,15 +456,62 @@ public partial class LiveConversationWindow : ThemedWindow
             warmup.Touch();
     }
 
-    /// <summary>What Ollama on this PC is doing with the Thinking model when it matters: still loading it, or why it can't.</summary>
-    private string? LocalModelNote(bool problems)
+    // When the conversation's latest load started, for how long getting it ready takes.
+    private long loadingSince;
+
+    /// <summary>The parts of this conversation that still load (its settings, Thinking's model in Ollama on this PC), however
+    /// short; <see cref="CompanionWarmup.Showing"/> keeps those worth showing. Home adds Parakeet and the character.</summary>
+    internal IReadOnlyList<WarmupItem> Warmup
+    {
+        get
+        {
+            var items = new List<WarmupItem>();
+            if (closed || !begun) return items;
+            if (loading is not null || loadPending) items.Add(new(WarmupPart.Conversation, null, clock.GetElapsedTime(loadingSince)));
+            if (warmup is { } local && local.Status is { State: LocalModelState.Loading } status)
+                items.Add(new(WarmupPart.Thinking, local.Model, status.Elapsed, LocalOllamaWarmup.LastLoad(local.Model)));
+            return items;
+        }
+    }
+
+    /// <summary>What else loads on this PC for the conversation (Parakeet for listening, the character), from Home.</summary>
+    internal Func<IReadOnlyList<WarmupItem>>? MoreWarmup { get; set; }
+
+    private bool warmupSpinning;
+
+    /// <summary>The warming-up banner under the header: what still loads, how long it has taken, and a progress bar.</summary>
+    private void RenderWarmup()
+    {
+        var items = CompanionWarmup.Showing(Warmup.Concat(MoreWarmup?.Invoke() ?? []));
+        var show = items.Count > 0;
+        WarmupBanner.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show != warmupSpinning)
+        {
+            warmupSpinning = show;
+            Motion.Spin(WarmupSpinner, show);
+        }
+        if (!show) return;
+        var line = CompanionWarmup.Line(items, lead: false);
+        if (WarmupText.Text != line) WarmupText.Text = line;
+        var advice = CompanionWarmup.Advice(items, talkWindow: true);
+        if (WarmupAdvice.Text != advice) WarmupAdvice.Text = advice;
+        var progress = CompanionWarmup.Progress(items);
+        WarmupProgress.IsIndeterminate = progress is null;
+        if (progress is { } value) WarmupProgress.Value = value;
+        AutomationProperties.SetHelpText(WarmupBanner, advice);
+    }
+
+    /// <summary>What Ollama on this PC is doing with the Thinking model when it matters: still loading it (warming up), or why
+    /// it can't. <paramref name="replying"/>: a reply waits for it.</summary>
+    private string? LocalModelNote(bool problems, bool replying = false)
     {
         if (warmup is not { } local) return null;
         var status = local.Status;
         return status.State switch
         {
-            LocalModelState.Loading when status.Elapsed >= TimeSpan.FromSeconds(1) =>
-                $"Starting local model {local.Model}… the first reply may take a moment.",
+            LocalModelState.Loading when status.Elapsed >= CompanionWarmup.ShowAfter => replying
+                ? $"Waiting for {local.Model} to load. Martlet answers once it's ready."
+                : "Warming up. You can talk or type now.",
             _ when !problems => null,
             LocalModelState.NotRunning => LocalOllamaRecovery.Short() ?? "Start Ollama, then try again.",
             LocalModelState.MissingModel => $"Download {local.Model} in Companion › Thinking.",
@@ -2481,6 +2529,7 @@ public partial class LiveConversationWindow : ThemedWindow
             : preferences.HandsFree && micUsable ? "Type below, or press Start listening to talk." : "Type a message below.";
         RenderJobs();
         RenderSong();
+        RenderWarmup();
     }
 
     /// <summary>The line under the status while vision or hearing what this PC plays is turned on and Martlet decides how
@@ -2586,7 +2635,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 : tool == SongTools.SingName ? "Starting a song in the background…"
                 : tool == PictureTools.DrawName ? "Starting a picture in the background…" : $"Using {tool}…";
         if (live.Report && snapshot?.State != ConversationState.Playing) return "Martlet is bringing up what it worked on…";
-        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking." : LocalModelNote(false) ??
+        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking." : LocalModelNote(false, replying: true) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
     }
 

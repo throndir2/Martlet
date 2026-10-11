@@ -108,8 +108,6 @@ internal sealed class LocalVoices : IDisposable
     internal HeardVoices Recognize(float[] samples, CompanionNames? companion = null)
     {
         if (!Active) return HeardVoices.None;
-        SpeakerEngine current;
-        lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
         // The same utterance was already analyzed for a reply started early (Identify): who spoke is known.
         (byte[] Hash, SpeakerAnalysis Analysis)? earlier;
         lock (gate)
@@ -117,7 +115,7 @@ internal sealed class LocalVoices : IDisposable
             earlier = identified;
             identified = null;
         }
-        var analysis = earlier is { } early && early.Hash.AsSpan().SequenceEqual(Hash(samples)) ? early.Analysis : current.Analyze(samples);
+        var analysis = earlier is { } early && early.Hash.AsSpan().SequenceEqual(Hash(samples)) ? early.Analysis : Analyze(samples);
         var heard = new List<HeardVoice>();
         var spans = new List<(string Id, double Start, double End)>();
         var repaired = 0;
@@ -186,9 +184,7 @@ internal sealed class LocalVoices : IDisposable
     internal HeardVoices Identify(float[] samples)
     {
         if (!Active) return HeardVoices.None;
-        SpeakerEngine current;
-        lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
-        var analysis = current.Analyze(samples);
+        var analysis = Analyze(samples);
         var hash = Hash(samples);
         lock (gate)
         {
@@ -424,6 +420,37 @@ internal sealed class LocalVoices : IDisposable
         File.WriteAllText(Path.Combine(directory, file), on ? "on" : "off");
     }
 
+    /// <summary>The voice engine is in memory now (it loads on the first utterance it checks).</summary>
+    internal bool Loaded { get { lock (gate) return engine is not null; } }
+
+    /// <summary>Analyzes the utterance with the voice engine, loading it first when it isn't (also after Free up this PC
+    /// unloaded it, even while this waited for it).</summary>
+    private SpeakerAnalysis Analyze(float[] samples)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            SpeakerEngine current;
+            lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
+            try { return current.Analyze(samples); }
+            catch (ObjectDisposedException) when (attempt == 0) { }
+        }
+    }
+
+    /// <summary>Home's Free up this PC: takes the voice engine out of memory. The next utterance loads it again. True when it
+    /// was loaded.</summary>
+    internal bool Unload()
+    {
+        SpeakerEngine? loaded;
+        lock (gate)
+        {
+            loaded = engine;
+            engine = null;
+        }
+        // Unloading waits for an analysis still running, so it happens outside the gate.
+        loaded?.Dispose();
+        return loaded is not null;
+    }
+
     public void Dispose()
     {
         lock (gate)
@@ -442,12 +469,20 @@ internal sealed class ParakeetListener(string root) : ILocalTranscriber, IDispos
     private readonly object gate = new();
     private ParakeetEngine? engine;
     private bool disposed;
+    private int warming;
 
     /// <summary>The model is downloaded here and Martlet's folder has the speech runtime.</summary>
     internal bool Installed(string modelId) => ParakeetEngine.Installed(root, modelId);
     internal string Root => root;
     /// <summary>The model loaded (or loading) now; null before the first use.</summary>
     internal string? Loaded { get { lock (gate) return engine?.Model.Id; } }
+    /// <summary>The model that is in memory now (null when none is): its name, such as "Parakeet TDT 0.6B v3".</summary>
+    internal string? InMemory { get { lock (gate) return engine is { IsLoaded: true } loaded ? loaded.Model.Name : null; } }
+    /// <summary><see cref="WarmAsync"/> is loading a model now: its name, else null.</summary>
+    internal string? Warming => Volatile.Read(ref warming) > 0 ? warmingName : null;
+    private volatile string? warmingName;
+    /// <summary>When the warming load started, for how long it has taken.</summary>
+    internal long WarmingSince { get; private set; }
 
     public Task<LocalTranscript> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken)
     {
@@ -465,15 +500,43 @@ internal sealed class ParakeetListener(string root) : ILocalTranscriber, IDispos
         }, cancellationToken);
     }
 
-    /// <summary>Loads <paramref name="modelId"/> in the background so the first utterance is not slower.</summary>
+    /// <summary>Loads <paramref name="modelId"/> in the background so the first utterance is not slower. While it loads,
+    /// <see cref="Warming"/> names it (Home and the talk window say Martlet is warming up).</summary>
     internal Task WarmAsync(string modelId) => Task.Run(() =>
     {
-        try { if (Installed(modelId)) Engine(modelId).Warm(); }
+        try
+        {
+            if (!Installed(modelId)) return;
+            var current = Engine(modelId);
+            if (current.IsLoaded) return;
+            warmingName = current.Model.Name;
+            WarmingSince = System.Diagnostics.Stopwatch.GetTimestamp();
+            Interlocked.Increment(ref warming);
+            try { current.Warm(); }
+            finally { Interlocked.Decrement(ref warming); }
+        }
+        catch (ObjectDisposedException) { }
         catch (Exception error) when (error is SherpaException or DllNotFoundException or BadImageFormatException or InvalidOperationException)
         {
             ErrorLog.Warn("Loading Parakeet failed.", error);
         }
     });
+
+    /// <summary>Home's Free up this PC: takes the model out of memory without closing the listener. The next utterance (or
+    /// <see cref="WarmAsync"/>) loads it again. The model's name when one was in memory, else null.</summary>
+    internal string? Unload()
+    {
+        ParakeetEngine? loaded;
+        lock (gate)
+        {
+            loaded = engine;
+            engine = null;
+        }
+        var name = loaded is { IsLoaded: true } ? loaded.Model.Name : null;
+        // Unloading waits for a transcription still running, so it happens outside the gate.
+        loaded?.Dispose();
+        return name;
+    }
 
     private ParakeetEngine Engine(string modelId)
     {
