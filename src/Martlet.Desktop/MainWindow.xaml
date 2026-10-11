@@ -167,6 +167,26 @@
                                     </WrapPanel>
                                     <!-- Whether Martlet is listening and watching (MainWindow.BackgroundTalk.cs), with or without the talk window -->
                                     <WrapPanel>
+                                        <!-- Warming up (MainWindow.FreeUp.cs): what still loads before Martlet answers at full speed (the
+                                             conversation, Thinking's model in Ollama on this PC, Parakeet, the character) and for how long;
+                                             then "Warmed up in 18 s." for a few seconds. -->
+                                        <Border x:Name="WarmupIndicator" Visibility="Collapsed" HorizontalAlignment="Left" CornerRadius="14"
+                                                Padding="12,6" Margin="0,2,8,8" BorderThickness="1" Background="{DynamicResource SurfaceBrush}"
+                                                BorderBrush="{DynamicResource AccentBrush}"
+                                                AutomationProperties.AutomationId="HomeWarmup" AutomationProperties.Name="Warming up">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Grid Width="12" Height="12" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                    <Ellipse x:Name="WarmupTrack" Stroke="{DynamicResource BorderBrush}" StrokeThickness="2"/>
+                                                    <Path x:Name="WarmupSpinner" Data="M 6,1 A 5,5 0 0 1 11,6" Stroke="{DynamicResource AccentBrush}"
+                                                          StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                    <Ellipse x:Name="WarmupDot" Width="10" Height="10" Fill="{DynamicResource SuccessBrush}"
+                                                             Visibility="Collapsed"/>
+                                                </Grid>
+                                                <!-- No live setting: the seconds change every second. -->
+                                                <TextBlock x:Name="WarmupStatusText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
+                                                           AutomationProperties.AutomationId="HomeWarmupStatus"/>
+                                            </StackPanel>
+                                        </Border>
                                         <Border x:Name="ListeningIndicator" Visibility="Collapsed" HorizontalAlignment="Left" CornerRadius="14"
                                                 Padding="12,6" Margin="0,2,8,8" BorderThickness="1" Background="{DynamicResource SurfaceBrush}"
                                                 BorderBrush="{DynamicResource BorderBrush}">
@@ -237,6 +257,34 @@
                                     </Canvas>
                                 </Viewbox>
                             </Grid>
+                        </Border>
+
+                        <!-- Martlet on this PC (MainWindow.FreeUp.cs): what Martlet holds on this PC now (the models Ollama here has
+                             loaded, with their memory, Parakeet, the character, the conversation) and Free up this PC, which ends the
+                             conversation, hides the character and unloads the models. Martlet then rests until you talk again. -->
+                        <Border x:Name="PcCard" Style="{DynamicResource CardStyle}" Padding="20,14"
+                                AutomationProperties.Name="Martlet on this PC" AutomationProperties.AutomationId="HomePc">
+                            <DockPanel>
+                                <Button x:Name="FreeUpButton" DockPanel.Dock="Right" Click="FreeUp_Click" Padding="16,10" Margin="16,0,0,0"
+                                        VerticalAlignment="Center" IsEnabled="False" ToolTipService.ShowOnDisabled="True"
+                                        AutomationProperties.AutomationId="HomeFreeUp" AutomationProperties.Name="Free up this PC">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="14" Text="&#xE7E8;" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="FreeUpText" Text="Free up this PC" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0"
+                                        VerticalAlignment="Center">
+                                    <TextBlock x:Name="PcCardIcon" Style="{DynamicResource Icon}" FontSize="18" Text="&#xE7F4;"
+                                               Foreground="{DynamicResource AccentBrush}"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Name="PcCardTitle" Text="Martlet on this PC" FontSize="16" FontWeight="SemiBold"
+                                               AutomationProperties.AutomationId="HomePcTitle"/>
+                                    <TextBlock x:Name="PcCardText" Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               AutomationProperties.AutomationId="HomePcStatus"/>
+                                </StackPanel>
+                            </DockPanel>
                         </Border>
 
                         <!-- What needs attention: problems, warnings and good-to-know items, each with its fixes (MainWindow.Health.cs) -->

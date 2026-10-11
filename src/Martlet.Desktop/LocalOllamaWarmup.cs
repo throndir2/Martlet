@@ -52,6 +52,13 @@ internal sealed class LocalOllamaWarmup : IDisposable
 
     internal string Model { get; }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, TimeSpan> LastLoads =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How long Ollama on this PC took to load <paramref name="model"/> the last time it actually loaded it since
+    /// Martlet started (null before that), so Home and the talk window can say about how long warming up takes.</summary>
+    internal static TimeSpan? LastLoad(string model) => LastLoads.TryGetValue(model, out var took) ? took : null;
+
     internal LocalModelStatus Status
     {
         get
@@ -78,11 +85,24 @@ internal sealed class LocalOllamaWarmup : IDisposable
     private async Task LoadAsync()
     {
         var at = clock.GetTimestamp();
+        bool wasReady;
         lock (gate)
         {
             started = at;
-            if (state != LocalModelState.Ready) state = LocalModelState.Loading;
+            wasReady = state == LocalModelState.Ready;
+            if (!wasReady) state = LocalModelState.Loading;
         }
+        // Ollama unloads an idle model by itself (its keep-alive), and Home's Free up this PC unloads it: a model that was
+        // ready but isn't loaded any more shows as loading again, so the talk window and Home say Martlet is warming up. The
+        // check runs beside the load request, so the load never waits for it.
+        var finished = false;
+        if (wasReady && !SimulatedOllamaCrashLoop.Active)
+            LoadedNowAsync().ContinueWith(check =>
+            {
+                if (check.Result != false) return;
+                lock (gate)
+                    if (!disposed && !finished) state = LocalModelState.Loading;
+            }, TaskScheduler.Default).Forget();
         LocalModelState result;
         string? why = null;
         try
@@ -112,6 +132,7 @@ internal sealed class LocalOllamaWarmup : IDisposable
         var took = clock.GetElapsedTime(at);
         lock (gate)
         {
+            finished = true;
             if (disposed) return;
             state = result;
             detail = why;
@@ -119,7 +140,10 @@ internal sealed class LocalOllamaWarmup : IDisposable
         }
         // Loading an already loaded model returns at once; only actual loads and problems are worth a line.
         if (result == LocalModelState.Ready && took >= TimeSpan.FromSeconds(1))
+        {
+            LastLoads[Model] = took;
             ErrorLog.Info($"Ollama on this PC loaded {Model} in {took.TotalSeconds:0.0} s.");
+        }
         else if (result is LocalModelState.MissingModel or LocalModelState.Failed)
             ErrorLog.Warn($"Ollama on this PC couldn't load {Model} ({result}): {why}.");
         // Why it doesn't answer comes from Ollama's own logs, in the background; the known cause is repaired once by itself.
@@ -167,6 +191,19 @@ internal sealed class LocalOllamaWarmup : IDisposable
                 ErrorLog.Info($"Ollama on this PC gives {Model} {given:N0} tokens of context; the next conversation uses it.");
         }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>Whether Ollama has the model loaded now (<c>/api/ps</c>, at most two seconds); null when it doesn't say.</summary>
+    private async Task<bool?> LoadedNowAsync()
+    {
+        try
+        {
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            limit.CancelAfter(TimeSpan.FromSeconds(2));
+            return await OllamaSideBySide.LoadedAsync(client, LocalOllama.OriginUri, limit.Token).ConfigureAwait(false) is { } loaded
+                ? OllamaSideBySide.Find(loaded, Model) is not null : null;
+        }
+        catch (Exception error) when (error is OperationCanceledException or HttpRequestException or InvalidOperationException) { return null; }
     }
 
     private async Task<(LocalModelState State, string? Why, bool DraftFailed)> RequestLoadAsync(CancellationToken token)

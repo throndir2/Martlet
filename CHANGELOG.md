@@ -10,6 +10,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- **Free up this PC** on Home: a new *Martlet on this PC* card says what Martlet keeps in your PC's memory right now (its local models with their size, listening, the character, the conversation). One click ends the conversation, hides the character and unloads the models, so a game or other heavy program gets the memory back. Martlet then rests until you talk to it again. ([#782](https://github.com/throndir2/Martlet/pull/782))
+- **Warming up**: when you start talking and Martlet still has to load its model, Home and the talk window say so, with what is loading, how long it has taken and, after the first time, a progress bar. You can talk or type right away; the first reply starts once the model is ready. ([#782](https://github.com/throndir2/Martlet/pull/782))
 - **Think ahead**: right after each reply, Martlet's character thinks ahead while you haven't answered yet: how the conversation is going, what you'll probably say next and what it wants to say then, in its own personality. Its next reply uses those thoughts where they fit, and no reply waits for them. Turn it off or change it on Companion › Check-ins. ([#781](https://github.com/throndir2/Martlet/pull/781))
 - **Companion › Voice › Voices › Record your own voice...**: read four short lines out loud and Martlet makes a voice from your own. The lines cover nearly every sound of spoken English and are long enough for every voice engine. Each line stops recording by itself when you pause, and you can play it back or record it again. ([#779](https://github.com/throndir2/Martlet/pull/779))
 

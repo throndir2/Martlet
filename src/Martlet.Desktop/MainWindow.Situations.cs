@@ -280,9 +280,11 @@ public partial class MainWindow
         situationCardAt = System.Diagnostics.Stopwatch.GetTimestamp();
         situationCardBusy = true;
         var model = route.ModelId;
-        // While no other place can answer, the conversation uses the model itself (its talk window keeps it warm).
+        // While no other place can answer, the conversation uses the model itself (its talk window keeps it warm). After Free up
+        // this PC, Martlet rests: it doesn't load the model again by itself.
         var inUse = decision.Place?.Kind == LivePlaceKind.ThisPc;
-        var touch = !inUse && (situationTouchedAt == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(situationTouchedAt) >= SituationKeepLoaded);
+        var touch = resting is null && !inUse &&
+            (situationTouchedAt == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(situationTouchedAt) >= SituationKeepLoaded);
         var unloaded = situationUnloaded;
         Task.Run(async () =>
         {

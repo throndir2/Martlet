@@ -127,7 +127,34 @@ joins your other computers uses your hosts and the setup they share without
 setting anything up itself. Pairing never waits for Setup: hosts are paired,
 and who does what is followed, before this PC saves any settings.
 
-Below the hero, **Needs attention** (*All good* when nothing does) lists every
+Beside the listening and watching indicators, a **Warming up** indicator (a
+spinner) shows while something still loads before Martlet answers at full
+speed: the conversation's settings, Thinking's model in Ollama on this PC,
+Parakeet for listening or the character. It names each part and how long it
+has taken, for example *Warming up: loading gemma4:e4b on this PC (12 s of
+about 20 s). Martlet answers once the model has loaded.* A part that loads in
+less than a second never shows. When everything has loaded, it reads *Warmed
+up in 18 s. Martlet is ready to talk.* for a few seconds. "About 20 s" is how
+long the same model took the last time it loaded since Martlet started.
+
+Under the hero, the **Martlet on this PC** card says what Martlet holds on
+this companion PC now: the models Ollama on this PC has loaded, with the
+memory Ollama says they take, Parakeet for listening, voice recognition, the
+character and the conversation (and whether it listens or watches). A
+companion PC often runs games, so **Free up this PC** gives that memory back
+without exiting Martlet. It ends the conversation (listening and watching stop
+with it), hides the character and unloads every model Ollama on this PC has
+loaded, Parakeet and the voice-recognition engine. Settings and the
+conversation record stay. The card then reads **Resting** with what it freed,
+and Martlet loads nothing by itself (*While gaming* stops keeping the model
+loaded) until you start talking or listening, show the character or a reply
+needs a model (Discord, messaging). The button is greyed out while Martlet
+holds nothing. On a companion PC that also runs a host service, the card says
+that the host service keeps running for your other computers. Home reads
+Ollama's loaded models (`/api/ps`, loopback only) every 5 seconds while it
+shows, never while Martlet replies or hears you.
+
+Below the card, **Needs attention** (*All good* when nothing does) lists every
 item with what it means and its fixes, most serious first:
 
 - **Problems** stop Martlet replying: the data folder or settings can't be
@@ -396,6 +423,17 @@ settings, approvals, cost envelopes, timelines or links to other windows.
 - **Message box**: always in view. Enter sends, Shift+Enter starts a new line.
   With push-to-talk chosen, *Hold to talk* (hold the mouse or Space) sits next
   to *Send*; invoking it starts a recording and invoking it again sends.
+- **Warming up** banner: under the header while something still loads (the
+  conversation's settings, Thinking's model in Ollama on this PC, Parakeet,
+  the character), with a spinner, what loads and for how long (*Loading
+  gemma4:e4b on this PC (3 s of about 12 s).*), *You can talk or type now.
+  The first reply starts once the model has loaded.* and a progress bar. The
+  bar fills from the model's last load time; before Martlet knows that time,
+  the bar only shows that something happens. The status line says *Warming
+  up. You can talk or type now.*, and a reply that waits for the model says
+  *Waiting for gemma4:e4b to load. Martlet answers once it's ready.* When
+  Ollama unloaded the model by itself (after its idle time) while the window
+  was open, the banner shows again while the model loads again.
 
 **Always listening** (the default, with the chosen or Windows
 default microphone; no test needed) starts only when you press *Start

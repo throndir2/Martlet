@@ -352,6 +352,16 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // talking.", "Hearing you…", "Not listening" or why Martlet can't listen), and its Start watching / Stop watching button
         // and watching indicator ("Watching your active window.", "Taking a look…", "Not watching" or why Martlet can't see).
         "OpenLiveConversation", "HomeListen", "HomeListeningStatus", "HomeWatch", "HomeWatchingStatus",
+        // Home's Warming up indicator: what still loads before Martlet answers at full speed and for how long ("Warming up:
+        // loading gemma4:e4b on this PC (12 s of about 20 s). Martlet answers once the model has loaded."), then "Warmed up in
+        // 18 s. ..."; the talk window's banner line under its Warming up title (LiveWarmup: "Loading gemma4:e4b on this PC
+        // (12 s of about 20 s)."). Model names and seconds only.
+        "HomeWarmupStatus", "LiveWarmup",
+        // Home's Martlet on this PC card: its title ("Martlet on this PC", "Freeing up this PC…", "Resting"), what Martlet holds
+        // on this PC now ("Martlet uses this PC for gemma4:e4b (4.9 GB of graphics memory), the character and ...") or what Free
+        // up this PC did, and the button's label. Model names, memory sizes and fixed wording. Clicking HomeFreeUp ends the
+        // conversation, hides the character and unloads the models, so it needs --allow-ui-effects.
+        "HomePcTitle", "HomePcStatus", "HomeFreeUp",
         // Home's Configuring indicator (companion Home, and HostConfiguring on a host PC's Home): a run applying the recommended
         // setup ("Configuring your computers: 1 of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4).", or how it
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
