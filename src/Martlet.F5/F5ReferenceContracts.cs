@@ -3,16 +3,20 @@ namespace Martlet.F5;
 public static class F5ReferenceLimits
 {
     public const int SchemaVersion = 1;
-    public const int MaximumPresets = 32;
+    /// <summary>The store holds every voice of the shared list (<see cref="Martlet.Core.Voices.SpeakingVoiceLibrary"/>).</summary>
+    public const int MaximumPresets = Martlet.Core.Voices.SpeakingVoiceLibrary.MaximumVoices;
     public const int MaximumSnapshotsPerPreset = 16;
-    public const int MaximumTotalSnapshots = 64;
+    public const int MaximumTotalSnapshots = 2 * MaximumPresets;
     public const int MaximumPresetNameCharacters = 80;
     public const int MaximumPresetNameUtf8Bytes = 160;
     public const int MaximumTranscriptCharacters = 4096;
     public const int MaximumTranscriptUtf8Bytes = 8192;
     public const int MaximumSourcePathCharacters = 1024;
     public const int MaximumAudioFileBytes = 4 * 1024 * 1024;
-    public const int MaximumStoreBytes = 1024 * 1024;
+    /// <summary>The largest store file: every preset and snapshot at its most (each character escaped, at most 6 bytes). The
+    /// file is read whole, so it keeps a byte limit.</summary>
+    public const int MaximumStoreBytes = MaximumTotalSnapshots * (6 * (MaximumSourcePathCharacters + MaximumTranscriptCharacters) + 2_048) +
+        MaximumPresets * (6 * MaximumPresetNameCharacters + 512) + 4_096;
     public const int MinimumDurationMilliseconds = 1_000;
     public const int MaximumDurationMilliseconds = 30_000;
     public const long MaximumStoreRevision = long.MaxValue - 1;

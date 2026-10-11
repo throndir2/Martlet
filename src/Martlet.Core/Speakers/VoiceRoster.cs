@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -83,10 +84,10 @@ public sealed record KnownVoice
         .Select(n => n.Text).Where(n => !string.Equals(n, DisplayName, StringComparison.OrdinalIgnoreCase)).ToArray();
 
     [JsonIgnore]
-    internal float[]? CentroidVector => Centroid is null ? null : VoicePrints.Decode(Centroid);
+    internal float[]? CentroidVector => Centroid is null ? null : VoicePrints.Cached(Centroid);
 
     [JsonIgnore]
-    internal IReadOnlyList<float[]> SampleVectors => Samples.Select(VoicePrints.Decode).ToArray();
+    internal IReadOnlyList<float[]> SampleVectors => Samples.Select(VoicePrints.Cached).ToArray();
 
     // The link is its own register, so it is left out of the entry's content.
     internal string Content => JsonSerializer.Serialize(this with { Revision = 0, UpdatedAt = default, UpdatedBy = "", Link = null }, VoiceRoster.Json);
@@ -107,15 +108,28 @@ public sealed record VoiceRoster
     public const int SchemaVersion1 = 1;
     /// <summary>The speaker embedding model the voiceprints come from (WeSpeaker ResNet34-LM, 256 numbers).</summary>
     public const string EmbeddingModel = "wespeaker-resnet34-lm-e9848563";
-    public const int MaximumBytes = 1_048_576;
-    public const int MaximumVoices = 64;
-    public const int MaximumTombstones = 64;
-    /// <summary>The most names one voice goes by: as many as still keep a full list (every voice at its most) within
-    /// <see cref="MaximumBytes"/>.</summary>
+    /// <summary>How many voices <see cref="Add"/> keeps: past it, a new voice takes the place of the longest-unheard unnamed one.
+    /// A merge of several computers' copies can hold more; no live voice leaves the list unless it is forgotten or merged.</summary>
+    public const int MaximumVoices = 1_000;
+    /// <summary>Forgotten and merged voices remembered, so an older copy of the list can't bring one back. Each is a few hundred
+    /// bytes; beyond it the oldest tombstones are dropped.</summary>
+    public const int MaximumTombstones = 4_000;
+    /// <summary>The most names one voice goes by; <see cref="MaximumBytes"/> leaves room for every voice to have them all.</summary>
     public const int MaximumNames = 40;
     public const int MaximumNameLength = 48;
     public const int MaximumSamples = 5;
+    // The most one voice takes in the list's JSON: its names, each character escaped (at most 6 bytes) with the name's other
+    // fields, its centroid and samples (base64, with room for escaped '+'), plus the voice's other fields.
+    private const int VoicePrintCharacters = (VoicePrints.Dimension * 4 + 2) / 3 * 4;
+    private const int MaximumVoiceJsonBytes = (MaximumNames + 1) * (6 * MaximumNameLength + 128) +
+        (MaximumSamples + 1) * 2 * VoicePrintCharacters + 1_024;
+    private const int MaximumTombstoneJsonBytes = 1_024;
+    /// <summary>The written list's size limit: <see cref="MaximumVoices"/> voices (with every name and sample) and every
+    /// tombstone at their most. The whole list is read into memory, so it keeps a byte limit.</summary>
+    public const int MaximumBytes = MaximumVoices * MaximumVoiceJsonBytes + MaximumTombstones * MaximumTombstoneJsonBytes + 4_096;
     private const long MaximumRevision = long.MaxValue / 4;
+    private static readonly string TooLargeMessage =
+        $"The voice list is larger than {(MaximumBytes + (1 << 20) - 1) >> 20} MB. Forget or merge some voices in Companion › People first.";
 
     internal static readonly JsonSerializerOptions Json = new()
     {
@@ -164,7 +178,7 @@ public sealed record VoiceRoster
     {
         options ??= VoiceMatchOptions.Default;
         var vector = VoicePrints.Normalize(probe);
-        var ranked = Live.Select(voice => (Voice: voice, Score: VoicePrints.Score(voice, vector)))
+        var ranked = Voices.Where(voice => !voice.Removed).Select(voice => (Voice: voice, Score: VoicePrints.Score(voice, vector)))
             .Where(item => item.Score is not null).Select(item => (item.Voice, Score: item.Score!.Value))
             .OrderByDescending(item => item.Score).ThenBy(item => item.Voice.Number).ToArray();
         if (ranked.Length == 0) return new(VoiceMatchKind.New, null, 0);
@@ -179,14 +193,22 @@ public sealed record VoiceRoster
 
     /// <summary>Adds a newly heard voice ("Voice N"). When the list is full, the longest-unheard voice that has no name and is
     /// not linked to anyone is forgotten to make room; the voice is null when none can be.</summary>
-    public (VoiceRoster Roster, KnownVoice? Voice) Add(float[] probe, double seconds, string by, DateTimeOffset now)
+    public (VoiceRoster Roster, KnownVoice? Voice) Add(float[] probe, double seconds, string by, DateTimeOffset now) =>
+        Add(probe, seconds, by, now, out _);
+
+    /// <summary><see cref="Add(float[], double, string, DateTimeOffset)"/>, saying which voice was forgotten to make room
+    /// (<paramref name="forgotten"/>, as it was), so the caller can tell the owner.</summary>
+    public (VoiceRoster Roster, KnownVoice? Voice) Add(float[] probe, double seconds, string by, DateTimeOffset now, out KnownVoice? forgotten)
     {
+        forgotten = null;
         var roster = this;
-        if (Live.Count >= MaximumVoices)
+        var live = Live;
+        if (live.Count >= MaximumVoices)
         {
-            var stale = Live.Where(v => !v.Named && !v.Owner && v.Account is null).OrderBy(v => v.LastHeardAt).FirstOrDefault();
+            var stale = live.Where(v => !v.Named && !v.Owner && v.Account is null).OrderBy(v => v.LastHeardAt).FirstOrDefault();
             if (stale is null) return (this, null);
             roster = roster.Forget(stale.Id, by, now);
+            forgotten = stale;
         }
         var print = VoicePrints.Encode(VoicePrints.Normalize(probe));
         var voice = new KnownVoice
@@ -388,24 +410,26 @@ public sealed record VoiceRoster
         : a.UpdatedBy != b.UpdatedBy ? string.CompareOrdinal(a.UpdatedBy, b.UpdatedBy) > 0 ? a : b
         : string.CompareOrdinal(a.Account?.ToString("N") ?? "", b.Account?.ToString("N") ?? "") >= 0 ? a : b;
 
-    // Live voices first (most recently heard), then the newest tombstones; sorted by ID so equal content writes equal bytes.
+    // Every live voice (none is ever dropped: Add makes room by forgetting one it may forget, and a merge keeps all) and the
+    // newest MaximumTombstones tombstones; sorted by ID so equal content writes equal bytes.
     private static KnownVoice[] Bounded(IEnumerable<KnownVoice> voices)
     {
         var all = voices.ToArray();
-        return all.Where(v => !v.Removed).OrderByDescending(v => v.LastHeardAt).ThenBy(v => v.Id, StringComparer.Ordinal).Take(MaximumVoices)
+        return all.Where(v => !v.Removed)
             .Concat(all.Where(v => v.Removed).OrderByDescending(v => v.Revision).ThenBy(v => v.Id, StringComparer.Ordinal).Take(MaximumTombstones))
             .OrderBy(v => v.Id, StringComparer.Ordinal).ToArray();
     }
 
     private static bool IsId(string? value) => value is { Length: 32 } && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
 
+    /// <summary>Checks the list and every voice. The number of voices is not checked here: a merge of several computers'
+    /// copies can pass <see cref="MaximumVoices"/>, and the list's byte size (<see cref="MaximumBytes"/>) bounds it when it is
+    /// read or written.</summary>
     public void Validate()
     {
         ContractRules.Require(SchemaVersion == SchemaVersion1, "This voice list was written by a newer Martlet.", ErrorCode.UnsupportedVersion);
         ContractRules.Require(Model == EmbeddingModel, "This voice list uses a different voice model.", ErrorCode.UnsupportedVersion);
-        ContractRules.Require(Voices is not null && Voices.All(v => v is not null) &&
-            Voices.Count(v => !v.Removed) <= MaximumVoices && Voices.Count(v => v.Removed) <= MaximumTombstones,
-            "The voice list has too many voices.");
+        ContractRules.Require(Voices is not null && Voices.All(v => v is not null), "The voice list is malformed.");
         ContractRules.Require(Voices!.Select(v => v.Id).Distinct(StringComparer.Ordinal).Count() == Voices!.Count, "The voice list lists a voice twice.");
         foreach (var voice in Voices)
         {
@@ -440,13 +464,14 @@ public sealed record VoiceRoster
     {
         Validate();
         var bytes = JsonSerializer.SerializeToUtf8Bytes(this with { Voices = Bounded(Voices) }, Json);
-        ContractRules.Require(bytes.Length <= MaximumBytes, "The voice list is too large.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(bytes.Length <= MaximumBytes, TooLargeMessage, ErrorCode.PayloadTooLarge);
         return bytes;
     }
 
     public static VoiceRoster Parse(ReadOnlySpan<byte> bytes)
     {
-        ContractRules.Require(bytes.Length is > 0 and <= MaximumBytes, "The voice list is empty or too large.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(bytes.Length > 0, "The voice list is empty.");
+        ContractRules.Require(bytes.Length <= MaximumBytes, TooLargeMessage, ErrorCode.PayloadTooLarge);
         VoiceRoster? roster;
         try { roster = JsonSerializer.Deserialize<VoiceRoster>(bytes, Json); }
         catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException or FormatException)
@@ -475,6 +500,10 @@ public sealed record VoiceMatchOptions(double MatchThreshold = 0.70, double NewV
 public static class VoicePrints
 {
     public const int Dimension = 256;
+    // Voiceprints decoded once per stored text (a string never changes), not on every comparison. Callers only read them.
+    private static readonly ConditionalWeakTable<string, float[]> Decoded = new();
+
+    internal static float[] Cached(string text) => Decoded.GetValue(text, Decode);
 
     public static float[] Normalize(float[] vector)
     {
@@ -536,7 +565,7 @@ public static class VoicePrints
         try
         {
             if (text.Length != (Dimension * 4 + 2) / 3 * 4) return false;
-            var vector = Decode(text);
+            var vector = Cached(text);
             if (vector.Any(x => !float.IsFinite(x))) return false;
             var norm = vector.Sum(x => (double)x * x);
             return norm is > 0.98 and < 1.02;

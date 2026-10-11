@@ -90,16 +90,39 @@ public sealed class ActivationAndContractTests
         using var store = scope.Open(clock);
         await MemoryFixtures.FailureAsync(MemoryFailure.LimitExceeded, async () =>
             await store.SaveAsync(MemoryFixtures.Save(clock,
-                new string('x', MemoryLimits.MaximumContentUtf8Bytes + 1))));
+                new string('x', MemoryLimits.MaximumContentCharacters + 1))));
         await MemoryFixtures.FailureAsync(MemoryFailure.InvalidData, async () =>
             await store.SaveAsync(MemoryFixtures.Save(clock, " \r\n\t ")));
         await MemoryFixtures.FailureAsync(MemoryFailure.InvalidData, async () =>
-            await store.SaveAsync(MemoryFixtures.Save(clock, "future",
-                MemoryRetention.ExpiringAt(clock.Utc + MemoryLimits.MaximumExpiringRetention + TimeSpan.FromSeconds(1)))));
+            await store.SaveAsync(MemoryFixtures.Save(clock, "past",
+                MemoryRetention.ExpiringAt(clock.Utc - TimeSpan.FromSeconds(1)))));
         await MemoryFixtures.FailureAsync(MemoryFailure.LimitExceeded, async () =>
             await store.RetrieveAsync(new() { Text = new string('q', MemoryLimits.MaximumQueryCharacters + 1) }));
         Assert.Empty((await store.InspectAsync()).Facts);
         Assert.False(File.Exists(scope.StorePath));
+    }
+
+    [Fact]
+    public async Task LongFactsAndFarExpiriesSave()
+    {
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        using var store = scope.Open(clock);
+        var longest = new string('\u00e9', MemoryLimits.MaximumContentCharacters);
+        var saved = await store.SaveAsync(MemoryFixtures.Save(clock, longest,
+            MemoryRetention.ExpiringAt(clock.Utc + TimeSpan.FromDays(3_650))));
+        Assert.Equal(longest, saved.Fact.Content);
+        Assert.Equal(longest, MemoryFactJson.Read(MemoryFactJson.Write(saved.Fact)).Content);
+        Assert.Equal(longest, Assert.Single((await store.InspectAsync()).Facts).Content);
+    }
+
+    [Fact]
+    public void LimitsAgreeWithTheMemorySync()
+    {
+        Assert.Equal(MemoryLimits.MaximumFacts, Martlet.Core.Sync.MemorySyncNode.StoreCapacity);
+        Assert.Equal(MemoryLimits.MaximumFactJsonBytes, Martlet.Core.Sync.SharedMemories.MaximumFactBytes);
+        Assert.True(Martlet.Core.Sync.SharedMemories.MaximumBytes >= 2L * MemoryLimits.MaximumStoreBytes);
+        Assert.True(Martlet.Core.Sync.SharedMemories.MaximumFacts >= 2 * MemoryLimits.MaximumFacts);
     }
 
     [Fact]

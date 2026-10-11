@@ -199,12 +199,29 @@ internal sealed class LexicalIndex
             return [];
 
         // Stage 1: BM25 over the inverted index. Each fact also keeps a list of its hits (which query term, at which positions)
-        // for stage 2.
+        // for stage 2. The per-fact numbers live in this thread's scratch arrays, and only the facts a query term holds are
+        // touched (and cleared again), so a query costs what it matches, not the size of the store.
         var ids = new int[queryTerms.Length];
-        var bm25 = new double[documents.Length];
-        var covered = new double[documents.Length];
-        var matched = new int[documents.Length];
-        var hits = new Hits(documents.Length, queryTerms.Sum(term => termIds.TryGetValue(term, out var id) ? postings[id].Length : 0));
+        var scratch = Scratch.For(documents.Length,
+            queryTerms.Sum(term => termIds.TryGetValue(term, out var id) ? postings[id].Length : 0));
+        try
+        {
+            return Rank(queryTerms, maximumResults, token, include, ids, scratch);
+        }
+        finally
+        {
+            scratch.Clear();
+        }
+    }
+
+    private LexicalMatch[] Rank(string[] queryTerms, int maximumResults, CancellationToken token, Func<Guid, bool>? include,
+        int[] ids, Scratch scratch)
+    {
+        var bm25 = scratch.Bm25;
+        var covered = scratch.Covered;
+        var matched = scratch.Matched;
+        var touched = scratch.Touched;
+        var hits = new Hits(scratch);
         var queryWeight = 0d;
         for (var q = 0; q < queryTerms.Length; q++)
         {
@@ -223,26 +240,36 @@ internal sealed class LexicalIndex
                 bm25[posting.Document] += idf * frequency * (K1 + 1) /
                     (frequency + K1 * (1 - B + B * documents[posting.Document].Length / averageLength));
                 covered[posting.Document] += idf;
-                matched[posting.Document]++;
+                if (matched[posting.Document]++ == 0)
+                    touched.Add(posting.Document);
                 hits.Add(posting.Document, q, posting.Positions);
             }
         }
 
         var candidates = new List<int>();
-        for (var d = 0; d < documents.Length; d++)
-            if (matched[d] > 0 && (include is null || include(documents[d].Id)))
+        foreach (var d in touched)
+            if (include is null || include(documents[d].Id))
                 candidates.Add(d);
         if (candidates.Count == 0)
             return [];
-        // Only a cut needs BM25's order; the selection below doesn't depend on the candidates' order.
+        // Only a cut needs BM25's order; the selection below doesn't depend on the candidates' order. The RerankDepth best are kept
+        // with a heap (exactly the set a full sort would cut to), so a large store doesn't sort every candidate.
         if (candidates.Count > RerankDepth)
         {
-            candidates.Sort((left, right) => Compare(left, bm25[left], right, bm25[right], matched));
-            candidates.RemoveRange(RerankDepth, candidates.Count - RerankDepth);
+            var best = new PriorityQueue<int, int>(RerankDepth + 1,
+                Comparer<int>.Create((left, right) => Compare(right, bm25[right], left, bm25[left], matched)));
+            foreach (var d in candidates)
+            {
+                if (best.Count < RerankDepth)
+                    best.Enqueue(d, d);
+                else
+                    best.EnqueueDequeue(d, d);
+            }
+            candidates = [.. best.UnorderedItems.Select(item => item.Element)];
         }
 
         // Stage 2: coverage, proximity, phrases and recency.
-        var score = new double[documents.Length];
+        var score = scratch.Score;
         var occurrences = new List<int>();
         foreach (var d in candidates)
         {
@@ -325,36 +352,84 @@ internal sealed class LexicalIndex
         return (gap == int.MaxValue ? 0 : 1d / gap, phrases);
     }
 
-    /// <summary>One query's hits, a linked list for each fact: which query term, at which positions.</summary>
-    private sealed class Hits
+    /// <summary>One query's hits, a linked list for each fact: which query term, at which positions (in the scratch arrays).</summary>
+    private sealed class Hits(Scratch scratch)
     {
-        private readonly int[] first;
-        private readonly int[] next;
-        private readonly int[] queries;
-        private readonly int[][] positions;
-        private int count;
-
-        internal Hits(int documents, int capacity)
-        {
-            first = new int[documents];
-            Array.Fill(first, -1);
-            next = new int[capacity];
-            queries = new int[capacity];
-            positions = new int[capacity][];
-        }
+        private readonly int[] first = scratch.First;
+        private readonly int[] next = scratch.Next;
+        private readonly int[] queries = scratch.Queries;
+        private readonly int[][] positions = scratch.Positions;
 
         internal void Add(int document, int query, int[] at)
         {
+            var count = scratch.HitCount++;
             next[count] = first[document];
             queries[count] = query;
             positions[count] = at;
-            first[document] = count++;
+            first[document] = count;
         }
 
         internal int First(int document) => first[document];
         internal int Next(int hit) => next[hit];
         internal int Query(int hit) => queries[hit];
         internal int[] Positions(int hit) => positions[hit];
+    }
+
+    /// <summary>One thread's working arrays for <see cref="Search"/>, at least as long as the largest index searched on it. Between
+    /// searches every entry is zero (<see cref="First"/>: -1), because a search clears the entries it touched.</summary>
+    private sealed class Scratch
+    {
+        [ThreadStatic] private static Scratch? current;
+
+        internal double[] Bm25 = [];
+        internal double[] Covered = [];
+        internal double[] Score = [];
+        internal int[] Matched = [];
+        internal int[] First = [];
+        internal int[] Next = [];
+        internal int[] Queries = [];
+        internal int[][] Positions = [];
+        internal readonly List<int> Touched = [];
+        internal int HitCount;
+
+        internal static Scratch For(int documents, int hits)
+        {
+            var scratch = current ??= new();
+            if (scratch.Bm25.Length < documents)
+            {
+                var length = Math.Max(documents, Math.Min(2 * scratch.Bm25.Length, Array.MaxLength));
+                scratch.Bm25 = new double[length];
+                scratch.Covered = new double[length];
+                scratch.Score = new double[length];
+                scratch.Matched = new int[length];
+                scratch.First = new int[length];
+                Array.Fill(scratch.First, -1);
+            }
+            if (scratch.Next.Length < hits)
+            {
+                var length = Math.Max(hits, Math.Min(2 * scratch.Next.Length, Array.MaxLength));
+                scratch.Next = new int[length];
+                scratch.Queries = new int[length];
+                scratch.Positions = new int[length][];
+            }
+            return scratch;
+        }
+
+        internal void Clear()
+        {
+            foreach (var d in Touched)
+            {
+                Bm25[d] = 0;
+                Covered[d] = 0;
+                Score[d] = 0;
+                Matched[d] = 0;
+                First[d] = -1;
+            }
+            Touched.Clear();
+            // The positions belong to an index; don't keep it alive.
+            Array.Clear(Positions, 0, HitCount);
+            HitCount = 0;
+        }
     }
 
     private static bool NearDuplicates(Document left, Document right)

@@ -15,6 +15,9 @@ public sealed class ContractException(ErrorCode code, string message) : Exceptio
 public static partial class ContractRules
 {
     public const int MaxJsonBytes = 262_144;
+    /// <summary>The largest limit a caller may pass to <see cref="ContractJson"/> explicitly (a settings snapshot); the default
+    /// stays <see cref="MaxJsonBytes"/>.</summary>
+    public const int MaxExplicitJsonBytes = 16 * 1024 * 1024;
     public const int MaxTextCharacters = 16_384;
 
     public static void Require(bool condition, string message, ErrorCode code = ErrorCode.InvalidContract)

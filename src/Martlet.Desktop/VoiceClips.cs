@@ -17,8 +17,8 @@ internal sealed class VoiceClips
 {
     internal const string Folder = "voice-clips";
     internal const string ChoiceFile = "voice-clips.txt";
-    internal const int MaximumClips = 5;
-    internal const double MaximumSeconds = 8;
+    internal const int MaximumClips = 20;
+    internal const double MaximumSeconds = 30;
     private const int SampleRate = 16_000;
     private readonly object gate = new();
     private readonly string? directory;

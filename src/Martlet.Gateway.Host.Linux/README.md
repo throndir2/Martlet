@@ -89,12 +89,13 @@ desktops sync through `/martlet/v1/cluster` in the sibling `cluster.json`
 (same 0600 custody, replaced atomically through `cluster.staging`). It is not
 approved configuration either; a missing or malformed copy starts empty and
 desktops push theirs again. The shared voice list lives beside it in
-`voices.json`, and the voices Martlet speaks with in `speaking-voices.json` (at
-most 1 MiB, through `speaking-voices.staging`) with each live voice's recording
+`voices.json` (at most about 37 MiB, the voice list's own size limit), and the
+voices Martlet speaks with in `speaking-voices.json` (at most about 54 MiB, the
+list's own size limit, through `speaking-voices.staging`) with each live voice's recording
 in `speaking-voice-<sha256>.wav` (at most 4 MiB each, through
 `speaking-voice.staging`; a removed voice's recording is deleted; see
 [shared speaking voices](../../docs/CLUSTER.md#the-shared-speaking-voices)); the character models
-the owner added are kept in `character-models.json` (at most 2 MiB, through
+the owner added are kept in `character-models.json` (at most 128 MiB, through
 `character-models.staging`) with each piece of a live model in
 `character-model-chunk-<sha256>.bin` (at most 3 MiB each, through
 `character-model-chunk.staging`; pieces no live model uses are deleted; see
@@ -105,12 +106,12 @@ list's live creation uses are deleted; see [creations](../../docs/CREATIONS.md))
 lives in `home-assistant.json` (at most 16 KiB, through
 `home-assistant.staging`). The settings the owner's computers share
 ([one Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer)),
-including their cloud API keys, live in `shared-settings.json` (at most 2 MiB,
+including their cloud API keys, live in `shared-settings.json` (at most 64 MiB,
 through `shared-settings.staging`), and everything Martlet remembers
 ([one memory on every computer](../../docs/MEMORY.md#one-memory-on-every-computer))
-in `memories.json` (at most 12 MiB, through `memories.staging`), with each
+in `memories.json` (at most 512 MiB, through `memories.staging`), with each
 [memory space](../../docs/ACCOUNTS.md#memory-spaces) in `memories-<space>.json`
-(at most 12 MiB each and 64 spaces, through `memories-space.staging`). The
+(at most 512 MiB each and 64 spaces, through `memories-space.staging`). The
 household's [account directory](../../docs/ACCOUNTS.md#account-directory)
 (public facts only) lives in `accounts.json` (at most 2 MiB, through
 `accounts.staging`). All are 0600 service-owner files and none is part

@@ -43,7 +43,8 @@ function vector(value: unknown, length: number, label: string, max = 10000): num
 }
 
 export const LIMITS = Object.freeze({
-  fileBytes: 32 * 1024 * 1024,
+  /** A VRM file's size limit; the same as Martlet's (LocalAvatarFiles and CharacterModelLibrary). */
+  fileBytes: 512 * 1024 * 1024,
   jsonBytes: 2 * 1024 * 1024,
   nodes: 512,
   accessors: 2048,

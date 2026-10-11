@@ -57,7 +57,7 @@ internal sealed class AccountCharactersMergeStep(Func<IReadOnlyList<ProveHost>> 
                 answered = true;
                 if (settings.Find(AppSettingsSections.Companion) is { } companion)
                 {
-                    theirs = ContractJson.Read<CompanionSettings>(Encoding.UTF8.GetBytes(companion.Value));
+                    theirs = ContractJson.Read<CompanionSettings>(Encoding.UTF8.GetBytes(companion.Value), SharedSettings.MaximumValueBytes);
                     break;
                 }
             }

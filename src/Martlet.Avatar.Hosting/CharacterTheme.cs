@@ -611,12 +611,14 @@ public sealed record CharacterThemeEntry
 }
 
 /// <summary><c>character-themes.json</c>: each character model's colors (read once from its textures), for the newest
-/// <see cref="MaximumModels"/> models.</summary>
+/// <see cref="MaximumModels"/> models (as many characters as the shared character list holds).</summary>
 public static class CharacterThemes
 {
     public const string FileName = "character-themes.json";
-    public const int MaximumModels = 32;
-    private const int MaximumBytes = 1024 * 1024;
+    public const int MaximumModels = Martlet.Core.Characters.CharacterModelLibrary.MaximumModels;
+    /// <summary>The file is read whole, so it stays bounded. One model's colors take about 1.5 KB, so
+    /// <see cref="MaximumModels"/> models need about 1.5 MB.</summary>
+    public const int MaximumBytes = 4 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private static readonly SemaphoreSlim Gate = new(1, 1);
 

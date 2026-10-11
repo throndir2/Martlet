@@ -105,7 +105,7 @@ internal static class MemoryTools
                         .FirstOrDefault(f => MemoryCapture.SameFact(f.Content, content) && Same(f.VoiceId, voice, roster)) is { } known)
                         return new MemoryToolOutcome(new($"Already remembered as {ShortId(known)}: {known.Content}"), "already remembered", []);
                     if (facts.Count >= MemoryLimits.MaximumFacts)
-                        return Refused($"Memory is full ({MemoryLimits.MaximumFacts} facts). Tell the user to delete some on the Memory page.");
+                        return Refused($"Memory is full ({MemoryLimits.MaximumFacts:N0} facts). Tell the user to delete some on the Memory page.");
                     var saved = await store.SaveAsync(new()
                     {
                         Content = content,

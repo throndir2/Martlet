@@ -134,18 +134,22 @@ internal static class MemoryRecallCheck
                     new { results = jasmine.Select(Hit) });
             }
 
-            using (var store = Open(Path.Combine(root, "full")))
+            // A store of the old limit's size must rank well under a millisecond, as before; a full store within a few milliseconds.
+            foreach (var (count, limitMicroseconds) in new[] { (512, 1_000d), (MemoryLimits.MaximumFacts, 10_000d) })
+            using (var store = Open(Path.Combine(root, "full-" + count)))
             {
                 var random = new Random(7);
                 var vocabulary = Enumerable.Range(0, 400).Select(i => Word(random, i)).ToArray();
                 string Sentence(int words) => string.Join(' ', Enumerable.Range(0, words).Select(_ => vocabulary[random.Next(vocabulary.Length)]));
-                var start = DateTimeOffset.UtcNow.AddDays(-90);
+                var start = DateTimeOffset.UtcNow.AddDays(-300);
+                var filling = Stopwatch.StartNew();
                 await store.MergeAsync(new()
                 {
-                    Facts = [.. Enumerable.Range(0, MemoryLimits.MaximumFacts)
-                        .Select(i => MemoryFactJson.Write(Imported($"The user {Sentence(random.Next(6, 16))}.", start.AddHours(i * 4), null)))],
+                    Facts = [.. Enumerable.Range(0, count)
+                        .Select(i => MemoryFactJson.Write(Imported($"The user {Sentence(random.Next(6, 16))}.", start.AddDays(290.0 * i / count), null)))],
                     Forget = []
                 }, cancellation);
+                var fillMilliseconds = filling.Elapsed.TotalMilliseconds;
                 var snapshot = await store.SnapshotAsync(cancellation);
                 var queries = Enumerable.Range(0, 200)
                     .Select(_ => MemoryQuery.TryFromBoundedSource($"Do you remember what I said about {Sentence(random.Next(4, 20))}?", 12)!)
@@ -169,13 +173,16 @@ internal static class MemoryRecallCheck
                 timings.Sort();
                 storeTimings.Sort();
                 var median = timings[timings.Count / 2];
-                Step($"{MemoryLimits.MaximumFacts} facts: ranking a query stays well under a millisecond (recall runs on the reply's path)",
-                    snapshot.Facts.Count == MemoryLimits.MaximumFacts && median < 1000,
+                Step(count == MemoryLimits.MaximumFacts
+                        ? $"a full store ({count:N0} facts): ranking a query stays within a few milliseconds (recall runs on the reply's path)"
+                        : $"{count} facts: ranking a query stays well under a millisecond (recall runs on the reply's path)",
+                    snapshot.Facts.Count == count && median < limitMicroseconds,
                     new
                     {
                         facts = snapshot.Facts.Count, queries = timings.Count, rankMedianMicroseconds = Math.Round(median),
                         rankP95Microseconds = Math.Round(timings[timings.Count * 95 / 100]), rankMaxMicroseconds = Math.Round(timings[^1]),
-                        storeRetrieveMedianMicroseconds = Math.Round(storeTimings[storeTimings.Count / 2])
+                        storeRetrieveMedianMicroseconds = Math.Round(storeTimings[storeTimings.Count / 2]),
+                        fillMilliseconds = Math.Round(fillMilliseconds)
                     });
             }
 

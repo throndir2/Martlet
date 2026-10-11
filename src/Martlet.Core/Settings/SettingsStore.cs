@@ -38,10 +38,17 @@ public sealed partial class SettingsStore
         {
             await using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
                 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            var bytes = new byte[AppSettings.MaxFileBytes + 1];
+            // Sized by the file, not by the limit, so a normal settings file costs what it did; it grows if the file does.
+            var bytes = new byte[(int)Math.Min(stream.Length, AppSettings.MaxFileBytes) + 1];
             var length = 0;
-            while (length < bytes.Length)
+            while (true)
             {
+                if (length == bytes.Length)
+                {
+                    if (bytes.Length > AppSettings.MaxFileBytes)
+                        break;
+                    Array.Resize(ref bytes, (int)Math.Min((long)bytes.Length * 2, AppSettings.MaxFileBytes + 1L));
+                }
                 var count = await stream.ReadAsync(bytes.AsMemory(length), cancellationToken);
                 if (count == 0)
                     break;

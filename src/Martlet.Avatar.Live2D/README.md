@@ -295,7 +295,8 @@ renderer page sends the chains with the touch zones picture's probe.
   explicitly instead of silently activating extensions. The desktop host reads
   only the files `model3.json` declares, so VTube Studio settings, readmes and
   icons beside a model are never opened.
-- Limits: 128 files; 64 MiB/file; 1 MiB/JSON; 128 MiB total; 16 PNG textures of
+- Limits: 128 files; 512 MiB/file; 1 MiB/JSON; 1 GiB total (the same as the
+  desktop host's and the shared character list's); 16 PNG textures of
   at most 8192 pixels/side and 256 million pixels in total. On the GPU, textures
   are halved (all by the same power of two) until each fits 4096 pixels/side and
   together 32 million pixels, keeping power-of-two atlases mipmapped; UVs are

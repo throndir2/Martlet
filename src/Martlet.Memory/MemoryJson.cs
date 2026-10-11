@@ -48,7 +48,7 @@ internal static class MemoryJson
     {
         MemoryGuard.Require(json is { Length: > 0 });
         var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-        MemoryGuard.Require(bytes.Length <= 64 * 1024, MemoryFailure.LimitExceeded);
+        MemoryGuard.Require(bytes.Length <= MemoryLimits.MaximumFactJsonBytes, MemoryFailure.LimitExceeded);
         try
         {
             RejectDuplicateProperties(bytes);

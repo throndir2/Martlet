@@ -184,7 +184,7 @@ public partial class LorebookWindow : ThemedWindow
     {
         if (books.Count >= LorebookLibrary.MaximumBooks)
         {
-            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks} lorebooks are supported. Delete one first.";
+            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks:N0} lorebooks are supported. Delete one first.";
             return;
         }
         var book = new LorebookItem { Name = UniqueName("New lorebook") };
@@ -213,7 +213,7 @@ public partial class LorebookWindow : ThemedWindow
         if (BookChoice.SelectedItem is not LorebookItem book) return;
         if (book.Entries.Count >= Lorebook.MaximumEntries)
         {
-            ResultText.Text = $"A lorebook has at most {Lorebook.MaximumEntries} entries.";
+            ResultText.Text = $"A lorebook has at most {Lorebook.MaximumEntries:N0} entries.";
             return;
         }
         var entry = new LorebookEntryItem { Uid = book.NextUid() };
@@ -262,7 +262,7 @@ public partial class LorebookWindow : ThemedWindow
         if (path is null || !loaded || busy) return;
         if (books.Count >= LorebookLibrary.MaximumBooks)
         {
-            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks} lorebooks are supported. Delete one first.";
+            ResultText.Text = $"At most {LorebookLibrary.MaximumBooks:N0} lorebooks are supported. Delete one first.";
             return;
         }
         busy = true;
@@ -279,9 +279,10 @@ public partial class LorebookWindow : ThemedWindow
             books.Add(item);
             RenderBooks(item);
             var constant = import.Book.Entries.Count(entry => entry.Constant);
-            ResultText.Text = $"Imported \"{item.Name}\" with {import.Book.Entries.Count} " +
-                $"{(import.Book.Entries.Count == 1 ? "entry" : "entries")}" + (constant > 0 ? $" ({constant} always on)" : "") +
-                (import.SkippedEntries > 0 ? $". {import.SkippedEntries} skipped." : "") +
+            ResultText.Text = $"Imported \"{item.Name}\" with {import.Book.Entries.Count:N0} " +
+                $"{(import.Book.Entries.Count == 1 ? "entry" : "entries")}" + (constant > 0 ? $" ({constant:N0} always on)" : "") +
+                (import.SkippedEntries > 0 ? $". {import.SkippedEntries:N0} skipped" +
+                    (import.Book.Entries.Count >= Lorebook.MaximumEntries ? $": a lorebook keeps at most {Lorebook.MaximumEntries:N0} entries" : "") + "." : "") +
                 " It is on for every persona.";
             imported = true;
         }

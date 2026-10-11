@@ -38,16 +38,21 @@ public static class LorebookScanner
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(50);
     private static readonly ConcurrentDictionary<(string Pattern, RegexOptions Options), Regex?> Regexes = new();
 
-    private sealed class Candidate(Lorebook book, int bookIndex, int entryIndex, LorebookEntry entry,
-        string[] keys, string[] secondaryKeys, string content, bool caseSensitive, bool wholeWords, int depth)
+    // Content, its size and the filter keywords are worked out only for entries whose keywords matched, so a large lorebook
+    // costs little more per reply than the keyword search itself.
+    private sealed class Candidate(Lorebook book, int bookIndex, int entryIndex, LorebookEntry entry, string name,
+        bool caseSensitive, bool wholeWords, int depth)
     {
+        private string? content;
+        private string[]? secondaryKeys;
+        private int utf8Bytes = -1;
         internal int BookIndex { get; } = bookIndex;
         internal int EntryIndex { get; } = entryIndex;
         internal LorebookEntry Entry { get; } = entry;
-        internal string[] Keys { get; } = keys;
-        internal string[] SecondaryKeys { get; } = secondaryKeys;
-        internal string Content { get; } = content;
-        internal int Utf8Bytes { get; } = Encoding.UTF8.GetByteCount(content);
+        internal string Name { get; } = name;
+        internal string[] SecondaryKeys => secondaryKeys ??= Entry.SecondaryKeys.Select(key => Expand(key, Name)).ToArray();
+        internal string Content => content ??= Expand(Entry.Content, Name).Trim();
+        internal int Utf8Bytes => utf8Bytes >= 0 ? utf8Bytes : utf8Bytes = Encoding.UTF8.GetByteCount(Content);
         internal bool CaseSensitive { get; } = caseSensitive;
         internal bool WholeWords { get; } = wholeWords;
         internal int Depth { get; } = depth;
@@ -71,23 +76,31 @@ public static class LorebookScanner
             for (var e = 0; e < book.Entries.Count; e++)
             {
                 var entry = book.Entries[e];
-                var content = Expand(entry.Content, name).Trim();
-                if (!entry.Enabled || content.Length == 0 || !entry.Constant && entry.Keys.Count == 0) continue;
-                candidates.Add(new(book, b, e, entry,
-                    entry.Keys.Select(key => Expand(key, name)).ToArray(),
-                    entry.SecondaryKeys.Select(key => Expand(key, name)).ToArray(),
-                    content, entry.CaseSensitive ?? library.CaseSensitive, entry.MatchWholeWords ?? library.MatchWholeWords,
-                    entry.ScanDepth ?? library.ScanDepth));
+                // Expanding {{char}} and {{user}} never empties content, so blank content is blank before expanding too.
+                if (!entry.Enabled || string.IsNullOrWhiteSpace(entry.Content) || !entry.Constant && entry.Keys.Count == 0) continue;
+                candidates.Add(new(book, b, e, entry, name, entry.CaseSensitive ?? library.CaseSensitive,
+                    entry.MatchWholeWords ?? library.MatchWholeWords, entry.ScanDepth ?? library.ScanDepth));
             }
         }
         if (candidates.Count == 0) return LorebookScanResult.Empty with { ActiveBooks = activeBooks };
 
+        // Only the messages there are: a scan depth beyond them reads the same text as the whole conversation.
         var messages = request.Earlier.Append(request.Current).ToArray();
         var windows = new Dictionary<int, string>();
         string Window(int depth)
         {
+            depth = Math.Clamp(depth, 0, messages.Length);
             if (!windows.TryGetValue(depth, out var text))
-                windows[depth] = text = depth <= 0 ? "" : string.Join('\n', messages.Skip(Math.Max(0, messages.Length - depth)));
+                windows[depth] = text = depth == 0 ? "" : string.Join('\n', messages, messages.Length - depth, depth);
+            return text;
+        }
+        var recursed = "";
+        var withRecursion = new Dictionary<int, string>();
+        string WithRecursion(int depth)
+        {
+            depth = Math.Clamp(depth, 0, messages.Length);
+            if (!withRecursion.TryGetValue(depth, out var text))
+                withRecursion[depth] = text = Window(depth) + "\n" + recursed;
             return text;
         }
 
@@ -99,7 +112,8 @@ public static class LorebookScanner
         for (var pass = 0; pass <= MaximumRecursionPasses; pass++)
         {
             var matched = new List<(Candidate Candidate, string Trigger)>();
-            var recursed = recursion.ToString();
+            recursed = recursion.ToString();
+            withRecursion.Clear();
             foreach (var candidate in candidates)
             {
                 if (candidate.Decided) continue;
@@ -109,9 +123,9 @@ public static class LorebookScanner
                     continue;
                 }
                 if (pass > 0 && candidate.Entry.ExcludeRecursion) continue;
-                var text = pass == 0 ? Window(candidate.Depth) : Window(candidate.Depth) + "\n" + recursed;
-                if (FirstMatch(candidate.Keys, text, candidate.CaseSensitive, candidate.WholeWords) is not { } key) continue;
-                if (candidate.SecondaryKeys.Length > 0 && !SecondaryPasses(candidate, text)) continue;
+                var text = pass == 0 ? Window(candidate.Depth) : WithRecursion(candidate.Depth);
+                if (FirstMatch(candidate.Entry.Keys, name, text, candidate.CaseSensitive, candidate.WholeWords) is not { } key) continue;
+                if (candidate.Entry.SecondaryKeys.Count > 0 && !SecondaryPasses(candidate, text)) continue;
                 matched.Add((candidate, pass == 0 ? key : key + " (from another entry)"));
             }
             if (matched.Count == 0) break;
@@ -171,8 +185,15 @@ public static class LorebookScanner
         };
     }
 
-    private static string? FirstMatch(IEnumerable<string> keys, string text, bool caseSensitive, bool wholeWords) =>
-        keys.FirstOrDefault(key => Matches(key, text, caseSensitive, wholeWords));
+    private static string? FirstMatch(IReadOnlyList<string> keys, string name, string text, bool caseSensitive, bool wholeWords)
+    {
+        foreach (var raw in keys)
+        {
+            var key = Expand(raw, name);
+            if (Matches(key, text, caseSensitive, wholeWords)) return key;
+        }
+        return null;
+    }
 
     /// <summary>Whether one key occurs in <paramref name="text"/>. A key written /pattern/flags is a regular expression
     /// (flags i, m and s are honored); an invalid or too slow expression never matches.</summary>

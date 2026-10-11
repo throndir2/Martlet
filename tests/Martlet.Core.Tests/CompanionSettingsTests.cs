@@ -106,20 +106,22 @@ public sealed class CompanionSettingsTests : IDisposable
     [Fact]
     public async Task MaximumProfileCollectionFitsSettingsAndAggregateTextIsBounded()
     {
+        var each = CompanionSettings.MaximumAggregateTextCharacters / CompanionSettings.MaximumPersonas;
         var settings = CompanionSettings.Begin(null);
         var companion = settings.Companion!;
         var first = companion.ActivePersona;
-        companion = companion.Update(first.Id, first.Name, new string('a', 1_024));
+        companion = companion.Update(first.Id, first.Name, new string('a', each));
         while (companion.Personas.Count < CompanionSettings.MaximumPersonas)
             companion = companion.Add($"Persona {companion.Personas.Count + 1}",
-                companion.ActivePersona with { Text = new string('a', 1_024) });
+                companion.ActivePersona with { Text = new string('a', each) });
 
         settings = settings with { Companion = companion };
         var saved = await Store.SaveAsync(settings, null);
         Assert.True(saved.Saved);
         Assert.InRange((await File.ReadAllBytesAsync(Store.FilePath)).Length, 1, AppSettings.MaxFileBytes);
+        Assert.Equal(CompanionSettings.MaximumPersonas, (await Store.LoadAsync()).Settings!.Companion!.Personas.Count);
 
-        var overflow = companion.ActivePersona with { Text = new string('a', 1_025) };
+        var overflow = companion.ActivePersona with { Text = new string('a', each + 1) };
         Assert.Throws<ContractException>(() =>
             (companion with
             {

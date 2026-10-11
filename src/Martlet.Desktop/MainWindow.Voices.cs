@@ -534,6 +534,7 @@ public partial class MainWindow
             var old = copies.Where(c => c.Old).Select(c => c.Host.HostId).ToArray();
             speakingVoiceStatus = $"Voices shared with {shared} of {hosts.Count} computer{(hosts.Count == 1 ? "" : "s")} at {DateTime.Now:t}." +
                 (result.Waiting > 0 ? $" {result.Waiting} voice{(result.Waiting == 1 ? " is" : "s are")} still copying to this PC." : "") +
+                (result.Full > 0 ? " " + F5Voices.FullText(result.Full) : "") +
                 (old.Length > 0 ? $" Update {string.Join(", ", old)} to share voices there." : "");
         }
         catch (OperationCanceledException) { }

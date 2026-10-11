@@ -15,7 +15,7 @@ public sealed partial class Audio2FaceHostConnection
 {
     private const string SpeakingVoicesPath = "/martlet/v1/speaking-voices";
     private const string SpeakingVoiceAudioPath = SpeakingVoicesPath + "/audio/";
-    private const int MaximumSpeakingVoicesBytes = SpeakingVoiceLibrary.MaximumBytes + 16_384;
+    private const int MaximumSpeakingVoicesBytes = SpeakingVoiceLibrary.MaximumHostAnswerBytes;
     private const int MaximumSpeakingVoiceAudioBytes = (SpeakingVoiceLibrary.MaximumAudioBytes + 2) / 3 * 4 + 4_096;
 
     public async Task<HostSpeakingVoices> ReadSpeakingVoicesAsync(CancellationToken cancellationToken = default)

@@ -19,14 +19,18 @@ public interface IGatewayCharacterModelStorage
 
 /// <summary>This host's copy of the character models the owner added and their pieces. A host shows no character itself:
 /// it keeps them so every paired desktop (every computer that can be the companion) can copy them, since desktops reach each
-/// other only through hosts. Pieces live in storage, not memory; a piece that cannot be saved (or every piece, without
-/// storage) is kept in memory instead, and desktops send any piece a restarted host lacks again. Pieces no live model uses
-/// are deleted.</summary>
+/// other only through hosts. Pieces live in storage, not memory; without storage (or when a piece can't be saved) up to
+/// <see cref="MaximumMemoryBytes"/> are kept in memory instead, and desktops send any piece a restarted host lacks again.
+/// Pieces no live model uses are deleted.</summary>
 internal sealed class GatewayCharacterModelStore
 {
+    /// <summary>The most piece bytes kept in memory: the old limit of all characters together, so a host without storage
+    /// can't run out of memory now that the characters may be much larger.</summary>
+    internal const long MaximumMemoryBytes = 512L * 1024 * 1024;
     private readonly object gate = new();
     private readonly HashSet<string> stored = new(StringComparer.Ordinal);
     private readonly Dictionary<string, byte[]> memory = new(StringComparer.Ordinal);
+    private long memoryBytes;
     private CharacterModelLibrary library = CharacterModelLibrary.Empty;
     private IReadOnlyDictionary<string, int> chunks = new Dictionary<string, int>();
     private string digest = CharacterModelLibrary.Empty.Digest();
@@ -68,7 +72,8 @@ internal sealed class GatewayCharacterModelStore
         }
     }
 
-    /// <summary>Keeps a piece of a live model. False when no live model has a piece with that SHA-256 and length.</summary>
+    /// <summary>Keeps a piece of a live model. False when no live model has a piece with that SHA-256 and length, or when it
+    /// can't be saved and <see cref="MaximumMemoryBytes"/> are already kept in memory.</summary>
     internal bool Store(string sha256, byte[] bytes)
     {
         lock (gate)
@@ -87,7 +92,9 @@ internal sealed class GatewayCharacterModelStore
                 }
                 catch (Exception) { }
             }
+            if (memoryBytes + bytes.Length > MaximumMemoryBytes) return false;
             memory[sha256] = (byte[])bytes.Clone();
+            memoryBytes += bytes.Length;
             return true;
         }
     }
@@ -122,6 +129,7 @@ internal sealed class GatewayCharacterModelStore
         chunks = next.LiveChunks();
         foreach (var sha256 in memory.Keys.Where(k => !chunks.ContainsKey(k)).ToArray())
         {
+            memoryBytes -= memory[sha256].Length;
             CryptographicOperations.ZeroMemory(memory[sha256]);
             memory.Remove(sha256);
         }
@@ -141,7 +149,8 @@ internal sealed partial class GatewayHttpApplication
 {
     internal const string CharacterModelsPath = "/martlet/v1/character-models";
     internal const string CharacterModelChunkPath = CharacterModelsPath + "/chunks/";
-    private const int MaximumCharacterModelsResponseBytes = CharacterModelLibrary.MaximumBytes + 262_144;
+    // The list, and the SHA-256 of each piece this host holds: at most one per piece the list names, so at most the list's size again.
+    private const int MaximumCharacterModelsResponseBytes = 2 * CharacterModelLibrary.MaximumBytes + 262_144;
     private const int MaximumCharacterModelChunkBytes = (CharacterModelLibrary.ChunkBytes + 2) / 3 * 4 + 4_096;
 
     internal GatewayCharacterModelStore CharacterModels { get; } = new();

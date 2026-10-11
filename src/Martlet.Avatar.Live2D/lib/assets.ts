@@ -2,8 +2,9 @@ import { boundedInteger, Diagnostic, Live2DError, requireCondition } from "./dia
 
 export const LIMITS = Object.freeze({
   files: 128,
-  totalBytes: 128 * 1024 * 1024,
-  fileBytes: 64 * 1024 * 1024,
+  /** A model's and one file's size limits; the same as Martlet's (LocalAvatarFiles and CharacterModelLibrary). */
+  totalBytes: 1024 * 1024 * 1024,
+  fileBytes: 512 * 1024 * 1024,
   jsonBytes: 1024 * 1024,
   textures: 16,
   /** Largest PNG accepted from the model folder, per side and in total. */
@@ -122,6 +123,8 @@ export class LocalModelBundle {
     boundedInteger(input.size, LIMITS.files, "bundle file count");
     let total = 0;
     const folded = new Set<string>();
+    const checked: [string, Uint8Array][] = [];
+    // Every name and size is checked before any bytes are copied, so a bundle over the limits copies nothing.
     for (const [name, bytes] of input) {
       localPath(name);
       requireCondition(/\.(json|moc3|png|wav)$/i.test(name), "UNSUPPORTED_ASSET",
@@ -133,8 +136,9 @@ export class LocalModelBundle {
       boundedInteger(total, LIMITS.totalBytes, "bundle bytes");
       requireCondition(!folded.has(name.toLowerCase()), "DUPLICATE_ASSET", `Case-colliding asset: ${name}.`);
       folded.add(name.toLowerCase());
-      this.#files.set(name, bytes.slice());
+      checked.push([name, bytes]);
     }
+    for (const [name, bytes] of checked) this.#files.set(name, bytes.slice());
     localPath(modelFile);
     requireCondition(modelFile.endsWith(".model3.json"), "INVALID_MODEL_JSON", "Select a .model3.json file.");
     let parsed: unknown;

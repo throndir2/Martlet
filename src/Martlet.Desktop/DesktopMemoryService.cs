@@ -424,8 +424,7 @@ internal sealed class DesktopMemoryService : IDisposable
     /// <summary>Applies what the model picked out of a conversation. New facts belong to the voice each operation names (the
     /// speaker's, unless the model named another voice heard). Near-duplicates of the same person's facts (or of facts about no
     /// one in particular) are skipped, updates keep whose fact it is, updates and forgets only touch the exact fact revisions
-    /// that were shown to the model, and a full store makes room by dropping the oldest conversation fact (never one the user
-    /// typed).</summary>
+    /// that were shown to the model, and a full store saves no new fact (it says so; nothing is deleted to make room).</summary>
     /// <param name="person">Maps a voice ID to the voice it stands for now (<see cref="MemoryPeople.Canonical"/>), so merged
     /// voices count as one person; IDs compare as they are without it.</param>
     /// <param name="spaces">Where each shown fact from another space than the active one is (<see cref="DesktopMemoryRecall.Spaces"/>).
@@ -484,6 +483,7 @@ internal sealed class DesktopMemoryService : IDisposable
         CancellationToken operationToken)
     {
         var changes = new List<MemoryCaptureChange>();
+        var full = 0;
         var current = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts.ToList();
         foreach (var operation in operations)
         {
@@ -498,15 +498,9 @@ internal sealed class DesktopMemoryService : IDisposable
                         continue;
                     if (current.Count >= MemoryLimits.MaximumFacts)
                     {
-                        var oldest = current.Where(fact => fact.LastModifiedBy.SourceKind == MemorySourceKind.Conversation)
-                            .OrderBy(fact => fact.UpdatedAtUtc).FirstOrDefault();
-                        if (oldest is null)
-                            continue;
-                        await store.DeleteAsync(new()
-                        {
-                            Id = oldest.Id, ExpectedRevision = oldest.Revision, ConsentId = Guid.NewGuid()
-                        }, operationToken).ConfigureAwait(false);
-                        current.Remove(oldest);
+                        // A full store never makes room by itself: the owner decides what goes (Companion › Memory).
+                        full++;
+                        continue;
                     }
                     var saved = await store.SaveAsync(new()
                     {
@@ -541,6 +535,13 @@ internal sealed class DesktopMemoryService : IDisposable
                     changes.Add(new(MemoryCaptureKind.Forget, target.Content, target.VoiceId));
                     break;
             }
+        }
+        if (full > 0)
+        {
+            ErrorLog.Info($"Memory is full ({MemoryLimits.MaximumFacts:N0} facts), so {full} new fact(s) weren't saved. " +
+                "Delete some in Companion › Memory.");
+            // Nothing else changed: the talk window says memory is full.
+            if (changes.Count == 0) throw new MemoryException(MemoryFailure.LimitExceeded);
         }
         return changes;
     }
