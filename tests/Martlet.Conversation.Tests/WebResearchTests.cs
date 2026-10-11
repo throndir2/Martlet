@@ -78,13 +78,13 @@ public sealed class WebResearchTests
     }
 
     [Fact]
-    public void WebResearchIsOffByDefaultAndNeedsThinkingLonger()
+    public void WebResearchIsOnByDefaultAndNeedsThinkingLonger()
     {
-        Assert.False(new ThinkLongerSettings().Researches);
-        Assert.True(new ThinkLongerSettings { WebResearch = true }.Researches);
-        Assert.False(new ThinkLongerSettings { WebResearch = true, Enabled = false }.Researches);
-        Assert.Null(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = false }));
-        Assert.True(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = true })!.WebResearch);
+        Assert.True(new ThinkLongerSettings().Researches);
+        Assert.False(new ThinkLongerSettings { WebResearch = false }.Researches);
+        Assert.False(new ThinkLongerSettings { Enabled = false }.Researches);
+        Assert.Null(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = true }));
+        Assert.False(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = false })!.WebResearch);
     }
 
     [Fact]

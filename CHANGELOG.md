@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- **App guides** now read the whole wiki they find instead of stopping at 60 pages. The guide grows as Martlet reads, so you can ask about the game while it is still reading, and **Stop reading** on Companion › App guides ends a read and keeps what Martlet read. ([#785](https://github.com/throndir2/Martlet/pull/785))
+- Web research is now on by default, so asking Martlet to look something up just works. Earlier notes said it was on by default since 0.55.0, but it stayed off by mistake. If you turn it off in Companion › Thinking pool › **Web research**, it stays off. ([#784](https://github.com/throndir2/Martlet/pull/784))
+
 ### Fixed
 
 - On Companion › App guides, typing a game's name in **Add an app** works again while Martlet reads up on a game or refreshes the page. The cursor no longer gets stuck after the first letter. ([#PRNUMBER](https://github.com/throndir2/Martlet/pull/PRNUMBER))

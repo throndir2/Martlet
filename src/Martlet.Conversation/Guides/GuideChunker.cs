@@ -36,11 +36,25 @@ public static class GuideChunker
     }
 
     /// <summary>A guide made from what reading up found: every page's chunks, its sources and the sites read.</summary>
-    public static AppGuide Guide(string key, string name, GuideBuildOutcome outcome, DateTimeOffset builtAt)
+    public static AppGuide Guide(string key, string name, GuideBuildOutcome outcome, DateTimeOffset builtAt) =>
+        Guide(key, name, outcome, builtAt, int.MaxValue, int.MaxValue);
+
+    /// <summary>A guide made from the pages read first, as many as fit in <paramref name="maximumPages"/> pages and
+    /// <paramref name="maximumChunks"/> chunks (the guide store's bounds); the pages read last are left out.</summary>
+    public static AppGuide Guide(string key, string name, GuideBuildOutcome outcome, DateTimeOffset builtAt, int maximumPages, int maximumChunks)
     {
         ArgumentNullException.ThrowIfNull(outcome);
-        return new(key, name, outcome.Sites, builtAt, outcome.Pages.Select(p => new GuideSource(p.Url, p.Title, p.Bytes)).ToArray(),
-            outcome.Pages.SelectMany(p => Chunk(p)).ToArray());
+        var sources = new List<GuideSource>();
+        var chunks = new List<GuideChunk>();
+        foreach (var page in outcome.Pages)
+        {
+            if (sources.Count >= maximumPages) break;
+            var pieces = Chunk(page);
+            if (chunks.Count + pieces.Count > maximumChunks) break;
+            sources.Add(new GuideSource(page.Url, page.Title, page.Bytes));
+            chunks.AddRange(pieces);
+        }
+        return new(key, name, outcome.Sites, builtAt, sources, chunks);
     }
 
     private sealed class Builder(GuidePage page, int maximum)

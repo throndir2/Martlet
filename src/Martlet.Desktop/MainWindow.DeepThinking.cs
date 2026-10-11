@@ -1011,14 +1011,14 @@ public partial class MainWindow
 
     // ---------- Web research (saved with the reply settings) ----------
 
-    /// <summary>Whether Martlet may look things up on the web when asked (off by default: the search words go to DuckDuckGo and
-    /// the pages' sites see this PC's internet address). It saves at once, with the reply settings, so your computers share it;
-    /// Deep thinking off turns it off too.</summary>
+    /// <summary>Whether Martlet may look things up on the web when asked (on by default; the card says what leaves this PC: the
+    /// search words go to DuckDuckGo and the pages' sites see this PC's internet address). It saves at once, with the reply
+    /// settings, so your computers share it; Deep thinking off turns it off too.</summary>
     private Border WebResearchCard(ThinkLongerSettings settings, SetupRoute? route, DeepThinkingPlan plan)
     {
         var allow = new CheckBox
         {
-            IsChecked = settings.WebResearch == true, IsEnabled = settings.On, Margin = new Thickness(0, 8, 0, 6),
+            IsChecked = settings.WebResearchOn, IsEnabled = settings.On, Margin = new Thickness(0, 8, 0, 6),
             Content = new TextBlock { Text = "Let Martlet search the web and read pages when I ask it to look something up", TextWrapping = TextWrapping.Wrap }
         };
         AutomationProperties.SetAutomationId(allow, "WebResearchOn");
@@ -1046,7 +1046,7 @@ public partial class MainWindow
     private (string Text, bool Problem) WebResearchStatus(ThinkLongerSettings settings, SetupRoute? route, DeepThinkingPlan plan)
     {
         if (!settings.On) return ("Off, because thinking longer is off. Turn it on under Thinking longer above to use web research.", false);
-        if (settings.WebResearch != true) return ("Off. Martlet never searches the web or reads web pages.", false);
+        if (!settings.WebResearchOn) return ("Off. Martlet never searches the web or reads web pages.", false);
         var (thinking, problem) = ThinkLongerStatus(settings, route, plan);
         if (problem)
         {

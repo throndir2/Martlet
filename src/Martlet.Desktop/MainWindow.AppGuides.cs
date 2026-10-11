@@ -150,11 +150,21 @@ public partial class MainWindow
         var row = new DockPanel { Margin = new Thickness(0, 6, 0, 6), LastChildFill = true };
         var reading = guides.Building?.Key == entry.Key;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
-        var read = PageButton(entry.BuiltAt is null ? "Read up now" : "Read again", () => ReadUpFromPageAsync(entry).Forget(),
-            id: "AppGuideRead-" + entry.Key);
-        read.IsEnabled = on && guides.Building is null;
-        if (!on) read.ToolTip = "Turn App guides on first.";
-        buttons.Children.Add(read);
+        if (reading)
+        {
+            // A read has no time limit: Stop reading ends it and keeps what it read.
+            var stop = PageButton("Stop reading", () => StopAppGuideReading(entry), id: "AppGuideStop-" + entry.Key);
+            stop.ToolTip = "Stop reading up on it now and keep what Martlet read so far.";
+            buttons.Children.Add(stop);
+        }
+        else
+        {
+            var read = PageButton(entry.BuiltAt is null ? "Read up now" : "Read again", () => ReadUpFromPageAsync(entry).Forget(),
+                id: "AppGuideRead-" + entry.Key);
+            read.IsEnabled = on && guides.Building is null;
+            if (!on) read.ToolTip = "Turn App guides on first.";
+            buttons.Children.Add(read);
+        }
         if (entry.Declined)
         {
             var again = PageButton("Ask again", () => AppGuideAskAgainAsync(entry).Forget(), id: "AppGuideAskAgain-" + entry.Key);
@@ -360,6 +370,16 @@ public partial class MainWindow
             ? $"Read up on {built.Name}: {built.Pages} page{(built.Pages == 1 ? "" : "s")}, {built.Chunks} sections."
             : $"Couldn't read up on {built.Name}: {built.Problem}.";
         if (!closing && openTab == CompanionTab.AppGuides) RenderTab();
+    }
+
+    /// <summary>Stop reading: ends the read now; the read keeps what it read and says so when it ends.</summary>
+    private void StopAppGuideReading(AppGuideEntry entry)
+    {
+        if (appGuides is not { } guides) return;
+        var stopped = guides.StopReading();
+        ErrorLog.Info($"App guides: you stopped reading up ({(stopped ? "stopping" : "nothing was being read")}).");
+        appGuidesResult = stopped ? $"Stopping. Martlet keeps what it read about {entry.Name}." : "Martlet isn't reading up now.";
+        if (openTab == CompanionTab.AppGuides) RenderTab();
     }
 
     private async Task DeleteAppGuideAsync(AppGuideEntry entry)

@@ -308,6 +308,74 @@ public sealed class AppGuideServiceTests : IDisposable
         Assert.Contains("\nNotes about Skyrim:\n", GuideRecall.Notes("Skyrim", hits, prompts: edited));
     }
 
+    [Fact]
+    public async Task ALongReadIsKeptWhileReadingAndStopKeepsWhatWasRead()
+    {
+        var builder = new KeepingBuilder();
+        using var guides = Service(builder);
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        Assert.False(guides.StopReading());
+        var build = guides.BuildAsync("Skyrim", ["game.fandom.com/wiki/Iron_Ore"], null);
+
+        // Kept while still reading: the guide is on the list and searchable.
+        Assert.True(await builder.Kept.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.NotNull(guides.Building);
+        var entry = Assert.Single(guides.Library.Apps);
+        Assert.Equal((1, true), (entry.Pages, entry.BuiltAt is not null));
+        Assert.True(guides.IsReady("skyrim"));
+        Assert.NotEmpty(guides.Search("skyrim", "where is iron ore", 3)!);
+
+        // Stop reading: the read ends and keeps every page read up to then.
+        Assert.True(guides.StopReading());
+        var built = await build.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(built.Built);
+        Assert.Equal(2, built.Pages);
+        Assert.Equal(2, Assert.Single(guides.Library.Apps).Pages);
+        Assert.False(guides.StopReading());
+    }
+
+    [Fact]
+    public async Task AReadLargerThanTheStoreKeepsThePagesReadFirstAndEnds()
+    {
+        var pages = Enumerable.Range(0, FileAppGuideStore.MaximumSources + 1)
+            .Select(i => new GuidePage($"https://game.fandom.com/wiki/Item_{i}", $"Item {i}", $"Item {i} is found in cave number {i} of the valley.", 10))
+            .ToArray();
+        var builder = new KeepingBuilder { Pages = pages };
+        using var guides = Service(builder);
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        var build = guides.BuildAsync("Skyrim", [], null);
+        // The keep says the guide is full: reading ends.
+        Assert.False(await builder.Kept.Task.WaitAsync(TimeSpan.FromSeconds(60)));
+        var built = await build.WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.True(built.Built);
+        Assert.Equal(FileAppGuideStore.MaximumSources, built.Pages);
+        var guide = await new FileAppGuideStore(directory).LoadGuideAsync("skyrim", default);
+        Assert.Equal("https://game.fandom.com/wiki/Item_0", guide!.Sources[0].Url);
+        Assert.DoesNotContain(guide.Sources, s => s.Url.EndsWith($"Item_{FileAppGuideStore.MaximumSources}", StringComparison.Ordinal));
+    }
+
+    // Keeps its first pages through the request's Keep, then reads on until Stop (or ends at once when the guide is full).
+    private sealed class KeepingBuilder : IGuideBuilder
+    {
+        internal TaskCompletionSource<bool> Kept { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal GuidePage[]? Pages { get; init; }
+
+        public async Task<GuideBuildOutcome> BuildAsync(GuideBuildRequest request, IProgress<string>? progress, CancellationToken cancellationToken)
+        {
+            progress?.Report("Reading page 1");
+            GuidePage[] first = Pages ?? [new GuidePage("https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", Page, 400)];
+            var more = await request.Keep!(new(first, ["game.fandom.com"], 0, 400, null), cancellationToken);
+            Kept.SetResult(more);
+            if (!more) return new(first, ["game.fandom.com"], 0, 400, null);
+            try { await Task.Delay(Timeout.Infinite, request.Stop); }
+            catch (OperationCanceledException) when (request.Stop.IsCancellationRequested) { }
+            return new([.. first, new GuidePage("https://game.fandom.com/wiki/Gold", "Gold", Page.Replace("Iron Ore", "Gold", StringComparison.Ordinal), 400)],
+                ["game.fandom.com"], 0, 800, null);
+        }
+    }
+
     private sealed class FixtureBuilder : IGuideBuilder
     {
         internal TaskCompletionSource? Hold { get; init; }
@@ -315,7 +383,7 @@ public sealed class AppGuideServiceTests : IDisposable
 
         public async Task<GuideBuildOutcome> BuildAsync(GuideBuildRequest request, IProgress<string>? progress, CancellationToken cancellationToken)
         {
-            progress?.Report("Reading pages (1 of at most 60)");
+            progress?.Report("Reading page 1");
             if (Hold is not null) await Hold.Task.WaitAsync(cancellationToken);
             if (Problem is not null) return new([], [], 1, 0, Problem);
             return new([new GuidePage(request.Sites.FirstOrDefault() ?? "https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", Page, 400)],
