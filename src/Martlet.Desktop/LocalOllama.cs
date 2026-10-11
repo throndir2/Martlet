@@ -7,6 +7,7 @@ using System.Text.Json;
 using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 using Martlet.Logging;
+using Martlet.Providers.LocalModels;
 using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
@@ -217,7 +218,7 @@ internal static class LocalOllama
     /// <paramref name="firstWordsLimit"/> passes with a warning; anything that stops a reply throws
     /// <see cref="InvalidOperationException"/> with what went wrong, in Ollama's own words where it gave any.</summary>
     internal static async Task<LocalModelTestResult> TestAsync(string model, int? replyTokens, TimeSpan firstWordsLimit,
-        Action<string> status, IProgress<string> output, CancellationToken token, bool? reasoning = null)
+        Action<string> status, IProgress<string> output, CancellationToken token, bool? reasoning = null, string? dataDirectory = null)
     {
         using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan };
         status("Checking Ollama...");
@@ -246,6 +247,7 @@ internal static class LocalOllama
         var loaded = await LoadModelAsync(client, model, output, token);
         var placement = await PlacementAsync(client, model, token);
         if (placement is not null) output.Report(placement);
+        await RecordMemoryAsync(client, model, dataDirectory, output, token);
         status($"Asking {model} to say hello...");
         output.Report($"Asking {model} for a test reply...");
         var reply = await AskAsync(client, model, replyTokens, reasoning, output, token);
@@ -265,14 +267,28 @@ internal static class LocalOllama
     /// nothing is generated), downloading nothing: switching Thinking to it after this means the first reply doesn't wait for
     /// the load, and a model that can't run here shows up before Thinking switches. Starts Ollama when it is installed but not
     /// running. Loopback only. Throws <see cref="InvalidOperationException"/> with what went wrong.</summary>
-    internal static async Task<TimeSpan> LoadAsync(string model, Action<string> status, IProgress<string> output, CancellationToken token)
+    internal static async Task<TimeSpan> LoadAsync(string model, Action<string> status, IProgress<string> output, CancellationToken token,
+        string? dataDirectory = null)
     {
         using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan };
         await EnsureRunningAsync(client, status, output, token);
         status($"Loading {model} so the first reply doesn't wait for it...");
         var loaded = await LoadModelAsync(client, model, output, token);
         if (await PlacementAsync(client, model, token) is { } placement) output.Report(placement);
+        await RecordMemoryAsync(client, model, dataDirectory, output, token);
         return loaded;
+    }
+
+    /// <summary>Keeps what <paramref name="model"/> really takes now it is loaded (Ollama's <c>/api/ps</c>) in model-memory.json,
+    /// so a measured number replaces the estimate for this PC, and says it in the run window. Reads only.</summary>
+    private static async Task RecordMemoryAsync(HttpClient client, string model, string? dataDirectory, IProgress<string> output,
+        CancellationToken token)
+    {
+        if (dataDirectory is null || SimulatedOllamaCrashLoop.Active) return;
+        var (use, _) = await OllamaMeasuredMemory.RecordAsync(client, OriginUri, model, dataDirectory, token);
+        if (use is not null)
+            output.Report($"It takes {use.Bytes / 1e9:0.0} GB in all, {use.GraphicsBytes / 1e9:0.0} GB on the graphics card" +
+                (use.ContextTokens is { } tokens ? $", at {tokens:N0} tokens of context." : "."));
     }
 
     private static async Task<TimeSpan> LoadModelAsync(HttpClient client, string model, IProgress<string> output, CancellationToken token)

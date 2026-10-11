@@ -207,6 +207,7 @@ Everything finished so far shipped in 0.67.0. See [Unreleased](CHANGELOG.md#unre
 
 ### 🧰 Connected to your world
 - **Tools**: browse the MCP Registry and install tool servers with a click.
+- **Ask your AI assistant to set her up**: Martlet's own MCP server lets GitHub Copilot, Claude or VS Code make characters (even from a SillyTavern card) and change settings for you. Run `scripts\Register-MartletMcp.ps1` from a checkout ([how](docs/MCP.md#use-martlet-from-an-ai-assistant)).
 - A built-in **Terminal** (off until you turn it on) that asks before every command.
 - **Home Assistant** for lights, climate and more.
 - Chat with her on **Discord** (she can join voice calls and even show up on camera), **Telegram** and **WhatsApp**.

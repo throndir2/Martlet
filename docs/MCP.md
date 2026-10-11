@@ -2,10 +2,147 @@
 
 Martlet speaks the Model Context Protocol in both directions:
 
-- **As a client** (below): MCP servers on your PC give Martlet tools it can use while
-  you talk.
-- **As a server** ([Local MCP control](#local-mcp-control-windows)): `Martlet.Mcp`
-  lets an MCP client run Martlet's diagnostics and drive its desktop UI.
+- **As a client** ([Tools while you talk](#tools-while-you-talk-mcp-client)): MCP
+  servers on your PC give Martlet tools it can use while you talk.
+- **As a server** ([Use Martlet from an AI assistant](#use-martlet-from-an-ai-assistant)
+  and [Local MCP control](#local-mcp-control-windows)): `Martlet.Mcp` lets an AI
+  assistant (GitHub Copilot, Claude, VS Code or any MCP client) make and change
+  characters, change settings, drive the desktop window and run Martlet's
+  diagnostics.
+
+## Use Martlet from an AI assistant
+
+`Martlet.Mcp` is a local stdio MCP server (Windows). It runs only when an
+assistant starts it, never listens on a network port and works on the Martlet
+data folder of the current Windows user (`%LOCALAPPDATA%\Martlet`).
+
+### Connect an assistant
+
+1. Run `.\scripts\Register-MartletMcp.ps1` from a checkout. It builds the
+   server, copies it to `%LOCALAPPDATA%\Martlet.Mcp\server-<time>` (so a
+   running server never locks the checkout's build) and adds a `martlet` server
+   to GitHub Copilot CLI and app (`~\.copilot\mcp-config.json`), Claude Desktop
+   (`%APPDATA%\Claude\claude_desktop_config.json`) and VS Code
+   (`%APPDATA%\Code\User\mcp.json`), for each one installed. `-Client copilot`
+   chooses one, `-ReadOnly` leaves changes off, `-AllowUiEffects` adds
+   `--allow-ui-effects`, and `-Unregister` removes the entry. Each file is
+   backed up to `<file>.martlet-backup` first.
+2. Restart the assistant.
+3. Ask it, for example: "Make a Martlet character called Ava, a cheerful
+   astronomer who speaks briefly, with the built-in look." The assistant starts
+   with `martlet_guide`.
+
+To configure a client by hand, give it the full path of `Martlet.Mcp.exe`:
+
+```json
+{
+  "mcpServers": {
+    "martlet": { "command": "C:\\path\\to\\Martlet.Mcp.exe", "args": ["--allow-changes"] }
+  }
+}
+```
+
+### Flags
+
+| Flag | What it does |
+| --- | --- |
+| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save. Without it they refuse and say how to turn it on. |
+| `--allow-ui-effects` | Lets `ui_*` tools press buttons, type and toggle (see [Local MCP control](#local-mcp-control-windows)). Without it they only navigate and read. |
+| `--all-tools` | Lists every tool (about 180). Without it, `tools/list` has the 22 tools an assistant needs most (about 16 KB instead of about 230 KB, under the 128-tool limit of some clients); every tool still runs by name. |
+
+### What an assistant sees
+
+- **Instructions** at `initialize`: what Martlet is, where to start, the tool
+  groups and which flags are on. `serverInfo` has the title `Martlet` and the
+  Martlet version.
+- **The short list**: `martlet_guide`, `martlet_call`, the character and
+  settings tools, `doctor_status`, `doctor_list`, `doctor_run`, `logs_tail` and
+  the `ui_*` tools that drive the window. Each has a `title` and MCP behavior
+  hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
+- **`martlet_guide`** (start here): what Martlet is, the server's state
+  (version, flags, the data folder, whether the app runs now), the common tasks
+  step by step (`topic`: `overview`, `characters`, `settings`, `app`,
+  `diagnose`), every tool by area (`topic: tools`), a search over names and
+  descriptions (`search`) and one tool's full description and input schema
+  (`tool`).
+- **`martlet_call`**: runs any tool by name with its `arguments`, so the
+  diagnostic and self-test tools that are not listed stay reachable. It returns
+  that tool's result as is.
+
+### Characters
+
+A character is a personality (a persona: its name and the instructions that
+say who it is and how it talks) and its character profile (Companion ›
+Profiles), which adds a look (the built-in character or one of the shared
+character models) and a voice (one of the speaking voices). The tools change
+them with the same settings code that Personality and Profiles use. They
+return names and, when asked, the personality text, because they edit them.
+
+- `characters_list` (`includeText`): every personality with its profile, which
+  one Martlet is now, the looks and voices a profile can use, and the limits
+  (16 personalities, 32 profiles, 8,192 characters each and 16,384 together).
+- `character_create`: `name` and `personality`, or `cardPath` (an absolute path
+  to a SillyTavern, Chub or other Tavern character card: PNG, JSON or CHARX,
+  read like Personality's import; its keyword lorebook entries are kept in a
+  lorebook for the new personality). `look` (`builtin` or a look's name or ID)
+  and `voice` (a voice's name or ID) go on its profile. `profile: false` makes
+  only the personality. Martlet becomes the new character unless `use` is
+  false.
+- `character_update` (`character`: a name, ID or profile key): `name`,
+  `personality`, `look` and `voice` (`keep` keeps whatever Martlet uses now). A
+  character without a profile gets one when it gets a look or a voice.
+- `character_use`: Martlet talks with that personality from its next reply.
+- `character_delete`: removes the personality and its profiles, or only the
+  profile with `profileOnly`. Martlet keeps at least one personality.
+
+A profile's look and voice change on this PC when the profile is used in the
+app (they need the character window and the voice hosts). So
+`character_create`, `character_update` and `character_use` return `followUp`
+with the steps: Companion › Profiles › Use, or `ui_connect`, `ui_click`
+`NavCompanion`, `CompanionTab-Profiles` and `CharacterProfileUse-<key>` (with
+`--allow-ui-effects`). New looks (Live2D or VRM models) and new voices (from a
+recording) are added in the app: Companion › Character and Companion › Voice.
+
+### Settings
+
+- `settings_get` (`path`, for example `generation` or
+  `companion.personas[0].name`): settings.json or one part of it, its
+  `revision`, and without a path the parts with what each holds and whether it
+  can change here. Before the first save it shows the defaults (`first-run`).
+- `settings_schema` (`path`, `depth`): the JSON schema of that part (property
+  names, types and allowed values), generated from Martlet's settings types.
+- `settings_set` (`path`, `value`, optional `revision`): changes `companion`,
+  `generation` (Companion › Replies), `prompts` (Companion › Prompts; see
+  `prompts_status` through `martlet_call` for the prompt IDs) and `memory`.
+  `null` removes a value, which puts an optional value back to its default.
+  The change is checked by Martlet's own settings contract and saved by its
+  settings store (write lock, revision check, atomic write). A changed
+  personality or memory choice gets a fresh configuration revision, as the
+  pages give it. Serializer errors name the part that doesn't fit.
+- `setup` (where Martlet thinks, listens and speaks), `thinking_fallback`,
+  `audio`, `profile` and `schema_version` are refused: they hold destinations,
+  the owner's consent and credential references, so they change only in the
+  app, with the owner.
+
+With accounts, settings.json holds the settings of the person signed in on
+this PC, so changes go to that person.
+
+### A running Martlet follows the changes
+
+The desktop watches settings.json. About 0.6 seconds after it changes and Martlet
+is not busy with Setup, it reads it again (the desktop log says `settings.json
+changed; Martlet read it again.`), so Home, the open Companion page and an open
+conversation (before its next reply) use the change without a restart. A file
+it already read is not read again.
+
+### Limits
+
+- Windows only, for the current Windows user.
+- The copy that `Register-MartletMcp.ps1` makes runs every tool except the
+  developer self-tests that start `Martlet.NodeLinkCheck` or
+  `Martlet.Companion` from a checkout; run those with
+  `scripts\Invoke-MartletMcp.ps1`.
+- The installer does not include `Martlet.Mcp` yet; build it from a checkout.
 
 ## Tools while you talk (MCP client)
 
@@ -1024,11 +1161,13 @@ its first zones, then tap it.
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
 on a network port, start the desktop, or activate a provider, microphone or
 speaker on launch. Configure an MCP client to start the Windows executable
-built from `src\Martlet.Mcp` (for development:
-`src\Martlet.Mcp\bin\Release\net10.0-windows\Martlet.Mcp.exe`). The server
-speaks newline-delimited JSON-RPC 2.0 on standard input/output; stderr is for
-diagnostics. This developer companion is not included in the existing internal
-installer payload. Build locally with:
+built from `src\Martlet.Mcp` (`scripts\Register-MartletMcp.ps1` does it for
+assistants, see [Use Martlet from an AI assistant](#use-martlet-from-an-ai-assistant);
+for development: `src\Martlet.Mcp\bin\Release\net10.0-windows\Martlet.Mcp.exe`).
+The server speaks newline-delimited JSON-RPC 2.0 on standard input/output;
+stderr is for diagnostics. It takes the flags `--allow-changes`,
+`--allow-ui-effects` and `--all-tools` in any order. The installer does not
+include it yet. Build locally with:
 
 ```powershell
 dotnet build src\Martlet.Mcp\Martlet.Mcp.csproj -c Release
@@ -1052,7 +1191,8 @@ production Doctor implementation in-process. Status and selected probes are
 local read-only checks. They return Doctor's structured JSON report and exit
 code; nonzero exit codes describe incomplete, failed or invalid results, not a
 passed check. An optional absolute `dataDirectory` argument isolates settings
-reads; without it, Doctor uses the current user's Martlet directory. No
+reads; without it, Doctor uses the current user's Martlet directory. Apart from
+the character and settings tools, which save only with `--allow-changes`, no
 headless MCP tool creates a profile, opens a device, plays a tone, sends a
 request or handles credentials.
 
@@ -4039,6 +4179,60 @@ Image model and Audio model cards' `ImageModelTest` and `AudioModelTest` do the
 same for the model that takes pictures and for an audio model of its own
 ([Image and audio models](#image-and-audio-models)).
 
+`local_model_facts` says what an open-weight model needs to run locally
+([Resource footprints](RESOURCE_FOOTPRINTS.md#estimating-a-model-martlet-doesnt-list),
+[Model catalog](MODEL_CATALOG.md#memory-and-running-locally)), through the
+production `LocalModelFactsReader` and `LocalModelMemory`. `model` is a Hugging
+Face repository (`google/gemma-4-E2B-it`), `hf.co/{repo}:{quant}` or an Ollama
+tag (`gemma4:e2b`); or give `huggingFaceRepo` and `ollamaTag` together (the
+repository gives the shape and inputs, the tag its exact Ollama download).
+`quantization` picks one (default: the Ollama tag's, else Q4_K_M, else another
+4-bit one), `contextTokens` the context (default 8,192), and `card` (for
+example `"RTX 4070"`) or `bandwidthGbps` the memory bandwidth for the speed.
+
+- `facts`: `HuggingFaceRepo` (the model's own), `GgufRepo` (the GGUF repository
+  read: ggml-org, unsloth, lmstudio-community or bartowski first, else the most
+  downloaded), `OllamaTag`, `LocallyHostable`, `parametersBillions` (the maker's,
+  encoders included), `weightsParametersBillions` (in the weights file),
+  `activeParametersBillions` (less for a mixture-of-experts model), `License`,
+  `PipelineTag`, `MaxContext`, `Gated`, `inputs` (`Image`, `Audio`, `Video` and
+  their `Source`: `config.json`, or the Ollama registry's projector layer, which
+  says only that it sees), `architecture` (layers with a cache of their own:
+  `FullLayers`, `SlidingLayers`, `LinearLayers`, `SharedCacheLayers`; `KvHeads`,
+  `HeadSize`, `SlidingWindow`, `Experts`, `ActiveExperts`,
+  `fullAttentionKibPerToken`, `perLayerEmbeddingBillions`), `quantizations`
+  (each `Name`, `weightsGb`, `encoderGb`, `draftGb`, `InstallName` and
+  `Source`), `encoders` and `drafts` (the `mmproj` and `mtp` files),
+  `GgufRepos`, `Sources` (each address read) and `Problems` (what couldn't be
+  read, for example a gated `config.json` or no GGUF repository).
+- `estimate`: weights + encoder + draft + KV cache at the context + 0.5 GB
+  buffers: `totalGb`, `graphicsGb` and `systemMemoryGb` (Gemma's per-layer
+  embeddings, which Ollama keeps in system memory), `kvCacheGb` with
+  `KvCacheKnown` (false without a `config.json`: a tenth of the weights is
+  guessed), `gbReadPerToken` and `described`.
+- `speed`: `matched` card, `bandwidthGbps` and `maxTokensPerSecond`, an upper
+  bound (bandwidth divided by `gbReadPerToken`); real speed is often 50-70% of it.
+- `footprintCatalog`: Martlet's own entry for the Ollama tag (`vramGb`,
+  `evidence` Measured or Estimate). `measured`: what Ollama on this PC reported
+  once it loaded the model (`model-memory.json` in `dataDirectory`: `Host`,
+  `gb`, `graphicsGb`, `OnGraphicsCard`, `ContextTokens`, `measuredAt`).
+- `requests`: requests sent to Hugging Face and the Ollama registry. A lookup
+  sends at most five; each answer is kept for a day, and at most 100 go to each
+  source in five minutes (Hugging Face allows about 500). Martlet reads
+  `registry.ollama.ai`, never ollama.com, whose terms forbid automated access.
+
+`fixture: true` runs the same code on a FIXTURE transport shaped like Hugging
+Face and the Ollama registry (NOT the real services; the real sizes and config
+fields read on 2026-10-10). Without a `model` it checks the estimate against
+the measured Gemma 4 E2B, E4B and Qwen3.5 4B numbers (`calibration`, each
+`percentOff`, within 10%), Gemma 4's KV cache as Resource footprints works it
+out, the GGUF repository picked, the install name, E2B's audio and 26B A4B's
+none, 26B A4B's active parameters and the cache (`checks`), and `measured`: the
+production `OllamaMeasuredMemory` against a FIXTURE `/api/ps` (NOT Ollama) in a
+temporary folder of its own, deleted afterwards (`savedFirst` true,
+`savedAgain` false while nothing changed, `graphicsGb`, `ContextTokens`), with
+`ok`. Keyless; downloads no model; saves nothing.
+
 `local_model_servers` is Companion › Thinking › This PC › *A model app you
 already use* without the window ([Local model apps](LOCAL_MODEL_APPS.md)).
 `apps` lists the apps Martlet looks for, each with `Id`, `Name`, `BaseUrl`
@@ -6144,7 +6338,8 @@ lines. Loopback only; writes nothing. Windows running out of ports
 
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
-Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
+Call `ui_connect` with that process ID (without one it finds the Martlet desktop
+running in this Windows session, and says so when none or several run). `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
 It returns the first 200 controls; `idPrefix` keeps only those whose automation ID
@@ -8773,7 +8968,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
@@ -8783,6 +8978,10 @@ call fails or an `until` is not met.
 - `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).
+- `-AllowChanges` passes `--allow-changes`, so `character_*` and `settings_set`
+  save; without an explicit `dataDirectory` they, `characters_list` and
+  `settings_get` use the disposable data directory, and `martlet_call` passes it
+  to the tool it runs.
 - `-Build` builds `Martlet.Mcp` (and `Martlet.Desktop` with `-Desktop`) in
   `-Configuration` (default Release) with the `dotnet` that has the SDK pinned in
   `global.json` (found the same way as `scripts\Test-Martlet.ps1`, including the
@@ -8815,5 +9014,13 @@ observe them:
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
   Keep tools local, read-only by default and free of network, audio and
-  credential effects unless gated like `--allow-ui-effects`.
+  credential effects unless gated like `--allow-ui-effects` (or, for tools that
+  save the owner's settings, `--allow-changes`). Begin each description with one
+  sentence that says what the tool does: `martlet_guide` shows it as the tool's
+  summary and searches the description.
+- **Tools for assistants:** a tool that an assistant needs to use or configure
+  Martlet goes in `AssistantTools` and `Listed` in
+  `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
+  hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
+  the short list small: other tools run through `martlet_call`.
 - **Docs:** update this page with the new tools, IDs and status fields.

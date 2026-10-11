@@ -173,6 +173,7 @@ public partial class MainWindow
             clusterTimer.Stop();
             StopNodePresence();
             settingsTimer.Stop();
+            StopSettingsWatch();
             networkTimer.Stop();
             apiKeysTimer.Stop();
             voiceSyncTimer.Stop();
