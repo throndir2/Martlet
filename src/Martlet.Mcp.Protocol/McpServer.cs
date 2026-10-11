@@ -2390,7 +2390,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "deleting and editing one message asks of each app (48 hours on Telegram, never your DM messages on Discord, edited " +
             "replies cut to their pieces), editing and deleting single messages, the queue of changes for the apps (each app's " +
             "pace, a slow-down waited out, a refusal dropped, an unconnected app waiting, kept over a restart) with a fixture app " +
-            "(not Telegram or Discord), and reading " +
+            "(not Telegram or Discord), how recall ranks (other forms of words, near-identical exchanges once, follow-ups, the " +
+            "time named, exact phrases and speakers' names), and reading " +
             "bulkExchanges (1,000-100,000, default 20,000) exchanges with recall timings. Nothing leaves this PC.", new
         {
             bulkExchanges = new { type = "integer", minimum = 1_000, maximum = 100_000 }

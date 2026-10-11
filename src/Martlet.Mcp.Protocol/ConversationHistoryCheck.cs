@@ -201,6 +201,67 @@ internal static class ConversationHistoryCheck
         clock.Now = now;
     }
 
+    // ---------- ranking: other forms of words, near-identical exchanges, follow-ups, time, phrases and speakers ----------
+
+    private static async Task RankingAsync(string folder, Clock clock, DateTimeOffset now, TimeZoneInfo zone, Action<string, bool, object> Step,
+        CancellationToken cancellation)
+    {
+        var store = new ConversationHistory(folder, clock);
+        await store.LoadAsync(cancellation);
+        async Task<HistoryExchange> Say(DateTimeOffset at, Guid conversation, string user, string reply, string? speaker = null)
+        {
+            clock.Now = at;
+            return await store.AppendAsync(conversation, HistoryInputKind.Typed, user, reply, speaker, cancellation);
+        }
+        var trees = await Say(now.AddDays(-9), Guid.NewGuid(), "I planted three apple trees in the backyard.", "Lovely!");
+        var resets = new List<HistoryExchange>();
+        for (var i = 0; i < 4; i++)
+            resets.Add(await Say(now.AddDays(-20 + i), Guid.NewGuid(), "How do I reset my router?", "Hold the reset button on the back of the router for ten seconds."));
+        var light = await Say(now.AddDays(-6), Guid.NewGuid(), "The router light is blinking orange.", "Orange usually means it lost the internet connection.");
+        var bought = await Say(now.AddDays(-3), Guid.NewGuid(), "I bought a new router at the store.", "Nice upgrade!");
+        var oslo = Guid.NewGuid();
+        var trip = await Say(now.AddDays(-15), oslo, "I'm planning a trip to Oslo in June.", "June is a great time for Oslo.");
+        var eat = await Say(now.AddDays(-15).AddMinutes(2), oslo, "Where should I eat?", "Try the fish soup at the harbor market.");
+        var tacos = await Say(now.AddDays(-2), Guid.NewGuid(), "Where should I eat tonight?", "How about tacos?");
+        await Say(now.AddDays(-20), Guid.NewGuid(), "The plumber is coming on Monday.", "Good, the leak needs fixing.");
+        // Thursday 23:40 in the check's zone: the evening before "yesterday" (Friday) began.
+        var late = await Say(now.AddDays(-2).AddHours(8).AddMinutes(40), Guid.NewGuid(), "The plumber finally fixed the leak.", "What a relief!");
+        var bridge = await Say(now.AddDays(-8), Guid.NewGuid(), "We walked across the Golden Gate bridge.", "What a view!");
+        await Say(now.AddDays(-3), Guid.NewGuid(), "The golden retriever jumped over the garden gate.", "Good dog!");
+        var mia = await Say(now.AddDays(-6), Guid.NewGuid(), "I want a red bike for my birthday.", "Red is fast!", "Mia");
+        await Say(now.AddDays(-5), Guid.NewGuid(), "I want a blue bike for my birthday.", "Blue is cool!", "Leo");
+        var gift = Guid.NewGuid();
+        var asked = await Say(now.AddDays(-10), gift, "What should I get Dad for Father's Day?", "A grill brush or a new apron.");
+        var chose = await Say(now.AddDays(-10).AddMinutes(2), gift, "He'd love the apron.", "Great, get the one with pockets.");
+        clock.Now = now;
+
+        var formed = PastConversations.Recall(store, "Do you remember the apple tree I was planting?", now, zone, null);
+        var (byPlural, _) = PastConversations.Parse("{\"query\":\"trees\"}", now, zone);
+        Step("other forms of a word find what was said (\"apple tree I was planting\" finds \"planted three apple trees\")",
+            formed.Count == 1 && formed[0].Id == trees.Id && PastConversations.Find(store, byPlural!, null).Select(e => e.Id).SequenceEqual([trees.Id]),
+            new { recalled = formed.Count });
+        const string Router = "Do you remember what we said about my router?";
+        var router = PastConversations.Recall(store, Router, now, zone, null);
+        var afterNotes = PastConversations.Recall(store, Router, now, zone, null, skip: exchange => exchange.Id == resets[^1].Id);
+        Step("near-identical exchanges come back once, and one already in the notes keeps its twins out",
+            router.Count == 3 && router.Count(resets.Contains) == 1 && router.Contains(light) && router.Contains(bought) &&
+            !afterNotes.Any(resets.Contains),
+            new { recalled = router.Count, nearIdentical = router.Count(resets.Contains), afterNotes = afterNotes.Count });
+        var followUp = PastConversations.Recall(store, "Do you remember where you said I should eat in Oslo?", now, zone, null, limit: 2);
+        Step("a follow-up belongs to the conversation it follows (\"Where should I eat?\" in the Oslo trip, not the one about tacos)",
+            followUp.Select(e => e.Id).SequenceEqual([trip.Id, eat.Id]) && !followUp.Contains(tacos), new { recalled = followUp.Count });
+        var yesterday = PastConversations.Recall(store, "What did I say about the plumber yesterday?", now, zone, null);
+        Step("the time named counts, and late the evening before it still does (\"yesterday\" finds Thursday 23:40, not 20 days ago)",
+            yesterday.Count == 1 && yesterday[0].Id == late.Id, new { recalled = yesterday.Count });
+        var phrase = PastConversations.Recall(store, "Do you remember our Golden Gate walk?", now, zone, null, limit: 1);
+        var speaker = PastConversations.Recall(store, "Do you remember which bike Mia asked for?", now, zone, null, limit: 1);
+        Step("an exact phrase and the speaker's name rank first (\"Golden Gate\", Mia's bike over Leo's)",
+            phrase.SingleOrDefault()?.Id == bridge.Id && speaker.SingleOrDefault()?.Id == mia.Id, new { phrase = phrase.Count, speaker = speaker.Count });
+        var answer = PastConversations.Recall(store, "Do you remember what I was getting Dad?", now, zone, null);
+        Step("the exchange that follows a match comes with it when there is room (the apron Dad gets)",
+            answer.Select(e => e.Id).SequenceEqual([asked.Id, chose.Id]), new { recalled = answer.Count });
+    }
+
     // ---------- conversation_history_check ----------
 
     private sealed class Clock(DateTimeOffset now) : TimeProvider
@@ -321,6 +382,7 @@ internal static class ConversationHistoryCheck
                 new { files = ConversationHistory.MonthFiles(folder).Count });
 
             await AppsAsync(Path.Combine(root, "apps"), clock, now, zone, Step, cancellation);
+            await RankingAsync(Path.Combine(root, "ranking"), clock, now, zone, Step, cancellation);
 
             // A large record: reading it happens once in the background; recall answers from memory in well under a millisecond
             // or two, so a message that mentions an earlier conversation isn't slowed by searching.
