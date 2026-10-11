@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- **Think ahead**: right after each reply, Martlet's character thinks ahead while you haven't answered yet: how the conversation is going, what you'll probably say next and what it wants to say then, in its own personality. Its next reply uses those thoughts where they fit, and no reply waits for them. Turn it off or change it on Companion › Check-ins. ([#781](https://github.com/throndir2/Martlet/pull/781))
 - **Companion › Voice › Voices › Record your own voice...**: read four short lines out loud and Martlet makes a voice from your own. The lines cover nearly every sound of spoken English and are long enough for every voice engine. Each line stops recording by itself when you pause, and you can play it back or record it again. ([#779](https://github.com/throndir2/Martlet/pull/779))
 
 ## [0.69.1] - 2026-10-10
