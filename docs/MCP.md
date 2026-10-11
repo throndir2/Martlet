@@ -48,7 +48,7 @@ To configure a client by hand, give it the full path of `Martlet.Mcp.exe`:
 | --- | --- |
 | `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save. Without it they refuse and say how to turn it on. |
 | `--allow-ui-effects` | Lets `ui_*` tools press buttons, type and toggle (see [Local MCP control](#local-mcp-control-windows)). Without it they only navigate and read. |
-| `--all-tools` | Lists all 180 tools. Without it, `tools/list` has the 22 tools an assistant needs most (about 16 KB instead of about 230 KB, under the 128-tool limit of some clients); every tool still runs by name. |
+| `--all-tools` | Lists every tool (about 180). Without it, `tools/list` has the 22 tools an assistant needs most (about 16 KB instead of about 230 KB, under the 128-tool limit of some clients); every tool still runs by name. |
 
 ### What an assistant sees
 
