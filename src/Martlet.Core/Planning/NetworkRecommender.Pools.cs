@@ -93,12 +93,16 @@ public static partial class NetworkRecommender
         private void Extras()
         {
             var otherCompanions = Math.Max(request.CompanionPcs, nodes.Count(n => n.Companion)) > 1;
+            var hostAnswers = nodes.Any(n => !n.Companion && n.Presence == Presence.Here);
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
                 foreach (var role in node.Pending.Where(r => Extra(r.Kind) && r.Leave is null).ToList())
                     if (KindComponent(role.Kind) is { } component && IsOff(component) && !(ComponentRanking.SetOnPage(component) && otherCompanions))
                         role.Leave = (SetupChangeBenefit.Improvement, ComponentRanking.SetOnPage(component)
                             ? $"{ComponentRanking.Name(component)} is off in {ComponentRanking.Page(component)}, and no other companion PC uses it."
                             : $"You turned {ComponentRanking.Name(component).ToLowerInvariant()} off.");
+                    // Rule 6: with a host that answers, a companion PC runs no models (Reading is this PC's choice on its page).
+                    else if (node.Companion && hostAnswers && role.Kind is SingingRole or PicturesRole)
+                        role.Leave = (SetupChangeBenefit.Improvement, $"A host answers, so {node.Name}, a companion PC, runs no models and stays light for games.");
                     else if (!Keep(node, role, Kept, out _))
                         role.Leave = (SetupChangeBenefit.Required,
                             $"{Label(role.Option, role.Kind)} is optional: {CardText(node, role.Card)} has no room left for it beside " +
@@ -131,11 +135,12 @@ public static partial class NetworkRecommender
                 Place(slot, DeepThinkingRole, ThinkingPoolPlace, SetupChangeBenefit.Improvement,
                     $"{Plain(slot.Option)} on {CardText(slot)}, a card {card}: more background thinking, and {node.Name} joins the Thinking pool by itself.");
             }
-            var hostsThink = nodes.Any(n => !n.Companion && n.Roles.Any(r => r.Kind == DeepThinkingRole && r.Purpose == ThinkingPoolPlace));
+            // Rule 6: with a host that answers, a companion PC runs no models, so its own Deep thinking goes.
+            var hostAnswers = nodes.Any(n => !n.Companion && n.Presence == Presence.Here);
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.Companion && !singlePc))
                 foreach (var role in node.Pending.Where(r => r.Kind == DeepThinkingRole && r.Leave is null).ToList())
                 {
-                    if (hostsThink) role.Leave ??= (SetupChangeBenefit.Improvement, $"Hosts think in the background now, so {node.Name}, a companion PC, stays light for games.");
+                    if (hostAnswers) role.Leave ??= (SetupChangeBenefit.Improvement, $"A host answers, so {node.Name}, a companion PC, runs no models and stays light for games.");
                     else KeepDeep(node, role);
                 }
         }

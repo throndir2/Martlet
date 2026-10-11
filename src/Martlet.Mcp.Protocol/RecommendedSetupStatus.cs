@@ -1,5 +1,6 @@
 using Martlet.Conversation;
 using System.IO;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
@@ -27,8 +28,10 @@ internal static class RecommendedSetupStatus
     internal const string HostModelsFixtureName = "hostmodels";
 
     /// <summary><paramref name="lookOnThisPc"/>: with a data directory whose Use models your apps already run is on, Martlet
-    /// asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.</summary>
-    internal static async Task<object> RunAsync(string? dataDirectory, string? fixture, CancellationToken cancellation, bool lookOnThisPc = false)
+    /// asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does. <paramref name="preferences"/>:
+    /// recommendation preferences to plan with instead of the saved ones (each field optional; nothing is saved).</summary>
+    internal static async Task<object> RunAsync(string? dataDirectory, string? fixture, CancellationToken cancellation, bool lookOnThisPc = false,
+        JsonElement? preferences = null)
     {
         SetupSources sources;
         string source;
@@ -68,15 +71,18 @@ internal static class RecommendedSetupStatus
             ArgumentNullException.ThrowIfNull(dataDirectory);
             sources = await FromDataDirectoryAsync(dataDirectory, cancellation);
             source = "data directory";
-            sources = sources with { PreferHostModels = RecommendedSetupMemory.Load(dataDirectory).PreferHostModels };
-            if (lookOnThisPc && RecommendedSetupMemory.Load(dataDirectory).UseServedModels)
+            sources = sources with { Preferences = RecommendationPreferences.Load(dataDirectory) };
+        }
+        var savedHere = fixture is null && RecommendationPreferences.Saved(dataDirectory);
+        var chosen = Override(sources.Preferences, preferences);
+        sources = RecommendedSetupInputs.WithPreferences(sources, chosen);
+        if (fixture is null && lookOnThisPc && chosen.UseServedModels)
+        {
+            sources = sources with
             {
-                sources = sources with
-                {
-                    ServedModels = RecommendedSetupInputs.Served(await Martlet.Providers.LocalModelServers.DetectAsync(cancellationToken: cancellation))
-                };
-                looked = true;
-            }
+                ServedModels = RecommendedSetupInputs.Served(await Martlet.Providers.LocalModelServers.DetectAsync(cancellationToken: cancellation))
+            };
+            looked = true;
         }
         var build = RecommendedSetupInputs.Request(sources);
         var recommendation = NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default);
@@ -98,9 +104,25 @@ internal static class RecommendedSetupStatus
                 downloads = build.Request.Machines.FirstOrDefault(m => m.Specs.Id == c.Id)?.Downloaded.Select(r => $"{r.Kind}={r.Model}") ?? []
             }),
             notes = build.Notes,
+            preferences = new
+            {
+                saved = savedHere,
+                overridden = preferences is not null,
+                quality = chosen.Quality.ToString(),
+                firstWordTargetMs = chosen.FirstWordTargetMs,
+                online = chosen.Online.ToString(),
+                hosting = build.Request.Preference.ToString(),
+                preferHearing = chosen.PreferHearing,
+                hostGpuShare = chosen.HostGpuShare,
+                useServedModels = chosen.UseServedModels,
+                preferHostModels = chosen.PreferHostModels,
+                games = build.Games.Select(g => new { device = g.Device, computer = g.Name, plays = g.Plays, answered = g.Answered }),
+                keepGpuForGames = build.Request.Machines.Where(m => m.Specs.KeepGpuForGames).Select(m => Name(m.Specs.Id)),
+                describe = chosen.Describe()
+            },
             servedModels = new
             {
-                use = memory.UseServedModels,
+                use = chosen.UseServedModels,
                 looked = looked || fixture == ServedFixtureName,
                 found = build.Request.ServedModels.Select(m => new
                 {
@@ -109,7 +131,7 @@ internal static class RecommendedSetupStatus
                 }),
                 note = fixture == ServedFixtureName ? "FIXTURE: these apps and models are made up."
                     : looked ? "Martlet asked the model apps on this PC (127.0.0.1 only)."
-                    : !memory.UseServedModels ? "Use models your apps already run is off in this data directory."
+                    : !chosen.UseServedModels ? "Use models your apps already run is off."
                     : "Not looked: a data directory contacts nothing. Pass lookOnThisPc to ask the model apps on this PC."
             },
             hostModels = new
@@ -169,6 +191,34 @@ internal static class RecommendedSetupStatus
         };
     }
 
+    // ---------- preferences ----------
+
+    /// <summary><paramref name="saved"/> with the fields <paramref name="overrides"/> gives: quality (balanced, quick, smarter),
+    /// online (backup, never, yes), preferHearing, hostGpuShare (90, 75, 50), useServedModels, preferHostModels and games
+    /// ([{ device, plays }]). Throws on a value Martlet doesn't know.</summary>
+    internal static RecommendationPreferences Override(RecommendationPreferences saved, JsonElement? overrides)
+    {
+        if (overrides is not { ValueKind: JsonValueKind.Object } given) return saved;
+        var next = saved;
+        if (given.TryGetProperty("quality", out var quality))
+            next = next with { Quality = Enum.TryParse<ReplyQuality>(quality.GetString(), ignoreCase: true, out var q) && Enum.IsDefined(q)
+                ? q : throw new ArgumentException("preferences.quality must be balanced, quick or smarter.") };
+        if (given.TryGetProperty("online", out var online))
+            next = next with { Online = Enum.TryParse<OnlineServices>(online.GetString(), ignoreCase: true, out var o) && Enum.IsDefined(o)
+                ? o : throw new ArgumentException("preferences.online must be backup, never or yes.") };
+        if (given.TryGetProperty("preferHearing", out var hearing)) next = next with { PreferHearing = hearing.GetBoolean() };
+        if (given.TryGetProperty("hostGpuShare", out var share))
+            next = next with { HostGpuShare = share.TryGetInt32(out var percent) && RecommendationPreferences.HostGpuShares.Contains(percent)
+                ? percent : throw new ArgumentException("preferences.hostGpuShare must be 90, 75 or 50.") };
+        if (given.TryGetProperty("useServedModels", out var served)) next = next with { UseServedModels = served.GetBoolean() };
+        if (given.TryGetProperty("preferHostModels", out var kept)) next = next with { PreferHostModels = kept.GetBoolean() };
+        if (given.TryGetProperty("games", out var games) && games.ValueKind == JsonValueKind.Array)
+            foreach (var answer in games.EnumerateArray().Take(64))
+                next = next.WithGames(answer.GetProperty("device").GetString() ?? throw new ArgumentException("preferences.games needs a device."),
+                    answer.GetProperty("plays").GetBoolean());
+        return next;
+    }
+
     // ---------- a data directory ----------
 
     private static async Task<SetupSources> FromDataDirectoryAsync(string directory, CancellationToken cancellation)
@@ -187,7 +237,8 @@ internal static class RecommendedSetupStatus
         {
             new(own ?? device, "This PC", NetworkMachineKind.Companion)
             {
-                Hardware = own is null ? null : hardware.FirstOrDefault(h => h.HostId == own), HasHostService = own is not null, ThisPc = true
+                Hardware = own is null ? null : hardware.FirstOrDefault(h => h.HostId == own), HasHostService = own is not null, ThisPc = true,
+                Device = device
             }
         };
         foreach (var host in hosts.Where(h => h.HostId != own))

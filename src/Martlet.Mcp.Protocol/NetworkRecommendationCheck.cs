@@ -182,6 +182,31 @@ internal static class NetworkRecommendationCheck
             keyed.Target.Job(ClusterJobs.Thinking)?.OptionId == "hosted:nvidia-build" && keyed.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1" &&
             keyed.Target.Job(ClusterJobs.LipSync)?.Off == true && WithinCapacity(keyed), Report(keyed));
 
+        // The owner's recommendation preferences (docs/RECOMMENDATION_DESIGN.md): online services only as a backup keeps live
+        // Thinking off the free hosted model even with its key saved; Yes lets it compete. Balanced takes the smartest model
+        // whose first word comes within 0.4 s and leaves room for the voice (Gemma 4 E4B on a 12 GB card); Quick replies the
+        // smallest close one (Gemma 4 E2B). A host card share of 50% plans with half of the host's card.
+        var lone = Network(Companion("desk-1", true, Nvidia(12, "RTX 4070"))) with { ConfiguredProviders = ["nvidia-build"] };
+        var balanced = NetworkRecommender.Recommend(lone.With(new RecommendationPreferences()));
+        var quick = NetworkRecommender.Recommend(lone.With(new RecommendationPreferences { Quality = ReplyQuality.Quick }));
+        var noCard = Network(Companion("desk-1", true)) with { ConfiguredProviders = ["nvidia-build"] };
+        var backupOnly = NetworkRecommender.Recommend(noCard.With(new RecommendationPreferences()));
+        var online = NetworkRecommender.Recommend(noCard.With(new RecommendationPreferences { Online = OnlineServices.Yes }));
+        var hostShare = NetworkRecommender.Recommend(Network(Companion("desk-1"), Host("gpu-box", Nvidia(24, "RTX 4090")))
+            .With(new RecommendationPreferences { HostGpuShare = 50 }));
+        Step("preferences", "Reply quality picks live Thinking's model within its first-word target beside the voice; online services only " +
+            "as a backup keeps live Thinking local; Yes lets the free hosted model compete; the host card share limits a host's card",
+            balanced.Target.Job(ClusterJobs.Thinking)?.OptionId == "gemma4:e4b" && balanced.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1" &&
+            quick.Target.Job(ClusterJobs.Thinking)?.OptionId == "gemma4:e2b" &&
+            backupOnly.Target.Job(ClusterJobs.Thinking)?.OptionId == "gemma4:e2b-cpu" &&
+            online.Target.Job(ClusterJobs.Thinking)?.OptionId == "hosted:nvidia-build" &&
+            hostShare.Target.Machine("gpu-box")?.Usage?.Gpus[0].Vram.Capacity == 12 && WithinCapacity(hostShare),
+            new
+            {
+                balanced = Report(balanced), quick = quick.Target.Job(ClusterJobs.Thinking), backupOnly = backupOnly.Target.Job(ClusterJobs.Thinking),
+                online = online.Target.Job(ClusterJobs.Thinking), hostCard = hostShare.Target.Machine("gpu-box")?.Usage?.Gpus[0].Vram
+            });
+
         // The priority list: every part in order, Off for the optional ones the owner turned off.
         var turnedOff = NetworkRecommender.Recommend(Stranded(12) with { Off = [PlanComponent.Singing, PlanComponent.DeepThinking, PlanComponent.LipSync] });
         var parts = turnedOff.Components;

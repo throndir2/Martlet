@@ -34,7 +34,6 @@ public partial class RecommendedSetupWindow : ThemedWindow
     private readonly Dictionary<string, PasswordBox> secretBoxes = new(StringComparer.Ordinal);
     private RecommendedSetupPreflightView? preflight;
     private bool applying;
-    private bool rendering;
 
     /// <summary>The owner chose Not now: the review's fingerprint.</summary>
     internal event Action<string>? Declined;
@@ -42,13 +41,8 @@ public partial class RecommendedSetupWindow : ThemedWindow
     /// <summary>The owner ticked or cleared an optional part's Off. The review closes; Martlet saves the choice and plans again.</summary>
     internal event Action<PlanComponent, bool>? PartOff;
 
-    /// <summary>The owner ticked or cleared Use models your apps already run. The review closes; Martlet saves the choice and
-    /// plans again.</summary>
-    internal event Action<bool>? ServedChanged;
-
-    /// <summary>The owner ticked or cleared Prefer models your hosts already have. The review closes; Martlet saves the choice
-    /// and plans again.</summary>
-    internal event Action<bool>? HostModelsChanged;
+    /// <summary>The owner changed Your preferences. The review closes; Martlet saves them and plans again.</summary>
+    internal event Action<RecommendationPreferences>? PreferencesChanged;
 
     /// <summary>Reconfigure started (it carries on in Background tasks), in words.</summary>
     internal string? Outcome { get; private set; }
@@ -72,16 +66,16 @@ public partial class RecommendedSetupWindow : ThemedWindow
         SummaryText.Text = review.Summary;
         OfflineText.Text = review.Offline ?? "";
         OfflineText.Visibility = review.Offline is null ? Visibility.Collapsed : Visibility.Visible;
-        rendering = true;
-        UseServedBox.IsChecked = review.UseServed;
-        PreferHostModelsBox.IsChecked = review.PreferHostModels;
-        rendering = false;
-        ServedText.Text = !review.UseServed ? "Off: Martlet plans only with its own models and your keys."
+        var servedNote = !review.UseServed ? "Off: Martlet plans only with its own models and your keys."
             : review.Served.Count == 0 ? "No model app on this PC serves a chat model now."
             : "Found: " + string.Join(", ", review.Served) + ".";
-        HostModelsText.Text = !review.PreferHostModels ? "Off: Martlet picks the best model for each host, even when it needs a download."
+        var hostModelsNote = !review.PreferHostModels ? "Off: Martlet picks the best model for each host, even when it needs a download."
             : review.HostModels.Count == 0 ? "Your hosts keep no chat models now."
             : "Found: " + string.Join(", ", review.HostModels) + ".";
+        PreferencesPanel.Children.Clear();
+        PreferencesPanel.Children.Add(RecommendationPreferencesControls.Build("RecommendedSetup",
+            review.Preferences with { UseServedModels = review.UseServed, PreferHostModels = review.PreferHostModels }, review.Games,
+            ChangePreferences, servedNote, hostModelsNote));
         RenderBanner();
         PartsSection.Visibility = review.Parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         PartsPanel.Children.Clear();
@@ -223,29 +217,12 @@ public partial class RecommendedSetupWindow : ThemedWindow
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void UseServed_Changed(object sender, RoutedEventArgs e)
+    /// <summary>A change in Your preferences: the review closes, and Martlet saves the preferences and opens it again planned
+    /// with them. Ignored while Reconfigure starts.</summary>
+    private void ChangePreferences(RecommendationPreferences preferences)
     {
-        var now = UseServedBox.IsChecked == true;
-        if (rendering || now == review.UseServed) return;
-        if (applying)
-        {
-            UseServedBox.IsChecked = review.UseServed;
-            return;
-        }
-        ServedChanged?.Invoke(now);
-        Close();
-    }
-
-    private void PreferHostModels_Changed(object sender, RoutedEventArgs e)
-    {
-        var now = PreferHostModelsBox.IsChecked == true;
-        if (rendering || now == review.PreferHostModels) return;
-        if (applying)
-        {
-            PreferHostModelsBox.IsChecked = review.PreferHostModels;
-            return;
-        }
-        HostModelsChanged?.Invoke(now);
+        if (applying) return;
+        PreferencesChanged?.Invoke(preferences);
         Close();
     }
 

@@ -109,6 +109,28 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// service already runs or keeps downloaded (<see cref="NetworkMachine.Roles"/>, <see cref="NetworkMachine.Downloaded"/>)
     /// before a model it must download, also when its first word comes later. Off by default.</summary>
     public bool PreferHostModels { get; init; }
+    /// <summary>Reply quality (<see cref="RecommendationPreferences.Quality"/>): a new live Thinking model is the smartest that
+    /// meets the first-word target (<see cref="LiveThinking.Order"/>), with room left for the voice. Null: the fastest model
+    /// that hears.</summary>
+    public ReplyQuality? Quality { get; init; }
+    /// <summary>Prefer models that hear you (<see cref="RecommendationPreferences.PreferHearing"/>).</summary>
+    public bool PreferHearing { get; init; } = true;
+    /// <summary>How much of each host PC's graphics card the planner may use (<see cref="RecommendationPreferences.HostGpuFraction"/>;
+    /// <see cref="PlacementEngine.GpuCapacityGb"/>).</summary>
+    public double HostGpuShare { get; init; } = PlacementEngine.DefaultGpuShare;
+
+    /// <summary>This request with the owner's <paramref name="preferences"/>: the hosting preference, reply quality, hearing, the
+    /// host card share and Prefer models your hosts already have. The games answers are on each machine
+    /// (<see cref="MachineSpecs.KeepGpuForGames"/>) and the served models in <see cref="ServedModels"/>.</summary>
+    public NetworkSetupRequest With(RecommendationPreferences preferences)
+    {
+        ArgumentNullException.ThrowIfNull(preferences);
+        return this with
+        {
+            Preference = preferences.Hosting, Quality = preferences.Quality, PreferHearing = preferences.PreferHearing,
+            HostGpuShare = preferences.HostGpuFraction, PreferHostModels = preferences.PreferHostModels
+        };
+    }
 }
 
 /// <summary>A chat model that a model app on a computer already serves: <paramref name="AppName"/> ("LM Studio") at

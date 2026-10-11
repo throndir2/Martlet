@@ -51,23 +51,16 @@
                 <TextBlock x:Name="OfflineText" TextWrapping="Wrap" Margin="0,-8,0,16" Visibility="Collapsed"
                            Foreground="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="RecommendedSetupOffline"/>
 
-                <!-- Use models your apps already run (RecommendedSetupMemory.UseServedModels): Martlet looks for the chat models
-                     the model apps on this PC serve and plans Thinking with the best one that fits. Changing it plans again. -->
-                <CheckBox x:Name="UseServedBox" Content="Use models your apps already run" Margin="0,0,0,4"
-                          AutomationProperties.AutomationId="RecommendedSetupUseServedModels"
-                          ToolTip="Martlet looks for the chat models that Ollama, LM Studio, llama.cpp, vLLM and other model apps on this PC run, and thinks with the best one that fits."
-                          Checked="UseServed_Changed" Unchecked="UseServed_Changed"/>
-                <TextBlock x:Name="ServedText" TextWrapping="Wrap" Margin="24,0,0,16" Foreground="{DynamicResource MutedBrush}"
-                           AutomationProperties.AutomationId="RecommendedSetupServedModels"/>
-
-                <!-- Prefer models your hosts already have (RecommendedSetupMemory.PreferHostModels): Thinking uses a better model
-                     a host service already runs or keeps downloaded, before one it must download. Changing it plans again. -->
-                <CheckBox x:Name="PreferHostModelsBox" Content="Prefer models your hosts already have" Margin="0,0,0,4"
-                          AutomationProperties.AutomationId="RecommendedSetupPreferHostModels"
-                          ToolTip="Thinking uses the best model your hosts already run or keep downloaded, so nothing downloads. Its first word may come later than with a smaller model."
-                          Checked="PreferHostModels_Changed" Unchecked="PreferHostModels_Changed"/>
-                <TextBlock x:Name="HostModelsText" TextWrapping="Wrap" Margin="24,0,0,16" Foreground="{DynamicResource MutedBrush}"
-                           AutomationProperties.AutomationId="RecommendedSetupHostModels"/>
+                <!-- Your preferences (RecommendationPreferences, shared by your computers; the games answers are one per companion
+                     PC): built in code by RecommendationPreferencesControls with the RecommendedSetup prefix
+                     (RecommendedSetupQuality, RecommendedSetupOnline, RecommendedSetupGames-n, RecommendedSetupHearing,
+                     RecommendedSetupHostShare, RecommendedSetupUseServedModels, RecommendedSetupPreferHostModels). A change saves
+                     the preferences and plans again at once. -->
+                <TextBlock Text="Your preferences" Style="{DynamicResource SectionHeading}"/>
+                <TextBlock x:Name="PreferencesText" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
+                           AutomationProperties.AutomationId="RecommendedSetupPreferences"
+                           Text="Martlet plans with these. A change plans again at once and is saved for all your computers (each computer keeps its own games answer)."/>
+                <StackPanel x:Name="PreferencesPanel" Margin="0,0,0,16" AutomationProperties.Name="Your preferences"/>
 
                 <!-- Every part of Martlet in priority order (ComponentRanking): where it runs, or Off. Optional parts that run as
                      host roles have an explicit Off choice; the review then plans again without them. Vision, Reading, Hearing

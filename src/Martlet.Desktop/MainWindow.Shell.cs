@@ -214,6 +214,7 @@ public partial class MainWindow
             RenderBackground();
             RenderAppearance();
             RenderOtherRoles();
+            RenderRecommendationPreferences();
         }
         if (ReferenceEquals(page, DiagnosticsPage)) EnterDiagnostics();
         else LeaveDiagnostics();

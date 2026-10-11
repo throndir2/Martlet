@@ -408,6 +408,42 @@ public static class PcActivity
     ];
 }
 
+/// <summary>Martlet's guess for "Do you play games or use heavy apps on this PC?" (docs/RECOMMENDATION_DESIGN.md): a game
+/// library with a game in it is on this PC. It looks, on each fixed drive, for the folders that Steam, Epic, GOG, Xbox, EA,
+/// Ubisoft, Riot, Rockstar and Amazon install games in. Only folder checks: quick, and never on the reply path.</summary>
+public static class GameLibraries
+{
+    // Relative to a drive's root.
+    private static readonly string[] Folders =
+    [
+        @"Program Files (x86)\Steam\steamapps\common", @"Program Files\Steam\steamapps\common", @"SteamLibrary\steamapps\common",
+        @"Steam\steamapps\common", @"Program Files\Epic Games", @"Epic Games", @"GOG Games", @"Program Files (x86)\GOG Galaxy\Games",
+        @"XboxGames", @"Program Files\EA Games", @"Program Files (x86)\Origin Games", @"Program Files (x86)\Ubisoft\Ubisoft Game Launcher\games",
+        @"Riot Games", @"Program Files\Rockstar Games", @"Amazon Games\Library"
+    ];
+
+    /// <summary>Whether a game library with a game in it is on this PC.</summary>
+    public static bool Found()
+    {
+        try
+        {
+            return FoundIn(DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady).Select(d => d.RootDirectory.FullName),
+                HasGames);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>Whether <paramref name="hasGames"/> says a game library folder under one of <paramref name="roots"/> holds a game.</summary>
+    public static bool FoundIn(IEnumerable<string> roots, Func<string, bool> hasGames) =>
+        roots.Any(root => Folders.Any(folder => hasGames(Path.Combine(root, folder))));
+
+    private static bool HasGames(string folder)
+    {
+        try { return Directory.Exists(folder) && Directory.EnumerateDirectories(folder).Any(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+}
+
 /// <summary>Follows what makes sound on this PC while Hear what this PC plays runs: about ten times a second it reads each app's
 /// sound level (the volume mixer's meters, never the sound itself), and every two seconds it looks at the apps that played lately
 /// and the window in front to tell what they are (<see cref="PcActivity.Classify"/>). <see cref="Now"/> is what the user seems
