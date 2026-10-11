@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- When you mention an earlier conversation, Martlet now finds what was said more reliably: other forms of your words count ("plants" finds "plant"), the time you name and who said it help, a follow-up stays with the conversation it belongs to, and the same thing said several times comes back once. ([#772](https://github.com/throndir2/Martlet/pull/772))
+
 ## [0.68.0] - 2026-10-10
 
 ### Added
