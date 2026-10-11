@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- **App guides** now read the whole wiki they find instead of stopping at 60 pages. The guide grows as Martlet reads, so you can ask about the game while it is still reading, and **Stop reading** on Companion › App guides ends a read and keeps what Martlet read. ([#785](https://github.com/throndir2/Martlet/pull/785))
+
 ## [0.70.0] - 2026-10-11
 
 ### Added
