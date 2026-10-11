@@ -148,11 +148,12 @@ internal sealed partial class LiveConversationController
     private string? GuideNotes(string words, IReadOnlyList<TextHistoryMessage> sent, PromptSettings? prompts, out int used)
     {
         used = 0;
-        if (Guides is not { On: true } guides) return null;
+        if (Guides is not { On: true } guides || !guides.Library.Apps.Any(a => a.BuiltAt is not null)) return null;
         var earlier = string.Join("\n", sent.Where(message => message.Role == TextHistoryRole.User &&
             message.Text.Contains(GuideRecall.Label, StringComparison.Ordinal)).Select(message => message.Text));
         if (guides.Recall(words, earlier.Length == 0 ? null : earlier, prompts) is not { } found) return null;
-        ErrorLog.Info(!found.Ready
+        // Off the reply's path: the line is written after the request has gone.
+        ErrorLog.InfoLater(!found.Ready
             ? "App guides: the app's guide is still loading, so your message went without it."
             : found.Notes is null
                 ? $"App guides: nothing in the guide matched well enough ({found.Matched} weak matches, best relevance {found.Best:0.00}, " +

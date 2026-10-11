@@ -334,6 +334,13 @@ public partial class MainWindow
         AppGuideBuild built;
         try { built = await Task.Run(() => guides.BuildAsync(entry.Name, entry.Sites, null, lifetime.Token)); }
         catch (OperationCanceledException) { return; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            ErrorLog.Warn("App guides: couldn't keep a guide read from the App guides page.", error);
+            appGuidesResult = $"Couldn't keep the guide about {entry.Name}. {error.Message}";
+            if (!closing && openTab == CompanionTab.AppGuides) RenderTab();
+            return;
+        }
         LiveConversationController.LogBuild("the App guides page", built);
         appGuidesResult = built.Built
             ? $"Read up on {built.Name}: {built.Pages} page{(built.Pages == 1 ? "" : "s")}, {built.Chunks} sections."

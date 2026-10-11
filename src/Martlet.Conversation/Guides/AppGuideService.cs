@@ -136,7 +136,7 @@ public sealed class AppGuideService : IDisposable
     {
         var clean = AppGuideTools.CleanName(name);
         if (clean.Length == 0) throw new ArgumentException("An app needs a name with a letter or digit.", nameof(name));
-        var key = AppGuideKeys.Of(clean);
+        var key = KeyOf(clean);
         var names = (programs ?? []).Select(AppGuideTools.CleanName).Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToArray();
         var starts = (sites ?? []).Select(AppGuideTools.Site).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(AppGuideTools.MaxSites).ToArray();
@@ -175,7 +175,7 @@ public sealed class AppGuideService : IDisposable
         await UpdateAsync(l =>
         {
             var old = Match(l, [clean]);
-            declined = (old ?? new AppGuideEntry { Key = AppGuideKeys.Of(clean), Name = clean }) with { Declined = true };
+            declined = (old ?? WithOffered(new AppGuideEntry { Key = KeyOf(clean), Name = clean })) with { Declined = true };
             return l with { Apps = [.. l.Apps.Where(a => a.Key != declined.Key), declined] };
         }, cancellationToken).ConfigureAwait(false);
         return declined!;
@@ -225,6 +225,34 @@ public sealed class AppGuideService : IDisposable
         return slug.ToString().Trim('-');
     }
 
+    /// <summary>The key of an app named <paramref name="name"/>: <see cref="AppGuideKeys.Of"/>, plus a short hash of its words
+    /// when the name has letters or digits outside ASCII ("原神", "Ведьмак 3"), so such apps don't share a key.</summary>
+    public static string KeyOf(string name)
+    {
+        var key = AppGuideKeys.Of(name);
+        if ((name ?? "").All(c => !char.IsLetterOrDigit(c) || char.IsAscii(c))) return key;
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Slug(name!))))[..8]
+            .ToLowerInvariant();
+        return key[..Math.Min(key.Length, AppGuideKeys.MaximumLength - 9)].TrimEnd('-') + "-" + hash;
+    }
+
+    // A new entry for the app Martlet offered while it is in front and matches no entry: the user's answer names it in their own
+    // words ("Elden Ring" for the program eldenring), so the program's names join the entry and it is recognized from then on.
+    private AppGuideEntry WithOffered(AppGuideEntry entry)
+    {
+        lock (gate)
+        {
+            if (front is not { Entry: null } seen || !offered.ContainsKey(FrontKey(seen))) return entry;
+            return entry with
+            {
+                Programs = [.. entry.Programs.Concat([seen.Program, seen.File]).Select(AppGuideTools.CleanName).Where(p => p.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Take(8)]
+            };
+        }
+    }
+
+    private static string FrontKey(AppGuideFront seen) => KeyOf(AppGuideTools.CleanName(seen.Program.Length > 0 ? seen.Program : seen.File));
+
     // ---------- the app in front and the offer ----------
 
     /// <summary>What the desktop saw in front (its program's name and file, whether it is a game and fills its screen; null when
@@ -270,7 +298,7 @@ public sealed class AppGuideService : IDisposable
             var clean = AppGuideTools.CleanName(name);
             if (clean.Length == 0) return null;
             var entry = seen.Entry ?? Match(library, [clean]);
-            var key = entry?.Key ?? AppGuideKeys.Of(clean);
+            var key = entry?.Key ?? KeyOf(clean);
             if (entry is { } known && (known.BuiltAt is not null || known.Declined)) return null;
             if (building?.Key == key) return null;
             if (offered.TryGetValue(key, out var asked) && (asked.Dropped?.Invoke() != true || asked.Times >= MaximumOffers)) return null;
@@ -295,15 +323,20 @@ public sealed class AppGuideService : IDisposable
     {
         var clean = AppGuideTools.CleanName(name);
         var started = clock.GetTimestamp();
-        if (clean.Length == 0) return new(AppGuideKeys.Of(name ?? ""), name ?? "", 0, 0, 0, [], 0, 0, TimeSpan.Zero, "it has no name");
+        if (clean.Length == 0) return new(KeyOf(name ?? ""), name ?? "", 0, 0, 0, [], 0, 0, TimeSpan.Zero, "it has no name");
         var known = Match(Library, [clean]);
-        var key = known?.Key ?? AppGuideKeys.Of(clean);
+        var key = known?.Key ?? KeyOf(clean);
         var shown = known?.Name ?? clean;
         if (!await reading.WaitAsync(0, cancellationToken).ConfigureAwait(false))
             return new(key, shown, 0, 0, 0, [], 0, 0, TimeSpan.Zero, $"Martlet is already reading up on {Building?.Name ?? "another app"}", Busy: true);
         try
         {
-            lock (gate) building = (key, shown, "Starting");
+            // The page draws its buttons again when reading up starts and ends (Revision).
+            lock (gate)
+            {
+                building = (key, shown, "Starting");
+                revision++;
+            }
             Changed?.Invoke();
             var given = (sites ?? []).Select(AppGuideTools.Site).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(AppGuideTools.MaxSites).ToArray();
@@ -311,7 +344,7 @@ public sealed class AppGuideService : IDisposable
             var entry = (await UpdateAsync(l =>
             {
                 var old = l.Apps.FirstOrDefault(a => a.Key == key);
-                var next = (old ?? new AppGuideEntry { Key = key, Name = shown }) with
+                var next = (old ?? WithOffered(new AppGuideEntry { Key = key, Name = shown })) with
                 {
                     Sites = given.Length > 0 ? given : old?.Sites ?? [], Declined = false
                 };
@@ -359,7 +392,11 @@ public sealed class AppGuideService : IDisposable
         }
         finally
         {
-            lock (gate) building = null;
+            lock (gate)
+            {
+                building = null;
+                revision++;
+            }
             reading.Release();
             Changed?.Invoke();
         }

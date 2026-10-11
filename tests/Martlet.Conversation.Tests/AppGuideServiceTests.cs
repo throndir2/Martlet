@@ -159,6 +159,69 @@ public sealed class AppGuideServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task TheAnswerToAnOfferLinksTheProgramInFrontToTheAppTheUserNamed()
+    {
+        using var guides = Service();
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        // Windows names the program "eldenring"; the user (and the model) say "Elden Ring".
+        guides.See("eldenring", "eldenring", game: true, fullScreen: true);
+        var offer = guides.Offer()!;
+        guides.Offered(offer.Key, () => false);
+        Assert.True((await guides.BuildAsync("Elden Ring", [], null)).Built);
+        var entry = guides.Library.Apps.Single(a => a.Key == "elden-ring");
+        Assert.Contains("eldenring", entry.Programs);
+        Assert.Equal("elden-ring", guides.Front?.Entry?.Key);
+        Assert.NotNull(guides.Recall("where can I mine iron ore?")!.Notes);
+
+        // A no to another game named in the user's words is kept for the program in front, also after a new start.
+        guides.See("CrystalCaverns", "CrystalCaverns", game: true, fullScreen: true);
+        guides.Offered(guides.Offer()!.Key, () => false);
+        await guides.DeclineAsync("Crystal Caverns");
+        using var again = Service();
+        await again.LoadAsync();
+        again.See("CrystalCaverns", "CrystalCaverns", game: true, fullScreen: true);
+        Assert.True(again.Front?.Entry?.Declined);
+        Assert.Null(again.Offer());
+        // Reading up on a name while nothing was offered links nothing.
+        again.See("Notepad", "notepad", game: false, fullScreen: false);
+        Assert.True((await again.BuildAsync("Skyrim", [], null)).Built);
+        Assert.Empty(again.Library.Apps.Single(a => a.Key == "skyrim").Programs);
+    }
+
+    [Fact]
+    public void NamesOutsideAsciiGetKeysOfTheirOwn()
+    {
+        Assert.Equal("elden-ring", AppGuideService.KeyOf("Elden Ring"));
+        var genshin = AppGuideService.KeyOf("原神");
+        var witcher = AppGuideService.KeyOf("Ведьмак 3");
+        Assert.StartsWith("app-", genshin);
+        Assert.StartsWith("3-", witcher);
+        Assert.NotEqual(genshin, AppGuideService.KeyOf("崩坏"));
+        Assert.All(new[] { genshin, witcher, AppGuideService.KeyOf(new string('é', 80)) }, key =>
+        {
+            Assert.Equal(key, AppGuideKeys.Of(key));
+            Assert.True(key.Length <= AppGuideKeys.MaximumLength);
+        });
+    }
+
+    [Fact]
+    public async Task ThePageDrawsAgainWhenReadingUpStartsAndEnds()
+    {
+        var slow = new FixtureBuilder { Hold = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        using var guides = Service(slow);
+        await guides.LoadAsync();
+        var before = guides.Revision;
+        var reading = guides.BuildAsync("Skyrim", [], null);
+        Assert.True(guides.Revision > before);
+        var during = guides.Revision;
+        slow.Hold.SetResult();
+        await reading;
+        Assert.True(guides.Revision > during);
+        Assert.Null(guides.Building);
+    }
+
+    [Fact]
     public void TheToolsReadTheirArgumentsAndWordTheirAnswers()
     {
         Assert.Equal(["read_up_on", "search_guide", "skip_guide"], AppGuideTools.Definitions.Select(d => d.Name));
