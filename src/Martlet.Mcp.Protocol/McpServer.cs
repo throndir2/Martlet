@@ -2372,9 +2372,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "session, a no kept across starts, Allow again, a game with a guide, a listed app, Read up when I start off) and its " +
             "notice; a game in front named as Windows names an Unreal game's program read up on with no model (on the list with its " +
             "guide and program names, its guide in the notes while in front, readable names); a read with the default caps (no " +
-            "page, download or time cap, so the whole fixture wiki), keeping what was read while reading and Stop reading; and the " +
-            "tools (read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one at a time and 4 " +
-            "an hour). Reports counts, relevance and search time, also on a whole-wiki-size guide. Temporary folder, deleted " +
+            "page, download or time cap, so the whole fixture wiki), keeping what was read while reading and Stop reading; only the " +
+            "indexes that can be used now kept in memory (none at start, the app in front's, the 2 used last, none after the idle " +
+            "time); and the tools (read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one " +
+            "at a time and 4 an hour). Reports counts, relevance and search time, also on a whole-wiki-size guide. Temporary folder, deleted " +
             "afterwards; reads no credentials.", new { }),
         Tool("app_guides_status", "Companion > App guides from a data directory (guides\\library.json): whether the library is saved " +
             "(else the defaults: both on), whether App guides are on and " +

@@ -47,11 +47,12 @@ internal static class AppGuidesCheck
             var searched = await guides.BuildAsync(Other, [], null, cancellation);
             var file = Path.Combine(directory, AppGuideKeys.Of(Game) + FileAppGuideStore.GuideSuffix);
 
-            // Martlet starts again: the library and the indexes come back from the folder.
+            // Martlet starts again: the library comes back from the folder; an index is built only when it can be used.
             using var again = new AppGuideService(new FileAppGuideStore(directory), new WebGuideBuilder(guard, guard), limits: limits);
             await again.LoadAsync(cancellation);
+            var indexesAtStart = again.ReadyIndexes;
             var ready = await again.ReadyAsync(AppGuideKeys.Of(Game), cancellation);
-            var restarted = new { loaded = again.Library.Apps.Count, on = again.Library.On, indexReady = ready, readyIndexes = again.ReadyIndexes };
+            var restarted = new { loaded = again.Library.Apps.Count, on = again.Library.On, indexReady = ready, indexesAtStart, readyIndexes = again.ReadyIndexes };
 
             // Notes on the user's message: the game in front (named as Windows names its program), an unrelated message, the game
             // named while another app is in front, and a repeat the conversation already carries.
@@ -98,13 +99,14 @@ internal static class AppGuidesCheck
             var offer = await OfferAsync(directory, guard, limits, cancellation);
             var onItsOwn = await OnItsOwnAsync(Path.Combine(directory, "on-its-own"), guard, limits, cancellation);
             var reading = await ReadingAsync(directory, guard, fixture.BaseUrl, cancellation);
+            var loading = await IndexesAsync(directory, cancellation);
             var tools = await ToolsAsync(again, fixture, cancellation);
             var latency = await LatencyAsync(directory, cancellation);
 
             var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
                 fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && defaults.On && defaults.ReadUpWhenStarted &&
-                migration.Ok && restarted is { loaded: >= 2, on: true, indexReady: true };
-            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && tools.Ok && latency.Ok;
+                migration.Ok && restarted is { loaded: >= 2, on: true, indexReady: true, indexesAtStart: 0 };
+            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok;
             return new
             {
                 ok,
@@ -125,6 +127,7 @@ internal static class AppGuidesCheck
                 offer = offer.Report,
                 onItsOwn = onItsOwn.Report,
                 reading = reading.Report,
+                indexes = loading.Report,
                 tools = tools.Report,
                 latency = latency.Report
             };
@@ -240,6 +243,57 @@ internal static class AppGuidesCheck
     private sealed class Words(Action<string> report) : IProgress<string>
     {
         public void Report(string value) => report(value);
+    }
+
+    // Only the indexes that can be used now stay in memory (docs/APP_GUIDES.md, "On the desktop"): none at start, the app in
+    // front's always, the most recently used others up to the limit, none of them after the idle time, and none once App guides
+    // stop watching. A clock moved forward stands in for the idle time.
+    private static async Task<(bool Ok, object Report)> IndexesAsync(string directory, CancellationToken cancellation)
+    {
+        var folder = Path.Combine(directory, "indexes");
+        var store = new FileAppGuideStore(folder);
+        string[] apps = ["Alpha Quest", "Beta Farm", "Gamma Dive"];
+        foreach (var app in apps)
+        {
+            var key = AppGuideKeys.Of(app);
+            await store.SaveGuideAsync(new AppGuide(key, app, ["fixture.example"], DateTimeOffset.UtcNow,
+                [new GuideSource($"https://fixture.example/{key}", app, 1)],
+                [new GuideChunk($"https://fixture.example/{key}", app, "", $"{app} is a made-up game for app_guides_check; its iron ore is in the caves.")]),
+                cancellation);
+        }
+        var clock = new MovedClock();
+        using var guides = new AppGuideService(store, new NoBuilder(), clock: clock);
+        await guides.LoadAsync(cancellation);
+        var counts = new List<int> { guides.ReadyIndexes };
+        guides.See(apps[0], "alphaquest", game: true, fullScreen: true);
+        foreach (var app in apps) await guides.ReadyAsync(AppGuideKeys.Of(app), cancellation);
+        counts.Add(guides.ReadyIndexes);
+        guides.See("Notepad", "notepad", game: false, fullScreen: false);
+        counts.Add(guides.ReadyIndexes);
+        var keptAfterLeaving = apps.Where(a => guides.IsReady(AppGuideKeys.Of(a))).ToArray();
+        guides.See(apps[0], "alphaquest", game: true, fullScreen: true);
+        await guides.ReadyAsync(AppGuideKeys.Of(apps[0]), cancellation);
+        counts.Add(guides.ReadyIndexes);
+        clock.Ahead = AppGuideService.IndexIdleTime + TimeSpan.FromMinutes(1);
+        guides.See(apps[0], "alphaquest", game: true, fullScreen: true);
+        counts.Add(guides.ReadyIndexes);
+        var keptWhenIdle = apps.Where(a => guides.IsReady(AppGuideKeys.Of(a))).ToArray();
+        guides.Forget();
+        counts.Add(guides.ReadyIndexes);
+        var ok = counts.SequenceEqual([0, 3, 2, 3, 1, 0]) && keptAfterLeaving.SequenceEqual([apps[1], apps[2]]) &&
+            keptWhenIdle.SequenceEqual([apps[0]]);
+        return (ok, new
+        {
+            ok, idleMinutes = AppGuideService.IndexIdleTime.TotalMinutes, otherIndexesAtMost = AppGuideService.MaximumOtherIndexes,
+            atStart = counts[0], allThreeUsed = counts[1], frontLeft = counts[2], keptAfterLeaving, frontBack = counts[3],
+            afterIdleTime = counts[4], keptWhenIdle, afterWatchStopped = counts[5]
+        });
+    }
+
+    private sealed class MovedClock : TimeProvider
+    {
+        internal TimeSpan Ahead { get; set; }
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Ahead;
     }
 
     // The offer rule: a game without a guide is offered once a session; a no is kept across starts; Ask again and the choices.

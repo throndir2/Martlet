@@ -6356,7 +6356,8 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   holds *<name> wiki*, which finds the second wiki; `pagesFetched`), each with
   pages, sections, bytes kept, sites, unreadable pages, bytes downloaded and time;
   the guide file's size; and `restarted`: a new service on the same folder reads
-  the library and builds the indexes again (`indexReady`).
+  the library with no index loaded (`indexesAtStart` 0) and builds the game's
+  index when asked (`indexReady`).
 - `notes`: the game in front, named as Windows names its program
   (*STARFALL VALLEY™* matches *Starfall Valley*: `matchedKey`), gets notes for
   *hey martlet, where tf do I find iron ore?* (`inFront`: matched and used sections, best
@@ -6391,6 +6392,13 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   far* in `progress`), and its progress never says *at most*. `stopReading`:
   Stop reading at page 2 ends the read and keeps the 1 page read
   (`stoppedAtPage2`), and stopping while nothing is read does nothing.
+- `indexes`: only the indexes that can be used now stay in memory, with three
+  small guides and a clock moved forward for the idle time: none at start
+  (`atStart` 0), 3 once all are used, 2 when the app in front leaves (the 2
+  used last, `keptAfterLeaving`), 3 when it comes back, 1 after the idle time
+  (`afterIdleTime`: only the app in front, `keptWhenIdle`) and 0 when App
+  guides stop watching (`afterWatchStopped`). `idleMinutes` and
+  `otherIndexesAtMost` are the limits.
 - `tools`: `read_up_on`, `search_guide` and `skip_guide` exactly as replies get
   them, their arguments (sites made into `https://` links, others left out),
   `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, no

@@ -28,9 +28,10 @@ public sealed record AppGuideOfferCandidate(string Name, string Key, bool Game, 
 /// waited for).</summary>
 public sealed record AppGuideRecall(string App, string? Notes, int Matched, int Used, double Best, TimeSpan Took, bool Ready);
 
-/// <summary>The guide library of this PC (Companion › App guides, docs/APP_GUIDES.md): the store's library kept in memory, one
-/// searchable index per app with a guide, built off the reply path (at <see cref="LoadAsync"/>, when the app comes to the front and
-/// after a guide is made) and never waited for on it, reading up one app at a time, the program in front and the rule for reading
+/// <summary>The guide library of this PC (Companion › App guides, docs/APP_GUIDES.md): the store's library kept in memory, a
+/// searchable index only for the guides that can be used now (the app in front, an app named in the conversation, the guide
+/// being read), built off the reply path (<see cref="Warm"/>) and never waited for on it, and dropped again when not used for
+/// <see cref="IndexIdleTime"/> (<see cref="Trim"/>); reading up one app at a time, the program in front and the rule for reading
 /// up on a game in front on its own (<see cref="Offer"/>). Thread-safe; <see cref="Changed"/> is raised on any thread.</summary>
 public sealed class AppGuideService : IDisposable
 {
@@ -45,6 +46,7 @@ public sealed class AppGuideService : IDisposable
     private readonly SemaphoreSlim saving = new(1, 1);
     private readonly SemaphoreSlim reading = new(1, 1);
     private readonly ConcurrentDictionary<string, IGuideIndex> indexes = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> lastUsed = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Task> warming = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (int Times, Func<bool>? Dropped)> offered = new(StringComparer.Ordinal);
     // Off until LoadAsync reads the saved choice, so no reply gets the guide tools before Martlet knows the owner wants them.
@@ -104,7 +106,8 @@ public sealed class AppGuideService : IDisposable
     /// <summary>Whether <paramref name="key"/>'s index is ready to search.</summary>
     public bool IsReady(string key) => indexes.ContainsKey(key);
 
-    /// <summary>Reads the library and starts building the index of every app with a guide (off the caller's thread).</summary>
+    /// <summary>Reads the library and starts building the index of the app in front, if it has a guide (off the caller's thread).
+    /// Other guides are loaded only when they can be used (<see cref="Warm"/>).</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         AppGuideLibrary read;
@@ -125,7 +128,7 @@ public sealed class AppGuideService : IDisposable
             revision++;
         }
         Changed?.Invoke();
-        foreach (var entry in read.Apps.Where(a => a.BuiltAt is not null)) Warm(entry.Key);
+        if (Front?.Entry is { } seen && read.Apps.FirstOrDefault(a => a.Key == seen.Key) is { BuiltAt: not null } inFront) Warm(inFront.Key);
     }
 
     // ---------- the library ----------
@@ -333,18 +336,57 @@ public sealed class AppGuideService : IDisposable
         }
         if (now?.Entry is { BuiltAt: not null } entry) Warm(entry.Key);
         if (changed) Changed?.Invoke();
+        Trim();
     }
 
-    /// <summary>Forgets the app in front (App guides turned off, or the watch stopped).</summary>
+    /// <summary>Forgets the app in front (App guides turned off, or the watch stopped) and drops every index but the guide being
+    /// read: nothing can use them now.</summary>
     public void Forget()
     {
         lock (gate)
         {
-            if (front is null) return;
+            if (front is null && indexes.IsEmpty) return;
             front = null;
         }
+        Trim(all: true);
         Changed?.Invoke();
     }
+
+    /// <summary>How long an index that isn't the app in front's or the guide being read's stays loaded after its last use.</summary>
+    public static TimeSpan IndexIdleTime { get; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>The most indexes kept loaded besides the app in front's and the guide being read's (the most recently used).</summary>
+    public const int MaximumOtherIndexes = 2;
+
+    /// <summary>Drops the indexes that can't be used now, so a whole-wiki guide (up to about 0.9 GB with its index) doesn't stay
+    /// in memory while a game runs: every index but the app in front's and the guide being read's that wasn't used for
+    /// <see cref="IndexIdleTime"/>, and beyond the <see cref="MaximumOtherIndexes"/> most recently used (all of them with
+    /// <paramref name="all"/>). The App guides watch calls it with each look (every few seconds), off the reply path; a dropped
+    /// index is built again (<see cref="Warm"/>) when its app comes to the front or is named.</summary>
+    public void Trim(bool all = false)
+    {
+        string? inFront, read;
+        lock (gate) (inFront, read) = (front?.Entry?.Key, building?.Key);
+        var now = clock.GetUtcNow();
+        var others = indexes.Keys.Where(k => k != read && (all || k != inFront))
+            .Select(k => (Key: k, At: lastUsed.GetValueOrDefault(k))).OrderByDescending(k => k.At).ToList();
+        var dropped = 0;
+        for (var i = 0; i < others.Count; i++)
+        {
+            if (!all && i < MaximumOtherIndexes && now - others[i].At < IndexIdleTime) continue;
+            if (indexes.TryRemove(others[i].Key, out var index))
+            {
+                dropped += index.Count;
+                lastUsed.TryRemove(others[i].Key, out _);
+            }
+        }
+        if (dropped == 0) return;
+        // Ask for the memory back now (a background collection), not at some later collection: a game may need it.
+        if (dropped >= 10_000) GC.Collect(2, GCCollectionMode.Optimized, blocking: false);
+        Changed?.Invoke();
+    }
+
+    private void Touch(string key) => lastUsed[key] = clock.GetUtcNow();
 
     /// <summary>The app Martlet may read up on, on its own, now, or null: App guides and Read up when I start a game or app are
     /// on, a game (or an app on the list) is in front with no guide, nothing is being read up on, the user never said no to it,
@@ -477,6 +519,7 @@ public sealed class AppGuideService : IDisposable
             }
             reading.Release();
             Changed?.Invoke();
+            Trim();
         }
     }
 
@@ -527,6 +570,7 @@ public sealed class AppGuideService : IDisposable
             finally { saving.Release(); }
             var saved = read.Apps.FirstOrDefault(a => a.Key == key);
             unreadable.TryRemove(key, out _);
+            Touch(key);
             indexes[key] = WarmedUp(GuideIndex.Build(guide.Chunks, [name, .. saved?.Programs ?? []]));
             Keep(read);
             return (guide, saved, full, null);
@@ -535,10 +579,13 @@ public sealed class AppGuideService : IDisposable
 
     // ---------- searching ----------
 
-    /// <summary>Starts building <paramref name="key"/>'s index off the caller's thread when it isn't ready or being built.</summary>
+    /// <summary>Starts building <paramref name="key"/>'s index off the caller's thread when it isn't ready or being built, and
+    /// counts it as used now.</summary>
     public void Warm(string key)
     {
-        if (indexes.ContainsKey(key) || unreadable.ContainsKey(key) || disposed) return;
+        if (unreadable.ContainsKey(key) || disposed) return;
+        Touch(key);
+        if (indexes.ContainsKey(key)) return;
         warming.GetOrAdd(key, k => Task.Run(async () =>
         {
             try
@@ -569,6 +616,7 @@ public sealed class AppGuideService : IDisposable
     /// ready (it starts building).</summary>
     public IReadOnlyList<GuideHit>? Search(string key, string question, int max)
     {
+        Touch(key);
         if (indexes.TryGetValue(key, out var index)) return index.Search(question, max);
         Warm(key);
         return null;
@@ -588,6 +636,7 @@ public sealed class AppGuideService : IDisposable
         var entry = Named(now, words) ?? (seen?.Entry is { } inFront ? now.Apps.FirstOrDefault(a => a.Key == inFront.Key) : null);
         if (entry is not { BuiltAt: not null } || unreadable.ContainsKey(entry.Key)) return null;
         var started = Stopwatch.GetTimestamp();
+        Touch(entry.Key);
         if (!indexes.TryGetValue(entry.Key, out var index))
         {
             Warm(entry.Key);
