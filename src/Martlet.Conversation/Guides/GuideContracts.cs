@@ -32,7 +32,7 @@ public sealed record AppGuideEntry
     public IReadOnlyList<string> Programs { get; init; } = [];
     /// <summary>Pages the owner gave to start reading from (a wiki's address). Empty: Martlet finds the app's wiki itself.</summary>
     public IReadOnlyList<string> Sites { get; init; } = [];
-    /// <summary>The owner said no when Martlet offered to read up on it: Martlet doesn't offer again.</summary>
+    /// <summary>The owner doesn't want Martlet to read up on it on its own (they said no, or stopped it).</summary>
     public bool Declined { get; init; }
     /// <summary>When its guide was last made, or null when it has none yet.</summary>
     public DateTimeOffset? BuiltAt { get; init; }
@@ -44,18 +44,20 @@ public sealed record AppGuideEntry
 }
 
 /// <summary>The guide library's own settings and its apps, kept with the guides (guides\library.json), like lorebooks keep
-/// theirs. App guides are on by default (a library.json without "on" is on too); a saved "on": false stays off. Martlet writes
-/// library.json only after the owner does something with App guides (the page, reading up, a no to an offer), never on its own.
-/// The page says what leaves this PC: reading up on an app sends its name to a search engine, and the sites it reads see the
-/// requests.</summary>
+/// theirs. App guides and Read up when I start a game or app are on by default (a library.json without "on" is on too); a saved
+/// "on": false stays off. With the defaults, Martlet sends a game's name to a search engine and reads its wiki on its own when
+/// the game starts; the page says so and how to stop it. Martlet 0.70 and earlier had App guides off by default and wrote
+/// library.json only after the owner did something with App guides, so a saved off there may be a choice.</summary>
 public sealed record AppGuideLibrary
 {
     public const bool DefaultOn = true;
-    public const bool DefaultAskWhenStarted = true;
+    public const bool DefaultReadUpWhenStarted = true;
 
     public bool On { get; init; } = DefaultOn;
-    /// <summary>Whether Martlet offers to read up on a game or app when the user starts one that has no guide yet.</summary>
-    public bool AskWhenStarted { get; init; } = DefaultAskWhenStarted;
+    /// <summary>Whether Martlet reads up on its own on a game (or an app on the list) the user starts that has no guide yet, and
+    /// tells them in character. Kept as askWhenStarted: before, Martlet asked first, and a no to asking stays a no to reading.</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("askWhenStarted")]
+    public bool ReadUpWhenStarted { get; init; } = DefaultReadUpWhenStarted;
     public IReadOnlyList<AppGuideEntry> Apps { get; init; } = [];
 }
 
@@ -91,18 +93,30 @@ public interface IGuideIndex
 }
 
 /// <summary>The caps of making one guide: pages read, bytes downloaded, sites, the wait between two requests to one site and the
-/// time it may take.</summary>
+/// time it may take. By default only the sites and the wait are capped: Martlet reads the whole wiki it finds, until the guide
+/// store can hold no more (<see cref="GuideBuildRequest.Keep"/>) or reading is stopped. Checks pass small caps.</summary>
 public sealed record GuideBuildLimits
 {
-    public int Pages { get; init; } = 60;
-    public long Bytes { get; init; } = 12_000_000;
+    /// <summary>The most pages to read, or null for no cap.</summary>
+    public int? Pages { get; init; }
+    /// <summary>The most bytes to download, or null for no cap (each document is still at most 2 MB).</summary>
+    public long? Bytes { get; init; }
     public int Sites { get; init; } = 2;
     public TimeSpan Delay { get; init; } = TimeSpan.FromSeconds(1);
-    public TimeSpan Time { get; init; } = TimeSpan.FromMinutes(15);
+    /// <summary>The most time reading may take, or null for no cap.</summary>
+    public TimeSpan? Time { get; init; }
 }
 
 /// <summary>What to read up on: the app's name and the pages to start from (empty: find the app's wiki).</summary>
-public sealed record GuideBuildRequest(string Name, IReadOnlyList<string> Sites, GuideBuildLimits? Limits = null);
+public sealed record GuideBuildRequest(string Name, IReadOnlyList<string> Sites, GuideBuildLimits? Limits = null)
+{
+    /// <summary>Keeps the pages read so far while reading goes on, every <see cref="KeepEvery"/>, so a long read can be searched
+    /// as it grows and isn't lost when it ends early. It returns false when the guide can hold no more, which ends reading.</summary>
+    public Func<GuideBuildOutcome, CancellationToken, Task<bool>>? Keep { get; init; }
+    public TimeSpan KeepEvery { get; init; } = TimeSpan.FromMinutes(3);
+    /// <summary>Ends reading early, like a cap: the pages read so far are the outcome (Stop reading on the App guides page).</summary>
+    public CancellationToken Stop { get; init; }
+}
 
 /// <summary>What reading up found: the pages read, the sites they came from, how many pages couldn't be read, the bytes
 /// downloaded and, when nothing usable was read, the problem in a few plain words.</summary>
@@ -111,8 +125,8 @@ public sealed record GuideBuildOutcome(IReadOnlyList<GuidePage> Pages, IReadOnly
 /// <summary>Reads up on an app on the web (<see cref="WebGuideBuilder"/>; checks use fixtures).</summary>
 public interface IGuideBuilder
 {
-    /// <summary>Reads the app's pages within the request's limits. Progress reports are a few plain words ("Reading pages (3 of
-    /// at most 60)"), never a link.</summary>
+    /// <summary>Reads the app's pages within the request's limits. Progress reports are a few plain words ("Reading page 3"),
+    /// never a link.</summary>
     Task<GuideBuildOutcome> BuildAsync(GuideBuildRequest request, IProgress<string>? progress, CancellationToken cancellationToken);
 }
 

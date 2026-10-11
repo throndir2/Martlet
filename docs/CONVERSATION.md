@@ -1397,12 +1397,14 @@ answers from the guide it read about that game (its fan wiki), kept on this PC.
 The design, the wiki reader and the search are in [App guides](APP_GUIDES.md);
 this is what the conversation does.
 
-**Consent, on by default.** Companion › *App guides* is on by default
-(`guides\library.json` in the data folder, beside the guides; a saved
-`"on": false` stays off, see [App guides](APP_GUIDES.md#default)). Its
-disclosure says what leaves the PC: the app's name goes to DuckDuckGo to find
-its wiki, and the wiki sites see the requests. Martlet reads up only when the
-user asks or says yes to the offer.
+**Consent, on by default.** Companion › *App guides* and *Read up when I start
+a game or app* are on by default (`guides\library.json` in the data folder,
+beside the guides; a saved `"on": false` stays off, see
+[App guides](APP_GUIDES.md#default)). With these defaults, when a game without
+a guide starts, Martlet sends its name to DuckDuckGo to find its wiki and reads
+the wiki on its own; the wiki sites see the requests. The page's disclosure
+says so, and how to stop it: **Stop reading**, a no (`skip_guide`), or turning
+off *Read up when I start a game or app*.
 
 **The tools.** While it is on and the Thinking route does function calling,
 every reply gets `read_up_on(app, sites?)`, `search_guide(app?, question)` and
@@ -1410,25 +1412,41 @@ every reply gets `read_up_on(app, sites?)`, `search_guide(app?, question)` and
 with the *App guides* prompt (Companion › Prompts) after the other tool
 prompts, so the start of every request stays the same; with it off, requests
 are exactly as before. `read_up_on` starts the job and returns at once
-(`AppGuideTools.Started`); `search_guide` searches a guide at once (an index
-that is still loading is waited for at most 5 seconds); `skip_guide` keeps the
-user's no to the offer.
+(`AppGuideTools.Started`), or says Martlet already reads up on that app;
+`search_guide` searches a guide at once (an index that is still loading is
+waited for at most 5 seconds); `skip_guide` stops reading up on that app when
+Martlet does now, and keeps the user's no. The prompt tells the model to use
+`read_up_on`, never `research` or `think_longer`, to read up on an app, and
+never to say it read up on something before a note says its guide is ready.
 
-**The job** (`guide`: one at a time, 4 an hour, 20 minutes, *Reading up on*,
+**The job** (`guide`: one at a time, 4 an hour, no time limit, *Reading up on*,
 not on the Thinking pool and no model) reads the app's pages
 (`WebGuideBuilder`), cuts them into sections and keeps the guide; its result
 says how many pages it read, and it is brought up like other finished work. The
 desktop log notes counts and time only (`App guides:` pages, sites, unreadable
 pages, KiB), never the app, a link or what was read.
 
-**The offer.** When a game (or an app on the list) without a guide comes to
-the front, *Ask when I start a game or app* is on and the user never said no
-to it, the main window starts a `guideoffer` notice in the conversation that
-runs (never one started for it), once a session. It is brought up as soon as
-Martlet is free with *App guides: offer to read up*, or with the user's next
-message with *App guides: offer to read up, with your message*, like a
-check-in's notice (`UnpromptedSpeech` drops one that is too old or that the
-conversation moved on from; then it may come again, at most 3 times a session).
+**Reading up on its own.** When a game (or an app on the list) without a guide
+comes to the front, *Read up when I start a game or app* is on, nothing else
+is being read up on, the user never said no to it and its last try didn't fail,
+Martlet reads up on it itself, once a session. It never waits for the model to
+call a tool: before, it asked first and read up only when the model called
+`read_up_on` on a yes, so a Thinking route without function calling (or a
+model that only answered in character) said it read up while nothing was read
+and the app never reached the list. The name is the program's, made readable
+(`AppGuideService.Readable`: *AbioticFactor-Win64-Shipping* is *Abiotic
+Factor*), and the program's names join the entry, so its guide is used while
+it is in front. In a conversation that runs, the `guide` job runs there and a
+`guideoffer` notice tells the user: it is brought up as soon as Martlet is free
+with *App guides: reading up on a game you started*, or with the user's next
+message with *…, with your message*, like a check-in's notice. Without a
+conversation, the main window reads up by itself; the page shows it.
+
+**"Read up on X" without function calling.** When the reply can't call
+`read_up_on` (the route doesn't do function calling, or the model rejected
+tools), the user's own words *read up on X* (`AppGuideTools.AskedToReadUp`;
+*it* or *this game* is the app in front, and *don't read up on…* is never a
+request) start the job, and the notes tell the model it started.
 
 **Notes on the message.** On each of the user's own messages, while App guides
 are on, the guide of the app the words name (else of the app in front) is

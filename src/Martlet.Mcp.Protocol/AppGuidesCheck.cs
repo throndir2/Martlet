@@ -96,21 +96,23 @@ internal static class AppGuidesCheck
                 unrelated is { Notes: null } && named is { Notes: not null } && notNamed is null && repeat is not null && repeated == 0 && off is null;
 
             var offer = await OfferAsync(directory, guard, limits, cancellation);
+            var onItsOwn = await OnItsOwnAsync(Path.Combine(directory, "on-its-own"), guard, limits, cancellation);
+            var reading = await ReadingAsync(directory, guard, fixture.BaseUrl, cancellation);
             var tools = await ToolsAsync(again, fixture, cancellation);
             var latency = await LatencyAsync(directory, cancellation);
 
             var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
-                fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && defaults.On && defaults.AskWhenStarted &&
+                fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && defaults.On && defaults.ReadUpWhenStarted &&
                 migration.Ok && restarted is { loaded: >= 2, on: true, indexReady: true };
-            var ok = buildOk && notesOk && offer.Ok && tools.Ok && latency.Ok;
+            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && tools.Ok && latency.Ok;
             return new
             {
                 ok,
                 endpoint = fixture.BaseUrl,
                 note = "Fixture wiki and search page on 127.0.0.1 (NOT real sites); the store, wiki reader, web client, chunker, index, " +
-                    "notes, match, offer rule, tool texts and job scheduler are Martlet's own. Fetches outside loopback are refused " +
-                    "before they leave this PC.",
-                library = new { onByDefault = defaults.On, askByDefault = defaults.AskWhenStarted, saved = migration.Report },
+                    "notes, match, the rule for reading up on its own, tool texts and job scheduler are Martlet's own. Fetches outside " +
+                    "loopback are refused before they leave this PC.",
+                library = new { onByDefault = defaults.On, readUpWhenStartedByDefault = defaults.ReadUpWhenStarted, saved = migration.Report },
                 build = new
                 {
                     ok = buildOk,
@@ -121,6 +123,8 @@ internal static class AppGuidesCheck
                 },
                 notes = new { ok = notesOk, results = notes },
                 offer = offer.Report,
+                onItsOwn = onItsOwn.Report,
+                reading = reading.Report,
                 tools = tools.Report,
                 latency = latency.Report
             };
@@ -140,7 +144,7 @@ internal static class AppGuidesCheck
         return new
         {
             folder, exists = Directory.Exists(folder), saved = File.Exists(Path.Combine(folder, FileAppGuideStore.LibraryFile)),
-            on = library.On, askWhenStarted = library.AskWhenStarted,
+            on = library.On, readUpWhenStarted = library.ReadUpWhenStarted,
             guides = library.Apps.Count(a => a.BuiltAt is not null), pages = library.Apps.Sum(a => a.Pages), bytes = library.Apps.Sum(a => a.Bytes),
             apps = library.Apps.Select(a => new
             {
@@ -183,6 +187,61 @@ internal static class AppGuidesCheck
         return (ok, new { ok, noLibrary = none, savedOff, savedOffThenAdded, savedOn, withoutOn, unreadable });
     }
 
+    // Reading up with the default caps (docs/APP_GUIDES.md, "Caps"): no page, download or time cap, so the whole fixture wiki is
+    // read; what was read is kept while reading goes on; Stop reading ends it and keeps what was read.
+    private static async Task<(bool Ok, object Report)> ReadingAsync(string directory, LoopbackOnly guard, string baseUrl, CancellationToken cancellation)
+    {
+        var defaults = new GuideBuildLimits();
+        var limits = defaults with { Delay = TimeSpan.FromMilliseconds(20) };
+        var start = baseUrl + "/wiki/Main_Page";
+        using var guides = new AppGuideService(new FileAppGuideStore(Path.Combine(directory, "reading")), new WebGuideBuilder(guard, guard),
+            limits: limits) { KeepEvery = TimeSpan.Zero };
+        await guides.LoadAsync(cancellation);
+        await guides.SetOnAsync(true, cancellation);
+        var words = new List<string>();
+        var keptWhileReading = 0;
+        var whole = await guides.BuildAsync(Game, [start], new Words(text =>
+        {
+            lock (words) words.Add(text);
+            if (text == "Reading page 3") keptWhileReading = guides.Library.Apps.FirstOrDefault()?.Pages ?? 0;
+        }), cancellation);
+        var stopped = false;
+        var stoppedBuild = await guides.BuildAsync(Game, [start], new Words(text =>
+        {
+            if (text == "Reading page 2") stopped = guides.StopReading();
+        }), cancellation);
+        var nothingToStop = guides.StopReading();
+        string[] said;
+        lock (words) said = [.. words];
+        var ok = defaults is { Pages: null, Bytes: null, Time: null, Sites: 2 } && whole is { Built: true, Pages: 3 } &&
+            said.Contains("Reading page 1") && !said.Any(w => w.Contains("at most", StringComparison.Ordinal)) &&
+            said.Contains("Saving what it read so far") && keptWhileReading > 0 && stopped && stoppedBuild is { Built: true, Pages: 1 } &&
+            !nothingToStop && AppGuideTools.Kind.TimeLimit is null;
+        return (ok, new
+        {
+            ok,
+            defaultCaps = new
+            {
+                pages = defaults.Pages?.ToString() ?? "none", bytes = defaults.Bytes?.ToString() ?? "none",
+                time = defaults.Time is { } time ? BackgroundJobs.Duration(time) : "none", sites = defaults.Sites,
+                delayMs = defaults.Delay.TotalMilliseconds, jobTimeLimit = AppGuideTools.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none",
+                keepEveryMinutes = AppGuideService.DefaultKeepEvery.TotalMinutes
+            },
+            storeBounds = new
+            {
+                pages = FileAppGuideStore.MaximumSources, sections = FileAppGuideStore.MaximumChunks,
+                guideFileMegabytes = FileAppGuideStore.MaximumGuideBytes / 1_000_000
+            },
+            wholeWiki = Build(whole), pagesKeptWhileReading = keptWhileReading, progress = said.Distinct().ToArray(),
+            stopReading = new { stoppedAtPage2 = stopped, build = Build(stoppedBuild), stopWhenIdle = nothingToStop }
+        });
+    }
+
+    private sealed class Words(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
+    }
+
     // The offer rule: a game without a guide is offered once a session; a no is kept across starts; Ask again and the choices.
     private static async Task<(bool Ok, object Report)> OfferAsync(string directory, LoopbackOnly guard, GuideBuildLimits limits, CancellationToken cancellation)
     {
@@ -212,9 +271,9 @@ internal static class AppGuidesCheck
         await restarted.AddAsync("Paint Studio", ["PaintStudio"], [], cancellation);
         restarted.See("Paint Studio Pro", "PaintStudio", game: false, fullScreen: false);
         var listed = restarted.Offer();
-        await restarted.SetAskAsync(false, cancellation);
+        await restarted.SetReadUpWhenStartedAsync(false, cancellation);
         var askOff = restarted.Offer();
-        await restarted.SetAskAsync(true, cancellation);
+        await restarted.SetReadUpWhenStartedAsync(true, cancellation);
 
         using var jobs = new BackgroundJobs();
         var notice = jobs.Start(AppGuideTools.OfferKind, AppGuideTools.Label(first?.Name ?? "x"),
@@ -226,7 +285,8 @@ internal static class AppGuidesCheck
         var ok = first is { Game: true, Name: "Crystal Caverns" } && afterAsked is null && second is not null && afterDropped is not null &&
             afterNo is null && noKept is null && askedAgain is not null && hasGuide is null && notGame is null &&
             listed is { Game: false, Name: "Paint Studio" } && askOff is null && notice is { Kind.Notice: true } &&
-            message.Contains("- Crystal Caverns (a game)", StringComparison.Ordinal) && !message.Contains("- - ", StringComparison.Ordinal) && message.Contains("read_up_on", StringComparison.Ordinal) &&
+            message.Contains("- Crystal Caverns (a game)", StringComparison.Ordinal) && !message.Contains("- - ", StringComparison.Ordinal) &&
+            message.Contains("you've started reading up on it", StringComparison.Ordinal) && !message.Contains("read_up_on", StringComparison.Ordinal) &&
             message.Contains("skip_guide", StringComparison.Ordinal) && withMessage.Contains("Crystal Caverns", StringComparison.Ordinal);
         return (ok, new
         {
@@ -236,6 +296,44 @@ internal static class AppGuidesCheck
             listedApp = listed?.Name, askOff = askOff?.Name,
             notice = new { kind = notice?.Kind.Name, id = notice?.Id, doing = notice?.Kind.Doing, messageCharacters = message.Length },
             message
+        });
+    }
+
+    // A game without a guide comes to the front, named as Windows names an Unreal game's program: Martlet reads up on it on its own
+    // (what the desktop's job does, with no model asked), under a readable name, with the program's names on its entry, so it is
+    // on the list with its guide, the guide goes with a question while the game is in front, and nothing more is read for it.
+    private static async Task<(bool Ok, object Report)> OnItsOwnAsync(string directory, LoopbackOnly guard, GuideBuildLimits limits,
+        CancellationToken cancellation)
+    {
+        using var guides = new AppGuideService(new FileAppGuideStore(directory), new WebGuideBuilder(guard, guard), limits: limits);
+        await guides.LoadAsync(cancellation);
+        await guides.SetOnAsync(true, cancellation);
+        guides.See("MoonlitAbyss", "MoonlitAbyss-Win64-Shipping", game: true, fullScreen: true);
+        var due = guides.Offer();
+        guides.Offered(due?.Key ?? "");
+        var built = due is null ? null : await guides.BuildAsync(due.Name, [], null, cancellation, due.Programs);
+        var entry = guides.Library.Apps.FirstOrDefault(a => a.Key == due?.Key);
+        await guides.ReadyAsync(due?.Key ?? "", cancellation);
+        var inFront = guides.Recall("how much air does my oxygen tank hold?");
+        var afterRead = guides.Offer();
+        // A program name with build words of its own, and a name in one word.
+        string[] names = ["AbioticFactor-Win64-Shipping", "StardewValley", "ELDEN RING\u2122", "Half-Life 2", "DOOMEternal", "TESV"];
+        var readable = names.ToDictionary(n => n, AppGuideService.Readable);
+        var ok = due is { Name: "Moonlit Abyss", Key: "moonlit-abyss", Game: true } && built is { Built: true, Pages: > 0 } &&
+            entry is { BuiltAt: not null } && entry.Programs.Contains("MoonlitAbyss-Win64-Shipping") &&
+            guides.Front?.Entry?.Key == "moonlit-abyss" && inFront is { Ready: true, Notes: not null } &&
+            inFront.Notes.Contains("ninety seconds", StringComparison.Ordinal) && afterRead is null &&
+            readable["AbioticFactor-Win64-Shipping"] == "Abiotic Factor" && readable["StardewValley"] == "Stardew Valley" &&
+            readable["ELDEN RING\u2122"] == "ELDEN RING\u2122" && readable["Half-Life 2"] == "Half-Life 2" &&
+            readable["DOOMEternal"] == "DOOM Eternal" && readable["TESV"] == "TESV";
+        return (ok, new
+        {
+            ok,
+            inFront = new { program = "MoonlitAbyss", file = "MoonlitAbyss-Win64-Shipping", game = true },
+            readsUpOn = due?.Name, key = due?.Key, built = built is null ? null : Build(built),
+            onTheList = entry is null ? null : new { name = entry.Name, programs = entry.Programs, builtAt = entry.BuiltAt, pages = entry.Pages },
+            matchedInFront = guides.Front?.Entry?.Key, notesWhileInFront = Describe(inFront), readsAgainAfterward = afterRead?.Name,
+            readableNames = readable
         });
     }
 
@@ -283,7 +381,7 @@ internal static class AppGuidesCheck
             job = first.Job is null ? null : new
             {
                 id = first.Job.Id, kind = first.Job.Kind.Name, doing = first.Job.Kind.Doing, state = first.Job.State.ToString(),
-                timeLimit = BackgroundJobs.Duration(AppGuideTools.TimeLimit), perHour = AppGuideTools.Kind.MaxPerHour, result = first.Job.Result,
+                timeLimit = AppGuideTools.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none", perHour = AppGuideTools.Kind.MaxPerHour, result = first.Job.Result,
                 problem = first.Job.Problem
             },
             secondWhileRunning = second.Refusal, hourly = refusals, prompt = AppGuideTools.Instructions(null)
@@ -291,19 +389,34 @@ internal static class AppGuidesCheck
     }
 
     // What App guides add to a reply's path (docs/APP_GUIDES.md, AGENTS.md "Never add conversation latency"): the notes step's
-    // wall-clock time on a full-size guide (2,000 sections, as 60 long wiki pages make), for a message about the game in front, an
-    // unrelated message and while off, median and worst of 200 runs after a warm-up; and the bytes the tools and prompt add to
-    // every request while App guides are on (the same every time, so prompt caches keep them).
+    // wall-clock time on a guide of 2,000 sections (60 long wiki pages) and on one of 25,000 (a whole wiki of a few thousand
+    // pages), for a message about the game in front, an unrelated message and while off, median and worst of 200 runs after a
+    // warm-up; and the bytes the tools and prompt add to every request while App guides are on (the same every time, so prompt
+    // caches keep them).
     private static async Task<(bool Ok, object Report)> LatencyAsync(string directory, CancellationToken cancellation)
     {
-        var folder = Path.Combine(directory, "latency");
+        var small = await NotesTimeAsync(Path.Combine(directory, "latency"), 2_000, cancellation);
+        var whole = await NotesTimeAsync(Path.Combine(directory, "latency-whole"), 25_000, cancellation);
+        var toolBytes = AppGuideTools.Definitions.Sum(d => Encoding.UTF8.GetByteCount(d.Name + d.Description + d.ParametersJson));
+        var promptBytes = Encoding.UTF8.GetByteCount(AppGuideTools.Instructions(null) ?? "");
+        var ok = small.Ok && whole.Ok;
+        return (ok, new
+        {
+            ok, sections = small.Report, wholeWiki = whole.Report,
+            everyRequestWhileOn = new { toolDefinitionBytes = toolBytes, promptBytes },
+            messageAboutTheAppAtMost = new { notesCharacters = GuideRecall.MaximumCharacters, sections = GuideRecall.MaximumChunks }
+        });
+    }
+
+    private static async Task<(bool Ok, object Report)> NotesTimeAsync(string folder, int sections, CancellationToken cancellation)
+    {
         var store = new FileAppGuideStore(folder);
         var words = ("iron ore copper gold silver crystal moonstone sword shield bow arrow potion herb mushroom berry fish crab " +
             "cave mine forest river desert mountain castle village farm barn tower dungeon boss dragon golem wolf bear spider " +
             "quest reward recipe forge smelt craft brew cook trade sell buy merchant blacksmith wizard knight guard festival " +
             "winter spring summer autumn rain snow night day level skill armor helmet boots ring amulet key map chest door").Split(' ');
         var random = new Random(7);
-        var chunks = Enumerable.Range(0, 2_000).Select(i => new GuideChunk($"https://fixture.example/wiki/Page_{i / 30}", $"Page {i / 30}",
+        var chunks = Enumerable.Range(0, sections).Select(i => new GuideChunk($"https://fixture.example/wiki/Page_{i / 30}", $"Page {i / 30}",
             $"Section {i % 30}", string.Join(' ', Enumerable.Range(0, 140).Select(_ => words[random.Next(words.Length)])) + ".")).ToArray();
         var key = AppGuideKeys.Of(Game);
         await store.SaveGuideAsync(new AppGuide(key, Game, ["fixture.example"], DateTimeOffset.UtcNow,
@@ -332,8 +445,6 @@ internal static class AppGuidesCheck
         var unrelated = Time("what should we cook for dinner tonight?");
         await guides.SetOnAsync(false, cancellation);
         var off = Time("where do I find moonstone in the crystal cave?");
-        var toolBytes = AppGuideTools.Definitions.Sum(d => Encoding.UTF8.GetByteCount(d.Name + d.Description + d.ParametersJson));
-        var promptBytes = Encoding.UTF8.GetByteCount(AppGuideTools.Instructions(null) ?? "");
         var ok = ready && about.Median < 10 && unrelated.Median < 10 && off.Median < 1;
         return (ok, new
         {
@@ -343,9 +454,7 @@ internal static class AppGuidesCheck
                 messageAboutTheGameInFront = new { median = about.Median, worst = about.Worst },
                 unrelatedMessage = new { median = unrelated.Median, worst = unrelated.Worst },
                 appGuidesOff = new { median = off.Median, worst = off.Worst }
-            },
-            everyRequestWhileOn = new { toolDefinitionBytes = toolBytes, promptBytes },
-            messageAboutTheAppAtMost = new { notesCharacters = GuideRecall.MaximumCharacters, sections = GuideRecall.MaximumChunks }
+            }
         });
     }
 

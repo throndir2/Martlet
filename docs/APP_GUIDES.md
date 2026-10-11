@@ -13,18 +13,25 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
 
 ## What the user sees
 
-1. **Companion › App guides** is on by default. Reading up sends the app's
-   name to a search engine, and the wiki sites see the requests; the page says
-   what leaves the PC, and the **Read up on games and apps** box turns it off.
-   A `guides\library.json` saved with App guides off (by an earlier Martlet,
-   where they were off by default) stays off; see [Default](#default).
+1. **Companion › App guides** is on by default, and so is *Read up when I
+   start a game or app*. With these defaults, when you start a game Martlet
+   has no guide for, it sends the game's name to DuckDuckGo to find its wiki
+   and reads the wiki on its own (step 2). The wiki sites see the requests and
+   this PC's internet address. The page says so. To stop a read, press **Stop
+   reading** or tell Martlet no; to stop reading up on its own, turn off *Read
+   up when I start a game or app*; the **Read up on games and apps** box turns
+   App guides off. A `guides\library.json` saved with App guides off (by an
+   earlier Martlet, where they were off by default) stays off; see
+   [Default](#default).
 2. Start a game. When Martlet sees a game (or an app on the list) in front and
-   it has no guide yet, it asks once a session, in character: *"I see you
-   started Elden Ring. Want me to read up on it so I can help?"* It asks only
-   in a conversation that runs, and only while *Ask when I start a game or
-   app* is on (on by default). A yes starts a background job, *Reading up on
-   Elden Ring*, in the talk window's task list; a no is remembered and Martlet
-   doesn't ask about that app again (**Ask again** on the page undoes it).
+   it has no guide yet, it reads up on it on its own, once a session, while
+   *Read up when I start a game or app* is on (on by default). The app is on
+   the list at once, and the job *Reading up on Elden Ring* shows in the talk
+   window's task list. In a conversation that runs, Martlet tells you in
+   character: *"I see you started Elden Ring. I'm reading up on it so I can
+   help."* Tell it you'd rather it didn't and it stops; it remembers that and
+   doesn't read up on that app on its own again (**Allow again** on the page
+   undoes it).
 3. Or say *"read up on Stardew Valley"*, or use **Add an app** on the page:
    the app's name, optional program names (as Windows names the program, if
    they differ) and optional wiki addresses. **Add and read up** reads at
@@ -33,20 +40,24 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
    asks is searched in its guide. The best matching sections go with the
    message as reference notes, and the reply uses them. A message that isn't
    about the app gets nothing.
-5. When Martlet is done, it says so in character (*"I've read up on Elden
-   Ring: 42 pages."*).
+5. Martlet reads the whole wiki it finds, so a big wiki takes a while (about
+   one page a second). It keeps what it read every few minutes, so questions
+   get answers from the guide while it is still reading. When Martlet is done,
+   it says so in character (*"I've read up on Elden Ring: 2,400 pages."*).
 6. The App guides page lists every app: its pages, size, when it was read, the
    pages it reads from, its program names, the last problem and whether the
    user said no. Each app has **Read up now** (or **Read again**), **Delete**
-   and, after a no, **Ask again**. The page also says what is in front, as App
-   guides sees it.
+   and, after a no, **Allow again**. The app being read has **Stop reading**,
+   which ends the read and keeps what Martlet read. **Cancel** in the talk
+   window's task list also ends it. The page also says what is in front, as
+   App guides sees it.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A[Game or listed app in front] -->|no guide yet| B[Martlet offers to read up]
-    B -->|yes| C[Background job: find the wiki]
+    A[Game or listed app in front] -->|no guide yet| C[Background job: find the wiki]
+    A -.->|tells the user, in character| B[Notice in the conversation]
     U[User: read up on X / Add an app] --> C
     C --> D[Crawl the wiki: MediaWiki API or same-site links, robots.txt, caps]
     D --> E[Chunk pages by heading]
@@ -78,16 +89,24 @@ files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
   forum and encyclopedia sites (Wikipedia) are left out. A result counts only
   when its title or address names the app (its whole name, or more than half
   of its words).
+- **One wiki**: a site that Martlet found and that gave at least 100 pages
+  (`WebGuideBuilder.OneSiteIsEnough`) is the guide's wiki. Martlet does not
+  look for a second site then, because that is usually another copy of the
+  same wiki (a Fandom and a wiki.gg site). A smaller site can have a second
+  site with it (at most 2 sites).
 - **MediaWiki sites** (Fandom, wiki.gg and most game wikis) are read through
   their `api.php`, found from the farm's address or from the page's `EditURI`
-  link, search link or script path. The pages to read are the main page's
-  links and the site's most linked pages (`Mostlinked`), scored by both and by
-  size. Stubs, disambiguation pages, version history and very large pages are
-  left out. Each page picked from a category lowers the score of the others in
-  that category, so a guide covers the game's different parts (fish, cooking,
-  minerals), not one navigation box (every villager). Then come the pages that
-  the pages read link to most. Each page comes from `action=parse` with
-  redirects followed and edit links and the table of contents off.
+  link, search link or script path. The pages to read first are the main
+  page's links and the site's most linked pages (`Mostlinked`), scored by both
+  and by size. Stubs, disambiguation pages, version history and very large
+  pages are left out. Each page picked from a category lowers the score of the
+  others in that category, so the first pages cover the game's different parts
+  (fish, cooking, minerals), not one navigation box (every villager). Then come
+  the pages that the pages read link to most, and then every other content
+  page of the wiki (`generator=allpages`, 500 titles a request, in title
+  order), so Martlet reads the whole wiki. Each page comes from
+  `action=parse` with redirects followed and edit links and the table of
+  contents off.
 - **Other sites** are read breadth first through links on the same site and
   under the start page's folder (its parent while the folder has fewer than 5
   of the page's links), each page once by its canonical address. Links with a
@@ -118,12 +137,23 @@ files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
   the same safe web client as web research (`WebAccess`: public internet
   addresses only, every redirect checked, size and time caps, at most 2 MB a
   document).
-- **Caps**: 60 pages, 12 MB downloaded, 2 sites and 15 minutes a guide by
-  default (`GuideBuildLimits`), and at most 3 requests a page (plus 30). A
-  pause that would pass the time cap ends the job, and cancelling stops it at
-  once.
+- **Caps**: by default (`GuideBuildLimits`) there is no cap on pages, bytes
+  downloaded or time: Martlet reads the whole wiki it finds, from at most 2
+  sites. Reading ends when the wiki has no more pages, when the guide store
+  can hold no more (below), when the owner stops it (**Stop reading**, or
+  **Cancel** in the talk window) or when Martlet closes. A guard ends a job
+  whose requests give no pages: at most 3 requests a page read, plus 100 to
+  find the wiki. Checks pass small caps (pages, bytes, time); then the guard
+  is 3 requests a page of the cap, plus 30, and a pause that would pass the
+  time cap ends the job. Cancelling stops it at once.
+- **Kept while reading**: every 3 minutes (`AppGuideService.KeepEvery`) the
+  read keeps the pages read so far as the app's guide and makes its index
+  again. So a long read can be searched as it grows, and a read that ends
+  early (cancelled, or Martlet closed) keeps what it read until the last
+  keep. **Stop reading** keeps everything read up to that moment.
 - **Progress** is a few plain words ("Looking for its wiki", "Reading the
-  wiki's page list", "Reading pages (3 of at most 60)"), never a link.
+  wiki's page list", "Reading page 3", "Saving what it read so far"), never a
+  link.
 
 ### Searching a guide (on the reply's path, with no added wait)
 
@@ -203,8 +233,17 @@ continues.
 
 **The store** (`FileAppGuideStore`): `guides\library.json` and one
 `<key>.guide.json` for each app. Each file starts with its `formatVersion`.
-The store keeps at most 200 apps, guide files of at most 20 MB, at most
-25,000 chunks of at most 4,000 characters each. It refuses a file that it
+The store keeps at most 200 apps, and a guide of at most 25,000 pages and
+100,000 chunks of at most 4,000 characters each, in a file of at most 200 MB.
+These bounds are what one guide needs to work: a guide is loaded whole and its
+index is kept in memory (about 4.5 KB a chunk with its index, so about 440 MB
+at 100,000 chunks), and a search over 100,000 chunks takes about 0.7 ms. That
+holds the whole wiki of most games (a few thousand pages make 10,000 to 30,000
+chunks). When a read has more, the guide keeps the pages read first (the
+best ones on a MediaWiki site), and the read ends. A file that would pass
+200 MB is refused with an `AppGuideTooLargeException` before it replaces the
+earlier file; reading up then keeps four fifths of the pages and tries again.
+The store refuses a file that it
 cannot read, that breaks a bound or that a newer Martlet wrote, with an
 `AppGuideFileException` (an `IOException`) that names the file, and it never
 resets the library. Saving a whole new library over an unreadable one keeps a
@@ -271,13 +310,22 @@ reply gets three tools after Martlet's other tools, always worded the same, with
 the *App guides* prompt (Companion › Prompts), so the start of every request
 stays the same:
 
-- `read_up_on(app, sites?)`: starts the reading-up job (the user asked, or said
-  yes to the offer) and returns at once.
+- `read_up_on(app, sites?)`: starts the reading-up job (the user asked) and
+  returns at once; it says so when Martlet already reads up on that app.
 - `search_guide(app?, question)`: searches a guide for more than the notes
   carried (the app in front when `app` is left out) and returns the sections
   with their page titles, links and relevance.
-- `skip_guide(app)`: the user said no to the offer; Martlet never offers that
-  app again.
+- `skip_guide(app)`: the user doesn't want Martlet to read up on the app; it
+  stops reading up on it when it does now, and never reads up on it on its own
+  again.
+
+The prompt tells the model to use `read_up_on`, never `research` or
+`think_longer`, to read up on an app, and never to say it read up on something
+before a note says its guide is ready. When the reply can't call `read_up_on`
+(the route doesn't do function calling, or the model rejected tools), the
+user's own words *read up on X* start the job instead
+(`AppGuideTools.AskedToReadUp`: *it* or *this game* is the app in front, and
+*don't read up on…* is never a request), and the notes tell the model.
 
 ## On the desktop
 
@@ -298,15 +346,29 @@ stays the same:
   matches the program to the list by key, name or program names, ignoring case
   and punctuation (*ELDEN RING™* is *Elden Ring*). Martlet's own windows are
   passed over.
-- **The offer** is a notice (`guideoffer`) that the conversation brings up as
-  soon as Martlet is free, with the *App guides: offer to read up* prompts. It
-  goes only to a conversation that runs (Martlet never starts one for it), and
-  an offer dropped before Martlet said it may come again (at most 3 times a
-  session).
-- **The job** (`guide`: one at a time, 4 an hour, 20 minutes, *Reading up on*)
-  runs the wiki reader, the chunker and the store; no model is asked. Its
-  result tells the reply how many pages it read. Reading up from the page runs
-  in the conversation when one runs, else on its own.
+- **Reading up on its own.** When a game (or an app on the list) without a
+  guide comes to the front, *Read up when I start a game or app* is on, nothing
+  else is being read up on, the user never said no to it and its last try
+  didn't fail, Martlet starts the job itself, once a session
+  (`AppGuideService.Offer`). It never waits for the model: Martlet used to ask
+  first and read up only when the model called `read_up_on` on a yes, so a
+  Thinking route without function calling, or a model that only answered in
+  character, said it read up while nothing was read and the game never reached
+  the list. The name is the program's, made readable
+  (`AppGuideService.Readable`: *AbioticFactor-Win64-Shipping* is *Abiotic
+  Factor*, *StardewValley* is *Stardew Valley*), and the names Windows gives
+  the program join the entry, so its guide is used while it is in front. In a
+  conversation that runs, the job runs there and a notice (`guideoffer`) tells
+  the user as soon as Martlet is free, with the *App guides: reading up on a
+  game you started* prompts; without one, the main window reads up by itself.
+  The setting is kept as `askWhenStarted` in `library.json`, so a no to asking
+  stays a no to reading.
+- **The job** (`guide`: one at a time, 4 an hour, no time limit, *Reading up
+  on*) runs the wiki reader, the chunker and the store; no model is asked. The
+  app is on the list from the start. Its result tells the reply how many pages
+  it read, or why it failed. Reading up from the page runs in the conversation
+  when one runs, else on its own. **Cancel** in the talk window or **Stop
+  reading** on the page ends it.
 - **Notes**: on each of the user's own messages, while App guides are on, the
   guide of the app the words name (else of the app in front) is searched with
   the user's words. Sections the conversation already carries aren't sent
@@ -314,21 +376,29 @@ stays the same:
   earlier conversations. The latency timeline marks *app guide*; the desktop
   log notes counts, relevance and time only.
 - **MCP**: `app_guides_check` rehearses all of this against a fixture wiki on
-  loopback and measures the notes step; `app_guides_status` reads a data
-  folder's library; the page's status lines are `SafeValues` (see
-  [MCP](MCP.md)).
+  loopback (including a game in front, named as Windows names an Unreal game's
+  program, read up on with no model) and measures the notes step;
+  `app_guides_status` reads a data folder's library; the page's status lines
+  are `SafeValues` (see [MCP](MCP.md)).
 
-**Latency.** On a full-size guide (2,000 sections) the notes step takes about
-0.13 ms (median; 0.23 ms worst) for a message about the app and nothing while App guides are
-off; the first search in a new process takes about 3 ms, because building an
-index also loads the search code. While on, the three tools and the prompt add
-about 2.3 KB to every request, the same every time, so prompt caches keep them.
+**Latency.** On a guide of 2,000 sections the notes step takes about 0.2 ms
+(median) for a message about the app, and nothing while App guides are off.
+On a whole-wiki-size guide of 25,000 sections it takes about 0.6 ms (median;
+0.35 ms for an unrelated message), and its index takes about 1.2 s to build,
+off the reply's path. The first search in a new process takes about 3 ms,
+because building an index also loads the search code. While on, the three
+tools and the prompt add about 2.5 KB to every request, the same every time,
+so prompt caches keep them.
 
 ### Default
 
-App guides are on by default (`AppGuideLibrary.DefaultOn`), and *Ask when I
-start a game or app* is on by default too, so a new user gets the offer when a
-game starts. The choice is `on` in `guides\library.json`:
+App guides are on by default (`AppGuideLibrary.DefaultOn`), and *Read up when
+I start a game or app* is on by default too
+(`AppGuideLibrary.DefaultReadUpWhenStarted`). So for a new user, Martlet sends
+a game's name to DuckDuckGo and reads its wiki on its own when the game
+starts, and tells the user in character. The user stops it with **Stop
+reading** or a no (which Martlet keeps for that app), or turns off *Read up
+when I start a game or app*. The choice is `on` in `guides\library.json`:
 
 - No `library.json` (a new user, or one who never used App guides): on.
 - A `library.json` without `on`: on.
@@ -346,10 +416,10 @@ no request gets the guide tools before Martlet knows the owner's choice.
 
 **Latency with App guides on by default.** A reply's path gets nothing that
 App guides didn't already add while on: the notes step reads memory only
-(about 0.13 ms), the watch runs on its own timer, and reading up is a
-background job. The three tools and the prompt (about 2.3 KB) are the same in
-every request, so prompt caches keep them; only a request that misses the
-cache (the first one after a start) reads them again.
+(well under a millisecond), the watch runs on its own timer, and reading up is
+a background job with no model. The three tools and the prompt (about 2.5 KB)
+are the same in every request, so prompt caches keep them; only a request that
+misses the cache (the first one after a start) reads them again.
 
 ## Files
 
@@ -369,10 +439,12 @@ cache (the first one after a start) reads them again.
 
 ## Privacy
 
-- On by default; the page says what leaves the PC (the app's name in a
-  search, and requests to the wiki sites), and one box turns it off.
-- Martlet reads up on an app only when the user asks (in the conversation or
-  on the page) or says yes to the offer. The offer asks first, in character.
+- On by default, and so is *Read up when I start a game or app*: when a game
+  without a guide starts, Martlet sends its name to DuckDuckGo and reads its
+  wiki on its own, and the wiki sites see the requests. The page says so.
+- The user stops a read with **Stop reading** or a no (kept for that app),
+  stops reading on its own with *Read up when I start a game or app*, and
+  turns App guides off with one box.
 - Detection reads only the program's name and whether it fills the screen
   (`ActiveApp`, `PcActivity`), never window titles or the screen.
 - Guides hold public web pages only, never the conversation. The desktop log

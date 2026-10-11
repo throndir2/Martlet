@@ -166,7 +166,8 @@ public sealed class WebGuideBuilderTests
         Assert.Equal(0, outcome.Failed);
         Assert.Equal(web.Bytes, outcome.Bytes);
         Assert.Equal("Looking for its wiki", progress[0]);
-        Assert.Contains("Reading pages (1 of at most 60)", progress);
+        Assert.Contains("Reading page 1", progress);
+        Assert.DoesNotContain(progress, p => p.Contains("at most", StringComparison.Ordinal));
         Assert.All(progress, p => Assert.DoesNotContain("http", p, StringComparison.Ordinal));
         Assert.DoesNotContain(web.Requests, r => r.Contains("Missing_Page", StringComparison.Ordinal) || r.Contains("User%3ABob", StringComparison.Ordinal));
         Assert.Equal(["Iron Valley wiki"], web.Queries);
@@ -274,10 +275,116 @@ public sealed class WebGuideBuilderTests
         Assert.InRange(slow.Pages.Count, 0, 5);
 
         using var cancel = new CancellationTokenSource();
-        var progress = new Recorder([], words => { if (words.StartsWith("Reading pages (2", StringComparison.Ordinal)) cancel.Cancel(); });
+        var progress = new Recorder([], words => { if (words.StartsWith("Reading page 2", StringComparison.Ordinal)) cancel.Cancel(); });
         clock.Restart();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => BuildWikiAsync(Fast, progress: progress, token: cancel.Token));
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ByDefaultTheWholeWikiIsReadPastTheMainPagesLinks()
+    {
+        var defaults = new GuideBuildLimits();
+        Assert.Equal((null, null, null, 2, TimeSpan.FromSeconds(1)), (defaults.Pages, defaults.Bytes, defaults.Time, defaults.Sites, defaults.Delay));
+
+        var web = new FakeWeb();
+        var wiki = BigWiki("bigvalley.fandom.com", "Big Valley", 150);
+        wiki.Add("Tiny", Article("Tiny", "Short."), 300);
+        wiki.Add("Big Valley Wiki/Sub", Article("Sub", "A subpage."), 5_000);
+        web.Sites.Add(wiki.Respond);
+        var progress = new List<string>();
+
+        var outcome = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Big Valley", [], new() { Delay = TimeSpan.Zero }),
+            new Recorder(progress), default);
+
+        Assert.Null(outcome.Problem);
+        Assert.Equal(150, outcome.Pages.Count);
+        Assert.Equal(150, outcome.Pages.Select(p => p.Title).Distinct().Count());
+        Assert.DoesNotContain(outcome.Pages, p => p.Title is "Tiny" or "Big Valley Wiki/Sub");
+        // The main page's links first, then every other page of the wiki, 40 titles a list here.
+        Assert.Equal(["Page 000", "Page 001", "Page 002"], outcome.Pages.Take(3).Select(p => p.Title));
+        Assert.True(web.Requests.Count(r => r.Contains("generator=allpages", StringComparison.Ordinal)) >= 4);
+        Assert.Contains("Reading page 61", progress);
+        Assert.Contains("Reading page 150", progress);
+        Assert.DoesNotContain(progress, p => p.Contains("at most", StringComparison.Ordinal));
+        // A wiki of 100 pages or more is the guide's: no search for another site.
+        Assert.Empty(web.Queries);
+    }
+
+    [Fact]
+    public async Task ASecondCopyOfTheWikiIsNotReadAfterAWholeOne()
+    {
+        var web = new FakeWeb();
+        web.Sites.Add(BigWiki("twinvalley.fandom.com", "Twin Valley", 120).Respond);
+        web.Sites.Add(BigWiki("twinvalley.wiki.gg", "Twin Valley", 30).Respond);
+
+        var outcome = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Twin Valley", [], Fast), null, default);
+
+        Assert.Equal(120, outcome.Pages.Count);
+        Assert.Equal(["twinvalley.fandom.com"], outcome.Sites);
+        Assert.DoesNotContain(web.Requests, r => r.Contains("twinvalley.wiki.gg", StringComparison.Ordinal) && r.Contains("action=parse", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WhatWasReadIsKeptWhileReadingAndAFullGuideOrStopEndsIt()
+    {
+        static FakeWeb Web()
+        {
+            var web = new FakeWeb();
+            web.Sites.Add(BigWiki("keep.wiki.gg", "Keep", 30).Respond);
+            return web;
+        }
+        var start = "https://keep.wiki.gg/wiki/Keep_Wiki";
+
+        var kept = new List<int>();
+        var web = Web();
+        var whole = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Keep", [start], Fast)
+        {
+            KeepEvery = TimeSpan.Zero,
+            Keep = (sofar, _) => { kept.Add(sofar.Pages.Count); return Task.FromResult(true); }
+        }, null, default);
+        Assert.Equal(30, whole.Pages.Count);
+        Assert.True(kept.Count >= 10);
+        Assert.Equal(kept.Order(), kept);
+        Assert.Equal(kept.Count, kept.Distinct().Count());
+        Assert.InRange(kept[^1], 1, 29);
+
+        // The guide can hold no more: reading ends there, with what was read.
+        web = Web();
+        var full = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Keep", [start], Fast)
+        {
+            KeepEvery = TimeSpan.Zero,
+            Keep = (sofar, _) => Task.FromResult(sofar.Pages.Count < 10)
+        }, null, default);
+        Assert.Equal(10, full.Pages.Count);
+        Assert.Null(full.Problem);
+
+        // Stop reading: no exception, the pages read so far.
+        using var stop = new CancellationTokenSource();
+        web = Web();
+        var stopped = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Keep", [start], Fast) { Stop = stop.Token },
+            new Recorder([], words => { if (words == "Reading page 3") stop.Cancel(); }), default);
+        Assert.Equal(2, stopped.Pages.Count);
+        Assert.Null(stopped.Problem);
+
+        using var early = new CancellationTokenSource();
+        web = Web();
+        var none = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Keep", [], Fast) { Stop = early.Token },
+            new Recorder([], words => { if (words == "Looking for its wiki") early.Cancel(); }), default);
+        Assert.Empty(none.Pages);
+        Assert.Equal("reading up was stopped", none.Problem);
+    }
+
+    // A MediaWiki site with `count` usable articles ("Page 000"...), the first three linked from the main page.
+    private static FakeWiki BigWiki(string host, string name, int count)
+    {
+        var wiki = new FakeWiki(host, name) { MainLinks = ["Page 000", "Page 001", "Page 002"], Articles = count };
+        for (var i = 0; i < count; i++)
+        {
+            var title = $"Page {i:000}";
+            wiki.Add(title, Article(title, $"{name} page number {i} tells about item {i}."), 5_000);
+        }
+        return wiki;
     }
 
     [Fact]
@@ -470,6 +577,7 @@ public sealed class WebGuideBuilderTests
     {
         private readonly Dictionary<string, (string Html, int Length)> articles = [];
         public List<string> MainLinks { get; init; } = [];
+        public int Articles { get; init; } = 500;
         public List<string> MostLinked { get; init; } = [];
         public Dictionary<string, string> Redirects { get; } = [];
         public HashSet<string> Disambiguations { get; } = [];
@@ -487,6 +595,7 @@ public sealed class WebGuideBuilderTests
                 "parse" => Parse(query["page"]),
                 "query" when query.ContainsKey("meta") => SiteInfo(),
                 "query" when query.GetValueOrDefault("generator") == "links" => new { query = new { pages = MainLinks.Select(Info).ToArray() } },
+                "query" when query.GetValueOrDefault("generator") == "allpages" => AllPages(query.GetValueOrDefault("gapcontinue") ?? ""),
                 "query" when query.GetValueOrDefault("list") == "querypage" => new
                 {
                     query = new { querypage = new { results = MostLinked.Select((t, i) => new { value = 100 - i, ns = t.StartsWith("User:", StringComparison.Ordinal) ? 2 : 0, title = t }).ToArray() } }
@@ -510,7 +619,7 @@ public sealed class WebGuideBuilderTests
                     ["6"] = new { id = 6, name = "File", canonical = "File", content = false },
                 },
                 namespacealiases = new[] { new { id = 6, alias = "Image" } },
-                statistics = new { articles = 500 },
+                statistics = new { articles = Articles },
             },
         };
 
@@ -527,6 +636,17 @@ public sealed class WebGuideBuilderTests
         {
             var redirects = titles.Where(Redirects.ContainsKey).Select(t => new { from = t, to = Redirects[t] }).ToArray();
             return new { query = new { redirects, pages = titles.Select(t => Redirects.GetValueOrDefault(t, t)).Distinct().Select(Info).ToArray() } };
+        }
+
+        // Every article in title order, 40 at a time, continued from `from`.
+        private object AllPages(string from)
+        {
+            const int batch = 40;
+            var titles = articles.Keys.Order(StringComparer.Ordinal).Where(t => string.CompareOrdinal(t, from) >= 0).ToList();
+            var pages = titles.Take(batch).Select(Info).ToArray();
+            return titles.Count > batch
+                ? (object)new { @continue = new Dictionary<string, string> { ["gapcontinue"] = titles[batch], ["continue"] = "gapcontinue||" }, query = new { pages } }
+                : new { batchcomplete = true, query = new { pages } };
         }
 
         private object Parse(string page)

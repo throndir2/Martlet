@@ -3,8 +3,8 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Conversation.Tests;
 
-/// <summary>The desktop's guide library (Companion › App guides): matching the program in front, the offer rule, reading up into a
-/// searchable guide, the notes on a message and the tools' texts.</summary>
+/// <summary>The desktop's guide library (Companion › App guides): matching the program in front, the rule for reading up on its own,
+/// reading up into a searchable guide, the notes on a message and the tools' texts.</summary>
 public sealed class AppGuideServiceTests : IDisposable
 {
     private const string Page =
@@ -56,7 +56,7 @@ public sealed class AppGuideServiceTests : IDisposable
             Assert.False(guides.On); // Off until the saved choice is read.
             await guides.LoadAsync();
             Assert.True(guides.On);
-            Assert.True(guides.Library.AskWhenStarted);
+            Assert.True(guides.Library.ReadUpWhenStarted);
         }
         // A library an earlier Martlet saved with App guides off stays off, also after another change on the page.
         Directory.CreateDirectory(directory);
@@ -84,7 +84,7 @@ public sealed class AppGuideServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task MartletOffersAGameWithoutAGuideOnceASessionAndKeepsANo()
+    public async Task MartletReadsUpOnAGameWithoutAGuideOnceASessionAndKeepsANo()
     {
         using var guides = Service();
         await guides.LoadAsync();
@@ -95,10 +95,11 @@ public sealed class AppGuideServiceTests : IDisposable
         await guides.SetOnAsync(true);
         var offer = Assert.IsType<AppGuideOfferCandidate>(guides.Offer());
         Assert.Equal(("Crystal Caverns", "crystal-caverns", true), (offer.Name, offer.Key, offer.Game));
+        Assert.Equal(["Crystal Caverns", "CrystalCaverns"], offer.Programs);
         guides.Offered(offer.Key, () => false);
         Assert.Null(guides.Offer());
 
-        // An offer dropped before Martlet said it may come again, a few times at most.
+        // A start dropped before Martlet could may come again, a few times at most.
         guides.See("Crystal Caverns 2", "CrystalCaverns2", game: true, fullScreen: false);
         for (var i = 0; i < AppGuideService.MaximumOffers; i++)
         {
@@ -107,7 +108,7 @@ public sealed class AppGuideServiceTests : IDisposable
         }
         Assert.Null(guides.Offer());
 
-        // A no is kept, also after Martlet starts again, until Ask again.
+        // A no is kept, also after Martlet starts again, until Allow again.
         await guides.DeclineAsync("Crystal Caverns 2");
         using var again = Service();
         await again.LoadAsync();
@@ -116,15 +117,91 @@ public sealed class AppGuideServiceTests : IDisposable
         await again.AskAgainAsync("crystal-caverns-2");
         Assert.NotNull(again.Offer());
 
-        // Not a game and not on the list, or Ask when I start a game or app off: no offer. An app on the list is offered.
+        // Not a game and not on the list, or Read up when I start a game or app off: nothing. An app on the list is read up on.
         again.See("Notepad", "notepad", game: false, fullScreen: false);
         Assert.Null(again.Offer());
         await again.AddAsync("Paint Studio", ["PaintStudio"], []);
         again.See("Paint Studio Pro", "PaintStudio", game: false, fullScreen: false);
         Assert.Equal(("Paint Studio", false), (again.Offer()?.Name, again.Offer()?.Game ?? true));
-        await again.SetAskAsync(false);
+        await again.SetReadUpWhenStartedAsync(false);
         Assert.Null(again.Offer());
     }
+
+    [Fact]
+    public async Task AGameInFrontIsReadUpOnUnderAReadableNameWithItsProgramNamesAndItsGuideIsUsed()
+    {
+        var slow = new FixtureBuilder { Hold = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        using var guides = Service(slow);
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        // Windows names an Unreal game's program like this; the user and the wiki say "Abiotic Factor".
+        guides.See("AbioticFactor", "AbioticFactor-Win64-Shipping", game: true, fullScreen: true);
+        var due = Assert.IsType<AppGuideOfferCandidate>(guides.Offer());
+        Assert.Equal(("Abiotic Factor", "abiotic-factor"), (due.Name, due.Key));
+        guides.Offered(due.Key);
+        var reading = guides.BuildAsync(due.Name, [], null, default, due.Programs);
+        Assert.True(SpinWait.SpinUntil(() => guides.Library.Apps.Count == 1, TimeSpan.FromSeconds(10)));
+
+        // On the list from the start, with the program's names, and nothing else is read up on meanwhile.
+        var listed = Assert.Single(guides.Library.Apps);
+        Assert.Equal(("abiotic-factor", "Abiotic Factor"), (listed.Key, listed.Name));
+        Assert.Null(listed.BuiltAt);
+        Assert.Equal(["AbioticFactor", "AbioticFactor-Win64-Shipping"], listed.Programs);
+        guides.See("Crystal Caverns", "CrystalCaverns", game: true, fullScreen: true);
+        Assert.Null(guides.Offer());
+        slow.Hold.SetResult();
+        Assert.True((await reading).Built);
+
+        // Its guide goes with a question while it is in front, and it isn't read up on again.
+        guides.See("AbioticFactor", "AbioticFactor-Win64-Shipping", game: true, fullScreen: true);
+        Assert.Equal("abiotic-factor", guides.Front?.Entry?.Key);
+        Assert.NotNull(guides.Library.Apps.Single().BuiltAt);
+        Assert.True(await guides.ReadyAsync("abiotic-factor"));
+        Assert.Contains("Ember Mines", guides.Recall("where can I mine iron ore?")!.Notes);
+        Assert.Null(guides.Offer());
+
+        // A last try that failed isn't read again on its own (Read up now on the page tries again).
+        using var failing = Service(new FixtureBuilder { Problem = "no page about it could be read" });
+        await failing.LoadAsync();
+        await failing.SetOnAsync(true);
+        failing.See("MoonlitAbyss", "MoonlitAbyss", game: true, fullScreen: true);
+        var tried = failing.Offer()!;
+        Assert.False((await failing.BuildAsync(tried.Name, [], null, default, tried.Programs)).Built);
+        using var restarted = Service(new FixtureBuilder());
+        await restarted.LoadAsync();
+        restarted.See("MoonlitAbyss", "MoonlitAbyss", game: true, fullScreen: true);
+        Assert.Equal("Moonlit Abyss", restarted.Front?.Entry?.Name);
+        Assert.Null(restarted.Offer());
+    }
+
+    [Theory]
+    [InlineData("AbioticFactor-Win64-Shipping", "Abiotic Factor")]
+    [InlineData("Palworld-Win64-Shipping", "Palworld")]
+    [InlineData("StardewValley", "Stardew Valley")]
+    [InlineData("Stardew_Valley", "Stardew Valley")]
+    [InlineData("DOOMEternal", "DOOM Eternal")]
+    [InlineData("ELDEN RING\u2122", "ELDEN RING\u2122")]
+    [InlineData("Half-Life 2", "Half-Life 2")]
+    [InlineData("eldenring", "eldenring")]
+    [InlineData("TESV", "TESV")]
+    [InlineData("x64", "x64")]
+    [InlineData("  ", "")]
+    public void ProgramNamesBecomeNamesToReadUpOn(string program, string readable) =>
+        Assert.Equal(readable, AppGuideService.Readable(program));
+
+    [Theory]
+    [InlineData("Can you read up on Stardew Valley please?", "Stardew Valley")]
+    [InlineData("I want you to read up on Palworld", "Palworld")]
+    [InlineData("read up about Elden Ring for me", "Elden Ring")]
+    [InlineData("Hey Martlet, READ UP ON abiotic factor.", "abiotic factor")]
+    [InlineData("read up on this game", AppGuideTools.InFront)]
+    [InlineData("could you read up on it", AppGuideTools.InFront)]
+    [InlineData("I should read up on them", null)]
+    [InlineData("No thanks, don't read up on it.", null)]
+    [InlineData("please do not read up on Elden Ring", null)]
+    [InlineData("what's up? read the news", null)]
+    [InlineData("", null)]
+    public void TheUsersWordsSayWhatToReadUpOn(string words, string? app) => Assert.Equal(app, AppGuideTools.AskedToReadUp(words));
 
     [Fact]
     public async Task ReadingUpMakesASearchableGuideAndTheNotesFollowTheAppInFront()
@@ -195,7 +272,7 @@ public sealed class AppGuideServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TheAnswerToAnOfferLinksTheProgramInFrontToTheAppTheUserNamed()
+    public async Task ReadingUpOnTheAppInFrontLinksItsProgramToTheNameTheUserSaid()
     {
         using var guides = Service();
         await guides.LoadAsync();
@@ -219,7 +296,7 @@ public sealed class AppGuideServiceTests : IDisposable
         again.See("CrystalCaverns", "CrystalCaverns", game: true, fullScreen: true);
         Assert.True(again.Front?.Entry?.Declined);
         Assert.Null(again.Offer());
-        // Reading up on a name while nothing was offered links nothing.
+        // Reading up on a name while nothing was started on links nothing.
         again.See("Notepad", "notepad", game: false, fullScreen: false);
         Assert.True((await again.BuildAsync("Skyrim", [], null)).Built);
         Assert.Empty(again.Library.Apps.Single(a => a.Key == "skyrim").Programs);
@@ -316,7 +393,7 @@ public sealed class AppGuideServiceTests : IDisposable
     }
 
     [Fact]
-    public void TheOfferIsANoticeWithItsOwnPrompts()
+    public void TheNoticeThatMartletReadsUpIsANoticeWithItsOwnPrompts()
     {
         using var jobs = new BackgroundJobs();
         var offer = new AppGuideOfferCandidate("Elden Ring", "elden-ring", true);
@@ -325,7 +402,10 @@ public sealed class AppGuideServiceTests : IDisposable
         SpinWait.SpinUntil(() => job.Finished, TimeSpan.FromSeconds(5));
         var message = BackgroundJobs.ReportMessage(null, [job]).UserText;
         Assert.Contains("\n- Elden Ring (a game)\n", message);
-        Assert.Contains("read_up_on", message);
+        // Martlet already reads up on it: the model only tells the user, and never says it's done before the guide is.
+        Assert.Contains("you've started reading up on it", message);
+        Assert.Contains("Don't say you're done", message);
+        Assert.DoesNotContain("read_up_on", message);
         Assert.Contains("skip_guide", message);
         Assert.Contains("- Elden Ring (a game)", BackgroundJobs.ReportNotes(null, [job]));
         Assert.Equal(UnpromptedKind.CheckIn, UnpromptedSpeech.Of(AppGuideTools.OfferKind));
@@ -344,6 +424,74 @@ public sealed class AppGuideServiceTests : IDisposable
         Assert.Contains("\nNotes about Skyrim:\n", GuideRecall.Notes("Skyrim", hits, prompts: edited));
     }
 
+    [Fact]
+    public async Task ALongReadIsKeptWhileReadingAndStopKeepsWhatWasRead()
+    {
+        var builder = new KeepingBuilder();
+        using var guides = Service(builder);
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        Assert.False(guides.StopReading());
+        var build = guides.BuildAsync("Skyrim", ["game.fandom.com/wiki/Iron_Ore"], null);
+
+        // Kept while still reading: the guide is on the list and searchable.
+        Assert.True(await builder.Kept.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.NotNull(guides.Building);
+        var entry = Assert.Single(guides.Library.Apps);
+        Assert.Equal((1, true), (entry.Pages, entry.BuiltAt is not null));
+        Assert.True(guides.IsReady("skyrim"));
+        Assert.NotEmpty(guides.Search("skyrim", "where is iron ore", 3)!);
+
+        // Stop reading: the read ends and keeps every page read up to then.
+        Assert.True(guides.StopReading());
+        var built = await build.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(built.Built);
+        Assert.Equal(2, built.Pages);
+        Assert.Equal(2, Assert.Single(guides.Library.Apps).Pages);
+        Assert.False(guides.StopReading());
+    }
+
+    [Fact]
+    public async Task AReadLargerThanTheStoreKeepsThePagesReadFirstAndEnds()
+    {
+        var pages = Enumerable.Range(0, FileAppGuideStore.MaximumSources + 1)
+            .Select(i => new GuidePage($"https://game.fandom.com/wiki/Item_{i}", $"Item {i}", $"Item {i} is found in cave number {i} of the valley.", 10))
+            .ToArray();
+        var builder = new KeepingBuilder { Pages = pages };
+        using var guides = Service(builder);
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        var build = guides.BuildAsync("Skyrim", [], null);
+        // The keep says the guide is full: reading ends.
+        Assert.False(await builder.Kept.Task.WaitAsync(TimeSpan.FromSeconds(60)));
+        var built = await build.WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.True(built.Built);
+        Assert.Equal(FileAppGuideStore.MaximumSources, built.Pages);
+        var guide = await new FileAppGuideStore(directory).LoadGuideAsync("skyrim", default);
+        Assert.Equal("https://game.fandom.com/wiki/Item_0", guide!.Sources[0].Url);
+        Assert.DoesNotContain(guide.Sources, s => s.Url.EndsWith($"Item_{FileAppGuideStore.MaximumSources}", StringComparison.Ordinal));
+    }
+
+    // Keeps its first pages through the request's Keep, then reads on until Stop (or ends at once when the guide is full).
+    private sealed class KeepingBuilder : IGuideBuilder
+    {
+        internal TaskCompletionSource<bool> Kept { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal GuidePage[]? Pages { get; init; }
+
+        public async Task<GuideBuildOutcome> BuildAsync(GuideBuildRequest request, IProgress<string>? progress, CancellationToken cancellationToken)
+        {
+            progress?.Report("Reading page 1");
+            GuidePage[] first = Pages ?? [new GuidePage("https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", Page, 400)];
+            var more = await request.Keep!(new(first, ["game.fandom.com"], 0, 400, null), cancellationToken);
+            Kept.SetResult(more);
+            if (!more) return new(first, ["game.fandom.com"], 0, 400, null);
+            try { await Task.Delay(Timeout.Infinite, request.Stop); }
+            catch (OperationCanceledException) when (request.Stop.IsCancellationRequested) { }
+            return new([.. first, new GuidePage("https://game.fandom.com/wiki/Gold", "Gold", Page.Replace("Iron Ore", "Gold", StringComparison.Ordinal), 400)],
+                ["game.fandom.com"], 0, 800, null);
+        }
+    }
+
     private sealed class FixtureBuilder : IGuideBuilder
     {
         internal TaskCompletionSource? Hold { get; init; }
@@ -351,7 +499,7 @@ public sealed class AppGuideServiceTests : IDisposable
 
         public async Task<GuideBuildOutcome> BuildAsync(GuideBuildRequest request, IProgress<string>? progress, CancellationToken cancellationToken)
         {
-            progress?.Report("Reading pages (1 of at most 60)");
+            progress?.Report("Reading page 1");
             if (Hold is not null) await Hold.Task.WaitAsync(cancellationToken);
             if (Problem is not null) return new([], [], 1, 0, Problem);
             return new([new GuidePage(request.Sites.FirstOrDefault() ?? "https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", Page, 400)],
