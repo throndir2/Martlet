@@ -5255,7 +5255,10 @@ tokens, M of them (P %) from the model's prompt cache.* lines
 glances and *Remembering*/*Learning names*) and in the `help` (tooltip) of the talk
 window's `LiveContext`. On Companion › Replies,
 `RepliesContextStatus` reads the size in use and where it comes from and what
-Martlet knows of the model's own limit; `RepliesCheckContext` (*Check model
+Martlet knows of the model's own limit; `RepliesMaxReplyTokensRange` and
+`RepliesContextTokensRange` read each setting's allowed range and blank value as
+the page shows them for the Thinking route (*16-32768 tokens, blank = 4096*, and
+*2048-262144 tokens on a host, blank = 8192* for a paired host); `RepliesCheckContext` (*Check model
 limit*) asks the Thinking model's server (loading the model in Ollama on this
 PC first), so it needs `--allow-ui-effects`. Choosing a Chat Completions model
 on Companion › Thinking checks it the same way, and *Test model* and the talk
