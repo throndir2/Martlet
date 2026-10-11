@@ -808,7 +808,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › App guides (off by default): the Now line (off, or how many guides, pages and their size, and what Martlet is
         // reading up on now), the fixed disclosure of what leaves this PC, what is in front as App guides sees it (a program's name,
         // whether it is a game or on the list, and whether its guide is ready), the empty list's line and what the last action did.
-        // Its On and Ask when I start a game or app boxes report their state as checkedState; ticking them saves guides\library.json,
+        // Its On and Read up when I start a game or app boxes report their state as checkedState (AppGuidesAsk is the second; its
+        // ID is kept from when Martlet asked first); ticking them saves guides\library.json,
         // so it needs --allow-ui-effects. Each app's name and line read through AppGuideName- and AppGuideStatus- below.
         "AppGuidesNow", "AppGuidesDisclosure", "AppGuidesFront", "AppGuidesEmpty", "AppGuidesResult", "AppGuidesOn", "AppGuidesAsk",
         // Companion › Check-ins: how many check-ins are on and the Thinking pool member that takes them first, or why they can't
@@ -1116,7 +1117,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › App guides: each app on the list, its name ("AppGuideName-elden-ring" reads "Elden Ring") and its line
         // ("AppGuideStatus-elden-ring" reads "42 pages, 3.1 MB, read 10 Oct 2026, 18:40. Reads from eldenring.wiki.fextralife.com."
         // or "No guide yet." or "Reading up now: Reading pages (3 of at most 60)."; never a guide's text). Its Read up now or Read
-        // again (AppGuideRead-<key>) reads up on the web, Ask again (AppGuideAskAgain-<key>) and Delete (AppGuideDelete-<key>)
+        // again (AppGuideRead-<key>) reads up on the web, Allow again (AppGuideAskAgain-<key>) and Delete (AppGuideDelete-<key>)
         // save guides\library.json, so they need --allow-ui-effects; typing in Add an app (AppGuideAddName, AppGuideAddPrograms,
         // AppGuideAddSites) is ui_set_text, and Add (AppGuideAdd) and Add and read up (AppGuideAddRead) need --allow-ui-effects too.
         "AppGuideName-", "AppGuideStatus-",

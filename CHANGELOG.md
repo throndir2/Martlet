@@ -8,6 +8,13 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- **App guides**: when you start a game Martlet has no guide for, it now reads up on it on its own and tells you, in character, instead of asking first. Tell it you'd rather it didn't, and it stops and won't do it for that game again; *Read up when I start a game or app* on Companion › App guides turns it off. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
+### Fixed
+
+- **App guides**: a game Martlet said it read up on, such as Abiotic Factor, now always shows under *Your apps* with its guide, and its guide is used while the game is in front. Before, it read up only when its model called the right tool, so it could say it was ready when nothing was read. *"Read up on …"* now also works with Thinking models that can't call tools. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 ## [0.70.0] - 2026-10-11
 
 ### Added

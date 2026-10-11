@@ -17,12 +17,14 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
    sends the app's name to a search engine and the wiki sites see the
    requests). The page says what leaves the PC.
 2. Start a game. When Martlet sees a game (or an app on the list) in front and
-   it has no guide yet, it asks once a session, in character: *"I see you
-   started Elden Ring. Want me to read up on it so I can help?"* It asks only
-   in a conversation that runs, and only while *Ask when I start a game or
-   app* is on (on by default). A yes starts a background job, *Reading up on
-   Elden Ring*, in the talk window's task list; a no is remembered and Martlet
-   doesn't ask about that app again (**Ask again** on the page undoes it).
+   it has no guide yet, it reads up on it on its own, once a session, while
+   *Read up when I start a game or app* is on (on by default). The app is on
+   the list at once, and the job *Reading up on Elden Ring* shows in the talk
+   window's task list. In a conversation that runs, Martlet tells you in
+   character: *"I see you started Elden Ring. I'm reading up on it so I can
+   help."* Tell it you'd rather it didn't and it stops; it remembers that and
+   doesn't read up on that app on its own again (**Allow again** on the page
+   undoes it).
 3. Or say *"read up on Stardew Valley"*, or use **Add an app** on the page:
    the app's name, optional program names (as Windows names the program, if
    they differ) and optional wiki addresses. **Add and read up** reads at
@@ -36,15 +38,15 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
 6. The App guides page lists every app: its pages, size, when it was read, the
    pages it reads from, its program names, the last problem and whether the
    user said no. Each app has **Read up now** (or **Read again**), **Delete**
-   and, after a no, **Ask again**. The page also says what is in front, as App
+   and, after a no, **Allow again**. The page also says what is in front, as App
    guides sees it.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A[Game or listed app in front] -->|no guide yet| B[Martlet offers to read up]
-    B -->|yes| C[Background job: find the wiki]
+    A[Game or listed app in front] -->|no guide yet| C[Background job: find the wiki]
+    A -.->|tells the user, in character| B[Notice in the conversation]
     U[User: read up on X / Add an app] --> C
     C --> D[Crawl the wiki: MediaWiki API or same-site links, robots.txt, caps]
     D --> E[Chunk pages by heading]
@@ -269,13 +271,22 @@ reply gets three tools after Martlet's other tools, always worded the same, with
 the *App guides* prompt (Companion › Prompts), so the start of every request
 stays the same:
 
-- `read_up_on(app, sites?)`: starts the reading-up job (the user asked, or said
-  yes to the offer) and returns at once.
+- `read_up_on(app, sites?)`: starts the reading-up job (the user asked) and
+  returns at once; it says so when Martlet already reads up on that app.
 - `search_guide(app?, question)`: searches a guide for more than the notes
   carried (the app in front when `app` is left out) and returns the sections
   with their page titles, links and relevance.
-- `skip_guide(app)`: the user said no to the offer; Martlet never offers that
-  app again.
+- `skip_guide(app)`: the user doesn't want Martlet to read up on the app; it
+  stops reading up on it when it does now, and never reads up on it on its own
+  again.
+
+The prompt tells the model to use `read_up_on`, never `research` or
+`think_longer`, to read up on an app, and never to say it read up on something
+before a note says its guide is ready. When the reply can't call `read_up_on`
+(the route doesn't do function calling, or the model rejected tools), the
+user's own words *read up on X* start the job instead
+(`AppGuideTools.AskedToReadUp`: *it* or *this game* is the app in front, and
+*don't read up on…* is never a request), and the notes tell the model.
 
 ## On the desktop
 
@@ -296,15 +307,28 @@ stays the same:
   matches the program to the list by key, name or program names, ignoring case
   and punctuation (*ELDEN RING™* is *Elden Ring*). Martlet's own windows are
   passed over.
-- **The offer** is a notice (`guideoffer`) that the conversation brings up as
-  soon as Martlet is free, with the *App guides: offer to read up* prompts. It
-  goes only to a conversation that runs (Martlet never starts one for it), and
-  an offer dropped before Martlet said it may come again (at most 3 times a
-  session).
+- **Reading up on its own.** When a game (or an app on the list) without a
+  guide comes to the front, *Read up when I start a game or app* is on, nothing
+  else is being read up on, the user never said no to it and its last try
+  didn't fail, Martlet starts the job itself, once a session
+  (`AppGuideService.Offer`). It never waits for the model: Martlet used to ask
+  first and read up only when the model called `read_up_on` on a yes, so a
+  Thinking route without function calling, or a model that only answered in
+  character, said it read up while nothing was read and the game never reached
+  the list. The name is the program's, made readable
+  (`AppGuideService.Readable`: *AbioticFactor-Win64-Shipping* is *Abiotic
+  Factor*, *StardewValley* is *Stardew Valley*), and the names Windows gives
+  the program join the entry, so its guide is used while it is in front. In a
+  conversation that runs, the job runs there and a notice (`guideoffer`) tells
+  the user as soon as Martlet is free, with the *App guides: reading up on a
+  game you started* prompts; without one, the main window reads up by itself.
+  The setting is kept as `askWhenStarted` in `library.json`, so a no to asking
+  stays a no to reading.
 - **The job** (`guide`: one at a time, 4 an hour, 20 minutes, *Reading up on*)
-  runs the wiki reader, the chunker and the store; no model is asked. Its
-  result tells the reply how many pages it read. Reading up from the page runs
-  in the conversation when one runs, else on its own.
+  runs the wiki reader, the chunker and the store; no model is asked. The app is
+  on the list from the start. Its result tells the reply how many pages it read,
+  or why it failed. Reading up from the page runs in the conversation when one
+  runs, else on its own.
 - **Notes**: on each of the user's own messages, while App guides are on, the
   guide of the app the words name (else of the app in front) is searched with
   the user's words. Sections the conversation already carries aren't sent
@@ -312,15 +336,16 @@ stays the same:
   earlier conversations. The latency timeline marks *app guide*; the desktop
   log notes counts, relevance and time only.
 - **MCP**: `app_guides_check` rehearses all of this against a fixture wiki on
-  loopback and measures the notes step; `app_guides_status` reads a data
-  folder's library; the page's status lines are `SafeValues` (see
-  [MCP](MCP.md)).
+  loopback (including a game in front, named as Windows names an Unreal game's
+  program, read up on with no model) and measures the notes step;
+  `app_guides_status` reads a data folder's library; the page's status lines
+  are `SafeValues` (see [MCP](MCP.md)).
 
 **Latency.** On a full-size guide (2,000 sections) the notes step takes about
 0.13 ms (median; 0.23 ms worst) for a message about the app and nothing while App guides are
 off; the first search in a new process takes about 3 ms, because building an
 index also loads the search code. While on, the three tools and the prompt add
-about 2.3 KB to every request, the same every time, so prompt caches keep them.
+about 2.5 KB to every request, the same every time, so prompt caches keep them.
 
 ## Files
 
