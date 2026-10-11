@@ -63,11 +63,14 @@ internal sealed class LiveConversationConfiguration
     /// schemas in its events).</summary>
     internal const int ToolInputTokens = 81_664;
     /// <summary>The LLM bounds with the default reply length; the base each configuration sets its context size on, and the
-    /// bound of the small background requests (remembering, learning names).</summary>
+    /// bound of the small background requests (remembering, learning names). Every route streams up to the contract's largest
+    /// event count, stream size and text, so a reply of the largest max reply length (Companion › Replies) is never cut off.</summary>
     internal static TextGenerationLimits DefaultTextLimits { get; } = new()
     {
         MaxInputTokens = 98_304, MaxContextTokens = 98_304 + GenerationSettings.MaximumReplyTokens,
         MaxEventBytes = Martlet.Core.Contracts.ContractRules.MaxJsonBytes,
+        MaxEvents = TextGenerationLimits.HardMaxEvents, MaxStreamBytes = TextGenerationLimits.HardMaxStreamBytes,
+        MaxTextCharacters = Martlet.Core.Contracts.ContractRules.MaxTextCharacters,
         MaxOutputTokens = GenerationSettings.DefaultMaxReplyTokens, MaxRequestTime = TimeSpan.FromSeconds(45)
     };
     /// <summary>One spoken sentence: as long as a voice contract allows, so a long sentence is never cut off.</summary>
@@ -79,20 +82,19 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The LLM bounds for Ollama on this PC. Ollama loads the model into memory on the first request after it unloaded
     /// it (by default five idle minutes), which takes 15 s to 2 minutes before the first token, and it abandons the load when
     /// the request gives up; so a reply waits up to two minutes. There is no reply token budget unless a max reply length is
-    /// set (see <see cref="GenerationSupport.SendsReplyBudget"/>): the output reservation and event count are the contract's
-    /// largest, since thinking models stream their hidden reasoning token by token.</summary>
+    /// set (see <see cref="GenerationSupport.SendsReplyBudget"/>): thinking models stream their hidden reasoning token by
+    /// token, within the contract's largest event count (<see cref="DefaultTextLimits"/>).</summary>
     internal static TextGenerationLimits LocalOllamaTextLimits { get; } = DefaultTextLimits with
     {
-        MaxOutputTokens = 4096, MaxContextTokens = 98_304 + 4096, MaxEvents = 4094,
+        MaxOutputTokens = 4096, MaxContextTokens = 98_304 + GenerationSettings.MaximumReplyTokens,
         FirstDeltaTimeout = TimeSpan.FromMinutes(2), IdleTimeout = TimeSpan.FromMinutes(2), MaxRequestTime = TimeSpan.FromMinutes(2)
     };
     /// <summary>The LLM bounds for a cloud Chat Completions route (OpenRouter, NVIDIA Build, other servers) or a paired host's
-    /// Ollama. Its max_tokens (num_predict) also covers a reasoning model's hidden thinking, which streams one small event per token, so the reply budget, event
-    /// count and stream size are the contract's largest; otherwise thinking used up the reply after a few words.</summary>
+    /// Ollama. Its max_tokens (num_predict) also covers a reasoning model's hidden thinking, which streams one small event per
+    /// token, so the default reply budget is larger; otherwise thinking used up the reply after a few words.</summary>
     internal static TextGenerationLimits ChatTextLimits { get; } = DefaultTextLimits with
     {
-        MaxOutputTokens = GenerationSettings.ChatReplyTokens, MaxContextTokens = 98_304 + GenerationSettings.ChatReplyTokens,
-        MaxEvents = 4094, MaxStreamBytes = 4_194_304
+        MaxOutputTokens = GenerationSettings.ChatReplyTokens
     };
     /// <summary>A reply's turn: Martlet says the whole reply aloud, however long (ConversationLimits' defaults).</summary>
     internal static ConversationLimits TurnLimits { get; } = new();
@@ -177,14 +179,15 @@ internal sealed class LiveConversationConfiguration
                 MaxRequestTime = LocalOllamaTextLimits.MaxRequestTime
             };
         Context = ContextBudget.For(thinking, Generation, limits);
-        // A paired host's gateway takes at most 16 KiB and 16 earlier messages, and no tools; every other route takes the
-        // whole context size, with the tools' own room on top.
+        // Every route takes the whole conversation that fits the context size. A paired host's gateway takes no tools and at
+        // most OllamaInputBytes of text (an older host takes less, and HostTextClient leaves out what it can't take); every
+        // other route takes the tools' own room on top.
         var host = thinkingRoute == SetupRouteType.GatewayOllama;
         var input = Context.InputTokens + (host ? 0 : ToolInputTokens);
         TextLimits = limited with
         {
-            MaxInputBytes = host ? BoundedTextInput.HardMaxUtf8Bytes : BoundedTextInput.HardMaxInputUtf8Bytes,
-            MaxHistoryMessages = host ? TextGenerationLimits.DefaultMaxHistoryMessages : BoundedTextInput.HardMaxHistoryMessages,
+            MaxInputBytes = host ? SelfHostSetup.OllamaInputBytes : BoundedTextInput.HardMaxInputUtf8Bytes,
+            MaxHistoryMessages = BoundedTextInput.HardMaxHistoryMessages,
             MaxInputTokens = input,
             MaxContextTokens = input + limited.MaxOutputTokens
         };

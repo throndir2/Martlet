@@ -20,15 +20,16 @@ public static class ThinkLonger
     public const int MaxTaskCharacters = 4_000;
     public const int MaxReasonCharacters = 300;
     /// <summary>The background request's output budget (its hidden reasoning included where the route counts it): Medium and
-    /// High. A reply's is at most 4,096.</summary>
+    /// High. A reply's is 4,096 or less unless Companion › Replies › Max reply length asks for more.</summary>
     public const int MediumOutputTokens = 8_192, HighOutputTokens = 16_384;
 
     public static int OutputTokens(ThinkEffort effort) => effort == ThinkEffort.High ? HighOutputTokens : MediumOutputTokens;
 
-    /// <summary>What a think on a paired computer's Ollama must fit: its gateway takes 16 KiB and 16 earlier messages, no tools,
-    /// and loads at most <see cref="GenerationSettings.MaximumHostContextTokens"/> of context, which the output shares.</summary>
-    public static ThinkBounds HostBounds(ThinkEffort effort) => new(BoundedTextInput.HardMaxUtf8Bytes,
-        TextGenerationLimits.DefaultMaxHistoryMessages, GenerationSettings.MaximumHostContextTokens - OutputTokens(effort), Tools: false);
+    /// <summary>What a think on a paired computer's Ollama must fit: its gateway takes the whole conversation
+    /// (<see cref="SelfHostSetup.OllamaInputBytes"/>) but no tools, and Deep thinking loads
+    /// <see cref="GenerationSettings.DeepThinkingContextTokens"/> of context, which the output shares.</summary>
+    public static ThinkBounds HostBounds(ThinkEffort effort) => new(SelfHostSetup.OllamaInputBytes,
+        BoundedTextInput.HardMaxHistoryMessages, GenerationSettings.DeepThinkingContextTokens - OutputTokens(effort), Tools: false);
     /// <summary>The least time left worth starting a background request with.</summary>
     public static TimeSpan MinimumAttempt => TimeSpan.FromSeconds(5);
 

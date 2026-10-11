@@ -607,8 +607,9 @@ internal static class ThinkLongerCheck
         }
     }
 
-    // A think on a paired computer: a long conversation fitted into its gateway's 16 KiB and 16 messages (the newest kept, the
-    // task last, no tools), as the production fit does.
+    // A think on a paired computer: a long conversation fitted into its Deep thinking window (32,768 tokens less the think's
+    // output; the gateway takes the whole conversation that fits), the newest kept, the task last, no tools, as the production
+    // fit does.
     private static (bool Ok, object Report) HostFit()
     {
         var settings = new ThinkLongerSettings();

@@ -264,8 +264,9 @@ public sealed class OllamaRelayTests
                 new string('0', 64), bytes, 98_304, 65_536, 4_096, 4_096, 1_048_576, TimeSpan.FromMinutes(5), "request_abort");
         Assert.True(Route(HostRoute.OllamaChatRouteId, Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes).CarriesAudio);
         Assert.True(Route(HostRoute.DeepThinkingRouteId, Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes).CarriesAudio);
-        // An older host advertised room for one screen image only.
+        // An older host advertised room for one screen image only, and 16 KiB of conversation.
         Assert.False(Route(HostRoute.OllamaChatRouteId, 1_497_432).CarriesAudio);
+        Assert.False(Route(HostRoute.OllamaChatRouteId, Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes).TakesWholeConversation);
         Assert.False(Route(HostRoute.F5RouteId, Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes).CarriesAudio);
         Assert.True(OllamaRelayWorker.RefusesAudio("model does not support audio"));
         Assert.False(OllamaRelayWorker.RefusesAudio("\"qwen3:8b\" does not support thinking"));
@@ -328,7 +329,7 @@ public sealed class OllamaRelayTests
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.DeepThinkingRouteId);
         // What a Thinking pool job (remembering, 1,024 output tokens) asked for in 0.54.0: a budget of its input bound plus its
         // output, and the role's largest window so the model stays loaded. The gateway refused that pair as request.invalid.
-        const int window = Martlet.Core.Settings.GenerationSettings.MaximumHostContextTokens;
+        const int window = Martlet.Core.Settings.GenerationSettings.DeepThinkingContextTokens;
         const int budget = window - 8_192 + 1_024;
 
         var text = new List<string>();
@@ -366,6 +367,131 @@ public sealed class OllamaRelayTests
         var options = request.GetProperty("options");
         Assert.Equal(4_096, options.GetProperty("num_predict").GetInt32());
         Assert.Equal(OllamaRelayWorker.MaximumContextTokens, options.GetProperty("num_ctx").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_current_host_takes_the_whole_conversation_with_the_notes_and_a_large_context()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        Assert.Equal(Martlet.Core.Settings.SelfHostSetup.OllamaInputBytes, route.MaximumInputBytes);
+        Assert.True(route.TakesWholeConversation);
+        // 200 earlier messages (far more than the 16 and the 16 KiB a host took before) and a message whose notes alone pass 16 KiB.
+        var history = Enumerable.Range(0, 200).Select(i => new HostChatMessage(i % 2 == 1, $"Message {i}: " + new string('x', 1_000))).ToArray();
+        var message = "How are you?\n\nMARTLET_NOTES\n" + new string('n', 20_000);
+        const int largest = Martlet.Core.Settings.GenerationSettings.MaximumHostContextTokens;
+        const int reply = Martlet.Core.Settings.GenerationSettings.MaximumReplyTokens;
+
+        await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            "You are Martlet.", history, message, 0.7, reply, largest, null, new() { ContextTokens = largest })) { }
+
+        var sent = Assert.Single(ollama.Requests).RootElement;
+        var messages = sent.GetProperty("messages");
+        Assert.Equal(202, messages.GetArrayLength());
+        Assert.Equal("You are Martlet.", messages[0].GetProperty("content").GetString());
+        Assert.Equal(message, messages[201].GetProperty("content").GetString());
+        var options = sent.GetProperty("options");
+        Assert.Equal((largest, reply), (options.GetProperty("num_ctx").GetInt32(), options.GetProperty("num_predict").GetInt32()));
+    }
+
+    [Fact]
+    public async Task An_older_host_gets_the_newest_messages_that_fit_its_16_KiB_and_its_smaller_window()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, current) = await ConnectAsync(host);
+        using var owned = connection;
+        // What an older host advertises: 16 KiB of conversation.
+        var route = current with { MaximumInputBytes = Martlet.Core.Settings.SelfHostSetup.LegacyOllamaInputBytes };
+        Assert.False(route.TakesWholeConversation);
+        var history = Enumerable.Range(0, 40).Select(i => new HostChatMessage(i % 2 == 1, $"Message {i}: " + new string('x', 1_000))).ToArray();
+
+        await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            "You are Martlet.", history, "How are you?", 0.7, Martlet.Core.Settings.GenerationSettings.MaximumReplyTokens, 100_000,
+            null, new() { ContextTokens = 65_536 })) { }
+
+        var sent = Assert.Single(ollama.Requests).RootElement;
+        var contents = sent.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("content").GetString()!).ToArray();
+        // The newest exchanges that fit, starting with what the user said, and nothing over 16 KiB in all.
+        Assert.True(contents.Length is > 4 and < 42 && contents.Length % 2 == 0);
+        Assert.StartsWith("Message ", contents[1]);
+        Assert.Equal(history[^1].Text, contents[^2]);
+        Assert.True(contents.Sum(c => System.Text.Encoding.UTF8.GetByteCount(c)) <= Martlet.Core.Settings.SelfHostSetup.LegacyOllamaInputBytes);
+        Assert.Equal(0, int.Parse(contents[1]["Message ".Length..contents[1].IndexOf(':')]) % 2);
+        // Its window is at most 32,768 tokens, and the reply keeps half of it for the prompt.
+        var options = sent.GetProperty("options");
+        Assert.Equal((Martlet.Core.Settings.SelfHostSetup.LegacyOllamaContextTokens, 16_384),
+            (options.GetProperty("num_ctx").GetInt32(), options.GetProperty("num_predict").GetInt32()));
+
+        // A message too long for it on its own fails with what to do.
+        var tooLong = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], new string('x', 20_000), 0.7, 64, 4_096)) { }
+        });
+        Assert.Equal("request.too_large", tooLong.Code);
+        Assert.Contains("Update Martlet on the host", tooLong.Message);
+        Assert.Single(ollama.Requests);
+    }
+
+    [Fact]
+    public async Task A_long_reply_arrives_whole_within_the_routes_events()
+    {
+        var lines = Enumerable.Range(0, 6_000).Select(i => $"{{\"message\":{{\"role\":\"assistant\",\"content\":\"w{i} \"}},\"done\":false}}")
+            .Append("{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true,\"done_reason\":\"stop\"}").ToArray();
+        await using var ollama = await FakeOllama.StartAsync(200, lines);
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+
+        var text = new System.Text.StringBuilder();
+        var deltas = 0;
+        await foreach (var delta in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(60),
+            null, [], "Tell me a long story.", 0.7, 8_192, 16_384))
+        {
+            text.Append(delta);
+            deltas++;
+        }
+
+        // More tokens than the route has events (4,096 before older desktops' limits): the first half go one by one, the rest joined.
+        Assert.Equal(string.Concat(Enumerable.Range(0, 6_000).Select(i => $"w{i} ")), text.ToString());
+        Assert.InRange(deltas, route.MaximumEvents / 2, route.MaximumEvents - 2);
+    }
+
+    [Fact]
+    public async Task A_reply_longer_than_the_route_takes_ends_as_too_long_not_complete()
+    {
+        var piece = new string('x', 2_000);
+        var lines = Enumerable.Range(0, 300).Select(_ => $"{{\"message\":{{\"role\":\"assistant\",\"content\":\"{piece}\"}},\"done\":false}}")
+            .Append("{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true,\"done_reason\":\"stop\"}").ToArray();
+        await using var ollama = await FakeOllama.StartAsync(200, lines);
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        Assert.True(300 * piece.Length > route.MaximumOutputBytes);
+
+        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(60),
+                null, [], "Hello", 0.7, 8_192, 16_384)) { }
+        });
+        Assert.Equal("stream.limit", failure.Code);
+    }
+
+    [Fact]
+    public void Relay_pieces_split_text_between_characters()
+    {
+        var pieces = OllamaRelayWorker.Pieces("ab€cd", 4).Select(p => System.Text.Encoding.UTF8.GetString(p)).ToArray();
+        Assert.Equal(["ab", "€c", "d"], pieces);
+        Assert.Empty(OllamaRelayWorker.Pieces("", 16));
     }
 
     [Fact]

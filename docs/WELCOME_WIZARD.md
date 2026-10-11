@@ -73,9 +73,9 @@ flowchart TD
 
 1. **Network.** *No, this is my first one* starts a new Martlet network on this
    PC. *Yes, join my Martlet network* looks for Martlet on the local network
-   the way *Add a computer* does (`Nearby.FindAsync`: about two seconds of
-   broadcast queries on the private subnets, never a scan) and lists each
-   computer that answered with its hosts. *Join* opens *Add a computer* already
+   the way *Add a computer* does (`Nearby.FindAsync`: 15 seconds of broadcast
+   queries on the private subnets, never a scan) and lists each computer with
+   its hosts as soon as it answers. *Join* opens *Add a computer* already
    asking that computer: both show the same check number, the owner presses
    Allow there, and this PC pairs with each host using the one-use codes it
    receives, so trust and key pinning are exactly as in *Add a computer*.

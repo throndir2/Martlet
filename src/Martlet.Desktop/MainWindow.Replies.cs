@@ -179,7 +179,9 @@ public partial class MainWindow
             var label = new Label { Content = setting.Label, Target = box, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top };
             if (use == GenerationSettingUse.Unused) label.Opacity = 0.6;
             var about = new StackPanel { Margin = new Thickness(0, 8, 0, 10) };
-            about.Children.Add(new TextBlock { Text = range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            var rangeText = new TextBlock { Text = range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+            AutomationProperties.SetAutomationId(rangeText, setting.Id + "Range");
+            about.Children.Add(rangeText);
             about.Children.Add(Note(setting.Help, new Thickness(0, 2, 0, 0)));
             if (route is not null)
             {

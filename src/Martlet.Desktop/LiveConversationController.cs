@@ -2622,7 +2622,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             // Straight to Thinking: the exchange is kept now and its words replace what stands in for them once
                             // speech-to-text has them; the record of conversations, memory and learning names follow then.
                             var exchange = context.Add(Saw(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText)!,
-                                kept, configured.HostTarget() is null ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+                                kept, Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)));
                             ConversationContextBuffer.Pending(exchange,
                                 KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, turn.Content.Text, passed, sawLine)));
                         }
@@ -2633,7 +2633,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             said = operation.Touch && operation.Touches is { } reacted ? reacted.HistoryLine
                                 : operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
                             // A pass stays in the conversation too, so later replies know what was said around Martlet.
-                            context.Add(Saw(said)!, kept, configured.HostTarget() is null ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+                            context.Add(Saw(said)!, kept, Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)));
                             // The check-ins that run after each exchange read it now (a pass said nothing to act on).
                             exchangeEnded = !passed;
                             // The record of conversations keeps the user's own words (never what the PC played) and the reply,
@@ -2847,19 +2847,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var reply = turn.Content.Text;
         var unsaid = CutOffReply.Unsaid(reply, aloud);
         string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
-        var hostless = configured.HostTarget() is null;
         if (straight)
         {
             // Its words replace what stands in for them once speech-to-text has them, as for any reply.
             var earlier = context.Snapshot();
             var exchange = context.Add(Saw(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText)!,
-                kept, hostless ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+                kept, Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)));
             ConversationContextBuffer.Pending(exchange,
                 KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, kept, Passed: false, sawLine, Cut: true)));
         }
         else
         {
-            context.Add(Saw(said)!, kept, hostless ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+            context.Add(Saw(said)!, kept, Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)));
             // The record of conversations keeps the user's own words (never what the PC played) and what was said aloud.
             if (history is { } historyRecord && historyRecord.Active(configured.Memory) &&
                 recorded is { } recordedWords)
@@ -2897,11 +2896,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         lock (gate)
         {
             if (disposed) return;
-            var hostless = keep.Configured.HostTarget() is null;
             var current = conversationId == keep.Conversation;
             // A picture that came with the message stays noted after its words (VisionHistory).
             if (current) filled = context.Fill(keep.Exchange, keep.SawLine is null ? said : VisionHistory.After(said, keep.SawLine),
-                hostless && sent is not null ? keep.SawLine is null ? operation.WithBoardKept(sent.KeptUserText) : VisionHistory.After(operation.WithBoardKept(sent.KeptUserText)!, keep.SawLine) : null);
+                sent is not null ? keep.SawLine is null ? operation.WithBoardKept(sent.KeptUserText) : VisionHistory.After(operation.WithBoardKept(sent.KeptUserText)!, keep.SawLine) : null);
             if (!keep.Passed && history is { } historyRecord && historyRecord.Active(keep.Configured.Memory))
             {
                 historyRecord.Record(keep.Conversation, HistoryInputKind.Spoken, userWords, keep.Reply,

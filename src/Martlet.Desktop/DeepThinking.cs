@@ -18,8 +18,9 @@ internal interface ICredentialAuthority
 /// message is fitted to them (<see cref="ThinkLonger.Fit"/>) and carries no tools.</summary>
 internal sealed class DeepThinkTarget
 {
-    /// <summary>The context a paired computer's Ollama loads for a think: its gateway's largest, so long hidden thinking fits.</summary>
-    internal const int HostContextTokens = GenerationSettings.MaximumHostContextTokens;
+    /// <summary>The context a paired computer's Ollama loads for a think: Deep thinking's own window, so long hidden thinking fits
+    /// and every pool job keeps the model loaded with the same window.</summary>
+    internal const int HostContextTokens = GenerationSettings.DeepThinkingContextTokens;
     /// <summary>The longest one request may run on a paired computer's gateway (its route's bound).</summary>
     internal static TimeSpan HostRequestTime { get; } = TimeSpan.FromSeconds(SelfHostSetup.MaximumGatewayRouteDurationSeconds);
 

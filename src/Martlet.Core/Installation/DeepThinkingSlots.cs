@@ -19,18 +19,18 @@ public static class DeepThinkingSlots
     private const double MinimumContextGb = 0.25;
 
     /// <summary>About how much memory one think's context takes for a model of <paramref name="modelGb"/> loaded with
-    /// <paramref name="contextTokens"/> of context (Deep thinking loads up to <see cref="GenerationSettings.MaximumHostContextTokens"/>),
+    /// <paramref name="contextTokens"/> of context (Deep thinking loads up to <see cref="GenerationSettings.DeepThinkingContextTokens"/>),
     /// for a model the footprint catalog doesn't know (it errs large).</summary>
-    public static double ContextGb(double modelGb, int contextTokens = GenerationSettings.MaximumHostContextTokens) =>
-        Math.Max(MinimumContextGb, modelGb * ContextGbPerModelGb * contextTokens / GenerationSettings.MaximumHostContextTokens);
+    public static double ContextGb(double modelGb, int contextTokens = GenerationSettings.DeepThinkingContextTokens) =>
+        Math.Max(MinimumContextGb, modelGb * ContextGbPerModelGb * contextTokens / GenerationSettings.DeepThinkingContextTokens);
 
     /// <summary>One think's context for <paramref name="model"/>: the footprint catalog's Deep thinking
     /// <see cref="ComponentOption.ContextGb"/> (from the model's own config; Gemma 4's sliding-window layers keep it under
     /// 1 GB at 32,768 tokens, docs/RESOURCE_FOOTPRINTS.md) scaled to <paramref name="contextTokens"/>, else
     /// <see cref="ContextGb(double, int)"/> of <paramref name="modelGb"/>.</summary>
-    public static double ContextGb(string model, double modelGb, int contextTokens = GenerationSettings.MaximumHostContextTokens) =>
+    public static double ContextGb(string model, double modelGb, int contextTokens = GenerationSettings.DeepThinkingContextTokens) =>
         Catalog(PlanComponent.DeepThinking, model) is { ContextGb: > 0 } deep
-            ? deep.ContextGb * contextTokens / GenerationSettings.MaximumHostContextTokens
+            ? deep.ContextGb * contextTokens / GenerationSettings.DeepThinkingContextTokens
             : ContextGb(modelGb, contextTokens);
 
     /// <summary>What <paramref name="model"/> itself takes on the card: the catalog's Deep thinking or Thinking VRAM (measured
@@ -59,7 +59,7 @@ public static class DeepThinkingSlots
     /// <paramref name="others"/> (the host's other models on the card, each with what it takes), on a card of
     /// <paramref name="cardGb"/> (null when the host hasn't reported one: then only one, which runs on the processor).</summary>
     public static (int Slots, string Why) Fit(string model, double modelGb, double? cardGb, IReadOnlyList<(string Name, double Gb)> others,
-        int contextTokens = GenerationSettings.MaximumHostContextTokens)
+        int contextTokens = GenerationSettings.DeepThinkingContextTokens)
     {
         ArgumentNullException.ThrowIfNull(others);
         if (cardGb is not > 0) return (1, "the host reported no graphics card, so it thinks one at a time on the processor");

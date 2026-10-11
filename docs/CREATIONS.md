@@ -58,7 +58,8 @@ that sings it ([singing in conversation](CONVERSATION.md#singing-in-conversation
 **Reports** (`ResearchReports.Kind`, registered by the desktop at startup): web
 research reports ([web research](CONVERSATION.md#web-research)). One asset,
 `report` (text/plain: the report in Markdown with its numbered sources, at most
-128 KiB); the title, the one- or two-sentence summary and the report as text (at
+1.25 MiB; a longer one ends with a line that says where it was cut); the title,
+the one- or two-sentence summary and the report as text (at
 most 16 KiB) in the entry, and the number of sources in metadata. Martlet may
 clean old ones up. `perform_creation` takes no options: the desktop's handler
 writes the report as a plain web page (no scripts, links only to http and https)

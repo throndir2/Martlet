@@ -255,6 +255,31 @@ public sealed class WebResearchTests
     }
 
     [Fact]
+    public void ResearchKeepsTenTimesMoreAndSaysWhereTextWasCut()
+    {
+        Assert.Equal((80, 4_000_000, 200_000), (WebAccess.MaxResults, WebAccess.MaxPageBytes, WebAccess.MaxPageCharacters));
+        Assert.Equal((3_000, 10_000, 400_000), (WebResearch.MaxTopicCharacters, WebResearch.MaxFindCharacters, WebResearch.MaxReportCharacters));
+        Assert.Equal(1_310_720, ResearchReports.MaximumReportBytes);
+        // Each step shows about three times more of the pages and notes, as much as the place it thinks on takes.
+        Assert.Equal((15_000, 15_000, 10_000), (WebResearch.Budget.NotesCharacters, WebResearch.Budget.FreshCharacters, WebResearch.Budget.ExcerptCharacters));
+        Assert.Equal((WebResearch.MinTaskBytes, 15_360, WebResearch.MaxTaskBytes),
+            (WebResearch.TaskBytes(1_000), WebResearch.TaskBytes(6_144), WebResearch.TaskBytes(16_384)));
+        var pages = new List<WebPage>
+        {
+            new("https://a.example/", "A", new string('a', 5_000), 4_000_000, Cut: true), new("https://b.example/", "B", "Short page.", 11)
+        };
+        // A page shown only in part says so to the model.
+        var sources = WebResearch.Sources(["q"], [], pages, 0, [], WebResearch.Budget, 2_000);
+        Assert.Contains("a…" + WebResearch.ExcerptCut, sources, StringComparison.Ordinal);
+        Assert.EndsWith("[2] B <https://b.example/>\nShort page.", sources, StringComparison.Ordinal);
+        // The report says where it was cut and which pages were read only in part.
+        var report = WebResearch.Report(WebResearch.ParseStep("REPORT:\n" + new string('x', WebResearch.MaxReportCharacters + 10)), new("t", "f"), pages);
+        Assert.Contains(WebResearch.ReportCut, report.Markdown, StringComparison.Ordinal);
+        Assert.Contains("1. [A](https://a.example/)" + WebResearch.SourceCut + "\n", report.Markdown, StringComparison.Ordinal);
+        Assert.Contains("2. [B](https://b.example/)\n", report.Markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheReportPageLinksOnlyWebAddressesAndEscapesTheRest()
     {
         var html = ResearchReports.Html("A <title>", "# Heading\n- **bold** [site](https://a.example/x)\n[bad](javascript:alert(1))\n<script>x</script> see https://b.example/y.");
@@ -297,12 +322,26 @@ public sealed class WebResearchTests
         }
     }
 
+    [Fact]
+    public async Task EachTaskFitsThePlaceItThinksOn()
+    {
+        var tasks = new List<string>();
+        var (outcome, _, _) = await RunAsync(new FakeWeb { Text = new string('猫', 20_000) }, task =>
+        {
+            tasks.Add(task);
+            return BackgroundJobOutcome.Done(tasks.Count >= 4 ? "REPORT:\nDone." : $"SEARCH: again {tasks.Count}");
+        }, () => WebResearch.TaskBytes(6_144));
+        Assert.NotNull(outcome.Report);
+        Assert.All(tasks, task => Assert.True(Encoding.UTF8.GetByteCount(task) <= 15_360));
+        Assert.Contains(WebResearch.ExcerptCut, tasks[0], StringComparison.Ordinal);
+    }
+
     private static async Task<(ResearchOutcome Outcome, WebResearchRun Run, BackgroundJob Job)> RunAsync(FakeWeb web,
-        Func<string, BackgroundJobOutcome> think)
+        Func<string, BackgroundJobOutcome> think, Func<int>? taskBytes = null)
     {
         using var jobs = new BackgroundJobs();
         ResearchOutcome? outcome = null;
-        var run = new WebResearchRun(web, web, (task, _) => Task.FromResult(think(task)), null);
+        var run = new WebResearchRun(web, web, (task, _) => Task.FromResult(think(task)), null, taskBytes: taskBytes);
         var job = jobs.Start(WebResearch.Kind, "label", async (job, token) =>
         {
             outcome = await run.RunAsync(job, new("topic words", "what to find"), token);

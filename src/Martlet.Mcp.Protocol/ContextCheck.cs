@@ -281,8 +281,9 @@ internal static class ContextCheck
             personaTokens,
             pictureTokens = BoundedImage.TokenReservation,
             textTokens = budget.InputTokens,
-            // A paired host's gateway takes at most 16 KiB of text in a whole request, whatever its context size.
-            maxTextBytes = thinking.RouteType == SetupRouteType.GatewayOllama ? BoundedTextInput.HardMaxUtf8Bytes : (int?)null,
+            // A paired host's gateway takes at most this much text in a whole request (an older host 16 KiB); the context size
+            // decides first.
+            maxTextBytes = thinking.RouteType == SetupRouteType.GatewayOllama ? SelfHostSetup.OllamaInputBytes : (int?)null,
             roomForTheRest = room,
             leavesOut = "When a look doesn't fit, it goes without the text read on the screen, then the context notes and what Martlet " +
                 "said lately, then the look tags, then the character's emotes and motions (docs/SCREEN_COMMENTARY.md).",
@@ -319,12 +320,16 @@ internal static class ContextCheck
         var cloud = ContextBudget.For(SetupRouteType.ChatCompletions, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, null, 262_144);
         var million = ContextBudget.For(SetupRouteType.OpenAi, null, new() { ContextTokens = 1_000_000 }, ModelContextCatalog.Gpt41ContextTokens);
         var host = ContextBudget.For(SetupRouteType.GatewayOllama, null, null, null);
+        var largeHost = ContextBudget.For(SetupRouteType.GatewayOllama, null,
+            new() { ContextTokens = GenerationSettings.MaximumHostContextTokens }, null);
         var local = ContextBudget.For(SetupRouteType.ChatCompletions, GenerationSupport.LocalOllamaChatBaseUrl, null, 32_768);
         var results = new[]
         {
             Route("cloud, Martlet's default", cloud, BoundedTextInput.HardMaxInputUtf8Bytes, BoundedTextInput.HardMaxHistoryMessages),
             Route("OpenAI gpt-4.1 at 1,000,000", million, BoundedTextInput.HardMaxInputUtf8Bytes, BoundedTextInput.HardMaxHistoryMessages),
-            Route("paired host's Ollama", host, BoundedTextInput.HardMaxUtf8Bytes, TextGenerationLimits.DefaultMaxHistoryMessages),
+            Route("paired host's Ollama", host, SelfHostSetup.OllamaInputBytes, BoundedTextInput.HardMaxHistoryMessages),
+            Route($"paired host's Ollama at {GenerationSettings.MaximumHostContextTokens:N0}", largeHost, SelfHostSetup.OllamaInputBytes,
+                BoundedTextInput.HardMaxHistoryMessages),
             Route("Ollama on this PC at 32,768", local, BoundedTextInput.HardMaxInputUtf8Bytes, BoundedTextInput.HardMaxHistoryMessages)
         };
         return new { ok = results.All(Ok), exchanges = history.Count / 2, routes = results };

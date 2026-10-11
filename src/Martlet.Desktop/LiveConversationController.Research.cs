@@ -105,6 +105,16 @@ internal sealed partial class LiveConversationController
         var watch = Task.CompletedTask;
         string? pushed = null;
         using var web = ResearchWeb();
+        // How much a step's task may take on the place the job thinks on now: Deep thinking's own destination, or the Thinking
+        // model's context (Same as Thinking).
+        int TaskBytes()
+        {
+            var here = job.Place is { } at ? pool.Find(at.Id) ?? spot : spot;
+            return WebResearch.TaskBytes(here.Settings.Separate
+                ? DeepThinkTarget.For(here.Settings.Single, configured.ThinkLonger.HowHard, thinkingRoute, ModelLimits.Load(dataDirectory))
+                    .Bounds.MaxInputTokens
+                : configured.TextInputTokens);
+        }
         var run = new WebResearchRun(web, web, (task, stepToken) => YieldingThink.RunAsync(jobs, job, (at, resume) =>
         {
             var here = pool.Find(at.Id) ?? spot;
@@ -129,7 +139,7 @@ internal sealed partial class LiveConversationController
         }, at => pool.Find(at.Id) is { } next && ThinkLonger.ContinuesInPlace(next.Settings, thinkingRoute), stepToken,
             (at, _) => ErrorLog.Info($"Web research: {job.Id} stopped a step on {at.Name} for the conversation; it goes on later."),
             (at, began) => HeldOnHost(pool, at, began), GoesOnElsewhere("Web research", job.Id)),
-            configured.Prompts);
+            configured.Prompts, taskBytes: TaskBytes);
         try
         {
             if (spot.Plan.ChecksFit)

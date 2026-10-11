@@ -42,7 +42,7 @@ string names what else is estimated.
 - **Context.** Thinking runs at Martlet's 8,192-token context
   (`GenerationSettings.DefaultHostContextTokens`); its VRAM includes that KV
   cache, so `ContextGb` is 0. Deep thinking gets 32,768 tokens a think
-  (`MaximumHostContextTokens`); its `ContextGb` is the extra cache and buffers
+  (`DeepThinkingContextTokens`); its `ContextGb` is the extra cache and buffers
   for one think beyond 8,192 tokens.
 - The planner also keeps 0.8 GB of every card for Windows and the desktop
   (`PlacementEngine.GpuReserveGb`).

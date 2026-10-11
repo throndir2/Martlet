@@ -257,9 +257,11 @@ rules); a policy that throws counts as `AskEveryTime`. Managed servers never off
 *Always allow*.
 
 **What is sent where.** Tool names, descriptions and parameter schemas go to the
-Thinking model with each reply that offers tools; each tool result (cut to 12,000
-characters, and to the reply's 64 KB tool budget) goes to the same model. The model
-is told that tool output is data, not instructions.
+Thinking model with each reply that offers tools; each tool result (cut to 120,000
+characters, and to its share of the reply's 640 KB tool budget and of the room left in
+its context) goes to the same model. A cut result ends with *[output cut short: the first
+N of M characters, as much as this reply has room for]*, and the Thinking trace notes the
+cut. The model is told that tool output is data, not instructions.
 
 **Bounds.** At most 128 tools (96 KB of descriptions) per reply, 16 calls per round
 and 4 tool rounds per reply; each round is one more LLM request under the same
@@ -3214,7 +3216,11 @@ from `hosts.json` (`state` `none`, `loaded` or `unreadable`; when loaded the
 number `paired` and the `shareable` ones with `hostId` and `reach`
 (`ThisPcDocker`, `SshDocker` or `SshNative`)). This PC's own host service set
 up from the host dashboard is found by the desktop from Docker, not here
-(`host_service_status` reads it). It
+(`host_service_status` reads it). `find` says how *Add a computer* looks:
+`listensSeconds` (15; each computer is listed as soon as it answers),
+`queriesSentAtSeconds` (0, 0.5, 1.5, 3.5 and 7.5) and `hostsOfferedAtMost` (64,
+all the hosts a computer can remember). While it looks, the `NearbyStatus` text
+ends with *Still looking for more...*. It
 never returns addresses, SSH targets or keys and contacts nothing.
 
 `node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
@@ -5218,7 +5224,8 @@ model: `ContextTokens`, `ModelMaximum`, `Source`, `checkedAt`) and
 `OllamaAssumed`, `ReplyTokens`, `InputTokens`, `ModelTokens` and `described`,
 the words the Replies page shows), and `look` (how much room a screen glance
 or camera look has: `personaTokens` and `pictureTokens` estimated as the
-desktop estimates them, `textTokens`, `maxTextBytes` on a paired host (16 KiB),
+desktop estimates them, `textTokens`, `maxTextBytes` on a paired host (1 MiB; an
+older host takes 16 KiB),
 `roomForTheRest` for Martlet's instructions, the glance message and its notes,
 `leavesOut` (what a look goes without when it doesn't fit, in order) and a
 `problem` when the picture and the persona alone don't fit, so vision stops;
@@ -5230,8 +5237,9 @@ model lists, an unlisted model, a redirect (never followed; the fixture key
 goes only to its own base URL) and Ollama's `/api/show`, `/api/ps` and
 `/api/generate` (loaded, not loaded, loaded by the check, missing). Its `fit`
 fits a 1,000-exchange synthetic conversation the way a reply does into a cloud
-model's default 100,000 tokens, 1,000,000 tokens on gpt-4.1, a paired host
-(8,192 tokens, 16 KiB, 16 messages) and Ollama on this PC at 32,768:
+model's default 100,000 tokens, 1,000,000 tokens on gpt-4.1, a paired host at
+its default 8,192 tokens and at its largest 262,144 (1 MiB and 4,096 messages,
+like the other routes) and Ollama on this PC at 32,768:
 `exchangesSent`, `exchangesLeftOut`, `estimatedTokens` and `bytes`, `ok` when
 the newest exchanges fit and one more wouldn't. Its `cache` part rehearses the
 [request layout that lets prompt caches work](CONVERSATION.md#prompt-caching-and-the-request-layout)
@@ -5253,7 +5261,10 @@ tokens, M of them (P %) from the model's prompt cache.* lines
 glances and *Remembering*/*Learning names*) and in the `help` (tooltip) of the talk
 window's `LiveContext`. On Companion › Replies,
 `RepliesContextStatus` reads the size in use and where it comes from and what
-Martlet knows of the model's own limit; `RepliesCheckContext` (*Check model
+Martlet knows of the model's own limit; `RepliesMaxReplyTokensRange` and
+`RepliesContextTokensRange` read each setting's allowed range and blank value as
+the page shows them for the Thinking route (*16-32768 tokens, blank = 4096*, and
+*2048-262144 tokens on a host, blank = 8192* for a paired host); `RepliesCheckContext` (*Check model
 limit*) asks the Thinking model's server (loading the model in Ollama on this
 PC first), so it needs `--allow-ui-effects`. Choosing a Chat Completions model
 on Companion › Thinking checks it the same way, and *Test model* and the talk

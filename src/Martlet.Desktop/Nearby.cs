@@ -29,9 +29,20 @@ internal static partial class Nearby
 {
     internal const int Port = 9444;
     internal const string PreferenceFile = "nearby.txt";
-    internal const int MaximumLine = 8192;
-    internal const int MaximumHosts = 16;
-    internal static readonly TimeSpan FindWindow = TimeSpan.FromMilliseconds(1600);
+    /// <summary>The longest message line of a request: room for the sealed codes and notes of every host a desktop can share.</summary>
+    internal const int MaximumLine = 131_072;
+    /// <summary>The most hosts one desktop offers: all it can remember (<see cref="HostRegistry.MaximumHosts"/>), so this is no
+    /// separate limit.</summary>
+    internal const int MaximumHosts = HostRegistry.MaximumHosts;
+    /// <summary>The largest answer to a find that is read: room for <see cref="MaximumHosts"/> host IDs.</summary>
+    internal const int MaximumAnswerBytes = 16_384;
+    /// <summary>How long a find listens. Answers are shown as they come, so a slow or just-woken computer is found too and nobody
+    /// waits for the whole window.</summary>
+    internal static readonly TimeSpan FindWindow = TimeSpan.FromSeconds(15);
+    /// <summary>When a find sends its queries again, after its start: soon for a lost packet, then less often for a computer that
+    /// is waking up.</summary>
+    internal static readonly TimeSpan[] QueryTimes =
+        [TimeSpan.Zero, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(3.5), TimeSpan.FromSeconds(7.5)];
     /// <summary>How long the computer with the hosts waits for its owner to allow or deny a request.</summary>
     internal static readonly TimeSpan DecisionTimeout = TimeSpan.FromMinutes(2);
     /// <summary>How long this PC keeps the codes it shared open for the asking desktop before withdrawing the unused ones
@@ -78,16 +89,18 @@ internal static partial class Nearby
 
     // ---------- finding ----------
 
-    /// <summary>Asks the local network which Martlet desktops can share hosts: about 1.6 seconds, two queries to each
-    /// private subnet's broadcast address, the limited broadcast and loopback. Never lists this process.</summary>
-    internal static async Task<IReadOnlyList<NearbyMartlet>> FindAsync(CancellationToken token)
+    /// <summary>Asks the local network which Martlet desktops can share hosts: <see cref="FindWindow"/>, with queries at
+    /// <see cref="QueryTimes"/> to each private subnet's broadcast address, the limited broadcast and loopback. Never lists this
+    /// process. <paramref name="found"/> gets the list so far each time another desktop answers, on the caller's context.</summary>
+    internal static async Task<IReadOnlyList<NearbyMartlet>> FindAsync(CancellationToken token,
+        Action<IReadOnlyList<NearbyMartlet>>? found = null)
     {
         var query = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(8));
         var packet = JsonSerializer.SerializeToUtf8Bytes(new { martlet = "find", v = 1, q = query });
         using var udp = new UdpClient(AddressFamily.InterNetwork) { EnableBroadcast = true };
         IgnoreUnreachable(udp);
         udp.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
-        var found = new Dictionary<string, NearbyMartlet>(StringComparer.Ordinal);
+        var answered = new Dictionary<string, NearbyMartlet>(StringComparer.Ordinal);
         using var window = CancellationTokenSource.CreateLinkedTokenSource(token);
         window.CancelAfter(FindWindow);
         var sending = SendQueriesAsync(udp, packet, window.Token);
@@ -100,27 +113,36 @@ internal static partial class Nearby
                 catch (SocketException) { continue; }
                 if (ParseAnswer(result.Buffer, result.RemoteEndPoint.Address, query) is not { } martlet || martlet.Instance == Instance) continue;
                 // The same computer can answer over loopback and its LAN address; keep the LAN one.
-                if (!found.TryGetValue(martlet.Instance, out var seen) || IPAddress.IsLoopback(seen.Address) && !IPAddress.IsLoopback(martlet.Address))
-                    found[martlet.Instance] = martlet;
+                if (!answered.TryGetValue(martlet.Instance, out var seen) || IPAddress.IsLoopback(seen.Address) && !IPAddress.IsLoopback(martlet.Address))
+                {
+                    var added = seen is null;
+                    answered[martlet.Instance] = martlet;
+                    if (added) found?.Invoke(Sorted(answered));
+                }
             }
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
         try { await sending; }
         catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException) { }
-        return found.Values.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        return Sorted(answered);
     }
+
+    private static NearbyMartlet[] Sorted(Dictionary<string, NearbyMartlet> answered) =>
+        answered.Values.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToArray();
 
     private static async Task SendQueriesAsync(UdpClient udp, byte[] packet, CancellationToken token)
     {
         var targets = BroadcastTargets();
-        for (var round = 0; round < 2; round++)
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (var at in QueryTimes)
         {
+            var wait = at - System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            if (wait > TimeSpan.Zero) await Task.Delay(wait, token);
             foreach (var target in targets)
             {
                 try { await udp.SendAsync(packet, new IPEndPoint(target, Port), token); }
                 catch (SocketException) { }
             }
-            await Task.Delay(500, token);
         }
     }
 
@@ -146,7 +168,7 @@ internal static partial class Nearby
 
     internal static NearbyMartlet? ParseAnswer(byte[] buffer, IPAddress from, string query)
     {
-        if (buffer.Length > 2048 || !Allowed(from)) return null;
+        if (buffer.Length > MaximumAnswerBytes || !Allowed(from)) return null;
         try
         {
             using var document = JsonDocument.Parse(buffer);

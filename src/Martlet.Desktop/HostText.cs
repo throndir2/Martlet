@@ -108,7 +108,17 @@ internal sealed class HostTextClient : IHostTextClient
         // The host takes a request for at most its route's longest job; a think (no time limit of its own) asks for that much.
         var longest = DateTimeOffset.UtcNow + route.MaximumDuration - TimeSpan.FromSeconds(5);
         if (deadline > longest) deadline = longest;
-        await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.PersonalityWithNotes, history, input.UserText,
+        // The host's prompt cache (Ollama's) reuses a request that starts like the one before, so the instructions go first and
+        // unchanged, then the conversation as it was sent, then the message with its notes, as on every other route. A host
+        // older than that takes 16 KiB with the notes in its instructions: it gets that layout, and the oldest messages that
+        // don't fit are left out (StreamChatAsync).
+        var whole = route.TakesWholeConversation;
+        if (!whole && OlderHosts.TryAdd(target.HostId, 0))
+            ErrorLog.Info($"Martlet host {target.HostId} runs an older version that takes {route.MaximumInputBytes / 1024:N0} KiB of " +
+                $"conversation and {SelfHostSetup.LegacyOllamaContextTokens:N0} tokens of context, so Thinking there gets less of " +
+                "the conversation; update Martlet on the host.");
+        await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, whole ? input.Personality : input.PersonalityWithNotes,
+            history, whole ? input.SentUserText : input.UserText,
             generation?.Temperature ?? HostTextGenerationStream.Temperature, outputTokens, limits.MaxContextTokens,
             input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken, input.Audio?.ToBase64())
             .GetAsyncEnumerator(cancellationToken);
@@ -120,6 +130,9 @@ internal sealed class HostTextClient : IHostTextClient
     /// <summary>What a host's Ollama route took before background thinks: at most this long a request and this many tokens.</summary>
     internal static readonly TimeSpan LegacyRouteDuration = TimeSpan.FromMinutes(2);
     internal const int LegacyOutputTokens = 4_096;
+
+    // The hosts found older than whole-conversation requests (HostRoute.TakesWholeConversation), each logged once.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> OlderHosts = new(StringComparer.Ordinal);
 
     internal static Audio2FaceHostConnection Connect(HostTextTarget target)
     {

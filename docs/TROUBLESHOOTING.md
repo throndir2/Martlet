@@ -211,7 +211,8 @@ holds what its own context length setting gives the model (4,096 tokens on a
 graphics card under 24 GB unless raised): raise it in the Ollama app's settings
 or with `OLLAMA_CONTEXT_LENGTH`, then check again on **Replies**, test the model
 or reopen the talk window, which records it for the next conversation. A larger
-context uses more graphics memory. A paired host's Ollama loads up to 32,768.
+context uses more graphics memory. A paired host's Ollama loads up to 262,144
+(32,768 on a host that runs an older Martlet; update it on **Devices**).
 If a cloud model fails on long conversations ("context length exceeded"), set a
 smaller context size.
 

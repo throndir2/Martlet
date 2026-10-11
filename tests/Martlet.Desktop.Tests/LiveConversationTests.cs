@@ -108,6 +108,20 @@ public sealed class LiveConversationTests
             configuration.Request(new("Hi"), false, [], null, null, out _, out _, out _).Limits.TurnTimeout);
         // Host Ollama's num_predict also pays for thinking: the Chat Completions budget, under a small saved context size.
         Assert.Equal(GenerationSettings.ChatReplyTokens, configuration.TextLimits.MaxOutputTokens);
+        // The host gets the whole conversation that fits its context size, as every other route does.
+        Assert.Equal((SelfHostSetup.OllamaInputBytes, BoundedTextInput.HardMaxHistoryMessages),
+            (configuration.TextLimits.MaxInputBytes, configuration.TextLimits.MaxHistoryMessages));
+        // The largest max reply length is the providers' own output ceiling, and every route's limits take it.
+        Assert.Equal(TextGenerationLimits.HardMaxOutputTokens, GenerationSettings.MaximumReplyTokens);
+        var longest = LiveConversationConfiguration.From(loaded with
+        {
+            Settings = paired with { Generation = new() { MaxReplyTokens = GenerationSettings.MaximumReplyTokens, ContextTokens = 65_536 } }
+        })!;
+        Assert.Equal(GenerationSettings.MaximumReplyTokens, longest.TextLimits.MaxOutputTokens);
+        longest.TextLimits.Validate();
+        // A message too long for an older host, or an answer too long to take, says what to do instead of failing silently.
+        Assert.Contains("update it on Devices", LiveConversationWindow.HostRemedy(ProviderFailureCode.InputLimit, "fixture-host", ProviderRole.Llm));
+        Assert.Contains("longer than Martlet takes", LiveConversationWindow.ProviderRemedy(ProviderFailureCode.ResponseTooLarge));
         Assert.Equal(1_024, LiveConversationConfiguration.From(loaded with
         {
             Settings = paired with { Generation = new() { ContextTokens = 2_048 } }
@@ -1273,9 +1287,11 @@ public sealed class LiveConversationTests
         var sent = new BoundedTextInput("Now?", "Persona.", history.Skip(start));
         Assert.True(sent.InputTokenReservation <= budget.InputTokens);
         Assert.True(new BoundedTextInput("Now?", "Persona.", history.Skip(start - 2)).InputTokenReservation > budget.InputTokens);
-        // A paired host takes 16 earlier messages and 16 KiB at most.
-        Assert.Equal(2_000 - 16, BoundedTextInput.HistoryStart(prompt, history, BoundedTextInput.HardMaxUtf8Bytes, 6_144, 6_144,
-            TextGenerationLimits.DefaultMaxHistoryMessages));
+        // A paired host takes what fits its context size too (its default 8,192 tokens leave 6,144 for the text), not 16 messages.
+        var host = BoundedTextInput.HistoryStart(prompt, history, SelfHostSetup.OllamaInputBytes, 6_144, 6_144,
+            BoundedTextInput.HardMaxHistoryMessages)!.Value;
+        Assert.True(2_000 - host > 16);
+        Assert.True(new BoundedTextInput("Now?", "Persona.", history.Skip(host)).InputTokenReservation <= 6_144);
     }
 
     [Fact]

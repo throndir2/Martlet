@@ -23,6 +23,8 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
     /// <summary>Context window requested from Ollama unless the client asks for another; larger windows cost VRAM on small GPUs.</summary>
     public const int MaximumContextTokens = Martlet.Core.Settings.GenerationSettings.DefaultHostContextTokens;
     private const int MaximumLineBytes = 64 * 1024;
+    /// <summary>The least text one joined event carries once the first half of a route's events went token by token.</summary>
+    internal const int JoinedBytes = 256;
     private const int MaximumResponseBytes = 4 * 1024 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, false);
     private readonly Uri chat;
@@ -131,8 +133,13 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
                 await using var body = await response.Content.ReadAsStreamAsync(stop.Token).ConfigureAwait(false);
                 var reader = new LineReader(body);
                 var pending = new StringBuilder();
-                var outputBytes = 0;
+                int outputBytes = 0, pendingBytes = 0;
                 var spoke = false;
+                // Ollama streams a token a line. Each token goes out as it comes for the first half of the route's events (the
+                // start of a reply, which speech waits for); after that tokens are joined into pieces of at least JoinedBytes,
+                // and the last events carry what is left in pieces an event takes, so a reply of the largest budget fits.
+                var pieceBytes = Math.Max(64, Route.MaximumEventBytes / 4);
+                var reserved = Route.MaximumOutputBytes / pieceBytes + 1;
                 while (true)
                 {
                     var (text, done, error) = await NextAsync(reader, payload.Audio is not null && !spoke, stop.Token)
@@ -146,18 +153,32 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
                     if (!string.IsNullOrEmpty(text))
                     {
                         var bytes = Utf8.GetByteCount(text);
-                        // Output beyond the route's bound is dropped; num_predict normally stops well before it.
-                        if (outputBytes + bytes > Route.MaximumOutputBytes) break;
+                        if (outputBytes + bytes > Route.MaximumOutputBytes)
+                        {
+                            // Longer than the route takes (num_predict normally stops well before it): what came so far goes,
+                            // then the piece that goes over the bound, so the gateway ends the reply with stream.limit and the
+                            // client says the answer was too long instead of taking a cut reply as complete.
+                            foreach (var piece in Pieces(pending.ToString(), pieceBytes))
+                                yield return Event(request, GatewayInferenceEventKind.TextDelta, sequence++, piece);
+                            yield return Event(request, GatewayInferenceEventKind.TextDelta, sequence++, Utf8.GetBytes(text));
+                            yield break;
+                        }
                         outputBytes += bytes;
                         spoke |= !string.IsNullOrWhiteSpace(text);
-                        // Keep two events for the final delta and the terminal event.
-                        if (pending.Length > 0 || sequence >= Route.MaximumEvents - 3) pending.Append(text);
-                        else yield return Event(request, GatewayInferenceEventKind.TextDelta, sequence++, Utf8.GetBytes(text));
+                        pending.Append(text);
+                        pendingBytes += bytes;
+                        if (sequence < Route.MaximumEvents / 2 ||
+                            pendingBytes >= JoinedBytes && sequence < Route.MaximumEvents - 2 - reserved)
+                        {
+                            yield return Event(request, GatewayInferenceEventKind.TextDelta, sequence++, Utf8.GetBytes(pending.ToString()));
+                            pending.Clear();
+                            pendingBytes = 0;
+                        }
                     }
                     if (done) break;
                 }
-                if (pending.Length > 0)
-                    yield return Event(request, GatewayInferenceEventKind.TextDelta, sequence++, Utf8.GetBytes(pending.ToString()));
+                foreach (var piece in Pieces(pending.ToString(), pieceBytes))
+                    yield return Event(request, GatewayInferenceEventKind.TextDelta, sequence++, piece);
                 yield return spoke
                     ? Event(request, GatewayInferenceEventKind.Completed, sequence)
                     : Event(request, GatewayInferenceEventKind.Failed, sequence, errorCode: "worker.failed");
@@ -241,6 +262,26 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
         // 404 is Ollama's "model not found": the model was removed or never pulled on this host.
         return (null, status is HttpStatusCode.NotFound or HttpStatusCode.ServiceUnavailable
             ? "worker.unavailable" : "worker.failed");
+    }
+
+    /// <summary><paramref name="text"/> as UTF-8 pieces of at most <paramref name="maximumBytes"/> each, split between
+    /// characters; none for empty text.</summary>
+    public static IEnumerable<byte[]> Pieces(string text, int maximumBytes)
+    {
+        var piece = new StringBuilder();
+        var bytes = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (bytes + rune.Utf8SequenceLength > maximumBytes && piece.Length > 0)
+            {
+                yield return Utf8.GetBytes(piece.ToString());
+                piece.Clear();
+                bytes = 0;
+            }
+            piece.Append(rune.ToString());
+            bytes += rune.Utf8SequenceLength;
+        }
+        if (piece.Length > 0) yield return Utf8.GetBytes(piece.ToString());
     }
 
     /// <summary>Whether Ollama's error says the model can't take the recording (an audio, image or modality refusal).</summary>
