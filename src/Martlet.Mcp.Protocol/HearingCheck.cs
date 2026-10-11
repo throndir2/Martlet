@@ -38,7 +38,8 @@ internal static partial class HearingCheck
         var saved = thinking is null || modelId is not null ? null : abilities.Find(thinking.Origin, thinking.ModelId);
         var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null
             : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
-                thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
+                thinking.RouteType == SetupRouteType.ChatCompletions &&
+                ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId, abilities) is not null);
         var choice = HearVoiceChoice(dataDirectory);
         // Where a recording goes now (docs/SENSE_MODELS.md): to Thinking, or with an audio model of its own to that model.
         var (senses, sensesFile) = SenseSetup.Read(dataDirectory);
@@ -58,7 +59,7 @@ internal static partial class HearingCheck
             localOllama = thinking is not null && modelId is null && thinking.Origin == LocalOllama,
             modelHearing = modelHearing.ToString(),
             routeHearing = routeHearing?.ToString(),
-            savedAbility = saved is null ? null : new { saved.Hears, saved.Sees, saved.Source, saved.CheckedAt },
+            savedAbility = saved is null ? null : new { saved.Hears, saved.Sees, saved.Video, saved.Tools, saved.Retired, saved.Source, saved.CheckedAt },
             // The audio model (sense-models.json): Thinking (the default: the text model takes recordings itself), Described (a
             // model of its own puts your voice into words for Thinking) or None (nobody takes recordings: transcript only).
             audioRoute = new

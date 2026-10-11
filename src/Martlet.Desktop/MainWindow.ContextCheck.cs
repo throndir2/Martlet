@@ -50,10 +50,12 @@ public partial class MainWindow
     {
         var directory = store?.DataDirectory;
         if (directory is null) return;
-        // What the same metadata says the model takes besides text (audio, pictures) is kept too, and shared.
-        if (report.AbilitySource is { } said && (report.Hears ?? report.Sees) is not null)
-            RecordModelAbility(new() { Origin = origin, ModelId = modelId, Hears = report.Hears, Sees = report.Sees,
-                Source = said.Length <= 200 ? said : said[..200], CheckedAt = DateTimeOffset.UtcNow });
+        // What the same metadata says the model takes besides text (audio, pictures, video) and whether it calls tools is kept
+        // too, and shared.
+        if (report.AbilitiesKnown)
+            RecordModelAbility(new() { Origin = origin, ModelId = modelId, Hears = report.Hears, Sees = report.Sees, Video = report.Video,
+                Tools = report.Tools, Source = report.AbilitySource!.Length <= 200 ? report.AbilitySource : report.AbilitySource[..200],
+                CheckedAt = DateTimeOffset.UtcNow });
         var limits = ModelLimits.Load(directory);
         var before = limits.Find(origin, modelId);
         if (!limits.With(new()
@@ -107,7 +109,8 @@ public partial class MainWindow
                 report = await ModelContextProbe.ChatCompletionsAsync(client, origin, model, key, ServerName(origin), lifetime.Token);
             }
             ErrorLog.Info($"Checked {own.Describe()}: {report.Summary}" +
-                (report.AbilitySource is { } said ? $" Hears: {report.Hears?.ToString() ?? "not said"}, sees: {report.Sees?.ToString() ?? "not said"} ({said})." : ""));
+                (report.AbilitySource is { } said ? $" Hears: {report.Hears?.ToString() ?? "not said"}, sees: {report.Sees?.ToString() ?? "not said"}, " +
+                    $"video: {report.Video?.ToString() ?? "not said"}, tools: {report.Tools?.ToString() ?? "not said"} ({said})." : ""));
             if (report.Reached) RecordModelLimit(origin, model, report);
         }
         catch (OperationCanceledException) { }

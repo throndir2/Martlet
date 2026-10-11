@@ -224,6 +224,17 @@ internal sealed partial class LiveConversationController
             await started.OwnershipRelease.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             var text = started.Content.Text;
+            // A model its endpoint retired for good (HTTP 410) is remembered as retired there, so no job goes to it again.
+            if (model is { Place: DeepThinkingPlace.Endpoint, Origin: { } endpoint, ModelId: { } retiredId } &&
+                terminal.ProviderFailure == ProviderFailureCode.ModelRetired && SenseAbilities?.Find(endpoint, retiredId)?.Retired is null)
+            {
+                var now = clock.GetUtcNow();
+                ModelAbility gone = new() { Origin = endpoint, ModelId = retiredId, Retired = now, Source = ModelAbility.GoneAnswer, CheckedAt = now };
+                if (dataDirectory is not null) RecordAbility(gone);
+                else if (Configuration is { } current) current.UseAbilities(current.Abilities.With(gone));
+                ErrorLog.Warn($"{endpoint} answered that {retiredId} is gone (HTTP 410), so Martlet remembers it as retired there.");
+                SenseRoutesChanged();
+            }
             // A computer older than recordings refused the recording for its route, not for its model, which may hear.
             if (job.Audio is not null && model is { Place: DeepThinkingPlace.Host, HostId: { } older } && HostAudio.IsOld(older) &&
                 string.IsNullOrWhiteSpace(text))

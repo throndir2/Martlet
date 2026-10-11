@@ -416,9 +416,10 @@ public partial class MainWindow
                  new("advisor", "Get a recommendation", () => Advisor_Click(this, new RoutedEventArgs()))],
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
         }
-        if (llm is not null && ChatCompletionsEndpointCatalog.RetiredOn(llm.Origin, llm.ModelId) is { } retired)
+        if (llm is not null && LiveConversationConfiguration.Retired(llm, SavedModelAbilities()) is { } retired)
             Add("thinking-retired", HealthLevel.Problem, "Your thinking model was retired",
-                $"This model is no longer available. Choose {retired.DefaultModelId} in Companion › Thinking.",
+                $"This model is no longer available{(retired.Since is { } since ? $" ({retired.Server} said so on {since.LocalDateTime:d MMM})" : "")}. " +
+                retired.Remedy,
                 [Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
         else if (llm is not null && thinkingDown is null)
         {

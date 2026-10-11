@@ -406,6 +406,7 @@ public partial class MainWindow
                     $"Martlet now thinks with {model} in {name} on this PC.{(lease is null ? "" : " The key is saved in Windows Credential Manager.")}"))
                 return;
             localApp = null;
+            ForgetRetired(baseUrl, model, "you chose it again");
             if (!closing) CheckNewModelContextAsync().Forget();
         }
         catch (ContractException error) { ActionText.Text = error.Message; }

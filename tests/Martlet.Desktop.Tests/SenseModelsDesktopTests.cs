@@ -123,6 +123,46 @@ public sealed class SenseModelsDesktopTests
     }
 
     [Fact]
+    public async Task An_image_model_its_server_retired_is_remembered_as_retired_and_gets_no_more_pictures()
+    {
+        await using var fixture = await LiveFixture.Create(data: true);
+        fixture.Controller.SenseModels = WithEyes;
+        fixture.Chat.Respond = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Gone)
+        {
+            Content = new StringContent("{\"error\":{\"message\":\"This model reached its end of life.\"}}", Encoding.UTF8, "application/json")
+        });
+
+        Assert.NotEqual(SenseJobOutcome.Succeeded, (await Describe(fixture)).Outcome);
+        var found = ModelAbilities.Load(fixture.DirectoryPath).Find(EyesUrl, "qwen2.5vl:7b");
+        Assert.NotNull(found?.Retired);
+        Assert.Equal(ModelAbility.GoneAnswer, found.SourceOf(ModelFact.Retired)!.Source);
+        Assert.Equal(SensePath.None, fixture.Controller.SenseRoute(SenseKind.Image).Path);
+        var calls = fixture.Chat.Calls;
+        Assert.Equal(SenseJobOutcome.NoModel, (await Describe(fixture)).Outcome);
+        Assert.Equal(calls, fixture.Chat.Calls);
+    }
+
+    [Fact]
+    public async Task A_Thinking_model_its_server_retired_is_remembered_and_named_as_the_problem()
+    {
+        await using var fixture = await LiveFixture.Create(data: true);
+        await ThinkOnTheImageModelsComputer(fixture);
+        fixture.Chat.Respond = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Gone)
+        {
+            Content = new StringContent("{\"error\":{\"message\":\"This model reached its end of life.\"}}", Encoding.UTF8, "application/json")
+        });
+
+        var operation = fixture.Start("Hello there.");
+        await fixture.Finish(operation);
+        var found = ModelAbilities.Load(fixture.DirectoryPath).Find(ThinkingUrl, "qwen3:8b");
+        Assert.NotNull(found?.Retired);
+        var configuration = fixture.Controller.Configuration!;
+        Assert.Contains("retired this Thinking model", configuration.Unavailable(false, false));
+        Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
+        Assert.False(configuration.SupportsTools);
+    }
+
+    [Fact]
     public async Task A_job_on_the_conversations_computer_waits_until_the_reply_is_made()
     {
         await using var fixture = await LiveFixture.Create();

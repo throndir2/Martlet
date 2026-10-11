@@ -620,7 +620,18 @@ public partial class MainWindow
         var nowText = new TextBlock { Text = status, FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(nowText, "SetupJobNow-" + section);
         now.Children.Add(nowText);
-        if (section == CompanionTab.Thinking) now.Children.Add(TextModelLine(route));
+        if (section == CompanionTab.Thinking)
+        {
+            now.Children.Add(TextModelLine(route));
+            // What Martlet knows the model takes on this route, and Test tools for an OpenAI-compatible endpoint.
+            if (route is not null)
+            {
+                var known = Note(ThinkingAbilitiesText(route, SavedModelAbilities()), new Thickness(0, 6, 0, 0));
+                AutomationProperties.SetAutomationId(known, "ThinkingAbilities");
+                now.Children.Add(known);
+            }
+            foreach (var element in ToolsTestControls(route)) now.Children.Add(element);
+        }
         if (NetworkJobNote(job.Job) is { } network)
         {
             var line = new TextBlock { Text = network, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
@@ -1290,9 +1301,9 @@ public partial class MainWindow
                 : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
                 : "Add a key only if your server needs one.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
-        var retired = SameAsSaved() && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
+        var retired = SameAsSaved() && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId, SavedModelAbilities()) : null;
         // The recommended model is in the provider's summary above and prefilled; the hint adds only what it doesn't say.
-        var hint = Note(((retired is null ? "" : $"{retired.Name} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
+        var hint = Note(((retired is null ? "" : $"{retired.Server} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
             (p == OpenAiCloud || p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? ""
             : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? "Any exact OpenRouter model ID works."
             : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
@@ -1391,10 +1402,14 @@ public partial class MainWindow
                     (FreeKeyPrompt.IsFree(url) ? "" : " Requests may cost money there."),
                 provider.NeedsKey ? missingKey : null))
                 return;
-            // A new Thinking model: ask its server how much context it takes, so replies stay within it.
+            // A new Thinking model: ask its server how much context it takes, so replies stay within it. Choosing a model Martlet
+            // found retired tries it again; another HTTP 410 marks it retired again.
             if (!closing && role == SetupRole.Llm && provider.Chat &&
                 homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } chosen && chosen.Origin == url && chosen.ModelId == model)
+            {
+                ForgetRetired(chosen.Origin, model, "you chose it again");
                 CheckNewModelContextAsync().Forget();
+            }
             if (!closing && leaving is not null) ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
         }
         catch (ContractException error) { ActionText.Text = error.Message; }

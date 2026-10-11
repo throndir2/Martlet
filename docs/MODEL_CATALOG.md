@@ -205,9 +205,10 @@ answers:
 For each route fact, `CatalogResolver.ResolveRoute` uses the first source that
 says it:
 
-1. A Martlet test on that route: a test request, **Test hearing**, or a refused
-   input. This is what `model-abilities.json` holds; give it to
-   `ModelCatalog.RouteFact`.
+1. A Martlet test on that route: a test request (**Test hearing**, **Test
+   vision**, **Test tools**), a refused input or an HTTP 410. This is what
+   `model-abilities.json` holds, each fact with its source and date
+   (`ModelAbility.Sources`); give it to `ModelCatalog.RouteFact`.
 2. The server's own metadata for that model: OpenRouter's listing or NVIDIA's
    page in the catalog (Ollama's `/api/show`, llama.cpp's `/props` and LM
    Studio's type are read by `ModelContextProbe`, not the catalog).
@@ -226,14 +227,17 @@ Rules:
   and licenses agree when they differ only in spaces and dashes. Martlet then
   offers a short test when the owner chooses the model, as Test hearing does
   now. The test uses a made-up picture or sound, never the owner's voice or
-  screen (Proposed).
+  screen (Built for hearing, vision and tools: Test hearing, Test vision and Test tools; not yet for video).
 - Video has two forms. `input.video` says the model or route takes a video (the
   server or the model may turn it into frames); `input.video_frames` says Martlet
   can send frames as pictures, because the model sees.
 - An expiration date that has passed marks an OpenRouter route retired
   (`CatalogRoute.Retired`), and models.dev's `deprecated` marks a row
-  `Deprecated`. An HTTP 404 or 410 from a route is kept in `model-abilities.json`
-  (Proposed there, [#663](https://github.com/throndir2/Martlet/issues/663)).
+  `Deprecated`. An HTTP 410 from a route marks the model retired on that route
+  in `model-abilities.json`, with the date (Built). This comes before the
+  hard-coded `RetiredModelIds`, which stay only as the fallback. An HTTP 404
+  doesn't count: Ollama answers 404 for a model that isn't downloaded yet, and
+  a wrong base URL answers 404 too.
 - Catalog facts refresh at most once a day. A test result stays until the model
   changes (for example, a new Ollama digest).
 
@@ -361,7 +365,12 @@ order above puts first.
 These match the tasks in [#663](https://github.com/throndir2/Martlet/issues/663):
 
 1. Add `Video`, `Tools` and `Retired` to `ModelAbility`, and read them from the
-   sources `ModelContextProbe` already asks. Add NVIDIA's model pages (Proposed).
+   sources `ModelContextProbe` already asks. Add NVIDIA's model pages.
+   **Built:** each fact keeps its own source and date (`ModelAbility.Sources`),
+   a test outranks metadata, Test tools finds out about tool calls, and
+   [Thinking models that hear and see](CONVERSATION.md#thinking-models-that-hear-and-see)
+   describes it. A test for video itself isn't built yet: Martlet sends no
+   video.
 2. Add the catalog schema, a snapshot made by a local script at release time,
    and a loader in `Martlet.Core.Planning` (Built, above).
 3. Add the daily background refresh (OpenRouter, models.dev, NVIDIA's
