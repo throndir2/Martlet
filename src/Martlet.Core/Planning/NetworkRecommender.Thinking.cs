@@ -179,6 +179,12 @@ public static partial class NetworkRecommender
         {
             const string job = ClusterJobs.Thinking;
             if (Settled(job)) return;
+            // The owner lets Martlet choose (or asks for its suggestion): Thinking is placed as if it were new.
+            if (Fresh(job))
+            {
+                ChooseThinking((SetupChangeBenefit.Improvement, "You let Martlet choose Thinking's model.", true), null);
+                return;
+            }
             var host = NodeOf(TodayJob(job)?.HostId);
             var now = TodayOption(job);
             if (ServedThinking(now)) return;

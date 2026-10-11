@@ -38,7 +38,7 @@ public sealed partial class FootprintCatalog
     public FootprintCatalog WithServed(IEnumerable<ServedModel>? served)
     {
         var added = ServedModels.Usable(served, this).Select(ServedModels.Option).ToList();
-        return added.Count == 0 ? this : new(options.Concat(added));
+        return added.Count == 0 ? this : new(options.Concat(added)) { Measurements = Measurements };
     }
 
     /// <summary>The option for <paramref name="component"/> that runs <paramref name="modelId"/> (a model or engine id), or null.</summary>

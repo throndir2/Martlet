@@ -74,11 +74,12 @@ public static partial class NetworkRecommender
     private const string SpeakingPool = "speaking-pool", ListeningPool = "listening-pool", ThinkingPoolPlace = "thinking-pool", Kept = "kept";
     private const double Epsilon = 1e-6;
 
-    /// <summary>The recommended setup for <paramref name="request"/>'s computers and the changes that get there from today's.</summary>
+    /// <summary>The recommended setup for <paramref name="request"/>'s computers and the changes that get there from today's, with
+    /// each job's clearly better choice (<see cref="NetworkRecommendation.Suggestions"/>).</summary>
     public static NetworkRecommendation Recommend(NetworkSetupRequest request, FootprintCatalog? catalog = null)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return new Planner(request, (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels)).Run();
+        return Suggest(request, (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels));
     }
 
     /// <summary>Today's setup as <paramref name="request"/> describes it: each computer's roles and how full they make it,

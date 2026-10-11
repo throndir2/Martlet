@@ -118,17 +118,28 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// <summary>How much of each host PC's graphics card the planner may use (<see cref="RecommendationPreferences.HostGpuFraction"/>;
     /// <see cref="PlacementEngine.GpuCapacityGb"/>).</summary>
     public double HostGpuShare { get; init; } = PlacementEngine.DefaultGpuShare;
+    /// <summary>The jobs (ClusterJobs names) the owner lets Martlet choose: unlocked in Recommended setup and not changed by hand
+    /// since (<see cref="RecommendationPreferences.IsLocked"/>). For such a job the recommendation makes a clearly better choice
+    /// (<see cref="NetworkRecommendation.Suggestions"/>); a locked job keeps today's choice and only shows the suggestion.</summary>
+    public IReadOnlyCollection<string> Unlocked { get; init; } = [];
+    /// <summary>The jobs the planner plans as if they were new, whatever runs today (the recommender sets it to find each job's
+    /// suggestion, and for the unlocked jobs a clearly better choice exists for). Only a job whose model runs on the owner's
+    /// computers today, not one their own model app serves.</summary>
+    public IReadOnlyCollection<string> Fresh { get; init; } = [];
 
     /// <summary>This request with the owner's <paramref name="preferences"/>: the hosting preference, reply quality, hearing, the
-    /// host card share and Prefer models your hosts already have. The games answers are on each machine
-    /// (<see cref="MachineSpecs.KeepGpuForGames"/>) and the served models in <see cref="ServedModels"/>.</summary>
+    /// host card share, Prefer models your hosts already have and the unlocked jobs (from <see cref="CurrentJobs"/>, so set them
+    /// first). The games answers are on each machine (<see cref="MachineSpecs.KeepGpuForGames"/>) and the served models in
+    /// <see cref="ServedModels"/>.</summary>
     public NetworkSetupRequest With(RecommendationPreferences preferences)
     {
         ArgumentNullException.ThrowIfNull(preferences);
         return this with
         {
             Preference = preferences.Hosting, Quality = preferences.Quality, PreferHearing = preferences.PreferHearing,
-            HostGpuShare = preferences.HostGpuFraction, PreferHostModels = preferences.PreferHostModels
+            HostGpuShare = preferences.HostGpuFraction, PreferHostModels = preferences.PreferHostModels,
+            Unlocked = [.. RecommendationPreferences.LockableJobs.Where(job =>
+                !preferences.IsLocked(job, (CurrentJobs ?? []).FirstOrDefault(j => j?.Job == job)?.OptionId))]
         };
     }
 }
@@ -250,6 +261,20 @@ public sealed record NetworkRecommendation(NetworkSetup Current, NetworkSetup Ta
 
     /// <summary>In the recommended setup no computer and no hosted voice with a saved key can speak.</summary>
     public bool CannotSpeak => CannotSpeakNote is not null;
+
+    /// <summary>A clearly better choice for a job (smarter at the same speed, or as smart with less memory), next to today's: for a
+    /// locked job only shown, for an unlocked job already in <see cref="Changes"/> (<see cref="JobSuggestion.Applied"/>).</summary>
+    public IReadOnlyList<JobSuggestion> Suggestions { get; init; } = [];
+
+    /// <summary>A better setup is available: a job has a clearly better choice (<see cref="Suggestions"/>). Martlet never applies
+    /// it by itself; Home's Recommended setup button says so.</summary>
+    public bool BetterSetupAvailable => Suggestions.Count > 0;
+
+    /// <summary>A stable hash of <see cref="Suggestions"/> (each job and its suggested choice), so the owner's Not now keeps the
+    /// same better setup from being shown again. Empty without suggestions.</summary>
+    public string SuggestionsFingerprint => Suggestions.Count == 0 ? "" : Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes(string.Join('\n', Suggestions.OrderBy(s => s.Job, StringComparer.Ordinal)
+            .Select(s => $"{s.Job}|{s.OptionId}|{s.HostId}")))))[..16];
 
     /// <summary>Today's setup is already the recommended one.</summary>
     public bool AlreadyOptimal => Changes.Count == 0;

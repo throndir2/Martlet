@@ -157,6 +157,11 @@ public static partial class NetworkRecommender
         {
             const string job = ClusterJobs.Listening;
             if (Settled(job)) return;
+            if (Fresh(job))
+            {
+                ChooseListening((SetupChangeBenefit.Improvement, "You let Martlet choose how it listens.", true), null);
+                return;
+            }
             var host = NodeOf(TodayJob(job)?.HostId);
             var now = TodayOption(job);
             if (host is { Presence: Presence.Here })
@@ -237,6 +242,8 @@ public static partial class NetworkRecommender
             }
             if (today is { Off: true })
             {
+                // Planned as new: NewLipSync puts advanced lip-sync on a host's card when one has room.
+                if (FreshFace()) return;
                 Decide(job, null, today.OptionId, "The character's face follows the voice's loudness, as you chose.", off: true);
                 return;
             }

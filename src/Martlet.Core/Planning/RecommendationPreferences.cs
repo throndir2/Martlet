@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Martlet.Core.Cluster;
 
 namespace Martlet.Core.Planning;
 
@@ -16,6 +17,20 @@ public enum OnlineServices { Backup, Never, Yes }
 
 /// <summary>One computer's answer to "Do you play games or use heavy apps on this PC?", by its Martlet device ID.</summary>
 public sealed record GamesAnswer(string Device, bool Plays);
+
+/// <summary>A job's lock in Recommended setup (docs/RECOMMENDATION_DESIGN.md, "Owners who run their own models").
+/// <see cref="Locked"/> false: the owner lets Martlet choose the job's model. <see cref="Chose"/>: the choice (an option ID) that
+/// ran when they unlocked it, or that Martlet last set up for it; when the job runs another choice later, the owner changed it by
+/// hand, so it counts as locked again.</summary>
+public sealed record JobLock(string Job, bool Locked)
+{
+    public string? Chose { get; init; }
+}
+
+/// <summary>Kept: the owner never chose, so Martlet keeps what runs today (the same as locked). Locked: the owner locked it.
+/// Unlocked: the owner lets Martlet choose. ChangedByHand: unlocked, but the owner changed it by hand since, so it counts as
+/// locked.</summary>
+public enum JobLockState { Kept, Locked, Unlocked, ChangedByHand }
 
 /// <summary>The owner's recommendation preferences (docs/RECOMMENDATION_DESIGN.md, "Recommendation preferences"):
 /// recommendation-preferences.json in the data directory and the <c>recommendation-preferences</c> shared setting, so they are
@@ -61,6 +76,41 @@ public sealed record RecommendationPreferences
     /// <summary>Each computer's games answer, by its Martlet device ID. A computer without an answer uses Martlet's guess
     /// (a game library found there) on that computer, and No elsewhere.</summary>
     public IReadOnlyList<GamesAnswer> Games { get; init; } = [];
+    /// <summary>The jobs' locks in Recommended setup (<see cref="LockableJobs"/>). A job without one is
+    /// <see cref="JobLockState.Kept"/>: Martlet keeps what runs today and only suggests a better choice.</summary>
+    public IReadOnlyList<JobLock> Locks { get; init; } = [];
+
+    /// <summary>The jobs with a lock (ClusterJobs names): Thinking, Listening and Lip-sync. The voice engine always stays the
+    /// owner's choice (their voices are made for it).</summary>
+    public static IReadOnlyList<string> LockableJobs { get; } = [ClusterJobs.Thinking, ClusterJobs.Listening, ClusterJobs.LipSync];
+
+    /// <summary>The lock of <paramref name="job"/>, with <paramref name="today"/> the option that does it today (null: not known).</summary>
+    public JobLockState LockState(string job, string? today) => Locks.FirstOrDefault(l => l.Job == job) switch
+    {
+        null => JobLockState.Kept,
+        { Locked: true } => JobLockState.Locked,
+        { Chose: { } chose } when today is not null && !string.Equals(chose, today, StringComparison.Ordinal) => JobLockState.ChangedByHand,
+        _ => JobLockState.Unlocked
+    };
+
+    /// <summary>Whether Martlet keeps <paramref name="job"/>'s choice (every state but <see cref="JobLockState.Unlocked"/>).</summary>
+    public bool IsLocked(string job, string? today) => LockState(job, today) != JobLockState.Unlocked;
+
+    /// <summary>The same preferences with <paramref name="job"/> locked or unlocked; unlocking remembers <paramref name="today"/>,
+    /// so a later change by hand locks it again.</summary>
+    public RecommendationPreferences WithLock(string job, bool locked, string? today) =>
+        Normalized(this with { Locks = [.. Locks.Where(l => l.Job != job), new JobLock(job, locked) { Chose = locked ? null : today }] });
+
+    /// <summary>After Martlet set up <paramref name="jobs"/> (Reconfigure): each unlocked job remembers the choice Martlet set up,
+    /// so it stays unlocked until the owner changes it by hand.</summary>
+    public RecommendationPreferences SetUp(IEnumerable<JobPlan> jobs)
+    {
+        var next = this;
+        foreach (var job in jobs)
+            if (job?.OptionId is { Length: > 0 and <= 256 } option && Locks.FirstOrDefault(l => l.Job == job.Job) is { Locked: false })
+                next = next.WithLock(job.Job, false, option);
+        return next;
+    }
 
     /// <summary>Live Thinking's first-word target in milliseconds for <paramref name="quality"/>.</summary>
     public static int TargetMs(ReplyQuality quality) => quality switch
@@ -98,14 +148,18 @@ public sealed record RecommendationPreferences
     private static RecommendationPreferences Normalized(RecommendationPreferences preferences) => preferences with
     {
         Games = [.. preferences.Games.Where(g => g is not null).GroupBy(g => g.Device, StringComparer.Ordinal).Select(g => g.Last())
-            .OrderBy(g => g.Device, StringComparer.Ordinal)]
+            .OrderBy(g => g.Device, StringComparer.Ordinal)],
+        Locks = [.. (preferences.Locks ?? []).Where(l => l is not null).GroupBy(l => l.Job, StringComparer.Ordinal).Select(g => g.Last())
+            .OrderBy(l => l.Job, StringComparer.Ordinal)]
     };
 
     private static bool Name(string? text) => text is { Length: > 0 and <= 64 } && char.IsAsciiLetterOrDigit(text[0]) &&
         text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
     private bool Valid() => SchemaVersion == 1 && Enum.IsDefined(Quality) && Enum.IsDefined(Online) && HostGpuShares.Contains(HostGpuShare) &&
-        Games is { Count: <= MaximumComputers } && Games.All(g => g is not null && Name(g.Device));
+        Games is { Count: <= MaximumComputers } && Games.All(g => g is not null && Name(g.Device)) &&
+        (Locks ?? []) is { Count: <= 8 } locks && locks.All(l => l is not null && LockableJobs.Contains(l.Job) &&
+            l.Chose is null or { Length: > 0 and <= 256 } && (l.Chose ?? "").All(c => c is >= ' ' and <= '~'));
 
     /// <summary>The canonical JSON every computer writes for the same choices, for sharing.</summary>
     public string Share() => JsonSerializer.Serialize(Normalized(this), Canonical);
@@ -189,7 +243,8 @@ public sealed record RecommendationPreferences
     public string Describe() =>
         $"{Words(Quality)} (first word {PlacementEngine.Seconds(FirstWordTargetMs)}), online: {Words(Online).ToLowerInvariant()}, " +
         $"{(PreferHearing ? "models that hear preferred" : "no hearing preference")}, hosts up to {HostGpuShare}%, " +
-        $"{(UseServedModels ? "uses" : "doesn't use")} models your apps run, {(PreferHostModels ? "prefers" : "doesn't prefer")} models your hosts have";
+        $"{(UseServedModels ? "uses" : "doesn't use")} models your apps run, {(PreferHostModels ? "prefers" : "doesn't prefer")} models your hosts have" +
+        (Locks.Any(l => !l.Locked) ? $", Martlet may choose {string.Join(" and ", Locks.Where(l => !l.Locked).Select(l => l.Job))}" : "");
 }
 
 /// <summary>Live Thinking's choice among local models (docs/RECOMMENDATION_DESIGN.md, "Live Thinking"): the smartest model whose
