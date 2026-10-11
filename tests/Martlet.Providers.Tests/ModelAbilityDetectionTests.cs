@@ -163,6 +163,155 @@ public sealed class ModelAbilityDetectionTests
     }
 
     [Theory]
+    [InlineData("{\"id\":\"m\",\"architecture\":{\"input_modalities\":[\"text\",\"image\",\"video\"]},\"supported_parameters\":[\"tools\",\"temperature\"]}", true, true)]
+    [InlineData("{\"id\":\"m\",\"architecture\":{\"input_modalities\":[\"text\",\"image\"]},\"supported_parameters\":[\"temperature\"]}", false, false)]
+    [InlineData("{\"id\":\"m\",\"architecture\":{\"input_modalities\":[\"text\"]}}", false, null)]
+    [InlineData("{\"id\":\"m\",\"capabilities\":[\"completion\",\"multimodal\"]}", null, null)]
+    [InlineData("{\"id\":\"m\",\"type\":\"llm\",\"capabilities\":[\"tool_use\"]}", null, true)]
+    [InlineData("{\"id\":\"m\",\"capabilities\":{\"completion_chat\":true,\"function_calling\":false,\"vision\":true}}", null, false)]
+    public void A_model_list_entry_says_whether_the_model_takes_video_and_calls_tools(string entry, bool? video, bool? tools)
+    {
+        using var document = JsonDocument.Parse(entry);
+        var inputs = ModelContextProbe.InputsOf(document.RootElement);
+        Assert.Equal(video, inputs.Video);
+        Assert.Equal(tools, inputs.Tools);
+    }
+
+    [Fact]
+    public void LM_Studio_s_tool_list_still_says_whether_it_sees()
+    {
+        using var document = JsonDocument.Parse("{\"id\":\"m\",\"type\":\"vlm\",\"capabilities\":[\"tool_use\"]}");
+        var inputs = ModelContextProbe.InputsOf(document.RootElement);
+        Assert.True(inputs.Sees);
+        Assert.True(inputs.Tools);
+    }
+
+    [Fact]
+    public async Task Ollama_says_whether_a_model_calls_tools_and_takes_no_video()
+    {
+        using var client = new HttpClient(new Stub(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/api/show" => Json("{\"capabilities\":[\"completion\",\"vision\"]}"),
+            "/api/ps" => Json("{\"models\":[]}"),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+        }));
+        var report = await ModelContextProbe.OllamaAsync(client, new Uri("http://127.0.0.1:11434/"), "gemma3:4b", load: false, CancellationToken.None);
+        Assert.True(report.Sees);
+        Assert.False(report.Tools);
+        Assert.False(report.Video);
+        Assert.True(report.AbilitiesKnown);
+    }
+
+    private const string NvidiaPage = "---\ntitle: \"llama-3.1-nemoguard-8b-content-safety\"\npublisher: \"nvidia\"\ntype: \"endpoint\"\n" +
+        "canonical: \"https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety\"\n---\n\n**Data Modality:** Text, Image, Video\n\n" +
+        "## Specifications\n\n- **Context Length:** 8,192 tokens\n- **Input:** Text\n\n## Capabilities\n\n- **Function Calling:** Not supported\n";
+
+    [Fact]
+    public void An_NVIDIA_model_page_says_its_inputs_from_its_specifications()
+    {
+        var page = NvidiaModelPages.Parse(NvidiaPage)!;
+        Assert.Equal("nvidia/llama-3_1-nemoguard-8b-content-safety", page.ModelId);
+        Assert.True(page.Endpoint);
+        // "Data Modality" is the training data: the Specifications' input line wins.
+        Assert.Equal((false, false, false), (page.Hears, page.Sees, page.Video));
+        Assert.False(page.Tools);
+        Assert.Equal(8192, page.ContextTokens);
+        var omni = NvidiaModelPages.Parse("---\ncanonical: \"https://build.nvidia.com/nvidia/omni\"\ntype: \"endpoint\"\n---\n" +
+            "- **Input:** Video, Audio, Image, Text\n- **Function Calling:** Supported\n")!;
+        Assert.Equal((true, true, true, true), (omni.Hears, omni.Sees, omni.Video, omni.Tools));
+        Assert.False(NvidiaModelPages.Parse("---\ncanonical: \"https://build.nvidia.com/acme/speech\"\n---\n")!.Endpoint);
+        Assert.Null(NvidiaModelPages.Parse("# no header"));
+    }
+
+    [Fact]
+    public void NVIDIA_s_model_list_links_each_page_once_and_matches_names_ignoring_dots()
+    {
+        const string list = "- [llama-3.1-nemoguard-8b-content-safety](/qc/llama-3_1-nemoguard-8b-content-safety.md) — a\n" +
+            "- [cuopt](/qc/nvidia-cuopt.md) — b\n- [llama-3.1-nemoguard-8b-content-safety](/qc/llama-3_1-nemoguard-8b-content-safety.md) — c\n" +
+            "- [elsewhere](https://example.com/x.md)\n";
+        Assert.Equal(2, NvidiaModelPages.Links(list).Count);
+        Assert.Equal(["/qc/llama-3_1-nemoguard-8b-content-safety.md"],
+            NvidiaModelPages.Candidates(list, "nvidia/llama-3.1-nemoguard-8b-content-safety"));
+        Assert.Empty(NvidiaModelPages.Candidates(list, "acme/unlisted"));
+    }
+
+    [Fact]
+    public async Task An_NVIDIA_Build_model_is_checked_on_its_page_without_the_key()
+    {
+        var keyed = new List<string>();
+        using var client = new HttpClient(new Stub(request =>
+        {
+            if (request.Headers.Authorization is not null) keyed.Add(request.RequestUri!.Host);
+            return (request.RequestUri!.Host, request.RequestUri.AbsolutePath) switch
+            {
+                ("integrate.api.nvidia.com", "/v1/models") => Json("{\"data\":[{\"id\":\"nvidia/llama-3.1-nemoguard-8b-content-safety\"}]}"),
+                ("build.nvidia.com", "/models.md") => Json("- [llama-3.1-nemoguard-8b-content-safety](/qc/llama-3_1-nemoguard-8b-content-safety.md)\n"),
+                ("build.nvidia.com", "/qc/llama-3_1-nemoguard-8b-content-safety.md") => Json(NvidiaPage),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            };
+        }));
+        var report = await ModelContextProbe.ChatCompletionsAsync(client, ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl,
+            "nvidia/llama-3.1-nemoguard-8b-content-safety", "nvapi-key", "NVIDIA Build", CancellationToken.None);
+        Assert.Equal(8192, report.ContextTokens);
+        Assert.Equal((false, false, false, false), (report.Hears, report.Sees, report.Video, report.Tools));
+        Assert.Equal("NVIDIA Build's model page", report.AbilitySource);
+        Assert.Equal(["integrate.api.nvidia.com"], keyed);
+    }
+
+    [Fact]
+    public void Video_and_tools_go_only_by_what_was_found()
+    {
+        var found = new ModelAbilities().With(new()
+        {
+            Origin = Ollama, ModelId = "gemma4:e2b", Video = false, Tools = true, Source = "Ollama on this PC", CheckedAt = At
+        });
+        Assert.Equal(VideoSupport.Unsupported, RouteAbilities.Video(Ollama, "gemma4:e2b", found));
+        Assert.Equal(VideoSupport.Unknown, RouteAbilities.Video(Ollama, "gemma4:e4b", found));
+        Assert.Equal(ToolSupport.Supported, RouteAbilities.Tools(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b", found));
+        Assert.Equal(ToolSupport.Unknown, RouteAbilities.Tools(SetupRouteType.ChatCompletions, Ollama, "gemma4:e4b", found));
+        Assert.Equal(ToolSupport.Supported, RouteAbilities.Tools(SetupRouteType.OpenAi, "https://api.openai.com", "gpt-4.1", null));
+        Assert.Equal(ToolSupport.Unsupported, RouteAbilities.Tools(SetupRouteType.GatewayOllama, "gpu-pc", "gemma4:e2b", found));
+    }
+
+    [Fact]
+    public void A_model_found_retired_on_a_route_takes_nothing_there()
+    {
+        var found = new ModelAbilities()
+            .With(new() { Origin = Ollama, ModelId = "gemma4:e2b", Hears = true, Sees = true, Video = true, Tools = true, Source = "Ollama on this PC", CheckedAt = At })
+            .With(new() { Origin = Ollama, ModelId = "gemma4:e2b", Retired = At, Source = ModelAbility.GoneAnswer, CheckedAt = At });
+        Assert.Equal(VisionSupport.Unsupported, VisionModelCatalog.ForRoute(Ollama, "gemma4:e2b", found));
+        Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b", found));
+        Assert.Equal(VideoSupport.Unsupported, RouteAbilities.Video(Ollama, "gemma4:e2b", found));
+        Assert.Equal(ToolSupport.Unsupported, RouteAbilities.Tools(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b", found));
+        Assert.Equal(VisionSupport.Supported, VisionModelCatalog.ForRoute(Ollama, "gemma4:e2b", found.Answered(Ollama, "gemma4:e2b")));
+    }
+
+    [Theory]
+    [InlineData(200, "{\"choices\":[{\"message\":{\"content\":null,\"tool_calls\":[{\"type\":\"function\",\"function\":{\"name\":\"say_test_word\",\"arguments\":\"{\\\"word\\\":\\\"umbrella\\\"}\"}}]}}]}", true)]
+    [InlineData(200, "{\"choices\":[{\"message\":{\"content\":\"The word is umbrella.\"}}]}", false)]
+    [InlineData(400, "{\"error\":{\"message\":\"model does not support tools\"}}", false)]
+    [InlineData(400, "{\"error\":{\"message\":\"Invalid request\"}}", null)]
+    [InlineData(401, "{\"error\":{\"message\":\"Invalid API key.\"}}", null)]
+    [InlineData(410, "{\"error\":{\"message\":\"gone\"}}", null)]
+    public async Task Test_tools_reads_the_answer(int status, string body, bool? tools)
+    {
+        byte[]? sent = null;
+        using var client = new HttpClient(new Stub(request =>
+        {
+            sent = request.Content!.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        }));
+        var report = await ModelToolTest.RunAsync(client, "http://127.0.0.1:9/v1", "model", null, "umbrella", "the server", CancellationToken.None);
+        Assert.Equal(tools, report.Tools);
+        Assert.Equal(status, report.Status);
+        using var request = JsonDocument.Parse(sent!);
+        var offered = Assert.Single(request.RootElement.GetProperty("tools").EnumerateArray());
+        Assert.Equal(ModelToolTest.ToolName, offered.GetProperty("function").GetProperty("name").GetString());
+        Assert.Single(request.RootElement.GetProperty("messages").EnumerateArray());
+        Assert.False(request.RootElement.GetProperty("stream").GetBoolean());
+    }
+
+    [Theory]
     [InlineData(200, "{\"choices\":[{\"message\":{\"content\":\"Pineapple.\"}}]}", true)]
     [InlineData(200, "{\"choices\":[{\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"pine apple\"}]}}]}", true)]
     [InlineData(200, "{\"choices\":[{\"message\":{\"content\":\"I can't listen to audio.\"}}]}", false)]

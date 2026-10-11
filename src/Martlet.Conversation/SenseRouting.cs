@@ -90,13 +90,13 @@ public static class SenseRouting
     /// <summary>Whether the Thinking route's model sees, as the desktop decides it: a model its endpoint retired doesn't; then what
     /// Martlet found out about it, then its name.</summary>
     public static VisionSupport ThinkingSees(SetupRoute? thinking, ModelAbilities? abilities) =>
-        thinking is null ? VisionSupport.Unknown : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities, Retired(thinking));
+        thinking is null ? VisionSupport.Unknown : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities));
 
     /// <summary>Whether the Thinking route's model hears, as the desktop decides it (a Chat Completions route or a paired
     /// computer's Ollama carries audio; <see cref="HearingModelCatalog.CarriesAudio"/>).</summary>
     public static HearingSupport ThinkingHears(SetupRoute? thinking, ModelAbilities? abilities) =>
         thinking is null ? HearingSupport.Unknown
-        : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities, Retired(thinking));
+        : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities));
 
     /// <summary>Whether a model of its own is the text model itself: exactly Thinking's endpoint and model, or the same paired
     /// computer's Ollama with the same model as a Thinking route on that computer.</summary>
@@ -117,7 +117,7 @@ public static class SenseRouting
         return model.Place switch
         {
             DeepThinkingPlace.Endpoint => VisionModelCatalog.ForRoute(model.Origin, model.ModelId, abilities,
-                ChatCompletionsEndpointCatalog.RetiredOn(model.Origin ?? "", model.ModelId ?? "") is not null),
+                ChatCompletionsEndpointCatalog.RetiredOn(model.Origin, model.ModelId, abilities) is not null),
             DeepThinkingPlace.Host => VisionModelCatalog.ForRoute(model.HostOrigin, model.ModelId, abilities),
             _ => VisionSupport.Unknown
         };
@@ -131,12 +131,13 @@ public static class SenseRouting
         return model.Place switch
         {
             DeepThinkingPlace.Endpoint => HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, model.Origin, model.ModelId, abilities,
-                ChatCompletionsEndpointCatalog.RetiredOn(model.Origin ?? "", model.ModelId ?? "") is not null),
+                ChatCompletionsEndpointCatalog.RetiredOn(model.Origin, model.ModelId, abilities) is not null),
             DeepThinkingPlace.Host => HearingModelCatalog.ForRoute(SetupRouteType.GatewayOllama, model.HostOrigin, model.ModelId, abilities),
             _ => HearingSupport.Unsupported
         };
     }
 
-    private static bool Retired(SetupRoute thinking) =>
-        thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null;
+    private static bool Retired(SetupRoute thinking, ModelAbilities? abilities) =>
+        thinking.RouteType == SetupRouteType.ChatCompletions &&
+        ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId, abilities) is not null;
 }

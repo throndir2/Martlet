@@ -64,7 +64,34 @@ public static class ChatCompletionsEndpointCatalog
     public static ChatCompletionsEndpointOption? ById(string? id) =>
         NamedEndpoints.SingleOrDefault(option => string.Equals(option.Id, id, StringComparison.Ordinal));
 
-    /// <summary>The named endpoint when it has retired this model for good; null otherwise.</summary>
+    /// <summary>The named endpoint when it has retired this model for good; null otherwise. Martlet's built-in list only: callers
+    /// ask <see cref="RetiredOn(string?, string?, ModelAbilities?)"/>, which puts what Martlet found first.</summary>
     public static ChatCompletionsEndpointOption? RetiredOn(string? baseUrl, string? modelId) =>
         Named(baseUrl) is { } named && named.Retired(modelId) ? named : null;
+
+    /// <summary>Whether the server at <paramref name="baseUrl"/> retired <paramref name="modelId"/>: first what Martlet found on
+    /// that route (<paramref name="abilities"/>: it answered HTTP 410 Gone; a later reply or test clears it), else Martlet's
+    /// built-in list of retired models (<see cref="ChatCompletionsEndpointOption.RetiredModelIds"/>). Null when neither says so.</summary>
+    public static RetiredModel? RetiredOn(string? baseUrl, string? modelId, ModelAbilities? abilities)
+    {
+        var named = Named(baseUrl);
+        // The provider's own suggestion, unless that is the retired model.
+        var suggestion = named is not null && !string.Equals(named.DefaultModelId, modelId?.Trim(), StringComparison.Ordinal) &&
+            abilities?.Find(baseUrl, named.DefaultModelId)?.Retired is null ? named.DefaultModelId : null;
+        if (abilities?.Find(baseUrl, modelId) is { Retired: { } since } found)
+            return new(named?.Name ?? ServerName(baseUrl), suggestion, since, found.SourceOf(ModelFact.Retired)?.Source ?? found.Source);
+        return RetiredOn(baseUrl, modelId) is { } listed ? new(listed.Name, suggestion, null, "Martlet's list of retired models") : null;
+    }
+
+    private static string ServerName(string? baseUrl) =>
+        Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) ? uri.Host : "The server";
+}
+
+/// <summary>A model its server retired for good: <see cref="Server"/> names the server ("NVIDIA Build"), <see cref="Suggestion"/>
+/// is the provider's current default (null when there is none), <see cref="Since"/> the date Martlet found it (null for the
+/// built-in list) and <see cref="Source"/> where that came from in words.</summary>
+public sealed record RetiredModel(string Server, string? Suggestion, DateTimeOffset? Since, string Source)
+{
+    /// <summary>What to do, in one sentence: "Choose google/diffusiongemma-26b-a4b-it in Companion › Thinking."</summary>
+    public string Remedy => $"Choose {Suggestion ?? "another model"} in Companion › Thinking.";
 }

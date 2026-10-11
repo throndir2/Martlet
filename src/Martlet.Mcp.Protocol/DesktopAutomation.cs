@@ -476,6 +476,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AudioModelNow", "AudioModelRoute", "AudioModelKnown", "AudioModelSent", "AudioModelTestStatus", "AudioModelLocalModel",
         "AudioModelLocalStatus", "AudioModelLocalKnown", "AudioModelLocalFit", "AudioModelProvider", "AudioModelKeyStatus",
         "ThinkingSenses",
+        // Companion › Thinking's Now card: what Martlet knows the Thinking model takes on its route (hears, sees, video, tool calls
+        // or that its server retired it, each with where it came from and when; ThinkingAbilities), and what Test tools sends or
+        // last found (ThinkingToolsTestStatus: the tool's name and test word, or the model's short answer). Clicking
+        // ThinkingToolsTest sends the Thinking model one request with a made-up tool, so it needs --allow-ui-effects and a model on
+        // this PC (model_lab's lab/sees calls the tool, lab/notools refuses it and lab/gone answers 410).
+        "ThinkingAbilities", "ThinkingToolsTestStatus",
         // Companion › Hearing › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.

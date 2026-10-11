@@ -49,18 +49,56 @@ public partial class MainWindow
             return;
         }
         var now = after.Find(ability.Origin, ability.ModelId)!;
-        if (known?.Hears != now.Hears || known?.Sees != now.Sees)
+        if (known is null || Senses(known) != Senses(now))
             ErrorLog.Info($"{ability.ModelId}: {Senses(now)} ({ability.Source}).");
+        AbilitiesChanged();
+    }
+
+    /// <summary>Martlet no longer counts the model retired on that route: it answered again (a test), or the owner chose it again
+    /// (<paramref name="why"/> says which, for the log).</summary>
+    private void ForgetRetired(string origin, string modelId, string why)
+    {
+        var directory = store?.DataDirectory;
+        if (directory is null) return;
+        var before = ModelAbilities.Load(directory);
+        var after = before.Answered(origin, modelId);
+        if (ReferenceEquals(after, before)) return;
+        if (!after.Save(directory))
+        {
+            ErrorLog.Warn("Martlet couldn't save what it found out about a model (model-abilities.json).");
+            return;
+        }
+        ErrorLog.Info($"Martlet no longer counts {modelId} retired on {origin}: {why}.");
+        AbilitiesChanged();
+    }
+
+    // A test's HTTP answer: 410 Gone marks the model retired on that route, any answer clears it.
+    private void RecordAnswer(ModelProbe probe, int? status)
+    {
+        if (status == 410)
+            RecordModelAbility(new() { Origin = probe.Origin, ModelId = probe.ModelId, Retired = DateTimeOffset.UtcNow,
+                Source = ModelAbility.GoneAnswer, CheckedAt = DateTimeOffset.UtcNow });
+        else if (status is >= 200 and <= 299) ForgetRetired(probe.Origin, probe.ModelId, "it answered a test");
+    }
+
+    private void AbilitiesChanged()
+    {
         conversation?.ReloadAbilities();
         // Where pictures and recordings go follows at once (the desktop's status file and log say it again).
         conversation?.ReloadSenseModels();
-        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Hearing && !tabEdited) RenderTab();
+        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Hearing or CompanionTab.Thinking && !tabEdited)
+            RenderTab();
+        // Home says when the Thinking model was found retired, or no longer is.
+        QueueHealth();
         QueueSettingsSync();
     }
 
     private static string Senses(ModelAbility ability) =>
         $"{(ability.Hears switch { true => "hears recordings", false => "doesn't hear recordings", _ => "hearing not known" })}, " +
-        $"{(ability.Sees switch { true => "sees pictures", false => "doesn't see pictures", _ => "vision not known" })}";
+        $"{(ability.Sees switch { true => "sees pictures", false => "doesn't see pictures", _ => "vision not known" })}, " +
+        $"{(ability.Video switch { true => "takes video", false => "doesn't take video", _ => "video not known" })}, " +
+        $"{(ability.Tools switch { true => "calls tools", false => "doesn't call tools", _ => "tools not known" })}" +
+        (ability.Retired is { } since ? $", retired since {since:yyyy-MM-dd}" : "");
 
     /// <summary>The Thinking route as a test target. Only an OpenAI-compatible endpoint (Ollama on this PC included) is asked
     /// directly.</summary>
@@ -173,10 +211,106 @@ public partial class MainWindow
         (local ? "; it stays on this PC." : $", to {destination}. It's one small request that may cost a little.") +
         " Choosing a model already asks its server what it takes, when the server says.";
 
-    // A test started or ended: the open Listening or Vision page shows it.
+    // A test started or ended: the open Listening, Vision or Thinking page shows it.
     private void ShowModelTest()
     {
-        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Hearing && !tabEdited) RenderTab();
+        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Hearing or CompanionTab.Thinking && !tabEdited)
+            RenderTab();
+    }
+
+    private static string ToolsTest(ModelProbe probe) => $"Tools|{probe.Origin}|{probe.ModelId}";
+
+    /// <summary>Companion › Thinking's Test tools for the Thinking model on an OpenAI-compatible endpoint (Ollama on this PC
+    /// included): the button, what it sends and what the last test found.</summary>
+    private UIElement[] ToolsTestControls(SetupRoute? thinking)
+    {
+        var probe = ThinkingProbe(thinking);
+        if (probe is null) return [];
+        var test = ToolsTest(probe);
+        var running = modelTestsRunning.Contains(test);
+        var button = new Button
+        {
+            Content = running ? "Testing tools..." : "Test tools", HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 6, 0, 6), IsEnabled = !running
+        };
+        AutomationProperties.SetAutomationId(button, "ThinkingToolsTest");
+        button.Click += (_, _) => TestToolsAsync(probe).Forget();
+        var status = Note(modelTestResults.GetValueOrDefault(test) ?? ToolsTestAbout(probe.ModelId, probe.Local, probe.Destination),
+            new Thickness(0, 0, 0, 0));
+        AutomationProperties.SetAutomationId(status, "ThinkingToolsTestStatus");
+        return [button, status];
+    }
+
+    /// <summary>What Test tools sends, and where.</summary>
+    internal static string ToolsTestAbout(string model, bool local, string destination) =>
+        $"Sends {model} one made-up tool and asks it to call the tool with a test word (never anything you said or typed)" +
+        (local ? "; it stays on this PC." : $", to {destination}. It's one small request that may cost a little.");
+
+    private async Task TestToolsAsync(ModelProbe probe)
+    {
+        var test = ToolsTest(probe);
+        if (closing || modelTestsRunning.Contains(test)) return;
+        if (!probe.Local && !ConfirmationDialog.Confirm(this, $"Send {probe.ModelId} one request with a made-up tool at {probe.Destination} " +
+                "to see whether it calls tools? Nothing you said or typed is sent. It's one small request with your API key and may cost a little.",
+                "Test tools"))
+            return;
+        modelTestsRunning.Add(test);
+        modelTestResults[test] = $"Asking {probe.ModelId} to call a test tool...";
+        ShowModelTest();
+        try
+        {
+            var word = ModelVisionTest.Words[Random.Shared.Next(ModelVisionTest.Words.Count)];
+            var key = await Task.Run(probe.Key, lifetime.Token);
+            using var client = ModelContextProbe.CreateClient(probe.Local);
+            var report = await ModelToolTest.RunAsync(client, probe.Origin, probe.ModelId, key, word, probe.Server, lifetime.Token);
+            modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
+            ErrorLog.Info($"Test tools: {report.Summary}");
+            RecordAnswer(probe, report.Status);
+            if (report.Tools is { } tools)
+                RecordModelAbility(new() { Origin = probe.Origin, ModelId = probe.ModelId, Tools = tools, Source = ModelAbility.TestRequest,
+                    CheckedAt = DateTimeOffset.UtcNow });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is InvalidOperationException or Martlet.Core.Contracts.ContractException)
+        {
+            modelTestResults[test] = "Couldn't test tools: " + error.Message;
+        }
+        finally { EndModelTest(test); }
+    }
+
+    /// <summary>Companion › Thinking's line on what Martlet knows the Thinking model takes on its route, each with where it came
+    /// from: hearing and seeing (found out, else by its name), video, tool calls and whether its server retired it; and which
+    /// test finds out what isn't known.</summary>
+    internal static string ThinkingAbilitiesText(SetupRoute? thinking, ModelAbilities abilities)
+    {
+        if (thinking is null) return "";
+        var found = abilities.Find(thinking.Origin, thinking.ModelId);
+        string Said(ModelFact fact) => found?.SourceOf(fact) is { } said
+            ? $" ({(ModelAbility.IsTest(said.Source) ? "found by " + said.Source : said.Source)}, {said.At.LocalDateTime:d MMM})" : "";
+        string Answer(bool? value, ModelFact fact, bool? byName = null) => value switch
+        {
+            true => "yes" + Said(fact),
+            false => "no" + Said(fact),
+            _ => byName switch { true => "yes, by its name", false => "no, by its name", _ => "not known" }
+        };
+        if (LiveConversationConfiguration.Retired(thinking, abilities) is { } retired)
+            return $"{retired.Server} retired {thinking.ModelId}" +
+                (retired.Since is { } since ? $" ({retired.Source}, {since.LocalDateTime:d MMM})" : "") + $". {retired.Remedy}";
+        var hearing = HearingModelCatalog.CarriesAudio(thinking.RouteType)
+            ? Answer(found?.Hears, ModelFact.Hears, HearingModelCatalog.Classify(thinking.ModelId) switch
+                { HearingSupport.Supported => true, HearingSupport.Unsupported => false, _ => null })
+            : "no (this route carries no recordings)";
+        var seeing = Answer(found?.Sees, ModelFact.Sees, VisionModelCatalog.Classify(thinking.ModelId) switch
+            { VisionSupport.Supported => true, VisionSupport.Unsupported => false, _ => null });
+        var tools = !RouteAbilities.CarriesTools(thinking.RouteType) ? "no (this route carries no tools)"
+            : thinking.RouteType == SetupRouteType.OpenAi ? "yes" : Answer(found?.Tools, ModelFact.Tools);
+        var unknown = new List<string>();
+        if (found?.Hears is null && HearingModelCatalog.CarriesAudio(thinking.RouteType)) unknown.Add("Test hearing (Companion › Listening)");
+        if (found?.Sees is null) unknown.Add("Test vision (Companion › Vision)");
+        if (found?.Tools is null && thinking.RouteType == SetupRouteType.ChatCompletions) unknown.Add("Test tools");
+        return $"What Martlet knows about {thinking.ModelId}: hears recordings: {hearing}; sees pictures: {seeing}; takes video: " +
+            $"{Answer(found?.Video, ModelFact.Video)}; calls tools: {tools}." +
+            (unknown.Count > 0 && thinking.RouteType == SetupRouteType.ChatCompletions ? $" To find out for sure: {string.Join(", ", unknown)}." : "");
     }
 
     private async Task TestHearingAsync(ModelProbe probe)
@@ -200,6 +334,7 @@ public partial class MainWindow
             var report = await ModelHearingTest.RunAsync(client, probe.Origin, probe.ModelId, key, clip, word, probe.Server, lifetime.Token);
             modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
             ErrorLog.Info($"Test hearing: {report.Summary}");
+            RecordAnswer(probe, report.Status);
             if (report.Hears is { } hears)
                 RecordModelAbility(new() { Origin = probe.Origin, ModelId = probe.ModelId, Hears = hears, Source = "a test request",
                     CheckedAt = DateTimeOffset.UtcNow });
@@ -232,6 +367,7 @@ public partial class MainWindow
             var report = await ModelVisionTest.RunAsync(client, probe.Origin, probe.ModelId, key, picture, word, probe.Server, lifetime.Token);
             modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
             ErrorLog.Info($"Test vision: {report.Summary}");
+            RecordAnswer(probe, report.Status);
             if (report.Sees is { } sees)
                 RecordModelAbility(new() { Origin = probe.Origin, ModelId = probe.ModelId, Sees = sees, Source = "a test request",
                     CheckedAt = DateTimeOffset.UtcNow });

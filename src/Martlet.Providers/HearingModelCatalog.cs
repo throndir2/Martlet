@@ -48,15 +48,17 @@ public static partial class HearingModelCatalog
         routeType is SetupRouteType.ChatCompletions or SetupRouteType.GatewayOllama;
 
     /// <summary>Whether the Thinking route's model hears: only a route that carries audio (<see cref="CarriesAudio"/>) takes it,
-    /// a retired model none; then what Martlet found out about the model on that server (<paramref name="abilities"/>: its model
-    /// metadata, a test request or a refused recording), and only without that the model's name (<see cref="Classify"/>). Ollama
+    /// a retired model none (<paramref name="retired"/>, or found retired on that route); then what Martlet found out about the
+    /// model on that server (<paramref name="abilities"/>: a test request or a refused recording, then its model metadata), and
+    /// only without that the model's name (<see cref="Classify"/>). Ollama
     /// on this PC and on a paired computer takes audio for models it says hear (Ollama 0.35 and later, for example Gemma 4 E2B
     /// and E4B); a paired computer older than recordings gets the words only and should be updated.</summary>
     public static HearingSupport ForRoute(SetupRouteType? routeType, string? origin, string? modelId, ModelAbilities? abilities,
         bool retired = false)
     {
-        if (!CarriesAudio(routeType) || retired) return HearingSupport.Unsupported;
-        if (abilities?.Find(origin, modelId)?.Hears is { } hears) return hears ? HearingSupport.Supported : HearingSupport.Unsupported;
+        var found = abilities?.Find(origin, modelId);
+        if (!CarriesAudio(routeType) || retired || found?.Retired is not null) return HearingSupport.Unsupported;
+        if (found?.Hears is { } hears) return hears ? HearingSupport.Supported : HearingSupport.Unsupported;
         return Classify(modelId);
     }
 

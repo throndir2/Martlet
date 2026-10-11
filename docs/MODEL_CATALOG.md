@@ -147,8 +147,10 @@ Rules:
   owner's voice or screen.
 - Video has two forms. A model that takes **video** natively gets the video;
   a model that only **sees** can get frames as pictures. Save them apart.
-- An HTTP 404 or 410 from a route marks the model retired on that route, with
-  the date. This replaces the hard-coded `RetiredModelIds`.
+- An HTTP 410 from a route marks the model retired on that route, with the
+  date (built). This comes before the hard-coded `RetiredModelIds`, which stay
+  only as the fallback. An HTTP 404 doesn't count: Ollama answers 404 for a
+  model that isn't downloaded yet, and a wrong base URL answers 404 too.
 - Catalog facts refresh at most once a day. A test result stays until the model
   changes (for example, a new Ollama digest).
 
@@ -239,6 +241,11 @@ These match the tasks in [#663](https://github.com/throndir2/Martlet/issues/663)
 
 1. Add `Video`, `Tools` and `Retired` to `ModelAbility`, and read them from the
    sources `ModelContextProbe` already asks. Add NVIDIA's model pages.
+   **Built:** each fact keeps its own source and date (`ModelAbility.Sources`),
+   a test outranks metadata, Test tools finds out about tool calls, and
+   [Thinking models that hear and see](CONVERSATION.md#thinking-models-that-hear-and-see)
+   describes it. A test for video itself isn't built yet: Martlet sends no
+   video.
 2. Add the catalog schema, a snapshot made by a local script at release time,
    and a loader in `Martlet.Core.Planning`.
 3. Add the daily background refresh (OpenRouter, models.dev, NVIDIA's
