@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- The welcome tour now asks three quick questions: whether you play games on this PC, whether Martlet may use free online services, and whether quick or smarter replies matter more. Martlet plans your setup with the answers, and you can change them, plus models that hear you and how much of each host's graphics card to use, under **Your preferences** in Recommended setup or in Settings. ([#762](https://github.com/throndir2/Martlet/pull/762))
 - Your AI assistant can now set Martlet up for you. Martlet's own MCP server tells assistants like GitHub Copilot, Claude and VS Code what it can do, and lets them make characters (from a description or a SillyTavern or Chub card), change, switch and delete them, and change Martlet's settings; a running Martlet follows the changes at once. `scripts\Register-MartletMcp.ps1` connects your assistants. ([#761](https://github.com/throndir2/Martlet/pull/761))
 
 ### Changed
