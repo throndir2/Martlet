@@ -52,19 +52,19 @@ cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.66.1
+## 🆕 What's new in 0.67.0
 
-- 📋 **A list of machines for every job**: Voice, Listening, Thinking, Vision, Hearing, Pictures, Reading, Singing and Lip-sync each show the PCs, graphics cards and cloud providers that do the job, in your order, each with its own On box and settings.
-- 🤝 **Busy helpers hand off**: when the first machine is busy or doesn't answer, the next one speaks, listens, draws, sings, reads or looks instead, so jobs keep coming.
-- 🔎 **See what each Thinking request answered** on the Thinking requests page, beside its details.
-- 😊 **Emotes in the right place**: Martlet measures a new character's eyes, cheeks and mouth, so blushes and heart eyes land where they should.
-- 🎙️ **Always listening keeps listening** when Windows only reports a property change on your microphone, and the log and diagnostics say clearly why a microphone stopped.
+- 👨‍👩‍👧 **Martlet for the whole household**: Martlet signs you in with your Windows account, and anyone else can **Add a person** or switch at the bottom left. Each person has their own characters, personalities, memories, creations and settings, while your computers, hosts and paid API keys stay shared.
+- 🤝 **Share characters and memories**: share a character as a copy or together, so the same character remembers everyone, and copy or move memories to the household or another person.
+- 🗣️ **Martlet knows who's talking**: link a voice on People to your account. Voices are always shared with all your computers, so Martlet learns everyone's voice everywhere.
+- 🔐 **Your own Account page**: add a password and an authenticator app, lock your account with a PIN or Windows Hello on a shared PC, and sign in as someone else.
+- 🔗 **Link any sign-in**: link your Windows login, Google, Microsoft, Authentik, Discord or Steam to your account, set a provider up once for every host, and let a new computer join by signing in.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
 ## 🔮 Coming soon
 
-Everything finished so far shipped in 0.66.1. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
+Everything finished so far shipped in 0.67.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
 
 ## 💬 Things you can say
 
@@ -207,6 +207,7 @@ Everything finished so far shipped in 0.66.1. See [Unreleased](CHANGELOG.md#unre
 
 ### 🧰 Connected to your world
 - **Tools**: browse the MCP Registry and install tool servers with a click.
+- **Ask your AI assistant to set her up**: Martlet's own MCP server lets GitHub Copilot, Claude or VS Code make characters (even from a SillyTavern card) and change settings for you. Run `scripts\Register-MartletMcp.ps1` from a checkout ([how](docs/MCP.md#use-martlet-from-an-ai-assistant)).
 - A built-in **Terminal** (off until you turn it on) that asks before every command.
 - **Home Assistant** for lights, climate and more.
 - Chat with her on **Discord** (she can join voice calls and even show up on camera), **Telegram** and **WhatsApp**.

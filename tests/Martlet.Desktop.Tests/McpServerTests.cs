@@ -14,7 +14,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
     [Fact]
     public async Task NegotiatesAndListsToolsOverStdio()
     {
-        var messages = await SendAsync(
+        var messages = await SendWithAsync(false, true,
             """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}""",
             """{"jsonrpc":"2.0","method":"notifications/initialized"}""",
             """{"jsonrpc":"2.0","id":2,"method":"tools/list"}""");
@@ -33,6 +33,235 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "reading_check");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "active_app_check");
         Assert.DoesNotContain(tools, tool => tool.GetProperty("name").GetString() == "fixture");
+        Assert.Equal(tools.Length, tools.Select(tool => tool.GetProperty("name").GetString()).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task TellsAssistantsWhereToStartAndListsTheirToolsFirst()
+    {
+        var messages = await SendAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"tools/list"}""",
+            """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"martlet_guide"}}""",
+            """{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"martlet_guide","arguments":{"search":"latency"}}}""",
+            """{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"martlet_guide","arguments":{"tool":"latency_report"}}}""",
+            """{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"martlet_guide","arguments":{"topic":"tools"}}}""");
+        var initialized = messages[0].GetProperty("result");
+        Assert.Equal("Martlet", initialized.GetProperty("serverInfo").GetProperty("title").GetString());
+        Assert.NotEqual("0.1.0", initialized.GetProperty("serverInfo").GetProperty("version").GetString());
+        var instructions = initialized.GetProperty("instructions").GetString()!;
+        Assert.Contains("martlet_guide", instructions, StringComparison.Ordinal);
+        Assert.Contains("character_create", instructions, StringComparison.Ordinal);
+        Assert.Contains("--allow-changes", instructions, StringComparison.Ordinal);
+
+        // The short list: the assistant's tools first, each with a title and hints; the rest run by name.
+        var tools = messages[1].GetProperty("result").GetProperty("tools").EnumerateArray().ToArray();
+        Assert.InRange(tools.Length, 10, 40);
+        Assert.Equal("martlet_guide", tools[0].GetProperty("name").GetString());
+        foreach (var tool in tools)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(tool.GetProperty("title").GetString()));
+            Assert.Equal(tool.GetProperty("title").GetString(), tool.GetProperty("annotations").GetProperty("title").GetString());
+        }
+        var names = tools.Select(tool => tool.GetProperty("name").GetString()).ToArray();
+        Assert.Subset(names.ToHashSet(), new HashSet<string?> { "martlet_call", "characters_list", "character_create", "character_update",
+            "character_use", "character_delete", "settings_get", "settings_schema", "settings_set", "doctor_status", "ui_connect", "ui_snapshot", "ui_click" });
+        Assert.DoesNotContain("thinking_pool_check", names);
+        Assert.True(tools.Single(t => t.GetProperty("name").GetString() == "characters_list").GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean());
+        Assert.True(tools.Single(t => t.GetProperty("name").GetString() == "character_delete").GetProperty("annotations").GetProperty("destructiveHint").GetBoolean());
+        // ui_connect finds the running Martlet by itself.
+        Assert.Equal(0, tools.Single(t => t.GetProperty("name").GetString() == "ui_connect").GetProperty("inputSchema").GetProperty("required").GetArrayLength());
+
+        var guide = ToolResult(messages[2]);
+        Assert.Contains("companion", guide.GetProperty("about").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("off", guide.GetProperty("server").GetProperty("changes").GetString(), StringComparison.Ordinal);
+        Assert.Contains(guide.GetProperty("recipes").EnumerateArray(), recipe => recipe.GetProperty("task").GetString() == "Make a character");
+        Assert.Contains(guide.GetProperty("areas").EnumerateArray(), area => area.GetProperty("area").GetString() == "Characters");
+
+        var found = ToolResult(messages[3]).GetProperty("matches").EnumerateArray().ToArray();
+        Assert.Equal("latency_report", found[0].GetProperty("name").GetString());
+        Assert.False(found[0].GetProperty("listed").GetBoolean());
+
+        var one = ToolResult(messages[4]);
+        Assert.Equal("latency_report", one.GetProperty("tool").GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Object, one.GetProperty("tool").GetProperty("inputSchema").ValueKind);
+        Assert.Contains("martlet_call", one.GetProperty("run").GetString(), StringComparison.Ordinal);
+
+        var areas = ToolResult(messages[5]).GetProperty("areas").EnumerateArray().ToArray();
+        Assert.True(areas.Sum(area => area.GetProperty("tools").GetArrayLength()) >= 170);
+        Assert.Contains(areas.SelectMany(area => area.GetProperty("tools").EnumerateArray()), tool => tool.GetProperty("name").GetString() == "ui_click");
+    }
+
+    [Fact]
+    public async Task MartletCallRunsToolsThatAreNotListed()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Call." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var call = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 1, method = "tools/call",
+                @params = new { name = "martlet_call", arguments = new { tool = "character_status", arguments = new { dataDirectory = directory } } }
+            });
+            var messages = await SendAsync(call,
+                """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"martlet_call","arguments":{"tool":"no_such_tool"}}}""",
+                """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"martlet_call","arguments":{"tool":"martlet_call"}}}""");
+            Assert.Equal("none", ToolResult(messages[0]).GetProperty("personality").GetProperty("state").GetString());
+            Assert.True(messages[1].GetProperty("result").GetProperty("isError").GetBoolean());
+            Assert.Contains("martlet_guide", messages[1].GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+            Assert.True(messages[2].GetProperty("result").GetProperty("isError").GetBoolean());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task CharacterToolsMakeChangeSwitchAndDeleteCharactersOnlyWithAllowChanges()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Characters." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            string Call(int id, string name, object arguments) => JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id, method = "tools/call", @params = new { name, arguments }
+            });
+
+            // Without --allow-changes nothing is saved.
+            var refused = await SendAsync(Call(1, "character_create", new { name = "Ava", dataDirectory = directory }));
+            Assert.True(refused[0].GetProperty("result").GetProperty("isError").GetBoolean());
+            Assert.Contains("--allow-changes", refused[0].GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(directory, "settings.json")));
+
+            var messages = await SendWithAsync(true, false,
+                Call(1, "characters_list", new { dataDirectory = directory }),
+                Call(2, "character_create", new { name = "Ava", personality = "You are Ava, a cheerful astronomer.", look = "builtin", dataDirectory = directory }),
+                Call(3, "character_create", new { name = "ava", dataDirectory = directory }),
+                Call(4, "character_update", new { character = "Ava", name = "Ava Star", personality = "You are Ava Star.", dataDirectory = directory }),
+                Call(5, "character_use", new { character = "Martlet", dataDirectory = directory }),
+                Call(6, "characters_list", new { includeText = true, dataDirectory = directory }),
+                Call(7, "character_create", new { name = "Bo", look = "no such look", dataDirectory = directory }),
+                Call(8, "character_delete", new { character = "Ava Star", dataDirectory = directory }),
+                Call(9, "characters_list", new { dataDirectory = directory }));
+
+            var first = ToolResult(messages[0]);
+            Assert.Equal("first-run", first.GetProperty("state").GetString());
+            Assert.Equal("Martlet", first.GetProperty("active").GetProperty("personality").GetString());
+
+            var created = ToolResult(messages[1]);
+            Assert.Equal("Ava", created.GetProperty("created").GetProperty("name").GetString());
+            Assert.Equal("builtin", created.GetProperty("created").GetProperty("profile").GetProperty("lookId").GetString());
+            Assert.True(created.GetProperty("created").GetProperty("active").GetBoolean());
+            Assert.Contains("CharacterProfileUse-", created.GetProperty("followUp").GetRawText(), StringComparison.Ordinal);
+
+            Assert.True(messages[2].GetProperty("result").GetProperty("isError").GetBoolean());
+            Assert.Equal("Ava Star", ToolResult(messages[3]).GetProperty("updated").GetProperty("profile").GetProperty("name").GetString());
+            Assert.Equal("Martlet", ToolResult(messages[4]).GetProperty("active").GetProperty("personality").GetString());
+
+            var listed = ToolResult(messages[5]);
+            var ava = listed.GetProperty("characters").EnumerateArray().Single(c => c.GetProperty("name").GetString() == "Ava Star");
+            Assert.Equal("You are Ava Star.", ava.GetProperty("personality").GetString());
+            Assert.False(ava.GetProperty("active").GetBoolean());
+
+            Assert.Contains("builtin", messages[6].GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+            Assert.Equal("Ava Star", ToolResult(messages[7]).GetProperty("removed").GetProperty("personality").GetString());
+            Assert.Equal(["Martlet"], ToolResult(messages[8]).GetProperty("characters").EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+
+            // The production settings store reads what the tools saved.
+            var saved = await new Martlet.Core.Settings.SettingsStore(directory).LoadAsync();
+            Assert.Equal(Martlet.Core.Settings.SettingsLoadState.Loaded, saved.State);
+            Assert.Single(saved.Settings!.Companion!.Personas);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task CharacterCreateImportsACharacterCardWithItsLorebook()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Card." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var card = Path.Combine(directory, "nova.json");
+            await File.WriteAllTextAsync(card, JsonSerializer.Serialize(new
+            {
+                spec = "chara_card_v2", spec_version = "2.0",
+                data = new
+                {
+                    name = "Nova", description = "{{char}} is a starship pilot.", personality = "Bold and kind.", scenario = "", first_mes = "Hi!",
+                    mes_example = "", creator_notes = "", system_prompt = "", post_history_instructions = "", tags = Array.Empty<string>(),
+                    creator = "", character_version = "", alternate_greetings = Array.Empty<string>(), extensions = new { },
+                    character_book = new
+                    {
+                        name = "Nova lore", extensions = new { },
+                        entries = new object[]
+                        {
+                            new { keys = new[] { "Orion" }, content = "Orion is Nova's ship.", extensions = new { }, enabled = true, insertion_order = 0,
+                                constant = false, id = 1 }
+                        }
+                    }
+                }
+            }));
+            var call = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 1, method = "tools/call",
+                @params = new { name = "character_create", arguments = new { cardPath = card, dataDirectory = directory } }
+            });
+            var result = ToolResult((await SendWithAsync(true, false, call))[0]);
+            output.WriteLine(result.ToString());
+            Assert.Equal("Nova", result.GetProperty("created").GetProperty("name").GetString());
+            Assert.Equal("Character Card V2", result.GetProperty("card").GetProperty("format").GetString());
+            Assert.Equal(1, result.GetProperty("card").GetProperty("lorebook").GetProperty("entries").GetInt32());
+            var saved = await new Martlet.Core.Settings.SettingsStore(directory).LoadAsync();
+            Assert.Contains("Nova is a starship pilot.", saved.Settings!.Companion!.ActivePersona.Text, StringComparison.Ordinal);
+            var lore = await new Martlet.Core.Lorebooks.LorebookStore(directory).LoadAsync();
+            Assert.Equal(saved.Settings.Companion.ActivePersonaId, Assert.Single(lore.Library.Books).PersonaIds.Single());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task SettingsToolsReadExplainAndChangeTheOwnersChoicesButNotSetup()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Settings." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            string Call(int id, string name, object arguments) => JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id, method = "tools/call", @params = new { name, arguments }
+            });
+            var messages = await SendWithAsync(true, false,
+                Call(1, "settings_get", new { dataDirectory = directory }),
+                Call(2, "settings_schema", new { path = "generation" }),
+                Call(3, "settings_set", new { path = "generation.temperature", value = 0.7, dataDirectory = directory }),
+                Call(4, "settings_set", new { path = "generation.temperature", value = "hot", dataDirectory = directory }),
+                Call(5, "settings_set", new { path = "setup.checkpoint", value = "done", dataDirectory = directory }),
+                Call(6, "settings_set", new { path = "companion.personas[0].text", value = "Be brief.", dataDirectory = directory }),
+                Call(7, "settings_set", new { path = "generation.temperature", value = (object?)null, dataDirectory = directory }),
+                Call(8, "settings_set", new { path = "memory.enabled", value = false, revision = "stale", dataDirectory = directory }));
+
+            var first = ToolResult(messages[0]);
+            Assert.Equal("first-run", first.GetProperty("state").GetString());
+            Assert.Contains(first.GetProperty("sections").EnumerateArray(), s => s.GetProperty("name").GetString() == "setup" && !s.GetProperty("changeable").GetBoolean());
+
+            var schema = ToolResult(messages[1]).GetProperty("schema");
+            Assert.True(schema.GetProperty("properties").TryGetProperty("temperature", out _));
+
+            Assert.Equal(0.7, ToolResult(messages[2]).GetProperty("value").GetDouble());
+            Assert.True(messages[3].GetProperty("result").GetProperty("isError").GetBoolean());
+            Assert.Contains("generation.temperature", messages[3].GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+            Assert.True(messages[4].GetProperty("result").GetProperty("isError").GetBoolean());
+            Assert.Equal("Be brief.", ToolResult(messages[5]).GetProperty("value").GetString());
+            Assert.Equal(JsonValueKind.Null, ToolResult(messages[6]).GetProperty("value").ValueKind);
+            Assert.True(messages[7].GetProperty("result").GetProperty("isError").GetBoolean());
+
+            var saved = await new Martlet.Core.Settings.SettingsStore(directory).LoadAsync();
+            // Every value back at its default leaves the replies part out, as Martlet's pages save it.
+            Assert.Null(saved.Settings!.Generation);
+            Assert.Equal("Be brief.", saved.Settings.Companion!.Personas[0].Text);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     [Fact]
@@ -830,11 +1059,13 @@ public sealed class McpServerTests(ITestOutputHelper output)
         return document.RootElement.Clone();
     }
 
-    private static async Task<JsonElement[]> SendAsync(params string[] requests)
+    private static Task<JsonElement[]> SendAsync(params string[] requests) => SendWithAsync(false, false, requests);
+
+    private static async Task<JsonElement[]> SendWithAsync(bool allowChanges, bool allTools, params string[] requests)
     {
         using var reader = new StringReader(string.Join('\n', requests) + "\n");
         using var writer = new StringWriter();
-        await new McpServer(new DesktopAutomation(false)).RunAsync(reader, writer, CancellationToken.None);
+        await new McpServer(new DesktopAutomation(false), allowChanges, allTools).RunAsync(reader, writer, CancellationToken.None);
         return writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
         {
             using var document = JsonDocument.Parse(line);

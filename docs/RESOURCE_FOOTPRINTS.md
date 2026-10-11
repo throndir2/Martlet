@@ -310,6 +310,51 @@ Measured on the i7-13700K the same way as Parakeet:
 transcription, the online image, audio and picture models) use no local
 resources beyond the app's network request.
 
+## Estimating a model Martlet doesn't list
+
+For any open-weight model, Martlet works out the memory the same way as the
+table above, from public sources (`LocalModelFactsReader` and
+`LocalModelMemory` in `Martlet.Providers.LocalModels` and
+`Martlet.Core.Planning`; MCP `local_model_facts`,
+[Model catalog](MODEL_CATALOG.md#memory-and-running-locally)):
+
+| Part | Where Martlet reads it |
+| --- | --- |
+| Weights | The quantization's file size: the Ollama registry's model layer (`registry.ollama.ai`, never ollama.com), or a Hugging Face GGUF file (split parts added) |
+| Encoder | The registry's `image.projector` layer, or the GGUF repository's `mmproj` file (16-bit when there is one) |
+| Draft | The registry's `image.draft` layer: Ollama loads it with the model |
+| KV cache | `config.json`: layers with a cache of their own × KV heads × head size × 2 (keys and values) × 2 bytes (f16) × context tokens. Sliding-window layers keep only their window, Gemma 4's full layers use their own heads and head size, shared-cache layers keep none, and linear-attention layers (Qwen3.5) keep a fixed state. Without a `config.json` a tenth of the weights is guessed |
+| Buffers | 0.5 GB |
+| System memory | Gemma's per-layer embeddings stay in system memory: their share of the weights file's parameters |
+
+A mixture-of-experts model keeps every expert in memory; only its speed uses
+its active parameters (worked out from `config.json`'s experts, so 26B A4B gives
+3.8 billion). The rough speed is the card's memory bandwidth divided by the
+bytes read for each token (the active weights and the cache): an upper bound,
+often 50-70% of it in practice (`GraphicsCardBandwidth` knows common cards).
+
+Checked against this page's numbers, at 8,192 tokens, with the tags' sizes on
+2026-10-10:
+
+| Tag | Weights + encoder + draft | KV cache | Estimate on the card | This page | Off by |
+| --- | --- | --- | --- | --- | --- |
+| `gemma4:e2b` | 3.50 + 0.99 + 0.10 | 0.06 | 3.37 (+1.77 in system memory) | 3.3 M | +2% |
+| `gemma4:e4b` | 5.49 + 0.99 + 0.10 | 0.16 | 5.17 (+2.06 in system memory) | 4.9 M | +6% |
+| `qwen3.5:4b` | 2.65 + 0.68 | 0.32 | 4.15 | 4.1 M | +1% |
+| `gemma4:12b` | 7.38 + 0.18 + 0.47 | 0.47 | 8.99 | 9.0 E | 0% |
+| `gemma4:26b` | 17.07 + 1.19 + 0.46 | 0.38 | 19.61 | 18.5 E | +6% |
+
+The 26B estimate in the table above was made from an older, smaller download;
+today's tag with its encoder and draft is 18.7 GB to download.
+
+**Measured on each computer.** When Ollama on this PC loads a model (the talk
+window's warm-up, *Test model*, *Load model*), Martlet reads Ollama's own
+figure (`/api/ps`: `size`, `size_vram`, `context_length`, `digest`) and keeps
+it in `model-memory.json` in the data folder, for each Ollama server and
+model (`MeasuredModelMemory`). A measured number replaces the estimate. It
+reads only after the load, never while a reply is on its way. Paired hosts
+are not measured yet: Martlet doesn't ask a host's Ollama for `/api/ps`.
+
 ## What could not be measured here
 
 The dev PC for this pass (i7-13700K, 32 GB, Intel UHD 770) has no usable

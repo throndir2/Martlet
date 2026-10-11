@@ -5,6 +5,7 @@ using System.Text.Json;
 using Martlet.Core.Settings;
 using Martlet.Logging;
 using Martlet.Providers;
+using Martlet.Providers.LocalModels;
 using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
@@ -123,7 +124,27 @@ internal sealed class LocalOllamaWarmup : IDisposable
             ErrorLog.Warn($"Ollama on this PC couldn't load {Model} ({result}): {why}.");
         // Why it doesn't answer comes from Ollama's own logs, in the background; the known cause is repaired once by itself.
         else if (result == LocalModelState.NotRunning) LocalOllamaRecovery.NoticeNotAnswering();
-        if (result == LocalModelState.Ready && !SimulatedOllamaCrashLoop.Active) await RecordContextAsync().ConfigureAwait(false);
+        if (result == LocalModelState.Ready && !SimulatedOllamaCrashLoop.Active)
+        {
+            await RecordContextAsync().ConfigureAwait(false);
+            await RecordMemoryAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Keeps what the loaded model really takes (Ollama's <c>/api/ps</c>) in model-memory.json when it changed, so a
+    /// measured number replaces the estimate for this PC. Loopback only; reads only, after the load, never during a reply.</summary>
+    private async Task RecordMemoryAsync()
+    {
+        if (dataDirectory is null) return;
+        try
+        {
+            var (use, saved) = await OllamaMeasuredMemory.RecordAsync(client, LocalOllama.OriginUri, Model, dataDirectory, lifetime.Token)
+                .ConfigureAwait(false);
+            if (saved && use is not null)
+                ErrorLog.Info($"Ollama on this PC holds {Model} in {use.Bytes / 1e9:0.00} GB, {use.GraphicsBytes / 1e9:0.00} GB of it on the " +
+                    $"graphics card{(use.ContextTokens is { } tokens ? $", at {tokens:N0} tokens" : "")}.");
+        }
+        catch (OperationCanceledException) { }
     }
 
     /// <summary>Keeps the context Ollama gave the loaded model (its context length setting) in model-limits.json when it changed,

@@ -581,6 +581,7 @@ These describe the computer itself, so they never travel:
 | Installed engines and models: Ollama models, Parakeet, a whisper package, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
+| Memory local models took in Ollama (`model-memory.json`) | Measured on this PC |
 
 ### Conflicts and offline changes
 

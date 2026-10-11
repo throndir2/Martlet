@@ -7,7 +7,10 @@ using Martlet.Mcp.Client;
 
 namespace Martlet.Mcp;
 
-internal sealed class McpServer(DesktopAutomation desktop)
+/// <summary>Martlet's local MCP server. <paramref name="allowChanges"/> (--allow-changes) lets the character and settings tools
+/// save; <paramref name="allTools"/> (--all-tools) lists every tool instead of the short list for assistants (every tool runs by
+/// name either way).</summary>
+internal sealed partial class McpServer(DesktopAutomation desktop, bool allowChanges = false, bool allTools = false)
 {
     private const int MaxLineLength = 1024 * 1024;
 
@@ -113,10 +116,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
 
-        Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this interactive session.", new
+        Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this " +
+            "interactive session. Without pid it finds the Martlet desktop running in this Windows session.", new
         {
             pid = new { type = "integer", minimum = 1 }
-        }, ["pid"]),
+        }),
         Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows " +
             "(with a status line's tooltip details as help), " +
             "and whether each window can be resized, minimized and maximized. With layout, each control also returns its screen " +
@@ -1342,6 +1346,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             testVision = new { type = "boolean" },
             testTools = new { type = "boolean" }
         }),
+        Tool("local_model_facts", "What an open-weight model needs to run locally, through the production LocalModelFactsReader and " +
+            "LocalModelMemory: model (a Hugging Face repository such as google/gemma-4-E2B-it, hf.co/{repo}:{quant}, or an Ollama tag " +
+            "such as gemma4:e2b), or huggingFaceRepo and ollamaTag together (the repository gives the shape and inputs, the tag its exact " +
+            "Ollama download). Reads Hugging Face's model API (license, task, parameters, every file's size), config.json (layers, KV " +
+            "heads, head size, sliding window, experts; image, audio and video inputs) and its GGUF search (prefers ggml-org, unsloth, " +
+            "lmstudio-community, bartowski), and the Ollama registry's manifest and config blob (registry.ollama.ai, never ollama.com). " +
+            "Returns facts (parameters total, in the weights file and active; inputs; architecture; quantizations with weights, encoder " +
+            "and draft sizes and install names; sources; problems), estimate (weights + encoder + draft + KV cache at contextTokens, " +
+            "default 8,192, + 0.5 GB buffers; graphicsGb and systemMemoryGb, for Gemma's per-layer embeddings), speed (card such as " +
+            "\"RTX 4070\" or bandwidthGbps: at most bandwidth / bytes read for each token), footprintCatalog (Martlet's own entry for " +
+            "the Ollama tag) and measured (what Ollama reported on this PC, model-memory.json in dataDirectory). Keyless; at most five " +
+            "requests a lookup, each answer cached for a day, at most 100 requests to each source in five minutes. fixture=true uses " +
+            "a FIXTURE transport shaped like Hugging Face and the registry (NOT the real services); without a model it checks the " +
+            "estimate against the measured Gemma 4 E2B, E4B and Qwen3.5 4B numbers and rehearses keeping a FIXTURE /api/ps " +
+            "measurement in a temporary folder (ok). Downloads no model; saves nothing.", new
+        {
+            model = new { type = "string", maxLength = 256 },
+            huggingFaceRepo = new { type = "string", maxLength = 200 },
+            ollamaTag = new { type = "string", maxLength = 200 },
+            quantization = new { type = "string", maxLength = 64 },
+            contextTokens = new { type = "integer", minimum = 256, maximum = 1_048_576 },
+            card = new { type = "string", maxLength = 128 },
+            bandwidthGbps = new { type = "number", minimum = 1, maximum = 20_000 },
+            dataDirectory = new { type = "string" },
+            fixture = new { type = "boolean" }
+        }),
         Tool("model_lab", "A live OpenAI-compatible fixture endpoint on 127.0.0.1 for the desktop on a disposable data directory, so " +
             "Companion > Vision > Image model, Companion > Listening > Audio model and Thinking can choose and test models without a real " +
             "provider (NOT AI). action \"start\" (returns baseUrl, such as http://127.0.0.1:52341/v1, to type as a custom server's API base " +
@@ -2301,10 +2331,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     {
                         protocolVersion = "2025-06-18",
                         capabilities = new { tools = new { } },
-                        serverInfo = new { name = "martlet", version = "0.1.0" }
+                        serverInfo = new { name = "martlet", title = "Martlet", version = Version },
+                        instructions = Instructions()
                     }),
                     "ping" => Success(id, new { }),
-                    "tools/list" => Success(id, new { tools = Tools }),
+                    "tools/list" => Success(id, new { tools = ToolList() }),
                     "tools/call" => Success(id, await CallAsync(parameters, cancellation)),
                     _ => Error(id, -32601, "Method not found.")
                 };
@@ -2322,8 +2353,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             var name = RequiredString(parameters, "name");
             var arguments = parameters.TryGetProperty("arguments", out var value) ? value : default;
+            if (name == "martlet_call") return await CallByNameAsync(arguments, cancellation);
             object result = name switch
             {
+                "martlet_guide" => Guide(OptionalString(arguments, "topic"), OptionalString(arguments, "search"), OptionalString(arguments, "tool")),
+                "characters_list" => await CharacterConfiguration.ListAsync(DataDirectory(arguments), OptionalBool(arguments, "includeText") ?? false,
+                    cancellation),
+                "character_create" => await ChangingAsync(name, () => CharacterConfiguration.CreateAsync(DataDirectory(arguments),
+                    OptionalString(arguments, "name"), OptionalString(arguments, "personality"), OptionalString(arguments, "cardPath"),
+                    OptionalString(arguments, "look"), OptionalString(arguments, "voice"), OptionalBool(arguments, "profile"),
+                    OptionalBool(arguments, "use"), cancellation)),
+                "character_update" => await ChangingAsync(name, () => CharacterConfiguration.UpdateAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "character"), OptionalString(arguments, "name"), OptionalString(arguments, "personality"),
+                    OptionalString(arguments, "look"), OptionalString(arguments, "voice"), cancellation)),
+                "character_use" => await ChangingAsync(name, () => CharacterConfiguration.UseAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "character"), cancellation)),
+                "character_delete" => await ChangingAsync(name, () => CharacterConfiguration.DeleteAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "character"), OptionalBool(arguments, "profileOnly") ?? false, cancellation)),
+                "settings_get" => await SettingsConfiguration.GetAsync(DataDirectory(arguments), OptionalString(arguments, "path"), cancellation),
+                "settings_schema" => SettingsConfiguration.Schema(OptionalString(arguments, "path"), OptionalInt(arguments, "depth")),
+                "settings_set" => await ChangingAsync(name, () => SettingsConfiguration.SetAsync(DataDirectory(arguments),
+                    RequiredString(arguments, "path"), RequiredValue(arguments, "value"), OptionalString(arguments, "revision"), cancellation)),
                 "companion_status" => await CompanionStatusAsync(OptionalString(arguments, "platform"), OptionalString(arguments, "settingsFile"), cancellation),
                 "doctor_status" => await DoctorAsync(["status", "--json"], arguments, cancellation),
                 "doctor_list" => await DoctorAsync(["list", "--json"], arguments, cancellation),
@@ -2341,7 +2391,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_trace" => ThinkingTraceReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "turns"),
                     OptionalString(arguments, "contains")),
 
-                "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
+                "ui_connect" => desktop.Connect(OptionalInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),
                 "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window"),
                     OptionalBool(arguments, "focus") ?? false),
@@ -2483,6 +2533,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "testVision") ?? false,
                     OptionalBool(arguments, "testTools") ?? false, cancellation),
                 "model_lab" => await ModelLab.RunAsync(RequiredString(arguments, "action"), OptionalInt(arguments, "port"), cancellation),
+                "local_model_facts" => await LocalModelFactsCheck.RunAsync(OptionalString(arguments, "model"),
+                    OptionalString(arguments, "huggingFaceRepo"), OptionalString(arguments, "ollamaTag"), OptionalString(arguments, "quantization"),
+                    OptionalInt(arguments, "contextTokens"), OptionalString(arguments, "card"), OptionalDouble(arguments, "bandwidthGbps"),
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalBool(arguments, "fixture") ?? false,
+                    cancellation),
                 "local_model_servers" => await LocalModelServersCheck.RunAsync(OptionalString(arguments, "address"),
                     OptionalString(arguments, "model"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "fixture") ?? false,
                     cancellation),
@@ -2577,7 +2632,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
             System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
-            System.Windows.Automation.ElementNotAvailableException)
+            System.Windows.Automation.ElementNotAvailableException or Martlet.Core.Contracts.ContractException or
+            Martlet.Core.Settings.CharacterCardException or IOException or UnauthorizedAccessException)
         {
             return new { content = new[] { new { type = "text", text = ex.Message } }, isError = true };
         }
