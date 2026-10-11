@@ -1771,6 +1771,17 @@ public partial class LiveConversationWindow : ThemedWindow
         return last is not null && Continuations.Contains(last);
     }
 
+    /// <summary>Keeps how soon the Thinking model's first words came on its server (model-speed.json), after the reply ended and
+    /// on a thread-pool thread, so Recommended setup plans with the measured time instead of the estimate. Never on the reply's
+    /// path; a reply the fallback, Backup Thinking or hidden reasoning answered first isn't the model's own time.</summary>
+    private void KeepFirstWord(LiveConversationConfiguration configuration, ConversationSnapshot reply)
+    {
+        if (controller.DataDirectory is not { } directory || ReplyLatency.ThinkingFirstWordMs(reply) is not { } ms ||
+            configuration.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm && r.Enabled == true) is not { } route) return;
+        var (origin, model, at) = (route.Origin, route.ModelId, DateTimeOffset.UtcNow);
+        _ = Task.Run(() => Martlet.Core.Planning.MeasuredFirstWords.Record(directory, origin, model, ms, at));
+    }
+
     // Once per finished turn: the last of its text and what to tell you. Listening carries on whatever happened.
     private void Finished(LiveConversationOperation done)
     {
@@ -1792,7 +1803,10 @@ public partial class LiveConversationWindow : ThemedWindow
                     done.LatencyTimeline?.StandIn ?? done.StandIn),
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
                 passed: done.Passed, restarted: continued, floor: controller.LiveFloorNote) is { } latency)
+        {
             ErrorLog.Info(latency);
+            KeepFirstWord(done.Authorization.Configuration, finishedReply);
+        }
         // What the reply's tags did (character emotes and the voice's sounds and tones), with any other spelling Martlet took for
         // a tag ([nod] for {nod}); tag names only, never the words.
         var acted = done.Turn?.Acted ?? [];

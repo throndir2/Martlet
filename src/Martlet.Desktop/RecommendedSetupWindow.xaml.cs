@@ -44,6 +44,16 @@ public partial class RecommendedSetupWindow : ThemedWindow
     /// <summary>The owner changed Your preferences. The review closes; Martlet saves them and plans again.</summary>
     internal event Action<RecommendationPreferences>? PreferencesChanged;
 
+    /// <summary>The owner locked (true) or unlocked a job (a ClusterJobs name), with the option doing it today. The review closes;
+    /// Martlet saves the lock and plans again.</summary>
+    internal event Action<string, bool, string?>? LockChanged;
+
+    /// <summary>The owner chose Use the suggestion for a locked job. The review closes and opens again with that suggestion in it.</summary>
+    internal event Action<string>? UseSuggestion;
+
+    /// <summary>The review closed to open again with a suggestion or a new lock: the owner hasn't finished with it.</summary>
+    internal bool LeftForSuggestion { get; private set; }
+
     /// <summary>Reconfigure started (it carries on in Background tasks), in words.</summary>
     internal string? Outcome { get; private set; }
 
@@ -77,6 +87,12 @@ public partial class RecommendedSetupWindow : ThemedWindow
             review.Preferences with { UseServedModels = review.UseServed, PreferHostModels = review.PreferHostModels }, review.Games,
             ChangePreferences, servedNote, hostModelsNote));
         RenderBanner();
+        ChoicesPanel.Children.Clear();
+        foreach (var choice in review.Choices) ChoicesPanel.Children.Add(ChoiceRow(choice));
+        ChoicesSection.Visibility = review.Choices.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        MeasuredText.Text = review.Measured.Count == 0 ? ""
+            : "Measured on your computers, used instead of Martlet's estimates: " + string.Join("; ", review.Measured) + ".";
+        MeasuredText.Visibility = review.Measured.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         PartsSection.Visibility = review.Parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         PartsPanel.Children.Clear();
         foreach (var part in review.Parts) PartsPanel.Children.Add(PartRow(part));
@@ -122,7 +138,8 @@ public partial class RecommendedSetupWindow : ThemedWindow
             CloseButton.Visibility = Visibility.Visible;
             CloseButton.IsCancel = true;
             CloseButton.IsDefault = true;
-            StatusText.Text = "Nothing to change.";
+            StatusText.Text = review.Choices.Any(c => c.Suggestion is not null)
+                ? "Nothing changes unless you choose Use the suggestion or unlock a job." : "Nothing to change.";
         }
         else StatusText.Text = prepare is null ? "Reconfigure isn't available in this Martlet." : "Checking what the change needs on each computer...";
     }
@@ -248,6 +265,70 @@ public partial class RecommendedSetupWindow : ThemedWindow
         if (muted) line.SetResourceReference(StyleProperty, "Muted");
         AutomationProperties.SetAutomationId(line, id);
         return line;
+    }
+
+    /// <summary>One job in Your choices: who does it today, its lock (Locked: keep my choice) and Martlet's suggestion, with Use the
+    /// suggestion for a locked job.</summary>
+    private FrameworkElement ChoiceRow(ReviewChoice choice)
+    {
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
+        if (choice.CanLock)
+        {
+            var locked = new CheckBox
+            {
+                Content = "Locked", IsChecked = choice.Locked, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, 2, 0, 0),
+                ToolTip = $"Keep {choice.Title.ToLowerInvariant()}'s choice: Martlet only suggests a better one. Clear it to let Martlet choose."
+            };
+            AutomationProperties.SetAutomationId(locked, $"RecommendedSetupLock-{choice.Job}");
+            AutomationProperties.SetName(locked, $"{choice.Title} locked");
+            // Checked and Unchecked (not Click): a keyboard, a screen reader and UI Automation's Toggle change IsChecked too.
+            void Changed(object sender, RoutedEventArgs e)
+            {
+                var now = locked.IsChecked == true;
+                if (now == choice.Locked) return;
+                if (applying)
+                {
+                    locked.IsChecked = choice.Locked;
+                    return;
+                }
+                LeftForSuggestion = true;
+                LockChanged?.Invoke(choice.Job, now, choice.TodayOption);
+                Close();
+            }
+            locked.Checked += Changed;
+            locked.Unchecked += Changed;
+            DockPanel.SetDock(locked, Dock.Right);
+            row.Children.Add(locked);
+        }
+        var body = new StackPanel();
+        var today = new TextBlock { Text = $"{choice.Title}: {choice.Today}", TextWrapping = TextWrapping.Wrap, FontWeight = FontWeights.SemiBold };
+        AutomationProperties.SetAutomationId(today, $"RecommendedSetupChoice-{choice.Job}");
+        AutomationProperties.SetName(today, $"{choice.Title}: {choice.Today}. {choice.StateText}");
+        body.Children.Add(today);
+        body.Children.Add(Line(choice.StateText, $"RecommendedSetupLockState-{choice.Job}", muted: true));
+        if (choice.Suggestion is { } suggestion)
+        {
+            var text = Line(suggestion + (choice.SuggestionApplied ? " The recommendation makes this change." : ""), $"RecommendedSetupSuggestion-{choice.Job}");
+            text.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
+            body.Children.Add(text);
+            if (choice.Locked)
+            {
+                var use = new Button { Content = "Use the suggestion", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 4, 12, 4),
+                    Margin = new Thickness(0, 2, 0, 0), ToolTip = "Plan this suggestion once, then review the changes before anything changes. The job stays locked." };
+                AutomationProperties.SetAutomationId(use, $"RecommendedSetupUseSuggestion-{choice.Job}");
+                AutomationProperties.SetName(use, $"Use the suggestion for {choice.Title.ToLowerInvariant()}");
+                use.Click += (_, _) =>
+                {
+                    if (applying) return;
+                    LeftForSuggestion = true;
+                    UseSuggestion?.Invoke(choice.Job);
+                    Close();
+                };
+                body.Children.Add(use);
+            }
+        }
+        row.Children.Add(body);
+        return row;
     }
 
     /// <summary>One part of the priority list: its number, name and need, where it runs or that it is off, why, and for an

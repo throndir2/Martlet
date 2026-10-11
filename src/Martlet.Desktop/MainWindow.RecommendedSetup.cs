@@ -42,8 +42,10 @@ public partial class MainWindow
     private void RecommendedSetup_Click(object sender, RoutedEventArgs e) => OpenRecommendedSetupAsync().Forget();
 
     /// <summary>Home's Recommended setup button and the notice's Review: in a Martlet network, a fresh recommendation in the
-    /// review window; on a PC alone, Set it all up for me (the default setup planned for this PC's hardware).</summary>
-    private async Task OpenRecommendedSetupAsync()
+    /// review window; on a PC alone, Set it all up for me (the default setup planned for this PC's hardware). With
+    /// <paramref name="use"/> (the review's Use the suggestion for a locked job), the recommendation makes that job's suggestion
+    /// this once, so Reconfigure applies it; the job stays locked.</summary>
+    private async Task OpenRecommendedSetupAsync(string? use = null)
     {
         if (closing || Role != DeviceRole.Companion) return;
         if (recommendedSetupWindow is { IsLoaded: true } open)
@@ -58,16 +60,28 @@ public partial class MainWindow
             return;
         }
         ActionText.Text = "Working out the recommended setup for your computers...";
-        var scan = await ScanRecommendedSetupAsync();
+        var scan = await ScanRecommendedSetupAsync(use);
         if (closing || scan is not { } found) return;
-        ActionText.Text = found.Recommendation.AlreadyOptimal ? RecommendedSetupReview.OptimalTitle
+        ActionText.Text = found.Recommendation.AlreadyOptimal
+            ? found.Recommendation.BetterSetupAvailable ? BetterSetupTitle : RecommendedSetupReview.OptimalTitle
             : $"Martlet recommends {found.Recommendation.Changes.Count} change{(found.Recommendation.Changes.Count == 1 ? "" : "s")}. Review them before anything changes.";
         ShowRecommendedSetup(found.Build, found.Recommendation);
     }
 
+    /// <summary>The catalog the last recommendation planned with: Martlet's options with the numbers measured on your computers
+    /// (<see cref="FootprintCatalog.WithMeasured"/>), so the review shows the same numbers.</summary>
+    private FootprintCatalog recommendedCatalog = FootprintCatalog.Default;
+
+    /// <summary>Martlet's options with what it measured (model-memory.json and model-speed.json in <paramref name="directory"/>):
+    /// the first words of the replies Martlet timed and the memory Ollama reported, here and on paired hosts. Reads two small
+    /// files; call it off the UI thread.</summary>
+    internal static FootprintCatalog MeasuredCatalog(string? directory) =>
+        FootprintCatalog.Default.WithMeasured(MeasuredModelMemory.Load(directory), MeasuredFirstWords.Load(directory));
+
     /// <summary>Reads what this PC knows about your computers (on the UI thread; it contacts nothing), then plans on a
-    /// thread-pool thread so the window and the conversation never wait for it.</summary>
-    private async Task<(SetupRequestBuild Build, NetworkRecommendation Recommendation)?> ScanRecommendedSetupAsync()
+    /// thread-pool thread with the numbers measured on your computers, so the window and the conversation never wait for it.
+    /// <paramref name="use"/>: a locked job whose suggestion the recommendation makes this once.</summary>
+    private async Task<(SetupRequestBuild Build, NetworkRecommendation Recommendation)?> ScanRecommendedSetupAsync(string? use = null)
     {
         if (ReferenceEquals(machine, MachineInfo.Unknown)) await ReadMachineAsync();
         if (closing) return null;
@@ -75,15 +89,26 @@ public partial class MainWindow
         if (!SimulatedRecommendedSetup.Active) sources = sources with { ServedModels = await FindServedModelsAsync() };
         if (closing) return null;
         var build = RecommendedSetupInputs.Request(sources);
+        if (use is not null && !build.Request.Unlocked.Contains(use))
+            build = build with { Request = build.Request with { Unlocked = [.. build.Request.Unlocked, use] } };
+        var directory = store?.DataDirectory;
         try
         {
-            var recommendation = await Task.Run(() => NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default), lifetime.Token);
+            var (recommendation, catalog) = await Task.Run(() =>
+            {
+                var measured = MeasuredCatalog(directory);
+                return (NetworkRecommender.Recommend(build.Request, measured), measured);
+            }, lifetime.Token);
+            recommendedCatalog = catalog;
             ErrorLog.Info($"Recommended setup: {build.Request.Machines.Count} computer(s) planned with your preferences ({sources.Preferences.Describe()}" +
                 (build.Games.Count == 0 ? "" : "; games on " + string.Join(", ", build.Games.Select(g => $"{g.Name} {(g.Plays ? "yes" : "no")}"))) + "); " +
                 (recommendation.AlreadyOptimal
                 ? "they already use the recommended setup."
                 : $"{recommendation.Changes.Count} change(s) recommended ({recommendation.Changes.Count(c => c.Benefit == SetupChangeBenefit.Required)} needed), " +
-                  $"setup {recommendation.Fingerprint}."));
+                  $"setup {recommendation.Fingerprint}.") +
+                (catalog.Measurements.Count == 0 ? "" : $" Measured: {string.Join("; ", catalog.Measurements.Select(m => m.Describe()))}.") +
+                (recommendation.Suggestions.Count == 0 ? "" : $" Suggestions: {string.Join(" ", recommendation.Suggestions.Select(s =>
+                    $"{s.Text}{(s.Applied ? " (in the recommendation)" : s.Locked ? " (locked: shown only)" : "")}"))}"));
             return (build, recommendation);
         }
         catch (OperationCanceledException) { return null; }
@@ -132,7 +157,7 @@ public partial class MainWindow
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
     {
-        var review = RecommendedSetupReview.From(recommendation, build) with
+        var review = RecommendedSetupReview.From(recommendation, build, recommendedCatalog) with
         {
             UseServed = UseServedModels, Situations = SituationPlansFor(build, recommendation)
         };
@@ -142,10 +167,16 @@ public partial class MainWindow
         window.PartOff += TurnRecommendedPartOff;
         window.PreferencesChanged += preferences => SaveRecommendationPreferences(preferences, reopen: true);
         window.OpenThinking += use => OpenFreeKey(use, fromReview: true);
+        window.LockChanged += (job, locked, today) => LockRecommendedJob(job, locked, today);
+        window.UseSuggestion += job => Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync(job).Forget());
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(recommendedSetupWindow, window)) recommendedSetupWindow = null;
             if (window.Outcome is not null || review.AlreadyOptimal) ClearRecommendedNotice();
+            // The owner saw the better setup: Home stops saying so until another one is found. Reconfigure remembers each
+            // unlocked job's new choice, so a later change by hand locks it again.
+            if (window.Outcome is not null) RememberSetUp(recommendation);
+            if (recommendation.BetterSetupAvailable && !window.LeftForSuggestion) SeenBetterSetup(recommendation);
         };
         recommendedSetupWindow = window;
         window.Show();
@@ -217,7 +248,11 @@ public partial class MainWindow
             // Never on the reply path: wait while Martlet replies or hears you (at most 10 minutes), then plan off the UI thread.
             for (var waited = 0; Talking && waited < 300 && !closing; waited++) await Task.Delay(TimeSpan.FromSeconds(2), lifetime.Token);
             if (closing || Talking) return;
-            if (await ScanRecommendedSetupAsync() is { } found) FollowRecommendation(found.Recommendation, reason);
+            if (await ScanRecommendedSetupAsync() is { } found)
+            {
+                FollowRecommendation(found.Recommendation, reason);
+                FollowBetterSetup(found.Recommendation, reason);
+            }
         }
         catch (OperationCanceledException) { }
         finally { recommendedScanning = false; }

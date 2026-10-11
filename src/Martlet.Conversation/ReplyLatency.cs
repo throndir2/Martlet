@@ -238,6 +238,19 @@ public static class ReplyLatency
 
     private static string Ms(TimeSpan? value) => value is { } span ? span.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) : "-";
 
+    /// <summary>How long the Thinking model itself took from the reply's Thinking request to its first words (the line's Thinking
+    /// connection and Thinking first words steps), in milliseconds, for the measured first word Recommended setup plans with
+    /// (model-speed.json); null when it isn't the model's own time: no words came, hidden reasoning came first, or the Thinking
+    /// fallback or Backup Thinking answered.</summary>
+    public static int? ThinkingFirstWordMs(ConversationSnapshot reply)
+    {
+        if (reply.FirstTextAfter is not { } words || reply.FellBack || reply.Backup is { Outcome: ThinkingBackupOutcome.Won }) return null;
+        var timings = reply.Timings ?? new ConversationTimings();
+        if (timings.FirstReasoningAfter is { } reasoning && reasoning <= words) return null;
+        var ms = (words - (timings.TextRequestAfter ?? TimeSpan.Zero)).TotalMilliseconds;
+        return ms >= 1 ? (int)Math.Round(ms) : null;
+    }
+
     /// <summary>What happened before a reply's Thinking request, as the Thinking trace says it: how long from
     /// <paramref name="timeline"/>'s origin to <paramref name="until"/> (the reply's start) and each step's wait, in the order
     /// they happened ("1004 ms after you stopped talking (end of speech 800, recording 12, ..., building the request 2)").</summary>
