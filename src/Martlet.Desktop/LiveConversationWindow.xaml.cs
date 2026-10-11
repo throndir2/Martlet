@@ -244,6 +244,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // The conversation loads once: when the window first shows, or earlier when it starts hidden (Start listening on Home).
     private bool begun, loadPending, ending;
+    // The situation route (While gaming, Host away) the conversation used at its last load, for the log line when it changes.
+    private string? situationKey;
 
     private Task BeginAsync()
     {
@@ -323,6 +325,13 @@ public partial class LiveConversationWindow : ThemedWindow
                 ErrorLog.Info("The open conversation follows the changed setup between replies: " +
                     string.Join(", ", now.Routes.Select(r => $"{r.Role} {r.RouteType}{(r.ModelId is { Length: > 0 } id ? " " + id : "")}")) + ".");
             following = false;
+            // While gaming or Host away, live Thinking uses the situation's route (LiveSituation); say once when it switches.
+            if (controller.Configuration is { } configured && configured.Situation?.Key != situationKey)
+            {
+                if (configured.Situation is { } moved) ErrorLog.Info($"Situations: the conversation uses {moved.Text} for live Thinking from its next reply.");
+                else if (situationKey is not null) ErrorLog.Info("Situations: the conversation uses its usual Thinking route again from its next reply.");
+                situationKey = configured.Situation?.Key;
+            }
             Warm();
             StartLive();
             if (listenWhenReady && preferences.HandsFree && listenPaused && Available) Mic_Click(this, new RoutedEventArgs());

@@ -89,6 +89,14 @@
                 <StackPanel x:Name="JobsPanel" Margin="0,0,0,16" AutomationProperties.Name="Who does each job"
                             AutomationProperties.AutomationId="RecommendedSetupJobs"/>
 
+                <StackPanel x:Name="SituationsSection" Visibility="Collapsed">
+                    <TextBlock Text="Three plans" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
+                               Text="Martlet changes between these plans by itself: while a game runs on a companion PC used for games, and while a host doesn't answer. Each live job comes back when the game ends or the host answers again."/>
+                    <StackPanel x:Name="SituationsPanel" Margin="0,0,0,16" AutomationProperties.Name="Three plans"
+                                AutomationProperties.AutomationId="RecommendedSetupSituations"/>
+                </StackPanel>
+
                 <StackPanel x:Name="ManualSection" Visibility="Collapsed">
                     <TextBlock Text="Needs someone at the computer" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
