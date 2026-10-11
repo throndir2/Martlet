@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- Your AI assistant can now set Martlet up for you. Martlet's own MCP server tells assistants like GitHub Copilot, Claude and VS Code what it can do, and lets them make characters (from a description or a SillyTavern or Chub card), change, switch and delete them, and change Martlet's settings; a running Martlet follows the changes at once. `scripts\Register-MartletMcp.ps1` connects your assistants. ([#756](https://github.com/throndir2/Martlet/pull/756))
+- Your AI assistant can now set Martlet up for you. Martlet's own MCP server tells assistants like GitHub Copilot, Claude and VS Code what it can do, and lets them make characters (from a description or a SillyTavern or Chub card), change, switch and delete them, and change Martlet's settings; a running Martlet follows the changes at once. `scripts\Register-MartletMcp.ps1` connects your assistants. ([#761](https://github.com/throndir2/Martlet/pull/761))
 
 ### Changed
 
