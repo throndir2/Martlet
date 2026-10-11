@@ -3064,7 +3064,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (handedOff.Contains(CameraBackgroundTool.Name)) guidance = Join(guidance, CameraBackgroundTool.AfterReply);
             else own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
         }
-        // read_up_on, search_guide and skip_guide after them while App guides are on (Companion › App guides, off by default), so
+        // read_up_on, search_guide and skip_guide after them while App guides are on (Companion › App guides, on by default), so
         // the tools before them start every request the same as before App guides existed.
         AddGuideTools(own, ref guidance, operation, configured);
         // The tools a check-in that runs after each exchange takes over go to it instead, with one line that says so.

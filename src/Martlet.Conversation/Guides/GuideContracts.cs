@@ -44,11 +44,13 @@ public sealed record AppGuideEntry
 }
 
 /// <summary>The guide library's own settings and its apps, kept with the guides (guides\library.json), like lorebooks keep
-/// theirs. App guides are off until the owner turns them on: reading up on an app sends its name to a search engine, and the
-/// sites it reads see the requests.</summary>
+/// theirs. App guides are on by default (a library.json without "on" is on too); a saved "on": false stays off. Martlet writes
+/// library.json only after the owner does something with App guides (the page, reading up, a no to an offer), never on its own.
+/// The page says what leaves this PC: reading up on an app sends its name to a search engine, and the sites it reads see the
+/// requests.</summary>
 public sealed record AppGuideLibrary
 {
-    public const bool DefaultOn = false;
+    public const bool DefaultOn = true;
     public const bool DefaultAskWhenStarted = true;
 
     public bool On { get; init; } = DefaultOn;

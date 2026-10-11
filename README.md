@@ -305,7 +305,7 @@ plays and reads up on the games you play.
 - She knows what changed on your screen over the last moments.
 - **Hearing**: she hears what your PC plays, such as music and its mood, game sounds, laughter and alarms, and knows where it comes from: a YouTube video, a Discord call or Spotify.
 - She hears *how* you say things, not only the words.
-- **App guides** (off until you turn it on): she reads the fan wikis and help pages of your games and apps, and answers from them. Start a new game and she asks if she should read up on it.
+- **App guides** (on by default; one box turns it off): she reads the fan wikis and help pages of your games and apps, and answers from them. Start a new game and she asks if she should read up on it.
 - Ask *"what do you think of this?"* and she sees what you see.
 - Play on your gaming PC and she moves her thinking off its graphics card to another computer, then moves it back when you stop.
 - She never looks at password managers, private browsing or her own windows. Screenshots stay in memory and are never saved.

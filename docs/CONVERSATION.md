@@ -1397,10 +1397,12 @@ answers from the guide it read about that game (its fan wiki), kept on this PC.
 The design, the wiki reader and the search are in [App guides](APP_GUIDES.md);
 this is what the conversation does.
 
-**Consent, off by default.** Companion › *App guides* turns it on
-(`guides\library.json` in the data folder, beside the guides). Its disclosure
-says what leaves the PC: the app's name goes to DuckDuckGo to find its wiki,
-and the wiki sites see the requests.
+**Consent, on by default.** Companion › *App guides* is on by default
+(`guides\library.json` in the data folder, beside the guides; a saved
+`"on": false` stays off, see [App guides](APP_GUIDES.md#default)). Its
+disclosure says what leaves the PC: the app's name goes to DuckDuckGo to find
+its wiki, and the wiki sites see the requests. Martlet reads up only when the
+user asks or says yes to the offer.
 
 **The tools.** While it is on and the Thinking route does function calling,
 every reply gets `read_up_on(app, sites?)`, `search_guide(app?, question)` and

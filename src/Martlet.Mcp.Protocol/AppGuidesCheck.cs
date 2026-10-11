@@ -37,6 +37,7 @@ internal static class AppGuidesCheck
             var limits = new GuideBuildLimits { Delay = TimeSpan.FromMilliseconds(20), Time = TimeSpan.FromSeconds(60), Pages = 12 };
             var store = new FileAppGuideStore(directory);
             var defaults = await store.LoadLibraryAsync(cancellation);
+            var migration = await MigrationAsync(cancellation);
             using var guides = new AppGuideService(store, new WebGuideBuilder(guard, guard), limits: limits);
             await guides.LoadAsync(cancellation);
             await guides.SetOnAsync(true, cancellation);
@@ -99,8 +100,8 @@ internal static class AppGuidesCheck
             var latency = await LatencyAsync(directory, cancellation);
 
             var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
-                fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && !defaults.On && defaults.AskWhenStarted &&
-                restarted is { loaded: >= 2, on: true, indexReady: true };
+                fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && defaults.On && defaults.AskWhenStarted &&
+                migration.Ok && restarted is { loaded: >= 2, on: true, indexReady: true };
             var ok = buildOk && notesOk && offer.Ok && tools.Ok && latency.Ok;
             return new
             {
@@ -109,7 +110,7 @@ internal static class AppGuidesCheck
                 note = "Fixture wiki and search page on 127.0.0.1 (NOT real sites); the store, wiki reader, web client, chunker, index, " +
                     "notes, match, offer rule, tool texts and job scheduler are Martlet's own. Fetches outside loopback are refused " +
                     "before they leave this PC.",
-                library = new { onByDefault = defaults.On, askByDefault = defaults.AskWhenStarted },
+                library = new { onByDefault = defaults.On, askByDefault = defaults.AskWhenStarted, saved = migration.Report },
                 build = new
                 {
                     ok = buildOk,
@@ -138,7 +139,8 @@ internal static class AppGuidesCheck
         var library = await new FileAppGuideStore(folder).LoadLibraryAsync(cancellation);
         return new
         {
-            folder, exists = Directory.Exists(folder), on = library.On, askWhenStarted = library.AskWhenStarted,
+            folder, exists = Directory.Exists(folder), saved = File.Exists(Path.Combine(folder, FileAppGuideStore.LibraryFile)),
+            on = library.On, askWhenStarted = library.AskWhenStarted,
             guides = library.Apps.Count(a => a.BuiltAt is not null), pages = library.Apps.Sum(a => a.Pages), bytes = library.Apps.Sum(a => a.Bytes),
             apps = library.Apps.Select(a => new
             {
@@ -147,6 +149,38 @@ internal static class AppGuidesCheck
                 file = File.Exists(Path.Combine(folder, a.Key + FileAppGuideStore.GuideSuffix))
             })
         };
+    }
+
+    // Libraries saved before App guides were on by default: a saved "on": false (the owner turned them off, or used the page while
+    // they were off) stays off, also after another change; one without "on" is on; one Martlet can't read starts off.
+    private static async Task<(bool Ok, object Report)> MigrationAsync(CancellationToken cancellation)
+    {
+        async Task<bool> OnAfterLoadAsync(string? saved, bool addApp = false)
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "martlet-app-guides-saved-" + Guid.NewGuid().ToString("N")[..8]);
+            try
+            {
+                Directory.CreateDirectory(folder);
+                if (saved is not null) await File.WriteAllTextAsync(Path.Combine(folder, FileAppGuideStore.LibraryFile), saved, cancellation);
+                using var guides = new AppGuideService(new FileAppGuideStore(folder), new NoBuilder());
+                var before = guides.On;
+                await guides.LoadAsync(cancellation);
+                if (addApp) await guides.AddAsync("Paint Studio", [], [], cancellation);
+                return !before && guides.On;
+            }
+            finally
+            {
+                try { Directory.Delete(folder, true); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        var none = await OnAfterLoadAsync(null);
+        var savedOff = await OnAfterLoadAsync("{\"formatVersion\":1,\"on\":false,\"askWhenStarted\":true,\"apps\":[]}");
+        var savedOffThenAdded = await OnAfterLoadAsync("{\"formatVersion\":1,\"on\":false,\"askWhenStarted\":true,\"apps\":[]}", addApp: true);
+        var savedOn = await OnAfterLoadAsync("{\"formatVersion\":1,\"on\":true,\"askWhenStarted\":true,\"apps\":[]}");
+        var withoutOn = await OnAfterLoadAsync("{\"formatVersion\":1,\"apps\":[]}");
+        var unreadable = await OnAfterLoadAsync("{ not json");
+        var ok = none && !savedOff && !savedOffThenAdded && savedOn && withoutOn && !unreadable;
+        return (ok, new { ok, noLibrary = none, savedOff, savedOffThenAdded, savedOn, withoutOn, unreadable });
     }
 
     // The offer rule: a game without a guide is offered once a session; a no is kept across starts; Ask again and the choices.

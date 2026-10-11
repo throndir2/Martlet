@@ -7,7 +7,7 @@ using Martlet.Conversation.Guides;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › App guides (docs/APP_GUIDES.md): the On switch (off by default) with what leaves this PC, Ask when I start a
+/// <summary>Companion › App guides (docs/APP_GUIDES.md): the On switch (on by default) with what leaves this PC, Ask when I start a
 /// game or app, the list of apps with their guides (Read up now or Read again, Ask again, Delete) and Add an app. The guide library
 /// lives in &lt;data folder&gt;\guides; the watch of the program in front runs only while App guides are on, on this companion PC.</summary>
 public partial class MainWindow

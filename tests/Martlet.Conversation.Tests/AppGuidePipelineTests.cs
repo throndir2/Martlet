@@ -33,7 +33,7 @@ public sealed class AppGuidePipelineTests
         try
         {
             var store = new FileAppGuideStore(directory);
-            Assert.False((await store.LoadLibraryAsync(default)).On);
+            Assert.True((await store.LoadLibraryAsync(default)).On);
             var outcome = new GuideBuildOutcome([new GuidePage("https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", Page, 400)],
                 ["game.fandom.com"], 0, 400, null);
             var guide = GuideChunker.Guide(AppGuideKeys.Of("The Elder Scrolls V: Skyrim"), "The Elder Scrolls V: Skyrim", outcome,

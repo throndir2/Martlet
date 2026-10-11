@@ -18,6 +18,7 @@ public sealed class AppGuidesDesktopTests
         await using var fixture = await LiveFixture.Create(tools: true);
         using var guides = new AppGuideService(new FileAppGuideStore(Path.Combine(fixture.DirectoryPath, "guides")), new FixtureBuilder());
         await guides.LoadAsync();
+        await guides.SetOnAsync(false);
         fixture.Controller.Guides = guides;
         fixture.Answer("Hello!");
         var off = fixture.Start("Hi there.");
