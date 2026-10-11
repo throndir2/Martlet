@@ -44,7 +44,7 @@ internal static class JobOptions
         var options = new List<PickerOption>();
         foreach (var model in suggestions)
         {
-            var footprint = FootprintCatalog.Default.Find(model.Id);
+            var footprint = PlanningCatalog.Current.Find(model.Id);
             List<OptionFact> facts = footprint is null ? [OllamaRunsOn] : [.. OptionFacts.ThinkingModel(footprint, cardGb, model.MinimumVramGb, callsTools: true)];
             if (Here(downloaded, model.Id, footprint) is { } here) facts.Insert(Math.Min(1, facts.Count), here);
             var summary = model == recommended
@@ -57,8 +57,22 @@ internal static class JobOptions
                 InUse = model.Id == inUse, Facts = OptionFacts.Lead(facts, "fits", "here", "vram", "speed", "hears")
             });
         }
+        var catalogModels = CatalogModels(suggestions, cardGb);
+        foreach (var option in catalogModels)
+        {
+            var id = option.ModelId!;
+            List<OptionFact> facts = [.. OptionFacts.ThinkingModel(option, cardGb, Math.Ceiling(option.GpuGb + 2), callsTools: null)];
+            if (Here(downloaded, id, option) is { } here) facts.Insert(Math.Min(1, facts.Count), here);
+            options.Add(new(id, option.DisplayName,
+                $"From Martlet's model catalog, which updates every day{(option.Smartness is { } smart ? $": {smart}" : "")}. " +
+                (option.HearsAudio ? "It hears your voice." : "It gets the transcript of what you say."))
+            {
+                Badge = id == inUse ? InUse : "from the catalog", InUse = id == inUse,
+                Facts = OptionFacts.Lead(facts, "fits", "here", "vram", "speed", "hears")
+            });
+        }
         var others = (downloaded ?? []).Append(inUse).OfType<string>().Distinct(StringComparer.Ordinal)
-            .Where(id => suggestions.All(m => m.Id != id));
+            .Where(id => suggestions.All(m => m.Id != id) && catalogModels.All(o => o.ModelId != id));
         foreach (var id in others)
             options.Add(new(id, id, "Martlet has no numbers for this model. Test model shows how it does on this PC.")
             {
@@ -72,6 +86,16 @@ internal static class JobOptions
         });
         return options;
     }
+
+    /// <summary>Up to three Thinking models from Martlet's model catalog (<see cref="PlanningCatalog"/>, its local facts) that
+    /// aren't suggestions and fit this PC's graphics card (<paramref name="cardGb"/>; none without one), smartest first.</summary>
+    internal static IReadOnlyList<ComponentOption> CatalogModels(IReadOnlyList<LocalChatModel> suggestions, double? cardGb) =>
+        cardGb is not { } card ? []
+        : PlanningCatalog.Current.For(PlanComponent.Thinking)
+            .Where(o => o is { Origin: OptionOrigin.LocalFacts, UsesGpu: true, ModelId.Length: > 0 } && o.GpuGb <= card &&
+                suggestions.All(m => m.Id != o.ModelId))
+            .OrderByDescending(o => o.QualityTier).ThenBy(o => o.FirstWordMs ?? int.MaxValue).ThenBy(o => o.Id, StringComparer.Ordinal)
+            .Take(3).ToList();
 
     private static OptionFact? Here(IReadOnlyList<string>? downloaded, string id, ComponentOption? footprint) =>
         downloaded is null ? null
@@ -158,7 +182,7 @@ internal static class JobOptions
         foreach (var provider in providers)
         {
             var key = ProviderKey(provider);
-            var catalog = FootprintCatalog.Default;
+            var catalog = PlanningCatalog.Current;
             var option = (key, component) switch
             {
                 ("openai", PlanComponent.Voice) => catalog.Find(FootprintCatalog.OpenAiVoiceId),
@@ -223,7 +247,7 @@ internal static class JobOptions
         new("openai", "OpenAI voice", "OpenAI's built-in voices, such as alloy. Quick and clear, but not your voice.")
         {
             Badge = openAiInUse ? InUse : null, InUse = openAiInUse,
-            Facts = OptionFacts.Voice(FootprintCatalog.Default.Find(FootprintCatalog.OpenAiVoiceId), VoiceAbilities.OpenAiVoice,
+            Facts = OptionFacts.Voice(PlanningCatalog.Current.Find(FootprintCatalog.OpenAiVoiceId), VoiceAbilities.OpenAiVoice,
                 "many languages: it reads the reply's language", streams: true, samples: null, "OpenAI terms (paid)", nonCommercial: false, cloud: "OpenAI")
         },
         new(SpeechEngines.ElevenLabs.Key, SpeechEngines.ElevenLabs.Name, SpeechEngines.ElevenLabs.Summary)
@@ -261,7 +285,7 @@ internal static class JobOptions
             var used = state.ParakeetInUse == model.Id;
             var installed = state.Installed(model.Id);
             var size = SherpaComponents.Megabytes(model.DownloadBytes);
-            var footprint = FootprintCatalog.Default.Find(footprintId)!;
+            var footprint = PlanningCatalog.Current.Find(footprintId)!;
             var languages = model.EnglishOnly ? "English" : "25 languages";
             options.Add(new(model.Id, model.Name, summary)
             {
@@ -276,7 +300,7 @@ internal static class JobOptions
             });
         }
         var advice = state.Advice;
-        var gpuFootprint = FootprintCatalog.Default.Find(advice?.GpuModel == "small" ? "whisper-small-cuda" : "whisper-large-v3-turbo-cuda")!;
+        var gpuFootprint = PlanningCatalog.Current.Find(advice?.GpuModel == "small" ? "whisper-small-cuda" : "whisper-large-v3-turbo-cuda")!;
         const string whisperLanguages = "English and 98 other languages";
         options.Add(new(WhisperGpu, "Whisper on the graphics card",
             "Fast and accurate in many languages. It runs in Martlet's host service in Docker on this PC.")
@@ -293,7 +317,7 @@ internal static class JobOptions
         options.Add(new(WhisperCpu, "Whisper on the processor", $"Works on any PC and keeps the graphics card free, but slower. Uses the {cpuModel} model.")
         {
             Badge = state.CpuInUse ? InUse : null, InUse = state.CpuInUse,
-            Facts = With(OptionFacts.SpeechRecognizer(FootprintCatalog.Default.Find("whisper-small-cpu")!, whisperLanguages, "good", streams: false)
+            Facts = With(OptionFacts.SpeechRecognizer(PlanningCatalog.Current.Find("whisper-small-cpu")!, whisperLanguages, "good", streams: false)
                     .Select(f => f.Key == "languages" ? f with { Short = "99 languages" } : f),
                 new("model", "Model", cpuModel, null),
                 new("setup", "Set up by", "Martlet, in one run window", "Docker"))

@@ -385,7 +385,9 @@ public partial class MainWindow
             return Task.FromResult(SetupRoutes.Read(job, optionId, new(window.Role == DeviceRole.Host,
                 window.homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role),
                 Prerequisites.IsMissing(Prerequisites.Ollama), parakeet is null ? null : parakeet.Installed,
-                LocalChatModels.FirstOrDefault(m => m.Id == FootprintCatalog.Default.Find(optionId)?.ModelId)?.Size,
+                LocalChatModels.FirstOrDefault(m => m.Id == PlanningCatalog.Current.Find(optionId)?.ModelId)?.Size ??
+                    (PlanningCatalog.Current.Find(optionId) is { Origin: OptionOrigin.LocalFacts, Peak.DiskGb: > 0 } catalogModel
+                        ? $"about {catalogModel.Peak.DiskGb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} GB" : null),
                 window.ServedApp(ServedModels.ModelOf(optionId)))));
         }
 
@@ -400,7 +402,7 @@ public partial class MainWindow
             if (job == ClusterJobs.Thinking && window.ServedApp(ServedModels.ModelOf(optionId)) is { } served)
                 return await window.UseServedThinkingAsync(served) ? SetupStepResult.Done(reading.Text)
                     : SetupStepResult.Failed($"Thinking didn't change on this PC: {window.ActionText.Text}");
-            var option = FootprintCatalog.Default.Find(optionId)!;
+            var option = PlanningCatalog.Current.Find(optionId)!;
             // A voice engine runs in the host service, never in the app, so Speaking is never a route this PC makes itself.
             if (job is not (ClusterJobs.Thinking or ClusterJobs.Listening))
                 return SetupStepResult.Attention($"Choose {option.DisplayName} for {job} in Companion › Voice.");
@@ -661,7 +663,7 @@ internal static class SetupRoutes
     internal static SetupRouteReading Read(string job, string optionId, SetupRouteFacts facts)
     {
         var tab = Tab(job);
-        var option = FootprintCatalog.Default.Find(optionId);
+        var option = PlanningCatalog.Current.Find(optionId);
         var name = option?.DisplayName ?? optionId;
         if (facts.HostPc)
             return new(SetupStepVerdict.NeedsOwner, $"Choose {name} for {job} in {tab} on your companion PC: this PC is a host PC and uses no jobs.");
@@ -685,7 +687,8 @@ internal static class SetupRoutes
                 var size = facts.OllamaModelSize;
                 return new(SetupStepVerdict.Ready, $"Thinking uses {name} in Ollama on this PC.{Others}")
                 {
-                    Terms = $"Ollama downloads {model}{(size is null ? "" : $" ({size})")} from ollama.com when it isn't on this PC yet. " +
+                    Terms = $"Ollama downloads {model}{(size is null ? "" : $" ({size})")} from " +
+                        $"{(model.StartsWith("hf.co/", StringComparison.OrdinalIgnoreCase) ? "Hugging Face" : "ollama.com")} when it isn't on this PC yet. " +
                         "The model's own license applies."
                 };
             case (ClusterJobs.Listening, { RunsInApp: true, ModelId: { } id }) when Parakeet(id) is { } parakeet:

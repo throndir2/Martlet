@@ -44,7 +44,7 @@ internal static class RecommendedSetupStatus
     /// asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does. <paramref name="preferences"/>:
     /// recommendation preferences to plan with instead of the saved ones (each field optional; nothing is saved).</summary>
     internal static async Task<object> RunAsync(string? dataDirectory, string? fixture, CancellationToken cancellation, bool lookOnThisPc = false,
-        JsonElement? preferences = null)
+        JsonElement? preferences = null, string? catalogChoice = null)
     {
         SetupSources sources;
         string source;
@@ -106,11 +106,13 @@ internal static class RecommendedSetupStatus
             looked = true;
         }
         var build = RecommendedSetupInputs.Request(sources);
-        // Martlet's options with the numbers measured on your computers (model-memory.json and model-speed.json), as the desktop plans.
+        // The planners' options (the model catalog with its local facts, then Martlet's own list) with the numbers measured on your
+        // computers (model-memory.json and model-speed.json), as the desktop plans.
         var (measuredMemory, measuredSpeed) = fixture == BetterFixtureName ? BetterMeasurements(DateTimeOffset.UtcNow)
             : fixture is null ? (MeasuredModelMemory.Load(dataDirectory), MeasuredFirstWords.Load(dataDirectory)) : (new MeasuredModelMemory(), new MeasuredFirstWords());
-        var catalog = FootprintCatalog.Default.WithMeasured(measuredMemory, measuredSpeed);
+        var catalog = PlanningOptions(fixture is null ? dataDirectory : null, catalogChoice, build.Request).WithMeasured(measuredMemory, measuredSpeed);
         var recommendation = NetworkRecommender.Recommend(build.Request, catalog);
+        var planned = catalog.WithServed(build.Request.ServedModels);
         var memory = fixture is null ? RecommendedSetupMemory.Load(dataDirectory) : new RecommendedSetupMemory();
         var (step, why) = SetupAskRule.Decide(recommendation, memory, companion: true, idle: TimeSpan.Zero);
         string Name(string? id) => id is null ? "" : build.Names.GetValueOrDefault(id) ?? id;
@@ -250,10 +252,74 @@ internal static class RecommendedSetupStatus
                 notes = recommendation.Notes
             },
             companionInUseAsks = new { step = step.ToString(), why, declinedHere = memory.WasDeclined(recommendation.Fingerprint), declined = memory.Declined.Count },
+            // Where the planner's options came from (docs/RECOMMENDATION_DESIGN.md, "Planner on the catalog").
+            planning = Planning(planned, recommendation, Name, fixture is null && dataDirectory is not null ? ModelAbilities.Load(dataDirectory).Models : null),
             // Recommended setup's three plans: where each live job goes Normally, While gaming and when a host is away.
-            situations = SituationPlans.For(build.Request, recommendation, id => id is null ? "your companion PCs" : Name(id),
-                    FootprintCatalog.Default.WithServed(build.Request.ServedModels))
+            situations = SituationPlans.For(build.Request, recommendation, id => id is null ? "your companion PCs" : Name(id), planned)
                 .Select(plan => new { situation = plan.Situation.ToString(), title = plan.Title, lines = plan.Lines })
+        };
+    }
+
+    // ---------- the planner's options ----------
+
+    /// <summary>The options to plan with: the model catalog (<paramref name="dataDirectory"/>'s daily copy, else the snapshot shipped
+    /// with Martlet; a fixture always uses the snapshot) with its local facts and the data directory's route facts
+    /// (model-abilities.json), plus Martlet's own list, as the desktop plans; or, with <paramref name="choice"/> "seed", Martlet's
+    /// own list alone. Speed estimates are for this PC's best graphics card.</summary>
+    internal static FootprintCatalog PlanningOptions(string? dataDirectory, string? choice, NetworkSetupRequest request)
+    {
+        if (choice == "seed") return FootprintCatalog.Default;
+        if (choice is not (null or "models")) throw new ArgumentException("catalog must be \"models\" or \"seed\".");
+        var machines = request.Machines.Select(m => m.Specs).ToList();
+        var card = (machines.Where(m => m.IsPrimary).Concat(machines)).SelectMany(m => m.Gpus.OrderByDescending(g => g.VramGb)).FirstOrDefault()?.Name;
+        var bandwidth = GraphicsCardBandwidth.Find(card)?.Gbps;
+        var models = dataDirectory is null ? ModelCatalog.Build(ModelCatalogStore.Snapshot()) : ModelCatalogStore.For(dataDirectory).Load();
+        return FootprintCatalog.FromModels(models, bandwidth, $"the model catalog ({PlanningCatalog.Copy(models)}) and Martlet's own list",
+            dataDirectory is null ? null : ModelAbilities.Load(dataDirectory).Models);
+    }
+
+    /// <summary>Where each option the plan uses came from, and every option the model catalog gave (for Thinking, Deep thinking,
+    /// Vision and Hearing). Smartness is in words or LMArena's rating with its credit, never a rank number.</summary>
+    internal static object Planning(FootprintCatalog planned, NetworkRecommendation recommendation, Func<string?, string> name,
+        IReadOnlyList<ModelAbility>? tested = null)
+    {
+        static object Describe(ComponentOption o) => new
+        {
+            id = o.Id, part = ComponentRanking.Name(o.Component), name = o.DisplayName, model = o.ModelId, from = o.Origin.ToString(),
+            fromWords = OptionFacts.OriginWords(o), tier = o.QualityTier, smartness = o.Smartness, smartnessCredit = o.SmartnessCredit,
+            firstWordMs = o.FirstWordMs, wordsPerSecond = o.WordsPerSecond, graphicsGb = o.UsesGpu ? o.GpuGb : (double?)null,
+            takes = OptionFacts.Inputs(o), callsTools = o.CallsTools, online = !o.IsLocal, free = o.FreeTier, onlyThisPcsOllama = o.NativeOnly,
+            evidence = o.Evidence.ToString(), source = o.Source
+        };
+        ComponentOption? Running(string? machine, string kind, PlanComponent part) =>
+            machine is null ? null : recommendation.Target.Machine(machine)?.Roles.FirstOrDefault(r => r.Kind == kind)?.Model is { } model
+                ? planned.FindModel(part, model) : null;
+        ComponentOption? JobOption(JobPlan job) => (job.OptionId is { } id ? planned.Find(id) : null) ??
+            (job.Job == ClusterJobs.Thinking ? Running(job.HostId, NetworkRecommender.ThinkingRole, PlanComponent.Thinking) : null);
+        return new
+        {
+            catalog = planned.Models is null ? "seed" : "models",
+            from = planned.From,
+            counts = Enum.GetValues<OptionOrigin>().ToDictionary(o => o.ToString(), o => planned.Options.Count(x => x.Origin == o)),
+            jobs = recommendation.Target.Jobs.Select(job => JobOption(job) is { } option
+                ? new { job = job.Job, option = (string?)option.Id, model = option.ModelId, from = option.Origin.ToString(), fromWords = OptionFacts.OriginWords(option) }
+                : new { job = job.Job, option = job.OptionId, model = (string?)null, from = "unknown", fromWords = "Martlet has no option for it" }),
+            deepThinking = recommendation.Target.Machines.SelectMany(m => m.Roles.Where(r => r.Kind == NetworkRecommender.DeepThinkingRole)
+                .Select(r => planned.FindModel(PlanComponent.DeepThinking, r.Model ?? "") is { } option
+                    ? new { computer = name(m.MachineId), model = r.Model, from = option.Origin.ToString(), tier = option.QualityTier }
+                    : new { computer = name(m.MachineId), model = r.Model, from = "unknown", tier = 0 })),
+            onlineDeepThinking = recommendation.OnlineDeepThinking is { } deep ? Describe(deep) : null,
+            catalogOptions = planned.Options.Where(o => CatalogOptions.TakesModels(o.Component) && (o.Origin != OptionOrigin.Seed || o.CatalogKey is not null))
+                .Select(Describe),
+            // Each named provider's suggested model for live Thinking (Companion › Thinking, If Thinking fails, the welcome
+            // tour's key step) and for the Thinking pool, as the desktop's lists prefill them.
+            providerModels = ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new
+            {
+                provider = e.Id, name = e.Name, thinking = CatalogOptions.SuggestedModel(planned.Models, e.Id, tested),
+                thinkingPool = (planned.Models is { } models ? CatalogOptions.SmartestChat(models, e.Id, tested)?.ModelId : null) ?? e.DefaultModelId,
+                presetDefault = e.DefaultModelId
+            }),
+            note = "Smartness shows as words or LMArena's rating with its credit (CC-BY-4.0); Martlet never shows a rank number."
         };
     }
 
@@ -377,7 +443,8 @@ internal static class RecommendedSetupStatus
         {
             Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Pools = PoolSettings.Load(directory), Device = device, ThinkingPool = pool,
             PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers,
-            Off = RecommendedSetupMemory.Load(directory).OffParts, Choices = Choices(directory, own)
+            Off = RecommendedSetupMemory.Load(directory).OffParts, Choices = Choices(directory, own),
+            OnlinePool = RecommendedSetupInputs.OnlinePool(poolSettings)
         };
     }
 

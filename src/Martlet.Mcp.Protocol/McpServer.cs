@@ -2247,10 +2247,18 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "in the changes), whether Home's Recommended setup button says A better setup is available (betterSetup; a review the owner " +
             "saw, kept in recommended-setup.json, stops it) and whether the Thinking or If Thinking fails model is retired on its server, " +
             "with the replacement Martlet proposes (retired). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
-            "directory) asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.", new
+            "directory) asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does. It plans as the " +
+            "desktop does, with the model catalog (the data directory's daily copy, else the snapshot shipped with Martlet; a fixture " +
+            "uses the snapshot), its local facts and the data directory's route facts (model-abilities.json), plus Martlet's own list; " +
+            "catalog \"seed\" plans with Martlet's own list alone. planning says where each option came from (Seed: Martlet's own list, " +
+            "Catalog: a hosted model the catalog chose, LocalFacts: an open-weight model sized from its local facts, Served: your model " +
+            "app): each job's option, each Deep thinking role, the online Deep thinking suggestion (onlineDeepThinking), every option " +
+            "the catalog gave and each provider's suggested models (providerModels), with smartness in words or LMArena's rating with its " +
+            "credit, never a rank number.", new
         {
             dataDirectory = new { type = "string" },
             fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels", "better" } },
+            catalog = new { type = "string", @enum = new[] { "models", "seed" } },
             lookOnThisPc = new { type = "boolean" },
             preferences = new
             {
@@ -2706,9 +2714,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "lip_sync_pool_status" => LipSyncPoolCheck.Status(DataDirectory(arguments), OptionalString(arguments, "deviceId")),
                 "lip_sync_pool_check" => await LipSyncPoolCheck.RunAsync(cancellation),
                 "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
-                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation, preferences: OptionalObject(arguments, "preferences"))
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation, preferences: OptionalObject(arguments, "preferences"),
+                        catalogChoice: OptionalString(arguments, "catalog"))
                     : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation,
-                        OptionalBool(arguments, "lookOnThisPc") == true, OptionalObject(arguments, "preferences")),
+                        OptionalBool(arguments, "lookOnThisPc") == true, OptionalObject(arguments, "preferences"), OptionalString(arguments, "catalog")),
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),

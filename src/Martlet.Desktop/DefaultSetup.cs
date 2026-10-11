@@ -101,8 +101,8 @@ internal static class DefaultSetup
     {
         var card = Specs(gpus, windowsGpu, ramGb, threads).Gpus.FirstOrDefault();
         if (card is null) return plan;
-        var candidates = ServedModels.Usable((served ?? []).Select(m => m with { MachineId = ThisPc }), FootprintCatalog.Default)
-            .Select(m => (Model: m, Option: ServedModels.Option(m)))
+        var candidates = ServedModels.Usable((served ?? []).Select(m => m with { MachineId = ThisPc }), PlanningCatalog.Current)
+            .Select(m => (Model: m, Option: ServedModels.Option(m, PlanningCatalog.Models)))
             .Where(x => x.Option.UsesGpu && x.Option.GpuGb > 0 && x.Option.GpuGb <= card.VramGb - card.UsedGb)
             .OrderByDescending(x => x.Option.QualityTier).ThenByDescending(x => x.Option.GpuGb).ThenBy(x => x.Model.ModelId, StringComparer.Ordinal);
         foreach (var (model, option) in candidates)
@@ -123,11 +123,24 @@ internal static class DefaultSetup
         var card = gpus?.MaxBy(g => g.TotalGb);
         var oldDriver = card?.DriverMajor is < ListeningAdvisor.MinimumDriver;
         // Of the voice engines only the default and the fallback (Chatterbox Nano, on the card or the processor) are set up here.
-        return new(FootprintCatalog.Default.Options.Where(o =>
+        return new(PlanningCatalog.Current.Options.Where(o =>
             !(o.IsLocal && o.Component == PlanComponent.Voice && o.HostRoleKind is not null &&
               o.HostRoleKind != SpeechEngines.Default.HostRoleKind && o.HostRoleKind != FootprintCatalog.FallbackVoiceKind) &&
             !(o.IsLocal && o.Component == PlanComponent.Listening && o.HostRoleKind is not null && !o.UsesGpu) &&
             !(gpus is not null && o.IsLocal && o.Gpu == GpuRequirement.Nvidia && (card is null || oldDriver && o.Component == PlanComponent.Listening))));
+    }
+
+    /// <summary>The Ollama model Set it all up for me installs for Thinking's <paramref name="option"/>: one of Martlet's suggestions,
+    /// or a model from the model catalog by its install name (an Ollama tag or hf.co/{repo}:{quant}) with its download size;
+    /// else the smallest model that hears.</summary>
+    internal static LocalChatModel ChatModel(ComponentOption option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        if (MainWindow.LocalChatModels.FirstOrDefault(m => m.Id == option.ModelId) is { } suggested) return suggested;
+        if (option.Origin != OptionOrigin.LocalFacts || option.ModelId is not { Length: > 0 } model) return SmallestHearingModel;
+        var card = Math.Ceiling(option.GpuGb + 2);
+        return new(model, $"{option.Peak.DiskGb.ToString("0.#", CultureInfo.InvariantCulture)} GB",
+            $"a graphics card with {card.ToString("0", CultureInfo.InvariantCulture)} GB or more", card, option.HearsAudio);
     }
 
     /// <summary>The setup steps for what <paramref name="plan"/> places on this PC. Whisper on the card shares the voice
@@ -136,7 +149,7 @@ internal static class DefaultSetup
         CultureInfo language)
     {
         var thinking = plan.Primary(PlanComponent.Thinking) is { MachineId: ThisPc, Option: { } local }
-            ? MainWindow.LocalChatModels.FirstOrDefault(m => m.Id == local.ModelId) is { } model ? (model, local.UsesGpu) : (SmallestHearingModel, local.UsesGpu)
+            ? (ChatModel(local), local.UsesGpu)
             : (SmallestHearingModel, false);
         var voiceAssignment = plan.Primary(PlanComponent.Voice) is { MachineId: ThisPc, Option.HostRoleKind: not null } placed ? placed : null;
         var voice = voiceAssignment is { Option.HostRoleKind: { } role } ? SpeechEngines.All.FirstOrDefault(e => e.HostRoleKind == role) : null;

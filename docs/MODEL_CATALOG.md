@@ -23,9 +23,11 @@ Checked on **2026-10-10**. Each fact is marked:
 ## The catalog Martlet has now (Built)
 
 Martlet keeps an internal model catalog in `Martlet.Core.Planning`
-(`src\Martlet.Core\Planning\Catalog\`). Nothing chooses models from it yet:
-Recommended setup, the welcome wizard and the provider defaults still use their
-own lists, and a later recommendation design will use the catalog.
+(`src\Martlet.Core\Planning\Catalog\`). Recommended setup, *Set it all up for me*,
+the option lists and the provider suggestions choose models from it
+(`FootprintCatalog.FromModels` and `PlanningCatalog`; see
+[Recommendation design](RECOMMENDATION_DESIGN.md#build-stages), stage 3).
+Martlet's own list (`FootprintCatalog.Seed`) stays as the offline fallback.
 
 - **Where it comes from.** A snapshot ships inside Martlet
   (`model-catalog.json`, embedded in `Martlet.Core`), so the catalog works offline
@@ -390,4 +392,6 @@ These match the tasks in [#663](https://github.com/throndir2/Martlet/issues/663)
    catalog above).
 5. Replace the fixed lists in `FootprintCatalog.Seed`, the provider defaults and
    the `role.conf` choices with catalog picks, keeping today's entries as the
-   offline fallback (Proposed: the recommendation design).
+   offline fallback (Built for the planner's options and the provider defaults;
+   the `role.conf` choices are still a fixed list, so a catalog model outside it
+   runs only in a companion PC's own Ollama).

@@ -51,7 +51,7 @@ public sealed partial class FootprintCatalog
             if (found is not null) measurements.Add(found);
             return measured;
         }).ToArray();
-        return measurements.Count == 0 ? this : new(next) { Measurements = [.. Measurements, .. measurements] };
+        return measurements.Count == 0 ? this : new(next) { Measurements = [.. Measurements, .. measurements], Models = Models, From = From };
     }
 
     private static (ComponentOption Option, OptionMeasurement? Found) Measure(ComponentOption option, MeasuredModelMemory? memory, MeasuredFirstWords? speed)

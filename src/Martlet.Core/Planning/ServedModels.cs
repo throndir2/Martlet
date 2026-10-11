@@ -35,17 +35,26 @@ public static partial class ServedModels
 
     /// <summary>The Thinking option for <paramref name="served"/>, on any graphics card, sized as <see cref="Gb"/> says (on the
     /// processor with no size when its size isn't known).</summary>
-    public static ComponentOption Option(ServedModel served)
+    public static ComponentOption Option(ServedModel served) => Option(served, null);
+
+    /// <summary>The Thinking option for <paramref name="served"/>, as <see cref="Option(ServedModel)"/>; how smart it is comes
+    /// from <paramref name="models"/> when the model catalog knows it, else from the size in its name.</summary>
+    public static ComponentOption Option(ServedModel served, ModelCatalog? models)
     {
         ArgumentNullException.ThrowIfNull(served);
         var gb = Gb(served);
+        var known = models?.Find(served.ModelId)?.Model;
+        var smartness = known is null ? null : models!.Smartness(known);
         return new()
         {
             Id = OptionId(served.ModelId), Component = PlanComponent.Thinking, DisplayName = served.ModelId, ModelId = served.ModelId,
             Gpu = gb is null ? GpuRequirement.None : GpuRequirement.AnyGpu, Steady = new(gb ?? 0, 1, 1, 0), Peak = new(gb ?? 0, 1.5, 2, 0),
-            QualityTier = Tier(served), Evidence = FootprintEvidence.Estimate,
+            QualityTier = smartness?.Tier ?? Tier(served), Evidence = FootprintEvidence.Estimate,
             ServedBy = served.AppName.Length > 0 ? served.AppName : "your model app",
             ServedOn = served.MachineId.Length > 0 ? served.MachineId : null, ServedAt = served.BaseUrl.Length > 0 ? served.BaseUrl : null,
+            Origin = OptionOrigin.Served, CatalogKey = known?.Key, Smartness = CatalogOptions.Words(smartness, estimates: true),
+            SmartnessCredit = CatalogOptions.Credit(smartness),
+            CallsTools = known?.CallsTools, TakesVideo = known?.TakesVideo == true,
             Source = gb is null ? "Served by your own model app; its size isn't known"
                 : served.SizeGb is not null ? "Estimate: the app's download size plus the context and buffers"
                 : "Estimate from the model's size in its name"
@@ -53,7 +62,10 @@ public static partial class ServedModels
     }
 
     /// <summary>The option for a served model Martlet knows only by its id (today's Thinking route): no app or computer known.</summary>
-    public static ComponentOption Option(string model) => Option(new ServedModel("", "", "", "", model));
+    public static ComponentOption Option(string model) => Option(new ServedModel("", "", "", "", model), null);
+
+    /// <summary>As <see cref="Option(string)"/>, with how smart it is from <paramref name="models"/>.</summary>
+    public static ComponentOption Option(string model, ModelCatalog? models) => Option(new ServedModel("", "", "", "", model), models);
 
     /// <summary>About how much graphics memory the model takes at Martlet's context: the app's download size plus 5% and
     /// 1 GB for the context and buffers, else about 0.65 GB per billion parameters in its name ("70b") plus 0.8 GB; null

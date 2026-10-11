@@ -76,7 +76,7 @@ public partial class MainWindow
     /// the first words of the replies Martlet timed and the memory Ollama reported, here and on paired hosts. Reads two small
     /// files; call it off the UI thread.</summary>
     internal static FootprintCatalog MeasuredCatalog(string? directory) =>
-        FootprintCatalog.Default.WithMeasured(MeasuredModelMemory.Load(directory), MeasuredFirstWords.Load(directory));
+        PlanningCatalog.Current.WithMeasured(MeasuredModelMemory.Load(directory), MeasuredFirstWords.Load(directory));
 
     /// <summary>Reads what this PC knows about your computers (on the UI thread; it contacts nothing), then plans on a
     /// thread-pool thread with the numbers measured on your computers, so the window and the conversation never wait for it.
@@ -94,6 +94,7 @@ public partial class MainWindow
         var directory = store?.DataDirectory;
         try
         {
+            await PlanningOptionsAsync();
             var (recommendation, catalog) = await Task.Run(() =>
             {
                 var measured = MeasuredCatalog(directory);
@@ -136,7 +137,8 @@ public partial class MainWindow
             offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
             poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
             off: RecommendedSetupMemory.Load(directory).OffParts, choices: RecommendedSetupChoices(directory),
-            pools: directory is null ? null : PoolSettings.Load(directory), preferences: preferences, gamesHere: GamesHere);
+            pools: directory is null ? null : PoolSettings.Load(directory), preferences: preferences, gamesHere: GamesHere)
+            with { OnlinePool = RecommendedSetupInputs.OnlinePool(poolSettings) };
     }
 
     /// <summary>Martlet's guess for this PC's games answer: a game library is on it (<see cref="Martlet.Audio.GameLibraries"/>),

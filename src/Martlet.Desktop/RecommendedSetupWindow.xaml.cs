@@ -375,6 +375,14 @@ public partial class RecommendedSetupWindow : ThemedWindow
             why.SetResourceReference(StyleProperty, "Muted");
             body.Children.Add(why);
         }
+        if (part.Facts is { Length: > 0 } facts)
+        {
+            // The model's facts from Martlet's model catalog: what it takes, how smart it is, how soon it answers, where it comes from.
+            var line = new TextBlock { Text = facts, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(16, 1, 0, 0) };
+            line.SetResourceReference(StyleProperty, "Muted");
+            AutomationProperties.SetAutomationId(line, $"RecommendedSetupPartFacts-{part.Key}");
+            body.Children.Add(line);
+        }
         row.Children.Add(body);
         return row;
     }

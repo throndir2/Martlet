@@ -203,7 +203,7 @@ public sealed class SetupTests : IDisposable
         Assert.DoesNotContain(Canary, json);
         var report = await new FoundationStatusService(Store).GetReportAsync();
         Assert.False(report.Ready);
-        Assert.Equal(13, report.Probes.Count);
+        Assert.Equal(14, report.Probes.Count);
         Assert.DoesNotContain(Canary, ReportFormatter.Human(report));
         Assert.DoesNotContain(Canary, Encoding.UTF8.GetString(ContractJson.Write(report)));
         Assert.DoesNotContain(saved.Settings.Setup.Routes.Single().CredentialId!.ToString()!, Encoding.UTF8.GetString(ContractJson.Write(report)));

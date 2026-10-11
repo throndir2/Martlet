@@ -198,6 +198,7 @@ fixtures, never live readiness.
 | `pipeline.policy` | No | Local read-only declaration, but no diagnostic callback installed |
 | `pipeline.stt`, `pipeline.llm`, `pipeline.tts` | No | Permissioned/provider-cost; not wired / not run |
 | `host.connection` | No | Optional permissioned/network host/GPU placeholder; not configured / not run |
+| `planning.catalog` | Yes (optional) | Local read-only: which copy of the model catalog Recommended setup plans with (the daily copy, the shipped snapshot, or Martlet's own list alone; [Recommendation design](RECOMMENDATION_DESIGN.md#build-stages)); reads files only, downloads nothing |
 
 Stage labels Mic/VAD use existing `Stage.Application`; no shared stage enum was
 invented. The desktop maps their stable probe IDs to explicit pipeline labels.
@@ -283,6 +284,8 @@ links that change permissions, automatic reinstall, secret collection or uploads
 | `audio.output_unavailable` | Skipped | `audio.output_guide` |
 | `pipeline.unavailable` | Skipped | `pipeline.unavailable` |
 | `host.unavailable` | Not configured | `host.setup` |
+| `planning.catalog_daily`, `planning.catalog_snapshot` | Passed (where Recommended setup's options come from; files only) | `planning.review` |
+| `planning.seed_only` | Warning (the model catalog can't be read; Martlet's own list only) | `planning.review` |
 | `probe.not_run` | Skipped, catalog only | `diagnostics.refresh` |
 | `probe.running` | Running, not completed evidence | `diagnostics.wait` |
 | `probe.effects_blocked` | Skipped, callback never invoked | `diagnostics.refresh` |

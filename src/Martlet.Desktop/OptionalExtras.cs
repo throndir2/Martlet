@@ -236,7 +236,7 @@ internal static class OptionalExtras
     /// <paramref name="extra"/> facts it doesn't have before its "Numbers" line.</summary>
     internal static IReadOnlyList<OptionFact> Facts(string catalogId, IReadOnlyList<OptionFact> fallback, params OptionFact[] extra)
     {
-        var facts = (FootprintCatalog.Default.Find(catalogId) is { } option ? OptionFacts.Of(option) : fallback).ToList();
+        var facts = (PlanningCatalog.Current.Find(catalogId) is { } option ? OptionFacts.Of(option) : fallback).ToList();
         foreach (var fact in extra)
         {
             if (facts.Any(f => f.Key == fact.Key)) continue;

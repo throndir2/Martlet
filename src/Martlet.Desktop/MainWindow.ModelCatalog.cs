@@ -44,6 +44,34 @@ public partial class MainWindow
         };
         // The first check comes three minutes after start, so it never competes with starting up.
         modelCatalogTimer.Start();
+        // The planners' options come from the catalog (on a thread-pool thread; nothing talks yet at start).
+        PlanningOptionsAsync().Forget();
+    }
+
+    /// <summary>The options the planners use (<see cref="PlanningCatalog"/>): the model catalog (the daily copy, else the shipped
+    /// snapshot) with its local facts, plus Martlet's own list. It loads on a thread-pool thread, never on the reply path, with
+    /// speed estimates for this PC's best graphics card; Martlet's own list stays when the catalog can't be read.</summary>
+    internal async Task<FootprintCatalog> PlanningOptionsAsync()
+    {
+        if (store is null) return PlanningCatalog.Current;
+        var directory = store.DataDirectory;
+        var bandwidth = GraphicsCardBandwidth.Find(machine.BestGpu?.Name)?.Gbps;
+        var before = PlanningCatalog.Current;
+        try
+        {
+            var options = await Task.Run(() => PlanningCatalog.Load(directory, bandwidth), lifetime.Token);
+            if (!ReferenceEquals(options, before))
+                ErrorLog.Info($"Recommendations plan with {options.From}: {options.Options.Count(o => o.Origin == OptionOrigin.LocalFacts)} local " +
+                    $"model option(s) from the catalog's local facts, {options.Options.Count(o => o.Origin == OptionOrigin.Catalog)} hosted model(s) " +
+                    $"chosen from it, speed estimates for {(bandwidth is { } gbps ? $"{gbps:0} GB/s" : "an RTX 4070's 504 GB/s")}.");
+            return options;
+        }
+        catch (OperationCanceledException) { return PlanningCatalog.Current; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+        {
+            ErrorLog.Warn("Martlet couldn't read its model catalog, so recommendations use its own list of models.", error);
+            return PlanningCatalog.Current;
+        }
     }
 
     private async Task RefreshModelCatalogAsync()
@@ -66,9 +94,11 @@ public partial class MainWindow
                 ErrorLog.Info($"Model catalog refreshed: {result.Models} models and {result.Routes} routes" +
                     (result.Saved ? $", saved in {catalogs.Folder?.Where ?? "the PC folder"}" : ", not saved") +
                     (result.Status.Problem is { } problem ? $". {problem}" : "."));
-                // Plan again with the new catalog, and look for a model it says was retired (docs/RECOMMENDATION_DESIGN.md).
+                // Plan again with the new catalog (the planners' options first), and look for a model it says was retired
+                // (docs/RECOMMENDATION_DESIGN.md).
                 if (result.Saved)
                 {
+                    await PlanningOptionsAsync();
                     CheckBetterSetupAsync("the daily model catalog refresh").Forget();
                     FollowRetiredAsync().Forget();
                 }

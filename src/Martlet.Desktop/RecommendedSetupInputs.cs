@@ -60,6 +60,8 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     public string Device { get; init; } = "";
     public IReadOnlyCollection<string> ThinkingPool { get; init; } = [];
     public IReadOnlyCollection<string> PoolOptOut { get; init; } = [];
+    /// <summary>The Thinking pool's online members that are on, in words ("moonshotai/kimi-k3 on NVIDIA Build").</summary>
+    public IReadOnlyList<string> OnlinePool { get; init; } = [];
     /// <summary>The voice engine the owner chose, as a host role kind ("chatterbox").</summary>
     public string? VoiceEngine { get; init; }
     public IReadOnlyCollection<string> ConfiguredProviders { get; init; } = [];
@@ -154,6 +156,7 @@ internal static class RecommendedSetupInputs
             CurrentJobs = jobs,
             CurrentThinkingPool = [.. sources.ThinkingPool.Where(id => !sources.PoolOptOut.Contains(id, StringComparer.Ordinal)).Distinct(StringComparer.Ordinal)],
             ThinkingPoolOptOut = [.. sources.PoolOptOut.Distinct(StringComparer.Ordinal)],
+            OnlineThinkingPool = [.. sources.OnlinePool.Distinct(StringComparer.Ordinal)],
             VoiceEngine = sources.VoiceEngine,
             Off = [.. sources.Off.Where(c => ComponentRanking.CanBeOff(c) && !ComponentRanking.SetOnPage(c)).Distinct()],
             Choices = [.. sources.Choices.Where(c => c is not null && ComponentRanking.SetOnPage(c.Component)).DistinctBy(c => c.Component)],
@@ -207,7 +210,7 @@ internal static class RecommendedSetupInputs
             new PartChoice(PlanComponent.Reading, reading.On)
             {
                 OptionId = reading.Place == ReadingPlace.Host
-                    ? FootprintCatalog.Default.For(PlanComponent.Reading).FirstOrDefault(o => o.HostRoleKind == "ocr" && o.ModelId == readingModel)?.Id
+                    ? PlanningCatalog.Current.For(PlanComponent.Reading).FirstOrDefault(o => o.HostRoleKind == "ocr" && o.ModelId == readingModel)?.Id
                         ?? "reading:rapidocr"
                     : "reading:windows-ocr",
                 HostId = reading.Place == ReadingPlace.Host ? reading.HostId : null
@@ -225,7 +228,7 @@ internal static class RecommendedSetupInputs
     private static PartChoice Sense(PlanComponent part, bool on, DeepThinkingSettings? own)
     {
         var prefix = part == PlanComponent.Vision ? "vision:" : "hearing:";
-        var catalog = FootprintCatalog.Default;
+        var catalog = PlanningCatalog.Current;
         if (own is null) return new(part, on) { OptionId = prefix + "thinking" };
         var model = string.IsNullOrWhiteSpace(own.ModelId) ? null : own.ModelId.Trim();
         var known = model is null ? null : catalog.Find(prefix + model)?.Id;
@@ -446,6 +449,16 @@ internal static class RecommendedSetupInputs
                 SizeGb = s.SizesGb.TryGetValue(model, out var gb) && gb > 0 ? gb : null
             }))];
 
+    /// <summary>The Thinking pool's online members that are on (an HTTPS endpoint, not a model app on this PC), in words:
+    /// "moonshotai/kimi-k3 on NVIDIA Build".</summary>
+    internal static IReadOnlyList<string> OnlinePool(ThinkingPoolSettings pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        return [.. pool.Members.Where(m => m is { Place: DeepThinkingPlace.Endpoint, ModelId.Length: > 0 } && m.Origin is { } origin &&
+                origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(origin, UriKind.Absolute, out _))
+            .Select(m => $"{m.ModelId} on {ChatCompletionsEndpointCatalog.Named(m.Origin)?.Name ?? new Uri(m.Origin!).Host}")];
+    }
+
 #if !MARTLET_MCP
     /// <summary>The desktop's view of the owner's computers as recommender sources: this PC (its own host service's id when it
     /// runs one, else its device id), every paired host (a companion PC when your Martlet network says that computer is one)
@@ -520,7 +533,7 @@ internal static class RecommendedSetupInputs
         }).OfType<JobPlan>().ToArray();
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
         if (nodes is not null)
-            foreach (var assignment in DeviceCapacityInputs.Current(inputs, nodes, FootprintCatalog.Default))
+            foreach (var assignment in DeviceCapacityInputs.Current(inputs, nodes, PlanningCatalog.Current))
                 if (JobOf(assignment.Component) is { } job && !options.ContainsKey(job))
                     options[job] = assignment.OptionId;
         var providers = configuredProviders ?? [];

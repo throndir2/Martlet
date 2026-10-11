@@ -14,6 +14,12 @@ public enum FootprintEvidence { Estimate, Sourced, Measured }
 /// local options and paid providers are High.</summary>
 public enum OptionReliability { Low, Medium, High }
 
+/// <summary>Where an option comes from (docs/RECOMMENDATION_DESIGN.md, "Planner on the catalog"). Seed: Martlet's own list
+/// (FootprintCatalog.Seed.cs: measured, sourced or estimated numbers), the offline fallback. Catalog: a hosted model the model
+/// catalog chose from its routes. LocalFacts: an open-weight model from the model catalog, sized and timed from its local facts
+/// (Hugging Face and the Ollama registry). Served: a model the owner's own model app serves.</summary>
+public enum OptionOrigin { Seed, Catalog, LocalFacts, Served }
+
 /// <summary>Resources an option uses on one machine. <see cref="DiskGb"/> is its download and install size.</summary>
 public sealed record ResourceUse(double VramGb = 0, double RamGb = 0, double CpuThreads = 0, double DiskGb = 0)
 {
@@ -81,6 +87,25 @@ public sealed record ComponentOption
     public string? ServedOn { get; init; }
     /// <summary>The app's Chat Completions address (<see cref="ServedBy"/>), or null when not known.</summary>
     public string? ServedAt { get; init; }
+    /// <summary>Where the option comes from: Martlet's own list, the model catalog or the owner's model app.</summary>
+    public OptionOrigin Origin { get; init; }
+    /// <summary>The model catalog's key for the model (<see cref="ModelCatalog.Model"/>), when the catalog knows it.</summary>
+    public string? CatalogKey { get; init; }
+    /// <summary>How smart the model is in words (<see cref="CatalogSmartness.Words"/>: "smarter than most"), when the catalog
+    /// knows it. Never a rank number.</summary>
+    public string? Smartness { get; init; }
+    /// <summary>LMArena's rating with its credit ("LMArena text rating 1318 (CC-BY-4.0)"), when LMArena rated the model.</summary>
+    public string? SmartnessCredit { get; init; }
+    /// <summary>About how many words a second it writes on the graphics card the estimate is for (an estimate from its local
+    /// facts and the card's memory bandwidth), or null.</summary>
+    public double? WordsPerSecond { get; init; }
+    /// <summary>Whether the model calls tools, when the catalog says.</summary>
+    public bool? CallsTools { get; init; }
+    /// <summary>The model takes video (at least as a series of frames), as the catalog says.</summary>
+    public bool TakesVideo { get; init; }
+    /// <summary>Only a companion PC's own Ollama can run it: Martlet's host roles offer a fixed list of models
+    /// (<see cref="FootprintCatalog.HostRoleModels"/>), so the planners never put it in a host role.</summary>
+    public bool NativeOnly { get; init; }
 
     public bool IsLocal => Hosting == OptionHosting.Local;
     /// <summary>Graphics memory reserved on a card: peak VRAM plus one context.</summary>

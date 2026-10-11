@@ -46,6 +46,10 @@ internal sealed record ReviewPart(PlanComponent Component, int Rank, string Name
 
     /// <summary>"1. Thinking (needed): Gemma 4 E2B in Ollama on This PC's NVIDIA GeForce RTX 4070."</summary>
     internal string Text => $"{Rank}. {Name} ({Need.ToLowerInvariant()}): {Where.TrimEnd('.')}.";
+
+    /// <summary>The facts of the model that does it (Thinking, Deep thinking or its online suggestion), from Martlet's model
+    /// catalog (<see cref="OptionFacts.Brief"/>), or null.</summary>
+    internal string? Facts { get; init; }
 }
 
 /// <summary>Home's Recommended setup review, in words: the computers (companion PCs kept light), who does each job and the
@@ -100,7 +104,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         ArgumentNullException.ThrowIfNull(recommendation);
         ArgumentNullException.ThrowIfNull(build);
         var request = build.Request;
-        catalog = (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels);
+        catalog = (catalog ?? PlanningCatalog.Current).WithServed(request.ServedModels);
         string Name(string? id) => id is null or "" ? "your companion PCs" : build.Names.GetValueOrDefault(id)
             ?? request.Machines.FirstOrDefault(m => m.Specs.Id == id)?.Specs.Name ?? id;
 
@@ -208,7 +212,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()))
         {
             Parts = [.. recommendation.Components.Select(c => new ReviewPart(c.Component, c.Rank, c.Name, c.CanBeOff ? "Optional" : "Needed",
-                c.On, c.Where, c.Why, c.OffInReview, c.OwnerOff))],
+                c.On, c.Where, c.Why, c.OffInReview, c.OwnerOff) { Facts = PartFacts(c, recommendation, catalog) })],
             Served = ServedLines(request.ServedModels),
             UseServed = build.Preferences.UseServedModels,
             PreferHostModels = request.PreferHostModels,
@@ -218,6 +222,26 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             Choices = choices,
             Measured = [.. catalog.Measurements.Select(m => m.Describe())]
         };
+    }
+
+    /// <summary>The facts line under Thinking (the model that does it) and Deep thinking (its role's model, else the online
+    /// model the recommendation suggests), from Martlet's model catalog; null for the other parts.</summary>
+    internal static string? PartFacts(ComponentStatus part, NetworkRecommendation recommendation, FootprintCatalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        ArgumentNullException.ThrowIfNull(recommendation);
+        ArgumentNullException.ThrowIfNull(catalog);
+        ComponentOption? Running(string kind, PlanComponent component) => recommendation.Target.Machines
+            .SelectMany(m => m.Roles.Where(r => r.Kind == kind && r.Model is { Length: > 0 })).Select(r => catalog.FindModel(component, r.Model!))
+            .OfType<ComponentOption>().FirstOrDefault();
+        var option = part.Component switch
+        {
+            PlanComponent.Thinking when recommendation.Target.Job(Martlet.Core.Cluster.ClusterJobs.Thinking) is { } job =>
+                (job.OptionId is { } id ? catalog.Find(id) : null) ?? (job.HostId is not null ? Running(NetworkRecommender.ThinkingRole, PlanComponent.Thinking) : null),
+            PlanComponent.DeepThinking => part.On ? Running(NetworkRecommender.DeepThinkingRole, PlanComponent.DeepThinking) : recommendation.OnlineDeepThinking,
+            _ => null
+        };
+        return option is null || !part.On && part.Component != PlanComponent.DeepThinking ? null : OptionFacts.Brief(option);
     }
 
     /// <summary>One line per Thinking chat model (the ollama role) a host service runs or keeps downloaded, on a computer that

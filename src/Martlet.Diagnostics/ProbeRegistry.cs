@@ -93,8 +93,28 @@ public sealed class ProbeRegistry
         new("pipeline.policy", Stage.TurnPolicy, true, [ProbeEffect.LocalReadOnly], unavailableFindingId: "pipeline.unavailable"),
         new("pipeline.llm", Stage.Generation, true, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
         new("pipeline.tts", Stage.Synthesis, true, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
-        new("host.connection", Stage.Provider, false, [ProbeEffect.Network, ProbeEffect.Permissioned], unavailableFindingId: "host.unavailable")
+        new("host.connection", Stage.Provider, false, [ProbeEffect.Network, ProbeEffect.Permissioned], unavailableFindingId: "host.unavailable"),
+        new("planning.catalog", Stage.Application, false, [ProbeEffect.LocalReadOnly],
+            token => Task.Run(() => new ProbeObservation(PlanningFinding(store.DataDirectory), EvidenceProvenance.Live), token),
+            timeout: TimeSpan.FromSeconds(15))
     ]);
+
+    /// <summary>The planning.catalog finding: where Recommended setup's options come from (docs/RECOMMENDATION_DESIGN.md, "Planner
+    /// on the catalog"): the model catalog's daily copy, its shipped snapshot, or Martlet's own list alone. Reads files only.</summary>
+    public static string PlanningFinding(string dataDirectory)
+    {
+        try
+        {
+            var models = Martlet.Core.Planning.ModelCatalogStore.For(dataDirectory).Load();
+            if (models.Models.Count == 0) return "planning.seed_only";
+            return Martlet.Core.Planning.PlanningCatalog.Copy(models).StartsWith("the daily copy", StringComparison.Ordinal)
+                ? "planning.catalog_daily" : "planning.catalog_snapshot";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        {
+            return "planning.seed_only";
+        }
+    }
 
     /// <summary>The platform.architecture finding for this PC's processor and Martlet's process.</summary>
     public static string ArchitectureFinding(MachineArchitecture architecture) => (architecture.Machine, architecture.Process) switch
