@@ -1356,25 +1356,31 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             snapshotPath = new { type = "string" },
             dataDirectory = new { type = "string" }
         }),
-        Tool("model_ability_check", "What models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
+        Tool("model_ability_check", "What models were found to take on each route (a server and a model): hearing (recorded audio), " +
+            "seeing (pictures), video itself, tool calls and retired (HTTP 410), each with its source and date: model-abilities.json in " +
             "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
             "detection (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like OpenRouter's model list " +
-            "(architecture.input_modalities), llama.cpp (/props modalities) and Ollama (/api/show capabilities), Test hearing " +
-            "(ModelHearingTest) and Test vision (ModelVisionTest, with the desktop's own picture of one word drawn on this PC) against a " +
+            "(architecture.input_modalities, supported_parameters), llama.cpp (/props modalities), Ollama (/api/show capabilities) and " +
+            "NVIDIA Build (IDs-only model list, models.md and a model page's Specifications), Test hearing " +
+            "(ModelHearingTest), Test vision (ModelVisionTest, with the desktop's own picture of one word drawn on this PC) and Test tools " +
+            "(ModelToolTest, one made-up tool) against a " +
             "fixture Chat Completions endpoint that answers the test word only when the request carries the recording or the picture (it " +
-            "is told the word: NOT AI), a model that ignores audio or pictures, one that refuses them and a wrong key; the " +
-            "hearing and vision decisions replies use (decisions), whether a paired computer's Thinking route takes a recording " +
-            "(hostRoute) and the shared value's round trip (shared). With baseUrl (an http:// " +
+            "is told the word: NOT AI), a model that ignores audio, pictures or tools, one that refuses them, one retired (410) and a " +
+            "wrong key; the hearing, vision, video, tools and retired decisions replies use, with a test outranking later metadata " +
+            "(decisions), whether a paired computer's Thinking route takes a recording " +
+            "(hostRoute) and the shared value's round trip, including what an older Martlet still reads (shared). With baseUrl (an http:// " +
             "server on this PC only, for example Ollama's http://127.0.0.1:11434/v1 or a llama.cpp server) and modelId it also asks that " +
             "real server what the model takes (real.metadata); test=true sends it the real Test hearing request (one word said by Windows " +
-            "speech, never microphone audio, nothing played) and testVision=true the real Test vision request (one word drawn on this PC, " +
-            "never the screen). Nothing leaves this PC; reads no credentials; saves nothing.", new
+            "speech, never microphone audio, nothing played), testVision=true the real Test vision request (one word drawn on this PC, " +
+            "never the screen) and testTools=true the real Test tools request (one made-up tool). Nothing leaves this PC; reads no " +
+            "credentials; saves nothing.", new
         {
             dataDirectory = new { type = "string" },
             baseUrl = new { type = "string", maxLength = 256 },
             modelId = new { type = "string", maxLength = 128 },
             test = new { type = "boolean" },
-            testVision = new { type = "boolean" }
+            testVision = new { type = "boolean" },
+            testTools = new { type = "boolean" }
         }),
         Tool("local_model_facts", "What an open-weight model needs to run locally, through the production LocalModelFactsReader and " +
             "LocalModelMemory: model (a Hugging Face repository such as google/gemma-4-E2B-it, hf.co/{repo}:{quant}, or an Ollama tag " +
@@ -1406,10 +1412,13 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "Companion > Vision > Image model, Companion > Listening > Audio model and Thinking can choose and test models without a real " +
             "provider (NOT AI). action \"start\" (returns baseUrl, such as http://127.0.0.1:52341/v1, to type as a custom server's API base " +
             "URL), \"status\" or \"stop\" (it also ends with this server). /v1/models lists lab/sees (text and pictures), lab/hears (text and " +
-            "recordings), lab/omni (all three) and lab/text (text only) with their input modalities, as OpenRouter lists them. Chat " +
-            "completions refuse a picture or a recording a lab model doesn't take (error 400), read Test vision's word by comparing the " +
-            "picture with this PC's own drawings of the test words, read Test hearing's word with Windows speech recognition limited to " +
-            "the test words (when this PC has an English recognizer), and answer anything else with fixed text (streamed when asked). " +
+            "recordings), lab/omni (text, pictures, recordings and video), lab/text (text only), lab/notools (text only, no tool calls) and " +
+            "lab/gone (retired) with their input modalities and supported_parameters (tools), as OpenRouter lists them. Chat " +
+            "completions refuse a picture or a recording a lab model doesn't take (error 400), lab/notools refuses a request with tools " +
+            "(error 400), lab/gone answers every chat completion with HTTP 410 Gone, the other tool models call Test tools' made-up tool. " +
+            "The lab reads Test vision's word by comparing the " +
+            "picture with this PC's own drawings of the test words, reads Test hearing's word with Windows speech recognition limited to " +
+            "the test words (when this PC has an English recognizer), and answers anything else with fixed text (streamed when asked). " +
             "status lists the requests by model, the kinds of parts they carried and what the lab answered, never their content. No key " +
             "is needed or read. port (1024-65535) fixes the port for a scripted desktop run; left out, a free one is taken.", new
         {
@@ -2278,6 +2287,23 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "after 10 minutes stays away once; 30 seconds of answers comes back once and the notice clears after 10 minutes or " +
             "when dismissed; a flapping computer stays one absence; the away time follows the per-PC choice; the report round trip; " +
             "an unpaired computer is forgotten. In-process; writes only a temporary folder.", new { }),
+        Tool("situation_status", "Situations (the While gaming and Host away plans), from a data directory: what the desktop decided " +
+            "last on this companion PC (situation.json: Normal, While gaming or Host away; where live Thinking runs normally and now; " +
+            "the whole order; why; whether the conversation uses it; the game; the hosts away; the online services preference; the " +
+            "graphics card note while gaming; FIXTURE when MARTLET_SIMULATE_SITUATION drove it) and the rules (a game looked for every 3 " +
+            "seconds and held 90 seconds, a host missing after 30 seconds, a card short of memory below 1 GB free). Host IDs, model " +
+            "and provider names and a game's name only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("situation_check", "Rehearse the While gaming and Host away plans with the production rules (LiveSituations, " +
+            "SituationRoutes, GameWatch, SituationPlans) on FIXTURE facts, apps and computers, NOT a real game, host or model: a game " +
+            "on a PC used for games moves live Thinking to a host that answers, then to the hosted backup unless online services are " +
+            "Never, then keeps this PC's own model; a PC not used for games and Thinking on a host move nothing; a host that is away " +
+            "moves live Thinking to another host, the hosted backup, then this PC's own model, and it comes back when the host answers; " +
+            "a card is short of memory below 1 GB free; the moved routes are valid, consented and keep If Thinking fails' key scope; " +
+            "the game watch finds a game from a Steam library, keeps it through a switch to another window and ends it after 90 " +
+            "seconds; Recommended setup's three plans (Normal, While gaming, Host away). In-process; reads and writes nothing.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -2585,7 +2611,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     OptionalString(arguments, "snapshotPath"), OptionalBool(arguments, "force") ?? false, cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "testVision") ?? false,
-                    cancellation),
+                    OptionalBool(arguments, "testTools") ?? false, cancellation),
                 "model_lab" => await ModelLab.RunAsync(RequiredString(arguments, "action"), OptionalInt(arguments, "port"), cancellation),
                 "local_model_facts" => await LocalModelFactsCheck.RunAsync(OptionalString(arguments, "model"),
                     OptionalString(arguments, "huggingFaceRepo"), OptionalString(arguments, "ollamaTag"), OptionalString(arguments, "quantization"),
@@ -2669,6 +2695,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),
+                "situation_status" => SituationCheck.Status(DataDirectory(arguments)),
+                "situation_check" => SituationCheck.Run(),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),

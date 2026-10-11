@@ -111,6 +111,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // FreeKeyGet-Thinking, SetupCloudGetKey-Thinking, HealthFix-recommended-setup-free-key-get) opens the browser, so it is
         // not here and needs --allow-ui-effects.
         "RecommendedSetupFreeKeyAdd", "FreeKeyAdd-Thinking",
+        // FIXTURE (MARTLET_SIMULATE_SITUATION, Companion › Thinking): start or end a simulated game and make the Thinking host
+        // simulated away or back. They change nothing saved and look at no real game or host.
+        "SituationSimulateGame", "SituationSimulateAway",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
         // like OpenLiveConversation, Pause Martlet only stops work, Stop listening and Stop watching only stop listening or
         // watching, and End the conversation closes the talk window like CloseLive. Start listening, Start watching, Resume
@@ -497,6 +500,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AudioModelNow", "AudioModelRoute", "AudioModelKnown", "AudioModelSent", "AudioModelTestStatus", "AudioModelLocalModel",
         "AudioModelLocalStatus", "AudioModelLocalKnown", "AudioModelLocalFit", "AudioModelProvider", "AudioModelKeyStatus",
         "ThinkingSenses",
+        // Companion › Thinking's Now card: what Martlet knows the Thinking model takes on its route (hears, sees, video, tool calls
+        // or that its server retired it, each with where it came from and when; ThinkingAbilities), and what Test tools sends or
+        // last found (ThinkingToolsTestStatus: the tool's name and test word, or the model's short answer). Clicking
+        // ThinkingToolsTest sends the Thinking model one request with a made-up tool, so it needs --allow-ui-effects and a model on
+        // this PC (model_lab's lab/sees calls the tool, lab/notools refuses it and lab/gone answers 410).
+        "ThinkingAbilities", "ThinkingToolsTestStatus",
         // Companion › Hearing › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
@@ -790,6 +799,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // when the job left that provider, or ask for one (never the key). Its Use button (SetupCloudSave-<page>) and
         // SetupUseLocalThinking save the route, so they need --allow-ui-effects.
         "SetupJobNow-Thinking", "SetupJobNow-Voice", "SetupJobNow-Listening",
+        // Companion › Thinking's line on the situation now (Normal, While gaming or Host away) and where live Thinking goes and
+        // why ("Situation: While gaming. A game (ELDEN RING) runs on this PC, so live Thinking leaves its graphics card for
+        // gpu-box (qwen3:8b). ..."): host IDs, model and provider names and a game's name. With MARTLET_SIMULATE_SITUATION
+        // (FIXTURE) the buttons that start a simulated game and make the Thinking host simulated away read through it too.
+        "ThinkingSituationNow", "SituationSimulateGame", "SituationSimulateAway",
         // The job's line about your Martlet network: the host your computers use for it and why this PC hasn't switched yet,
         // or that your other computers use this PC for it (host IDs and reasons only).
         "SetupJobNetwork-Thinking", "SetupJobNetwork-Voice", "SetupJobNetwork-Listening",

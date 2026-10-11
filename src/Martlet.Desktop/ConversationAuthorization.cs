@@ -110,7 +110,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         Check(token);
         var loaded = await load(token).ConfigureAwait(false);
         Check(token);
-        var latest = LiveConversationConfiguration.From(loaded);
+        // The route the reply started with: a situation that changed since (a game started, a host went away) waits for the next reply.
+        var latest = LiveConversationConfiguration.From(loaded, null, null, Configuration.Situation);
         if (latest is null || latest.Revision != Configuration.Revision || latest.Profile != Configuration.Profile ||
             latest.Unavailable(Voice, Microphone) is not null ||
             !latest.Routes.SequenceEqual(Configuration.Routes) || latest.Audio != Configuration.Audio ||

@@ -187,7 +187,11 @@ internal static class RecommendedSetupStatus
                 offline = recommendation.Offline.Select(o => new { computer = Name(o.Id), minutes = Math.Round(o.For.TotalMinutes), note = o.Note }),
                 notes = recommendation.Notes
             },
-            companionInUseAsks = new { step = step.ToString(), why, declinedHere = memory.WasDeclined(recommendation.Fingerprint), declined = memory.Declined.Count }
+            companionInUseAsks = new { step = step.ToString(), why, declinedHere = memory.WasDeclined(recommendation.Fingerprint), declined = memory.Declined.Count },
+            // Recommended setup's three plans: where each live job goes Normally, While gaming and when a host is away.
+            situations = SituationPlans.For(build.Request, recommendation, id => id is null ? "your companion PCs" : Name(id),
+                    FootprintCatalog.Default.WithServed(build.Request.ServedModels))
+                .Select(plan => new { situation = plan.Situation.ToString(), title = plan.Title, lines = plan.Lines })
         };
     }
 

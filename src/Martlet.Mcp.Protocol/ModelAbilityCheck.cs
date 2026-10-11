@@ -10,23 +10,26 @@ using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
-/// <summary>model_ability_check: what models were found to hear and see (model-abilities.json in a data directory, the
-/// <c>model-abilities</c> shared setting), then the production detection rehearsed against fixture servers on 127.0.0.1 shaped
-/// like OpenRouter's model list (<c>architecture.input_modalities</c>), llama.cpp (<c>/props</c> modalities) and Ollama
-/// (<c>/api/show</c> capabilities), Test hearing (<see cref="ModelHearingTest"/>) and Test vision (<see cref="ModelVisionTest"/>,
-/// with the desktop's own picture of a word) against a fixture Chat Completions endpoint that "hears" or "sees" only when the
-/// request carries the recording or the picture (it is told the word; NOT AI), the hearing and vision decisions replies use
-/// (<see cref="HearingModelCatalog.ForRoute"/>, <see cref="VisionModelCatalog.ForRoute"/>) and the shared value's round trip.
-/// With <c>baseUrl</c> (a server on this PC only, for example Ollama's http://127.0.0.1:11434/v1) and <c>modelId</c> it also
-/// asks that real server; with <c>test</c> it runs Test hearing against it with a word said by Windows speech, and with
-/// <c>testVision</c> Test vision with a word drawn on this PC. Nothing leaves this PC; no credentials are read; nothing is
-/// saved.</summary>
+/// <summary>model_ability_check: what models were found to take on each route (model-abilities.json in a data directory, the
+/// <c>model-abilities</c> shared setting: hearing, seeing, video, tools and retired, each with its source and date), then the
+/// production detection rehearsed against fixture servers on 127.0.0.1 shaped like OpenRouter's model list
+/// (<c>architecture.input_modalities</c>, <c>supported_parameters</c>), llama.cpp (<c>/props</c> modalities), Ollama
+/// (<c>/api/show</c> capabilities) and NVIDIA Build (its IDs-only model list, <c>models.md</c> and a model page), Test hearing
+/// (<see cref="ModelHearingTest"/>), Test vision (<see cref="ModelVisionTest"/>, with the desktop's own picture of a word) and
+/// Test tools (<see cref="ModelToolTest"/>) against a fixture Chat Completions endpoint that "hears" or "sees" only when the
+/// request carries the recording or the picture (it is told the word; NOT AI), the decisions replies use
+/// (<see cref="HearingModelCatalog.ForRoute"/>, <see cref="VisionModelCatalog.ForRoute"/>, <see cref="RouteAbilities"/>,
+/// <see cref="ChatCompletionsEndpointCatalog.RetiredOn(string?, string?, ModelAbilities?)"/>) and the shared value's round trip,
+/// including what an older Martlet reads. With <c>baseUrl</c> (a server on this PC only, for example Ollama's
+/// http://127.0.0.1:11434/v1) and <c>modelId</c> it also asks that real server; with <c>test</c> it runs Test hearing against it
+/// with a word said by Windows speech, with <c>testVision</c> Test vision with a word drawn on this PC, and with <c>testTools</c>
+/// Test tools with one made-up tool. Nothing leaves this PC; no credentials are read; nothing is saved.</summary>
 internal static class ModelAbilityCheck
 {
     private const string FixtureWord = "pineapple";
 
     internal static async Task<object> RunAsync(string dataDirectory, string? baseUrl, string? modelId, bool test, bool testVision,
-        CancellationToken cancellation)
+        bool testTools, CancellationToken cancellation)
     {
         Uri? real = null;
         if (baseUrl is not null)
@@ -42,28 +45,44 @@ internal static class ModelAbilityCheck
             {
                 file = File.Exists(Path.Combine(dataDirectory, ModelAbilities.FileName)) ? "loaded" : "none",
                 count = saved.Models.Count,
-                models = saved.Models.Select(m => new { m.Origin, m.ModelId, m.Hears, m.Sees, m.Source, m.CheckedAt }).ToArray()
+                models = saved.Models.Select(m => new
+                {
+                    m.Origin, m.ModelId, m.Hears, m.Sees, m.Video, m.Tools, m.Retired, m.Source, m.CheckedAt,
+                    sources = Enum.GetValues<ModelFact>().Where(f => m.SourceOf(f) is not null)
+                        .ToDictionary(f => f.ToString(), f => m.SourceOf(f)!)
+                }).ToArray()
             },
             fixture = await FixtureAsync(cancellation),
             decisions = Decisions(),
             hostRoute = HostRouteAudio(),
             shared = Shared(),
-            real = real is null ? null : await RealAsync(real.AbsoluteUri.TrimEnd('/'), modelId!, test, testVision, cancellation)
+            real = real is null ? null : await RealAsync(real.AbsoluteUri.TrimEnd('/'), modelId!, test, testVision, testTools, cancellation)
         };
     }
 
     private static object Decisions()
     {
         const string ollama = GenerationSupport.LocalOllamaChatBaseUrl, openRouter = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
-            host = "https://gpu-pc.local:8443";
+            nvidia = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, host = "https://gpu-pc.local:8443";
         var at = DateTimeOffset.UtcNow;
         var found = new ModelAbilities()
             .With(new() { Origin = ollama, ModelId = "gemma4:12b", Hears = true, Sees = true, Source = "Ollama on this PC", CheckedAt = at })
             .With(new() { Origin = openRouter, ModelId = "x-ai/grok-4.3", Hears = false, Sees = true, Source = "OpenRouter's model list", CheckedAt = at })
-            .With(new() { Origin = ollama, ModelId = "qwen3:8b", Hears = false, Sees = false, Source = "Ollama on this PC", CheckedAt = at })
-            .With(new() { Origin = host, ModelId = "gemma4-e2b", Hears = false, Source = "a refused recording", CheckedAt = at });
+            .With(new() { Origin = ollama, ModelId = "qwen3:8b", Hears = false, Sees = false, Video = false, Tools = true, Source = "Ollama on this PC", CheckedAt = at })
+            .With(new() { Origin = host, ModelId = "gemma4-e2b", Hears = false, Source = ModelAbility.RefusedRecording, CheckedAt = at })
+            .With(new() { Origin = openRouter, ModelId = "google/gemma-4-26b-a4b-it", Hears = false, Sees = true, Video = true, Tools = true,
+                Source = "OpenRouter's model list", CheckedAt = at })
+            .With(new() { Origin = openRouter, ModelId = "acme/no-tools", Tools = false, Source = "OpenRouter's model list", CheckedAt = at })
+            .With(new() { Origin = nvidia, ModelId = "acme/gone", Hears = true, Sees = true, Source = "NVIDIA Build's model page", CheckedAt = at })
+            .With(new() { Origin = nvidia, ModelId = "acme/gone", Retired = at, Source = ModelAbility.GoneAnswer, CheckedAt = at });
         string Hear(SetupRouteType? type, string origin, string model, ModelAbilities? abilities) =>
             HearingModelCatalog.ForRoute(type, origin, model, abilities).ToString();
+        // A test's answer stays when the server's metadata says otherwise later; another test replaces it.
+        var trust = new ModelAbilities()
+            .With(new() { Origin = ollama, ModelId = "acme/omni", Hears = true, Source = ModelAbility.TestRequest, CheckedAt = at })
+            .With(new() { Origin = ollama, ModelId = "acme/omni", Hears = false, Sees = true, Source = "Ollama on this PC", CheckedAt = at.AddMinutes(1) });
+        var retested = trust.With(new() { Origin = ollama, ModelId = "acme/omni", Hears = false, Source = ModelAbility.RefusedRecording, CheckedAt = at.AddMinutes(2) });
+        var answered = found.Answered(nvidia, "acme/gone");
         var rows = new
         {
             ollamaGemma4E2bByName = Hear(SetupRouteType.ChatCompletions, ollama, "gemma4:e2b", null),
@@ -77,14 +96,40 @@ internal static class ModelAbilityCheck
             openAiResponses = Hear(SetupRouteType.OpenAi, "https://api.openai.com", "gpt-4.1-mini-2025-04-14", found),
             retired = HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, ollama, "gemma4:e2b", found, retired: true).ToString(),
             ollamaQwen3SeesFound = VisionModelCatalog.ForRoute(ollama, "qwen3:8b", found).ToString(),
-            ollamaGemma4_12bSeesFound = VisionModelCatalog.ForRoute(ollama, "gemma4:12b", found).ToString()
+            ollamaGemma4_12bSeesFound = VisionModelCatalog.ForRoute(ollama, "gemma4:12b", found).ToString(),
+            // Video and tools: only what Martlet found out, never a name guess.
+            gemma4VideoFound = RouteAbilities.Video(openRouter, "google/gemma-4-26b-a4b-it", found).ToString(),
+            qwen3VideoFound = RouteAbilities.Video(ollama, "qwen3:8b", found).ToString(),
+            unknownVideo = RouteAbilities.Video(openRouter, "acme/unlisted", found).ToString(),
+            qwen3ToolsFound = RouteAbilities.Tools(SetupRouteType.ChatCompletions, ollama, "qwen3:8b", found).ToString(),
+            noToolsFound = RouteAbilities.Tools(SetupRouteType.ChatCompletions, openRouter, "acme/no-tools", found).ToString(),
+            unknownTools = RouteAbilities.Tools(SetupRouteType.ChatCompletions, openRouter, "acme/unlisted", found).ToString(),
+            openAiTools = RouteAbilities.Tools(SetupRouteType.OpenAi, "https://api.openai.com", "gpt-4.1-mini-2025-04-14", found).ToString(),
+            hostTools = RouteAbilities.Tools(SetupRouteType.GatewayOllama, host, "gemma4-e2b", found).ToString(),
+            // A route that answered HTTP 410 is retired: it neither sees nor hears; a later answer clears it. The built-in list
+            // stays as the fallback.
+            goneSees = VisionModelCatalog.ForRoute(nvidia, "acme/gone", found).ToString(),
+            goneHears = Hear(SetupRouteType.ChatCompletions, nvidia, "acme/gone", found),
+            goneRetired = ChatCompletionsEndpointCatalog.RetiredOn(nvidia, "acme/gone", found) is { Since: not null, Server: "NVIDIA Build" } r &&
+                r.Source == ModelAbility.GoneAnswer,
+            goneKeptSees = found.Find(nvidia, "acme/gone")?.Sees == true,
+            answeredRetired = ChatCompletionsEndpointCatalog.RetiredOn(nvidia, "acme/gone", answered) is not null,
+            answeredSees = VisionModelCatalog.ForRoute(nvidia, "acme/gone", answered).ToString(),
+            builtInRetired = ChatCompletionsEndpointCatalog.RetiredOn(nvidia, "meta/llama-3.3-70b-instruct", found)?.Source,
+            testKeptOverMetadata = trust.Find(ollama, "acme/omni") is { Hears: true, Sees: true } kept &&
+                kept.SourceOf(ModelFact.Hears)?.Source == ModelAbility.TestRequest && kept.SourceOf(ModelFact.Sees)?.Source == "Ollama on this PC",
+            laterTestReplaces = retested.Find(ollama, "acme/omni")?.Hears == false
         };
         var ok = rows is
         {
             ollamaGemma4E2bByName: "Supported", ollamaGemma4_12bByName: "Unsupported", ollamaGemma4_12bFound: "Supported",
             openRouterGrokFound: "Unsupported", hostOllamaGemma4E2b: "Supported", hostOllamaGemma4E4bAlias: "Supported",
             hostOllamaRefusedFound: "Unsupported", openAiResponses: "Unsupported", retired: "Unsupported",
-            ollamaQwen3SeesFound: "Unsupported", ollamaGemma4_12bSeesFound: "Supported"
+            ollamaQwen3SeesFound: "Unsupported", ollamaGemma4_12bSeesFound: "Supported",
+            gemma4VideoFound: "Supported", qwen3VideoFound: "Unsupported", unknownVideo: "Unknown",
+            qwen3ToolsFound: "Supported", noToolsFound: "Unsupported", unknownTools: "Unknown", openAiTools: "Supported", hostTools: "Unsupported",
+            goneSees: "Unsupported", goneHears: "Unsupported", goneRetired: true, goneKeptSees: true, answeredRetired: false,
+            answeredSees: "Supported", builtInRetired: "Martlet's list of retired models", testKeptOverMetadata: true, laterTestReplaces: true
         };
         return new { ok, rows };
     }
@@ -112,26 +157,72 @@ internal static class ModelAbilityCheck
     private static object Shared()
     {
         var at = new DateTimeOffset(2026, 10, 3, 20, 0, 0, TimeSpan.FromHours(-7));
-        // Metadata that says only what the model sees, then a test that says it hears: both are kept.
+        // Metadata that says only what the model sees, then a test that says it hears: both are kept. A route found retired, and
+        // one with only tools, say neither hearing nor seeing: they go apart (MoreModels) so an older Martlet still reads the rest.
         var abilities = new ModelAbilities()
             .With(new() { Origin = "http://127.0.0.1:8080/v1", ModelId = "voxtral", Sees = false, Source = "the server's llama.cpp settings", CheckedAt = at })
             .With(new() { Origin = "http://127.0.0.1:8080/v1", ModelId = "voxtral", Hears = true, Source = "a test request", CheckedAt = at.AddMinutes(1) })
-            .With(new() { Origin = "https://openrouter.ai/api/v1", ModelId = "google/gemini-2.5-flash", Hears = true, Sees = true,
-                Source = "OpenRouter's model list", CheckedAt = at });
+            .With(new() { Origin = "https://openrouter.ai/api/v1", ModelId = "google/gemini-2.5-flash", Hears = true, Sees = true, Video = true,
+                Tools = true, Source = "OpenRouter's model list", CheckedAt = at })
+            .With(new() { Origin = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, ModelId = "acme/gone", Retired = at,
+                Source = ModelAbility.GoneAnswer, CheckedAt = at })
+            .With(new() { Origin = "http://127.0.0.1:11434/v1", ModelId = "qwen3:8b", Tools = true, Source = "Ollama on this PC", CheckedAt = at });
         var value = abilities.Share();
         var parsed = ModelAbilities.Parse(value);
         var again = parsed?.Share();
         var merged = abilities.Find("http://127.0.0.1:8080/v1", "voxtral");
+        var older = OlderMartletReads(value);
+        using var document = JsonDocument.Parse(value);
+        var more = document.RootElement.TryGetProperty("MoreModels", out var list) ? list.GetArrayLength() : 0;
         return new
         {
             ok = again == value && merged is { Hears: true, Sees: false, Source: "a test request" } && ModelAbilities.Parse("{\"SchemaVersion\":2}") is null &&
-                ModelAbilities.Parse("not json") is null && Martlet.Core.Sync.SharedSettings.IsKey("model-abilities"),
+                ModelAbilities.Parse("not json") is null && Martlet.Core.Sync.SharedSettings.IsKey("model-abilities") && older == 2 && more == 2 &&
+                parsed?.Models.Count == 4 && parsed.Find(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "acme/gone")?.Retired is not null &&
+                parsed.Find("https://openrouter.ai/api/v1", "google/gemini-2.5-flash") is { Video: true, Tools: true },
             key = "model-abilities",
             characters = value.Length,
             roundTrip = again == value,
             keptBoth = merged is { Hears: true, Sees: false },
-            newerRefused = ModelAbilities.Parse("{\"SchemaVersion\":2}") is null
+            newerRefused = ModelAbilities.Parse("{\"SchemaVersion\":2}") is null,
+            // An older Martlet (before video, tools and retired) reads the routes that say hearing or seeing and skips the rest.
+            olderMartletReads = older,
+            keptApart = more
         };
+    }
+
+    // The shared value as Martlet read it before video, tools and retired were kept: each of Models must say hearing or seeing,
+    // and unknown fields are skipped. The number of routes it reads; -1 when it would refuse the whole value.
+    private static int OlderMartletReads(string json)
+    {
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<OlderAbilities>(json, new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, RespectNullableAnnotations = true, MaxDepth = 8
+            });
+            return parsed is { SchemaVersion: 1, Models: not null } && parsed.Models.Count <= ModelAbilities.MaximumModels &&
+                parsed.Models.All(m => m is { Origin.Length: > 0 and <= 2048, ModelId.Length: > 0 and <= 256, Source.Length: > 0 and <= 200 } &&
+                    (m.Hears is not null || m.Sees is not null))
+                ? parsed.Models.Count : -1;
+        }
+        catch (Exception error) when (error is JsonException or NotSupportedException) { return -1; }
+    }
+
+    private sealed record OlderAbilities
+    {
+        public int SchemaVersion { get; init; } = 1;
+        public IReadOnlyList<OlderAbility> Models { get; init; } = [];
+    }
+
+    private sealed record OlderAbility
+    {
+        public required string Origin { get; init; }
+        public required string ModelId { get; init; }
+        public bool? Hears { get; init; }
+        public bool? Sees { get; init; }
+        public required string Source { get; init; }
+        public required DateTimeOffset CheckedAt { get; init; }
     }
 
     // ---------- fixtures (model_lab uses them too) ----------
@@ -224,9 +315,26 @@ internal static class ModelAbilityCheck
     private static async Task<object> FixtureAsync(CancellationToken cancellation)
     {
         await using var openRouter = new Fixture(r => r.Path == "/api/v1/models"
-            ? (200, "{\"data\":[{\"id\":\"acme/omni\",\"context_length\":32768,\"architecture\":{\"input_modalities\":[\"text\",\"image\",\"audio\"]}}," +
-                "{\"id\":\"acme/sight\",\"context_length\":8192,\"architecture\":{\"input_modalities\":[\"text\",\"image\"]}}]}")
+            ? (200, "{\"data\":[{\"id\":\"acme/omni\",\"context_length\":32768,\"architecture\":{\"input_modalities\":[\"text\",\"image\",\"audio\",\"video\"]}," +
+                "\"supported_parameters\":[\"tools\",\"tool_choice\",\"temperature\"]}," +
+                "{\"id\":\"acme/sight\",\"context_length\":8192,\"architecture\":{\"input_modalities\":[\"text\",\"image\"]},\"supported_parameters\":[\"temperature\"]}]}")
             : NotFound);
+        // NVIDIA Build: its model list gives only IDs; models.md links each model's page (twice, as NVIDIA's does), and the page's
+        // header and Specifications say what it takes. A page for another publisher's model of the same name is skipped.
+        const string page = "---\ntitle: \"gemma-4-31b-it\"\npublisher: \"google\"\ntype: \"endpoint\"\n" +
+            "canonical: \"https://build.nvidia.com/google/gemma-4-31b-it\"\n---\n\n# Gemma 4 31B IT\n\n**Data Modality:** Text, Image\n\n" +
+            "## Specifications\n\n- **Context Length:** 262,144 tokens\n- **Input:** Text, Image, Video\n- **Output:** Text\n\n" +
+            "## Capabilities\n\n- **Function Calling:** Supported\n";
+        await using var nvidia = new Fixture(r => r.Path switch
+        {
+            "/v1/models" => (200, "{\"object\":\"list\",\"data\":[{\"id\":\"google/gemma-4-31b-it\",\"object\":\"model\"},{\"id\":\"acme/speech\",\"object\":\"model\"}]}"),
+            "/models.md" => (200, "# Models\n\n- [gemma-4-31b-it](/qc69jvmznzxy/gemma-4-31b-it.md) — Gemma 4.\n" +
+                "- [speech](/qc69jvmznzxy/speech.md) — A speech service.\n- [gemma-4-31b-it](/qc69jvmznzxy/gemma-4-31b-it.md) — again.\n"),
+            "/qc69jvmznzxy/gemma-4-31b-it.md" => (200, page),
+            "/qc69jvmznzxy/speech.md" => (200, "---\ntitle: \"speech\"\npublisher: \"acme\"\ncanonical: \"https://build.nvidia.com/acme/speech\"\n---\n" +
+                "## Specifications\n\n- **Input:** Audio\n"),
+            _ => NotFound
+        });
         await using var llama = new Fixture(r => r.Path switch
         {
             "/v1/models" => (200, "{\"object\":\"list\",\"data\":[{\"id\":\"model.gguf\",\"meta\":{\"n_ctx_train\":131072}}]," +
@@ -251,7 +359,11 @@ internal static class ModelAbilityCheck
             var model = document.RootElement.GetProperty("model").GetString();
             var heard = Encoding.UTF8.GetString(r.Body).Contains("\"input_audio\"", StringComparison.Ordinal);
             var saw = Encoding.UTF8.GetString(r.Body).Contains("\"image_url\"", StringComparison.Ordinal);
+            var offered = document.RootElement.TryGetProperty("tools", out var tools) && tools.ValueKind == JsonValueKind.Array && tools.GetArrayLength() > 0;
             string Reply(string text) => "{\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(text) + "}}]}";
+            string Call() => "{\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"call_1\"," +
+                "\"type\":\"function\",\"function\":{\"name\":\"" + ModelToolTest.ToolName + "\",\"arguments\":\"{\\\"word\\\":\\\"" + FixtureWord + "\\\"}\"}}]}," +
+                "\"finish_reason\":\"tool_calls\"}]}";
             return model switch
             {
                 "hears" => (200, Reply(heard ? "Pineapple." : "I didn't get a recording.")),
@@ -260,38 +372,55 @@ internal static class ModelAbilityCheck
                 "sees" => (200, Reply(saw ? "Pineapple." : "I didn't get a picture.")),
                 "drops-image" => (200, Reply("Sorry, I can only read text.")),
                 "refuses-image" => (400, "{\"error\":{\"message\":\"This model does not support image input.\",\"type\":\"invalid_request_error\"}}"),
+                "calls-tools" => (200, offered ? Call() : Reply("No tool was offered.")),
+                "words-only" => (200, Reply($"The word is {FixtureWord}.")),
+                "refuses-tools" => (400, "{\"error\":{\"message\":\"registry.ollama.ai/library/refuses-tools does not support tools\"}}"),
+                "gone" => (410, "{\"error\":{\"message\":\"This model reached its end of life.\"}}"),
                 "wrong-key" => (401, "{\"error\":{\"message\":\"Invalid API key.\"}}"),
                 _ => (404, "{\"error\":{\"message\":\"model not found\"}}")
             };
         });
 
         using var client = ModelContextProbe.CreateClient(loopback: true);
-        async Task<object> Context(string baseUrl, string model, string name)
+        async Task<object> Context(string baseUrl, string model, string name, Uri? pages = null)
         {
-            var report = await ModelContextProbe.ChatCompletionsAsync(client, baseUrl, model, null, name, cancellation);
-            return new { report.Reached, report.ContextTokens, report.Hears, report.Sees, report.AbilitySource };
+            var report = await ModelContextProbe.ChatCompletionsAsync(client, baseUrl, model, null, name, cancellation, pages);
+            return new { report.Reached, report.ContextTokens, report.Hears, report.Sees, report.Video, report.Tools, report.AbilitySource };
         }
         async Task<object> Ollama(string model)
         {
             var report = await ModelContextProbe.OllamaAsync(client, new Uri(ollama.Origin + "/"), model, load: false, cancellation);
-            return new { report.Reached, report.ModelMaximum, report.Hears, report.Sees, report.AbilitySource };
+            return new { report.Reached, report.ModelMaximum, report.Hears, report.Sees, report.Video, report.Tools, report.AbilitySource };
         }
         var clip = Tone();
         async Task<object> Test(string model)
         {
             var report = await ModelHearingTest.RunAsync(client, chat.Origin + "/v1", model, null, clip, FixtureWord, "the fixture", cancellation);
-            return new { report.Hears, report.Reached, report.Summary };
+            return new { report.Hears, report.Reached, report.Status, report.Summary };
+        }
+        async Task<object> Tools(string model)
+        {
+            var report = await ModelToolTest.RunAsync(client, chat.Origin + "/v1", model, null, FixtureWord, "the fixture", cancellation);
+            return new { report.Tools, report.Reached, report.Status, report.Reply, report.Summary };
         }
         var omni = await Context(openRouter.Origin + "/api/v1", "acme/omni", "the OpenRouter fixture");
         var sight = await Context(openRouter.Origin + "/api/v1", "acme/sight", "the OpenRouter fixture");
         var unlisted = await Context(openRouter.Origin + "/api/v1", "acme/unlisted", "the OpenRouter fixture");
         var llamaCpp = await Context(llama.Origin + "/v1", "model.gguf", "the llama.cpp fixture");
+        var nvidiaGemma = await Context(nvidia.Origin + "/v1", "google/gemma-4-31b-it", "the NVIDIA Build fixture", new Uri(nvidia.Origin + "/"));
+        var nvidiaService = await Context(nvidia.Origin + "/v1", "acme/speech", "the NVIDIA Build fixture", new Uri(nvidia.Origin + "/"));
         var gemma = await Ollama("gemma4:e2b");
         var qwen = await Ollama("qwen3:8b");
         var hears = await Test("hears");
         var drops = await Test("drops-audio");
         var refuses = await Test("refuses-audio");
         var key = await Test("wrong-key");
+        var goneHearing = await Test("gone");
+        var callsTools = await Tools("calls-tools");
+        var wordsOnly = await Tools("words-only");
+        var refusesTools = await Tools("refuses-tools");
+        var goneTools = await Tools("gone");
+        var keyTools = await Tools("wrong-key");
         // Test vision with the desktop's own picture of the word (drawn on the STA thread, as the desktop draws it).
         var picture = await WpfThread.RunAsync(() => VisionTestPicture.Render(FixtureWord));
         async Task<object> See(string model)
@@ -358,7 +487,36 @@ internal static class ModelAbilityCheck
             darkShare = Math.Round(dark / (double)(pixels.Width * pixels.Height), 3)
         };
         string Json(object value) => JsonSerializer.Serialize(value);
-        var ok = Json(omni).Contains("\"Hears\":true,\"Sees\":true", StringComparison.Ordinal) &&
+        Request? toolSent;
+        lock (chat.Requests) toolSent = chat.Requests.FirstOrDefault(r => Encoding.UTF8.GetString(r.Body).Contains("\"tools\"", StringComparison.Ordinal));
+        object? toolRequest = null;
+        if (toolSent is not null)
+        {
+            using var body = JsonDocument.Parse(toolSent.Body);
+            var offered = body.RootElement.GetProperty("tools");
+            toolRequest = new
+            {
+                tools = offered.GetArrayLength(),
+                name = offered[0].GetProperty("function").GetProperty("name").GetString(),
+                messages = body.RootElement.GetProperty("messages").GetArrayLength(),
+                stream = body.RootElement.GetProperty("stream").GetBoolean()
+            };
+        }
+        var routeFacts = Json(omni).Contains("\"Video\":true,\"Tools\":true", StringComparison.Ordinal) &&
+            Json(sight).Contains("\"Video\":false,\"Tools\":false", StringComparison.Ordinal) &&
+            Json(unlisted).Contains("\"Video\":null,\"Tools\":null", StringComparison.Ordinal) &&
+            Json(nvidiaGemma).Contains("\"ContextTokens\":262144,\"Hears\":false,\"Sees\":true,\"Video\":true,\"Tools\":true", StringComparison.Ordinal) &&
+            Json(nvidiaGemma).Contains("model page", StringComparison.Ordinal) &&
+            Json(nvidiaService).Contains("\"Hears\":null,\"Sees\":null,\"Video\":null,\"Tools\":null", StringComparison.Ordinal) &&
+            Json(gemma).Contains("\"Video\":false,\"Tools\":true", StringComparison.Ordinal) &&
+            Json(qwen).Contains("\"Video\":false,\"Tools\":true", StringComparison.Ordinal) &&
+            Json(goneHearing).Contains("\"Hears\":null,\"Reached\":true,\"Status\":410", StringComparison.Ordinal) &&
+            Json(callsTools).Contains("\"Tools\":true", StringComparison.Ordinal) && Json(wordsOnly).Contains("\"Tools\":false", StringComparison.Ordinal) &&
+            Json(refusesTools).Contains("\"Tools\":false", StringComparison.Ordinal) &&
+            Json(goneTools).Contains("\"Tools\":null,\"Reached\":true,\"Status\":410", StringComparison.Ordinal) &&
+            Json(keyTools).Contains("\"Tools\":null", StringComparison.Ordinal) &&
+            Json(toolRequest ?? "").Contains($"\"tools\":1,\"name\":\"{ModelToolTest.ToolName}\",\"messages\":1,\"stream\":false", StringComparison.Ordinal);
+        var ok = routeFacts && Json(omni).Contains("\"Hears\":true,\"Sees\":true", StringComparison.Ordinal) &&
             Json(sight).Contains("\"Hears\":false,\"Sees\":true", StringComparison.Ordinal) &&
             Json(unlisted).Contains("\"Hears\":null,\"Sees\":null", StringComparison.Ordinal) &&
             Json(llamaCpp).Contains("\"Hears\":true,\"Sees\":false", StringComparison.Ordinal) &&
@@ -376,16 +534,20 @@ internal static class ModelAbilityCheck
         return new
         {
             ok, note = "FIXTURE servers on 127.0.0.1, NOT the real services and NOT AI: the chat fixture is told the test word.",
-            openRouterOmni = omni, openRouterSight = sight, openRouterUnlisted = unlisted, llamaCpp, ollamaGemma4E2b = gemma, ollamaQwen3 = qwen,
-            testHears = hears, testDropsAudio = drops, testRefusesAudio = refuses, testWrongKey = key, testRequest = request,
+            routeFacts,
+            openRouterOmni = omni, openRouterSight = sight, openRouterUnlisted = unlisted, llamaCpp, nvidiaGemma, nvidiaService,
+            ollamaGemma4E2b = gemma, ollamaQwen3 = qwen,
+            testHears = hears, testDropsAudio = drops, testRefusesAudio = refuses, testWrongKey = key, testGone = goneHearing, testRequest = request,
             testSees = sees, testDropsImage = dropsImage, testRefusesImage = refusesImage, testWrongKeyVision = keyVision, visionRequest,
+            testCallsTools = callsTools, testWordsOnly = wordsOnly, testRefusesTools = refusesTools, testGoneTools = goneTools,
+            testWrongKeyTools = keyTools, toolRequest,
             picture = drawn
         };
     }
 
     // ---------- a real server on this PC ----------
 
-    private static async Task<object> RealAsync(string baseUrl, string modelId, bool test, bool testVision, CancellationToken cancellation)
+    private static async Task<object> RealAsync(string baseUrl, string modelId, bool test, bool testVision, bool testTools, CancellationToken cancellation)
     {
         using var client = ModelContextProbe.CreateClient(loopback: true);
         var started = System.Diagnostics.Stopwatch.StartNew();
@@ -407,18 +569,32 @@ internal static class ModelAbilityCheck
             var result = await ModelVisionTest.RunAsync(client, baseUrl, modelId, null, picture, word, "the server on this PC", cancellation);
             vision = new { word, pictureBytes = picture.ByteCount, result.Sees, result.Reply, result.Milliseconds, result.Summary };
         }
-        var found = report.Hears is null && report.Sees is null ? null : new ModelAbilities().With(new()
+        object? toolsTest = null;
+        if (testTools)
         {
-            Origin = baseUrl, ModelId = modelId, Hears = report.Hears, Sees = report.Sees, Source = report.AbilitySource ?? "metadata",
-            CheckedAt = DateTimeOffset.UtcNow
+            var word = ModelVisionTest.Words[Random.Shared.Next(ModelVisionTest.Words.Count)];
+            var result = await ModelToolTest.RunAsync(client, baseUrl, modelId, null, word, "the server on this PC", cancellation);
+            toolsTest = new { word, result.Tools, result.Reply, result.Status, result.Milliseconds, result.Summary };
+        }
+        var found = !report.AbilitiesKnown ? null : new ModelAbilities().With(new()
+        {
+            Origin = baseUrl, ModelId = modelId, Hears = report.Hears, Sees = report.Sees, Video = report.Video, Tools = report.Tools,
+            Source = report.AbilitySource ?? "metadata", CheckedAt = DateTimeOffset.UtcNow
         });
         return new
         {
-            baseUrl, modelId, metadata = new { report.Reached, report.ContextTokens, report.Hears, report.Sees, report.AbilitySource, report.Summary, ms = metadataMs },
+            baseUrl, modelId, metadata = new
+            {
+                report.Reached, report.ContextTokens, report.Hears, report.Sees, report.Video, report.Tools, report.AbilitySource, report.Summary,
+                ms = metadataMs
+            },
             routeHearing = HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, baseUrl, modelId, found).ToString(),
             routeVision = VisionModelCatalog.ForRoute(baseUrl, modelId, found).ToString(),
+            routeVideo = RouteAbilities.Video(baseUrl, modelId, found).ToString(),
+            routeTools = RouteAbilities.Tools(SetupRouteType.ChatCompletions, baseUrl, modelId, found).ToString(),
             hearingTest = hearing,
-            visionTest = vision
+            visionTest = vision,
+            toolsTest
         };
     }
 

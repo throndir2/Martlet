@@ -823,12 +823,17 @@ Hearing) and Listening's `ListeningOpenHearing` are passive.
 test models with no real provider (NOT AI). `start` returns `baseUrl` (type it
 as a *Custom OpenAI-compatible server*'s base URL, or as Thinking's *Another
 address on this PC*). `/v1/models` lists `lab/sees` (text and pictures),
-`lab/hears` (text and recordings), `lab/omni` (all three) and `lab/text` (text
-only) with their input modalities, as OpenRouter lists them. Chat completions
+`lab/hears` (text and recordings), `lab/omni` (text, pictures, recordings and
+video), `lab/text` (text only), `lab/notools` (text only, no tool calls) and
+`lab/gone` (a retired model) with their input modalities and supported
+parameters (`tools`), as OpenRouter lists them. Chat completions
 refuse a picture or a recording that a lab model doesn't take (error 400),
-read Test vision's word by comparing the picture with this PC's own drawings
-of the test words, read Test hearing's word with Windows speech recognition
-limited to the test words (when this PC has an English recognizer), and answer
+`lab/notools` refuses a request with tools (error 400), `lab/gone` answers
+every chat completion with HTTP 410 Gone, and the tool models call Test tools'
+made-up tool; the lab
+reads Test vision's word by comparing the picture with this PC's own drawings
+of the test words, reads Test hearing's word with Windows speech recognition
+limited to the test words (when this PC has an English recognizer), and answers
 anything else with fixed text, streamed when asked. `status` lists the recent
 requests by model, the kinds of parts they carried and what the lab answered,
 never their content. It ends with the MCP server.
@@ -4120,23 +4125,34 @@ transcripts and no recordings, the refusal to be answered from the words and the
 quick check to be right on every fixture.
 Nothing leaves this PC and no credentials are read.
 
-`model_ability_check` shows what models were found to hear (recorded
-audio) and see (pictures), and rehearses how Martlet finds out (optional
+`model_ability_check` shows what models were found to take on each route (a
+route is one server and one model ID): hearing (recorded audio), seeing
+(pictures), video itself (apart from seeing frames), tool calls and whether the
+server retired the model. It also rehearses how Martlet finds out (optional
 absolute `dataDirectory`, default the current user's). `saved` lists
 `model-abilities.json` (`file` `none` or `loaded`, `count`, and per model
-`Origin`, `ModelId`, `Hears`, `Sees`, `Source` and `CheckedAt`); the same list
+`Origin`, `ModelId`, `Hears`, `Sees`, `Video`, `Tools`, `Retired` (the date the
+route answered HTTP 410 Gone), `Source` and `CheckedAt` (the latest finding),
+and `sources`: each fact's own `Source` and `At`). The same list
 travels to the owner's other computers as the `model-abilities` shared setting
 (`settings_sync_status` shows its value). `fixture` runs the production
 detection against servers on 127.0.0.1 shaped like OpenRouter's model list
-(`architecture.input_modalities`: `openRouterOmni` hears and sees,
-`openRouterSight` only sees, `openRouterUnlisted` unknown), llama.cpp
-(`/props` `modalities`: `llamaCpp` hears, doesn't see) and Ollama
-(`/api/show` `capabilities`: `ollamaGemma4E2b` hears and sees, `ollamaQwen3`
-neither), each with `Hears`, `Sees` and `AbilitySource`. Then Test hearing
+(`architecture.input_modalities` and `supported_parameters`: `openRouterOmni`
+hears, sees, takes video and calls tools, `openRouterSight` only sees,
+`openRouterUnlisted` unknown), llama.cpp
+(`/props` `modalities`: `llamaCpp` hears, doesn't see), Ollama
+(`/api/show` `capabilities`: `ollamaGemma4E2b` hears, sees and calls tools,
+`ollamaQwen3` only calls tools; Ollama takes no video) and NVIDIA Build (a
+model list with IDs only, then `models.md` and the model's page:
+`nvidiaGemma` sees, takes video and calls tools, with its context, from the
+page's Specifications; `nvidiaService`, a page that isn't a hosted chat
+model, says nothing), each with `Hears`, `Sees`, `Video`, `Tools` and
+`AbilitySource`. Then Test hearing
 (`ModelHearingTest`) against a fixture Chat Completions endpoint that answers
 the test word only when the request carries the recording (it is told the
 word: NOT AI): `testHears` true, `testDropsAudio` (answers something else) and
-`testRefusesAudio` (error 400 about audio) false, `testWrongKey` (401) null;
+`testRefusesAudio` (error 400 about audio) false, `testWrongKey` (401) null,
+`testGone` (410) null with `Status` 410;
 `testRequest` checks the request: `text` and `input_audio` parts, a valid WAV,
 not streamed, Thinking steps off and the word only in the recording
 (`wordInRequestText` false). Test vision (`ModelVisionTest`) runs the same way
@@ -4146,27 +4162,46 @@ STA thread): `testSees` true, `testDropsImage` and `testRefusesImage` false,
 parts, a PNG data URL that is the drawn picture (`samePicture`), not streamed,
 Thinking steps off and the word only in the picture; `picture` is the drawing
 (640 x 240 PNG, its bytes and `darkShare`, the part the letters cover).
-`decisions` are the hearing and vision decisions
+Test tools (`ModelToolTest`, one made-up tool `say_test_word` and a request to
+call it with a test word): `testCallsTools` true, `testWordsOnly` (answers in
+words) and `testRefusesTools` (error 400 about tools) false, `testGoneTools`
+(410) and `testWrongKeyTools` (401) null; `toolRequest` checks one tool, one
+message and no streaming. `routeFacts` needs all the video, tools, NVIDIA and
+410 rows.
+`decisions` are the decisions
 replies use (Gemma 4 E2B in Ollama on this PC hears by name, Gemma 4 12B only
 once Ollama says so, OpenRouter's grok-4.3 doesn't when its list says so,
 Thinking in Ollama on a paired computer is decided like any other model:
 `hostOllamaGemma4E2b` and `hostOllamaGemma4E4bAlias` hear by name and
 `hostOllamaRefusedFound` doesn't after a refused recording; OpenAI's Responses
-route never, a retired model never). `hostRoute` checks whether a paired
+route never, a retired model never). Video and tools go only by what was found,
+never by a name (`gemma4VideoFound`, `qwen3ToolsFound`, `noToolsFound`,
+`unknownVideo` and `unknownTools` Unknown; OpenAI's route calls tools, a
+paired computer's gateway doesn't). A route found retired (HTTP 410) neither
+sees nor hears (`goneSees`, `goneHears`, `goneRetired` with its date and
+source) until it answers again (`answeredRetired` false, `answeredSees`
+Supported); Martlet's built-in list of retired models stays the fallback
+(`builtInRetired`). A test's answer stays when the server's metadata says
+otherwise later (`testKeptOverMetadata`), and a later test replaces it
+(`laterTestReplaces`). `hostRoute` checks whether a paired
 computer's Thinking route takes a recording (`HostRoute.CarriesAudio`): a
 route of this version (`requestBytes`, room for a 30-second recording) and the
 Deep thinking route do, an older host's route (`olderHost`, room for a screen
 image only, so it gets the transcript and should be updated) and a voice route
 don't. `shared` checks the shared value's round trip (`roundTrip`, `keptBoth`: a list
 that says only what a model sees doesn't erase a test's answer,
-`newerRefused`). Each has `ok`. With `baseUrl` (an `http://` server on this PC
+`newerRefused`), and that a Martlet from before video, tools and retired still
+reads it (`olderMartletReads`: the routes that say hearing or seeing; the
+routes with only the new facts go in `MoreModels`, `keptApart`). Each has `ok`. With `baseUrl` (an `http://` server on this PC
 only, for example `http://127.0.0.1:11434/v1` or a llama.cpp server) and
 `modelId`, `real.metadata` asks that real server what the model takes
-(`routeHearing` and `routeVision` are the decisions it gives), `test: true`
+(`routeHearing`, `routeVision`, `routeVideo` and `routeTools` are the decisions it gives), `test: true`
 also sends it the real Test hearing request (`real.hearingTest`: the `word`,
 `Hears`, `Reply` and `Milliseconds`), a word said by an English Windows voice,
-and `testVision: true` the real Test vision request (`real.visionTest`: the
-`word`, `Sees`, `Reply` and `Milliseconds`), a word drawn on this PC; nothing
+`testVision: true` the real Test vision request (`real.visionTest`: the
+`word`, `Sees`, `Reply` and `Milliseconds`), a word drawn on this PC, and
+`testTools: true` the real Test tools request (`real.toolsTest`: the `word`,
+`Tools`, `Reply`, `Status` and `Milliseconds`); nothing
 leaves this PC, no credentials are read and nothing is saved. On Companion ›
 Listening, `TalkHearVoiceTestStatus` reads what Test hearing does (and whether
 it stays on this PC) or the last result (the model's one-word answer and how
@@ -4178,6 +4213,41 @@ gets it through that computer's paired, pinned gateway), so it needs
 Image model and Audio model cards' `ImageModelTest` and `AudioModelTest` do the
 same for the model that takes pictures and for an audio model of its own
 ([Image and audio models](#image-and-audio-models)).
+
+On Companion › Thinking's Now card, `ThinkingAbilities` reads what Martlet
+knows the Thinking model takes on its route, each with where it came from and
+when (*What Martlet knows about lab/sees: hears recordings: no (the server on
+this PC's model list, 10 Oct); sees pictures: yes (...); takes video: no
+(...); calls tools: yes (found by a test request, 10 Oct).*), hearing and seeing
+by its name when nothing was found, the tests that find out what isn't known,
+or that its server retired it (*127.0.0.1 retired lab/gone (an HTTP 410 Gone
+answer, 10 Oct). Choose another model in Companion › Thinking.*).
+`ThinkingToolsTestStatus` reads what Test tools sends or what it last found.
+`ThinkingToolsTest` (shown for an OpenAI-compatible endpoint, Ollama on this PC
+included) sends the model one request with a made-up tool (a cloud model asks
+first), so it needs `--allow-ui-effects`. Test hearing, Test vision and Test
+tools keep what they find in `model-abilities.json`; an HTTP 410 answer marks
+the model retired on that route (Home shows `HealthIssue-thinking-retired`),
+and any answer, or choosing the model again, clears it. A reply or an image or
+audio model's job that gets HTTP 410 marks it retired the same way, after the
+request ended.
+
+```powershell
+# Thinking on the lab's lab/text: video known from its model list, tools not known; Test tools finds out.
+.\scripts\Invoke-MartletMcp.ps1 -Desktop -AllowUiEffects -Calls '[
+  {"name":"model_lab","arguments":{"action":"start","port":52819}},
+  {"name":"ui_click","arguments":{"id":"TourSkip"}},
+  {"name":"ui_click","arguments":{"id":"NavCompanion"}},
+  {"name":"ui_click","arguments":{"id":"CompanionTab-Thinking"}},
+  {"name":"ui_click","arguments":{"id":"Picker-LocalApp-Address"},"waitMs":1500},
+  {"name":"ui_set_text","arguments":{"id":"LocalServerAddress","text":"http://127.0.0.1:52819/v1"}},
+  {"name":"ui_click","arguments":{"id":"LocalServerFind"},"waitMs":1500},
+  {"name":"ui_set_text","arguments":{"id":"LocalServerModel","text":"lab/text"}},
+  {"name":"ui_click","arguments":{"id":"LocalServerUse"},"waitMs":2000},
+  {"name":"ui_snapshot","arguments":{"idPrefix":"Thinking"},"until":"calls tools: not known"},
+  {"name":"ui_click","arguments":{"id":"ThinkingToolsTest"}},
+  {"name":"ui_snapshot","arguments":{"idPrefix":"Thinking"},"until":"found by a test request"}]'
+```
 
 `local_model_facts` says what an open-weight model needs to run locally
 ([Resource footprints](RESOURCE_FOOTPRINTS.md#estimating-a-model-martlet-doesnt-list),
@@ -5337,6 +5407,12 @@ benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
 `RecommendedSetupBar-<n>-<vram|ram|cpu>` (its `help` is the bar's hover
 breakdown, as for `DeviceResource-<key>` on Devices), `RecommendedSetupJob-<n>`,
+`RecommendedSetupSituation-<i>` (the title of one of the three plans:
+*Normal*, *While gaming* or *Host away*) and `RecommendedSetupSituation-<i>-<j>`
+(where each live job goes in that plan, such as *On DESK: Thinking moves to
+gpu-box (qwen3:8b), then NVIDIA Build, then DESK's own model ... It comes back
+when the game ends.*; `recommended_setup_status` returns the same plans in
+`situations`),
 `RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
 `RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
 `RecommendedSetupSecret-<n>` (the label only; the key box `SetupSecretInput-<n>`
@@ -5500,6 +5576,58 @@ less: gpu-box isn't answering. It hasn't answered for 2 minutes. ...") and
 `PresenceAwayMinutes` and `PresenceAwayStatus`. Choosing another time with
 `ui_select` saves `node-presence.txt`, so it needs `--allow-ui-effects`. The
 back notice's Dismiss (`HealthOpen-presence-back-<hostId>-dismiss`) is passive.
+
+`situation_status` shows the situation a companion PC is in
+([Three plans](RECOMMENDED_SETUPS.md#three-plans-normal-while-gaming-and-host-away);
+optional absolute `dataDirectory`, default the current user's). It reads
+`situation.json`, which the desktop writes when it starts on a companion PC
+and when the situation changes. It gives `report` (`loaded` or `none`),
+`updatedAt`, `situation` (`Normal`, `Gaming` or `HostAway`) and its `title`,
+`normal` (where live Thinking runs normally), `now`, `nowKind` (`Host`,
+`Hosted` or `ThisPc`) and `nowHost` (where it runs now; null in the Normal
+plan), the whole `order`, `why`, `applied` (the conversation uses the moved
+route from its next reply), `playsGames`, `game`, `away` (the hosts that went
+missing), `backupAllowed`, `online`, `card` (while gaming, the graphics card
+note, such as *2.4 GB free of 12.0 GB: gemma4:e2b stays loaded, so the change
+back is quick.*) and `simulated` (FIXTURE). `rules` gives the game look (every
+3 seconds), the game hold (90 seconds), the host missing and back times (30
+seconds), the short-of-memory limit (1 GB) and the order. Host IDs, model and
+provider names and a game's name only.
+
+`situation_check` rehearses the production rules (`LiveSituations`,
+`SituationRoutes`, `GameWatch`, `SituationPlans`) on FIXTURE facts, apps and
+computers, **NOT a real game, host or model**. Its steps: Normal with no game;
+a game on a PC used for games moves live Thinking to a host that answers, then
+to the hosted backup when the host is away, then keeps this PC's own model when
+online services are *Never*; a PC not used for games and Thinking on a host
+move nothing; the game ends and live Thinking comes back; a host that is away
+moves live Thinking to another host, the hosted backup, then this PC's own
+model, or waits when nothing else can think; the host answers again; the card
+is short of memory only below 1 GB free; the moved routes are valid, consented,
+the same each time and keep *If Thinking fails*' key scope; the game watch
+finds ELDEN RING from a Steam library, keeps it 60 seconds after a switch to
+the browser and ends it after 90 seconds; and Recommended setup's three plans
+on a FIXTURE network. `ok` is true when every step passed.
+
+On the desktop, Companion › Thinking's *Now* card reads `ThinkingSituationNow`
+(*Situation: While gaming. A game (ELDEN RING) runs on this PC, so live
+Thinking leaves its graphics card for gpu-box (qwen3:8b). ...*). To drive it
+without a game or a host that goes away, set `MARTLET_SIMULATE_SITUATION`
+before you launch the desktop (FIXTURE): `1` uses this PC's own setup;
+`gaming` (live Thinking on this PC's gemma4:e2b, gpu-box with qwen3:8b, NVIDIA
+Build as the backup) and `host` (live Thinking on gpu-box, desk-host with
+gemma4:e4b) use made-up computers, so their decisions only show and the
+conversation keeps its route. Add `,game` or `,away` to start that way.
+Companion › Thinking then shows `SituationSimulateGame` (*Simulate a game*,
+*End the simulated game*) and `SituationSimulateAway` (*Simulate the Thinking
+host away*, *The simulated host answers again*). Both are safe clicks: they
+look at no real game or host and save nothing. `situation_status` then reads
+`simulated: true`, and `logs_tail` `contains` `Situations` gives each change.
+
+```powershell
+$env:MARTLET_SIMULATE_SITUATION = 'gaming'
+.\scripts\Invoke-MartletMcp.ps1 -Desktop -Calls '[{"name":"ui_click","arguments":{"id":"TourSkip"}},{"name":"ui_click","arguments":{"id":"NavCompanion"}},{"name":"ui_click","arguments":{"id":"CompanionTab-Thinking"},"waitMs":1500},{"name":"ui_click","arguments":{"id":"SituationSimulateGame"},"waitMs":1500},{"name":"ui_snapshot","arguments":{"idPrefix":"ThinkingSituation"}},{"name":"situation_status"}]'
+```
 
 `helper_jobs_status` (optional absolute `dataDirectory`, default the current
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
@@ -9017,7 +9145,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

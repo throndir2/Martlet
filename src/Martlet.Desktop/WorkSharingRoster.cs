@@ -91,12 +91,13 @@ internal static partial class WorkSharingRoster
         // in the owner's order. The other pooled areas route their own lists.
         if (PoolAreas.Find(job) is { } area && (area == PoolAreas.Speaking || area == PoolAreas.Listening || area == PoolAreas.Thinking) &&
             Pool(directory, area) is { } list)
-            return [.. PoolRouting.Stops(area, list, Device, planned, own, runs.Keys.ToHashSet(StringComparer.Ordinal), cloud)
-                .Select(stop => stop.HostId is { } id ? Place(id) : (null, null, stop.Member))];
+            return LiveSituation.Order([.. PoolRouting.Stops(area, list, Device, planned, own, runs.Keys.ToHashSet(StringComparer.Ordinal), cloud)
+                .Select(stop => stop.HostId is { } id ? Place(id) : (null, null, stop.Member))], p => p.Host?.HostId, own);
         var places = runs.Keys.Select(id => new WorkPlace(id, id == own,
             plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == id))).ToArray();
         var order = WorkSharing.Order(Settings(directory), job, Device, planned, places);
-        return [.. order.Select(Place)];
+        // A computer that doesn't answer now goes last, and so does this PC's own host service while a game runs here (Situations).
+        return LiveSituation.Order([.. order.Select(Place)], p => p.Host?.HostId, own);
     }
 
     internal static IReadOnlyList<PairedHost> Hosts(string directory) => Cached(Path.Combine(directory, HostRegistry.FileName), () =>

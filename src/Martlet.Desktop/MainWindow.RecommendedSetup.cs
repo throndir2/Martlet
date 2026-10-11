@@ -133,7 +133,10 @@ public partial class MainWindow
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
     {
-        var review = RecommendedSetupReview.From(recommendation, build) with { UseServed = UseServedModels };
+        var review = RecommendedSetupReview.From(recommendation, build) with
+        {
+            UseServed = UseServedModels, Situations = SituationPlansFor(build, recommendation)
+        };
         var window = new RecommendedSetupWindow(review, RecommendedPrepare(recommendation, build.Names), RecommendedApply(recommendation));
         if (IsVisible) window.Owner = this;
         window.Declined += DeclineRecommendedSetup;

@@ -2709,15 +2709,23 @@ one saved before this (version 3 or older) with `false` counts as never chosen,
 since off was only the old default. Shared with your other computers: an older
 Martlet's off is likewise taken as never chosen.
 
-Martlet finds out what a model takes instead of guessing from its name:
+Martlet finds out what a model takes instead of guessing from its name. It
+records, for each **route** (a server and a model ID), whether the model hears
+recordings, sees pictures, takes **video** itself (a video part, apart from
+seeing frames as pictures; Martlet sends no video yet) and calls **tools**, and
+whether the server **retired** it. Each fact keeps its own source and date:
 
 - **From the server, automatically.** Choosing, testing or checking a Thinking
-  model asks its server for the model's metadata (the same request as the
-  context check, no conversation content): OpenRouter's model list
-  (`architecture.input_modalities`), Ollama's `/api/show` (`capabilities`:
-  `audio`, `vision`), llama.cpp's `/props` (`modalities`), LM Studio's model
-  type or a `capabilities` list. Hosted APIs that don't publish this (OpenAI,
-  Gemini, NVIDIA Build) keep the name-based guess.
+  model (or an image or audio model) asks its server for the model's metadata
+  (the same request as the context check, no conversation content):
+  OpenRouter's model list (`architecture.input_modalities`: audio, image,
+  video; `supported_parameters`: `tools`), Ollama's `/api/show`
+  (`capabilities`: `audio`, `vision`, `tools`; Ollama takes no video),
+  llama.cpp's `/props` (`modalities`), LM Studio's model type and `tool_use`, or
+  a `capabilities` list. NVIDIA Build's model list gives only IDs, so Martlet
+  reads the model's page on build.nvidia.com (`models.md` links it; no key
+  goes there): its Specifications' inputs, its function calling and its
+  context. OpenAI's models all call tools; Gemini keeps the name-based guess.
 - **Test hearing** (Companion › Listening, under the switch) sends the model one
   short recording of a random word said by Windows speech (never your voice)
   and asks which word it heard, with Thinking steps off. Saying the word means
@@ -2725,17 +2733,40 @@ Martlet finds out what a model takes instead of guessing from its name:
   doesn't. On this PC it stays local; a cloud model asks first, since it is one
   small request with your key. Ollama on one of your computers gets the test
   through that computer's paired, pinned connection, with no question.
+- **Test vision** (Companion › Vision) does the same with a picture of a word
+  drawn on this PC, never your screen.
+- **Test tools** (Companion › Thinking, under what Martlet knows about the
+  model) sends the model one made-up tool and asks it to call the tool with a
+  test word, never anything you said or typed. Calling it means it calls
+  tools; answering in words, or the server refusing the tool, means it
+  doesn't.
 - **A refused recording.** When a model rejects a reply's recording, Martlet
   asks again with the transcript only and remembers that the model can't hear.
+- **A retired model.** When a route answers HTTP 410 Gone (a reply, a test or
+  an image or audio model's job), Martlet remembers the model as retired on
+  that route, with the date, after the request ended. Companion and Home say
+  so and name a model to choose. A later answer from that route, or choosing
+  the model again, clears it. Martlet's built-in list of NVIDIA's retired
+  models is only the fallback. An HTTP 404 doesn't count: Ollama answers 404
+  for a model that isn't downloaded yet.
 
-What it finds is kept in `model-abilities.json` (the model, the server, whether
-it hears and sees, where that came from and when) and shared with your other
+A Martlet test (a test request, a refused input or an HTTP 410) outranks the
+server's metadata, and both outrank the name: metadata found later doesn't
+replace a test's answer; another test does ([Model
+catalog](MODEL_CATALOG.md#what-to-do-about-conflicts-proposed)). A model
+Martlet found unable to call tools isn't offered them in replies or Thinking
+pool jobs, so a reply doesn't wait for a refused request first.
+
+What it finds is kept in `model-abilities.json` (the model, the server, each
+fact with where it came from and when) and shared with your other
 computers as the `model-abilities` setting ([shared
 settings](CLUSTER.md#one-martlet-on-every-computer)), so a model is found out
-once. A conversation uses it at once. The Listening and Vision pages say what is
-known and where it came from (*This Thinking model can hear (Ollama on this PC
-says so, checked 3 Oct)*). MCP `model_ability_check` and `hearing_check` show it
-([MCP](MCP.md)).
+once. A Martlet from before video, tools and retired still reads the routes that
+say hearing or seeing. A conversation uses it at once. The Listening and Vision
+pages say what is known and where it came from (*This Thinking model can hear
+(Ollama on this PC says so, checked 3 Oct)*), and Companion › Thinking says all
+of it and which test finds out what isn't known. MCP `model_ability_check` and
+`hearing_check` show it ([MCP](MCP.md)).
 
 **An audio model of its own.** Companion › Listening › Audio model can give
 recordings to a model of their own instead of Thinking, for example a small

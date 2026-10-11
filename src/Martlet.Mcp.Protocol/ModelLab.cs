@@ -10,18 +10,24 @@ namespace Martlet.Mcp;
 /// <summary>model_lab: a live OpenAI-compatible fixture endpoint on 127.0.0.1 for the desktop on a disposable data directory, so
 /// Companion › Vision › Image model, Companion › Listening › Audio model and Thinking can choose and test models without a real
 /// provider (NOT AI). <c>/v1/models</c> lists <c>lab/sees</c> (text and pictures), <c>lab/hears</c> (text and recordings),
-/// <c>lab/omni</c> (all three) and <c>lab/text</c> (text only) with their input modalities, as OpenRouter lists them. Chat
-/// completions refuse a picture or a recording that a lab model doesn't take (error 400, as a real server does), read Test
+/// <c>lab/omni</c> (text, pictures, recordings and video), <c>lab/text</c> (text only), <c>lab/notools</c> (text only, no tool
+/// calls) and <c>lab/gone</c> (retired) with their input modalities and supported parameters, as OpenRouter lists them. Chat
+/// completions refuse a picture or a recording that a lab model doesn't take (error 400, as a real server does), lab/notools refuses
+/// tools (error 400), lab/gone answers HTTP 410 Gone, the tool models call Test tools' made-up tool, read Test
 /// vision's word by comparing the picture with this PC's own drawings of the test words, read Test hearing's word with Windows
 /// speech recognition limited to the test words (when this PC has an English recognizer), and answer anything else with fixed
 /// text, streamed when asked. Its status counts the requests by model and the kinds of parts they carried, never their content.
 /// It ends with this server.</summary>
 internal static class ModelLab
 {
-    private sealed record LabModel(string Id, bool Sees, bool Hears);
+    // Tools: true lists "tools" in supported_parameters and calls Test tools' tool; false lists no "tools" and refuses a request
+    // that carries tools (error 400); null lists no supported_parameters and answers in words. Gone answers every chat
+    // completion with HTTP 410, as NVIDIA Build does for a retired model.
+    private sealed record LabModel(string Id, bool Sees, bool Hears, bool Video = false, bool? Tools = null, bool Gone = false);
 
     private static readonly LabModel[] Models =
-        [new("lab/sees", true, false), new("lab/hears", false, true), new("lab/omni", true, true), new("lab/text", false, false)];
+        [new("lab/sees", true, false, Tools: true), new("lab/hears", false, true, Tools: true), new("lab/omni", true, true, Video: true, Tools: true),
+         new("lab/text", false, false), new("lab/notools", false, false, Tools: false), new("lab/gone", true, false, Tools: true, Gone: true)];
 
     private static readonly object Gate = new();
     private static readonly List<object> Seen = [];
@@ -62,7 +68,7 @@ internal static class ModelLab
             {
                 running = server is not null,
                 baseUrl = server is null ? null : server.Origin + "/v1",
-                models = Models.Select(m => new { id = m.Id, sees = m.Sees, hears = m.Hears }).ToArray(),
+                models = Models.Select(m => new { id = m.Id, sees = m.Sees, hears = m.Hears, video = m.Video, tools = m.Tools, gone = m.Gone }).ToArray(),
                 requests = Seen.Count,
                 recent = Seen.TakeLast(20).ToArray(),
                 note = "FIXTURE endpoint on 127.0.0.1, NOT AI: it reads Test vision's word by comparing pictures, Test hearing's with Windows " +
@@ -81,13 +87,14 @@ internal static class ModelLab
                 data = Models.Select(m => new
                 {
                     id = m.Id, @object = "model", context_length = 32768,
-                    architecture = new { input_modalities = Modalities(m) }
+                    architecture = new { input_modalities = Modalities(m) },
+                    supported_parameters = m.Tools switch { true => new[] { "tools", "temperature" }, false => ["temperature"], _ => null }
                 })
-            }));
+            }, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull }));
         }
         if (request.Path != "/v1/chat/completions") return (404, "{\"error\":\"not found\"}");
-        string? id, picture = null, recording = null;
-        bool stream;
+        string? id, picture = null, recording = null, testWord = null;
+        bool stream, tools = false;
         var parts = new List<string>();
         try
         {
@@ -95,6 +102,18 @@ internal static class ModelLab
             var root = document.RootElement;
             id = root.TryGetProperty("model", out var model) ? model.GetString() : null;
             stream = root.TryGetProperty("stream", out var streamed) && streamed.ValueKind == JsonValueKind.True;
+            if (root.TryGetProperty("tools", out var offered) && offered.ValueKind == JsonValueKind.Array && offered.GetArrayLength() > 0)
+            {
+                tools = true;
+                parts.Add("tools");
+                if (offered.EnumerateArray().Any(t => t.TryGetProperty("function", out var f) && f.TryGetProperty("name", out var n) &&
+                        n.GetString() == ModelToolTest.ToolName))
+                {
+                    var asked = string.Concat(root.GetProperty("messages").EnumerateArray()
+                        .Select(m => m.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : ""));
+                    testWord = ModelVisionTest.Words.FirstOrDefault(w => asked.Contains($"\"{w}\"", StringComparison.Ordinal)) ?? "word";
+                }
+            }
             foreach (var message in root.GetProperty("messages").EnumerateArray())
                 if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
                     foreach (var part in content.EnumerateArray())
@@ -117,6 +136,41 @@ internal static class ModelLab
         {
             Note(request.Path, id, kinds, "doesn't have that model");
             return (404, "{\"error\":{\"message\":\"model not found\"}}");
+        }
+        if (lab.Gone)
+        {
+            Note(request.Path, id, kinds, "answered 410 Gone");
+            return (410, "{\"error\":{\"message\":\"This model reached its end of life and is no longer available.\"}}");
+        }
+        if (tools && lab.Tools == false)
+        {
+            Note(request.Path, id, kinds, "refused the tools");
+            return (400, "{\"error\":{\"message\":\"This model does not support tools.\",\"type\":\"invalid_request_error\"}}");
+        }
+        if (testWord is not null && lab.Tools == true && !stream)
+        {
+            Note(request.Path, id, kinds, "called the test tool");
+            return (200, JsonSerializer.Serialize(new
+            {
+                id = "lab", @object = "chat.completion", model = id,
+                choices = new[]
+                {
+                    new
+                    {
+                        index = 0, finish_reason = "tool_calls",
+                        message = new
+                        {
+                            role = "assistant", content = (string?)null,
+                            tool_calls = new[]
+                            {
+                                new { id = "call_lab", type = "function",
+                                    function = new { name = ModelToolTest.ToolName, arguments = JsonSerializer.Serialize(new { word = testWord }) } }
+                            }
+                        }
+                    }
+                },
+                usage = new { prompt_tokens = 16, completion_tokens = 8, total_tokens = 24 }
+            }));
         }
         if (picture is not null && !lab.Sees)
         {
@@ -147,6 +201,7 @@ internal static class ModelLab
         List<string> inputs = ["text"];
         if (model.Sees) inputs.Add("image");
         if (model.Hears) inputs.Add("audio");
+        if (model.Video) inputs.Add("video");
         return [.. inputs];
     }
 

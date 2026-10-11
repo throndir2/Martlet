@@ -10,9 +10,11 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Companion › Thinking now says what your Thinking model takes: whether it hears, sees, takes video and calls tools, each with where Martlet found it out and when. **Test tools** checks whether a model calls tools with one made-up tool, and Martlet now reads this from OpenRouter, Ollama, LM Studio, llama.cpp and NVIDIA Build's model pages. A model that can't call tools isn't offered them, and a model its server retired (HTTP 410) is remembered as retired until it answers again or you choose it again. ([#764](https://github.com/throndir2/Martlet/pull/764))
 - The welcome tour now asks three quick questions: whether you play games on this PC, whether Martlet may use free online services, and whether quick or smarter replies matter more. Martlet plans your setup with the answers, and you can change them, plus models that hear you and how much of each host's graphics card to use, under **Your preferences** in Recommended setup or in Settings. ([#762](https://github.com/throndir2/Martlet/pull/762))
 - Your AI assistant can now set Martlet up for you. Martlet's own MCP server tells assistants like GitHub Copilot, Claude and VS Code what it can do, and lets them make characters (from a description or a SillyTavern or Chub card), change, switch and delete them, and change Martlet's settings; a running Martlet follows the changes at once. `scripts\Register-MartletMcp.ps1` connects your assistants. ([#761](https://github.com/throndir2/Martlet/pull/761))
 - Martlet now keeps its own list of AI models: what each one takes in (text, pictures, sound and video), whether it can run on your own computers and how much memory it needs there, which services offer it free, and how smart it is. It comes with Martlet and updates itself from public model lists once a day, never while you're talking. ([#763](https://github.com/throndir2/Martlet/pull/763))
+- While you play a game on a PC you use for games, Martlet moves its live thinking off that PC's graphics card to one of your hosts (or your backup service, or keeps a small local model), and when a host stops answering it uses another place; it switches back by itself when the game ends or the host returns, and Recommended setup now shows these three plans. ([#765](https://github.com/throndir2/Martlet/pull/765))
 
 ### Changed
 

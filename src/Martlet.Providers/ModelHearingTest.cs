@@ -10,7 +10,11 @@ namespace Martlet.Providers;
 /// it answered something else or its server refused the recording, null when the test couldn't tell (a key, a missing model,
 /// a busy or unreachable server). <see cref="Summary"/> says it in words, naming the model but never a key.
 /// <see cref="Reply"/> is what the model answered (at most 80 characters), <see cref="Milliseconds"/> how long it took.</summary>
-public sealed record HearingTestReport(bool? Hears, string Summary, bool Reached, string? Reply = null, long? Milliseconds = null);
+public sealed record HearingTestReport(bool? Hears, string Summary, bool Reached, string? Reply = null, long? Milliseconds = null)
+{
+    /// <summary>The server's HTTP status (2xx: the model answered; 410: the server retired it); null when it didn't answer.</summary>
+    public int? Status { get; init; }
+}
 
 /// <summary>Companion › Listening › Test hearing: asks the Thinking model's own Chat Completions server, with one short recording
 /// of a single word (made by Windows speech, never anyone's voice) sent as an <c>input_audio</c> WAV part, which word it says.
@@ -49,15 +53,21 @@ public static class ModelHearingTest
             var text = await ReadAsync(response, limit.Token).ConfigureAwait(false);
             var took = started.ElapsedMilliseconds;
             var code = (int)response.StatusCode;
-            if (response.IsSuccessStatusCode)
-                return Read(ReplyOf(text), word, modelId, serverName, took);
-            if (code is 401 or 403)
-                return new(null, $"{serverName} refused the test (error {code}); check the API key.", true, null, took);
-            if (code is 400 or 404 or 415 or 422 or 500 or 501 && RefusesAudio(WithoutModel(text, modelId)))
-                return new(false, $"{serverName} refused the recording for {modelId} (error {code}{Detail(text)}), so it can't hear.", true, null, took);
-            if (code == 404)
-                return new(null, $"{serverName} doesn't have {modelId} (error 404).", true, null, took);
-            return new(null, $"{serverName} answered error {code}{Detail(text)}, so Martlet can't tell whether {modelId} hears.", true, null, took);
+            return Answer() with { Status = code };
+            HearingTestReport Answer()
+            {
+                if (response.IsSuccessStatusCode)
+                    return Read(ReplyOf(text), word, modelId, serverName, took);
+                if (code is 401 or 403)
+                    return new(null, $"{serverName} refused the test (error {code}); check the API key.", true, null, took);
+                if (code == 410)
+                    return new(null, $"{serverName} retired {modelId} (error 410).", true, null, took);
+                if (code is 400 or 404 or 415 or 422 or 500 or 501 && RefusesAudio(WithoutModel(text, modelId)))
+                    return new(false, $"{serverName} refused the recording for {modelId} (error {code}{Detail(text)}), so it can't hear.", true, null, took);
+                if (code == 404)
+                    return new(null, $"{serverName} doesn't have {modelId} (error 404).", true, null, took);
+                return new(null, $"{serverName} answered error {code}{Detail(text)}, so Martlet can't tell whether {modelId} hears.", true, null, took);
+            }
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {

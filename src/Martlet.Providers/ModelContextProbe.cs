@@ -4,26 +4,37 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Martlet.Core.Settings;
 
 namespace Martlet.Providers;
 
 /// <summary>What checking a Thinking model's context found. <see cref="ContextTokens"/> is how much the server takes per request
 /// (for Ollama on this PC, the context it gives the model), null when the server doesn't say; <see cref="ModelMaximum"/> is
 /// the model's own maximum when the server reports that too. <see cref="Reached"/> is false when the server couldn't be asked.
-/// <see cref="Summary"/> says it in words, naming the model but never a key or anything said. <see cref="Hears"/> and
-/// <see cref="Sees"/> are what the same metadata says the model takes besides text (recorded audio, pictures), null when it
-/// doesn't say, and <see cref="AbilitySource"/> where that came from.</summary>
+/// <see cref="Summary"/> says it in words, naming the model but never a key or anything said. <see cref="Hears"/>,
+/// <see cref="Sees"/>, <see cref="Video"/> and <see cref="Tools"/> are what the same metadata says the model takes besides text
+/// (recorded audio, pictures, video itself) and whether it calls tools, null when it doesn't say, and
+/// <see cref="AbilitySource"/> where that came from.</summary>
 public sealed record ModelContextReport(int? ContextTokens, int? ModelMaximum, string Source, string Summary, bool Reached = true,
-    bool? Hears = null, bool? Sees = null, string? AbilitySource = null);
+    bool? Hears = null, bool? Sees = null, string? AbilitySource = null)
+{
+    public bool? Video { get; init; }
+    public bool? Tools { get; init; }
+
+    /// <summary>Whether the metadata said anything about what the model takes or does.</summary>
+    public bool AbilitiesKnown => AbilitySource is not null && (Hears ?? Sees ?? Video ?? Tools) is not null;
+}
 
 /// <summary>Asks a Thinking model's server how much context the model takes, the way Companion › Replies and setting up a model
 /// do, and what it takes besides text. It reads only model metadata: an OpenAI-compatible model list (<c>GET {base}/models</c>:
 /// OpenRouter, Together and others report <c>context_length</c>, vLLM <c>max_model_len</c>, Groq <c>context_window</c>,
 /// Mistral and LM Studio <c>max_context_length</c>, llama.cpp <c>meta.n_ctx_train</c>; OpenRouter lists each model's
-/// <c>architecture.input_modalities</c>), then, for a server on this PC that doesn't say there, LM Studio's, llama.cpp's
-/// (<c>/props</c>: its context and <c>modalities</c>) and Ollama's own endpoints. Ollama on this PC is asked through its API
-/// (<c>/api/show</c>: the model's maximum and <c>capabilities</c> such as <c>audio</c> and <c>vision</c>; <c>/api/ps</c>).
-/// Nothing anyone said is sent; a saved key goes only to its own base URL, and redirects aren't followed.</summary>
+/// <c>architecture.input_modalities</c> and <c>supported_parameters</c>), then, for a server on this PC that doesn't say there,
+/// LM Studio's, llama.cpp's (<c>/props</c>: its context, <c>modalities</c> and template's tool calls) and Ollama's own
+/// endpoints. Ollama on this PC is asked through its API (<c>/api/show</c>: the model's maximum and <c>capabilities</c> such as
+/// <c>audio</c>, <c>vision</c> and <c>tools</c>; <c>/api/ps</c>). NVIDIA Build's model list gives only IDs, so its model's page
+/// on build.nvidia.com is read (<see cref="NvidiaModelPages"/>, no key). Nothing anyone said is sent; a saved key goes only to
+/// its own base URL, and redirects aren't followed.</summary>
 public static class ModelContextProbe
 {
     private const int MaximumResponseBytes = 33_554_432;
@@ -41,9 +52,11 @@ public static class ModelContextProbe
         IPAddress.TryParse(uri.IdnHost.Trim('[', ']'), out var address) && IPAddress.IsLoopback(address);
 
     /// <summary>Checks <paramref name="modelId"/> on the OpenAI-compatible server at <paramref name="baseUrl"/>
-    /// (<paramref name="serverName"/> names it in the summary: "OpenRouter").</summary>
+    /// (<paramref name="serverName"/> names it in the summary: "OpenRouter"). For NVIDIA Build, whose model list gives only IDs,
+    /// what the model takes comes from its page on <paramref name="modelPages"/> (null: https://build.nvidia.com/ for NVIDIA
+    /// Build's base URL, nothing for other servers; MCP gives a fixture).</summary>
     public static async Task<ModelContextReport> ChatCompletionsAsync(HttpClient client, string baseUrl, string modelId,
-        string? apiKey, string serverName, CancellationToken token)
+        string? apiKey, string serverName, CancellationToken token, Uri? modelPages = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         var root = new Uri(baseUrl.TrimEnd('/') + "/");
@@ -73,12 +86,22 @@ public static class ModelContextProbe
             if (tokens is null && !inputs.Known && models.Failure is { } local)
                 return new(null, null, serverName, $"Couldn't ask {serverName} about {modelId}: {local}.", Reached: false);
         }
+        // NVIDIA Build's model list gives only IDs: its page for the model says what it takes (no key goes there).
+        var pages = modelPages ?? (string.Equals(baseUrl.TrimEnd('/'), ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, StringComparison.Ordinal)
+            ? NvidiaModelPages.Site : null);
+        if (!inputs.Known && pages is not null &&
+            await NvidiaModelPages.ReadAsync(client, pages, modelId, token).ConfigureAwait(false) is { } page)
+        {
+            inputs = new Inputs(page.Hears, page.Sees, page.Video, page.Tools).From("NVIDIA Build's model page");
+            if (tokens is null && page.ContextTokens is { } context) (tokens, source) = (context, "NVIDIA Build's model page");
+        }
+        ModelContextReport Report(int? found, string summary) =>
+            new(found, null, source, summary, true, inputs.Hears, inputs.Sees, inputs.Source) { Video = inputs.Video, Tools = inputs.Tools };
         if (tokens is { } found)
-            return new(found, null, source, $"{Capital(source)} says {modelId} takes {found:N0} tokens.", true, inputs.Hears, inputs.Sees, inputs.Source);
-        return new(null, null, source, listed
+            return Report(found, $"{Capital(source)} says {modelId} takes {found:N0} tokens.");
+        return Report(null, listed
             ? $"{Capital(source)} lists {modelId} but doesn't say how much context it takes."
-            : $"{Capital(source)} doesn't list {modelId}, so Martlet can't tell how much context it takes.", true, inputs.Hears, inputs.Sees,
-            inputs.Source);
+            : $"{Capital(source)} doesn't list {modelId}, so Martlet can't tell how much context it takes.");
     }
 
     /// <summary>Checks <paramref name="model"/> in Ollama at <paramref name="origin"/> (this PC's: http://127.0.0.1:11434): the
@@ -115,14 +138,14 @@ public static class ModelContextProbe
             if (started.Failure is null) loaded = await LoadedContextAsync(client, origin, model, token).ConfigureAwait(false);
         }
         var of = maximum is { } most ? $" (the model holds up to {most:N0})" : "";
+        ModelContextReport Report(int? tokens, string summary) =>
+            new(tokens, maximum, source, summary, true, inputs.Hears, inputs.Sees, inputs.Source) { Video = inputs.Video, Tools = inputs.Tools };
         if (loaded is { } given)
-            return new(given, maximum, source, $"Ollama on this PC gives {model} {given:N0} tokens{of}. " +
-                "Ollama's context length setting decides it.", true, inputs.Hears, inputs.Sees, inputs.Source);
+            return Report(given, $"Ollama on this PC gives {model} {given:N0} tokens{of}. Ollama's context length setting decides it.");
         if (modelfile is { } set)
-            return new(set, maximum, source, $"{model}'s Modelfile gives it {set:N0} tokens in Ollama on this PC{of}.", true, inputs.Hears,
-                inputs.Sees, inputs.Source);
-        return new(null, maximum, source, $"Ollama on this PC hasn't loaded {model} yet, so its context isn't known{of}. " +
-            "Test the model or start talking, then check again.", true, inputs.Hears, inputs.Sees, inputs.Source);
+            return Report(set, $"{model}'s Modelfile gives it {set:N0} tokens in Ollama on this PC{of}.");
+        return Report(null, $"Ollama on this PC hasn't loaded {model} yet, so its context isn't known{of}. " +
+            "Test the model or start talking, then check again.");
     }
 
     /// <summary>The context Ollama gave <paramref name="model"/> when it loaded it, or null when it isn't loaded.</summary>
@@ -175,7 +198,7 @@ public static class ModelContextProbe
         int? tokens = null;
         var source = $"{serverName}'s model list";
         Inputs inputs = default;
-        // LM Studio: the loaded context, else the model's maximum; "vlm" models see.
+        // LM Studio: the loaded context, else the model's maximum; "vlm" models see, and "tool_use" models call tools.
         using (var studio = await GetAsync(client, HttpMethod.Get, new Uri(origin, "api/v0/models"), null, null, TimeSpan.FromSeconds(5), token)
             .ConfigureAwait(false))
             if (studio.Body is { } document && Entry(document.RootElement, modelId) is { } entry)
@@ -184,7 +207,8 @@ public static class ModelContextProbe
                     (tokens, source) = (studioTokens, $"{serverName}'s LM Studio API");
                 inputs = InputsOf(entry).From($"{serverName}'s LM Studio API");
             }
-        // llama.cpp: the context the server was started with, and the modalities its loaded projector gives the model.
+        // llama.cpp: the context the server was started with, the modalities its loaded projector gives the model, and whether
+        // its chat template takes tool calls.
         if ((wantTokens && tokens is null) || !inputs.Known)
             using (var props = await GetAsync(client, HttpMethod.Get, new Uri(origin, "props"), null, null, TimeSpan.FromSeconds(5), token)
                 .ConfigureAwait(false))
@@ -193,58 +217,77 @@ public static class ModelContextProbe
                     if (wantTokens && tokens is null && (Nested(root, "default_generation_settings", "n_ctx") ?? Int(root, "n_ctx")) is { } llama)
                         (tokens, source) = (llama, $"{serverName}'s llama.cpp settings");
                     if (!inputs.Known && root.TryGetProperty("modalities", out var modalities) && modalities.ValueKind == JsonValueKind.Object)
-                        inputs = new Inputs(Switch(modalities, "audio"), Switch(modalities, "vision")).From($"{serverName}'s llama.cpp settings");
+                    {
+                        var caps = root.TryGetProperty("chat_template_caps", out var c) ? c : default;
+                        inputs = new Inputs(Switch(modalities, "audio"), Switch(modalities, "vision"), Switch(modalities, "video"),
+                            Switch(caps, "supports_tool_calls") ?? Switch(caps, "supports_tools")).From($"{serverName}'s llama.cpp settings");
+                    }
                 }
         // Ollama at its default address but entered as a custom server.
         if ((wantTokens && tokens is null) || !inputs.Known)
         {
             var ollama = await OllamaAsync(client, origin, modelId, load: false, token).ConfigureAwait(false);
             if (wantTokens && tokens is null && ollama.ContextTokens is { } given) (tokens, source) = (given, "Ollama on this PC");
-            if (!inputs.Known && (ollama.Hears ?? ollama.Sees) is not null) inputs = new(ollama.Hears, ollama.Sees, ollama.AbilitySource);
+            if (!inputs.Known && ollama.AbilitiesKnown) inputs = new(ollama.Hears, ollama.Sees, ollama.Video, ollama.Tools, ollama.AbilitySource);
         }
         return (tokens, source, inputs);
     }
 
-    /// <summary>What a model takes besides text, as some metadata says it; each null when it doesn't say.</summary>
-    internal readonly record struct Inputs(bool? Hears, bool? Sees, string? Source = null)
+    /// <summary>What a model takes besides text (recorded audio, pictures, video itself) and whether it calls tools, as some
+    /// metadata says it; each null when it doesn't say.</summary>
+    internal readonly record struct Inputs(bool? Hears, bool? Sees, bool? Video = null, bool? Tools = null, string? Source = null)
     {
-        public bool Known => Hears is not null || Sees is not null;
+        public bool Known => Hears is not null || Sees is not null || Video is not null || Tools is not null;
 
         /// <summary>These inputs said by <paramref name="source"/>, or nothing when they say nothing.</summary>
         public Inputs From(string source) => Known ? this with { Source = source } : default;
     }
 
-    /// <summary>What a model-list entry says the model takes besides text: OpenRouter's <c>architecture.input_modalities</c> (or
-    /// a top-level <c>input_modalities</c> or <c>modalities</c> list), <c>capabilities</c> (a list like Ollama's, or switches like
-    /// Mistral's <c>vision</c>), or LM Studio's <c>type</c> (<c>vlm</c> sees).</summary>
+    /// <summary>What a model-list entry says the model takes besides text and whether it calls tools, each from the first that
+    /// says it: OpenRouter's <c>architecture.input_modalities</c> (or a top-level <c>input_modalities</c> or <c>modalities</c>
+    /// list: audio, image, video) and <c>supported_parameters</c> (<c>tools</c>), <c>capabilities</c> (a list like llama.cpp's or
+    /// LM Studio's <c>tool_use</c>, or switches like Mistral's <c>vision</c> and <c>function_calling</c>), and LM Studio's
+    /// <c>type</c> (<c>vlm</c> sees).</summary>
     internal static Inputs InputsOf(JsonElement entry)
     {
         if (entry.ValueKind != JsonValueKind.Object) return default;
+        bool? hears = null, sees = null, video = null, tools = null;
         var architecture = entry.TryGetProperty("architecture", out var a) ? a : default;
         if ((Strings(architecture, "input_modalities") ?? Strings(entry, "input_modalities") ?? Strings(entry, "modalities")) is { } listed)
-            return new(listed.Contains("audio"), listed.Contains("image"));
+            (hears, sees, video) = (listed.Contains("audio"), listed.Contains("image"), listed.Contains("video"));
+        // OpenRouter lists "tools" only when its providers take tool calls for the model.
+        if (Strings(entry, "supported_parameters") is { } parameters) tools = parameters.Contains("tools");
         if (entry.TryGetProperty("capabilities", out var capabilities))
         {
-            if (capabilities.ValueKind == JsonValueKind.Array && Strings(entry, "capabilities") is { } names)
-                return CapabilityList(names);
-            if (capabilities.ValueKind == JsonValueKind.Object)
+            var said = capabilities.ValueKind switch
             {
-                var switches = new Inputs(Switch(capabilities, "audio") ?? Switch(capabilities, "audio_input"), Switch(capabilities, "vision"));
-                if (switches.Known) return switches;
-            }
+                JsonValueKind.Array when Strings(entry, "capabilities") is { } names => CapabilityList(names, ollama: false),
+                JsonValueKind.Object => new Inputs(Switch(capabilities, "audio") ?? Switch(capabilities, "audio_input"), Switch(capabilities, "vision"),
+                    Switch(capabilities, "video") ?? Switch(capabilities, "video_input"),
+                    Switch(capabilities, "function_calling") ?? Switch(capabilities, "tools") ?? Switch(capabilities, "tool_calling")),
+                _ => default
+            };
+            (hears, sees, video, tools) = (hears ?? said.Hears, sees ?? said.Sees, video ?? said.Video, tools ?? said.Tools);
         }
-        return Text(entry, "type") switch { "vlm" => new(null, true), "llm" => new(null, false), _ => default };
+        sees ??= Text(entry, "type") switch { "vlm" => true, "llm" => false, _ => null };
+        return new(hears, sees, video, tools);
     }
 
     // Ollama's /api/show "capabilities": ["completion", "vision", "audio", "tools", "thinking"].
     private static Inputs OllamaInputs(JsonElement root) =>
-        Strings(root, "capabilities") is { } names ? CapabilityList(names) : default;
+        Strings(root, "capabilities") is { } names ? CapabilityList(names, ollama: true) : default;
 
-    // A capability list says what a model can do; "multimodal" (llama.cpp's list) doesn't say which senses, so it says nothing.
-    private static Inputs CapabilityList(IReadOnlyList<string> names) =>
-        names.Contains("audio") || names.Contains("vision") ? new(names.Contains("audio"), names.Contains("vision"))
-        : names.Contains("completion") && !names.Contains("multimodal") ? new(false, false)
-        : default;
+    // A capability list says what a model can do; "multimodal" (llama.cpp's list) doesn't say which senses, so it says nothing
+    // about them. Ollama's own list is complete: a model without "tools" calls none, and Ollama's API takes no video.
+    private static Inputs CapabilityList(IReadOnlyList<string> names, bool ollama)
+    {
+        var (hears, sees) = names.Contains("audio") || names.Contains("vision") ? (names.Contains("audio"), names.Contains("vision"))
+            : names.Contains("completion") && !names.Contains("multimodal") ? (false, false)
+            : ((bool?)null, (bool?)null);
+        var tools = names.Contains("tools") || names.Contains("tool_use") ? true : ollama ? false : (bool?)null;
+        var video = names.Contains("video") ? true : ollama ? false : (bool?)null;
+        return new(hears, sees, video, tools);
+    }
 
     private static IReadOnlyList<string>? Strings(JsonElement element, string name)
     {

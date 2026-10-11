@@ -246,7 +246,16 @@ Each stage is one pull request.
      with the same model or one as fast.
 2. **Situations.** The While gaming and Host away plans, changed at run time
    from `PcActivity` and host status through the Thinking pool and backup
-   routes. It follows stage 1.
+   routes. It follows stage 1. **Done:** `LiveSituations` decides the
+   situation and where live Thinking goes (`GameWatch` finds the game,
+   `PresenceWatch` the host that is away), `SituationRoutes` gives the
+   conversation the moved route from its next reply, and `SituationPlans`
+   gives Recommended setup's *Three plans*
+   ([Three plans](RECOMMENDED_SETUPS.md#three-plans-normal-while-gaming-and-host-away)).
+   The hosted backup is *If Thinking fails*. When no other place can answer,
+   the PC's own model in Ollama answers; Ollama keeps one copy of a model, so
+   that copy runs on the processor only when Martlet unloaded it because the
+   card was short of memory.
 3. **Planner on the catalog.** The planner gets its options from the catalog
    and the local facts; today's `FootprintCatalog.Seed` stays as the offline
    fallback. The smartness score, Deep thinking on NVIDIA, measured feedback,

@@ -90,6 +90,20 @@ public partial class RecommendedSetupWindow : ThemedWindow
         JobsPanel.Children.Clear();
         for (var i = 0; i < review.Jobs.Count; i++) JobsPanel.Children.Add(Line("\u2022 " + review.Jobs[i], $"RecommendedSetupJob-{i}"));
 
+        // The three plans (Normal, While gaming, Host away): where each live job goes in each situation.
+        SituationsSection.Visibility = review.Situations.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        SituationsPanel.Children.Clear();
+        for (var i = 0; i < review.Situations.Count; i++)
+        {
+            var plan = review.Situations[i];
+            var title = Line(plan.Title, $"RecommendedSetupSituation-{i}");
+            title.FontWeight = FontWeights.SemiBold;
+            title.Margin = new Thickness(0, i == 0 ? 0 : 8, 0, 4);
+            SituationsPanel.Children.Add(title);
+            for (var j = 0; j < plan.Lines.Count; j++)
+                SituationsPanel.Children.Add(Line("\u2022 " + plan.Lines[j], $"RecommendedSetupSituation-{i}-{j}"));
+        }
+
         ManualSection.Visibility = review.Manual.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         ManualPanel.Children.Clear();
         for (var i = 0; i < review.Manual.Count; i++) ManualPanel.Children.Add(Line("\u2022 " + review.Manual[i], $"RecommendedSetupManual-{i}"));
