@@ -474,10 +474,13 @@ your other computers, not uploaded and not part of configuration backup.
 
 **Reading it.** The record is read once, in the background, when a
 conversation opens (or the Conversations page or the Memory page needs it) and
-kept in memory with a lexical (BM25) index of what was said; nothing is
-embedded or sent anywhere. The newest 100,000 exchanges are indexed; older
-ones stay in their files. With 20,000 synthetic exchanges (7.3 MB) reading takes
-about half a second, once, and a search about 7 ms (`conversation_history_check`).
+kept in memory with a lexical (BM25) index of what was said: each word in lower
+case and reduced to a light English stem, with common grammar words left out
+(the shared `SearchTerms` in `Martlet.Core`), so *plants* finds *plant* and
+*baking* finds *baked*. Nothing is embedded or sent anywhere. The newest
+100,000 exchanges are indexed; older ones stay in their files. With 20,000
+synthetic exchanges (7.3 MB) reading takes about a third of a second, once, and
+a recall about 2 ms (at most about 3 ms; `conversation_history_check`).
 
 **Bringing back what was said.** When your message refers to an earlier
 conversation (*do you remember…*, *remember when…*, *what did we talk about
@@ -491,8 +494,38 @@ parentheses so recorded text can't open or close a block), introduced by
 Companion › Prompts › *Past conversations*. The best matches for the message's
 own words come back (common words and words about remembering, talking or time
 left out; about half of the remaining words, at most three, must match, so one
-common word alone brings back nothing), within the time it names; with only a
-time (*what did we talk about yesterday?*) the latest exchanges of that time do.
+common word alone brings back nothing), within or near the time it names; with
+only a time (*what did we talk about yesterday?*) the latest exchanges of that
+time do, an exchange nearly the same as a later one left out.
+
+**How matches are ranked.** Ranking runs in memory on the reply's path, with no
+model, embedding or other process (`PastConversationRanking`): BM25 over the
+stems finds up to 200 candidates, then a fixed reranker scores each one on:
+
+- *Coverage*: how much of what was asked the exchange has, each word weighted
+  by how rare it is in the record (a word never said counts as the rarest). A
+  recognized speaker's name counts as said (*what did Ana want…* prefers
+  Ana's exchanges), and words that the exchanges up to two turns before or
+  after it in its conversation have count half, so a follow-up such as *Where
+  should we stay?* belongs to the trip it follows.
+- *Proximity and phrases*: the asked words close together on one side of the
+  exchange, and two asked words one right after the other (*Red Dragon*).
+- *Time*: inside the time the message names, or near it (up to half its
+  length, at least a day, on each side, scored lower the further out), so
+  *yesterday* still finds something said late the evening before. A light
+  preference for what is recent breaks ties.
+
+Only exchanges scoring at least half the best go in the notes. Picking them
+(maximal marginal relevance) leaves out an exchange nearly the same as one
+already picked or already in the request's notes (four in five of their words
+the same) and lowers one that is like them, so near-identical exchanges don't
+fill the notes. When there is room left, the exchange right after a picked one
+in its conversation comes too if you answered Martlet's reply there with some
+of its words (*He'd love the apron* after *a grill brush or a new apron*),
+because the decision often comes next. A held-out
+set of synthetic conversations and questions (`PastConversationsEvaluationTests`)
+measures recall@k and MRR.
+
 Asking Martlet to remember something (*remember to…*), not remembering
 something yourself (*I can't remember how…*) and asking to be told something
 (*tell me what happened yesterday*) don't count as a reference. An exchange
@@ -512,8 +545,9 @@ calling, replies are then offered `search_conversations` (`query` and/or
 `when`: today, yesterday, 3 days ago, last week, a weekday or YYYY-MM-DD) after
 Martlet's other own tools, always worded the same. The model calls it when you
 bring up something from before; it returns at most six exchanges of other
-conversations with their dates (as data, never instructions) or says nothing
-was found and not to guess. It is off by default because its description (458
+conversations with their dates (as data, never instructions), ranked the same
+way as recall but without its minimum match, or says nothing was found and not
+to guess. It is off by default because its description (458
 bytes, about 153 estimated tokens) goes at the start of every request: providers
 cache it after the first reply of a conversation, but that first reply reads it
 too.
@@ -565,9 +599,9 @@ bot runs. The window's last line shows what waits (`HistoryPlatformStatus`);
 
 MCP: `conversation_history_status` (choices, what replies are offered, counts
 per app and the changes waiting for apps, never content) and
-`conversation_history_check` (the production record, recall, search, sources,
-single-message edits and deletes, what each app is asked and the queue with a
-fixture app); `HistoryStatus`, `HistoryWindowStatus` and
+`conversation_history_check` (the production record, recall, search, how
+recall ranks, sources, single-message edits and deletes, what each app is asked
+and the queue with a fixture app); `HistoryStatus`, `HistoryWindowStatus` and
 `HistoryPlatformStatus` read as text and `OpenHistory` opens the window
 ([MCP](MCP.md)).
 
