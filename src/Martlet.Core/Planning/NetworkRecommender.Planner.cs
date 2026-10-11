@@ -33,6 +33,8 @@ public static partial class NetworkRecommender
         private string? cannotReply;
         /// <summary>The note that says Martlet can't speak: no computer and no hosted voice can do Speaking.</summary>
         private string? cannotSpeak;
+        /// <summary>The hosted Deep thinking model suggested for the Thinking pool (<see cref="OnlineDeepThinking"/>), or null.</summary>
+        private ComponentOption? onlineDeep;
 
         public NetworkSetup Current { get; }
 
@@ -79,13 +81,16 @@ public static partial class NetworkRecommender
             Leftovers();
             var target = BuildTarget();
             var changes = Diff(target).Select(MarkAway).ToList();
+            onlineDeep = OnlineDeepThinking(target);
             AddNotes(target, changes);
+            if (onlineDeep is { } deep) notes.Add(OnlineDeepNote(deep));
             // Today's Thinking job kept exactly as it is (each companion PC itself, no option known) isn't a new problem.
             var stays = TodayJob(ClusterJobs.Thinking) is { HostId: null, OptionId: null, Off: false };
             return new(Current, target, changes)
             {
                 Fingerprint = FingerprintOf(target), Notes = notes.Distinct(StringComparer.Ordinal).ToArray(), Offline = offline.ToArray(),
-                CannotReplyNote = stays ? null : cannotReply, CannotSpeakNote = cannotSpeak, Components = Components(target)
+                CannotReplyNote = stays ? null : cannotReply, CannotSpeakNote = cannotSpeak, Components = Components(target),
+                OnlineDeepThinking = onlineDeep
             };
         }
 
@@ -353,6 +358,8 @@ public static partial class NetworkRecommender
         private bool Valid(Node node, int? card, ComponentOption option, Query query)
         {
             if (!option.RunsOn(node.Spec.Platform)) return false;
+            // A model Martlet's host roles don't offer runs only in a companion PC's own Ollama.
+            if (option.NativeOnly && !query.Native) return false;
             if (!query.Native && (node.Roles.Any(r => !r.Native && r.Kind == query.Kind) ||
                 IsVoice(query.Kind) && node.Roles.Any(r => !r.Native && IsVoice(r.Kind))))
                 return false;

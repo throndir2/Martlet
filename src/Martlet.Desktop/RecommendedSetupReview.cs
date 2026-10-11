@@ -65,7 +65,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         ArgumentNullException.ThrowIfNull(recommendation);
         ArgumentNullException.ThrowIfNull(build);
         var request = build.Request;
-        catalog = (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels);
+        catalog = (catalog ?? PlanningCatalog.Current).WithServed(request.ServedModels);
         string Name(string? id) => id is null or "" ? "your companion PCs" : build.Names.GetValueOrDefault(id)
             ?? request.Machines.FirstOrDefault(m => m.Specs.Id == id)?.Specs.Name ?? id;
 

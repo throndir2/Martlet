@@ -281,7 +281,7 @@ public static partial class NetworkRecommender
                     if (OptionFor(ThinkingRole, model, node) is not { UsesGpu: true } option ||
                         !(Names(option, model) || option.Id.EndsWith("~" + model, StringComparison.OrdinalIgnoreCase)))
                         continue;
-                    if (Known(option) is null) option = option with { QualityTier = ServedModels.Tier(model) };
+                    if (Known(option) is null) option = option with { QualityTier = catalog.Tier(model) };
                     if (option.QualityTier > floor) kept.Add((node, option));
                 }
             if (kept.Count == 0) return false;
@@ -315,9 +315,9 @@ public static partial class NetworkRecommender
                 .Where(r => r?.Kind == kind && r.Model is { Length: > 0 } model && ServedModels.Chats(model))
                 .Select(r => r.Model!).DistinctBy(m => m.Replace(':', '-'), StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>An option's quality tier; a model the catalog doesn't know gets it from its size.</summary>
+        /// <summary>An option's quality tier; a model the options don't know gets it from the model catalog, else from its size.</summary>
         private int TierOf(ComponentOption option) =>
-            Known(option) is null && option.ServedBy is null && option.ModelId is { Length: > 0 } model ? ServedModels.Tier(model) : option.QualityTier;
+            Known(option) is null && option.ServedBy is null && option.ModelId is { Length: > 0 } model ? catalog.Tier(model) : option.QualityTier;
 
         /// <summary>Thinking in each companion PC's own Ollama today: a host that answers takes it (rule 6: with a host, companion
         /// PCs run no models), with the same model, else another one whose first word comes as soon (rule 7).</summary>

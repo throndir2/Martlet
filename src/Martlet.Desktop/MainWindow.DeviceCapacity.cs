@@ -188,7 +188,7 @@ public partial class MainWindow
     private void RenderNetworkCapacity(IReadOnlyList<NetworkNode> nodes)
     {
         capacity = MeasureCapacity(nodes);
-        var view = DeviceCapacityInputs.Network(nodes, capacity.Machines, capacity.Plan, FootprintCatalog.Default);
+        var view = DeviceCapacityInputs.Network(nodes, capacity.Machines, capacity.Plan, PlanningCatalog.Current);
         CapacityCard.Visibility = Visibility.Visible;
         CapacityCoverageText.Text = view.Coverage;
         CapacityTotalsText.Text = view.Totals;
@@ -210,7 +210,7 @@ public partial class MainWindow
     {
         var inputs = Inputs();
         var machines = DeviceCapacityInputs.Machines(inputs, nodes, ThisPcDiskFreeGb());
-        var current = DeviceCapacityInputs.Current(inputs, nodes, FootprintCatalog.Default);
+        var current = DeviceCapacityInputs.Current(inputs, nodes, PlanningCatalog.Current);
         return (nodes, machines, current, PlacementEngine.Measure(new PlanRequest(machines) { Current = current }));
     }
 
@@ -229,6 +229,6 @@ public partial class MainWindow
     {
         var (_, machines, current, plan) = capacity;
         var live = node.Kind == NodeKind.ThisPc ? new CapacityLive(null, MachineInfo.MemoryInUseGb()) : null;
-        return DeviceCapacityInputs.Device(node, machines, plan, current, FootprintCatalog.Default, live);
+        return DeviceCapacityInputs.Device(node, machines, plan, current, PlanningCatalog.Current, live);
     }
 }

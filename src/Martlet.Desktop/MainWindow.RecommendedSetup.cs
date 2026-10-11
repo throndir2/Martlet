@@ -77,7 +77,8 @@ public partial class MainWindow
         var build = RecommendedSetupInputs.Request(sources);
         try
         {
-            var recommendation = await Task.Run(() => NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default), lifetime.Token);
+            var options = await PlanningOptionsAsync();
+            var recommendation = await Task.Run(() => NetworkRecommender.Recommend(build.Request, options), lifetime.Token);
             ErrorLog.Info($"Recommended setup: {build.Request.Machines.Count} computer(s) planned with your preferences ({sources.Preferences.Describe()}" +
                 (build.Games.Count == 0 ? "" : "; games on " + string.Join(", ", build.Games.Select(g => $"{g.Name} {(g.Plays ? "yes" : "no")}"))) + "); " +
                 (recommendation.AlreadyOptimal

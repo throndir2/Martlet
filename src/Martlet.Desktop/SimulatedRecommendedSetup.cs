@@ -69,10 +69,10 @@ internal static class SimulatedRecommendedSetup
 
         public Task<SetupRouteReading> ReadRouteAsync(string job, string optionId, CancellationToken cancel) =>
             Task.FromResult(new SetupRouteReading(SetupStepVerdict.Ready,
-                $"FIXTURE: this PC would use {FootprintCatalog.Default.Find(optionId)?.DisplayName ?? optionId} for {job}."));
+                $"FIXTURE: this PC would use {PlanningCatalog.Current.Find(optionId)?.DisplayName ?? optionId} for {job}."));
 
         public Task<SetupStepResult> UseRouteAsync(string job, string optionId, CancellationToken cancel) =>
-            Task.FromResult(SetupStepResult.Done($"FIXTURE: this PC would use {FootprintCatalog.Default.Find(optionId)?.DisplayName ?? optionId} " +
+            Task.FromResult(SetupStepResult.Done($"FIXTURE: this PC would use {PlanningCatalog.Current.Find(optionId)?.DisplayName ?? optionId} " +
                 $"for {job}. Nothing was saved."));
 
         public Task<IReadOnlyDictionary<string, string>> CheckAsync(CancellationToken cancel) =>

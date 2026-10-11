@@ -74,10 +74,12 @@ public partial class MainWindow
 
     private static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
     private static readonly CloudProvider CustomCloud = new("Custom OpenAI-compatible server", "", true, null, false);
-    internal static readonly IReadOnlyList<CloudProvider> ThinkingProviders =
+    /// <summary>The Thinking providers, each with the model it suggests now: the model catalog's pick when it is loaded
+    /// (<see cref="PlanningCatalog.SuggestedModel"/>), else the preset's default.</summary>
+    internal static IReadOnlyList<CloudProvider> ThinkingProviders =>
     [
         OpenAiCloud,
-        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, e.DefaultModelId, true)),
+        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, PlanningCatalog.SuggestedModel(e.Id) ?? e.DefaultModelId, true)),
         CustomCloud
     ];
 

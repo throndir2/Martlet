@@ -157,6 +157,8 @@ public partial class MainWindow
         if (ReferenceEquals(machine, MachineInfo.Unknown)) await ReadMachineAsync();
         try { welcomeGpus = await ListeningAdvisor.ReadGpusAsync(lifetime.Token); }
         catch (OperationCanceledException) { welcomeGpus = []; }
+        // The plan step plans with the model catalog: load it now, while the owner reads the hardware.
+        await PlanningOptionsAsync();
         if (closing) return;
         var specs = welcomeSpecs = DefaultSetup.Specs(machine, welcomeGpus);
         static string Gb(double value) => value.ToString("0.#", CultureInfo.InvariantCulture) + " GB";
@@ -376,7 +378,7 @@ public partial class MainWindow
 
     private void ShowWelcomeKey()
     {
-        var model = ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId;
+        var model = PlanningCatalog.SuggestedModel(ChatCompletionsEndpointCatalog.NvidiaBuildId) ?? ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId;
         WizardKeyIntro.Text = $"Martlet thinks with {model} on NVIDIA Build: free, no card needed, with a free NVIDIA account. It takes " +
             "about two minutes. NVIDIA logs what is sent to improve its products, so don't share personal data or voices with it. " +
             "Listening stays on this PC (Parakeet), so Thinking gets the words you said, not your voice.";
@@ -416,7 +418,8 @@ public partial class MainWindow
         {
             var provider = ThinkingProviders.First(p => p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl);
             await SaveCloudAsync(HostJob.Thinking, provider, ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl,
-                ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId, null, WizardKeyBox, consent: true);
+                PlanningCatalog.SuggestedModel(ChatCompletionsEndpointCatalog.NvidiaBuildId) ?? ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId,
+                null, WizardKeyBox, consent: true);
             await RefreshHomeAsync();
             if (closing) return;
             var saved = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);

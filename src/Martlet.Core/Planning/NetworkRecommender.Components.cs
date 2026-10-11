@@ -85,15 +85,18 @@ public static partial class NetworkRecommender
             if (IsOff(part)) return (false, OffWhere(part), "You turned Deep thinking off.");
             var places = nodes.Where(n => n.Presence == Presence.Here && target.ThinkingPool.Contains(n.Id))
                 .SelectMany(n => n.Roles.Where(r => r.Kind == DeepThinkingRole).Select(r => $"{Label(r.Option, r.Kind)} on {CardText(n, r.Card)}"))
+                .Concat((request.OnlineThinkingPool ?? []).Select(m => $"{m}, online"))
                 .ToList();
-            if (places.Count > 0) return (true, $"Thinking pool: {List(places)}", "It thinks things over in the background, never on the reply path.");
+            var suggestion = onlineDeep is { } deep
+                ? $" {deep.DisplayName} is smarter: add it in Companion › Thinking pool. What it thinks about goes to that service." : "";
+            if (places.Count > 0) return (true, $"Thinking pool: {List(places)}", "It thinks things over in the background, never on the reply path." + suggestion);
             if (!Wants(part)) return (false, OffWhere(part), "Not planned.");
             var hosts = nodes.Any(n => n.Presence == Presence.Here && !n.Companion && n.CanHost);
             var card = nodes.Any(n => n.Presence == Presence.Here && n.Companion && n.Spec.Gpus.Count > 0);
-            return (false, OffWhere(part), hosts
+            return (false, OffWhere(part), (hosts
                 ? "No host has a graphics card with room for a Deep thinking model beside the jobs that come first."
                 : card ? "It needs a host with a free graphics card: a companion PC's card is kept for Thinking and the voice."
-                : "It needs a host with a graphics card.");
+                : "It needs a host with a graphics card.") + suggestion);
         }
 
         /// <summary>Singing and pictures: where they run, or why they are off (you turned them off, no room left beside the jobs

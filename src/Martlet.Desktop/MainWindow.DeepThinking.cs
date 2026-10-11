@@ -31,9 +31,11 @@ public partial class MainWindow
     private static readonly ThinkEffort[] ThinkEfforts = [ThinkEffort.Medium, ThinkEffort.High];
     private static readonly ThinkDelivery[] ThinkDeliveries = [ThinkDelivery.WhenFree, ThinkDelivery.NextMessage];
 
-    private static readonly IReadOnlyList<CloudProvider> DeepThinkingProviders =
+    /// <summary>The Thinking pool's online providers, each with the smartest free model the model catalog names there (a few
+    /// seconds don't matter for background thinks), else the preset's default.</summary>
+    private static IReadOnlyList<CloudProvider> DeepThinkingProviders =>
     [
-        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, e.DefaultModelId, true)),
+        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, PlanningCatalog.SmartestModel(e.Id) ?? e.DefaultModelId, true)),
         new("OpenAI", OpenAiChatBaseUrl, true, OpenAiTextGenerationCatalog.DefaultModelId, true),
         CustomCloud
     ];

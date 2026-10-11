@@ -178,6 +178,33 @@ public static partial class NetworkRecommender
                     : (SetupChangeBenefit.Improvement, $"{node.Name} runs on Windows, so the voice keeps its graphics card to itself.");
         }
 
+        /// <summary>Deep thinking online (docs/RECOMMENDATION_DESIGN.md, "When to use NVIDIA Build"): when the owner's online
+        /// services allow it and no host card runs a Deep thinking model at least one quality step smarter than live Thinking,
+        /// the smartest free hosted model the model catalog names (NVIDIA Build's) is suggested for the Thinking pool. A few
+        /// seconds don't matter in the background. Only a hosted option with a model counts (the catalog's; Martlet's own list
+        /// names none), and none while the Thinking pool already has an online member. It is a suggestion: the owner adds it
+        /// in Companion › Thinking pool, so it changes no setup.</summary>
+        private ComponentOption? OnlineDeepThinking(NetworkSetup target)
+        {
+            const PlanComponent part = PlanComponent.DeepThinking;
+            if (!Wants(part) || IsOff(part) || !HostingRules.Allows(request.Preference, part) || (request.OnlineThinkingPool ?? []).Count > 0) return null;
+            var live = ThinkingOption(target) is { } thinking ? TierOf(thinking) : 0;
+            var hosts = nodes.Where(n => n.Presence == Presence.Here)
+                .SelectMany(n => n.Roles.Where(r => r.Kind == DeepThinkingRole && r.Option is not null)).Select(r => r.Option!.QualityTier)
+                .DefaultIfEmpty(0).Max();
+            if (hosts >= live + 1) return null;
+            return catalog.For(part).Where(o => !o.IsLocal && o.ModelId is not null && o.FreeTier && o.QualityTier >= live + 1)
+                .OrderByDescending(o => request.ConfiguredProviders.Contains(o.ProviderId ?? "", StringComparer.OrdinalIgnoreCase))
+                .ThenByDescending(o => o.QualityTier).ThenBy(o => o.Id, StringComparer.Ordinal).FirstOrDefault();
+        }
+
+        /// <summary>The note for <see cref="OnlineDeepThinking"/>'s suggestion.</summary>
+        private string OnlineDeepNote(ComponentOption deep) =>
+            $"Deep thinking: {deep.DisplayName} is smarter than any model your hosts' graphics cards fit beside the other jobs. " +
+            $"Add it in Companion › Thinking pool" + (request.ConfiguredProviders.Contains(deep.ProviderId ?? "", StringComparer.OrdinalIgnoreCase)
+                ? " with the key you saved." : " with a free key from its website.") +
+            " What it thinks about goes to that service.";
+
         /// <summary>A card on <paramref name="node"/> for a new Deep thinking role: one no live job uses first, then the one
         /// with the most room, never the voice's Windows card or a card with a language model; the biggest model that fits
         /// (a model the host keeps downloaded first when the owner prefers models their hosts already have).</summary>

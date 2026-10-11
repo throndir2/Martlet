@@ -207,7 +207,7 @@ internal static class RecommendedSetupInputs
             new PartChoice(PlanComponent.Reading, reading.On)
             {
                 OptionId = reading.Place == ReadingPlace.Host
-                    ? FootprintCatalog.Default.For(PlanComponent.Reading).FirstOrDefault(o => o.HostRoleKind == "ocr" && o.ModelId == readingModel)?.Id
+                    ? PlanningCatalog.Current.For(PlanComponent.Reading).FirstOrDefault(o => o.HostRoleKind == "ocr" && o.ModelId == readingModel)?.Id
                         ?? "reading:rapidocr"
                     : "reading:windows-ocr",
                 HostId = reading.Place == ReadingPlace.Host ? reading.HostId : null
@@ -225,7 +225,7 @@ internal static class RecommendedSetupInputs
     private static PartChoice Sense(PlanComponent part, bool on, DeepThinkingSettings? own)
     {
         var prefix = part == PlanComponent.Vision ? "vision:" : "hearing:";
-        var catalog = FootprintCatalog.Default;
+        var catalog = PlanningCatalog.Current;
         if (own is null) return new(part, on) { OptionId = prefix + "thinking" };
         var model = string.IsNullOrWhiteSpace(own.ModelId) ? null : own.ModelId.Trim();
         var known = model is null ? null : catalog.Find(prefix + model)?.Id;
@@ -499,7 +499,7 @@ internal static class RecommendedSetupInputs
         }).OfType<JobPlan>().ToArray();
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
         if (nodes is not null)
-            foreach (var assignment in DeviceCapacityInputs.Current(inputs, nodes, FootprintCatalog.Default))
+            foreach (var assignment in DeviceCapacityInputs.Current(inputs, nodes, PlanningCatalog.Current))
                 if (JobOf(assignment.Component) is { } job && !options.ContainsKey(job))
                     options[job] = assignment.OptionId;
         var providers = configuredProviders ?? [];

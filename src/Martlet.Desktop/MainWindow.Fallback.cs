@@ -16,9 +16,9 @@ public partial class MainWindow
 {
     private const string OpenAiChatBaseUrl = "https://api.openai.com/v1";
 
-    internal static readonly IReadOnlyList<CloudProvider> FallbackProviders =
+    internal static IReadOnlyList<CloudProvider> FallbackProviders =>
     [
-        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, e.DefaultModelId, true)),
+        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, PlanningCatalog.SuggestedModel(e.Id) ?? e.DefaultModelId, true)),
         new("OpenAI", OpenAiChatBaseUrl, true, OpenAiTextGenerationCatalog.DefaultModelId, true),
         new("Ollama on this PC", LocalOllamaBaseUrl, true, LocalChatModels[0].Id, false),
         CustomCloud

@@ -3,7 +3,8 @@ using System.Globalization;
 namespace Martlet.Core.Planning;
 
 /// <summary>One fact about an option, for comparing options side by side: <see cref="Key"/> is stable ("runs-on", "needs",
-/// "vram", "ram", "cpu", "download", "speed", "quality", "hears", "sees", "cost", "evidence"; for one part's options also
+/// "vram", "ram", "cpu", "download", "speed", "quality", "smartness", "hears", "sees", "inputs", "tools", "words", "hosts", "cost",
+/// "source", "evidence"; for one part's options also
 /// "fits", "tools", "context", "cloning", "sounds", "emotions", "streams", "languages", "samples", "license", "accuracy",
 /// "key", "data", "reliability"), <see cref="Label"/> and
 /// <see cref="Value"/> are words ("Graphics memory", "about 3.7 GB, up to 4.2 GB"), <see cref="Short"/> is the few words a
@@ -51,6 +52,9 @@ public static class OptionFacts
                 SpeedHelp(option.Component)));
         facts.Add(new("quality", "Quality", option.UsesThinking ? "the same as your Thinking model" : QualityWord(option.QualityTier), null,
             "How good it is compared with the other choices for the same part, from 1 (basic) to 5 (best)."));
+        if (option.Smartness is { } smart)
+            facts.Add(new("smartness", "Smartness", smart + (option.SmartnessCredit is { } credit ? $" ({credit})" : ""), null,
+                "How smart the model is among the models Martlet's model catalog scores. Martlet shows words, or LMArena's rating with its credit."));
         if (option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking)
         {
             facts.Add(new("hears", "Hears your voice", option.HearsAudio ? "yes: it takes your recording itself" : "no: it gets the transcript",
@@ -58,10 +62,22 @@ public static class OptionFacts
             facts.Add(new("sees", "Sees pictures", option.SeesImages ? "yes" : "no", option.SeesImages ? "sees" : null,
                 "Whether it looks at your screen or camera itself."));
         }
+        if (option.CatalogKey is not null && CatalogOptions.TakesModels(option.Component))
+            facts.Add(new("inputs", "Takes", Inputs(option), null, "What the model takes, as Martlet's model catalog says. Unknown counts as no."));
+        if (option.CallsTools is { } tools && option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking)
+            facts.Add(new("tools", "Calls tools", tools ? "yes" : "no", null, "Whether it can call tools (smart home, MCP servers) while it answers."));
+        if (option.WordsPerSecond is { } words)
+            facts.Add(new("words", "Writes", $"about {words.ToString("0", CultureInfo.InvariantCulture)} words a second (estimate)", null,
+                "Estimated from the bytes the model reads for each word and the graphics card's memory speed. Real speed can be lower."));
+        if (option.NativeOnly)
+            facts.Add(new("hosts", "On a host", "not yet: Martlet's host roles don't offer it, so it runs in this PC's own Ollama", null,
+                "Martlet's host roles install only the models they list. A newer Martlet on the host can offer more."));
         if (!option.IsLocal)
             facts.Add(new("cost", "Cost", option.FreeTier ? "free tier" + (option.NeedsSignup ? ", needs a free account and key" : "")
                     : option.NeedsSignup ? "paid, needs an account and key" : "paid",
                 option.FreeTier ? "free" : "paid", "What it costs to use online."));
+        if (option.CatalogKey is not null || option.Origin is OptionOrigin.Catalog or OptionOrigin.LocalFacts)
+            facts.Add(new("source", "Comes from", OriginWords(option), null, option.Source.Length > 0 ? option.Source : null));
         facts.Add(new("evidence", "Numbers", option.Evidence switch
         {
             FootprintEvidence.Measured => "measured on Martlet hardware",
@@ -99,8 +115,12 @@ public static class OptionFacts
                 _ => f
             }).ToList();
         if (callsTools is { } tools)
+        {
+            // A test on the route (the caller's) knows better than the catalog's model fact.
+            facts.RemoveAll(f => f.Key == "tools");
             facts.Add(new("tools", "Calls tools", tools ? "yes" : "no", null,
                 "Whether it can call tools (smart home, MCP servers) while it answers."));
+        }
         if (option.IsLocal)
             facts.Add(new("context", "Context", "8,192 tokens, as measured", null,
                 "How much of the conversation it reads at once; the graphics memory above is for this much. A longer context takes " +
@@ -323,6 +343,31 @@ public static class OptionFacts
         4 => "excellent",
         _ => "best"
     };
+
+    /// <summary>What a model takes, in words: "text, pictures, sound and video".</summary>
+    public static string Inputs(ComponentOption option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        List<string> parts = ["text"];
+        if (option.SeesImages) parts.Add("pictures");
+        if (option.HearsAudio) parts.Add("sound");
+        if (option.TakesVideo) parts.Add("video");
+        return parts.Count == 1 ? "text only" : string.Join(", ", parts[..^1]) + " and " + parts[^1];
+    }
+
+    /// <summary>Where an option comes from, in words, for its "Comes from" fact.</summary>
+    public static string OriginWords(ComponentOption option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        return option.Origin switch
+        {
+            OptionOrigin.Catalog => "Martlet's model catalog, which updates every day: chosen by rule from the provider's free models",
+            OptionOrigin.LocalFacts => "Martlet's model catalog, which updates every day: its size and speed are estimates from the model's " +
+                "files on Hugging Face and the Ollama registry",
+            OptionOrigin.Served => $"{option.ServedBy ?? "your model app"}, with how smart it is from Martlet's model catalog",
+            _ => "Martlet's own list, with how smart it is from Martlet's model catalog"
+        };
+    }
 
     private static string Threads(double threads) =>
         $"{threads.ToString(threads % 1 == 0 ? "0" : "0.#", CultureInfo.InvariantCulture)} thread{(Math.Abs(threads - 1) < 0.05 ? "" : "s")}";

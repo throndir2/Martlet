@@ -34,6 +34,7 @@ public partial class MainWindow
         var current = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         double? thinkingGb = thinking ? null : IsLocalOllama(current) ? ListeningAdvisor.OllamaModelGb(current!.ModelId) : 0;
         var preferences = RecommendationPreferences.Load(store?.DataDirectory);
+        await PlanningOptionsAsync();
         var plan = DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb, machine.MemoryGb, preferences,
             preferences.PlaysGames(ClusterDevice) ?? GamesHere);
         if (!thinking) return plan;
@@ -76,7 +77,7 @@ public partial class MainWindow
                 if (listening && plan.ListenOnGpu) downloads.Add($"Whisper {plan.Listening.GpuModel}");
                 // Use models your apps already run: offered when the owner turned it off, or when an app serves a chat model.
                 var useServed = UseServedModels;
-                var chats = ServedModels.Usable(lastServed.Select(m => m with { MachineId = DefaultSetup.ThisPc }), FootprintCatalog.Default)
+                var chats = ServedModels.Usable(lastServed.Select(m => m with { MachineId = DefaultSetup.ThisPc }), PlanningCatalog.Current)
                     .Select(m => $"{m.ModelId} in {m.AppName}").ToList();
                 var offer = planned is null && thinking && (!useServed || chats.Count > 0);
                 var unused = offer && useServed && plan.Served is null

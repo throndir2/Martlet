@@ -44,7 +44,7 @@ internal static class JobOptions
         var options = new List<PickerOption>();
         foreach (var model in suggestions)
         {
-            var footprint = FootprintCatalog.Default.Find(model.Id);
+            var footprint = PlanningCatalog.Current.Find(model.Id);
             List<OptionFact> facts = footprint is null ? [OllamaRunsOn] : [.. OptionFacts.ThinkingModel(footprint, cardGb, model.MinimumVramGb, callsTools: true)];
             if (Here(downloaded, model.Id, footprint) is { } here) facts.Insert(Math.Min(1, facts.Count), here);
             var summary = model == recommended
@@ -158,7 +158,7 @@ internal static class JobOptions
         foreach (var provider in providers)
         {
             var key = ProviderKey(provider);
-            var catalog = FootprintCatalog.Default;
+            var catalog = PlanningCatalog.Current;
             var option = (key, component) switch
             {
                 ("openai", PlanComponent.Voice) => catalog.Find(FootprintCatalog.OpenAiVoiceId),
@@ -223,7 +223,7 @@ internal static class JobOptions
         new("openai", "OpenAI voice", "OpenAI's built-in voices, such as alloy. Quick and clear, but not your voice.")
         {
             Badge = openAiInUse ? InUse : null, InUse = openAiInUse,
-            Facts = OptionFacts.Voice(FootprintCatalog.Default.Find(FootprintCatalog.OpenAiVoiceId), VoiceAbilities.OpenAiVoice,
+            Facts = OptionFacts.Voice(PlanningCatalog.Current.Find(FootprintCatalog.OpenAiVoiceId), VoiceAbilities.OpenAiVoice,
                 "many languages: it reads the reply's language", streams: true, samples: null, "OpenAI terms (paid)", nonCommercial: false, cloud: "OpenAI")
         },
         new(SpeechEngines.ElevenLabs.Key, SpeechEngines.ElevenLabs.Name, SpeechEngines.ElevenLabs.Summary)
@@ -261,7 +261,7 @@ internal static class JobOptions
             var used = state.ParakeetInUse == model.Id;
             var installed = state.Installed(model.Id);
             var size = SherpaComponents.Megabytes(model.DownloadBytes);
-            var footprint = FootprintCatalog.Default.Find(footprintId)!;
+            var footprint = PlanningCatalog.Current.Find(footprintId)!;
             var languages = model.EnglishOnly ? "English" : "25 languages";
             options.Add(new(model.Id, model.Name, summary)
             {
@@ -276,7 +276,7 @@ internal static class JobOptions
             });
         }
         var advice = state.Advice;
-        var gpuFootprint = FootprintCatalog.Default.Find(advice?.GpuModel == "small" ? "whisper-small-cuda" : "whisper-large-v3-turbo-cuda")!;
+        var gpuFootprint = PlanningCatalog.Current.Find(advice?.GpuModel == "small" ? "whisper-small-cuda" : "whisper-large-v3-turbo-cuda")!;
         const string whisperLanguages = "English and 98 other languages";
         options.Add(new(WhisperGpu, "Whisper on the graphics card",
             "Fast and accurate in many languages. It runs in Martlet's host service in Docker on this PC.")
@@ -293,7 +293,7 @@ internal static class JobOptions
         options.Add(new(WhisperCpu, "Whisper on the processor", $"Works on any PC and keeps the graphics card free, but slower. Uses the {cpuModel} model.")
         {
             Badge = state.CpuInUse ? InUse : null, InUse = state.CpuInUse,
-            Facts = With(OptionFacts.SpeechRecognizer(FootprintCatalog.Default.Find("whisper-small-cpu")!, whisperLanguages, "good", streams: false)
+            Facts = With(OptionFacts.SpeechRecognizer(PlanningCatalog.Current.Find("whisper-small-cpu")!, whisperLanguages, "good", streams: false)
                     .Select(f => f.Key == "languages" ? f with { Short = "99 languages" } : f),
                 new("model", "Model", cpuModel, null),
                 new("setup", "Set up by", "Martlet, in one run window", "Docker"))

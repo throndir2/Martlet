@@ -289,7 +289,7 @@ public static class PlacementEngine
                     case PlanStep.Vision: Sense(PlanComponent.Vision); break;
                     case PlanStep.Reading: InAppFirst(PlanComponent.Reading); break;
                     case PlanStep.Hearing: Sense(PlanComponent.Hearing); break;
-                    case PlanStep.DeepThinking: Simple(PlanComponent.DeepThinking); break;
+                    case PlanStep.DeepThinking: DeepThinking(); break;
                     case PlanStep.SmartHome: Simple(PlanComponent.SmartHome); break;
                     case PlanStep.Singing: Simple(PlanComponent.Singing); break;
                     case PlanStep.Pictures: Simple(PlanComponent.Pictures); break;
@@ -406,6 +406,9 @@ public static class PlacementEngine
             foreach (var node in nodes)
             {
                 if (!option.RunsOn(node.Spec.Platform) || option.RunsInApp && !node.Spec.IsPrimary) continue;
+                // A model Martlet's host roles don't offer runs only in the own Ollama of the PC the user talks to: Thinking
+                // and the sense models there, never a host role (Deep thinking's is one).
+                if (option.NativeOnly && (!node.Spec.IsPrimary || option.Component == PlanComponent.DeepThinking)) continue;
                 if (node.Spec.Platform == "macos" && option.Gpu == GpuRequirement.Nvidia) continue;
                 var ramNeed = option.Peak.RamGb;
                 Card? card = null;
@@ -510,6 +513,34 @@ public static class PlacementEngine
             if (!chosen.IsLocal && chosen.NeedsSignup && !Configured(chosen)) SignUp(chosen);
         }
 
+        /// <summary>Deep thinking (docs/RECOMMENDATION_DESIGN.md, "When to use NVIDIA Build"): a local model at least one quality
+        /// step smarter than live Thinking when a card fits one; else, when the owner's online services allow it, the smartest
+        /// free hosted model the model catalog names (a few seconds don't matter in the background); else as
+        /// <see cref="Simple"/> picks. Martlet's own list names no hosted model, so it plans as <see cref="Simple"/> does.</summary>
+        private void DeepThinking()
+        {
+            const PlanComponent component = PlanComponent.DeepThinking;
+            var live = assignments.FirstOrDefault(a => a.Component == PlanComponent.Thinking && a.Role == AssignmentRole.Primary)?.Option.QualityTier ?? 0;
+            var hosted = request.Wants(component)
+                ? catalog.For(component).Where(o => !o.IsLocal && o.ModelId is not null && ExternalAllowed(o) && o.QualityTier >= live + 1)
+                    .OrderByDescending(o => Configured(o)).ThenByDescending(o => o.QualityTier).ThenBy(o => o.Id, StringComparer.Ordinal).FirstOrDefault()
+                : null;
+            if (hosted is null)
+            {
+                Simple(component);
+                return;
+            }
+            if (catalog.For(component).Where(o => o.IsLocal && o.QualityTier >= live + 1).OrderByDescending(Score).ThenBy(o => o.GpuGb)
+                    .FirstOrDefault(Fits) is { } smarter)
+            {
+                Place(smarter, AssignmentRole.Primary, Why(smarter, null) + " It is smarter than Thinking's model.");
+                return;
+            }
+            Place(hosted, AssignmentRole.Primary, $"{hosted.DisplayName}: no graphics card fits a Deep thinking model smarter than " +
+                "Thinking's, and a few seconds don't matter for thinking in the background.");
+            if (hosted.NeedsSignup && !Configured(hosted)) SignUp(hosted);
+        }
+
         /// <summary>Vision or Hearing: Thinking's own model when it sees (or hears), so nothing more runs and it takes no room;
         /// otherwise an image or audio model of its own, as <see cref="Simple"/> picks one.</summary>
         private void Sense(PlanComponent component)
@@ -583,7 +614,8 @@ public static class PlacementEngine
         {
             if (suggestions.Any(s => s.Kind == SuggestionKind.SignUp && s.ToOptionId == option.Id)) return;
             suggestions.Add(new(SuggestionKind.SignUp, option.Component, null, null, option.Id,
-                $"Sign up for {option.DisplayName} (free) and save its API key in Companion > Thinking."));
+                $"Sign up for {option.DisplayName} (free) and save its API key in Companion > " +
+                $"{(option.Component == PlanComponent.DeepThinking ? "Thinking pool" : "Thinking")}."));
         }
 
         private IEnumerable<ComponentOption> LocalThinking(bool hearingOnly) => catalog.For(PlanComponent.Thinking)

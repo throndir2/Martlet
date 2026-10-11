@@ -109,6 +109,9 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// service already runs or keeps downloaded (<see cref="NetworkMachine.Roles"/>, <see cref="NetworkMachine.Downloaded"/>)
     /// before a model it must download, also when its first word comes later. Off by default.</summary>
     public bool PreferHostModels { get; init; }
+    /// <summary>The Thinking pool's online members on this PC (Companion › Thinking pool's endpoints, "moonshotai/kimi-k3 on
+    /// NVIDIA Build"): with one, the recommender suggests no hosted Deep thinking model.</summary>
+    public IReadOnlyList<string> OnlineThinkingPool { get; init; } = [];
     /// <summary>Reply quality (<see cref="RecommendationPreferences.Quality"/>): a new live Thinking model is the smartest that
     /// meets the first-word target (<see cref="LiveThinking.Order"/>), with room left for the voice. Null: the fastest model
     /// that hears.</summary>
@@ -250,6 +253,11 @@ public sealed record NetworkRecommendation(NetworkSetup Current, NetworkSetup Ta
 
     /// <summary>In the recommended setup no computer and no hosted voice with a saved key can speak.</summary>
     public bool CannotSpeak => CannotSpeakNote is not null;
+
+    /// <summary>A hosted Deep thinking model the owner may add to the Thinking pool (docs/RECOMMENDATION_DESIGN.md, "When to use
+    /// NVIDIA Build"): no host card fits a model at least one quality step smarter than live Thinking, and the owner's online
+    /// services allow it. A suggestion in <see cref="Notes"/> and the Deep thinking line, not a change. Null: none.</summary>
+    public ComponentOption? OnlineDeepThinking { get; init; }
 
     /// <summary>Today's setup is already the recommended one.</summary>
     public bool AlreadyOptimal => Changes.Count == 0;
