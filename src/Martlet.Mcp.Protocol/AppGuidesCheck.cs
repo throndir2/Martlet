@@ -96,23 +96,24 @@ internal static class AppGuidesCheck
                 unrelated is { Notes: null } && named is { Notes: not null } && notNamed is null && repeat is not null && repeated == 0 && off is null;
 
             var offer = await OfferAsync(directory, guard, limits, cancellation);
+            var onItsOwn = await OnItsOwnAsync(Path.Combine(directory, "on-its-own"), guard, limits, cancellation);
             var reading = await ReadingAsync(directory, guard, fixture.BaseUrl, cancellation);
             var loading = await IndexesAsync(directory, cancellation);
             var tools = await ToolsAsync(again, fixture, cancellation);
             var latency = await LatencyAsync(directory, cancellation);
 
             var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
-                fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && !defaults.On && defaults.AskWhenStarted &&
+                fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && !defaults.On && defaults.ReadUpWhenStarted &&
                 restarted is { loaded: >= 2, on: true, indexReady: true, indexesAtStart: 0 };
-            var ok = buildOk && notesOk && offer.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok;
+            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok;
             return new
             {
                 ok,
                 endpoint = fixture.BaseUrl,
                 note = "Fixture wiki and search page on 127.0.0.1 (NOT real sites); the store, wiki reader, web client, chunker, index, " +
-                    "notes, match, offer rule, tool texts and job scheduler are Martlet's own. Fetches outside loopback are refused " +
-                    "before they leave this PC.",
-                library = new { onByDefault = defaults.On, askByDefault = defaults.AskWhenStarted },
+                    "notes, match, the rule for reading up on its own, tool texts and job scheduler are Martlet's own. Fetches outside " +
+                    "loopback are refused before they leave this PC.",
+                library = new { onByDefault = defaults.On, readUpWhenStartedByDefault = defaults.ReadUpWhenStarted },
                 build = new
                 {
                     ok = buildOk,
@@ -123,6 +124,7 @@ internal static class AppGuidesCheck
                 },
                 notes = new { ok = notesOk, results = notes },
                 offer = offer.Report,
+                onItsOwn = onItsOwn.Report,
                 reading = reading.Report,
                 indexes = loading.Report,
                 tools = tools.Report,
@@ -143,7 +145,7 @@ internal static class AppGuidesCheck
         var library = await new FileAppGuideStore(folder).LoadLibraryAsync(cancellation);
         return new
         {
-            folder, exists = Directory.Exists(folder), on = library.On, askWhenStarted = library.AskWhenStarted,
+            folder, exists = Directory.Exists(folder), on = library.On, readUpWhenStarted = library.ReadUpWhenStarted,
             guides = library.Apps.Count(a => a.BuiltAt is not null), pages = library.Apps.Sum(a => a.Pages), bytes = library.Apps.Sum(a => a.Bytes),
             apps = library.Apps.Select(a => new
             {
@@ -289,9 +291,9 @@ internal static class AppGuidesCheck
         await restarted.AddAsync("Paint Studio", ["PaintStudio"], [], cancellation);
         restarted.See("Paint Studio Pro", "PaintStudio", game: false, fullScreen: false);
         var listed = restarted.Offer();
-        await restarted.SetAskAsync(false, cancellation);
+        await restarted.SetReadUpWhenStartedAsync(false, cancellation);
         var askOff = restarted.Offer();
-        await restarted.SetAskAsync(true, cancellation);
+        await restarted.SetReadUpWhenStartedAsync(true, cancellation);
 
         using var jobs = new BackgroundJobs();
         var notice = jobs.Start(AppGuideTools.OfferKind, AppGuideTools.Label(first?.Name ?? "x"),
@@ -303,7 +305,8 @@ internal static class AppGuidesCheck
         var ok = first is { Game: true, Name: "Crystal Caverns" } && afterAsked is null && second is not null && afterDropped is not null &&
             afterNo is null && noKept is null && askedAgain is not null && hasGuide is null && notGame is null &&
             listed is { Game: false, Name: "Paint Studio" } && askOff is null && notice is { Kind.Notice: true } &&
-            message.Contains("- Crystal Caverns (a game)", StringComparison.Ordinal) && !message.Contains("- - ", StringComparison.Ordinal) && message.Contains("read_up_on", StringComparison.Ordinal) &&
+            message.Contains("- Crystal Caverns (a game)", StringComparison.Ordinal) && !message.Contains("- - ", StringComparison.Ordinal) &&
+            message.Contains("you've started reading up on it", StringComparison.Ordinal) && !message.Contains("read_up_on", StringComparison.Ordinal) &&
             message.Contains("skip_guide", StringComparison.Ordinal) && withMessage.Contains("Crystal Caverns", StringComparison.Ordinal);
         return (ok, new
         {
@@ -313,6 +316,44 @@ internal static class AppGuidesCheck
             listedApp = listed?.Name, askOff = askOff?.Name,
             notice = new { kind = notice?.Kind.Name, id = notice?.Id, doing = notice?.Kind.Doing, messageCharacters = message.Length },
             message
+        });
+    }
+
+    // A game without a guide comes to the front, named as Windows names an Unreal game's program: Martlet reads up on it on its own
+    // (what the desktop's job does, with no model asked), under a readable name, with the program's names on its entry, so it is
+    // on the list with its guide, the guide goes with a question while the game is in front, and nothing more is read for it.
+    private static async Task<(bool Ok, object Report)> OnItsOwnAsync(string directory, LoopbackOnly guard, GuideBuildLimits limits,
+        CancellationToken cancellation)
+    {
+        using var guides = new AppGuideService(new FileAppGuideStore(directory), new WebGuideBuilder(guard, guard), limits: limits);
+        await guides.LoadAsync(cancellation);
+        await guides.SetOnAsync(true, cancellation);
+        guides.See("MoonlitAbyss", "MoonlitAbyss-Win64-Shipping", game: true, fullScreen: true);
+        var due = guides.Offer();
+        guides.Offered(due?.Key ?? "");
+        var built = due is null ? null : await guides.BuildAsync(due.Name, [], null, cancellation, due.Programs);
+        var entry = guides.Library.Apps.FirstOrDefault(a => a.Key == due?.Key);
+        await guides.ReadyAsync(due?.Key ?? "", cancellation);
+        var inFront = guides.Recall("how much air does my oxygen tank hold?");
+        var afterRead = guides.Offer();
+        // A program name with build words of its own, and a name in one word.
+        string[] names = ["AbioticFactor-Win64-Shipping", "StardewValley", "ELDEN RING\u2122", "Half-Life 2", "DOOMEternal", "TESV"];
+        var readable = names.ToDictionary(n => n, AppGuideService.Readable);
+        var ok = due is { Name: "Moonlit Abyss", Key: "moonlit-abyss", Game: true } && built is { Built: true, Pages: > 0 } &&
+            entry is { BuiltAt: not null } && entry.Programs.Contains("MoonlitAbyss-Win64-Shipping") &&
+            guides.Front?.Entry?.Key == "moonlit-abyss" && inFront is { Ready: true, Notes: not null } &&
+            inFront.Notes.Contains("ninety seconds", StringComparison.Ordinal) && afterRead is null &&
+            readable["AbioticFactor-Win64-Shipping"] == "Abiotic Factor" && readable["StardewValley"] == "Stardew Valley" &&
+            readable["ELDEN RING\u2122"] == "ELDEN RING\u2122" && readable["Half-Life 2"] == "Half-Life 2" &&
+            readable["DOOMEternal"] == "DOOM Eternal" && readable["TESV"] == "TESV";
+        return (ok, new
+        {
+            ok,
+            inFront = new { program = "MoonlitAbyss", file = "MoonlitAbyss-Win64-Shipping", game = true },
+            readsUpOn = due?.Name, key = due?.Key, built = built is null ? null : Build(built),
+            onTheList = entry is null ? null : new { name = entry.Name, programs = entry.Programs, builtAt = entry.BuiltAt, pages = entry.Pages },
+            matchedInFront = guides.Front?.Entry?.Key, notesWhileInFront = Describe(inFront), readsAgainAfterward = afterRead?.Name,
+            readableNames = readable
         });
     }
 

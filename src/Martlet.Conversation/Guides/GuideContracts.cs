@@ -32,7 +32,7 @@ public sealed record AppGuideEntry
     public IReadOnlyList<string> Programs { get; init; } = [];
     /// <summary>Pages the owner gave to start reading from (a wiki's address). Empty: Martlet finds the app's wiki itself.</summary>
     public IReadOnlyList<string> Sites { get; init; } = [];
-    /// <summary>The owner said no when Martlet offered to read up on it: Martlet doesn't offer again.</summary>
+    /// <summary>The owner doesn't want Martlet to read up on it on its own (they said no, or stopped it).</summary>
     public bool Declined { get; init; }
     /// <summary>When its guide was last made, or null when it has none yet.</summary>
     public DateTimeOffset? BuiltAt { get; init; }
@@ -49,11 +49,13 @@ public sealed record AppGuideEntry
 public sealed record AppGuideLibrary
 {
     public const bool DefaultOn = false;
-    public const bool DefaultAskWhenStarted = true;
+    public const bool DefaultReadUpWhenStarted = true;
 
     public bool On { get; init; } = DefaultOn;
-    /// <summary>Whether Martlet offers to read up on a game or app when the user starts one that has no guide yet.</summary>
-    public bool AskWhenStarted { get; init; } = DefaultAskWhenStarted;
+    /// <summary>Whether Martlet reads up on its own on a game (or an app on the list) the user starts that has no guide yet, and
+    /// tells them in character. Kept as askWhenStarted: before, Martlet asked first, and a no to asking stays a no to reading.</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("askWhenStarted")]
+    public bool ReadUpWhenStarted { get; init; } = DefaultReadUpWhenStarted;
     public IReadOnlyList<AppGuideEntry> Apps { get; init; } = [];
 }
 
