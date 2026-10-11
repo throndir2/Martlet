@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Companion › App guides**: Martlet can read up on the games and apps you use (their fan wikis and help pages) and answer your questions about them from what it read, like *"where do I find iron ore?"* while the game is in front. It's off until you turn it on. Ask *"read up on Stardew Valley"*, or add an app with its program names and wiki pages on the page, where you can also read a guide again or delete it. ([#770](https://github.com/throndir2/Martlet/pull/770))
+- With App guides on, when you start a game (or an app on your list) that Martlet has no guide for, it asks once, in character, whether it should read up on it. Say no and it won't ask about that app again; **Ask again** on the page undoes that. ([#770](https://github.com/throndir2/Martlet/pull/770))
+
 ## [0.68.0] - 2026-10-10
 
 ### Added
