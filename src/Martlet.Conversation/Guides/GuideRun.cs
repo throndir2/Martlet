@@ -4,14 +4,21 @@ namespace Martlet.Conversation.Guides;
 
 /// <summary>One reading-up job's state and manners: the pages read so far and the caps (<see cref="GuideBuildLimits"/>), each
 /// site's robots.txt read once and obeyed, and one request at a time to a site with at least the larger of
-/// <see cref="GuideBuildLimits.Delay"/> and the site's Crawl-delay between two requests.</summary>
+/// <see cref="GuideBuildLimits.Delay"/> and the site's Crawl-delay between two requests. Before a request it keeps the pages read
+/// so far when that is due (<see cref="GuideBuildRequest.Keep"/>).</summary>
 internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProgress<string>? progress,
-    Func<TimeSpan, CancellationToken, Task> wait, CancellationToken token)
+    Func<TimeSpan, CancellationToken, Task> wait, CancellationToken token,
+    Func<GuideBuildOutcome, CancellationToken, Task<bool>>? keep = null, TimeSpan keepEvery = default)
 {
+    /// <summary>Requests a job may make before its first pages, to find its wiki (without a page cap).</summary>
+    public const int FindingRequests = 100;
+
     private readonly Dictionary<string, Host> hosts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, RobotsRules> rules = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> read = new(StringComparer.Ordinal);
     private readonly Stopwatch clock = Stopwatch.StartNew();
+    private TimeSpan lastKept;
+    private int keptPages;
 
     public GuideBuildLimits Limits { get; } = limits;
     public CancellationToken Token { get; } = token;
@@ -23,12 +30,20 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
     public long Bytes { get; private set; }
     public int Requests { get; private set; }
     public bool TimeUp { get; private set; }
+    /// <summary>The guide can hold no more pages (<see cref="GuideBuildRequest.Keep"/> said so).</summary>
+    public bool GuideFull { get; private set; }
 
-    /// <summary>The most requests one job makes (every page may need a few requests to find it).</summary>
-    public int MaxRequests => Limits.Pages * 3 + 30;
-    public bool Full => Pages.Count >= Limits.Pages || Bytes >= Limits.Bytes || TimeUp || Requests >= MaxRequests;
+    /// <summary>The most requests one job makes: 3 a page (every page may need a few requests to find it), plus 30 with a page
+    /// cap, else plus <see cref="FindingRequests"/> for the pages read so far, so a site whose pages can't be read ends the job.</summary>
+    public int MaxRequests => Limits.Pages is { } cap ? cap * 3 + 30 : Pages.Count * 3 + FindingRequests;
+    public bool Full => Limits.Pages is { } cap && Pages.Count >= cap || Limits.Bytes is { } bytes && Bytes >= bytes || TimeUp || GuideFull ||
+        Requests >= MaxRequests;
 
-    public void Reading() => progress?.Report($"Reading pages ({Math.Min(Pages.Count + 1, Limits.Pages)} of at most {Limits.Pages})");
+    public void Reading() => progress?.Report(ReadingWords(Pages.Count, Limits.Pages));
+
+    /// <summary>"Reading page 4", or "Reading page 4 of at most 12" with a page cap.</summary>
+    public static string ReadingWords(int read, int? cap) =>
+        cap is { } most ? $"Reading page {Math.Min(read + 1, most)} of at most {most}" : $"Reading page {read + 1}";
 
     public void Report(string words) => progress?.Report(words);
 
@@ -38,7 +53,7 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
     /// <summary>Keeps a page read (once per address) and returns whether it was kept.</summary>
     public bool Add(GuidePage page)
     {
-        if (Pages.Count >= Limits.Pages || !read.Add(page.Url)) return false;
+        if (Limits.Pages is { } cap && Pages.Count >= cap || !read.Add(page.Url)) return false;
         Pages.Add(page);
         var host = new Uri(page.Url).Host;
         if (!Hosts.Contains(host, StringComparer.OrdinalIgnoreCase)) Hosts.Add(host);
@@ -72,9 +87,10 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
 
     /// <summary>The document at <paramref name="url"/>, or null when the site's robots.txt doesn't allow it (where it was asked
     /// for, or where a redirect took it), the site asked Martlet to stop (429 or 503), or the job is out of pages, bytes,
-    /// requests or time. Throws <see cref="WebResearchException"/> when it can't be read.</summary>
+    /// requests, time or room in the guide. Throws <see cref="WebResearchException"/> when it can't be read.</summary>
     public async Task<WebDocument?> GetAsync(Uri url, int maxBytes = WebAccess.MaxDocumentBytes)
     {
+        await KeepIfDueAsync().ConfigureAwait(false);
         if (Full || !await AllowsAsync(url).ConfigureAwait(false) || Full || HostOf(url).Stopped) return null;
         var document = await SendAsync(url, HostOf(url), maxBytes).ConfigureAwait(false);
         if (document is null || !Uri.TryCreate(document.Url, UriKind.Absolute, out var final) || final == url) return document;
@@ -83,10 +99,20 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
         return HostOf(final).Stopped || !await AllowsAsync(final).ConfigureAwait(false) ? null : document;
     }
 
+    // The pages read since the last keep, once KeepEvery has passed since it (or since the start).
+    private async Task KeepIfDueAsync()
+    {
+        if (keep is null || GuideFull || Pages.Count == keptPages || clock.Elapsed - lastKept < keepEvery) return;
+        keptPages = Pages.Count;
+        var more = await keep(new GuideBuildOutcome([.. Pages], [.. Hosts], Failed, Bytes, null), Token).ConfigureAwait(false);
+        lastKept = clock.Elapsed;
+        if (!more) GuideFull = true;
+    }
+
     /// <summary>Waits <paramref name="pause"/> (between two web searches), unless that would pass the job's time.</summary>
     public async Task<bool> PauseAsync(TimeSpan pause)
     {
-        if (clock.Elapsed + pause >= Limits.Time)
+        if (Limits.Time is { } time && clock.Elapsed + pause >= time)
         {
             TimeUp = true;
             return false;
@@ -97,7 +123,7 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
 
     private async Task<WebDocument?> SendAsync(Uri url, Host host, int maxBytes)
     {
-        var left = Limits.Bytes - Bytes;
+        var left = Limits.Bytes is { } cap ? cap - Bytes : long.MaxValue;
         if (left <= 0 || Requests >= MaxRequests || host.Stopped) return null;
         if (host.Last is { } last)
         {
@@ -105,7 +131,7 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
             if (pause > TimeSpan.Zero)
             {
                 // A wait that would pass the job's time ends the job now instead.
-                if (clock.Elapsed + pause >= Limits.Time)
+                if (Limits.Time is { } time && clock.Elapsed + pause >= time)
                 {
                     TimeUp = true;
                     return null;

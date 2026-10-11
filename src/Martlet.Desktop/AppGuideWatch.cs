@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 /// are on, on a thread-pool timer (never the UI thread, never a reply's path), it reads the program the window in front belongs
 /// to (its name and file, <see cref="ActiveApp"/>), whether it fills its screen and whether Windows says a game runs in exclusive
 /// full screen, tells a game with <see cref="PcActivity.Classify"/> (a game library folder or exclusive full screen) and gives it to
-/// <see cref="AppGuideService.See"/>. Then it raises <see cref="OfferDue"/> when Martlet may offer to read up on it. It never reads
+/// <see cref="AppGuideService.See"/>. Then it raises <see cref="OfferDue"/> when Martlet may read up on it on its own. It never reads
 /// window titles or the screen; Martlet's own windows are passed over (what was in front before stays).</summary>
 internal sealed class AppGuideWatch : IDisposable
 {
@@ -25,7 +25,7 @@ internal sealed class AppGuideWatch : IDisposable
 
     internal AppGuideWatch(AppGuideService guides) => this.guides = guides ?? throw new ArgumentNullException(nameof(guides));
 
-    /// <summary>Raised on the timer's thread when Martlet may offer to read up on the app in front.</summary>
+    /// <summary>Raised on the timer's thread when Martlet may read up on the app in front on its own.</summary>
     internal event Action<AppGuideOfferCandidate>? OfferDue;
 
     /// <summary>Whether it looks now. Turning it off forgets the app in front.</summary>

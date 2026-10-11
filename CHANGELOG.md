@@ -10,8 +10,14 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- **App guides**: when you start a game Martlet has no guide for, it now reads up on it on its own and tells you, in character, instead of asking first. Tell it you'd rather it didn't, and it stops and won't do it for that game again; *Read up when I start a game or app* on Companion › App guides turns it off. ([#786](https://github.com/throndir2/Martlet/pull/786))
+- **App guides** now read the whole wiki they find instead of stopping at 60 pages. The guide grows as Martlet reads, so you can ask about the game while it is still reading, and **Stop reading** on Companion › App guides ends a read and keeps what Martlet read. ([#785](https://github.com/throndir2/Martlet/pull/785))
 - Web research is now on by default, so asking Martlet to look something up just works. Earlier notes said it was on by default since 0.55.0, but it stayed off by mistake. If you turn it off in Companion › Thinking pool › **Web research**, it stays off. ([#784](https://github.com/throndir2/Martlet/pull/784))
 - Web research now researches as thoroughly as the 0.55.0 notes said: up to 30 searches and 60 pages each time you ask, taking notes as it reads, with no time limit and no hourly limit. Until now it still stopped after 8 pages and 12 minutes, and at 4 an hour. If the model stops partway, you still get its notes and sources. ([#788](https://github.com/throndir2/Martlet/pull/788))
+
+### Fixed
+
+- **App guides**: a game Martlet said it read up on, such as Abiotic Factor, now always shows under *Your apps* with its guide, and its guide is used while the game is in front. Before, it read up only when its model called the right tool, so it could say it was ready when nothing was read. *"Read up on …"* now also works with Thinking models that can't call tools. ([#786](https://github.com/throndir2/Martlet/pull/786))
 
 ## [0.70.0] - 2026-10-11
 
