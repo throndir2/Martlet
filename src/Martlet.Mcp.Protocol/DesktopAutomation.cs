@@ -24,11 +24,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the conversation, so they need --allow-ui-effects.
         "AccountButton", "AccountAddPerson", "AddPersonCancel",
         // The welcome wizard: Look again only asks the local network which Martlet desktops answer (as Add a computer's Find
-        // again does), Enter an address opens Add a computer, Next on the hardware step and the two preference cards only move
-        // on and show the suggestion. Choosing a network saves the device role, Join asks the other computer, Use these
-        // suggestions and Skip the key set up and install, Save key stores a key and Open build.nvidia.com opens the browser, so
-        // those need --allow-ui-effects.
-        "WizardScanAgain", "WizardJoinManual", "WizardSpecsNext", "WizardPreferLocal", "WizardPreferOnline",
+        // again does), Enter an address opens Add a computer, Next on the hardware step only moves on, and the three questions'
+        // answers (WizardGamesYes/No, WizardOnlineNever/Backup/Yes, WizardQualityQuick/Balanced/Smarter) only change the
+        // selection in the wizard. Show my setup (WizardQuestionsNext) saves the answers (recommendation-preferences.json),
+        // choosing a network saves the device role, Join asks the other computer, Use these suggestions and Skip the key set up
+        // and install, Save key stores a key and Open build.nvidia.com opens the browser, so those need --allow-ui-effects.
+        "WizardScanAgain", "WizardJoinManual", "WizardSpecsNext", "WizardGamesYes", "WizardGamesNo", "WizardOnlineNever", "WizardOnlineBackup",
+        "WizardOnlineYes", "WizardQualityQuick", "WizardQualityBalanced", "WizardQualitySmarter",
         "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // Devices' Map and List only switch how the devices show.
         "DevicesViewMap", "DevicesViewList",
@@ -80,9 +82,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // what it already knows and, when Use models your apps already run is on, the models the model apps on this PC serve,
         // asked at 127.0.0.1 only; nothing changes), and on a PC alone it opens Set it all up for me's question.
         // The review's Close only closes it. Reconfigure (RecommendedSetupApply) changes every computer, Not now
-        // (RecommendedSetupCancel), Use models your apps already run (RecommendedSetupUseServedModels, and ConfirmationOption in
-        // Set it all up for me's question) and Prefer models your hosts already have (RecommendedSetupPreferHostModels) save
-        // recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
+        // (RecommendedSetupCancel), Your preferences (RecommendedSetupQuality, RecommendedSetupOnline, RecommendedSetupGames-<n>,
+        // RecommendedSetupHearing, RecommendedSetupHostShare, Use models your apps already run RecommendedSetupUseServedModels,
+        // and ConfirmationOption in Set it all up for me's question, and Prefer models your hosts already have
+        // RecommendedSetupPreferHostModels) save recommendation-preferences.json, Settings' Recommended setup preferences (the
+        // same controls with the Recommendation prefix) do too, and Set it up installs, so they need --allow-ui-effects.
         "HomeRecommendedSetup", "RecommendedSetupClose",
         // The free API key prompt (FreeKeyPrompt): Add your key (the review's RecommendedSetupFreeKeyAdd, Companion › Thinking's
         // FreeKeyAdd-Thinking, Home's HealthOpen-recommended-setup-free-key) only opens Companion › Thinking at A cloud provider
@@ -911,8 +915,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DefaultSetupQuestion", "ConfirmationOption",
         // The welcome wizard: what Look for Martlet found, this PC's hardware (graphics card and memory, memory, processor
         // threads), the suggestion's summary (the preference chosen and whether Thinking goes online), its totals as shares of
-        // this PC, and the NVIDIA key step's intro, numbered steps and outcome. Never the key.
+        // this PC, and the NVIDIA key step's intro, numbered steps and outcome, and the games question's hint (WizardGamesHint:
+        // whether Martlet found a game library on this PC). Never the key.
         "WizardScanStatus", "WizardSpecs", "WizardPlanSummary", "WizardPlanTotals", "WizardKeyIntro", "WizardKeySteps", "WizardKeyStatus",
+        "WizardGamesHint",
         // Creations: the fixed note ("Ask Martlet to sing or show any of these.") and empty state ("Things Martlet makes, like
         // songs, appear here."), how many creations and how large, whether they are shared with the paired computers (with how
         // many and when), and the selected creation's kind line (kind, length, size, when and on which computer it was made),
@@ -1164,11 +1170,19 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // show in its run window and Background tasks). Computer names, host IDs, model names and fixed text. The banner at the
         // top ("RecommendedSetupBanner", "RecommendedSetupBannerTitle", "RecommendedSetupBannerText": Martlet can't reply, or the
         // free API key tip), the line on computers that haven't answered ("RecommendedSetupOffline") and the free key buttons'
-        // labels ("RecommendedSetupFreeKeyAdd", "RecommendedSetupFreeKeyGet"), Use models your apps already run (whether
+        // labels ("RecommendedSetupFreeKeyAdd", "RecommendedSetupFreeKeyGet"), Your preferences (the reply quality and online
+        // services chosen in "RecommendedSetupQuality" and "RecommendedSetupOnline", each companion PC's games answer
+        // "RecommendedSetupGames-0", "RecommendedSetupHearing", the host card share "RecommendedSetupHostShare", and its intro
+        // "RecommendedSetupPreferences"), Use models your apps already run (whether
         // "RecommendedSetupUseServedModels" is ticked) and the models found ("RecommendedSetupServedModels": model names and apps),
         // and Prefer models your hosts already have (whether "RecommendedSetupPreferHostModels" is ticked) and the models your
         // hosts keep ("RecommendedSetupHostModels": model names and computer names) read through the same prefix.
-        "RecommendedSetup"];
+        "RecommendedSetup",
+        // Settings › Recommended setup preferences: the same controls with the Recommendation prefix (RecommendationQuality,
+        // RecommendationOnline, RecommendationGames-0, RecommendationHearing, RecommendationHostShare,
+        // RecommendationUseServedModels, RecommendationPreferHostModels) and its status line (RecommendationPreferencesStatus).
+        // Choices and computer names only.
+        "Recommendation"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

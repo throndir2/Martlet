@@ -4989,8 +4989,26 @@ downloads nothing.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.
-It asks nothing when the directory's `recommended-setup.json` has
-`UseServedModels` off. The result has:
+It asks nothing when *Use models your apps already run* is off.
+It plans with the directory's recommendation preferences
+(`recommendation-preferences.json`; before the owner saved any, the defaults
+with the two model choices from `recommended-setup.json`), or with the
+fixture's. Give `preferences` to plan with others instead, nothing saved; each
+field is optional: `quality` (`balanced`, `quick`, `smarter`), `online`
+(`backup`, `never`, `yes`), `preferHearing`, `hostGpuShare` (90, 75, 50),
+`useServedModels`, `preferHostModels` and `games` (`[{ "device": "fixture-desk",
+"plays": true }]`, by Martlet device ID). An unknown value is an error. A data
+directory has no game library guess: a companion PC without an answer counts
+as No. The result has:
+
+- `preferences`: what it planned with: `saved` (the directory has
+  `recommendation-preferences.json`), `overridden`, `quality` and
+  `firstWordTargetMs`, `online` and `hosting` (the planners'
+  `HostingPreference`: `Backup`, `PreferLocal` or `Balanced`), `preferHearing`,
+  `hostGpuShare`, `useServedModels`, `preferHostModels`, `games` (each
+  companion PC's `device`, `computer`, `plays` and `answered`),
+  `keepGpuForGames` (the computers planned as gaming PCs) and `describe` (one
+  line).
 
 - `source` and `computers`: each computer's `id` (the cluster plan's host ID,
   else the device ID), `name`, `kind` (`Companion` or `Host`), `thisPc`,
@@ -5098,13 +5116,27 @@ it saves `recommended-setup.json`) and each optional part's Off checkbox
 `RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
 again, in `recommended-setup.json`, and the review opens again planned that
 way; Vision, Reading, Hearing and Smart home have none, because their
-Companion page turns them off) and `RecommendedSetupUseServedModels`
-(`ui_toggle`, *Use models your apps already run*, on by default: it saves
-`UseServedModels` in `recommended-setup.json` and the review opens again
-planned that way) and `RecommendedSetupPreferHostModels` (`ui_toggle`, *Prefer
-models your hosts already have*, off by default: it saves `PreferHostModels`
-in `recommended-setup.json` and the review opens again planned that way) need
-`--allow-ui-effects`. `RecommendedSetupHostModels` reads the models your hosts
+Companion page turns them off) and Your preferences need `--allow-ui-effects`:
+`RecommendedSetupQuality` (`ui_select`: *Balanced: first word in 0.4 s or
+less*, *Quick replies: first word in 0.25 s or less* or *Smarter replies:
+first word in 1 s or less*), `RecommendedSetupOnline` (`ui_select`: *Only as a
+backup*, *Never* or *Yes, when they're faster or smarter*),
+`RecommendedSetupGames-<n>` (`ui_toggle`, one per companion PC, this PC
+first; *(Martlet's guess)* while it is not answered), `RecommendedSetupHearing`
+(`ui_toggle`, *Prefer models that hear you*), `RecommendedSetupHostShare`
+(`ui_select`: *Up to 90%*, *Up to 75%* or *Up to 50%*),
+`RecommendedSetupUseServedModels` (`ui_toggle`, *Use models your apps already
+run*, on by default) and `RecommendedSetupPreferHostModels` (`ui_toggle`,
+*Prefer models your hosts already have*, off by default). Each saves
+`recommendation-preferences.json` (shared with your other computers) and the
+review opens again planned that way; the values read the choice in effect and
+`RecommendedSetupPreferences` reads the section's intro. Settings ›
+*Recommended setup preferences* has the same controls with the
+`Recommendation` prefix (`RecommendationQuality`, `RecommendationOnline`,
+`RecommendationGames-<n>`, `RecommendationHearing`, `RecommendationHostShare`,
+`RecommendationUseServedModels`, `RecommendationPreferHostModels`; also
+`--allow-ui-effects`), and `RecommendationPreferencesStatus` reads *Saved for
+all your computers. ...* after a change. `RecommendedSetupHostModels` reads the models your hosts
 keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
@@ -5184,7 +5216,12 @@ review says *Turn off* and that its downloads stay). Four `voice` steps check th
 computer has room for the owner's voice engine: Chatterbox Nano on a 4 GB card;
 Chatterbox Nano on the processor (about 8 threads) with no card; the hosted
 voice with a saved key when no computer can run an engine; otherwise a note
-that says how to set up the host service. `ok` is true when every step passed.
+that says how to set up the host service. A `preferences` step checks the
+owner's recommendation preferences: on a companion PC alone with a 12 GB card,
+Balanced thinks with Gemma 4 E4B beside the voice and Quick replies with Gemma
+4 E2B; with no card and a saved free key, online services only as a backup
+thinks on the processor and Yes with NVIDIA Build; a host card share of 50%
+plans with 12 GB of a 24 GB host card. `ok` is true when every step passed.
 
 `node_presence_status` shows when your other computers go away or come back
 ([CLUSTER](CLUSTER.md#when-a-computer-goes-away-or-comes-back); optional
@@ -6209,10 +6246,19 @@ already asking that computer (`NearbyNumber` shows the check number), and
 Step 2 reads `WizardSpecRow-Gpu`, `-Vram` (with the memory in use when
 nvidia-smi answers), `-Ram`, `-Cpu` and `WizardSpecs` (the whole line, for
 example *NVIDIA GeForce RTX 2070 SUPER (Nvidia, 8 GB graphics memory) · 32 GB
-memory · 24 processor threads*); `WizardSpecsNext` is passive. Step 3's
-`WizardPreferLocal` and `WizardPreferOnline` (passive) choose the preference
-and show the placement engine's suggestion: `WizardPlanSummary` (the preference
-and whether Thinking goes online), `WizardPlanItem-Thinking`, `-Voice`,
+memory · 24 processor threads*); `WizardSpecsNext` is passive. Step 3 asks
+three questions. Their answers are radio buttons that only change the
+selection (passive, `ui_click`): `WizardGamesYes` and `WizardGamesNo` (Martlet
+selects Yes when it finds a game library on this PC; `WizardGamesHint` says
+which it found), `WizardOnlineNever`, `WizardOnlineBackup` (the default) and
+`WizardOnlineYes`, and `WizardQualityQuick`, `WizardQualityBalanced` (the
+default) and `WizardQualitySmarter`; each reads `selected`.
+`WizardQuestionsNext` (*Show my setup*, `--allow-ui-effects`) saves the
+answers in `recommendation-preferences.json` (this PC's games answer by its
+device ID; `recommended_setup_status` with the same data directory reads them
+back under `preferences`) and shows the placement engine's suggestion planned
+with them: `WizardPlanSummary` (the three answers and whether Thinking goes
+online), `WizardPlanItem-Thinking`, `-Voice`,
 `-Listening` and `-LipSync` (what, where, *Uses 64% graphics memory, 5% memory,
 6% processor* and why, or why it's left out; a part that grows while it works
 reads *Uses 31-35% graphics memory*: what it usually holds, then the most),

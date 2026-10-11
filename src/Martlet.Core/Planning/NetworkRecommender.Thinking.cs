@@ -319,7 +319,8 @@ public static partial class NetworkRecommender
         private int TierOf(ComponentOption option) =>
             Known(option) is null && option.ServedBy is null && option.ModelId is { Length: > 0 } model ? ServedModels.Tier(model) : option.QualityTier;
 
-        /// <summary>Thinking in each companion PC's own Ollama today: a host takes it when it can run the same model as soon.</summary>
+        /// <summary>Thinking in each companion PC's own Ollama today: a host that answers takes it (rule 6: with a host, companion
+        /// PCs run no models), with the same model, else another one whose first word comes as soon (rule 7).</summary>
         private void NativeThinking(ComponentOption now)
         {
             const string job = ClusterJobs.Thinking;
@@ -327,7 +328,9 @@ public static partial class NetworkRecommender
             if (!singlePc)
             {
                 var busy = natives.Select(x => Contention(x.Node, x.Role)).DefaultIfEmpty(1).Min();
-                var slot = FindSlot(SameModel(now, ThinkingRole), new Query(ThinkingRole) { MaxMs = now.FirstWordMs, MaxContention = busy });
+                var query = new Query(ThinkingRole) { MaxMs = now.FirstWordMs, MaxContention = busy };
+                var slot = FindSlot(SameModel(now, ThinkingRole), query) ??
+                    (now.FirstWordMs is null ? null : FindSlot(ThinkingOrder(null).Where(o => o.UsesGpu), query));
                 if (slot is not null)
                 {
                     var why = $"{CardText(slot)} thinks for every companion PC with {Plain(slot.Option)}{FirstWord(slot.Option)}: " +
@@ -372,7 +375,7 @@ public static partial class NetworkRecommender
             }
             if (ThinkHere(now, forced.Benefit, forced.Why, most, strict: false)) return;
             if (ThinkHere(now, forced.Benefit, forced.Why, most, strict: false, gpu: false)) return;
-            var slot = FindSlot(ThinkingOrder(now), new Query(ThinkingRole) { Hosts = false, Companions = true, MostRoom = true, MaxMs = most });
+            var slot = PickThinking([.. ThinkingOrder(now)], new Query(ThinkingRole) { Hosts = false, Companions = true, MostRoom = true, MaxMs = most }, now);
             if (slot is not null)
             {
                 var why = $"{forced.Why} No host can run Thinking, so {CardText(slot)} runs {Plain(slot.Option)} for every companion PC{FirstWord(slot.Option)}.";
@@ -391,6 +394,7 @@ public static partial class NetworkRecommender
         private string NoHostedThinking() =>
             !catalog.For(PlanComponent.Thinking).Any(o => !o.IsLocal && Configured(o)) ? "no free API key is saved"
             : request.Preference == HostingPreference.PreferLocal ? "you keep everything on your computers"
+            : request.Preference == HostingPreference.Backup ? "you use online services only as a backup"
             : "no hosted provider answers as soon";
 
         private bool ThinkHere(ComponentOption? now, SetupChangeBenefit benefit, string reason, int? most, bool strict, bool gpu = true)
@@ -398,37 +402,75 @@ public static partial class NetworkRecommender
             const string job = ClusterJobs.Thinking;
             // Thinking inside this PC needs a model the catalog knows (Martlet sets it up by its option); a model sized only from
             // its name can still move to a host role, which installs it by name.
-            var order = ThinkingOrder(now).Where(o => o.UsesGpu == gpu && (!singlePc || Known(o) is not null));
-            var slot = singlePc
-                ? FindSlot(order, new Query(ThinkingRole) { Native = true, Companions = true, MaxMs = most })
-                : FindSlot(order, new Query(ThinkingRole) { MaxMs = most, StrictWindows = strict });
+            var order = ThinkingOrder(now).Where(o => o.UsesGpu == gpu && (!singlePc || Known(o) is not null)).ToList();
+            var slot = PickThinking(order, singlePc
+                ? new Query(ThinkingRole) { Native = true, Companions = true, MaxMs = most }
+                : new Query(ThinkingRole) { MaxMs = most, StrictWindows = strict }, now);
             if (slot is null) return false;
             var where = slot.Native ? "this PC" : CardText(slot);
             var merit = gpu
                 ? "private, and it keeps working without the internet" + (slot.Option.HearsAudio ? "; it hears your voice itself" : "")
                 : "no graphics card has room, so it runs on the processor";
-            var why = $"{reason} {Plain(slot.Option)} on {where}{FirstWord(slot.Option)}: {merit}.".TrimStart();
+            var why = $"{reason} {Plain(slot.Option)} on {where}{FirstWord(slot.Option)}{Target(slot.Option)}: {merit}.".TrimStart();
             Place(slot, ThinkingRole, job, benefit, why);
             Decide(job, slot.Native ? null : slot.Node.Id, slot.Option.Id, why, benefit);
             return true;
         }
 
-        /// <summary>Today's model and its variants, then the fastest models that hear, on a card first.</summary>
+        /// <summary>", the smartest model whose first word comes within 0.4 s" when the owner chose a reply quality and
+        /// <paramref name="option"/> meets its target.</summary>
+        private string Target(ComponentOption option) =>
+            request.Quality is { } quality && LiveThinking.Meets(option, RecommendationPreferences.TargetMs(quality))
+                ? $", the smartest model whose first word comes within {Seconds(RecommendationPreferences.TargetMs(quality))}"
+                : "";
+
+        /// <summary>The place for live Thinking among <paramref name="order"/> (rule 7, docs/RECOMMENDATION_DESIGN.md): today's
+        /// model first; with a reply quality, the smartest model that meets its first-word target and leaves room for the voice
+        /// still to come; else the fastest model that has a place, so Martlet always has a reply.</summary>
+        private Slot? PickThinking(IReadOnlyList<ComponentOption> order, Query query, ComponentOption? now)
+        {
+            var same = SameModel(now, ThinkingRole);
+            if (FindSlot(order.Where(same.Contains), query) is { } kept) return kept;
+            var others = order.Where(o => !same.Contains(o)).ToList();
+            if (request.Quality is { } quality)
+            {
+                var target = RecommendationPreferences.TargetMs(quality);
+                foreach (var option in others.Where(o => LiveThinking.Meets(o, target)))
+                    if (FindSlot([option], query) is { } slot && LeavesVoiceRoom(slot)) return slot;
+            }
+            return FindSlot(LiveThinking.Order(others, null, request.PreferHearing), query);
+        }
+
+        /// <summary>While Speaking is still to be decided, a new Thinking model leaves room for the smallest variant of the
+        /// owner's voice engine: on its own card when the voice could run there, or on another card that could take it.</summary>
+        private bool LeavesVoiceRoom(Slot slot)
+        {
+            if (decisions.ContainsKey(ClusterJobs.Speaking) || engine is null || slot.Card is not { } card) return true;
+            var voiceOption = catalog.Options.Where(o => o.IsLocal && o.UsesGpu && o.HostRoleKind == engine).OrderBy(o => o.GpuGb).FirstOrDefault();
+            if (voiceOption is null) return true;
+            bool Takes(Node node, int index) => node.CanHost && (!node.Companion || singlePc) &&
+                PlacementEngine.GpuMatches(voiceOption, node.Spec.Gpus[index].Vendor, node.Spec.Gpus[index].VramGb);
+            if (!Takes(slot.Node, card) || slot.Node.Free(card) - slot.Option.GpuGb + Epsilon >= voiceOption.GpuGb) return true;
+            return nodes.Any(n => n.Presence == Presence.Here && Enumerable.Range(0, n.Spec.Gpus.Count)
+                .Any(c => (n != slot.Node || c != card) && Takes(n, c) && n.Free(c) + Epsilon >= voiceOption.GpuGb));
+        }
+
+        /// <summary>Today's model and its variants, then the local models in the order the owner's reply quality gives
+        /// (<see cref="LiveThinking.Order"/>; without one, the fastest models that hear), on a card first.</summary>
         private IEnumerable<ComponentOption> ThinkingOrder(ComponentOption? now)
         {
             var same = SameModel(now, ThinkingRole);
-            return same.Concat(catalog.For(PlanComponent.Thinking).Where(o => o.IsLocal && o.HostRoleKind == ThinkingRole && !same.Contains(o))
-                .OrderBy(o => o.UsesGpu ? 0 : 1).ThenByDescending(o => o.HearsAudio).ThenBy(o => o.FirstWordMs ?? int.MaxValue)
-                .ThenBy(o => o.Id, StringComparer.Ordinal));
+            return same.Concat(LiveThinking.Order(catalog.For(PlanComponent.Thinking).Where(o => o.IsLocal && o.HostRoleKind == ThinkingRole && !same.Contains(o)),
+                request.Quality, request.PreferHearing));
         }
 
         private bool Configured(ComponentOption option) => option.ProviderId is { } provider &&
             (request.ConfiguredProviders ?? []).Contains(provider, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>The hosted Thinking providers the owner allows (PlacementEngine's rules): configured ones, and free ones
-        /// to sign up for, never when they keep everything local.</summary>
+        /// to sign up for, never when they keep everything local or use online services only as a backup.</summary>
         private IEnumerable<ComponentOption> HostedThinking() => catalog.For(PlanComponent.Thinking)
-            .Where(o => !o.IsLocal && request.Preference != HostingPreference.PreferLocal && (Configured(o) || o.FreeTier))
+            .Where(o => !o.IsLocal && !HostingRules.LiveLocal(request.Preference) && (Configured(o) || o.FreeTier))
             .OrderByDescending(o => (Configured(o) ? 20 : 0) + (o.HearsAudio ? 10 : 0) + o.QualityTier * 10 - Penalty(o) * 2)
             .ThenBy(o => o.FirstWordMs ?? int.MaxValue).ThenBy(o => o.Id, StringComparer.Ordinal);
 

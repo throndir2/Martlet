@@ -2,8 +2,27 @@ namespace Martlet.Core.Planning;
 
 /// <summary>The user's stance on hosted providers. PreferLocal: keep everything on my computers (nothing hosted, even if
 /// configured). Balanced: local first where it is as good, free hosted endpoints where local hardware falls short.
-/// PreferHosted: I don't mind free endpoints or signing up (NVIDIA Build); spend local hardware on voice and face.</summary>
-public enum HostingPreference { Balanced, PreferLocal, PreferHosted }
+/// PreferHosted: I don't mind free endpoints or signing up (NVIDIA Build); spend local hardware on voice and face.
+/// Backup: online services only as a backup (<see cref="OnlineServices.Backup"/>): no live job (Thinking, the voice,
+/// listening, lip-sync) is planned online, but backup Thinking and Deep thinking may be.</summary>
+public enum HostingPreference { Balanced, PreferLocal, PreferHosted, Backup }
+
+/// <summary>What a hosting preference allows.</summary>
+public static class HostingRules
+{
+    /// <summary>No hosted option for the live jobs: everything local, or online only as a backup.</summary>
+    public static bool LiveLocal(HostingPreference preference) => preference is HostingPreference.PreferLocal or HostingPreference.Backup;
+
+    /// <summary>Whether a hosted option may do <paramref name="component"/> (as a primary, or as Thinking's backup when
+    /// <paramref name="backup"/>): never when everything stays local; only Deep thinking and backup Thinking when online is only a
+    /// backup.</summary>
+    public static bool Allows(HostingPreference preference, PlanComponent component, bool backup = false) => preference switch
+    {
+        HostingPreference.PreferLocal => false,
+        HostingPreference.Backup => backup || component == PlanComponent.DeepThinking,
+        _ => true
+    };
+}
 
 /// <summary>What runs today: a component, the catalog option id and the machine (null when hosted).</summary>
 public sealed record CurrentAssignment(PlanComponent Component, string OptionId, string? MachineId);
@@ -17,6 +36,14 @@ public sealed record PlanRequest(IReadOnlyList<MachineSpecs> Machines)
     public IReadOnlyCollection<string> ConfiguredProviders { get; init; } = [];
     public IReadOnlyCollection<PlanComponent>? Wanted { get; init; }
     public IReadOnlyList<CurrentAssignment> Current { get; init; } = [];
+    /// <summary>Reply quality (<see cref="RecommendationPreferences.Quality"/>): live Thinking takes the smartest model that
+    /// meets its first-word target (<see cref="LiveThinking.Order"/>). Null: the fastest model that hears.</summary>
+    public ReplyQuality? Quality { get; init; }
+    /// <summary>Prefer models that hear you (<see cref="RecommendationPreferences.PreferHearing"/>).</summary>
+    public bool PreferHearing { get; init; } = true;
+    /// <summary>How much of each graphics card on a computer other than the one the user talks to the planner may use
+    /// (<see cref="RecommendationPreferences.HostGpuFraction"/>).</summary>
+    public double HostGpuShare { get; init; } = PlacementEngine.DefaultGpuShare;
 
     public bool Wants(PlanComponent component) => Wanted is null || Wanted.Contains(component);
 }

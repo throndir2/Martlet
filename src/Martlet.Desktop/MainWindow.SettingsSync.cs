@@ -295,6 +295,7 @@ public partial class MainWindow
         UpdatesKey => "app updates",
         ModelAbilitiesKey => "what Thinking models hear and see",
         WorkSharingSettings.SharedKey => "sharing work between your computers",
+        Martlet.Core.Planning.RecommendationPreferences.SharedKey => "your recommended setup preferences",
         _ when SharedPc.IsKey(key) || SharedPc.IsRoleKey(key) => "whether this PC is a companion or a host",
         _ => key
     };
@@ -697,6 +698,22 @@ public partial class MainWindow
             if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
             WorkSharingRoster.Forget();
             if (DevicesPage.IsVisible) RenderWorkSharing();
+            return Task.FromResult(SharedApply.Done);
+        });
+        // The recommendation preferences (Recommended setup's Your preferences, Settings): the reply quality, online services,
+        // hearing, the host card share and the two model choices are the same on all computers; each computer's games answer
+        // travels in the same document, by its device ID.
+        yield return new DelegateSection(Martlet.Core.Planning.RecommendationPreferences.SharedKey, "Recommended setup preferences", _ =>
+        {
+            var path = Path.Combine(directory, Martlet.Core.Planning.RecommendationPreferences.FileName);
+            var saved = Martlet.Core.Planning.RecommendationPreferences.Load(directory);
+            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, !Martlet.Core.Planning.RecommendationPreferences.Saved(directory), FileTime(path)));
+        }, (setting, _) =>
+        {
+            if (Martlet.Core.Planning.RecommendationPreferences.Parse(setting.Value) is not { } shared)
+                return Task.FromResult(SharedApply.Waiting("They were chosen on a newer Martlet. Update this PC to use them."));
+            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("They couldn't be saved on this PC."));
+            if (SettingsPage.IsVisible) RenderRecommendationPreferences();
             return Task.FromResult(SharedApply.Done);
         });
         // The pool lists of the areas that are the same on all computers (Companion › Voice, Listening, Thinking and the

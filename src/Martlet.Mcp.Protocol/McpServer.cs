@@ -2159,20 +2159,43 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "recommended-setup.json turns it off), the chat models your hosts run or keep downloaded (hostModels: Prefer models " +
             "your hosts already have, off unless recommended-setup.json turns it on), the recommended changes (summary, why, benefit, downloads, someone needed at the computer), each " +
             "computer's recommended roles and load, and whether a companion PC in use would ask (declined setups in " +
-            "recommended-setup.json count). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
+            "recommended-setup.json count). Each run also says the recommendation preferences it planned with (preferences: reply " +
+            "quality and its first-word target, online services and the planners' hosting preference, prefer models that hear you, " +
+            "the host graphics card share, the two model choices, each companion PC's games answer and which computers keep their " +
+            "card for games), read from recommendation-preferences.json or the fixture; the preferences argument plans with other " +
+            "ones instead (each field optional, nothing is saved). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
             "directory) asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.", new
         {
             dataDirectory = new { type = "string" },
             fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels" } },
-            lookOnThisPc = new { type = "boolean" }
+            lookOnThisPc = new { type = "boolean" },
+            preferences = new
+            {
+                type = "object",
+                properties = new
+                {
+                    quality = new { type = "string", @enum = new[] { "balanced", "quick", "smarter" } },
+                    online = new { type = "string", @enum = new[] { "backup", "never", "yes" } },
+                    preferHearing = new { type = "boolean" },
+                    hostGpuShare = new { type = "integer", @enum = new[] { 90, 75, 50 } },
+                    useServedModels = new { type = "boolean" },
+                    preferHostModels = new { type = "boolean" },
+                    games = new
+                    {
+                        type = "array",
+                        items = new { type = "object", properties = new { device = new { type = "string" }, plays = new { type = "boolean" } } }
+                    }
+                }
+            }
         }),
         Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
             "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +
             "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
             "thinking beside the voice, a companion PC with Singing whose hosts are gone (no key, then a saved free key), heavy " +
             "roles on a companion PC, Thinking with only a processor host, hosted Thinking the owner " +
-            "chose, a host left out of the Thinking pool, the voice host not answering (just now, 4 and 25 minutes), and the applied recommendation. Each " +
-            "step names its rule (1-12), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
+            "chose, a host left out of the Thinking pool, the voice host not answering (just now, 4 and 25 minutes), the owner's " +
+            "recommendation preferences (reply quality, online services only as a backup or Yes, the host card share), and the applied recommendation. Each " +
+            "step names its rule (1-12, or preferences), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
         Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +
             "(node-presence.txt; Settings > Your other computers, default 10 minutes), the rules (missing after 30 seconds without " +
             "an answer, back after 30 seconds of answers, the back notice shown 10 minutes) and the report the desktop writes when " +
@@ -2545,9 +2568,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "lip_sync_pool_status" => LipSyncPoolCheck.Status(DataDirectory(arguments), OptionalString(arguments, "deviceId")),
                 "lip_sync_pool_check" => await LipSyncPoolCheck.RunAsync(cancellation),
                 "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
-                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation)
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation, preferences: OptionalObject(arguments, "preferences"))
                     : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation,
-                        OptionalBool(arguments, "lookOnThisPc") == true),
+                        OptionalBool(arguments, "lookOnThisPc") == true, OptionalObject(arguments, "preferences")),
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),
@@ -4886,6 +4909,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return null;
         if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
         return value.GetString();
+    }
+
+    private static JsonElement? OptionalObject(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Object) throw new ArgumentException($"'{property}' must be an object.");
+        return value.Clone();
     }
 
     // character_touch's taps: [{x, y, holdMs}].

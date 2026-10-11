@@ -79,13 +79,16 @@ internal static class DefaultSetup
     /// memory Thinking takes here: null plans Thinking too; 0 means Thinking runs elsewhere (a cloud provider, another
     /// computer); more means the local model already set up keeps that much of the card.</summary>
     internal static DefaultSetupPlan Plan(IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, int threads, CultureInfo language,
-        double? thinkingGb = null, double? ramGb = null)
+        double? thinkingGb = null, double? ramGb = null, RecommendationPreferences? preferences = null, bool games = false)
     {
-        var specs = Specs(gpus, windowsGpu, ramGb, threads);
+        var specs = Specs(gpus, windowsGpu, ramGb, threads) with { KeepGpuForGames = games };
         if (thinkingGb is > 0 && specs.Gpus.Count > 0)
             specs = specs with { Gpus = [specs.Gpus[0] with { UsedGb = specs.Gpus[0].UsedGb + thinkingGb.Value }, .. specs.Gpus.Skip(1)] };
         var wanted = thinkingGb is null ? Conversation : Conversation.Where(c => c != PlanComponent.Thinking).ToArray();
-        var plan = PlacementEngine.Plan(new PlanRequest([specs]) { Preference = HostingPreference.PreferLocal, Wanted = wanted }, Catalog(gpus));
+        var plan = PlacementEngine.Plan(new PlanRequest([specs])
+        {
+            Preference = HostingPreference.PreferLocal, Wanted = wanted, Quality = preferences?.Quality, PreferHearing = preferences?.PreferHearing ?? true
+        }, Catalog(gpus));
         return FromPlacement(plan, gpus, windowsGpu, threads, language);
     }
 
@@ -172,12 +175,16 @@ internal static class DefaultSetup
     /// this PC's card goes to the voice and face. <paramref name="network"/>, when this PC joined a Martlet network, adds the
     /// network's machines and current setup, and the suggestion becomes what this PC should take on.</summary>
     internal static WelcomePlan Recommend(MachineSpecs specs, IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, CultureInfo language,
-        HostingPreference preference, IReadOnlyCollection<string>? configuredProviders = null, PlanRequest? network = null)
+        HostingPreference preference, IReadOnlyCollection<string>? configuredProviders = null, PlanRequest? network = null,
+        RecommendationPreferences? preferences = null, bool games = false)
     {
+        specs = specs with { KeepGpuForGames = games };
         var machines = network is null ? [specs] : (IReadOnlyList<MachineSpecs>)[.. network.Machines.Where(m => m.Id != specs.Id), specs];
         var request = (network ?? new PlanRequest(machines)) with
         {
-            Machines = machines, Preference = preference, ConfiguredProviders = configuredProviders ?? [], Wanted = Conversation
+            Machines = machines, Preference = preference, ConfiguredProviders = configuredProviders ?? [], Wanted = Conversation,
+            Quality = preferences?.Quality, PreferHearing = preferences?.PreferHearing ?? true,
+            HostGpuShare = preferences?.HostGpuFraction ?? PlacementEngine.DefaultGpuShare
         };
         // Alone, this PC plans only what it can set up; in a network the hosts' NVIDIA jobs aren't checked against this PC's driver.
         var catalog = Catalog(network is null ? gpus : null);
@@ -261,9 +268,11 @@ internal sealed record WelcomePlan(MachineSpecs Specs, HostingPreference Prefere
     }
 }
 
-/// <summary>The welcome wizard's answer to "where may Martlet do its thinking?".</summary>
+/// <summary>The welcome wizard's three answers in words.</summary>
 internal static class WelcomePreferences
 {
-    internal static string Describe(HostingPreference preference) => preference == HostingPreference.PreferLocal
-        ? "everything stays on your computers" : "free online services are fine";
+    internal static string Describe(RecommendationPreferences preferences, bool games) =>
+        $"{(games ? "you play games on this PC" : "no games on this PC")}, online services {RecommendationPreferences.Words(preferences.Online).ToLowerInvariant()}, " +
+        $"{RecommendationPreferences.Words(preferences.Quality).ToLowerInvariant()}" +
+        (preferences.Quality == ReplyQuality.Balanced ? " replies" : "");
 }
