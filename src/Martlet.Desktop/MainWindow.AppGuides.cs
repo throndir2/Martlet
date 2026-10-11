@@ -7,9 +7,10 @@ using Martlet.Conversation.Guides;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › App guides (docs/APP_GUIDES.md): the On switch (off by default) with what leaves this PC, Ask when I start a
-/// game or app, the list of apps with their guides (Read up now or Read again, Ask again, Delete) and Add an app. The guide library
-/// lives in &lt;data folder&gt;\guides; the watch of the program in front runs only while App guides are on, on this companion PC.</summary>
+/// <summary>Companion › App guides (docs/APP_GUIDES.md): the On switch (off by default) with what leaves this PC, Read up when I
+/// start a game or app, the list of apps with their guides (Read up now or Read again, Allow again, Delete) and Add an app. The
+/// guide library lives in &lt;data folder&gt;\guides; the watch of the program in front runs only while App guides are on, on
+/// this companion PC.</summary>
 public partial class MainWindow
 {
     private AppGuideService? appGuides;
@@ -67,13 +68,33 @@ public partial class MainWindow
         else RenderAppGuidesStatus();
     }
 
-    /// <summary>The watch saw a game (or an app on the list) without a guide in front: Martlet offers to read up on it, in the
-    /// conversation that runs (never one started for it).</summary>
+    /// <summary>The watch saw a game (or an app on the list) without a guide in front: Martlet reads up on it on its own, as the
+    /// running conversation's job (which tells you in character), else here by itself. Never left to the model's answer, so the
+    /// app is on the list from the start, with its guide when it is done.</summary>
     private void OfferAppGuide(AppGuideOfferCandidate offer)
     {
-        if (closing || appGuides is null || appGuides.Offer() is not { } still || still.Key != offer.Key) return;
-        if (openConversation?.OfferGuide(offer) is not { } job) return;
-        appGuides.Offered(offer.Key, () => job.Delivery == BackgroundDeliveryState.Dropped);
+        if (closing || appGuides is not { } guides || guides.Offer() is not { } still || still.Key != offer.Key) return;
+        guides.Offered(offer.Key);
+        if (openConversation?.ReadUpOnItsOwn(guides, still) is { } start)
+        {
+            if (start.Job is null) ErrorLog.Info($"App guides: Martlet didn't read up on the app in front ({start.Refusal}).");
+            return;
+        }
+        ReadUpOnItsOwnAsync(guides, still).Forget();
+    }
+
+    // No conversation runs: Martlet reads up on the game in front here; the page shows it, and its guide is ready for later.
+    private async Task ReadUpOnItsOwnAsync(AppGuideService guides, AppGuideOfferCandidate offer)
+    {
+        AppGuideBuild built;
+        try { built = await Task.Run(() => guides.BuildAsync(offer.Name, [], null, lifetime.Token, offer.Programs)); }
+        catch (OperationCanceledException) { return; }
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
+        {
+            ErrorLog.Warn($"App guides: couldn't keep a guide Martlet read up on by itself ({why}).");
+            return;
+        }
+        LiveConversationController.LogBuild("reading up on the app in front", built);
     }
 
     private void RenderAppGuidesTab(Panel page)
@@ -106,12 +127,13 @@ public partial class MainWindow
             "at the name of the program in front and whether it fills the screen, never at window titles or the screen.",
             new Thickness(24, 2, 0, 8));
         AutomationProperties.SetAutomationId(disclosure, "AppGuidesDisclosure");
-        var ask = new CheckBox { Content = "Ask when I start a game or app", IsChecked = library.AskWhenStarted, IsEnabled = library.On };
+        var ask = new CheckBox { Content = "Read up when I start a game or app", IsChecked = library.ReadUpWhenStarted, IsEnabled = library.On };
         AutomationProperties.SetAutomationId(ask, "AppGuidesAsk");
         ask.Checked += (_, _) => SetAppGuidesAskAsync(true).Forget();
         ask.Unchecked += (_, _) => SetAppGuidesAskAsync(false).Forget();
-        var askNote = Note("When a game, or an app on your list, without a guide comes to the front, Martlet asks once, in character, " +
-            "whether it should read up on it. If you say no, it doesn't ask about that app again.", new Thickness(24, 2, 0, 4));
+        var askNote = Note("When a game, or an app on your list, without a guide comes to the front, Martlet reads up on it on its " +
+            "own and tells you, in character. If you tell it you'd rather it didn't, it stops and doesn't read up on that app on its " +
+            "own again.", new Thickness(24, 2, 0, 4));
         var front = Note(AppGuidesFront(guides), new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(front, "AppGuidesFront");
         AutomationProperties.SetLiveSetting(front, AutomationLiveSetting.Polite);
@@ -126,7 +148,7 @@ public partial class MainWindow
         };
         if (library.Apps.Count == 0)
         {
-            var empty = Note("No apps yet. Add one below, or ask Martlet to read up on one.", new Thickness(0, 4, 0, 0));
+            var empty = Note("No apps yet. Start a game, add one below, or ask Martlet to read up on one.", new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(empty, "AppGuidesEmpty");
             list.Add(empty);
         }
@@ -166,7 +188,7 @@ public partial class MainWindow
         }
         if (entry.Declined)
         {
-            var again = PageButton("Ask again", () => AppGuideAskAgainAsync(entry).Forget(), id: "AppGuideAskAgain-" + entry.Key);
+            var again = PageButton("Allow again", () => AppGuideAskAgainAsync(entry).Forget(), id: "AppGuideAskAgain-" + entry.Key);
             again.Margin = new Thickness(8, 0, 0, 0);
             buttons.Children.Add(again);
         }
@@ -255,7 +277,7 @@ public partial class MainWindow
         if (entry.Sites.Count > 0)
             text += " Reads from " + string.Join(", ", entry.Sites.Select(s => Uri.TryCreate(s, UriKind.Absolute, out var url) ? url.Host : s)) + ".";
         if (entry.Programs.Count > 0) text += " Programs: " + string.Join(", ", entry.Programs) + ".";
-        if (entry.Declined) text += " You said no when Martlet offered, so it doesn't ask about it.";
+        if (entry.Declined) text += " You said no, so Martlet doesn't read up on it on its own.";
         return text;
     }
 
@@ -287,8 +309,8 @@ public partial class MainWindow
 
     private async Task SetAppGuidesAskAsync(bool ask)
     {
-        if (appGuides is null || appGuides.Library.AskWhenStarted == ask) return;
-        try { await appGuides.SetAskAsync(ask, lifetime.Token); }
+        if (appGuides is null || appGuides.Library.ReadUpWhenStarted == ask) return;
+        try { await appGuides.SetReadUpWhenStartedAsync(ask, lifetime.Token); }
         catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
             ActionText.Text = $"Couldn't save the App guides choice: {why}.";
@@ -393,7 +415,7 @@ public partial class MainWindow
         try
         {
             await appGuides.AskAgainAsync(entry.Key, lifetime.Token);
-            appGuidesResult = $"Martlet may offer to read up on {entry.Name} again.";
+            appGuidesResult = $"Martlet may read up on {entry.Name} on its own again.";
         }
         catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {

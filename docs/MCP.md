@@ -6328,13 +6328,14 @@ navigation to leave out), a second wiki found only through a DuckDuckGo-like
 search page, and `robots.txt`. It uses the guide library service
 (`AppGuideService`), the store (`FileAppGuideStore`), the wiki reader
 (`WebGuideBuilder` with `WebAccess(allowLoopback: true)`), the chunker, the index,
-the notes (`GuideRecall`), the program-name match, the offer rule, the tool texts
+the notes (`GuideRecall`), the program-name match, the rule for reading up on its
+own, the tool texts
 and the job scheduler (`AppGuideTools`, `BackgroundJobs`). Every fetch outside
 loopback is refused before it leaves the PC (`build.refusedOutsideLoopback`
 counts them), so nothing reaches a real site whatever the wiki reader tries.
 
-- `library`: App guides are off by default and *Ask when I start a game or app*
-  is on by default.
+- `library`: App guides are off by default and *Read up when I start a game or
+  app* is on by default (`readUpWhenStartedByDefault`).
 - `build`: reading up from the pages the owner gave (`fromGivenPages`: the wiki's
   `robots.txt` is read and the wiki is crawled through its own links, at least 2
   pages) and from a web search alone (`fromSearch`: the wiki farms named after the
@@ -6353,13 +6354,22 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   conversation already carries are not sent again (`sectionsSentAgain` 0); App
   guides off gives nothing. `firstSearchMs` is the first search in a new process
   and `laterSearchMs` a later one.
-- `offer`: a game without a guide is offered (`gameWithoutGuide`), once a session
-  (`afterAsked` null); an offer dropped before Martlet said it may come again
-  (`droppedOfferAgain`); a no is kept (`afterNo`), also after a new start
-  (`noKeptAfterRestart`), until Ask again (`afterAskAgain`); a game with a guide,
-  an app that isn't a game and *Ask* off are never offered; an app on the list is
-  (`listedApp`). `notice` and `message` are the `guideoffer` notice and the
-  message of the reply Martlet starts on its own (*App guides: offer to read up*).
+- `offer`: when Martlet reads up on its own (`AppGuideService.Offer`): a game
+  without a guide (`gameWithoutGuide`), once a session (`afterAsked` null); a start
+  dropped before Martlet could may come again (`droppedOfferAgain`); a no is kept
+  (`afterNo`), also after a new start (`noKeptAfterRestart`), until Allow again
+  (`afterAskAgain`); a game with a guide, an app that isn't a game and *Read up
+  when I start* off never are; an app on the list is (`listedApp`). `notice` and
+  `message` are the `guideoffer` notice and the message of the reply Martlet
+  starts on its own (*App guides: reading up on a game you started*): it says
+  Martlet already reads up, and doesn't ask the model to call `read_up_on`.
+- `onItsOwn`: a game in front named as Windows names an Unreal game's program
+  (*MoonlitAbyss*, *MoonlitAbyss-Win64-Shipping*) is read up on with no model, as
+  the desktop's job does it: under a readable name (`readsUpOn` *Moonlit Abyss*),
+  on the list with its guide and both program names (`onTheList`), matched while
+  in front (`matchedInFront`), its guide in the notes of a question about it
+  (`notesWhileInFront`), and not read up on again (`readsAgainAfterward` null).
+  `readableNames` shows `AppGuideService.Readable` on more program names.
 - `reading`: a read with the default caps (`defaultCaps`: no page, download or
   time cap, 2 sites, a 1 second pause, no job time limit, keeping every 3
   minutes; `storeBounds`: the most pages, sections and megabytes one guide
@@ -6389,7 +6399,7 @@ credentials.
 `app_guides_status` reads Companion › App guides from a data folder (optional
 absolute `dataDirectory`, default the current user's; the script gives it its
 disposable one): `folder` (`<data folder>\guides`), whether it `exists`, `on`,
-`askWhenStarted`, how many `guides`, `pages` and `bytes`, and each app on the
+`readUpWhenStarted` (kept as `askWhenStarted` in the file), how many `guides`, `pages` and `bytes`, and each app on the
 list (`apps`): `key`, `name`, `programs`, `sites` (the start pages the owner
 gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem` and whether
 its guide `file` is there. Never a guide's text. Read-only.
@@ -9145,17 +9155,17 @@ guides, 84 pages, 6.1 MB. Reading up on Stardew Valley: Reading page 3.*), the
 fixed `AppGuidesDisclosure`, `AppGuidesFront` (*In front:
 Elden Ring (a game, full screen), its guide is ready.*, or why Martlet doesn't
 look), `AppGuidesEmpty` and `AppGuidesResult` (what the last action did), the
-`AppGuidesOn` and `AppGuidesAsk` check boxes (`checkedState`; `ui_toggle` saves
+`AppGuidesOn` and `AppGuidesAsk` (*Read up when I start a game or app*) check boxes (`checkedState`; `ui_toggle` saves
 `guides\library.json`, so it needs `--allow-ui-effects`), and for each app on
 the list `AppGuideName-<key>` and `AppGuideStatus-<key>` (*42 pages, 3.1 MB, read
 10 Oct 2026, 18:40. Reads from stardewvalleywiki.com. Programs: StardewValley.*,
 *No guide yet.*, *Reading up now: ...* or the last problem; never a guide's
 text). Its buttons `AppGuideRead-<key>` (*Read up now* or *Read again*: reads on
 the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
-read and keeps what it read), `AppGuideAskAgain-<key>`, `AppGuideDelete-<key>`,
-`AppGuideAdd` and `AppGuideAddRead`, and typing in `AppGuideAddName`,
-`AppGuideAddPrograms` and `AppGuideAddSites` (`ui_set_text`), need
-`--allow-ui-effects`.
+read and keeps what it read), `AppGuideAskAgain-<key>` (*Allow again*),
+`AppGuideDelete-<key>`, `AppGuideAdd` and `AppGuideAddRead`, and typing in
+`AppGuideAddName`, `AppGuideAddPrograms` and `AppGuideAddSites`
+(`ui_set_text`), need `--allow-ui-effects`.
 
 At the end of Companion › Discord, *Martlet in your Discord calls* (see
 [DISCORD.md](DISCORD.md#martlet-in-your-own-calls)) has `DiscordCallOn` (the

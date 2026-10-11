@@ -18,8 +18,10 @@ public sealed record AppGuideBuild(string Key, string Name, int Pages, int Chunk
 /// matches (by key, name or program names; null when none does).</summary>
 public sealed record AppGuideFront(string Program, string File, bool Game, bool FullScreen, AppGuideEntry? Entry);
 
-/// <summary>An app Martlet may offer to read up on now: its name and key, and whether it is a game (else an app on the list).</summary>
-public sealed record AppGuideOfferCandidate(string Name, string Key, bool Game);
+/// <summary>An app Martlet may read up on, on its own, now: its name (readable: "Abiotic Factor" for the program
+/// AbioticFactor-Win64-Shipping) and key, whether it is a game (else an app on the list) and the names Windows gives its program,
+/// which join its entry so its guide is used while it is in front.</summary>
+public sealed record AppGuideOfferCandidate(string Name, string Key, bool Game, IReadOnlyList<string>? Programs = null);
 
 /// <summary>What a guide had for one message: the app, the notes (null when no section matched well enough), how many sections
 /// matched at all and went, the best relevance, how long the search took and whether the guide's index was ready (it is never
@@ -28,11 +30,11 @@ public sealed record AppGuideRecall(string App, string? Notes, int Matched, int 
 
 /// <summary>The guide library of this PC (Companion › App guides, docs/APP_GUIDES.md): the store's library kept in memory, one
 /// searchable index per app with a guide, built off the reply path (at <see cref="LoadAsync"/>, when the app comes to the front and
-/// after a guide is made) and never waited for on it, reading up one app at a time, the program in front and the offer rule.
-/// Thread-safe; <see cref="Changed"/> is raised on any thread.</summary>
+/// after a guide is made) and never waited for on it, reading up one app at a time, the program in front and the rule for reading
+/// up on a game in front on its own (<see cref="Offer"/>). Thread-safe; <see cref="Changed"/> is raised on any thread.</summary>
 public sealed class AppGuideService : IDisposable
 {
-    /// <summary>How many times Martlet offers one app in a session at most, when its offers were dropped before it could ask.</summary>
+    /// <summary>How many times Martlet starts on one app in a session at most, when its start was dropped before it could.</summary>
     public const int MaximumOffers = 3;
 
     private readonly IGuideBuilder builder;
@@ -146,8 +148,8 @@ public sealed class AppGuideService : IDisposable
     public Task SetOnAsync(bool on, CancellationToken cancellationToken = default) =>
         UpdateAsync(l => l with { On = on }, cancellationToken);
 
-    public Task SetAskAsync(bool ask, CancellationToken cancellationToken = default) =>
-        UpdateAsync(l => l with { AskWhenStarted = ask }, cancellationToken);
+    public Task SetReadUpWhenStartedAsync(bool read, CancellationToken cancellationToken = default) =>
+        UpdateAsync(l => l with { ReadUpWhenStarted = read }, cancellationToken);
 
     /// <summary>Adds an app to the list (or changes the one with the same key): its name, program names and start pages.</summary>
     public async Task<AppGuideEntry> AddAsync(string name, IReadOnlyList<string>? programs, IReadOnlyList<string>? sites,
@@ -185,8 +187,8 @@ public sealed class AppGuideService : IDisposable
         return true;
     }
 
-    /// <summary>The user said no to the offer: Martlet never offers <paramref name="name"/> again (the entry is added when the
-    /// library doesn't have it yet).</summary>
+    /// <summary>The user doesn't want Martlet to read up on <paramref name="name"/>: it never reads up on it on its own again
+    /// (the entry is added when the library doesn't have it yet).</summary>
     public async Task<AppGuideEntry> DeclineAsync(string name, CancellationToken cancellationToken = default)
     {
         var clean = AppGuideTools.CleanName(name);
@@ -201,7 +203,7 @@ public sealed class AppGuideService : IDisposable
         return declined!;
     }
 
-    /// <summary>Ask again: Martlet may offer <paramref name="key"/> again (this session too).</summary>
+    /// <summary>Allow again: Martlet may read up on <paramref name="key"/> on its own again (this session too).</summary>
     public async Task AskAgainAsync(string key, CancellationToken cancellationToken = default)
     {
         await UpdateAsync(l => l with { Apps = [.. l.Apps.Select(a => a.Key == key ? a with { Declined = false } : a)] }, cancellationToken)
@@ -256,22 +258,61 @@ public sealed class AppGuideService : IDisposable
         return key[..Math.Min(key.Length, AppGuideKeys.MaximumLength - 9)].TrimEnd('-') + "-" + hash;
     }
 
-    // A new entry for the app Martlet offered while it is in front and matches no entry: the user's answer names it in their own
-    // words ("Elden Ring" for the program eldenring), so the program's names join the entry and it is recognized from then on.
+    /// <summary>A name to read up on from the name Windows gives a program: build words a game's program file carries are left
+    /// out ("AbioticFactor-Win64-Shipping" is "AbioticFactor"), '_' is a space, and a name in one word is split where its
+    /// capitals start words ("AbioticFactor" is "Abiotic Factor", "DOOMEternal" is "DOOM Eternal"). Empty without a letter or
+    /// digit.</summary>
+    public static string Readable(string? program)
+    {
+        var name = AppGuideTools.CleanName(program);
+        if (name.Length == 0) return "";
+        var kept = name.Replace('_', ' ');
+        for (var at = kept.LastIndexOfAny(['-', '.', ' ']); at > 0 && BuildWords.Contains(kept[(at + 1)..]); at = kept.LastIndexOfAny(['-', '.', ' ']))
+            kept = kept[..at].TrimEnd(' ', '-', '.');
+        if (!kept.Contains(' ', StringComparison.Ordinal) && kept.Any(char.IsLower))
+        {
+            var split = new System.Text.StringBuilder(kept.Length + 8);
+            for (var i = 0; i < kept.Length; i++)
+            {
+                var c = kept[i];
+                if (i > 0 && char.IsUpper(c) && (char.IsLower(kept[i - 1]) || char.IsDigit(kept[i - 1]) ||
+                    char.IsUpper(kept[i - 1]) && i + 1 < kept.Length && char.IsLower(kept[i + 1])))
+                    split.Append(' ');
+                split.Append(c);
+            }
+            kept = split.ToString();
+        }
+        return AppGuideTools.CleanName(kept) is { Length: > 0 } readable ? readable : name;
+    }
+
+    // Words a game's program file name carries about how it was built, never part of the game's name.
+    private static readonly HashSet<string> BuildWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "shipping", "win64", "win32", "wingdk", "wingrts", "x64", "x86", "dx11", "dx12", "d3d11", "d3d12", "vulkan", "exe"
+    };
+
+    // What Martlet calls the program in front that matches no entry: the readable form of its name (else its file name).
+    private static string FrontName(AppGuideFront seen) => Readable(seen.Program.Length > 0 ? seen.Program : seen.File);
+
+    // The names Windows gives the program in front, which join the entry of an app read up on while it is in front.
+    private static IReadOnlyList<string> FrontPrograms(AppGuideFront seen) =>
+        [.. new[] { seen.Program, seen.File }.Select(AppGuideTools.CleanName).Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)];
+
+    // A new entry for the app Martlet read up on while it is in front and matches no entry: the user's words may name it in their
+    // own way ("Elden Ring" for the program eldenring), so the program's names join the entry and it is recognized from then on.
     private AppGuideEntry WithOffered(AppGuideEntry entry)
     {
         lock (gate)
         {
             if (front is not { Entry: null } seen || !offered.ContainsKey(FrontKey(seen))) return entry;
-            return entry with
-            {
-                Programs = [.. entry.Programs.Concat([seen.Program, seen.File]).Select(AppGuideTools.CleanName).Where(p => p.Length > 0)
-                    .Distinct(StringComparer.OrdinalIgnoreCase).Take(8)]
-            };
+            return entry with { Programs = Merged(entry.Programs, FrontPrograms(seen)) };
         }
     }
 
-    private static string FrontKey(AppGuideFront seen) => KeyOf(AppGuideTools.CleanName(seen.Program.Length > 0 ? seen.Program : seen.File));
+    private static IReadOnlyList<string> Merged(IReadOnlyList<string> programs, IEnumerable<string>? more) =>
+        [.. programs.Concat(more ?? []).Select(AppGuideTools.CleanName).Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(8)];
+
+    private static string FrontKey(AppGuideFront seen) => KeyOf(FrontName(seen));
 
     // ---------- the app in front and the offer ----------
 
@@ -304,30 +345,28 @@ public sealed class AppGuideService : IDisposable
         Changed?.Invoke();
     }
 
-    /// <summary>The app Martlet may offer to read up on now, or null: App guides and Ask when I start a game or app are on, a game
-    /// (or an app on the list) is in front with no guide, it isn't being read up on, the user never said no to it, and Martlet
-    /// hasn't asked about it this session (an offer dropped before Martlet could say it counts only after
-    /// <see cref="MaximumOffers"/>).</summary>
+    /// <summary>The app Martlet may read up on, on its own, now, or null: App guides and Read up when I start a game or app are
+    /// on, a game (or an app on the list) is in front with no guide, nothing is being read up on, the user never said no to it,
+    /// its last try didn't fail (Read up now on the page tries again) and Martlet hasn't started on it this session (one whose
+    /// start was dropped may come again, at most <see cref="MaximumOffers"/> times).</summary>
     public AppGuideOfferCandidate? Offer()
     {
         lock (gate)
         {
-            if (!library.On || !library.AskWhenStarted || front is not { } seen) return null;
+            if (!library.On || !library.ReadUpWhenStarted || front is not { } seen || building is not null) return null;
             if (seen.Entry is null && !seen.Game) return null;
-            var name = seen.Entry?.Name ?? (seen.Program.Length > 0 ? seen.Program : seen.File);
-            var clean = AppGuideTools.CleanName(name);
-            if (clean.Length == 0) return null;
-            var entry = seen.Entry ?? Match(library, [clean]);
-            var key = entry?.Key ?? KeyOf(clean);
-            if (entry is { } known && (known.BuiltAt is not null || known.Declined)) return null;
-            if (building?.Key == key) return null;
+            var name = seen.Entry?.Name ?? FrontName(seen);
+            if (name.Length == 0) return null;
+            var entry = seen.Entry ?? Match(library, [name]);
+            var key = entry?.Key ?? KeyOf(name);
+            if (entry is { } known && (known.BuiltAt is not null || known.Declined || known.Problem is not null)) return null;
             if (offered.TryGetValue(key, out var asked) && (asked.Dropped?.Invoke() != true || asked.Times >= MaximumOffers)) return null;
-            return new(entry?.Name ?? clean, key, seen.Game);
+            return new(entry?.Name ?? name, key, seen.Game, FrontPrograms(seen));
         }
     }
 
-    /// <summary>Martlet asked about <paramref name="key"/> (<paramref name="dropped"/> says, later, whether the offer was dropped
-    /// before Martlet could say it, so it may try again).</summary>
+    /// <summary>Martlet started on <paramref name="key"/> (<paramref name="dropped"/> says, later, whether that was dropped before
+    /// it could, so it may try again).</summary>
     public void Offered(string key, Func<bool>? dropped = null)
     {
         lock (gate) offered[key] = (offered.GetValueOrDefault(key).Times + 1, dropped);
@@ -336,10 +375,11 @@ public sealed class AppGuideService : IDisposable
     // ---------- reading up ----------
 
     /// <summary>Reads up on <paramref name="name"/> (one app at a time): reads its pages from <paramref name="sites"/> (empty: the
-    /// entry's own, else Martlet finds its wiki), cuts them into sections, keeps the guide and builds its index. A failure is kept
-    /// on the entry as its problem. <paramref name="progress"/> gets a few plain words now and then.</summary>
+    /// entry's own, else Martlet finds its wiki), cuts them into sections, keeps the guide and builds its index. The app is on the
+    /// list from the start, with <paramref name="programs"/> (the names Windows gives its program) among its program names. A
+    /// failure is kept on the entry as its problem. <paramref name="progress"/> gets a few plain words now and then.</summary>
     public async Task<AppGuideBuild> BuildAsync(string name, IReadOnlyList<string>? sites, IProgress<string>? progress,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, IReadOnlyList<string>? programs = null)
     {
         var clean = AppGuideTools.CleanName(name);
         var started = clock.GetTimestamp();
@@ -371,6 +411,7 @@ public sealed class AppGuideService : IDisposable
                     {
                         Sites = given.Length > 0 ? given : old?.Sites ?? [], Declined = false
                     };
+                    if (programs is { Count: > 0 }) next = next with { Programs = Merged(next.Programs, programs) };
                     return l with { Apps = [.. l.Apps.Where(a => a.Key != key), next] };
                 }, cancellationToken).ConfigureAwait(false)).Apps.First(a => a.Key == key);
             }
