@@ -43,6 +43,33 @@ public sealed class GenerationSettingsTests
         Assert.Null(ThinkLongerSettings.Normalize(new ThinkLongerSettings { Minutes = 7, PerHour = 100 }));
     }
 
+    [Fact]
+    public void Web_research_is_on_unless_saved_off_and_an_explicit_off_survives_a_save()
+    {
+        // Settings saved without a web_research value (never touched) now research; turning it off saves false, which loads off.
+        var untouched = CompanionSettings.Begin(null) with { Generation = new() { ThinkLonger = new() { Effort = ThinkEffort.High } } };
+        var untouchedJson = Encoding.UTF8.GetString(ContractJson.Write(untouched));
+        Assert.DoesNotContain("web_research", untouchedJson);
+        Assert.True(ThinkLongerSettings.Of(SettingsJson.Read(Encoding.UTF8.GetBytes(untouchedJson)).Generation).Researches);
+
+        var turnedOff = untouched with
+        {
+            Generation = GenerationSettings.Normalize(untouched.Generation! with
+            {
+                ThinkLonger = ThinkLongerSettings.Normalize(untouched.Generation!.ThinkLonger! with { WebResearch = false })
+            })
+        };
+        var offJson = Encoding.UTF8.GetString(ContractJson.Write(turnedOff));
+        Assert.Matches("\"web_research\":\\s*false", offJson);
+        var read = ThinkLongerSettings.Of(SettingsJson.Read(Encoding.UTF8.GetBytes(offJson)).Generation);
+        Assert.False(read.WebResearchOn);
+        Assert.False(read.Researches);
+
+        // Turning it back on drops the value again, so the saved settings stay lean.
+        Assert.Equal(new ThinkLongerSettings { Effort = ThinkEffort.High }, ThinkLongerSettings.Normalize(read with { WebResearch = true }));
+        Assert.Null(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = true }));
+    }
+
     [Theory]
     [InlineData(null, 0.0, null, null)]
     [InlineData(null, null, 8, null)]

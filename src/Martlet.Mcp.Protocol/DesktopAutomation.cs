@@ -801,7 +801,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and, since Martlet started, how many requests were stopped, made more important and tried again; counts only). The
         // box and both choices save thinking-pool.json, so they need --allow-ui-effects.
         "ThinkingPoolPreempt", "ThinkingPoolRaiseAfterStops", "ThinkingPoolRetries", "ThinkingPoolPriorityStatus",
-        // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
+        // Companion › Deep thinking › Web research (on by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
         "WebResearchStatus", "WebResearchDisclosure",

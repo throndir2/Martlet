@@ -470,7 +470,7 @@ small work inside Martlet that the footprints count as always on):
 | Feature | What it uses | Needed or optional | Can be off | Set up in |
 | --- | --- | --- | --- | --- |
 | Screen commentary, camera looks | Vision (and Reading); summaries on the Thinking pool | Optional | Yes | Companion › Vision |
-| Web research | A search service online (a search API or your SearXNG), then Thinking or the Thinking pool | Optional, off by default | Yes | Companion › Thinking pool › Web research |
+| Web research | A search service online (a search API or your SearXNG), then Thinking or the Thinking pool | Optional, on by default | Yes | Companion › Thinking pool › Web research |
 | Tools: MCP servers and the terminal | Programs you add, on this PC or online; the terminal runs PowerShell on this PC | Optional, the terminal off by default | Yes | Companion › Tools |
 | Discord, Messaging (Telegram, WhatsApp) | The network, then Thinking, the voice and the other parts | Optional | Yes | Companion › Discord, Companion › Messaging |
 | Memory, lorebooks | Words matched on this PC's processor (no embedding model) | Memory on by default; lorebooks optional | Yes | Companion › Memory, Companion › Lorebook |

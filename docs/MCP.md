@@ -5845,7 +5845,7 @@ it wrote. See [helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool).
 `thinkLonger` (`enabled`, on by default and turned off by Thinking longer's own
 `ThinkLongerOn` box; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
 `delivery` *WhenFree* or *NextMessage*; `chosen`; `webResearch`, Companion ›
-Deep thinking › *Web research*, off by default, and `researches`, whether it
+Deep thinking › *Web research*, on by default, and `researches`, whether it
 applies with Thinking longer), `thinking` (the Thinking
 route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
@@ -6293,8 +6293,8 @@ Completions adapter) and report creation (`ResearchReports`), against fixtures
 on 127.0.0.1 (NOT AI): a DuckDuckGo-like search page (an ad, results behind
 redirect links), web pages (one with scripts and navigation, a PDF, one
 redirecting to 192.168.1.1, one only a later step asks for) and a model with
-canned answers. `settings`: off by default, on only with Thinking longer on,
-saved lean. `guard`: which addresses count as public (`WebAccess.IsPublic`: no
+canned answers. `settings`: on by default, off when turned off or with Thinking
+longer off, saved lean (only off is saved). `guard`: which addresses count as public (`WebAccess.IsPublic`: no
 loopback, private, shared, link-local, cloud metadata, ULA, multicast or mapped
 private addresses). `flow`: a reply says it'll look into it and calls
 `research`; the tool returns before the reply ends (`toolReturnedMs`,
@@ -8912,7 +8912,7 @@ there is no choice for either;
 never searches the web or reads web pages.*, *Off, because Deep thinking is
 off. ...*, *On. When you ask, Martlet looks it up (up to 12 minutes, at most 4 an
 hour), then offers the report.* or *On, but Martlet can't look things up yet:
-...*), its fixed `WebResearchDisclosure` and the `WebResearchOn` check box
+...*), its fixed `WebResearchDisclosure` and the `WebResearchOn` check box, on by default
 (`checkedState`; `ui_toggle` saves the reply settings, so it needs
 `--allow-ui-effects`); there is no *Where it thinks* choice: the *Machines*
 list right after Now is the pool (each machine's `ThinkingPoolOn-<n>`; with no
