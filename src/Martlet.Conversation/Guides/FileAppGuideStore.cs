@@ -7,8 +7,10 @@ namespace Martlet.Conversation.Guides;
 /// app (docs/APP_GUIDES.md).
 /// <list type="bullet">
 /// <item><b>Bounded</b>: at most <see cref="MaximumApps"/> apps, a guide file of at most <see cref="MaximumGuideBytes"/>, at most
-/// <see cref="MaximumChunks"/> chunks of at most <see cref="MaximumChunkCharacters"/> each. Saving more is refused with an
-/// <see cref="ArgumentException"/> (or <see cref="InvalidOperationException"/> when the library is full).</item>
+/// <see cref="MaximumSources"/> pages and <see cref="MaximumChunks"/> chunks of at most <see cref="MaximumChunkCharacters"/> each,
+/// so one guide loads in memory (about 4.5 KB a chunk with its index) and a search stays under a millisecond. Saving more is
+/// refused with an <see cref="ArgumentException"/> (<see cref="AppGuideTooLargeException"/> for a file too large, or
+/// <see cref="InvalidOperationException"/> when the library is full).</item>
 /// <item><b>Safe to load</b>: each file says its <see cref="FormatVersion"/>. A file that can't be read, breaks the bounds or was
 /// written by a newer Martlet is refused with an <see cref="AppGuideFileException"/> naming it; it is never reset. A guide save or
 /// delete leaves an unreadable library as it is; saving a new library keeps a copy of an unreadable one
@@ -25,11 +27,11 @@ public sealed class FileAppGuideStore : IAppGuideStore
     /// <summary>The file format this store writes; it reads this and earlier ones.</summary>
     public const int FormatVersion = 1;
     public const int MaximumApps = 200;
-    public const long MaximumGuideBytes = 20_000_000;
+    public const long MaximumGuideBytes = 200_000_000;
     public const long MaximumLibraryBytes = 2_000_000;
-    public const int MaximumChunks = 25_000;
+    public const int MaximumChunks = 100_000;
     public const int MaximumChunkCharacters = 4_000;
-    public const int MaximumSources = 2_000;
+    public const int MaximumSources = 25_000;
     private const string VersionProperty = "formatVersion";
     private const int MaximumNameCharacters = 200;
     private const int MaximumUrlCharacters = 2_048;
@@ -198,7 +200,7 @@ public sealed class FileAppGuideStore : IAppGuideStore
                 bytes = stream.Length;
             }
             if (bytes > maximumBytes)
-                throw new ArgumentException($"{name} would be larger than {maximumBytes / 1_000_000} MB.", nameof(value));
+                throw new AppGuideTooLargeException($"{name} would be larger than {maximumBytes / 1_000_000} MB.", nameof(value));
             await ReplaceAsync(pending, path, token).ConfigureAwait(false);
             return bytes;
         }
@@ -286,3 +288,7 @@ public sealed class AppGuideFileException(string file, string reason, bool newer
     /// <summary>A newer Martlet wrote it.</summary>
     public bool IsNewer { get; } = newer;
 }
+
+/// <summary>A guide whose file would be larger than <see cref="FileAppGuideStore.MaximumGuideBytes"/>: nothing was written, and a
+/// guide with fewer pages may fit.</summary>
+public sealed class AppGuideTooLargeException(string message, string paramName) : ArgumentException(message, paramName);

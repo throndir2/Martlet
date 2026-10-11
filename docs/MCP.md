@@ -6360,18 +6360,28 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   an app that isn't a game and *Ask* off are never offered; an app on the list is
   (`listedApp`). `notice` and `message` are the `guideoffer` notice and the
   message of the reply Martlet starts on its own (*App guides: offer to read up*).
+- `reading`: a read with the default caps (`defaultCaps`: no page, download or
+  time cap, 2 sites, a 1 second pause, no job time limit, keeping every 3
+  minutes; `storeBounds`: the most pages, sections and megabytes one guide
+  keeps). It reads the whole fixture wiki (`wholeWiki`, 3 pages), keeps what it
+  read while it reads (`pagesKeptWhileReading` above 0, *Saving what it read so
+  far* in `progress`), and its progress never says *at most*. `stopReading`:
+  Stop reading at page 2 ends the read and keeps the 1 page read
+  (`stoppedAtPage2`), and stopping while nothing is read does nothing.
 - `tools`: `read_up_on`, `search_guide` and `skip_guide` exactly as replies get
   them, their arguments (sites made into `https://` links, others left out),
-  `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, 20
-  minutes, 4 an hour, its result), a second job refused as `busy` and the fifth in
-  an hour as `hourly_limit`, and the *App guides* prompt.
-- `latency`: what App guides add to a reply's path on a full-size guide (2,000
-  sections): `indexBuiltOffThePathMs`, and the notes step's median and worst time
-  of 200 runs for a message about the game in front, an unrelated message and
-  App guides off; `everyRequestWhileOn` is the bytes the three tool definitions
-  and the prompt add to every request (the same every time, so prompt caches keep
-  them). On this PC the notes step took about 0.13 ms (median, 0.23 ms worst) and
-  nothing while off.
+  `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, no
+  time limit, 4 an hour, its result), a second job refused as `busy` and the
+  fifth in an hour as `hourly_limit`, and the *App guides* prompt.
+- `latency`: what App guides add to a reply's path, on a guide of 2,000
+  sections (`sections`) and on a whole-wiki-size guide of 25,000 sections
+  (`wholeWiki`): `indexBuiltOffThePathMs`, and the notes step's median and worst
+  time of 200 runs for a message about the game in front, an unrelated message
+  and App guides off; `everyRequestWhileOn` is the bytes the three tool
+  definitions and the prompt add to every request (the same every time, so
+  prompt caches keep them). On this PC the notes step took about 0.2 ms
+  (median) on 2,000 sections, about 0.6 ms on 25,000 sections and nothing
+  while off.
 
 Each part has an `ok`. Temporary folder, deleted afterwards; reads no
 credentials.
@@ -9131,8 +9141,8 @@ verifying on a desktop whose sound must not be captured. Each reply writes a
 Companion › *App guides* (`CompanionTab-AppGuides`,
 [App guides](APP_GUIDES.md)): `AppGuidesNow` (*Off. Martlet doesn't read up on
 games and apps, or notice which one you play.*, *On. No guides yet.* or *On. 2
-guides, 84 pages, 6.1 MB. Reading up on Stardew Valley: Reading pages (3 of at
-most 60).*), the fixed `AppGuidesDisclosure`, `AppGuidesFront` (*In front:
+guides, 84 pages, 6.1 MB. Reading up on Stardew Valley: Reading page 3.*), the
+fixed `AppGuidesDisclosure`, `AppGuidesFront` (*In front:
 Elden Ring (a game, full screen), its guide is ready.*, or why Martlet doesn't
 look), `AppGuidesEmpty` and `AppGuidesResult` (what the last action did), the
 `AppGuidesOn` and `AppGuidesAsk` check boxes (`checkedState`; `ui_toggle` saves
@@ -9141,9 +9151,11 @@ the list `AppGuideName-<key>` and `AppGuideStatus-<key>` (*42 pages, 3.1 MB, rea
 10 Oct 2026, 18:40. Reads from stardewvalleywiki.com. Programs: StardewValley.*,
 *No guide yet.*, *Reading up now: ...* or the last problem; never a guide's
 text). Its buttons `AppGuideRead-<key>` (*Read up now* or *Read again*: reads on
-the web), `AppGuideAskAgain-<key>`, `AppGuideDelete-<key>`, `AppGuideAdd` and
-`AppGuideAddRead`, and typing in `AppGuideAddName`, `AppGuideAddPrograms` and
-`AppGuideAddSites` (`ui_set_text`), need `--allow-ui-effects`.
+the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
+read and keeps what it read), `AppGuideAskAgain-<key>`, `AppGuideDelete-<key>`,
+`AppGuideAdd` and `AppGuideAddRead`, and typing in `AppGuideAddName`,
+`AppGuideAddPrograms` and `AppGuideAddSites` (`ui_set_text`), need
+`--allow-ui-effects`.
 
 At the end of Companion › Discord, *Martlet in your Discord calls* (see
 [DISCORD.md](DISCORD.md#martlet-in-your-own-calls)) has `DiscordCallOn` (the

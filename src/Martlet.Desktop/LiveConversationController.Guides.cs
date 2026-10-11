@@ -62,7 +62,7 @@ internal sealed partial class LiveConversationController
             return built.Built ? BackgroundJobOutcome.Done(AppGuideTools.Ready(built)) : BackgroundJobOutcome.Failed(built.Problem!);
         });
         if (start.Job is { } started)
-            ErrorLog.Info($"App guides: started {started.Id} ({BackgroundJobs.Duration(AppGuideTools.TimeLimit)} limit, " +
+            ErrorLog.Info($"App guides: started {started.Id} ({(AppGuideTools.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "no")} time limit, " +
                 $"{jobs.StartedWithinHour(AppGuideTools.KindName)} of {AppGuideTools.Kind.MaxPerHour} this hour).");
         else ErrorLog.Info($"App guides: reading up wasn't started ({start.Refusal}).");
         return start;
