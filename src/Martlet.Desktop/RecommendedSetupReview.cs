@@ -166,10 +166,14 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         {
             var today = recommendation.Current.Job(job) ?? request.CurrentJobs.FirstOrDefault(j => j.Job == job);
             var suggestion = recommendation.Suggestions.FirstOrDefault(s => s.Job == job);
-            choices.Add(new ReviewChoice(job, ClusterSync.Title(job), today is null ? "not set up yet" : Who(today, Name, catalog),
-                build.Preferences.LockState(job, today?.OptionId))
+            var chosen = NetworkRecommender.TodayChoice(request, job, catalog);
+            var option = chosen is null || today is { Off: true } ? null : catalog.Find(chosen);
+            var who = today is null ? "not set up yet"
+                : option is null ? Who(today, Name, catalog)
+                : today.HostId is { } host ? $"{option.DisplayName} on {Name(host)}" : Who(today with { OptionId = option.Id }, Name, catalog);
+            choices.Add(new ReviewChoice(job, ClusterSync.Title(job), who, build.Preferences.LockState(job, chosen))
             {
-                TodayOption = today?.OptionId,
+                TodayOption = chosen,
                 Suggestion = suggestion is null ? null : $"Suggested: {suggestion.Name}: {suggestion.Why}",
                 SuggestionApplied = suggestion?.Applied == true
             });

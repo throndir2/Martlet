@@ -29,6 +29,16 @@ public static partial class NetworkRecommender
     /// <summary>"Thinking", "Speaking", "Listening" or "Lip-sync".</summary>
     public static string JobTitle(string job) => Title(job);
 
+    /// <summary>The option that does <paramref name="job"/> today, as the planner sees it (the role its host runs, else the
+    /// job's option; "loudness-lipsync" for lip-sync by the voice's loudness), or null when nothing does: what a job's lock
+    /// compares with the choice it remembers (<see cref="RecommendationPreferences.LockState"/>).</summary>
+    public static string? TodayChoice(NetworkSetupRequest request, string job, FootprintCatalog? catalog = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if ((request.CurrentJobs ?? []).All(j => j?.Job != job)) return null;
+        return new Planner(request, (catalog ?? FootprintCatalog.Default).WithServed(request.ServedModels)).TodayChoiceOf(job);
+    }
+
     /// <summary>The recommendation with each job's suggestion (<see cref="NetworkRecommendation.Suggestions"/>): every job with a
     /// lock (<see cref="RecommendationPreferences.LockableJobs"/>) is planned once more as if it were new
     /// (<see cref="NetworkSetupRequest.Fresh"/>), and a choice that is clearly better than the one the recommendation keeps is a
@@ -111,6 +121,9 @@ public static partial class NetworkRecommender
 
     private sealed partial class Planner
     {
+        internal string? TodayChoiceOf(string job) =>
+            TodayJob(job) is { Off: true } off ? off.OptionId ?? "loudness-lipsync" : TodayOption(job)?.Id ?? TodayJob(job)?.OptionId;
+
         /// <summary>The planner plans <paramref name="job"/> as if it were new (<see cref="NetworkSetupRequest.Fresh"/>): its model
         /// runs on the owner's computers today and isn't one their own model app serves.</summary>
         private bool Fresh(string job) => (request.Fresh ?? []).Contains(job) && TodayOption(job) is { IsLocal: true, ServedBy: null };

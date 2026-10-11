@@ -138,8 +138,7 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
         {
             Preference = preferences.Hosting, Quality = preferences.Quality, PreferHearing = preferences.PreferHearing,
             HostGpuShare = preferences.HostGpuFraction, PreferHostModels = preferences.PreferHostModels,
-            Unlocked = [.. RecommendationPreferences.LockableJobs.Where(job =>
-                !preferences.IsLocked(job, (CurrentJobs ?? []).FirstOrDefault(j => j?.Job == job)?.OptionId))]
+            Unlocked = [.. RecommendationPreferences.LockableJobs.Where(job => !preferences.IsLocked(job, NetworkRecommender.TodayChoice(this, job)))]
         };
     }
 }
