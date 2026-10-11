@@ -52,8 +52,9 @@ cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.69.0
+## 🆕 What's new in 0.69.1
 
+- ⚡ **Updates in seconds**: Martlet now installs an update in the background while you keep using it, then restarts into it in about a second instead of closing for the whole install. Choose **Later** and it switches over when Martlet exits.
 - 📚 **App guides**: Martlet can read up on the games and apps you use, from their fan wikis and help pages, and answer from what it read. Ask *"where do I find iron ore?"* while the game is in front, or *"read up on Stardew Valley"*. It's off until you turn it on under Companion › App guides.
 - 🎮 **It asks when you start a game**: with App guides on, Martlet notices a game or an app on your list that it has no guide for and asks once, in character, whether it should read up on it.
 - 🧠 **Better memory recall**: Martlet finds what it remembers about you more reliably, also with other forms of a word ("cats" finds your cat), puts the best matches first and leaves out near-copies.
@@ -63,7 +64,7 @@ cloud AI.
 
 ## 🔮 Coming soon
 
-Everything finished so far shipped in 0.69.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
+Everything finished so far shipped in 0.69.1. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
 
 ## 💬 Things you can say
 
