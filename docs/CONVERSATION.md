@@ -1383,6 +1383,10 @@ this PC, the local network, link-local or cloud metadata addresses), uses no
 proxy or cookies and follows at most 4 redirects. DuckDuckGo has no official
 results API, so it may limit or refuse automated searches; the search is behind
 `IWebSearch`, where a self-hosted SearXNG or a keyed search API can be added.
+[App guides](APP_GUIDES.md) also use its document reader (`IWebDocuments`): the
+same safety rules, but the document as it came (HTML, JSON or text, at most
+2 MB) and an honest bot user agent,
+`Martlet/1.0 (app guides; +https://github.com/throndir2/Martlet)`.
 
 ## App guides
 
