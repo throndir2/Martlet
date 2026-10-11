@@ -180,6 +180,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing, Fill in the words (F5AddVoiceFill
         // runs speech-to-text, which may send the recording to the Listening host) and Add voice need --allow-ui-effects.
         "F5AddVoiceMore",
+        // Record your own voice: opening it (F5RecordVoice) only shows the dialog and Cancel (OwnVoiceCancel) closes it; nothing
+        // is recorded until its box is ticked and a line's Record is pressed. Ticking the box, Record (OwnVoiceRecord-<n>, the
+        // microphone), Play and Play all (audio) and Add voice need --allow-ui-effects.
+        "F5RecordVoice", "OwnVoiceCancel",
         // Background tasks (NavTasks): a run window's Hide only hides it while its task keeps running (and closes it once the
         // task has finished), and Clear finished only drops finished tasks' kept output from the list; neither stops, sends or
         // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
@@ -566,6 +570,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (ReadingTestText) is never returned.
         "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
+        // Record your own voice: its intro, what the microphone is doing or why the last line wasn't kept ("Line 2 recorded.
+        // Next, record line 3.", "Only 0.8 seconds of speech was heard on line 1. ..."), how many lines are recorded and how
+        // long they are together ("2 of 4 lines recorded, 11.6 seconds together with the pauses."), why Add voice couldn't add
+        // the voice, and whether the own-voice box is ticked (OwnVoiceConsent's checked state). Each line's fixed words and
+        // state read through the OwnVoiceLine- and OwnVoiceLineState- prefixes. The recordings and the typed name are never
+        // returned.
+        "OwnVoiceAbout", "OwnVoiceRecorder", "OwnVoiceSummary", "OwnVoiceProblem", "OwnVoiceConsent",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
@@ -1051,7 +1062,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
         "PickerFacts-", "PickerDetail-", "PickerFact-", "PickerState-", "PickerCell-", "PickerSummary-",
-        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-",
+        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "OwnVoiceLine-", "OwnVoiceLineState-", "OwnVoiceRecord-", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default

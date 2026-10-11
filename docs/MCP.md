@@ -8407,6 +8407,27 @@ the words you typed." or why it couldn't; never the words). `F5AddVoiceFill`
 speech-to-text (and may send the recording to the Listening host), so it needs
 `--allow-ui-effects`. Use, Remove and adding change the voice list and need
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
+`F5RecordVoice` (passive: it only opens the dialog) opens *Record your own
+voice* (`OwnVoiceDialog`); `OwnVoiceCancel` (passive) closes it. `OwnVoiceAbout`
+returns its intro. `OwnVoiceConsent` is the box that says it is the owner's own
+voice; its checked state is readable, and `ui_toggle` on it needs
+`--allow-ui-effects`. Each line has its fixed words (`OwnVoiceLine-<n>`, for
+example "“Would you enjoy a quiet cup of cocoa while we measure the
+treasure?”"), its state (`OwnVoiceLineState-<n>`: "Not recorded yet.",
+"Recording..." or "Recorded: 5.4 seconds.") and its Record button
+(`OwnVoiceRecord-<n>`, readable as "Record line 2", "Stop recording line 2" or
+"Record line 2 again"; off until the box is ticked). `OwnVoiceRecorder` returns
+what the microphone is doing or why a line wasn't kept ("Press Record beside a
+line, then read it out loud.", "Line 2 recorded. Next, record line 3.", "Only
+0.8 seconds of speech was heard on line 1. ..."), `OwnVoiceSummary` how many
+lines are recorded and how long they are together ("No lines recorded yet.
+Record all 4 lines to make your voice.", "2 of 4 lines recorded, 11.6 seconds
+together with the pauses.") and `OwnVoiceProblem` why `OwnVoiceOk` (Add voice)
+couldn't add the voice ("Record line 1 first.", or that together the lines are
+longer than 30 seconds and which line to read again). Record uses the
+microphone, and Play (`OwnVoicePlay-<n>`), Play all (`OwnVoicePlayAll`) and
+`OwnVoiceOk` play audio or change the voice list; the recordings and the typed
+name (`OwnVoiceName`) are never returned.
 Passive navigation writes nothing: the list is shown as it would start until a
 voice is first used, added or removed. `f5_voices` reads the same list headlessly
 and `voice_recording_check` runs the same conversion on a file.
