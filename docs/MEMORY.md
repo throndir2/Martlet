@@ -173,16 +173,76 @@ file cannot be removed. No broad cleanup or unrelated-file deletion is used.
 All library failures have fixed messages and retain no raw IO exception, path
 or fact content.
 
-## Lexical retrieval and exact invalidation
+## Lexical retrieval and reranking
 
-Retrieval uses only a deterministic in-memory lexical index rebuilt from the
-authoritative facts. Unicode letter/digit tokens are lowercased; overlong token
-runs are not indexed. Scores combine term frequency and inverse document
-frequency. Results are bounded, deterministic and return the full fact plus its
-creation/edit provenance and the exact store revision. There are no embeddings,
-semantic summaries, external rerankers, vector stores or provider calls.
-The full ranking (score, matched terms, newest modification time, then UUID)
-is applied before the requested result limit.
+Retrieval uses only a deterministic in-memory index of the authoritative facts.
+Every change builds it again. Nothing on this path calls a model, makes
+embeddings or uses a vector store: recall runs on the reply's path, and it must
+not make a reply slower (see
+[Never add conversation latency](../AGENTS.md#never-add-conversation-latency)).
+
+**Words.** A fact and a query are read as search terms (`SearchTerms` in
+`Martlet.Core`, which app guides and past conversations also use): runs of
+letters and digits in lower case, without common English grammar words (*the*,
+*is*, *my* ...), each with a light English stem. So *cats* finds *cat*,
+*running* finds *runs* and *studying* finds *studies*. Words longer than 40
+characters and terms without a letter or digit (emoji) are left out. A query
+made from a message (`MemoryQuery.TryFromBoundedSource`) keeps the message's
+own words, one word for each new term, so a stem is never stemmed again. It
+holds at most 24 terms, 256 characters and 512 UTF-8 bytes. A query without a
+search term (for example, only grammar words) is refused with `LimitExceeded`,
+like an empty query; desktop recall then fills with the newest facts.
+
+**Stage 1: BM25.** An inverted index (for each term, the facts that hold it and
+where) finds every fact that holds a query term. BM25 scores them (k1 = 1.2,
+b = 0.75; Robertson and Zaragoza, 2009). A rare term counts more than a common
+one, a term repeated in a fact counts less each time, and a long fact counts a
+little less than a short one.
+
+**Stage 2: the reranker.** The reranker scores the 64 best BM25 candidates
+again. Each of these features multiplies the BM25 score:
+
+- **Coverage** (up to ×1.5): the part of the query's term weight that the fact
+  holds. A fact that answers more of the question comes first.
+- **Proximity** (up to ×1.25): 1 divided by the smallest distance between two
+  different query terms in the fact (Tao and Zhai, 2007).
+- **Phrases** (×1.125 for one, up to ×1.25): query word pairs that stand next
+  to each other in the fact, in the query's order.
+- **Recency** (up to ×1.1): a gentle boost that halves every 30 days before the
+  store's newest fact. It uses that fact's time, not the clock, so a cached
+  result stays exact, and an old fact that answers the question still wins.
+
+Then a greedy selection takes the best fact, then the best of the rest, and so
+on (the idea of maximal marginal relevance; Carbonell and Goldstein, 1998). A
+near-duplicate of a fact already taken counts a quarter of its score. Two facts
+are near-duplicates when the Jaccard similarity of their terms is at least 0.8,
+the rule that remembering uses to skip a near-duplicate. It is exact for facts
+of up to 32 different terms and estimated from 32 hashed terms (MinHash) for
+longer facts. As in remembering, the same words for two people are two facts:
+only facts of the same person, or a fact about no one in particular, are
+near-duplicates. Scores only go down in this selection, so the results are in
+score order and a shorter result list is always the start of a longer one.
+
+The full ranking (score, then more matched terms, then the newest modification
+time, then UUID) is applied before the result limit. Results are bounded
+(1-20), deterministic, and return the full fact with its creation/edit
+provenance and the exact store revision. A `MemorySnapshot` leaves out the facts
+that expired before it ranks, and otherwise ranks exactly like its store.
+
+**Speed.** On the developer PC (shared with other work, so numbers vary), a
+query on a full store of 512 facts takes this long (median):
+
+| Facts of | Before (TF-IDF) | Now (BM25 and the reranker) |
+|---|---|---|
+| 6-16 words | 154 µs | 38 µs |
+| 60-120 words | 351 µs | 83 µs |
+| 600-700 words | 266 µs | 161 µs |
+
+`memory_recall_check` ([MCP](MCP.md)) measures it on any PC.
+`RankingAFullStoreStaysWellUnderAMillisecond` keeps the median under a
+millisecond.
+
+### Exact invalidation
 
 Every save, edit, delete or expiry swaps in a freshly built index and clears the
 bounded query cache. A retrieval snapshots one revision, computes outside the
@@ -205,12 +265,29 @@ cleanup and disposal finish. There is no automatic cleanup sweep or retry timer.
 Exiting the process can still leave private partial bytes; this is not secure
 erasure or crash recovery of an export.
 
+### Evaluation
+
 The held-out synthetic fixture at
 `tests\Martlet.Memory.Tests\Fixtures\retrieval-held-out.json` keeps its facts and
-queries outside the retrieval implementation. It checks bounded top-result
-behavior and provenance across server-region, preference, schedule, device and
-care facts. It is deterministic contract evidence, not a real-user usefulness
-score or justification for embeddings.
+queries outside the retrieval implementation. It has 26 facts (server region,
+preferences, schedules, devices, care, pets, family, work and more) and 22
+queries: the same words as a fact, plurals, verb forms and a question of mostly
+grammar words. `HeldOutSyntheticCorpusReturnsExpectedFactWithProvenance` checks
+the top result and its provenance. `HeldOutFixtureRecallAndMeanReciprocalRank`
+writes recall@k (the expected fact is in the first k results) and MRR (mean
+reciprocal rank, 1 / the expected fact's place) to the test output:
+
+| Ranking | recall@1 | recall@3 | recall@5 | MRR |
+|---|---|---|---|---|
+| Before: TF-IDF over lower-case words | 0.64 | 0.77 | 0.82 | 0.703 |
+| Now: BM25 over stems and the reranker | 1.00 | 1.00 | 1.00 | 1.000 |
+
+Plurals went from MRR 0.361 to 1.000, verb forms from 0.729 to 1.000 and the
+grammar-word question from 0.200 to 1.000; queries with the same words stayed
+at 1.000. The new queries were written before the new ranking. The fixture is
+still synthetic: it is deterministic contract evidence, not a real-user
+usefulness score or a reason for embeddings. `RerankingTests` checks each
+reranker feature on hand-made facts.
 
 ## Frozen export and default-No authorization
 
@@ -251,7 +328,8 @@ is OFF, the store is never opened or read by a conversation.
 
 **Recall.** After STT and participation accept the current explicit typed, PTT
 or hands-free turn, Desktop opens the store once, asks the lexical index for the
-best matches for that user input and fills up to twelve facts with the most
+best matches for that user input ([BM25 and the reranker](#lexical-retrieval-and-reranking))
+and fills up to twelve facts with the most
 recently changed ones (so a small store is recalled whole; when Martlet
 recognized who is speaking, their facts and everyone's fill it before other
 people's, see [Whose memories](#whose-memories)). The facts travel in
@@ -395,7 +473,8 @@ everyone's (about no one in particular), as every fact was before voices.
   a near-duplicate of the same person's fact, or of an everyone's fact, is
   skipped.
 - **Recall.** The best matches for what was said come first, whoever they
-  belong to. The rest of the twelve is filled with the speaker's facts and
+  belong to (a near-duplicate of a better match of the same person, or of
+  everyone's, moves below the other matches). The rest of the twelve is filled with the speaker's facts and
   everyone's before other people's, newest first (by recency alone when nobody
   was recognized). Each recalled fact starts with whose it is: the voice's name,
   else its tag (`[V3]`), or `[a forgotten voice]`. When one does, the block also
@@ -828,7 +907,8 @@ dotnet test tests\Martlet.Memory.Tests --no-build -c Release --artifacts-path $a
   --results-directory "$artifacts\results"
 ```
 
-The project uses only the runtime/BCL; the test project uses existing central
+The project uses only the runtime/BCL and `Martlet.Core` (for `SearchTerms`);
+the test project uses existing central
 test pins. Both now join `Martlet.slnx`; Desktop and package graphs reference
 the runtime assembly. Direct Memory tests remain useful for focused storage
 validation. Desktop/Core/Updates suites cover production-path WPF, settings
@@ -849,6 +929,8 @@ All validation remains local; no remote workflow was added or run.
   lifecycle tests; controlled IO interruption is not power-loss qualification.
 - Evaluate usefulness, false retrievals and privacy comprehension with consented
   held-out real-user tasks and resource budgets before G4.
-- Reassess embeddings/reranking only after a labeled evaluation demonstrates
-  material benefit and model/license/index deletion lifecycle is reviewed.
-  No embedding/vector adapter is present in this slice.
+- Reassess embeddings or a model reranker only after a labeled evaluation with
+  consented real conversations demonstrates material benefit over the in-process
+  lexical reranker, and the model/license/index deletion lifecycle is reviewed.
+  Neither may run on the reply's path. No embedding/vector adapter is present in
+  this slice.

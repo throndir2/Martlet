@@ -2394,6 +2394,19 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "bulkExchanges (1,000-100,000, default 20,000) exchanges with recall timings. Nothing leaves this PC.", new
         {
             bulkExchanges = new { type = "integer", minimum = 1_000, maximum = 100_000 }
+        }),
+        Tool("memory_recall_check", "Rehearse how recall ranks remembered facts with the production memory code (Martlet.Memory: " +
+            "BM25 over word stems, then the reranker) on synthetic facts in a disposable store: plurals and verb forms finding each " +
+            "other (\"cats\" finds \"cat\", \"running\" finds \"runs\"), grammar words left out, facts holding more of the question " +
+            "first, query words next to each other and in order first, a gentle recency boost, a near-duplicate of a better match " +
+            "moving down (never one of another person), a snapshot ranking like the store, a deleted fact never recalled, and the " +
+            "time to rank a query on a full store of 512 facts (median, p95 and max in microseconds; it must stay well under a " +
+            "millisecond). Optional query ranks those words against the sample facts, or against facts (1-512 strings, later " +
+            "counts as newer) when given, and returns the ranked facts with their scores and matched terms. Never opens your " +
+            "memory. Nothing leaves this PC.", new
+        {
+            query = new { type = "string" },
+            facts = new { type = "array", items = new { type = "string" }, minItems = 1, maxItems = Martlet.Memory.MemoryLimits.MaximumFacts }
         })
     ];
 
@@ -2730,6 +2743,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "research_check" => await ResearchCheck.RunAsync(cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
+                "memory_recall_check" => await MemoryRecallCheck.RunAsync(OptionalString(arguments, "query"), MemoryRecallCheck.Facts(arguments), cancellation),
                 "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "song_playback_check" => await SongsCheck.RunAsync(
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "songId"),
