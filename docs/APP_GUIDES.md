@@ -311,12 +311,26 @@ stays the same:
 
 ## On the desktop
 
-- **The library** (`AppGuideService`) keeps `<data folder>\guides` in memory
-  and one search index per app with a guide. Indexes are built off the reply's
-  path: when Martlet starts, when an app with a guide comes to the front and
-  after a guide is made, each with the app's name and program names, so a
-  question that names the app isn't matched on the name. A message never waits
-  for an index; it goes without until it is ready. A library or guide file the
+- **The library** (`AppGuideService`) keeps `<data folder>\guides\library.json`
+  in memory, and a search index only for the guides that can be used now.
+  Indexes are built off the reply's path (`Warm`, on a thread-pool thread):
+  when an app with a guide comes to the front, when a message or
+  `search_guide` names an app, and while a guide is read or made. Each index
+  has the app's name and program names, so a question that names the app
+  isn't matched on the name. A message never waits for an index; it goes
+  without until it is ready. Martlet loads no index when it starts.
+- **Memory**: a guide is loaded whole with its index, about 4.4 KB a chunk on
+  synthetic chunks and more on real wiki text: about 0.5 to 0.9 GB for a
+  full-size guide (100,000 chunks) and about 90 to 180 MB for a wiki of about
+  5,000 pages. So `Trim` drops the indexes that can't be used now. With each
+  look of the watch (every 4 seconds) it keeps the index of the app in front
+  and of the guide being read, and of the others only the 2 used last
+  (`MaximumOtherIndexes`), each for 10 minutes after its last use
+  (`IndexIdleTime`). When the watch stops (App guides off) it drops them all.
+  After it drops a large index, it asks for a background garbage collection,
+  so a game gets the memory back soon. While a read keeps its guide, the old
+  and the new index are in memory together for a moment.
+- **Unreadable files**: a library or guide file the
   store can't read (or a newer Martlet wrote) is never reset: the page says
   which file and why, and a message about that app goes without. A guide the
   store refuses (too large, a full library) becomes the app's problem.

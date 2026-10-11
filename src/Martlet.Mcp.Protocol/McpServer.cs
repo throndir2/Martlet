@@ -2351,7 +2351,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "program named as Windows names it), for an unrelated message (none), for a message naming the game while another app " +
             "is in front, for a repeat the conversation already carries and while off; the offer (once a session, a no kept across " +
             "starts, Ask again, a game with a guide, a listed app, Ask off) and its notice; a read with the default caps (no page, " +
-            "download or time cap, so the whole fixture wiki), keeping what was read while reading and Stop reading; and the tools " +
+            "download or time cap, so the whole fixture wiki), keeping what was read while reading and Stop reading; only the " +
+            "indexes that can be used now kept in memory (none at start, the app in front's, the 2 used last, none after the " +
+            "idle time); and the tools " +
             "(read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one at a time and 4 an " +
             "hour). Reports counts, relevance and search time, also on a whole-wiki-size guide. Temporary folder, deleted " +
             "afterwards; reads no credentials.", new { }),

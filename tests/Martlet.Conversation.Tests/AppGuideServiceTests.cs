@@ -356,6 +356,53 @@ public sealed class AppGuideServiceTests : IDisposable
         Assert.DoesNotContain(guide.Sources, s => s.Url.EndsWith($"Item_{FileAppGuideStore.MaximumSources}", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task OnlyTheIndexesThatCanBeUsedNowStayLoaded()
+    {
+        var store = new FileAppGuideStore(directory);
+        string[] apps = ["Alpha Quest", "Beta Farm", "Gamma Dive"];
+        foreach (var app in apps)
+            await store.SaveGuideAsync(new AppGuide(AppGuideKeys.Of(app), app, ["game.fandom.com"], DateTimeOffset.UtcNow,
+                [new GuideSource("https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", 400)],
+                GuideChunker.Chunk(new GuidePage("https://game.fandom.com/wiki/Iron_Ore", "Iron Ore", Page, 400))), default);
+        var clock = new MovedClock();
+        using var guides = new AppGuideService(store, new FixtureBuilder(), clock: clock);
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        // None at start: a guide is loaded only when it can be used.
+        Assert.Equal(0, guides.ReadyIndexes);
+
+        guides.See("Alpha Quest", "alphaquest", game: true, fullScreen: true);
+        foreach (var app in apps) Assert.True(await guides.ReadyAsync(AppGuideKeys.Of(app)));
+        Assert.Equal(3, guides.ReadyIndexes);
+
+        // The app in front leaves: the two used last stay.
+        guides.See("Notepad", "notepad", game: false, fullScreen: false);
+        Assert.Equal([false, true, true], apps.Select(a => guides.IsReady(AppGuideKeys.Of(a))));
+
+        // A message that names an app whose index was dropped goes without notes and loads it in the background.
+        var named = guides.Recall("in Alpha Quest, where is iron ore?");
+        Assert.False(named!.Ready);
+        Assert.True(await guides.ReadyAsync("alpha-quest"));
+        Assert.True(guides.Recall("in Alpha Quest, where is iron ore?")!.Ready);
+
+        // The app in front stays loaded however long; the others go after the idle time.
+        guides.See("Alpha Quest", "alphaquest", game: true, fullScreen: true);
+        clock.Ahead = AppGuideService.IndexIdleTime + TimeSpan.FromMinutes(1);
+        guides.See("Alpha Quest", "alphaquest", game: true, fullScreen: true);
+        Assert.Equal([true, false, false], apps.Select(a => guides.IsReady(AppGuideKeys.Of(a))));
+
+        // App guides stop watching: none.
+        guides.Forget();
+        Assert.Equal(0, guides.ReadyIndexes);
+    }
+
+    private sealed class MovedClock : TimeProvider
+    {
+        internal TimeSpan Ahead { get; set; }
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Ahead;
+    }
+
     // Keeps its first pages through the request's Keep, then reads on until Stop (or ends at once when the guide is full).
     private sealed class KeepingBuilder : IGuideBuilder
     {
