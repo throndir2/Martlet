@@ -26,7 +26,7 @@ public sealed record ResearchStep(string? Search, IReadOnlyList<string> Read, st
 /// model steps, searches, pages, bytes downloaded, the pages read after the first search and after each step, and how much of a
 /// step's task the notes, the new pages and one new page may take (characters).</summary>
 public sealed record ResearchLimits(int Steps = 40, int Searches = 30, int Pages = 60, long Bytes = 25_000_000, int PagesFirstRead = 3,
-    int PagesPerStep = 3, int NotesCharacters = 5_000, int FreshCharacters = 4_500, int ExcerptCharacters = 3_000);
+    int PagesPerStep = 3, int NotesCharacters = 15_000, int FreshCharacters = 15_000, int ExcerptCharacters = 10_000);
 
 /// <summary>Web research as background work (Companion › Deep thinking › Web research, on by default): research(topic,
 /// what_to_find) starts a <see cref="KindName"/> job and returns at once; the job searches the web and reads pages with
@@ -41,8 +41,17 @@ public static class WebResearch
     public const string KindName = "research";
     /// <summary>The most of a topic (and of a search the model asks for) and of what to find out that is kept (characters).</summary>
     public const int MaxTopicCharacters = 3_000, MaxFindCharacters = 10_000;
-    /// <summary>The most a step's task may take (UTF-8), leaving room in a background message's 16 KiB for its wrapper.</summary>
-    public const int MaxTaskBytes = 13_000;
+    /// <summary>The most a step's task may take (UTF-8): about 13,000 tokens, which fits the Deep thinking window of a paired
+    /// computer (32,768 tokens, less a High think's 16,384 for its answer). A place with less room gets less
+    /// (<see cref="TaskBytes"/>).</summary>
+    public const int MaxTaskBytes = 40_000;
+    /// <summary>The least a step's task gets, whatever the place: it fits the smallest input any route keeps (6,144 tokens).</summary>
+    public const int MinTaskBytes = 13_000;
+
+    /// <summary>The most a step's task may take on a place whose request holds <paramref name="inputTokens"/> of text: about a
+    /// token per three bytes, with 1,024 tokens kept for the step's wrapper, within <see cref="MinTaskBytes"/> and
+    /// <see cref="MaxTaskBytes"/>.</summary>
+    public static int TaskBytes(int inputTokens) => (int)Math.Clamp((inputTokens - 1_024L) * 3, MinTaskBytes, MaxTaskBytes);
     /// <summary>The most of a report kept (characters, before its sources): more than one step's answer can hold, so a report is
     /// kept whole; a longer one says where it was cut.</summary>
     public const int MaxReportCharacters = 400_000;
@@ -272,7 +281,8 @@ public static class WebResearch
 /// writes the report. The notes carry what was read from step to step, so a long job stays within one message. Searches, pages
 /// and bytes are capped and the job's token ends it; a job whose model stops working keeps its notes as the report.</summary>
 public sealed class WebResearchRun(IWebSearch search, IWebFetch fetch,
-    Func<string, CancellationToken, Task<BackgroundJobOutcome>> think, PromptSettings? prompts, ResearchLimits? limits = null)
+    Func<string, CancellationToken, Task<BackgroundJobOutcome>> think, PromptSettings? prompts, ResearchLimits? limits = null,
+    Func<int>? taskBytes = null)
 {
     // The least a step's task keeps of the new pages and of the notes (characters) before its sources are cut.
     private const int LeastFresh = 1_200, LeastNotes = 1_500;
@@ -371,10 +381,11 @@ public sealed class WebResearchRun(IWebSearch search, IWebFetch fetch,
         noted = Math.Max(noted, shown);
     }
 
-    // The step's task within MaxTaskBytes (a background message must stay under 16 KiB): the new pages' excerpts shrink first,
-    // then the notes it shows, and the sources are cut as a last resort.
+    // The step's task within what the place it thinks on takes (taskBytes, else MaxTaskBytes): the new pages' excerpts shrink
+    // first, then the notes it shows, and the sources are cut as a last resort.
     private string TaskFor(ResearchArguments arguments, int step)
     {
+        var most = Math.Clamp(taskBytes?.Invoke() ?? WebResearch.MaxTaskBytes, WebResearch.MinTaskBytes, WebResearch.MaxTaskBytes);
         var unread = Unread();
         var fresh = Math.Min(limits.FreshCharacters, Math.Max(1, pages.Count - noted) * limits.ExcerptCharacters);
         var shown = notes;
@@ -382,7 +393,7 @@ public sealed class WebResearchRun(IWebSearch search, IWebFetch fetch,
         {
             var sources = WebResearch.Sources(queries, unread, pages, noted, failed, limits, fresh, Bytes < limits.Bytes);
             var task = WebResearch.StepTask(prompts, arguments, shown, sources, step, limits.Steps);
-            var over = Encoding.UTF8.GetByteCount(task) - WebResearch.MaxTaskBytes;
+            var over = Encoding.UTF8.GetByteCount(task) - most;
             if (over <= 0) return task;
             if (fresh > LeastFresh)
             {

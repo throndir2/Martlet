@@ -264,9 +264,12 @@ asks it for an ordinary one-use code.
    loopback senders only, at most 40 answers per 10 seconds.
 2. **Finding.** The asking desktop sends a small JSON query
    (`{"martlet":"find","v":1,"q":<random>}`) to loopback, the limited broadcast
-   and each private subnet's broadcast address, twice in about 1.6 seconds. It
+   and each private subnet's broadcast address, five times in its 15-second
+   window (at 0, 0.5, 1.5, 3.5 and 7.5 seconds), so a computer on slow Wi-Fi or
+   just awake is found too. Each computer is listed as soon as it answers. It
    is never a subnet scan. Answers carry the computer name, device ID, Martlet
-   version and the IDs of the hosts it can share: no addresses (the answer's
+   version and the IDs of the hosts it can share (all it remembers, up to 64):
+   no addresses (the answer's
    source is the address), keys or other data. Hosts this PC is already paired
    with are not offered again.
 3. **Asking.** On *Connect* the two computers talk newline-delimited JSON on

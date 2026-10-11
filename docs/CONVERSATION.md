@@ -213,10 +213,14 @@ the next conversation. Ollama on this PC can't be sent a context size through
 its OpenAI-compatible endpoint, so its context length setting (the app's
 slider or `OLLAMA_CONTEXT_LENGTH`) is the limit there, assumed to be its
 smallest default (4,096) until Martlet sees it. A paired host's Ollama loads
-the saved size, at most 32,768 (its gateway's bound, which also keeps the
-host's 16 KiB and 16-message request limit). A larger size sends more with
-every reply, which costs more on paid providers; the Thinking fallback gets
-the same request.
+the saved size, at most 262,144 (its gateway's bound; a host older than this
+version loads at most 32,768). A paired host gets the whole conversation that
+fits the context size, like every other route (its gateway takes up to 1 MiB
+of text). A host older than this version takes 16 KiB: Martlet sends it the
+newest messages that fit, logs once that it should be updated, and says *update
+it on Devices* when even the message alone is too long. A larger size sends
+more with every reply, which costs more on paid providers; the Thinking
+fallback gets the same request.
 
 ## Prompt caching and the request layout
 
@@ -237,8 +241,9 @@ reads the entire conversation again before every reply (on a 12B model, about
   prompt, and the reply length last. A screen glance has its glance
   instructions there instead.
 - **The conversation so far** follows, each earlier message exactly as it was
-  sent, with its notes (a paired host gets the plain messages and the notes
-  with its instructions, as before). What Martlet saw is part of it: every
+  sent, with its notes, on a paired host too (its Ollama reuses the start of
+  the request the same way; only a host older than this version gets the
+  current message's notes with its instructions). What Martlet saw is part of it: every
   screen glance and camera look, passed or not, is an exchange whose line
   starts with `[Screen]` or `[Camera]` (where it looked and what it saw, from
   the look's own `[seen: ...]` tag; passed looks in a row keep only the last),
@@ -1356,12 +1361,15 @@ every place is busy it is refused and the model is told what holds them):
    its own runtime and authorization; *Thinking input (Web research)* in the
    log), with the task from Companion › Prompts › *Web research: each step*: what
    to research, the model's notes so far, the searches so far, the latest results
-   not read yet and the pages read since the last step as numbered excerpts (at
-   most 13,000 bytes in all, so it fits a paired computer's 16 KiB; the new pages'
-   excerpts shrink first, then the notes).
+   not read yet and the pages read since the last step as numbered excerpts (up
+   to 10,000 characters of a page, 15,000 of new pages and 15,000 of notes; at
+   most 40,000 bytes in all, about 13,000 tokens, which fits a paired computer's
+   Deep thinking window, and less on a place with a smaller context, never under
+   13,000 bytes; the new pages' excerpts shrink first, then the notes). An excerpt
+   that shows only the start of a page says so.
    The model answers in text, so it also works where Deep thinking takes no
    tools: first `NOTES:` (all its notes, rewritten with what the new pages add,
-   each fact with its page number; at most 5,000 characters are kept), then
+   each fact with its page number; at most 15,000 characters are kept), then
    `SEARCH: <query>` (another search, then its best unread results), `READ: <link>`
    (up to 3), or the report (`TITLE`, `SUMMARY`, `REPORT`). A step reads at most
    3 new pages. The notes carry what was read from step to step, so a long job
@@ -1373,10 +1381,13 @@ every place is busy it is refused and the model is told what holds them):
    the job; when it took notes, they are kept as the report.
 3. Budget, about what a careful person reads to research something thoroughly
    (`WebResearch.Budget`): 30 searches, 60 pages, 40 model steps and 25 MB
-   downloaded; 400 KB and 15 seconds a request, 20,000 characters of text kept a
-   page. Once no more pages can be read, the task says so and asks for the report.
+   downloaded; 4 MB and 15 seconds a request, 200,000 characters of text kept a
+   page, every result of a search page (up to 80). Once no more pages can be
+   read, the task says so and asks for the report.
 4. The report gets its sources listed by Martlet itself (the pages read, as
-   numbered links) and is kept as a `report` creation (see
+   numbered links; a page read only in part is marked *only the start of the
+   page was read*). A report longer than 400,000 characters ends with a line
+   that says where it was cut. It is kept as a `report` creation (see
    [CREATIONS](CREATIONS.md)), which the Creations page shows and every paired
    Martlet computer gets.
 
@@ -2363,7 +2374,7 @@ game/call audio. Capturing other people requires their permission.
 | Overall permission | Original monotonic and absolute expiry within 45 minutes (a safety stop, far beyond any action; each step below has its own shorter limit), including scheduling/capture/authorization; never restored or extended |
 | Capture | At most 10 minutes (a safety stop for a microphone left open, not a limit on talking), canonical mono 16 kHz PCM16 in a buffer that grows as you talk; original capture permission at most 10 minutes 5 seconds including cleanup and transfer |
 | STT | One request for each piece of at most 25 seconds (800,044 WAV bytes): a longer turn is cut at its pauses and each piece is heard in turn, the words joined; 30-second request and 4096 transcript characters per piece. Voice ID and voice recognition look at the first minute; a turn longer than 30 seconds goes to models that hear as its transcript only |
-| LLM | At most one request, the user's message up to 262,144 characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host, Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 16 KiB and 16 on a paired host), 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it, and Thinking steps), 16,384 response characters, 45-second request |
+| LLM | At most one request, the user's message up to 262,144 characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host (at most 262,144 there), Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 1 MiB on a paired host and 16 KiB on a host older than this version), 1,024 requested output tokens by default as a ceiling (4,096 on Chat Completions routes and paired hosts; 16-32,768 via Companion > Replies, the providers' own output ceiling, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it, and Thinking steps), 262,144 response characters and up to 65,534 stream events on every route, 45-second request |
 | Conversation runtime | At most 20 minutes for the reply and its voice (a safety stop; each request and spoken sentence has its own limit); existing bounded two-segment pending queue, one active TTS/playback segment |
 | Background think (think_longer) | One at a time on each Deep thinking place (up to 8), no hourly limit; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; no time limit (the request gets the providers' one-day ceiling, a paired computer's route its 15 minutes); at most one declined tool round |
 | TTS | At most 512 spoken sentences, 1536 input UTF-8 bytes each / 262,144 total; 90 seconds / 2,160,000 samples reserved per sentence; at most 90 seconds per request. A long reply is said aloud to its end; only a reply beyond this budget stops speaking, never the reply's text |

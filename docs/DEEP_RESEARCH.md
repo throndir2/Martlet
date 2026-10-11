@@ -23,8 +23,8 @@ a new subsystem.
 ## Limits in the current code
 
 - One request carries at most 8 tool rounds
-  (`BoundedTextInput.HardMaxToolRounds`), 16 calls a round and 12,000 characters
-  a tool result. A research loop runs for dozens of steps, so it can't be one
+  (`BoundedTextInput.HardMaxToolRounds`), 16 calls a round and 120,000 characters
+  a tool result (less when the reply's context has less room; a cut result says so). A research loop runs for dozens of steps, so it can't be one
   long tool conversation. The job drives the loop itself: each step is a fresh,
   bounded request that carries compressed notes, not the whole history.
 - A paired computer's Deep thinking route (`deep-thinking-chat`) takes no tools
@@ -66,7 +66,7 @@ flowchart LR
    find comes first. Pages already read are skipped.
 3. **Fetch and extract**: the top N new URLs are fetched in parallel through the
    safe fetcher (below) and reduced to clean text (readable article text, PDF
-   text) of at most about 12,000 characters each.
+   text) of at most about 120,000 characters each.
 4. **Notes** (one request per page or small batch, JSON): what the page says
    about the open sub-questions, as `{claim, url, quote}` records. Only the notes
    go forward, never raw pages. This compression is what keeps a 30-minute loop
