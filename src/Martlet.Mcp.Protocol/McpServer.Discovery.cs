@@ -349,7 +349,7 @@ internal sealed partial class McpServer
         if (Has("host", "network", "node_", "cluster", "nearby", "account", "signin", "role_lab", "outside", "exposure", "api_selftest",
                 "gpu_", "mac_host", "app_update", "virtualization", "pc_scope", "work_sharing", "household", "settings_sync")) return "Computers, network and accounts";
         if (Has("discord", "messaging", "terminal", "smart_home", "home_assistant", "reminders", "check_ins", "creations", "conversation_history",
-                "memory", "mcp_")) return "Apps, home and memory";
+                "memory", "mcp_", "app_guides")) return "Apps, home and memory";
         return "Other";
     }
 

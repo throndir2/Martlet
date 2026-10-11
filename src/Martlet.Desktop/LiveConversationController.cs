@@ -248,6 +248,8 @@ internal sealed class LiveConversationOperation
     internal int MemoryFactsOmitted { get; set; }
     /// <summary>How many exchanges of earlier conversations went in this message's notes (it referred to one).</summary>
     internal int PastExchanges { get; set; }
+    /// <summary>How many sections of an app guide went in the notes of this message (Companion › App guides).</summary>
+    internal int GuideSections { get; set; }
     internal long? MemoryStoreRevision { get; set; }
     /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
     internal string? MemoryProblem { get; set; }
@@ -2316,6 +2318,17 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (past is not null) operation.LatencyTimeline?.Mark("past conversations");
             }
 
+            // While the user's words name an app Martlet read up on, or that app is in front, its guide's best sections go in the
+            // notes (Companion › App guides), read from memory only: a guide whose index isn't ready yet is never waited for. Any
+            // other message gets nothing, so its request is what it always was.
+            string? guide = null;
+            if (own is not null && Guides is { On: true })
+            {
+                guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections);
+                operation.GuideSections = guideSections;
+                operation.LatencyTimeline?.Mark("app guide");
+            }
+
             lock (gate)
             {
                 operation.Authorization.Check(worker);
@@ -2396,7 +2409,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             toolset is null && builtIns is { Tools.Count: 0 } ? builtIns.Guidance : null),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
-                            picture is null && describedNote is null ? null : noticed, recalled, songNote, whileSinging, touchNote),
+                            picture is null && describedNote is null ? null : noticed, recalled, guide, songNote, whileSinging, touchNote),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyClosing(operation.Authorization.Voice), audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
@@ -2419,12 +2432,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         request = Ask(picture, past, out usedHistory, out usedMemory, out usedLore);
                         break;
                     }
-                    // A message too long to fit goes without what was said in earlier conversations first, then without the picture
-                    // (or its description).
+                    // A message too long to fit goes without what was said in earlier conversations first, then without the guide's
+                    // sections, then without the picture (or its description).
                     catch (LiveActionException error) when (error.Code == "conversation.input_limit" &&
-                        (past is not null || picture is not null || describedNote is not null))
+                        (past is not null || guide is not null || picture is not null || describedNote is not null))
                     {
                         if (past is not null) (past, pastCount) = (null, 0);
+                        else if (guide is not null) (guide, operation.GuideSections) = (null, 0);
                         else if (picture is not null) picture = null;
                         else describedNote = null;
                     }
@@ -3050,6 +3064,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (handedOff.Contains(CameraBackgroundTool.Name)) guidance = Join(guidance, CameraBackgroundTool.AfterReply);
             else own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
         }
+        // read_up_on, search_guide and skip_guide after them while App guides are on (Companion › App guides, off by default), so
+        // the tools before them start every request the same as before App guides existed.
+        AddGuideTools(own, ref guidance, operation, configured);
         // The tools a check-in that runs after each exchange takes over go to it instead, with one line that says so.
         var handed = HandOffs(configured);
         return WithoutHandedOff(new(own, guidance), handed, CheckIns.HandOffGuidance(handed, configured.Prompts));

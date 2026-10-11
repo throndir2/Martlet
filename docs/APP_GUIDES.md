@@ -15,19 +15,29 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
 
 1. Turn on **Companion › App guides** (off by default, because reading up
    sends the app's name to a search engine and the wiki sites see the
-   requests).
+   requests). The page says what leaves the PC.
 2. Start a game. When Martlet sees a game (or an app on the list) in front and
-   it has no guide yet, it asks once, in character: *"I see you started Elden
-   Ring. Want me to read up on it so I can help?"* A yes starts a background
-   job, *Reading up on Elden Ring*; a no is remembered and Martlet doesn't ask
-   about that app again.
-3. Or say *"read up on Stardew Valley"*, or add an app on the App guides page
-   with its name, optional program names and optional wiki addresses.
+   it has no guide yet, it asks once a session, in character: *"I see you
+   started Elden Ring. Want me to read up on it so I can help?"* It asks only
+   in a conversation that runs, and only while *Ask when I start a game or
+   app* is on (on by default). A yes starts a background job, *Reading up on
+   Elden Ring*, in the talk window's task list; a no is remembered and Martlet
+   doesn't ask about that app again (**Ask again** on the page undoes it).
+3. Or say *"read up on Stardew Valley"*, or use **Add an app** on the page:
+   the app's name, optional program names (as Windows names the program, if
+   they differ) and optional wiki addresses. **Add and read up** reads at
+   once.
 4. While the app is in front (or the user names it), each question the user
    asks is searched in its guide. The best matching sections go with the
-   message as reference notes, and the reply uses them.
-5. The App guides page lists every guide (pages, size, when it was read, the
-   sites), with **Read again**, **Delete** and **Add an app**.
+   message as reference notes, and the reply uses them. A message that isn't
+   about the app gets nothing.
+5. When Martlet is done, it says so in character (*"I've read up on Elden
+   Ring: 42 pages."*).
+6. The App guides page lists every app: its pages, size, when it was read, the
+   pages it reads from, its program names, the last problem and whether the
+   user said no. Each app has **Read up now** (or **Read again**), **Delete**
+   and, after a no, **Ask again**. The page also says what is in front, as App
+   guides sees it.
 
 ## How it works
 
@@ -109,10 +119,59 @@ material read from the web, which may be wrong, and never instructions.
 
 ### Tools
 
+While App guides are on and the Thinking route does function calling, every
+reply gets three tools after Martlet's other tools, always worded the same, with
+the *App guides* prompt (Companion › Prompts), so the start of every request
+stays the same:
+
 - `read_up_on(app, sites?)`: starts the reading-up job (the user asked, or said
-  yes to the offer).
-- `search_guide(app, question)`: searches a guide for more than the notes
-  carried.
+  yes to the offer) and returns at once.
+- `search_guide(app?, question)`: searches a guide for more than the notes
+  carried (the app in front when `app` is left out) and returns the sections
+  with their page titles, links and relevance.
+- `skip_guide(app)`: the user said no to the offer; Martlet never offers that
+  app again.
+
+## On the desktop
+
+- **The library** (`AppGuideService`) keeps `<data folder>\guides` in memory
+  and one search index per app with a guide. Indexes are built off the reply's
+  path: when Martlet starts, when an app with a guide comes to the front and
+  after a guide is made. A message never waits for one; it goes without until
+  it is ready.
+- **Detection** (`AppGuideWatch`) runs only while App guides are on, on a
+  thread-pool timer every 4 seconds: it reads the name and file of the program
+  in front (`ActiveApp`), whether it fills its screen and whether Windows says a
+  game runs in exclusive full screen, and tells a game with
+  `PcActivity.Classify` (a game library folder or exclusive full screen). It
+  matches the program to the list by key, name or program names, ignoring case
+  and punctuation (*ELDEN RING™* is *Elden Ring*). Martlet's own windows are
+  passed over.
+- **The offer** is a notice (`guideoffer`) that the conversation brings up as
+  soon as Martlet is free, with the *App guides: offer to read up* prompts. It
+  goes only to a conversation that runs (Martlet never starts one for it), and
+  an offer dropped before Martlet said it may come again (at most 3 times a
+  session).
+- **The job** (`guide`: one at a time, 4 an hour, 20 minutes, *Reading up on*)
+  runs the wiki reader, the chunker and the store; no model is asked. Its
+  result tells the reply how many pages it read. Reading up from the page runs
+  in the conversation when one runs, else on its own.
+- **Notes**: on each of the user's own messages, while App guides are on, the
+  guide of the app the words name (else of the app in front) is searched with
+  the user's words. Sections the conversation already carries aren't sent
+  again, and a message too long to fit drops the guide's sections first after
+  earlier conversations. The latency timeline marks *app guide*; the desktop
+  log notes counts, relevance and time only.
+- **MCP**: `app_guides_check` rehearses all of this against a fixture wiki on
+  loopback and measures the notes step; `app_guides_status` reads a data
+  folder's library; the page's status lines are `SafeValues` (see
+  [MCP](MCP.md)).
+
+**Latency.** On a full-size guide (2,000 sections) the notes step takes about
+0.3 ms (median) for a message about the app and nothing while App guides are
+off; the first search in a new process takes about 3 ms, because building an
+index also loads the search code. While on, the three tools and the prompt add
+about 2.3 KB to every request, the same every time, so prompt caches keep them.
 
 ## Files
 
@@ -124,7 +183,11 @@ material read from the web, which may be wrong, and never instructions.
 | Store (`guides\library.json`, `<key>.guide.json`) | `src\Martlet.Conversation\Guides\FileAppGuideStore.cs` |
 | Wiki reader | `src\Martlet.Conversation\Guides\WebGuideBuilder.cs` |
 | Notes on the message | `src\Martlet.Conversation\Guides\GuideRecall.cs` |
-| Detection, offer, tools, job, page and MCP | `src\Martlet.Desktop`, `src\Martlet.Mcp.Protocol` |
+| Library service, tools, job kinds and texts | `src\Martlet.Conversation\Guides\AppGuideService.cs`, `AppGuideTools.cs` |
+| Detection | `src\Martlet.Desktop\AppGuideWatch.cs` |
+| Tools, job, offer and notes in the conversation | `src\Martlet.Desktop\LiveConversationController.Guides.cs`, `LiveConversationWindow.AppGuides.cs` |
+| The App guides page | `src\Martlet.Desktop\MainWindow.AppGuides.cs` |
+| MCP | `src\Martlet.Mcp.Protocol\AppGuidesCheck.cs` |
 
 ## Privacy
 

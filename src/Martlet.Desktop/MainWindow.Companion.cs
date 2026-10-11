@@ -24,7 +24,7 @@ namespace Martlet.Desktop;
 internal enum CompanionTab
 {
     Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Hearing, Profiles, Personality, Prompts, Lorebook,
-    Memory, People, Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, SmartHome, Discord, Messaging
+    AppGuides, Memory, People, Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, SmartHome, Discord, Messaging
 }
 
 /// <summary>The side list's groups, in order: how it works (the jobs Martlet needs, in priority order: Thinking, then listening,
@@ -124,7 +124,8 @@ public partial class MainWindow
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.DeepThinking or CompanionTab.Singing or CompanionTab.Pictures or CompanionTab.Vision or CompanionTab.Reading or
             CompanionTab.Hearing or CompanionTab.SmartHome => CompanionGroup.Extras,
-        CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
+        CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.AppGuides or CompanionTab.Memory or
+            CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Character or CompanionTab.SpeechBubbles or CompanionTab.Emotes or CompanionTab.Eyes or CompanionTab.Touch => CompanionGroup.HowItLooks,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.CheckIns => CompanionGroup.WhatItDoes,
@@ -173,6 +174,7 @@ public partial class MainWindow
         CompanionTab.Personality => "Personality",
         CompanionTab.Prompts => "Prompts",
         CompanionTab.Lorebook => "Lorebook",
+        CompanionTab.AppGuides => "App guides",
         CompanionTab.Memory => "Memory",
         CompanionTab.People => "People",
         CompanionTab.Replies => "Replies",
@@ -206,6 +208,7 @@ public partial class MainWindow
         CompanionTab.Personality => "\uE76E",
         CompanionTab.Prompts => "\uE943",
         CompanionTab.Lorebook => "\uE736",
+        CompanionTab.AppGuides => "\uE7FC",
         CompanionTab.Memory => "\uE8F1",
         CompanionTab.People => "\uE716",
         CompanionTab.Replies => "\uE8F2",
@@ -240,6 +243,7 @@ public partial class MainWindow
         CompanionTab.Personality => "Edit Martlet's personas.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",
         CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
+        CompanionTab.AppGuides => "Martlet reads up on the games and apps you use (their fan wikis and help pages) and answers your questions about them from what it read.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
         CompanionTab.People => "Teach Martlet whose voices it hears and the names they use.",
         CompanionTab.Replies => "Control reply length and creativity.",
@@ -454,6 +458,7 @@ public partial class MainWindow
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
             case CompanionTab.Prompts: RenderPromptsTab(body); break;
             case CompanionTab.Lorebook: RenderLorebookTab(body); break;
+            case CompanionTab.AppGuides: RenderAppGuidesTab(body); break;
             case CompanionTab.Memory: RenderMemoryTab(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: RenderRepliesTab(body); break;

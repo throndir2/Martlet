@@ -214,6 +214,7 @@ public partial class MainWindow : ThemedWindow
         InitializeSpeakingVoices();
         InitializeCharacterModels();
         InitializeCreations();
+        InitializeAppGuides();
         InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();

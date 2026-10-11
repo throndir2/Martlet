@@ -26,16 +26,28 @@ internal static class ActiveApp
     internal static (string Name, bool FullScreen) Of(nint window) => (Name(window), FullScreen(window));
 
     /// <summary>The program <paramref name="window"/> belongs to, by name; empty when Windows doesn't say.</summary>
-    internal static string Name(nint window)
+    internal static string Name(nint window) => ProgramPath(window) is { } path ? NameOf(path) : "";
+
+    /// <summary>The program file <paramref name="window"/> belongs to (for a Store app, the app inside Windows' frame host), or
+    /// null when Windows doesn't say.</summary>
+    internal static string? ProgramPath(nint window)
     {
-        if (window == 0) return "";
+        if (window == 0) return null;
         GetWindowThreadProcessId(window, out var process);
         var path = ProgramFile(process);
         // A Store app's window belongs to Windows' frame host; the app owns the window inside it.
         if (path is not null && Path.GetFileName(path).Equals("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase) &&
             Inside(window, process) is not 0 and var inner && ProgramFile(inner) is { } app)
             path = app;
-        return path is null ? "" : NameOf(path);
+        return path;
+    }
+
+    /// <summary>The process <paramref name="window"/> belongs to (0 when none).</summary>
+    internal static uint ProcessOf(nint window)
+    {
+        if (window == 0) return 0;
+        GetWindowThreadProcessId(window, out var process);
+        return process;
     }
 
     /// <summary>The name of the program in <paramref name="path"/>: its file description, else its product name, else its file

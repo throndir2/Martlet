@@ -269,16 +269,19 @@ public partial class LiveConversationWindow
         "song" => "Song",
         "image" => "Image",
         "research" => "Research",
+        Martlet.Conversation.Guides.AppGuideTools.KindName => "App guide",
         _ => kind.Doing
     };
 
-    // Segoe Fluent Icons: a light bulb for thinking, a music note for a song, a picture, a magnifier, otherwise a gear.
+    // Segoe Fluent Icons: a light bulb for thinking, a music note for a song, a picture, a magnifier, a book for an app guide,
+    // otherwise a gear.
     private static string KindGlyph(BackgroundJobKind kind) => kind.Name switch
     {
         "think" => "\uE82F",
         "song" => "\uEC4F",
         "image" => "\uEB9F",
         "research" => "\uE721",
+        Martlet.Conversation.Guides.AppGuideTools.KindName or Martlet.Conversation.Guides.AppGuideTools.OfferKindName => "\uE82D",
         "reminder" => "\uE823",
         CheckIns.SayKindName => "\uE73E",
         _ => "\uE713"
