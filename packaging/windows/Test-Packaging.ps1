@@ -794,8 +794,19 @@ foreach ($required in @('#ifdef PublicRelease', 'DefaultDirName={localappdata}\P
         'AppId={{7EA5CC4A-8BF4-4412-ABE1-90819303FEAB}')) {
     if (-not $authoring.Contains($required)) { throw "Public installer invariant missing: $required" }
 }
-if ($authoring -match '(?im)^\[(UninstallRun|Registry|InstallDelete|UninstallDelete)\]|DelTree|DeleteFile|RegWrite|Exec\(') {
+if ($authoring -match '(?im)^\[(UninstallRun|Registry|InstallDelete)\]|DelTree|DeleteFile|RegWrite|Exec\(') {
     throw 'Installer contains an unexpected mutation/deletion/autorun surface.'
+}
+# A staged update moves a whole folder into {app}, so uninstall removes the program folder and its staging folders, nothing else.
+$uninstallDelete = [regex]::Match($authoring, '(?ims)^\[UninstallDelete\]\s*(.*?)(?=^\[|\z)').Groups[1].Value
+$deleted = @($uninstallDelete -split "`r?`n" | Where-Object { $_.Trim() -and -not $_.TrimStart().StartsWith(';') })
+$allowedDeletes = @('Type: filesandordirs; Name: "{app}"', 'Type: filesandordirs; Name: "{app}.next"',
+    'Type: filesandordirs; Name: "{app}.previous"')
+if (@($deleted | Where-Object { $allowedDeletes -cnotcontains $_.Trim() }).Count -gt 0) {
+    throw 'Installer [UninstallDelete] may remove only the program folder and its update staging folders.'
+}
+if (@($lines | Where-Object { $_ -notmatch '; Check: InstallPayload$' }).Count -gt 0) {
+    throw 'Every installer file entry must be skipped by /STAGE=finish (Check: InstallPayload).'
 }
 # Setup installs no prerequisites; its only [Run] entry is the Finished page's user-controlled "Start Martlet" box.
 if ($authoring -match '(?im)^\[Tasks\]|Install-Prerequisites\.ps1"" -') { throw 'Installer must not offer or run prerequisite installs; the Desktop app does.' }

@@ -478,7 +478,7 @@ public sealed class HostSetupCommandsTests
     }
 
     [Fact]
-    public void Update_preferences_and_host_versions()
+    public async Task Update_preferences_and_host_versions()
     {
         var root = Path.Combine(Path.GetTempPath(), "Martlet.Updates." + Guid.NewGuid().ToString("N"));
         try
@@ -500,8 +500,14 @@ public sealed class HostSetupCommandsTests
             Assert.Equal("1.3.0", AppUpdateInstaller.TakeLastResult(root, "1.2.3")?.Failed);
             File.WriteAllText(Path.Combine(updates, "Martlet-1.2.3-win-x64.exe"), "old");
             File.WriteAllText(Path.Combine(updates, "Martlet-1.3.0-win-x64.exe"), "next");
-            AppUpdateInstaller.CleanUp(root, "1.2.3");
+            await AppUpdateInstaller.CleanUp(root, "1.2.3");
             Assert.Equal(["Martlet-1.3.0-win-x64.exe"], Directory.GetFiles(updates, "*.exe").Select(Path.GetFileName));
+            var program = Directory.CreateDirectory(Path.Combine(root, "Programs", "Martlet")).FullName;
+            Directory.CreateDirectory(Path.Combine(program + ".next", "Desktop"));
+            Directory.CreateDirectory(Path.Combine(program + ".previous", "Desktop"));
+            await AppUpdateInstaller.CleanUp(root, "1.2.3", program).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(Directory.Exists(program + ".next") || Directory.Exists(program + ".previous"));
+            Assert.True(Directory.Exists(program));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
 

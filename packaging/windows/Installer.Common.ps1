@@ -31,7 +31,8 @@ function Write-InstallerFileList([string]$PayloadRoot, [string]$Destination) {
         if ($source -match '["{}\r\n]') { throw 'Inno source paths cannot contain quotes, braces or line breaks.' }
         $parent = [IO.Path]::GetDirectoryName($path)
         $target = if ($parent) { "{app}\$parent" } else { '{app}' }
-        "Source: `"$source`"; DestDir: `"$target`"; Flags: ignoreversion"
+        # InstallPayload (Martlet.iss) is false for /STAGE=finish, which follows a staged update and installs no files.
+        "Source: `"$source`"; DestDir: `"$target`"; Flags: ignoreversion; Check: InstallPayload"
     }
     [IO.File]::WriteAllText($Destination, ($lines -join "`n") + "`n", [Text.UTF8Encoding]::new($true))
     return $manifest
