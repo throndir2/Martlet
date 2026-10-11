@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- Your AI assistant can now set Martlet up for you. Martlet's own MCP server tells assistants like GitHub Copilot, Claude and VS Code what it can do, and lets them make characters (from a description or a SillyTavern or Chub card), change, switch and delete them, and change Martlet's settings; a running Martlet follows the changes at once. `scripts\Register-MartletMcp.ps1` connects your assistants. ([#761](https://github.com/throndir2/Martlet/pull/761))
 - Martlet now keeps its own list of AI models: what each one takes in (text, pictures, sound and video), whether it can run on your own computers and how much memory it needs there, which services offer it free, and how smart it is. It comes with Martlet and updates itself from public model lists once a day, never while you're talking. (PR_LINK)
 
 ### Changed

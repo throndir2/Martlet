@@ -172,6 +172,26 @@ Keep changes focused and surface errors instead of silently falling back.
 Never present fixture, fake-native or historical results as real-device, model
 or release qualification. Independent review agents and package/smoke gates are
 optional; use them when the change warrants it.
+
+## Use Martlet through its MCP server
+
+Martlet has its own MCP server, `src\Martlet.Mcp`
+([Use Martlet from an AI assistant](docs/MCP.md#use-martlet-from-an-ai-assistant)).
+Use it to work with Martlet itself, not only to validate changes:
+
+- To make or change a character, change a setting or see how Martlet is set
+  up, call `martlet_guide` first. Then use `characters_list`,
+  `character_create` (from a description or a SillyTavern card),
+  `character_update`, `character_use`, `character_delete`, `settings_get`,
+  `settings_schema` and `settings_set`. `martlet_call` runs any other tool by
+  name.
+- From a checkout, run the tools with `scripts\Invoke-MartletMcp.ps1`
+  (`-AllowChanges` lets them save). Without a `dataDirectory` it uses a
+  disposable data folder. Pass the owner's data folder (`%LOCALAPPDATA%\Martlet`)
+  only when the owner asks for a change to their Martlet.
+- `scripts\Register-MartletMcp.ps1` adds the server to the owner's assistants
+  (GitHub Copilot, Claude, VS Code). Run it only when the owner asks.
+
 ## Publication and merge
 
 Follow the [validation policy](CONTRIBUTING.md#local-only-validation-policy)

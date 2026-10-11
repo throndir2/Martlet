@@ -2,10 +2,147 @@
 
 Martlet speaks the Model Context Protocol in both directions:
 
-- **As a client** (below): MCP servers on your PC give Martlet tools it can use while
-  you talk.
-- **As a server** ([Local MCP control](#local-mcp-control-windows)): `Martlet.Mcp`
-  lets an MCP client run Martlet's diagnostics and drive its desktop UI.
+- **As a client** ([Tools while you talk](#tools-while-you-talk-mcp-client)): MCP
+  servers on your PC give Martlet tools it can use while you talk.
+- **As a server** ([Use Martlet from an AI assistant](#use-martlet-from-an-ai-assistant)
+  and [Local MCP control](#local-mcp-control-windows)): `Martlet.Mcp` lets an AI
+  assistant (GitHub Copilot, Claude, VS Code or any MCP client) make and change
+  characters, change settings, drive the desktop window and run Martlet's
+  diagnostics.
+
+## Use Martlet from an AI assistant
+
+`Martlet.Mcp` is a local stdio MCP server (Windows). It runs only when an
+assistant starts it, never listens on a network port and works on the Martlet
+data folder of the current Windows user (`%LOCALAPPDATA%\Martlet`).
+
+### Connect an assistant
+
+1. Run `.\scripts\Register-MartletMcp.ps1` from a checkout. It builds the
+   server, copies it to `%LOCALAPPDATA%\Martlet.Mcp\server-<time>` (so a
+   running server never locks the checkout's build) and adds a `martlet` server
+   to GitHub Copilot CLI and app (`~\.copilot\mcp-config.json`), Claude Desktop
+   (`%APPDATA%\Claude\claude_desktop_config.json`) and VS Code
+   (`%APPDATA%\Code\User\mcp.json`), for each one installed. `-Client copilot`
+   chooses one, `-ReadOnly` leaves changes off, `-AllowUiEffects` adds
+   `--allow-ui-effects`, and `-Unregister` removes the entry. Each file is
+   backed up to `<file>.martlet-backup` first.
+2. Restart the assistant.
+3. Ask it, for example: "Make a Martlet character called Ava, a cheerful
+   astronomer who speaks briefly, with the built-in look." The assistant starts
+   with `martlet_guide`.
+
+To configure a client by hand, give it the full path of `Martlet.Mcp.exe`:
+
+```json
+{
+  "mcpServers": {
+    "martlet": { "command": "C:\\path\\to\\Martlet.Mcp.exe", "args": ["--allow-changes"] }
+  }
+}
+```
+
+### Flags
+
+| Flag | What it does |
+| --- | --- |
+| `--allow-changes` | Lets `character_create`, `character_update`, `character_use`, `character_delete` and `settings_set` save. Without it they refuse and say how to turn it on. |
+| `--allow-ui-effects` | Lets `ui_*` tools press buttons, type and toggle (see [Local MCP control](#local-mcp-control-windows)). Without it they only navigate and read. |
+| `--all-tools` | Lists every tool (about 180). Without it, `tools/list` has the 22 tools an assistant needs most (about 16 KB instead of about 230 KB, under the 128-tool limit of some clients); every tool still runs by name. |
+
+### What an assistant sees
+
+- **Instructions** at `initialize`: what Martlet is, where to start, the tool
+  groups and which flags are on. `serverInfo` has the title `Martlet` and the
+  Martlet version.
+- **The short list**: `martlet_guide`, `martlet_call`, the character and
+  settings tools, `doctor_status`, `doctor_list`, `doctor_run`, `logs_tail` and
+  the `ui_*` tools that drive the window. Each has a `title` and MCP behavior
+  hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
+- **`martlet_guide`** (start here): what Martlet is, the server's state
+  (version, flags, the data folder, whether the app runs now), the common tasks
+  step by step (`topic`: `overview`, `characters`, `settings`, `app`,
+  `diagnose`), every tool by area (`topic: tools`), a search over names and
+  descriptions (`search`) and one tool's full description and input schema
+  (`tool`).
+- **`martlet_call`**: runs any tool by name with its `arguments`, so the
+  diagnostic and self-test tools that are not listed stay reachable. It returns
+  that tool's result as is.
+
+### Characters
+
+A character is a personality (a persona: its name and the instructions that
+say who it is and how it talks) and its character profile (Companion ›
+Profiles), which adds a look (the built-in character or one of the shared
+character models) and a voice (one of the speaking voices). The tools change
+them with the same settings code that Personality and Profiles use. They
+return names and, when asked, the personality text, because they edit them.
+
+- `characters_list` (`includeText`): every personality with its profile, which
+  one Martlet is now, the looks and voices a profile can use, and the limits
+  (16 personalities, 32 profiles, 8,192 characters each and 16,384 together).
+- `character_create`: `name` and `personality`, or `cardPath` (an absolute path
+  to a SillyTavern, Chub or other Tavern character card: PNG, JSON or CHARX,
+  read like Personality's import; its keyword lorebook entries are kept in a
+  lorebook for the new personality). `look` (`builtin` or a look's name or ID)
+  and `voice` (a voice's name or ID) go on its profile. `profile: false` makes
+  only the personality. Martlet becomes the new character unless `use` is
+  false.
+- `character_update` (`character`: a name, ID or profile key): `name`,
+  `personality`, `look` and `voice` (`keep` keeps whatever Martlet uses now). A
+  character without a profile gets one when it gets a look or a voice.
+- `character_use`: Martlet talks with that personality from its next reply.
+- `character_delete`: removes the personality and its profiles, or only the
+  profile with `profileOnly`. Martlet keeps at least one personality.
+
+A profile's look and voice change on this PC when the profile is used in the
+app (they need the character window and the voice hosts). So
+`character_create`, `character_update` and `character_use` return `followUp`
+with the steps: Companion › Profiles › Use, or `ui_connect`, `ui_click`
+`NavCompanion`, `CompanionTab-Profiles` and `CharacterProfileUse-<key>` (with
+`--allow-ui-effects`). New looks (Live2D or VRM models) and new voices (from a
+recording) are added in the app: Companion › Character and Companion › Voice.
+
+### Settings
+
+- `settings_get` (`path`, for example `generation` or
+  `companion.personas[0].name`): settings.json or one part of it, its
+  `revision`, and without a path the parts with what each holds and whether it
+  can change here. Before the first save it shows the defaults (`first-run`).
+- `settings_schema` (`path`, `depth`): the JSON schema of that part (property
+  names, types and allowed values), generated from Martlet's settings types.
+- `settings_set` (`path`, `value`, optional `revision`): changes `companion`,
+  `generation` (Companion › Replies), `prompts` (Companion › Prompts; see
+  `prompts_status` through `martlet_call` for the prompt IDs) and `memory`.
+  `null` removes a value, which puts an optional value back to its default.
+  The change is checked by Martlet's own settings contract and saved by its
+  settings store (write lock, revision check, atomic write). A changed
+  personality or memory choice gets a fresh configuration revision, as the
+  pages give it. Serializer errors name the part that doesn't fit.
+- `setup` (where Martlet thinks, listens and speaks), `thinking_fallback`,
+  `audio`, `profile` and `schema_version` are refused: they hold destinations,
+  the owner's consent and credential references, so they change only in the
+  app, with the owner.
+
+With accounts, settings.json holds the settings of the person signed in on
+this PC, so changes go to that person.
+
+### A running Martlet follows the changes
+
+The desktop watches settings.json. About 0.6 seconds after it changes and Martlet
+is not busy with Setup, it reads it again (the desktop log says `settings.json
+changed; Martlet read it again.`), so Home, the open Companion page and an open
+conversation (before its next reply) use the change without a restart. A file
+it already read is not read again.
+
+### Limits
+
+- Windows only, for the current Windows user.
+- The copy that `Register-MartletMcp.ps1` makes runs every tool except the
+  developer self-tests that start `Martlet.NodeLinkCheck` or
+  `Martlet.Companion` from a checkout; run those with
+  `scripts\Invoke-MartletMcp.ps1`.
+- The installer does not include `Martlet.Mcp` yet; build it from a checkout.
 
 ## Tools while you talk (MCP client)
 
@@ -1024,11 +1161,13 @@ its first zones, then tap it.
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
 on a network port, start the desktop, or activate a provider, microphone or
 speaker on launch. Configure an MCP client to start the Windows executable
-built from `src\Martlet.Mcp` (for development:
-`src\Martlet.Mcp\bin\Release\net10.0-windows\Martlet.Mcp.exe`). The server
-speaks newline-delimited JSON-RPC 2.0 on standard input/output; stderr is for
-diagnostics. This developer companion is not included in the existing internal
-installer payload. Build locally with:
+built from `src\Martlet.Mcp` (`scripts\Register-MartletMcp.ps1` does it for
+assistants, see [Use Martlet from an AI assistant](#use-martlet-from-an-ai-assistant);
+for development: `src\Martlet.Mcp\bin\Release\net10.0-windows\Martlet.Mcp.exe`).
+The server speaks newline-delimited JSON-RPC 2.0 on standard input/output;
+stderr is for diagnostics. It takes the flags `--allow-changes`,
+`--allow-ui-effects` and `--all-tools` in any order. The installer does not
+include it yet. Build locally with:
 
 ```powershell
 dotnet build src\Martlet.Mcp\Martlet.Mcp.csproj -c Release
@@ -1052,7 +1191,8 @@ production Doctor implementation in-process. Status and selected probes are
 local read-only checks. They return Doctor's structured JSON report and exit
 code; nonzero exit codes describe incomplete, failed or invalid results, not a
 passed check. An optional absolute `dataDirectory` argument isolates settings
-reads; without it, Doctor uses the current user's Martlet directory. No
+reads; without it, Doctor uses the current user's Martlet directory. Apart from
+the character and settings tools, which save only with `--allow-changes`, no
 headless MCP tool creates a profile, opens a device, plays a tone, sends a
 request or handles credentials.
 
@@ -6210,7 +6350,8 @@ lines. Loopback only; writes nothing. Windows running out of ports
 
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
-Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
+Call `ui_connect` with that process ID (without one it finds the Martlet desktop
+running in this Windows session, and says so when none or several run). `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
 It returns the first 200 controls; `idPrefix` keeps only those whose automation ID
@@ -8840,6 +8981,10 @@ call fails or an `until` is not met.
 - `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).
+- `-AllowChanges` passes `--allow-changes`, so `character_*` and `settings_set`
+  save; without an explicit `dataDirectory` they, `characters_list` and
+  `settings_get` use the disposable data directory, and `martlet_call` passes it
+  to the tool it runs.
 - `-Build` builds `Martlet.Mcp` (and `Martlet.Desktop` with `-Desktop`) in
   `-Configuration` (default Release) with the `dotnet` that has the SDK pinned in
   `global.json` (found the same way as `scripts\Test-Martlet.ps1`, including the
@@ -8872,5 +9017,13 @@ observe them:
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
   Keep tools local, read-only by default and free of network, audio and
-  credential effects unless gated like `--allow-ui-effects`.
+  credential effects unless gated like `--allow-ui-effects` (or, for tools that
+  save the owner's settings, `--allow-changes`). Begin each description with one
+  sentence that says what the tool does: `martlet_guide` shows it as the tool's
+  summary and searches the description.
+- **Tools for assistants:** a tool that an assistant needs to use or configure
+  Martlet goes in `AssistantTools` and `Listed` in
+  `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
+  hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
+  the short list small: other tools run through `martlet_call`.
 - **Docs:** update this page with the new tools, IDs and status fields.
