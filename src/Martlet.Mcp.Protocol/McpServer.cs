@@ -1320,6 +1320,42 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         {
             martletDirectory = new { type = "string" }
         }),
+        Tool("model_catalog_status", "Martlet's internal model catalog (docs/MODEL_CATALOG.md): which copy is in use (the snapshot " +
+            "shipped with Martlet or the daily copy in the PC folder, %ProgramData%\\Martlet for the default data folder, else the data " +
+            "folder itself), when each was built and read each source, what the last daily refresh did (lastAttempt, lastFinished, " +
+            "lastSuccess, lastSaved, due, nextDue, problem, and per source: tried, read, items, bytes, seconds, problem), and counts " +
+            "(models, routes, open weights, sees, hears, takes video, calls tools, inputs the sources disagree on, ranked, LMArena " +
+            "rated, free and retired routes, routes per provider). Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("model_catalog_lookup", "Find a model in Martlet's internal model catalog by any name: a Hugging Face repository, an " +
+            "OpenRouter, NVIDIA Build, models.dev or provider model ID (\":free\" variants too), an Ollama tag (\"gemma4:26b\", by family " +
+            "and size) or \"hf.co/{repo}:{quant}\" name, or an LMArena name. Returns how it was found, the model (key, names on each " +
+            "route, family, size, inputs text/image/audio/video/videoAsFrames, open weights, and every fact with each source's answer, " +
+            "note and date and the answer worked out from them: the maker first (config.json, vLLM by architecture), then catalogs and " +
+            "servers; a disagreement at the same level is unknown), its routes (provider, model ID, free, context, expires, retired, " +
+            "deprecated, inputs, tools, reasoning: the server's own metadata, then the model's facts, then models.dev's row for that " +
+            "provider only) and how smart it is in words, with LMArena's rating and its credit (never the Artificial Analysis index). " +
+            "Read-only; contacts nothing.", new
+        {
+            name = new { type = "string", maxLength = 256 },
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("model_catalog_refresh", "Rehearse the model catalog's daily refresh (ModelCatalogRefresh) against FIXTURE sources on " +
+            "127.0.0.1 shaped like OpenRouter, models.dev (models.json and api.json), NVIDIA Build (models.md and its pages), vLLM's " +
+            "supported models and LMArena's dataset rows, in a temporary folder: every source read and saved; no Artificial Analysis " +
+            "index kept; once a day; the measured conflicts (Gemma 4 26B video, Qwen3.5 122B audio, the gemma-4-31b-it provider " +
+            "split); NVIDIA routes; an expired route retired; find by any name; smartness with its fallback; a failing source and an " +
+            "oversized one keep their last good part; and nothing is asked while Martlet is replying. live=true instead reads the real " +
+            "public sources (no key) into the data folder's daily copy when a refresh is due (force=true: now); with snapshotPath (an " +
+            "absolute path) it writes the release snapshot instead, only when every source was read (scripts\\Update-ModelCatalog.ps1).", new
+        {
+            live = new { type = "boolean" },
+            force = new { type = "boolean" },
+            snapshotPath = new { type = "string" },
+            dataDirectory = new { type = "string" }
+        }),
         Tool("model_ability_check", "What models were found to take on each route (a server and a model): hearing (recorded audio), " +
             "seeing (pictures), video itself, tool calls and retired (HTTP 410), each with its source and date: model-abilities.json in " +
             "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
@@ -2198,20 +2234,43 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "recommended-setup.json turns it off), the chat models your hosts run or keep downloaded (hostModels: Prefer models " +
             "your hosts already have, off unless recommended-setup.json turns it on), the recommended changes (summary, why, benefit, downloads, someone needed at the computer), each " +
             "computer's recommended roles and load, and whether a companion PC in use would ask (declined setups in " +
-            "recommended-setup.json count). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
+            "recommended-setup.json count). Each run also says the recommendation preferences it planned with (preferences: reply " +
+            "quality and its first-word target, online services and the planners' hosting preference, prefer models that hear you, " +
+            "the host graphics card share, the two model choices, each companion PC's games answer and which computers keep their " +
+            "card for games), read from recommendation-preferences.json or the fixture; the preferences argument plans with other " +
+            "ones instead (each field optional, nothing is saved). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
             "directory) asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.", new
         {
             dataDirectory = new { type = "string" },
             fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels" } },
-            lookOnThisPc = new { type = "boolean" }
+            lookOnThisPc = new { type = "boolean" },
+            preferences = new
+            {
+                type = "object",
+                properties = new
+                {
+                    quality = new { type = "string", @enum = new[] { "balanced", "quick", "smarter" } },
+                    online = new { type = "string", @enum = new[] { "backup", "never", "yes" } },
+                    preferHearing = new { type = "boolean" },
+                    hostGpuShare = new { type = "integer", @enum = new[] { 90, 75, 50 } },
+                    useServedModels = new { type = "boolean" },
+                    preferHostModels = new { type = "boolean" },
+                    games = new
+                    {
+                        type = "array",
+                        items = new { type = "object", properties = new { device = new { type = "string" }, plays = new { type = "boolean" } } }
+                    }
+                }
+            }
         }),
         Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
             "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +
             "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
             "thinking beside the voice, a companion PC with Singing whose hosts are gone (no key, then a saved free key), heavy " +
             "roles on a companion PC, Thinking with only a processor host, hosted Thinking the owner " +
-            "chose, a host left out of the Thinking pool, the voice host not answering (just now, 4 and 25 minutes), and the applied recommendation. Each " +
-            "step names its rule (1-12), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
+            "chose, a host left out of the Thinking pool, the voice host not answering (just now, 4 and 25 minutes), the owner's " +
+            "recommendation preferences (reply quality, online services only as a backup or Yes, the host card share), and the applied recommendation. Each " +
+            "step names its rule (1-12, or preferences), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
         Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +
             "(node-presence.txt; Settings > Your other computers, default 10 minutes), the rules (missing after 30 seconds without " +
             "an answer, back after 30 seconds of answers, the back notice shown 10 minutes) and the report the desktop writes when " +
@@ -2529,6 +2588,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "straight_voice_check" => await StraightVoiceCheck.RunAsync(MartletDirectory(arguments), SpeechDirectory(arguments),
                     OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"), cancellation),
                 "discord_voice_check" => await DiscordVoiceCheck.RunAsync(OptionalString(arguments, "martletDirectory") is null ? null : MartletDirectory(arguments), cancellation),
+                "model_catalog_status" => ModelCatalogCheck.Status(DataDirectory(arguments)),
+                "model_catalog_lookup" => ModelCatalogCheck.Lookup(DataDirectory(arguments), RequiredString(arguments, "name")),
+                "model_catalog_refresh" => await ModelCatalogCheck.RefreshAsync(DataDirectory(arguments), OptionalBool(arguments, "live") ?? false,
+                    OptionalString(arguments, "snapshotPath"), OptionalBool(arguments, "force") ?? false, cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "testVision") ?? false,
                     OptionalBool(arguments, "testTools") ?? false, cancellation),
@@ -2609,9 +2672,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "lip_sync_pool_status" => LipSyncPoolCheck.Status(DataDirectory(arguments), OptionalString(arguments, "deviceId")),
                 "lip_sync_pool_check" => await LipSyncPoolCheck.RunAsync(cancellation),
                 "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
-                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation)
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation, preferences: OptionalObject(arguments, "preferences"))
                     : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation,
-                        OptionalBool(arguments, "lookOnThisPc") == true),
+                        OptionalBool(arguments, "lookOnThisPc") == true, OptionalObject(arguments, "preferences")),
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),
@@ -4951,6 +5014,15 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             return null;
         if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
         return value.GetString();
+    }
+
+    private static JsonElement? OptionalObject(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Object) throw new ArgumentException($"'{property}' must be an object.");
+        return value.Clone();
     }
 
     // character_touch's taps: [{x, y, holdMs}].

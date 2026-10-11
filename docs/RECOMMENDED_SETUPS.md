@@ -8,9 +8,12 @@ Martlet measurements**; no GPU/driver/model tuple is qualified yet
 VRAM headroom and measure your own machine. Per-model numbers, with which are
 measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS.md).
 
-**Changing next:** [Recommendation design](RECOMMENDATION_DESIGN.md) adds saved
-recommendation preferences, plans for gaming and for a host that is away, and
-options from the [model catalog](MODEL_CATALOG.md).
+**Your preferences (new):** Martlet plans with your saved
+[recommendation preferences](#your-recommendation-preferences): the reply
+quality, online services, games on each companion PC, models that hear you and
+the host card share. The welcome wizard asks the first three. **Changing
+next:** [Recommendation design](RECOMMENDATION_DESIGN.md) adds plans for gaming
+and for a host that is away, and options from the [model catalog](MODEL_CATALOG.md).
 
 **In the app:** the welcome tour's **Recommend a setup for me**, or **Plan a
 setup from scratch** on Home, opens the setup advisor. It asks for
@@ -407,11 +410,15 @@ memory.
   model (a model that sees and hears, such as Gemma 4 E2B); the review notes
   when a model of its own runs there. What you already run on a companion PC's
   card stays only while room is left after Thinking and the voice.
-- **Without an API key, Thinking runs on a graphics card first.** With no
-  saved provider key, nothing hosted can think, so a local model (Gemma 4 E2B,
-  or the model you used before, such as Gemma 4 E4B) takes a card before
-  anything else. With a saved key, the voice may take the card, and Thinking
-  then uses the hosted model when no card has room.
+- **Online services decide where Thinking may go.** With *Never* or *Only as
+  a backup* (the default) in your preferences, nothing hosted does a live job,
+  so a local model takes a card before anything else: the smartest one whose
+  first word meets your reply quality's target and leaves room for the voice
+  (Gemma 4 E4B on a 12 GB card for Balanced), or the model you used before.
+  With *Yes, when they're faster or smarter* and a saved key, the voice may
+  take the card, and Thinking then uses the hosted model when no card has
+  room. A hosted Thinking provider that you chose yourself stays, except with
+  *Never*.
 - **Reconfigure follows the same list.** It first removes optional parts that
   are going away (they free the card). Then it works job by job: Thinking first,
   then the jobs that free graphics memory (listening moving to the processor),
@@ -513,23 +520,32 @@ The planner uses these rules, in this order of importance:
    Computers that aren't answering don't count, so a companion PC whose hosts
    are off plans like one alone: Thinking in its own Ollama on its card, then
    the voice on its card, listening in the app and lip-sync by the voice's
-   loudness.
+   loudness. With a host that answers, a companion PC runs no models: its Deep
+   thinking, singing and pictures go, and its own Thinking moves to a host
+   with the same model or one whose first word comes as soon (rule 7 still
+   holds). A companion PC that games (your preferences) is the last one to
+   lend its card.
 7. **No added latency.** A live job never moves to a model with a later first
    word or to a busier card than today's. The only exceptions are a computer
-   that isn't answering and a card that is too full. New jobs get the fastest
-   choices: a small model that hears (Gemma 4 E2B) on a card of its own.
+   that isn't answering and a card that is too full. New jobs get the choices
+   your reply quality sets: the smartest Thinking model whose first word meets
+   its target (0.4 s for Balanced, 0.25 s for Quick replies, 1 s for Smarter
+   replies), with room left for the voice, on a card of its own; when none
+   meets it, the fastest one that works. Without preferences (the planner's
+   tests), a small model that hears (Gemma 4 E2B).
    Other new roles go beside Thinking's model only when no other card has
    room.
 8. **Your choices stay.** The planner keeps a hosted Thinking provider that you
-   chose (unless you keep everything local), your voice engine, loudness
-   lip-sync and your hosting preference. It changes where things run, not
+   chose (unless your online services are *Never*), your voice engine, loudness
+   lip-sync and your preferences. It changes where things run, not
    what runs. The voice is the one exception: when no computer has room for
    your voice engine, Chatterbox Nano speaks on a card, or else on the
    processor (about 8 free threads, in the host service, which needs Docker).
    A hosted voice speaks only when you saved its key. When nothing can speak,
    a note says so and how to set up the host service. Your engine comes back
-   when a computer has room for it again. With no saved provider key, Home plans everything on your
-   computers. With a saved key (for example a free NVIDIA Build key), the
+   when a computer has room for it again. With online services *Never* or
+   *Only as a backup*, Home plans every live job on your computers. With
+   *Yes* and a saved key (for example a free NVIDIA Build key), the
    voice, listening and lip-sync get the cards first. Thinking then uses that
    hosted model only when no card has room for a local one, so the card goes
    to the voice and the face. A local model with room stays, because its first
@@ -572,13 +588,38 @@ The planner uses these rules, in this order of importance:
     processor option, or because you ticked **Off** in the review. Their roles
     go and the review says why each part is off.
 
+### Your recommendation preferences
+
+Martlet plans with your saved **recommendation preferences**
+([Recommendation design](RECOMMENDATION_DESIGN.md#recommendation-preferences-a-saved-setting)).
+The welcome wizard asks the first three; the others start at their defaults.
+Recommended setup shows all of them under **Your preferences**, above the
+plan: a change plans again at once and is saved. Settings › **Recommended
+setup preferences** has the same choices. They are the same on all your
+computers (`recommendation-preferences.json`, the `recommendation-preferences`
+shared setting); each companion PC keeps its own games answer.
+
+| Preference | Choices (default first) | What the planner does |
+| --- | --- | --- |
+| What matters more in a conversation | Balanced / Quick replies / Smarter replies | A new Thinking model is the smartest whose first word comes within 0.4 s, 0.25 s or 1 s, with room left for the voice. Quick replies takes the smaller of two close models. When none meets the target, the fastest one that works |
+| May Martlet use free online services | Only as a backup / Never / Yes, when they're faster or smarter | Only as a backup: no live job online; Deep thinking and a backup for Thinking may be. Never: nothing online. Yes: online options compete with local ones |
+| I play games or use heavy apps on (each companion PC) | Martlet's guess: Yes when a game library is on that PC | That PC's card takes only Thinking and the voice, and it is the last companion PC to lend its card |
+| Prefer models that hear you | On / Off | A Thinking model that hears counts one quality step up |
+| Host graphics card share | Up to 90% / 75% / 50% | How much of each host PC's card the planner uses |
+| Use models your apps already run | On / Off | [Below](#models-your-apps-already-run) |
+| Prefer models your hosts already have | Off / On | [Below](#models-your-hosts-already-have) |
+
+Today's Thinking model stays where it runs (rule 7): a new reply quality
+changes only a Thinking model the planner places new.
+
 ### Models your apps already run
 
 If you already run a chat model in a model app on this PC, Martlet assumes
 that you want to use it. A model app is a program that serves models, such as
 Ollama, LM Studio, the llama.cpp server or vLLM. **Use models your apps already
-run** is on by default. It is a checkbox in the review window and in *Set it
-all up for me*'s question. Martlet saves your choice on this PC
+run** is on by default. It is one of [your preferences](#your-recommendation-preferences)
+and a checkbox in *Set it all up for me*'s question. Before you change your
+preferences, Martlet reads the choice this PC saved before
 (`recommended-setup.json`).
 
 - **What Martlet asks.** It asks the same model apps that Companion › Thinking
@@ -606,9 +647,9 @@ all up for me*'s question. Martlet saves your choice on this PC
 
 Your host services can also keep chat models: the model that Thinking runs
 now, and models from roles that you turned off before. **Prefer models your
-hosts already have** is a checkbox in the review window. It is off by default,
-because a bigger model can make the first word come later. Martlet saves your
-choice on this PC (`recommended-setup.json`, `PreferHostModels`).
+hosts already have** is one of [your preferences](#your-recommendation-preferences).
+It is off by default, because a bigger model can make the first word come
+later (`PreferHostModels`).
 
 - **What Martlet counts.** It counts the Thinking (Ollama) chat models that
   each host that answers runs or keeps downloaded. It skips embedding, speech

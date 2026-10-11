@@ -1070,6 +1070,19 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- The recommendation preferences (MainWindow.RecommendationPreferences.cs, RecommendationPreferencesControls with
+                         the Recommendation prefix): the same choices as Recommended setup's Your preferences, without opening it. -->
+                    <Border Style="{DynamicResource CardStyle}" x:Name="RecommendationPreferencesCard">
+                        <StackPanel>
+                            <TextBlock Text="Recommended setup preferences" Style="{DynamicResource SectionHeading}"/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"
+                                       Text="Martlet plans the recommended setup for your computers with these. They are the same on all your computers; each companion PC keeps its own games answer. Recommended setup on Home shows them too."/>
+                            <StackPanel x:Name="RecommendationPreferencesPanel" AutomationProperties.Name="Recommended setup preferences"/>
+                            <TextBlock x:Name="RecommendationPreferencesStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       AutomationProperties.AutomationId="RecommendationPreferencesStatus" AutomationProperties.LiveSetting="Polite"/>
+                        </StackPanel>
+                    </Border>
+
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}"/>
@@ -1267,27 +1280,42 @@
                                     Margin="0,18,0,0" Click="WizardSpecsNext_Click" AutomationProperties.AutomationId="WizardSpecsNext"/>
                         </StackPanel>
 
-                        <!-- Step 3: keep everything on my computers, or free online services are fine. -->
+                        <!-- Step 3: three questions (RecommendationPreferences): games on this PC (Martlet's guess selected), free
+                             online services and what matters more in a conversation. Next saves the answers. -->
                         <StackPanel x:Name="TourPreference" Visibility="Collapsed">
-                            <TextBlock Text="Where may Martlet do its thinking?" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" TextWrapping="Wrap"
-                                       Text="Free online services take the heaviest work off a smaller PC. You can change this later in Companion."/>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE72E;" Margin="0,0,0,12" Click="WizardPreferLocal_Click"
-                                    AutomationProperties.AutomationId="WizardPreferLocal">
-                                <StackPanel>
-                                    <TextBlock Text="Keep everything on my computers" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                               Text="What you say and Martlet's replies stay at home. On a smaller PC, replies can be slower."/>
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE753;" Margin="0,0,0,4" Click="WizardPreferOnline_Click"
-                                    AutomationProperties.AutomationId="WizardPreferOnline">
-                                <StackPanel>
-                                    <TextBlock Text="Free online services are fine" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                               Text="When this PC is short on room, Martlet thinks with a free NVIDIA model online. You sign up for a free NVIDIA key; what you say goes to NVIDIA."/>
-                                </StackPanel>
-                            </Button>
+                            <TextBlock Text="Three quick questions" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"
+                                       Text="Martlet chooses the models, memory and graphics cards for you. You can change these answers later in Settings or in Recommended setup."/>
+                            <TextBlock Text="Do you play games or use heavy apps on this PC?" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="WizardGamesHint" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       AutomationProperties.AutomationId="WizardGamesHint"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,18">
+                                <RadioButton x:Name="WizardGamesYes" GroupName="WizardGames" Content="Yes" Margin="0,0,24,0"
+                                             AutomationProperties.AutomationId="WizardGamesYes"/>
+                                <RadioButton x:Name="WizardGamesNo" GroupName="WizardGames" Content="No" AutomationProperties.AutomationId="WizardGamesNo"/>
+                            </StackPanel>
+                            <TextBlock Text="May Martlet use free online services?" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Text="Free services such as NVIDIA Build need a free sign-up, and what you say goes to them."/>
+                            <StackPanel Margin="0,8,0,18">
+                                <RadioButton x:Name="WizardOnlineNever" GroupName="WizardOnline" Margin="0,0,0,6" AutomationProperties.AutomationId="WizardOnlineNever"
+                                             Content="Never: everything stays on my computers"/>
+                                <RadioButton x:Name="WizardOnlineBackup" GroupName="WizardOnline" Margin="0,0,0,6" AutomationProperties.AutomationId="WizardOnlineBackup"
+                                             Content="Only as a backup (recommended): replies stay on my computers"/>
+                                <RadioButton x:Name="WizardOnlineYes" GroupName="WizardOnline" AutomationProperties.AutomationId="WizardOnlineYes"
+                                             Content="Yes, when they're faster or smarter"/>
+                            </StackPanel>
+                            <TextBlock Text="What matters more in a conversation?" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <StackPanel Margin="0,8,0,10">
+                                <RadioButton x:Name="WizardQualityQuick" GroupName="WizardQuality" Margin="0,0,0,6" AutomationProperties.AutomationId="WizardQualityQuick"
+                                             Content="Quick replies: the first word in a quarter of a second"/>
+                                <RadioButton x:Name="WizardQualityBalanced" GroupName="WizardQuality" Margin="0,0,0,6" AutomationProperties.AutomationId="WizardQualityBalanced"
+                                             Content="Balanced (recommended): the smartest model that answers within 0.4 seconds"/>
+                                <RadioButton x:Name="WizardQualitySmarter" GroupName="WizardQuality" AutomationProperties.AutomationId="WizardQualitySmarter"
+                                             Content="Smarter replies: a smarter model that can take up to a second"/>
+                            </StackPanel>
+                            <Button x:Name="WizardQuestionsNextButton" Style="{DynamicResource PrimaryButton}" Content="Show my setup" HorizontalAlignment="Right"
+                                    Padding="24,10" Margin="0,8,0,0" Click="WizardQuestionsNext_Click" AutomationProperties.AutomationId="WizardQuestionsNext"/>
                         </StackPanel>
 
                         <!-- Step 4: the recommendation, with what each part uses of this PC. -->

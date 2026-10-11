@@ -32,7 +32,16 @@ internal sealed record SetupComputer(string Id, string Name, NetworkMachineKind 
     /// <summary>The downloads its host service keeps (its machine report); null: <see cref="Hardware"/>'s, if any.</summary>
     public IReadOnlyList<HostDownload>? Downloads { get; init; }
     public bool ThisPc { get; init; }
+    /// <summary>Its Martlet device ID, when it is a companion PC Martlet knows by one (its games answer is kept by it).</summary>
+    public string? Device { get; init; }
+    /// <summary>The owner plays games or uses heavy apps on it (its games answer, else Martlet's guess on this PC, else No):
+    /// <see cref="MachineSpecs.KeepGpuForGames"/>.</summary>
+    public bool PlaysGames { get; init; }
 }
+
+/// <summary>A companion PC's games answer as Recommended setup and Settings show it: <see cref="Plays"/> is the answer in effect,
+/// <see cref="Answered"/> whether the owner gave it (else it is Martlet's guess).</summary>
+internal sealed record GamesComputer(string Device, string Name, bool Plays, bool Answered);
 
 /// <summary>Everything Home's Recommended setup plans from, read by the desktop (<c>RecommendedSetupInputs.Sources</c>) or by
 /// the MCP server from a data directory. <see cref="LocalJobs"/> is what this PC does for each job when the shared plan has no
@@ -59,15 +68,28 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     /// <summary>The chat models the owner's model apps on this PC serve (empty when "Use models your apps already run" is off);
     /// the request puts them on this PC.</summary>
     public IReadOnlyList<ServedModel> ServedModels { get; init; } = [];
-    /// <summary>Prefer models your hosts already have (RecommendedSetupMemory.PreferHostModels).</summary>
-    public bool PreferHostModels { get; init; }
+    /// <summary>The owner's recommendation preferences (recommendation-preferences.json): the reply quality, online services,
+    /// hearing, the host card share and the two model choices. The games answers are on each computer
+    /// (<see cref="SetupComputer.PlaysGames"/>).</summary>
+    public RecommendationPreferences Preferences { get; init; } = new();
+    /// <summary>Prefer models your hosts already have (<see cref="RecommendationPreferences.PreferHostModels"/>).</summary>
+    public bool PreferHostModels
+    {
+        get => Preferences.PreferHostModels;
+        init => Preferences = Preferences with { PreferHostModels = value };
+    }
     /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="RecommendedSetupInputs.Choices"/>).</summary>
     public IReadOnlyList<PartChoice> Choices { get; init; } = [];
 }
 
 /// <summary>The recommender's request and what the review says about computers the request leaves out.
-/// <see cref="Names"/> maps every computer's id (planned or not) to its name.</summary>
-internal sealed record SetupRequestBuild(NetworkSetupRequest Request, IReadOnlyList<string> Notes, IReadOnlyDictionary<string, string> Names);
+/// <see cref="Names"/> maps every computer's id (planned or not) to its name. <see cref="Preferences"/> and <see cref="Games"/>
+/// are the owner's recommendation preferences it planned with, for the review's Your preferences.</summary>
+internal sealed record SetupRequestBuild(NetworkSetupRequest Request, IReadOnlyList<string> Notes, IReadOnlyDictionary<string, string> Names)
+{
+    public RecommendationPreferences Preferences { get; init; } = new();
+    public IReadOnlyList<GamesComputer> Games { get; init; } = [];
+}
 
 /// <summary>Turns the owner's computers, the shared plan, work-sharing and the Thinking pool into the network recommender's
 /// request (<see cref="NetworkSetupRequest"/>). Pure: it reads nothing and contacts nothing.</summary>
@@ -82,11 +104,6 @@ internal static class RecommendedSetupInputs
         ClusterJobs.LipSync => "audio2face",
         _ => null
     };
-
-    /// <summary>The owner's stance on hosted providers: one who saved a provider key uses them (Balanced); one who didn't keeps
-    /// everything on their computers (PreferLocal).</summary>
-    internal static HostingPreference PreferenceFor(IReadOnlyCollection<string> configuredProviders) =>
-        configuredProviders.Count > 0 ? HostingPreference.Balanced : HostingPreference.PreferLocal;
 
     internal static SetupRequestBuild Request(SetupSources sources)
     {
@@ -114,7 +131,8 @@ internal static class RecommendedSetupInputs
                 notes.Add("This PC's host service isn't answering, so changes to it wait until it runs again.");
             machines.Add(new NetworkMachine(specs with
             {
-                Id = computer.Id, Name = computer.Name, IsPrimary = computer.Kind == NetworkMachineKind.Companion
+                Id = computer.Id, Name = computer.Name, IsPrimary = computer.Kind == NetworkMachineKind.Companion,
+                KeepGpuForGames = computer.Kind == NetworkMachineKind.Companion && computer.PlaysGames
             }, computer.Kind)
             {
                 Online = online,
@@ -132,7 +150,6 @@ internal static class RecommendedSetupInputs
         var thisPc = sources.Computers.FirstOrDefault(c => c.ThisPc)?.Id ?? "";
         var request = new NetworkSetupRequest(machines)
         {
-            Preference = PreferenceFor(sources.ConfiguredProviders),
             ConfiguredProviders = [.. sources.ConfiguredProviders],
             CurrentJobs = jobs,
             CurrentThinkingPool = [.. sources.ThinkingPool.Where(id => !sources.PoolOptOut.Contains(id, StringComparer.Ordinal)).Distinct(StringComparer.Ordinal)],
@@ -141,10 +158,35 @@ internal static class RecommendedSetupInputs
             Off = [.. sources.Off.Where(c => ComponentRanking.CanBeOff(c) && !ComponentRanking.SetOnPage(c)).Distinct()],
             Choices = [.. sources.Choices.Where(c => c is not null && ComponentRanking.SetOnPage(c.Component)).DistinctBy(c => c.Component)],
             CompanionPcs = sources.Computers.DistinctBy(c => c.Id).Count(c => c.Kind == NetworkMachineKind.Companion),
-            ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc })],
-            PreferHostModels = sources.PreferHostModels
+            ServedModels = [.. sources.ServedModels.Select(m => m with { MachineId = thisPc })]
+        }.With(sources.Preferences);
+        return new(request, notes, names) { Preferences = sources.Preferences, Games = GamesComputers(sources) };
+    }
+
+    /// <summary>The companion PCs whose games answer Recommended setup and Settings show (each with a device ID), this PC first:
+    /// the device ID, the name, the answer in effect and whether the owner gave it.</summary>
+    internal static IReadOnlyList<GamesComputer> GamesComputers(SetupSources sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        return [.. sources.Computers.Where(c => c.Kind == NetworkMachineKind.Companion && c.Device is { Length: > 0 })
+            .DistinctBy(c => c.Device).OrderBy(c => c.ThisPc ? 0 : 1)
+            .Select(c => new GamesComputer(c.Device!, c.Name, c.PlaysGames, sources.Preferences.PlaysGames(c.Device) is not null))];
+    }
+
+    /// <summary><paramref name="sources"/> with the owner's <paramref name="preferences"/>: each companion PC's games answer, else
+    /// <paramref name="gamesHere"/> (Martlet's guess) on this PC and No elsewhere.</summary>
+    internal static SetupSources WithPreferences(SetupSources sources, RecommendationPreferences preferences, bool gamesHere = false)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(preferences);
+        return sources with
+        {
+            Preferences = preferences,
+            Computers = [.. sources.Computers.Select(c => c with
+            {
+                PlaysGames = c.Kind == NetworkMachineKind.Companion && (preferences.PlaysGames(c.Device) ?? (c.ThisPc && gamesHere))
+            })]
         };
-        return new(request, notes, names);
     }
 
     /// <summary>This PC's choices for the parts it sets on their Companion pages (<see cref="ComponentRanking.SetOnPage"/>), for
@@ -268,7 +310,7 @@ internal static class RecommendedSetupInputs
             new("desk-host", "This PC", NetworkMachineKind.Companion)
             {
                 Specs = MachineSpecs.ThisPc([new MachineGpu("NVIDIA GeForce RTX 4080", GpuVendor.Nvidia, 16)], 32, 24, diskFreeGb: 400),
-                HasHostService = true, Reachable = true, ThisPc = true,
+                HasHostService = true, Reachable = true, ThisPc = true, Device = "fixture-desk",
                 Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:12b", ["chatterbox"] = "chatterbox-turbo", ["stt"] = "whisper-large-v3-turbo" }
             },
             new("gpu-box", "gpu-box", NetworkMachineKind.Host)
@@ -279,7 +321,7 @@ internal static class RecommendedSetupInputs
             new("diva-host", "DIVA", NetworkMachineKind.Companion)
             {
                 Hardware = Report("diva-host", "NVIDIA GeForce RTX 3080", 10, 32, 16, "windows", "5.15.167.4-microsoft-standard-WSL2"),
-                HasHostService = true, Reachable = true, Offers = new Dictionary<string, string> { ["deep-thinking"] = "gemma4:e4b" }
+                HasHostService = true, Reachable = true, Device = "fixture-diva", Offers = new Dictionary<string, string> { ["deep-thinking"] = "gemma4:e4b" }
             },
             new("old-box", "old-box", NetworkMachineKind.Host) { HasHostService = true, Reachable = true }
         ])
@@ -309,7 +351,7 @@ internal static class RecommendedSetupInputs
             new("desk-host", "This PC", NetworkMachineKind.Companion)
             {
                 Specs = MachineSpecs.ThisPc([], 4, 4, diskFreeGb: 100),
-                HasHostService = true, Reachable = true, ThisPc = true,
+                HasHostService = true, Reachable = true, ThisPc = true, Device = "fixture-desk",
                 Offers = new Dictionary<string, string> { ["stt"] = "whisper-large-v3-turbo" }
             },
             new("miku-host", "MIKU", NetworkMachineKind.Host)
@@ -336,7 +378,7 @@ internal static class RecommendedSetupInputs
         new("desk-host", "This PC", NetworkMachineKind.Companion)
         {
             Specs = MachineSpecs.ThisPc([new MachineGpu("NVIDIA GeForce RTX 5090", GpuVendor.Nvidia, 32)], 64, 32, diskFreeGb: 800),
-            HasHostService = true, Reachable = true, ThisPc = true, Offers = new Dictionary<string, string>()
+            HasHostService = true, Reachable = true, ThisPc = true, Device = "fixture-desk", Offers = new Dictionary<string, string>()
         }
     ])
     {
@@ -361,7 +403,7 @@ internal static class RecommendedSetupInputs
         var plan = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "gpu-box", false, true, null, "fixture-desk", now);
         return new SetupSources(
         [
-            new("desk", "This PC", NetworkMachineKind.Companion) { Specs = MachineSpecs.ThisPc([], 16, 8, diskFreeGb: 200), ThisPc = true },
+            new("desk", "This PC", NetworkMachineKind.Companion) { Specs = MachineSpecs.ThisPc([], 16, 8, diskFreeGb: 200), ThisPc = true, Device = "fixture-desk" },
             new("gpu-box", "gpu-box", NetworkMachineKind.Host)
             {
                 Hardware = report, HasHostService = true, Reachable = true,
@@ -395,9 +437,11 @@ internal static class RecommendedSetupInputs
         double? diskFreeGb, Func<string, TimeSpan?>? offlineFor = null, WorkSharingSettings? sharing = null,
         IReadOnlyCollection<string>? thinkingPool = null, IReadOnlyCollection<string>? poolOptOut = null, string? voiceEngine = null,
         IReadOnlyCollection<string>? configuredProviders = null, IReadOnlyCollection<PlanComponent>? off = null,
-        IReadOnlyList<PartChoice>? choices = null, PoolSettings? pools = null)
+        IReadOnlyList<PartChoice>? choices = null, PoolSettings? pools = null, RecommendationPreferences? preferences = null,
+        bool gamesHere = false)
     {
         ArgumentNullException.ThrowIfNull(inputs);
+        preferences ??= new();
         var computers = new List<SetupComputer>();
         var members = (inputs.Computers ?? []).Where(c => c.Standing == ComputerStanding.Member).ToList();
         var thisId = ownHostId ?? device;
@@ -411,7 +455,9 @@ internal static class RecommendedSetupInputs
             OfflineFor = ownHostId is null ? null : offlineFor?.Invoke(ownHostId),
             Offers = ownCheck?.Offers,
             Downloads = ownHostId is null ? null : inputs.HostHardware?.FirstOrDefault(h => h.HostId == ownHostId)?.Downloads,
-            ThisPc = true
+            ThisPc = true,
+            Device = device,
+            PlaysGames = preferences.PlaysGames(device) ?? gamesHere
         });
         foreach (var host in NetworkMap.Hosts(inputs).Where(h => h.HostId != ownHostId))
         {
@@ -428,11 +474,16 @@ internal static class RecommendedSetupInputs
                 Manageable = host.CanLaunch && PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost(id, hardware)),
                 Reachable = away is not null ? false : check?.Reachable,
                 OfflineFor = away,
-                Offers = check?.Offers
+                Offers = check?.Offers,
+                Device = member?.Role == DeviceRole.Companion ? member.DeviceId : null,
+                PlaysGames = member?.Role == DeviceRole.Companion && preferences.PlaysGames(member.DeviceId) == true
             });
         }
         foreach (var member in members.Where(m => m.Role != DeviceRole.Host && computers.All(c => c.Name != m.Name && c.Id != m.DeviceId)))
-            computers.Add(new SetupComputer(member.DeviceId, member.Name, NetworkMachineKind.Companion));
+            computers.Add(new SetupComputer(member.DeviceId, member.Name, NetworkMachineKind.Companion)
+            {
+                Device = member.DeviceId, PlaysGames = preferences.PlaysGames(member.DeviceId) == true
+            });
 
         // What this PC does for each job it set up (lip-sync always has a handler: this PC, a host or nobody). A job on a host a
         // friend shares with this PC is this PC's own choice, not one of your computers: the setup is planned without it.
@@ -456,7 +507,7 @@ internal static class RecommendedSetupInputs
         {
             Plan = inputs.Plan, LocalJobs = jobs, JobOptions = options, Sharing = sharing ?? new(), Pools = pools ?? new(), Device = device,
             ThinkingPool = thinkingPool ?? [], PoolOptOut = poolOptOut ?? [], VoiceEngine = voiceEngine,
-            ConfiguredProviders = providers, Off = off ?? [], Choices = choices ?? []
+            ConfiguredProviders = providers, Off = off ?? [], Choices = choices ?? [], Preferences = preferences
         };
     }
 

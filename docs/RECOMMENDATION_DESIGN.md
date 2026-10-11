@@ -1,6 +1,7 @@
 # Recommendation design: ask three questions, plan for three situations
 
-Status: **Approved, being built** (2026-10-10). It uses the model catalog and
+Status: **Approved, being built** (2026-10-10). Stage 1, *Preferences*, is
+done (see [Build stages](#build-stages)). It uses the model catalog and
 route facts in [Model catalog](MODEL_CATALOG.md)
 ([#663](https://github.com/throndir2/Martlet/issues/663)). Today's rules are in
 [Recommended setups](RECOMMENDED_SETUPS.md); this page says what changes.
@@ -207,10 +208,42 @@ each job.
 
 Each stage is one pull request.
 
-1. **Preferences.** The saved recommendation preferences; the wizard's three
-   questions; *Your preferences* in Recommended setup and in the settings; the
-   planner uses them (`KeepGpuForGames`, the online level, the first-word
-   target, hearing, the host card share). It needs no catalog.
+1. **Preferences** (done). The saved recommendation preferences; the wizard's
+   three questions; *Your preferences* in Recommended setup and in the
+   settings; the planner uses them (`KeepGpuForGames`, the online level, the
+   first-word target, hearing, the host card share). It needs no catalog.
+   How it was built:
+   - `RecommendationPreferences` (`Martlet.Core.Planning`):
+     `recommendation-preferences.json` and the `recommendation-preferences`
+     shared setting. Fields: `Quality` (`ReplyQuality` Balanced, Quick,
+     Smarter), `Online` (`OnlineServices` Backup, Never, Yes), `PreferHearing`,
+     `HostGpuShare` (90, 75, 50), `UseServedModels`, `PreferHostModels` and
+     `Games` (`GamesAnswer(Device, Plays)`, one per companion PC by its Martlet
+     device ID). An owner who never chose gets the defaults; the two model
+     choices come from `recommended-setup.json` until then.
+   - The guess from the saved keys is gone. `NetworkSetupRequest.With` and
+     `RecommendedSetupInputs` give the planners `Preference`
+     (`RecommendationPreferences.Hosting`: Never is `PreferLocal`, Only as a
+     backup is the new `HostingPreference.Backup`, Yes is `Balanced`),
+     `Quality`, `PreferHearing`, `HostGpuShare` and each companion PC's
+     `MachineSpecs.KeepGpuForGames` (its answer, else this PC's game library
+     guess, `GameLibraries.Found`).
+   - Live Thinking: `LiveThinking.Order` puts the models that meet the target
+     first, smartest first (a model that hears counts one step up), then the
+     rest fastest first. A new Thinking model is the first of those that also
+     leaves room for the voice; else the fastest that fits. Today's model
+     stays (rule 7).
+   - Online: `HostingRules.Allows`. Only as a backup plans no hosted live job
+     but allows hosted Deep thinking and backup Thinking; a hosted Thinking
+     provider the owner chose stays.
+   - Games: the normal plan doesn't empty the card of a PC that games
+     (`PlacementEngine.GpuCapacityGb` gives 0 only with `keepForGames: true`,
+     for the While gaming plan). It takes only Thinking and the voice, and it
+     is the last companion PC to lend its card.
+   - Host card share: `GpuCapacityGb`'s `share`, for host PCs only.
+   - Rule 6, stricter: with a host that answers, a companion PC's Deep
+     thinking, singing and pictures go, and its own Thinking moves to a host
+     with the same model or one as fast.
 2. **Situations.** The While gaming and Host away plans, changed at run time
    from `PcActivity` and host status through the Thinking pool and backup
    routes. It follows stage 1.

@@ -174,8 +174,43 @@ public sealed class RecommendedSetupTests
         Assert.Equal(["gpu-box"], request.ThinkingPoolOptOut);
         Assert.Equal("chatterbox", request.VoiceEngine);
         Assert.Equal(["openrouter"], request.ConfiguredProviders);
-        Assert.Equal(HostingPreference.Balanced, request.Preference);
-        Assert.Equal(HostingPreference.PreferLocal, RecommendedSetupInputs.PreferenceFor([]));
+        // The owner's saved preferences decide, not the saved keys: online services only as a backup by default.
+        Assert.Equal(HostingPreference.Backup, request.Preference);
+        Assert.Equal(ReplyQuality.Balanced, request.Quality);
+    }
+
+    [Fact]
+    public void The_owners_preferences_and_games_answers_reach_the_request_and_the_review()
+    {
+        var preferences = new RecommendationPreferences { Online = OnlineServices.Yes, Quality = ReplyQuality.Quick, HostGpuShare = 75 }
+            .WithGames("fixture-diva", true);
+        var sources = RecommendedSetupInputs.WithPreferences(RecommendedSetupInputs.Fixture(DateTimeOffset.UtcNow), preferences);
+        var build = RecommendedSetupInputs.Request(sources);
+        Assert.Equal(HostingPreference.Balanced, build.Request.Preference);
+        Assert.Equal(ReplyQuality.Quick, build.Request.Quality);
+        Assert.Equal(0.75, build.Request.HostGpuShare);
+        Assert.True(build.Request.Machines.Single(m => m.Specs.Id == "diva-host").Specs.KeepGpuForGames);
+        Assert.False(build.Request.Machines.Single(m => m.Specs.Id == "desk-host").Specs.KeepGpuForGames);
+        Assert.False(build.Request.Machines.Single(m => m.Specs.Id == "gpu-box").Specs.KeepGpuForGames);
+        Assert.Equal([("fixture-desk", false, false), ("fixture-diva", true, true)], build.Games.Select(g => (g.Device, g.Plays, g.Answered)));
+        // Martlet's guess (a game library on this PC) counts for this PC until the owner answers.
+        var guessed = RecommendedSetupInputs.Request(RecommendedSetupInputs.WithPreferences(sources, preferences, gamesHere: true));
+        Assert.True(guessed.Request.Machines.Single(m => m.Specs.Id == "desk-host").Specs.KeepGpuForGames);
+        var answered = RecommendedSetupInputs.Request(RecommendedSetupInputs.WithPreferences(sources, preferences.WithGames("fixture-desk", false), gamesHere: true));
+        Assert.False(answered.Request.Machines.Single(m => m.Specs.Id == "desk-host").Specs.KeepGpuForGames);
+
+        var review = RecommendedSetupReview.From(NetworkRecommender.Recommend(build.Request), build);
+        Assert.Equal(ReplyQuality.Quick, review.Preferences.Quality);
+        Assert.Equal(2, review.Games.Count);
+    }
+
+    [Fact]
+    public void A_game_library_with_a_game_in_it_is_the_games_guess()
+    {
+        var games = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Path.Combine(@"D:\", @"SteamLibrary\steamapps\common") };
+        Assert.True(Martlet.Audio.GameLibraries.FoundIn([@"C:\", @"D:\"], games.Contains));
+        Assert.False(Martlet.Audio.GameLibraries.FoundIn([@"C:\"], games.Contains));
+        Assert.True(Martlet.Audio.GameLibraries.FoundIn([@"C:\"], path => path.EndsWith("XboxGames", StringComparison.Ordinal)));
     }
 
     // ---------- the review ----------

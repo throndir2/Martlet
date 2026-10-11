@@ -4303,6 +4303,55 @@ temporary folder of its own, deleted afterwards (`savedFirst` true,
 `savedAgain` false while nothing changed, `graphicsGb`, `ContextTokens`), with
 `ok`. Keyless; downloads no model; saves nothing.
 
+`model_catalog_status`, `model_catalog_lookup` and `model_catalog_refresh` show
+Martlet's internal model catalog ([Model catalog](MODEL_CATALOG.md)). All take
+an optional absolute `dataDirectory`; the script gives them a disposable one.
+
+- `model_catalog_status`: `using` (`snapshot`, shipped with Martlet, or `daily
+  copy`), `built`, `folder` (where the daily copy is: `%ProgramData%\Martlet`
+  for the default data folder, else the data folder itself) and
+  `sharedByEveryWindowsUser`; `snapshot` and `dailyCopy` (`file` `none`,
+  `loaded` or `unreadable`) with each source's read date and item count;
+  `refresh` (`LastAttempt`, `LastFinished`, `LastSuccess`, `LastSaved`,
+  `Problem`, `due`, `nextDue`, and for each source `Tried`, `Read`, `Items`,
+  `Bytes`, `Seconds` and `Problem`); `catalog` counts (models, routes, open
+  weights, sees, hears, takes video, calls tools, inputs the sources disagree
+  on, ranked, LMArena rated, free and retired routes, routes per provider).
+  Read-only.
+- `model_catalog_lookup` with `name`: any name of a model (a Hugging Face
+  repository, an OpenRouter, NVIDIA Build, models.dev or provider model ID, a
+  `:free` variant, an Ollama tag such as `gemma4:26b`, `hf.co/{repo}:{quant}`,
+  or an LMArena name). Returns `found`, `how` it was found, and `model`: `Key`,
+  `Name`, `names` on each route, `Family`, `Size`, `inputs` (`text`, `image`,
+  `audio`, `video`, `videoAsFrames`: `yes`, `no`, `unknown` or `unknown
+  (sources disagree)`), `openWeights`, `locallyHostable`, `local` (when the
+  catalog looked it up on Hugging Face: `installName`, `quantization`,
+  `downloadGb`, `memoryAt8192`, `graphicsGb`, `systemMemoryGb`, the other
+  `quantizations` and `Problems`), `facts` (each fact's `value`, `from`,
+  `disagree` and every source's `answers` with `source`, `value`, `note` and
+  `checked`) and `smartness` (`Words`, `Tier`, `From`, `lmArenaText`,
+  `lmArenaVision`, `Credit` "LMArena (CC-BY-4.0)" and `lmArenaName`; never the
+  Artificial Analysis index or the rank). `routes` lists each server's
+  `Provider`, `ModelId`, `BaseUrl`, `Free`, `FreeNote`, `Context`, `Expires`,
+  `Retired`, `Deprecated`, `inputs`, `tools`, `reasoning` and `facts`. A name
+  the catalog doesn't know returns `found` false and the quality tier from the
+  name. Read-only.
+- `model_catalog_refresh` without `live` rehearses the production
+  `ModelCatalogRefresh` against FIXTURE sources on 127.0.0.1 (NOT the real
+  ones) and the FIXTURE local model facts, in a temporary folder deleted
+  afterwards. `report.steps`: `reads-every-source`, `no-analysis-index-kept`,
+  `once-a-day`, `gemma-4-26b-video`, `qwen3.5-122b-audio`,
+  `gemma-4-31b-provider-split`, `nvidia-route`, `expired-route-retired`,
+  `find-by-any-name`, `smartness`, `config-json-decides-by-size`,
+  `local-memory`, `keeps-last-good` (OpenRouter answers 500 and vLLM's answer
+  is over its size limit) and `waits-while-replying` (no request while a reply
+  is held for two seconds), each with `ok` and `detail`. `live: true` reads the
+  real public sources (no key) into the data folder's daily copy when a refresh
+  is due (`force: true`: now), and returns `Saved`, `Models`, `Routes` and the
+  status. With `snapshotPath` (absolute) it writes the release snapshot instead,
+  only when every source was read (`snapshotWritten`, `bytes`, `sources`,
+  `catalog`); `scripts\Update-ModelCatalog.ps1` runs this.
+
 `local_model_servers` is Companion › Thinking › This PC › *A model app you
 already use* without the window ([Local model apps](LOCAL_MODEL_APPS.md)).
 `apps` lists the apps Martlet looks for, each with `Id`, `Name`, `BaseUrl`
@@ -5253,8 +5302,26 @@ downloads nothing.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.
-It asks nothing when the directory's `recommended-setup.json` has
-`UseServedModels` off. The result has:
+It asks nothing when *Use models your apps already run* is off.
+It plans with the directory's recommendation preferences
+(`recommendation-preferences.json`; before the owner saved any, the defaults
+with the two model choices from `recommended-setup.json`), or with the
+fixture's. Give `preferences` to plan with others instead, nothing saved; each
+field is optional: `quality` (`balanced`, `quick`, `smarter`), `online`
+(`backup`, `never`, `yes`), `preferHearing`, `hostGpuShare` (90, 75, 50),
+`useServedModels`, `preferHostModels` and `games` (`[{ "device": "fixture-desk",
+"plays": true }]`, by Martlet device ID). An unknown value is an error. A data
+directory has no game library guess: a companion PC without an answer counts
+as No. The result has:
+
+- `preferences`: what it planned with: `saved` (the directory has
+  `recommendation-preferences.json`), `overridden`, `quality` and
+  `firstWordTargetMs`, `online` and `hosting` (the planners'
+  `HostingPreference`: `Backup`, `PreferLocal` or `Balanced`), `preferHearing`,
+  `hostGpuShare`, `useServedModels`, `preferHostModels`, `games` (each
+  companion PC's `device`, `computer`, `plays` and `answered`),
+  `keepGpuForGames` (the computers planned as gaming PCs) and `describe` (one
+  line).
 
 - `source` and `computers`: each computer's `id` (the cluster plan's host ID,
   else the device ID), `name`, `kind` (`Companion` or `Host`), `thisPc`,
@@ -5362,13 +5429,27 @@ it saves `recommended-setup.json`) and each optional part's Off checkbox
 `RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
 again, in `recommended-setup.json`, and the review opens again planned that
 way; Vision, Reading, Hearing and Smart home have none, because their
-Companion page turns them off) and `RecommendedSetupUseServedModels`
-(`ui_toggle`, *Use models your apps already run*, on by default: it saves
-`UseServedModels` in `recommended-setup.json` and the review opens again
-planned that way) and `RecommendedSetupPreferHostModels` (`ui_toggle`, *Prefer
-models your hosts already have*, off by default: it saves `PreferHostModels`
-in `recommended-setup.json` and the review opens again planned that way) need
-`--allow-ui-effects`. `RecommendedSetupHostModels` reads the models your hosts
+Companion page turns them off) and Your preferences need `--allow-ui-effects`:
+`RecommendedSetupQuality` (`ui_select`: *Balanced: first word in 0.4 s or
+less*, *Quick replies: first word in 0.25 s or less* or *Smarter replies:
+first word in 1 s or less*), `RecommendedSetupOnline` (`ui_select`: *Only as a
+backup*, *Never* or *Yes, when they're faster or smarter*),
+`RecommendedSetupGames-<n>` (`ui_toggle`, one per companion PC, this PC
+first; *(Martlet's guess)* while it is not answered), `RecommendedSetupHearing`
+(`ui_toggle`, *Prefer models that hear you*), `RecommendedSetupHostShare`
+(`ui_select`: *Up to 90%*, *Up to 75%* or *Up to 50%*),
+`RecommendedSetupUseServedModels` (`ui_toggle`, *Use models your apps already
+run*, on by default) and `RecommendedSetupPreferHostModels` (`ui_toggle`,
+*Prefer models your hosts already have*, off by default). Each saves
+`recommendation-preferences.json` (shared with your other computers) and the
+review opens again planned that way; the values read the choice in effect and
+`RecommendedSetupPreferences` reads the section's intro. Settings ›
+*Recommended setup preferences* has the same controls with the
+`Recommendation` prefix (`RecommendationQuality`, `RecommendationOnline`,
+`RecommendationGames-<n>`, `RecommendationHearing`, `RecommendationHostShare`,
+`RecommendationUseServedModels`, `RecommendationPreferHostModels`; also
+`--allow-ui-effects`), and `RecommendationPreferencesStatus` reads *Saved for
+all your computers. ...* after a change. `RecommendedSetupHostModels` reads the models your hosts
 keep (*Found: qwen2.5:14b on gpu-box.*), or that the choice is off. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
@@ -5448,7 +5529,12 @@ review says *Turn off* and that its downloads stay). Four `voice` steps check th
 computer has room for the owner's voice engine: Chatterbox Nano on a 4 GB card;
 Chatterbox Nano on the processor (about 8 threads) with no card; the hosted
 voice with a saved key when no computer can run an engine; otherwise a note
-that says how to set up the host service. `ok` is true when every step passed.
+that says how to set up the host service. A `preferences` step checks the
+owner's recommendation preferences: on a companion PC alone with a 12 GB card,
+Balanced thinks with Gemma 4 E4B beside the voice and Quick replies with Gemma
+4 E2B; with no card and a saved free key, online services only as a backup
+thinks on the processor and Yes with NVIDIA Build; a host card share of 50%
+plans with 12 GB of a 24 GB host card. `ok` is true when every step passed.
 
 `node_presence_status` shows when your other computers go away or come back
 ([CLUSTER](CLUSTER.md#when-a-computer-goes-away-or-comes-back); optional
@@ -6474,10 +6560,19 @@ already asking that computer (`NearbyNumber` shows the check number), and
 Step 2 reads `WizardSpecRow-Gpu`, `-Vram` (with the memory in use when
 nvidia-smi answers), `-Ram`, `-Cpu` and `WizardSpecs` (the whole line, for
 example *NVIDIA GeForce RTX 2070 SUPER (Nvidia, 8 GB graphics memory) · 32 GB
-memory · 24 processor threads*); `WizardSpecsNext` is passive. Step 3's
-`WizardPreferLocal` and `WizardPreferOnline` (passive) choose the preference
-and show the placement engine's suggestion: `WizardPlanSummary` (the preference
-and whether Thinking goes online), `WizardPlanItem-Thinking`, `-Voice`,
+memory · 24 processor threads*); `WizardSpecsNext` is passive. Step 3 asks
+three questions. Their answers are radio buttons that only change the
+selection (passive, `ui_click`): `WizardGamesYes` and `WizardGamesNo` (Martlet
+selects Yes when it finds a game library on this PC; `WizardGamesHint` says
+which it found), `WizardOnlineNever`, `WizardOnlineBackup` (the default) and
+`WizardOnlineYes`, and `WizardQualityQuick`, `WizardQualityBalanced` (the
+default) and `WizardQualitySmarter`; each reads `selected`.
+`WizardQuestionsNext` (*Show my setup*, `--allow-ui-effects`) saves the
+answers in `recommendation-preferences.json` (this PC's games answer by its
+device ID; `recommended_setup_status` with the same data directory reads them
+back under `preferences`) and shows the placement engine's suggestion planned
+with them: `WizardPlanSummary` (the three answers and whether Thinking goes
+online), `WizardPlanItem-Thinking`, `-Voice`,
 `-Listening` and `-LipSync` (what, where, *Uses 64% graphics memory, 5% memory,
 6% processor* and why, or why it's left out; a part that grows while it works
 reads *Uses 31-35% graphics memory*: what it usually holds, then the most),
@@ -8992,7 +9087,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

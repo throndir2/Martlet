@@ -73,13 +73,14 @@ public partial class MainWindow
         if (closing) return null;
         var sources = RecommendedSetupSources();
         if (!SimulatedRecommendedSetup.Active) sources = sources with { ServedModels = await FindServedModelsAsync() };
-        sources = sources with { PreferHostModels = RecommendedSetupMemory.Load(store?.DataDirectory).PreferHostModels };
         if (closing) return null;
         var build = RecommendedSetupInputs.Request(sources);
         try
         {
             var recommendation = await Task.Run(() => NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default), lifetime.Token);
-            ErrorLog.Info($"Recommended setup: {build.Request.Machines.Count} computer(s) planned; " + (recommendation.AlreadyOptimal
+            ErrorLog.Info($"Recommended setup: {build.Request.Machines.Count} computer(s) planned with your preferences ({sources.Preferences.Describe()}" +
+                (build.Games.Count == 0 ? "" : "; games on " + string.Join(", ", build.Games.Select(g => $"{g.Name} {(g.Plays ? "yes" : "no")}"))) + "); " +
+                (recommendation.AlreadyOptimal
                 ? "they already use the recommended setup."
                 : $"{recommendation.Changes.Count} change(s) recommended ({recommendation.Changes.Count(c => c.Benefit == SetupChangeBenefit.Required)} needed), " +
                   $"setup {recommendation.Fingerprint}."));
@@ -90,12 +91,18 @@ public partial class MainWindow
 
     private SetupSources RecommendedSetupSources()
     {
+        var preferences = RecommendationPreferences.Load(store?.DataDirectory);
         if (SimulatedRecommendedSetup.Active)
-            return SimulatedRecommendedSetup.Sources(DateTimeOffset.UtcNow) with
+        {
+            // The FIXTURE's own PC is this PC, so its games answer is this PC's.
+            var fixture = SimulatedRecommendedSetup.Sources(DateTimeOffset.UtcNow);
+            return RecommendedSetupInputs.WithPreferences(fixture with
             {
+                Computers = [.. fixture.Computers.Select(c => c.ThisPc ? c with { Device = ClusterDevice } : c)],
                 ConfiguredProviders = ConfiguredProviders(), Off = RecommendedSetupMemory.Load(store?.DataDirectory).OffParts,
                 Choices = RecommendedSetupChoices(store?.DataDirectory)
-            };
+            }, preferences, GamesHere);
+        }
         var inputs = Inputs();
         var directory = store?.DataDirectory;
         var poolSettings = ThinkingPoolSettings.Load(directory);
@@ -104,8 +111,14 @@ public partial class MainWindow
             offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
             poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
             off: RecommendedSetupMemory.Load(directory).OffParts, choices: RecommendedSetupChoices(directory),
-            pools: directory is null ? null : PoolSettings.Load(directory));
+            pools: directory is null ? null : PoolSettings.Load(directory), preferences: preferences, gamesHere: GamesHere);
     }
+
+    /// <summary>Martlet's guess for this PC's games answer: a game library is on it (<see cref="Martlet.Audio.GameLibraries"/>),
+    /// looked for once per run.</summary>
+    private bool GamesHere => gamesHere ??= Martlet.Audio.GameLibraries.Found();
+
+    private bool? gamesHere;
 
     /// <summary>This PC's choices for the parts it sets on their Companion pages (Vision, Reading, Hearing, Smart home), read
     /// from the data folder: what the review says about them.</summary>
@@ -124,8 +137,7 @@ public partial class MainWindow
         if (IsVisible) window.Owner = this;
         window.Declined += DeclineRecommendedSetup;
         window.PartOff += TurnRecommendedPartOff;
-        window.ServedChanged += UseServedChanged;
-        window.HostModelsChanged += PreferHostModelsChanged;
+        window.PreferencesChanged += preferences => SaveRecommendationPreferences(preferences, reopen: true);
         window.OpenThinking += use => OpenFreeKey(use, fromReview: true);
         window.Closed += (_, _) =>
         {

@@ -53,6 +53,12 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     /// <summary>The chat models your hosts run or keep downloaded for Thinking: "qwen2.5:14b on gpu-box".</summary>
     public IReadOnlyList<string> HostModels { get; init; } = [];
 
+    /// <summary>The owner's recommendation preferences the review planned with (Your preferences).</summary>
+    public RecommendationPreferences Preferences { get; init; } = new();
+
+    /// <summary>The companion PCs whose games answer Your preferences shows.</summary>
+    public IReadOnlyList<GamesComputer> Games { get; init; } = [];
+
     /// <summary>The review of <paramref name="recommendation"/> for the computers in <paramref name="build"/>. Pure.</summary>
     internal static RecommendedSetupReview From(NetworkRecommendation recommendation, SetupRequestBuild build, FootprintCatalog? catalog = null)
     {
@@ -142,8 +148,11 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             Parts = [.. recommendation.Components.Select(c => new ReviewPart(c.Component, c.Rank, c.Name, c.CanBeOff ? "Optional" : "Needed",
                 c.On, c.Where, c.Why, c.OffInReview, c.OwnerOff))],
             Served = ServedLines(request.ServedModels),
+            UseServed = build.Preferences.UseServedModels,
             PreferHostModels = request.PreferHostModels,
-            HostModels = HostModelLines(request.Machines, Name)
+            HostModels = HostModelLines(request.Machines, Name),
+            Preferences = build.Preferences,
+            Games = build.Games
         };
     }
 

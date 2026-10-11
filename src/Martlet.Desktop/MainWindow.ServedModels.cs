@@ -13,7 +13,7 @@ public partial class MainWindow
     /// <summary>The chat models found the last time Martlet looked, for Reconfigure and Set it all up for me.</summary>
     private IReadOnlyList<ServedModel> lastServed = [];
 
-    private bool UseServedModels => RecommendedSetupMemory.Load(store?.DataDirectory).UseServedModels;
+    private bool UseServedModels => RecommendationPreferences.Load(store?.DataDirectory).UseServedModels;
 
     /// <summary>Looks for the chat models the model apps on this PC serve, when Use models your apps already run is on.</summary>
     private async Task<IReadOnlyList<ServedModel>> FindServedModelsAsync()
@@ -32,32 +32,22 @@ public partial class MainWindow
         : lastServed.FirstOrDefault(m => string.Equals(m.ModelId, model, StringComparison.Ordinal))
           ?? lastServed.FirstOrDefault(m => string.Equals(m.ModelId, model, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The review's Use models your apps already run: saved on this PC, then the review opens again, planned with (or
-    /// without) the models found.</summary>
-    private void UseServedChanged(bool use)
+    /// <summary>Saves the owner's recommendation preferences (recommendation-preferences.json, shared with your other computers)
+    /// and, from the review (<paramref name="reopen"/>), opens it again planned with them. False when they couldn't be saved.</summary>
+    private bool SaveRecommendationPreferences(RecommendationPreferences preferences, bool reopen)
     {
         var directory = store?.DataDirectory;
-        if (!RecommendedSetupMemory.Load(directory).WithServed(use).Save(directory))
+        if (!preferences.Save(directory))
         {
-            ActionText.Text = "Martlet couldn't save that choice on this PC.";
-            return;
+            ActionText.Text = "Martlet couldn't save your recommended setup preferences on this PC.";
+            return false;
         }
-        ErrorLog.Info($"Recommended setup: Use models your apps already run is {(use ? "on" : "off")} on this PC.");
-        Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync().Forget());
-    }
-
-    /// <summary>The review's Prefer models your hosts already have: saved on this PC, then the review opens again, planned with
-    /// (or without) the models your hosts keep.</summary>
-    private void PreferHostModelsChanged(bool prefer)
-    {
-        var directory = store?.DataDirectory;
-        if (!RecommendedSetupMemory.Load(directory).WithHostModels(prefer).Save(directory))
-        {
-            ActionText.Text = "Martlet couldn't save that choice on this PC.";
-            return;
-        }
-        ErrorLog.Info($"Recommended setup: Prefer models your hosts already have is {(prefer ? "on" : "off")} on this PC.");
-        Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync().Forget());
+        ErrorLog.Info($"Recommended setup: your preferences are {preferences.Describe()}.");
+        QueueSettingsSync();
+        if (SettingsPage.IsVisible)
+            Dispatcher.BeginInvoke(() => RenderRecommendationPreferences(reopen ? null : "Saved for all your computers. The next Recommended setup plans with it."));
+        if (reopen) Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync().Forget());
+        return true;
     }
 
     /// <summary>Thinking with a model the owner's own model app serves on this PC, the way Companion › Thinking › This PC uses

@@ -5,4 +5,8 @@
     <InternalsVisibleTo Include="Martlet.Desktop" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
   </ItemGroup>
+  <!-- The model catalog's snapshot (docs/MODEL_CATALOG.md): refreshed before a release with scripts\Update-ModelCatalog.ps1. -->
+  <ItemGroup Condition="Exists('Planning\Catalog\model-catalog.json')">
+    <EmbeddedResource Include="Planning\Catalog\model-catalog.json" LogicalName="Martlet.Core.model-catalog.json" />
+  </ItemGroup>
 </Project>

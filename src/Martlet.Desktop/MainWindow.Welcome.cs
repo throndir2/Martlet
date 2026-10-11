@@ -23,7 +23,8 @@ public partial class MainWindow
     private bool welcomeJoined;
     private bool welcomeNeedsKey;
     private bool welcomeScanning;
-    private HostingPreference welcomePreference = HostingPreference.PreferLocal;
+    private HostingPreference welcomePreference = HostingPreference.Backup;
+    private RecommendationPreferences welcomePreferences = new();
     private Martlet.Core.Planning.MachineSpecs? welcomeSpecs;
     private IReadOnlyList<GpuNow> welcomeGpus = [];
     private WelcomePlan? welcomePlan;
@@ -192,16 +193,47 @@ public partial class MainWindow
         WizardSpecRows.Children.Add(row);
     }
 
-    private void WizardSpecsNext_Click(object sender, RoutedEventArgs e) => ShowTour(TourPreference);
+    private void WizardSpecsNext_Click(object sender, RoutedEventArgs e) => ShowWelcomeQuestions();
 
-    // ---------- steps 3 and 4: preference and the suggestion ----------
+    // ---------- steps 3 and 4: three questions and the suggestion ----------
 
-    private void WizardPreferLocal_Click(object sender, RoutedEventArgs e) => ShowWelcomePlan(HostingPreference.PreferLocal);
-    private void WizardPreferOnline_Click(object sender, RoutedEventArgs e) => ShowWelcomePlan(HostingPreference.PreferHosted);
-
-    private void ShowWelcomePlan(HostingPreference preference)
+    /// <summary>The three questions (docs/RECOMMENDATION_DESIGN.md, "What Martlet asks"), with the saved answers, or Martlet's
+    /// guess for games (a game library on this PC) and the defaults (only as a backup, Balanced).</summary>
+    private void ShowWelcomeQuestions()
     {
-        welcomePreference = preference;
+        var saved = RecommendationPreferences.Load(store?.DataDirectory);
+        var found = GamesHere;
+        var games = saved.PlaysGames(ClusterDevice) ?? found;
+        (games ? WizardGamesYes : WizardGamesNo).IsChecked = true;
+        WizardGamesHint.Text = saved.PlaysGames(ClusterDevice) is not null ? "Your earlier answer is selected."
+            : found ? "Martlet found a game library on this PC (Steam, Epic, GOG or another), so it selected Yes."
+            : "Martlet found no game library on this PC, so it selected No.";
+        (saved.Online switch { OnlineServices.Never => WizardOnlineNever, OnlineServices.Yes => WizardOnlineYes, _ => WizardOnlineBackup }).IsChecked = true;
+        (saved.Quality switch { ReplyQuality.Quick => WizardQualityQuick, ReplyQuality.Smarter => WizardQualitySmarter, _ => WizardQualityBalanced })
+            .IsChecked = true;
+        ShowTour(TourPreference);
+    }
+
+    /// <summary>Show my setup: saves the three answers (the games answer for this PC) and shows the suggestion planned with them.</summary>
+    private void WizardQuestionsNext_Click(object sender, RoutedEventArgs e)
+    {
+        var games = WizardGamesYes.IsChecked == true;
+        var preferences = RecommendationPreferences.Load(store?.DataDirectory) with
+        {
+            Online = WizardOnlineNever.IsChecked == true ? OnlineServices.Never : WizardOnlineYes.IsChecked == true ? OnlineServices.Yes : OnlineServices.Backup,
+            Quality = WizardQualityQuick.IsChecked == true ? ReplyQuality.Quick : WizardQualitySmarter.IsChecked == true ? ReplyQuality.Smarter : ReplyQuality.Balanced
+        };
+        preferences = preferences.WithGames(ClusterDevice, games);
+        SaveRecommendationPreferences(preferences, reopen: false);
+        ErrorLog.Info($"Welcome: games on this PC {(games ? "yes" : "no")}, online services {RecommendationPreferences.Words(preferences.Online).ToLowerInvariant()}, " +
+            $"{RecommendationPreferences.Words(preferences.Quality).ToLowerInvariant()}.");
+        ShowWelcomePlan(preferences);
+    }
+
+    private void ShowWelcomePlan(RecommendationPreferences preferences)
+    {
+        welcomePreferences = preferences;
+        welcomePreference = preferences.Hosting;
         welcomeNeedsKey = false;
         ShowTour(TourPlan);
         RenderWelcomePlan();
@@ -228,11 +260,12 @@ public partial class MainWindow
             WizardPlanSummary.Text = "Go back a step: Martlet hasn't read this PC's hardware yet.";
             return;
         }
+        var games = welcomePreferences.PlaysGames(ClusterDevice) ?? GamesHere;
         var plan = welcomePlan = DefaultSetup.Recommend(specs, welcomeGpus, machine.BestGpu, CultureInfo.CurrentUICulture, welcomePreference,
-            ConfiguredProviders(), WelcomeNetwork());
+            ConfiguredProviders(), WelcomeNetwork(), welcomePreferences, games);
         var routes = homeSettings?.Setup?.Routes ?? [];
         WizardPlanTitle.Text = welcomeJoined ? "Here's what this PC can do for your network" : "Here's what fits this PC";
-        var summary = $"You chose: {WelcomePreferences.Describe(welcomePreference)}. ";
+        var summary = $"You chose: {WelcomePreferences.Describe(welcomePreferences, games)}. ";
         if (welcomeJoined)
             summary += "Jobs your Martlet network already does stay where they are; this PC sets up the ones it should take on. ";
         summary += plan.ThinkingHosted is { } hosted
