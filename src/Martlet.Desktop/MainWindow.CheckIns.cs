@@ -57,6 +57,9 @@ public partial class MainWindow
     private readonly Dictionary<string, CheckInTrigger> checkInFired = new(StringComparer.Ordinal);
     private CheckInTrigger? checkInFiredLast;
     private string? checkInTriggeredRunning;
+    // The run of a check-in that thinks ahead (CheckInOutcome.Plan) now, stopped when another reply ends: its thoughts were about
+    // the message after the exchange it read.
+    private CancellationTokenSource? checkInPlanCancel;
     // What the last check-in after an exchange couldn't do, in a few words, or null when it worked (check-ins-status.json).
     private string? checkInAfterExchangeProblem;
 
@@ -180,6 +183,7 @@ public partial class MainWindow
         (CheckInOutcome.Note, "Reminds Martlet in its next reply"),
         (CheckInOutcome.Say, "Martlet brings it up"),
         (CheckInOutcome.Context, "Adds to what Martlet knows"),
+        (CheckInOutcome.Plan, "Thinks ahead for Martlet's next reply"),
         (CheckInOutcome.EmotesOff, "Turns off the emotes it names"),
         (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual"),
         (CheckInOutcome.Tools, "Its tools act")
@@ -189,6 +193,8 @@ public partial class MainWindow
         "the notes of your next message, so Martlet's next reply follows it. Brings it up: a SAY: line, which Martlet says on its " +
         "own as soon as it's free. Adds to what Martlet knows: a KNOW: line, a short description of what is happening, goes in " +
         "the notes of your next message (within a few minutes) as background Martlet may draw on, not a reminder to follow. " +
+        "Thinks ahead: a PLAN: line, the character's own thoughts about what you'll likely say next and what it means to say " +
+        "then, goes in the notes of your next message, once; it's dropped when another reply ends first. " +
         "Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing. Its tools act: the tools it " +
         "calls (tick at least one set under It may use these tools) are what it does, and its answer only says what it did.";
@@ -319,6 +325,10 @@ public partial class MainWindow
     private void CheckInExchangeEnded()
     {
         if (closing || Role != DeviceRole.Companion) return;
+        // Thoughts ahead were about the message after the exchange they read: a newer exchange makes them stale, whether they
+        // wait on the context board (the reply's request was built before they came) or are still being thought.
+        checkInPlanCancel?.Cancel();
+        CheckIns.DropPlans(contextBoard, CheckIns.All(checkInSettings));
         if (!CheckIns.All(checkInSettings).Any(c => c.On && c.Triggers.HasFlag(CheckInTriggers.ExchangeEnded))) return;
         FireCheckIns(CheckIns.ExchangeTrigger(DateTimeOffset.Now));
     }
@@ -420,9 +430,13 @@ public partial class MainWindow
             ? new CheckInToolHost(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, homeSettings?.Companion?.ActivePersonaId.ToString(),
                 DateTimeOffset.Now), CheckInToolHandlers())
             : null;
+        // Thinking ahead stops when another reply ends first (CheckInExchangeEnded).
+        using var planned = checkIn.Outcome == CheckInOutcome.Plan ? CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token) : null;
+        if (planned is not null) checkInPlanCancel = planned;
+        var token = planned?.Token ?? lifetime.Token;
         try
         {
-            var (withInputs, missing, took) = await GatherForCheckInAsync(checkIn, focused, lifetime.Token);
+            var (withInputs, missing, took) = await GatherForCheckInAsync(checkIn, focused, token);
             gathered = took;
             if (missing is null && checkIn.RunsScript) scriptHash = CheckIns.ScriptHash(withInputs.ScriptOutput);
             if (missing is not null) result = missing;
@@ -437,9 +451,9 @@ public partial class MainWindow
                 var done = CheckInFixture() is { } fixture
                     ? File.Exists(fixture)
                         ? new ThinkingJobResult(ThinkingJobOutcome.Succeeded, await CheckInFixtureAnswerAsync(fixture, job.ToolHost as CheckInToolHost,
-                            lifetime.Token), "fixture", "FIXTURE - NOT AI", null, 1)
+                            token), "fixture", "FIXTURE - NOT AI", null, 1)
                         : new ThinkingJobResult(ThinkingJobOutcome.Failed, null, null, null, $"{CheckInFixtureVariable} names no file", 0)
-                    : await conversation!.ThinkingPool.RunAsync(job, lifetime.Token);
+                    : await conversation!.ThinkingPool.RunAsync(job, token);
                 member = done.Member is { } name ? done.Model is { } model ? $"{name} ({model})" : name : null;
                 var used = tools?.Uses ?? [];
                 // Its tool calls were the action: they count even when the model failed to write its last line.
@@ -453,6 +467,9 @@ public partial class MainWindow
                 else if (!done.Succeeded)
                     result = done.Outcome == ThinkingJobOutcome.NoMember ? CheckInNoMember(checkIn, ran: true)
                         : $"the Thinking pool didn't answer ({done.Problem ?? done.Outcome.ToString()})";
+                // Its thoughts were about the message after the exchanges it read; another reply ended meanwhile.
+                else if (checkIn.Outcome == CheckInOutcome.Plan && conversation?.RecentExchanges(0).Total is { } total && total != withInputs.Exchanged)
+                    result = "another reply ended before its thoughts were ready, so they were dropped";
                 else
                 {
                     var verdict = CheckIns.Read(checkIn, done.Text, withInputs);
@@ -469,11 +486,17 @@ public partial class MainWindow
                     : !done.Succeeded && used.Count == 0 ? result : null;
             }
         }
+        catch (OperationCanceledException) when (planned is { IsCancellationRequested: true } && !lifetime.IsCancellationRequested)
+        {
+            ErrorLog.Info($"Check-ins: {checkIn.Name} stopped: another reply ended before its thoughts were ready.");
+            return;
+        }
         catch (OperationCanceledException) { return; }
         finally
         {
             if (triggered) checkInTriggeredRunning = null;
             else checkInRunning = null;
+            if (planned is not null && ReferenceEquals(checkInPlanCancel, planned)) checkInPlanCancel = null;
         }
         var elapsed = Stopwatch.GetElapsedTime(began);
         var uses = tools?.Uses ?? [];
@@ -599,6 +622,7 @@ public partial class MainWindow
                 CheckInOutcome.Say => "nothing to bring up",
                 CheckInOutcome.Tools => "its tools acted",
                 CheckInOutcome.Context => "nothing to add to what Martlet knows",
+                CheckInOutcome.Plan => "nothing worth thinking ahead about",
                 _ => "nothing to remind Martlet of"
             }, false);
         switch (checkIn.Outcome)
@@ -623,6 +647,14 @@ public partial class MainWindow
                 catch (InvalidOperationException) { return ("the context board is full, so nothing went to the conversation", false); }
                 return ($"background for the next reply waits {CheckIns.ContextAge.TotalMinutes:0} minutes at most " +
                     $"({verdict.Text!.Length} characters)", true);
+            }
+            case CheckInOutcome.Plan:
+            {
+                if (CheckIns.Plan(prompts, verdict.Text!) is not { } plan)
+                    return ("the Check-in: thoughts ahead for the next reply prompt is empty, so nothing went to the conversation", false);
+                try { contextBoard.Post(CheckIns.Source(checkIn.Id), plan, DateTimeOffset.Now, CheckIns.PlanAge, consume: true); }
+                catch (InvalidOperationException) { return ("the context board is full, so nothing went to the conversation", false); }
+                return ($"thoughts ahead wait for the next reply ({verdict.Text!.Length} characters)", true);
             }
             default:
                 return ConversationSession()?.BringUp(checkIn.Name, verdict.Text!) is null

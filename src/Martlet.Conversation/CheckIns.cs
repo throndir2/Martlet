@@ -22,7 +22,10 @@ public enum CheckInOutcome
     Context = 4,
     /// <summary>Its tool calls are the action (<see cref="CheckIn.ToolSets"/>); the answer is only a short line that says what it
     /// did. The value is fixed, so other outcomes can take the values before it.</summary>
-    Tools = 5
+    Tools = 5,
+    /// <summary>Puts the answer's "PLAN:" line (the character's own thoughts ahead: what the user will likely say next and what it
+    /// means to say then) in the notes of the next message, once, while no newer exchange ended (<see cref="CheckIns.PlanAge"/>).</summary>
+    Plan = 6
 }
 
 /// <summary>What a check-in gets to know besides the day and time. A fact whose placeholder the prompt names ({conversation},
@@ -281,6 +284,10 @@ public static partial class CheckIns
     /// <summary>Describe touches: right after the user touches the character, a pool member describes what they have been doing,
     /// for the next reply (<see cref="CheckInOutcome.Context"/>).</summary>
     public const string DescribeTouches = "touches";
+    /// <summary>Think ahead: right after each reply, while the user hasn't answered yet, a pool member thinks ahead as the
+    /// character (how the conversation goes, what the user will likely say next, what it means to say then), for the next reply
+    /// (<see cref="CheckInOutcome.Plan"/>).</summary>
+    public const string Ahead = "ahead";
     /// <summary>The background job kind of what a check-in brings up on Martlet's own (checkin-1...).</summary>
     public const string SayKindName = "checkin";
     public const int MaximumCustom = 8, MaximumNameCharacters = 60, MaximumTaskCharacters = PromptSettings.MaximumTextCharacters,
@@ -303,6 +310,9 @@ public static partial class CheckIns
     /// <summary>How long what a check-in adds to what Martlet knows waits on the context board for a message to carry it: short,
     /// because it describes the moment.</summary>
     public static TimeSpan ContextAge => TimeSpan.FromMinutes(3);
+    /// <summary>How long a check-in's thoughts ahead wait on the context board for the next message. A newer exchange drops them
+    /// before that, because they were about the message after the exchange they read.</summary>
+    public static TimeSpan PlanAge => TimeSpan.FromMinutes(10);
     /// <summary>How many times its pace Lingering emotes and Where the character looks wait after an answer that kept everything,
     /// while nothing new was said.</summary>
     public const int KeptPace = 3;
@@ -327,7 +337,8 @@ public static partial class CheckIns
     /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Lingering emotes every minute, Saying the same things every 10,
     /// Staying in character every 15); How I react on, after your touches (at most every 5 minutes); Welcome back, Unanswered
     /// question, On a call and Someone else is here off until the owner turns them on; Describe touches on, started by touches at
-    /// most once a minute. Each is only data (a prompt, facts, conditions, triggers, tool sets and an outcome) that the owner can
+    /// most once a minute; Think ahead and Act on what was said on, after each reply, at most once a minute. Each is only data (a
+    /// prompt, facts, conditions, triggers, tool sets and an outcome) that the owner can
     /// change on its card or copy as their own.</summary>
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
     [
@@ -399,6 +410,13 @@ public static partial class CheckIns
             PromptId = PromptCatalog.CheckInTouches,
             Facts = CheckInFacts.Touches | CheckInFacts.Conversation | CheckInFacts.Persona | CheckInFacts.Character,
             Conditions = CheckInConditions.CharacterShows, Triggers = CheckInTriggers.TouchesEnded
+        },
+        new(Ahead, "Think ahead", "Right after each reply, while you haven't answered yet, thinks ahead as the character: how " +
+            "the conversation is going, what you'll likely say next and what it wants to say then, true to its personality. Its " +
+            "next reply gets these thoughts and uses them where they fit. No reply waits for it.", CheckInOutcome.Plan, true, 1)
+        {
+            PromptId = PromptCatalog.CheckInAhead, Facts = CheckInFacts.Persona | CheckInFacts.Conversation,
+            Conditions = CheckInConditions.Talked | CheckInConditions.SomethingNew, Triggers = CheckInTriggers.ExchangeEnded
         },
         new(Actions, "Act on what was said", "Right after each reply, reads what you said and what Martlet answered, and does " +
             "what you asked for or Martlet promised with its tools (such as setting a reminder), so Martlet's reply can stay " +
@@ -503,6 +521,7 @@ public static partial class CheckIns
             CheckInOutcome.GazeUsual => "Your own check-in: Martlet takes the eyes back to their usual when it says so.",
             CheckInOutcome.Tools => "Your own check-in: Martlet lets it use its tools.",
             CheckInOutcome.Context => "Your own check-in: what it describes adds to what Martlet knows in its next reply.",
+            CheckInOutcome.Plan => "Your own check-in: what it thinks ahead goes with Martlet's next reply.",
             _ => "Your own check-in: what it says reminds Martlet in its next reply."
         }, custom.Outcome, custom.On, custom.EveryMinutes)
         {
@@ -690,6 +709,9 @@ public static partial class CheckIns
             CheckInOutcome.Context => "If there is nothing worth adding, write only: OK\nOtherwise write one line that starts with KNOW: " +
                 $"and describes what is happening, briefly and vividly, as background {who} can draw on in its next reply. " +
                 $"Describe it; don't tell {who} what to do or say.",
+            CheckInOutcome.Plan => "If there is nothing worth thinking ahead about, write only: OK\nOtherwise write one line that " +
+                $"starts with PLAN: and gives {who}'s own thoughts ahead, in the first person: what it expects the user to say or " +
+                "ask next and what it means to say then, briefly and in its own voice.",
             _ => $"If nothing needs doing now, write only: OK\nOtherwise write one line to {who} that starts with REMIND: and says " +
                 "what to keep in mind or do in its next reply."
         };
@@ -743,6 +765,7 @@ public static partial class CheckIns
                 {
                     CheckInOutcome.Say => ["SAY"],
                     CheckInOutcome.Context => ["KNOW"],
+                    CheckInOutcome.Plan => ["PLAN"],
                     _ => ["REMIND", "REMINDER"]
                 };
                 foreach (var line in lines.Reverse())
@@ -769,6 +792,22 @@ public static partial class CheckIns
     /// prompt.</summary>
     public static string? Context(PromptSettings? prompts, string context) =>
         PromptSettings.Fill(prompts, PromptCatalog.CheckInContext, ("context", context));
+
+    /// <summary>What a check-in's thoughts ahead say in the notes of the next message (Companion › Prompts › Check-in: thoughts
+    /// ahead for the next reply): the character's own plan, which the reply uses only where it fits what was said. Null when the
+    /// owner emptied that prompt.</summary>
+    public static string? Plan(PromptSettings? prompts, string plan) =>
+        PromptSettings.Fill(prompts, PromptCatalog.CheckInPlan, ("plan", plan));
+
+    /// <summary>Another exchange ended: the thoughts ahead of every check-in in <paramref name="checkIns"/> that thinks ahead
+    /// (<see cref="CheckInOutcome.Plan"/>) leave <paramref name="board"/>, because they were about the message after the exchange
+    /// they read. Returns how many left.</summary>
+    public static int DropPlans(ContextBoard board, IEnumerable<CheckIn> checkIns)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(checkIns);
+        return checkIns.Where(c => c.Outcome == CheckInOutcome.Plan).Count(c => board.Clear(Source(c.Id)));
+    }
 
     /// <summary>The day and time as a check reads it: "Wednesday, October 7, 10:17 PM".</summary>
     public static string Time(DateTimeOffset now) => now.ToString("dddd, MMMM d, h:mm tt", CultureInfo.InvariantCulture);
@@ -951,13 +990,13 @@ public static partial class CheckIns
             .Select(word => word.Trim('{', '}', '[', ']', '(', ')', '/', '.', ':', '!', '"', '\'', '*', '`'))
             .Where(word => word.Length > 0)];
 
-    // A REMIND:, SAY: or KNOW: line that says there is nothing to do.
+    // A REMIND:, SAY:, KNOW: or PLAN: line that says there is nothing to do.
     private static bool NothingSaid(string text)
     {
         var plain = text.Trim().TrimEnd('.', '!').Trim().ToLowerInvariant();
         return plain.Length == 0 || plain is "ok" or "okay" or "none" or "nothing" or "n/a" or "na" or "no" or "keep" or "no reminder" or
             "nothing needed" or "no need" or "nothing to remind" or "nothing to say" or "nothing to bring up" or "nothing new" or
-            "nothing to add";
+            "nothing to add" or "nothing to plan" or "nothing to plan ahead" or "no plan";
     }
 
     private static string OneLine(string text) => Spaces().Replace(text, " ").Trim();

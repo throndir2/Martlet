@@ -106,9 +106,11 @@ public static class PromptCatalog
     public const string CheckInOthers = "check_in_others";
     public const string CheckInReactions = "check_in_reactions";
     public const string CheckInActions = "check_in_actions";
+    public const string CheckInAhead = "check_in_ahead";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInContext = "check_in_context";
+    public const string CheckInPlan = "check_in_plan";
     public const string CheckInDue = "check_in_due";
     public const string CheckInDueNotes = "check_in_due_notes";
     public const string CheckInAdultOn = "check_in_adult_on";
@@ -290,6 +292,20 @@ public static class PromptCatalog
     public const string DefaultCheckInContextInstructions =
         "What is happening now, from your own check-in, for you only: {context} This is background you may draw on in this reply " +
         "where it fits, not a reminder to follow. Never repeat it word for word and don't mention it.";
+
+    public const string DefaultCheckInAheadInstructions =
+        "{name} is the user's desktop companion, and the user hasn't answered its last reply yet. {name}'s personality:\n" +
+        "{persona}\n\n{conversation}\n\nThink ahead as {name}, true to its personality, before the user speaks. How is the " +
+        "conversation going: the mood, where it's heading, what the user seems to want or feel? What will they most likely say " +
+        "or ask next? Plan what {name} would say then: its own take, a feeling, a joke, a question or a topic it wants to bring " +
+        "up, the way {name} would. Write it as {name}'s private thoughts, in the first person, in one or two short sentences " +
+        "(at most 200 characters), like: They'll probably say the bug is fixed; I'll cheer, then tease them about the three " +
+        "hours it took. Don't write the reply itself, and don't plan to repeat what {name} already said. " +
+        "If the conversation has ended or there is nothing worth thinking ahead about, nothing needs planning.";
+
+    public const string DefaultCheckInPlanInstructions =
+        "Your own thoughts from just before this message (private; the user may have said something else): {plan} Use them " +
+        "only where they fit, and never mention them.";
 
     public const string DefaultCheckInDueInstructions =
         "(Martlet's note, not said by the user: your own check-in came up with something to bring up.)\n{items}\n\n" +
@@ -1049,6 +1065,11 @@ public static class PromptCatalog
             "the reply), or every exchange since it last ran, and {work} the reminders set and the background work started or " +
             "finished. It changes nothing itself: the tools of the sets it may use do (such as reminders).",
             DefaultCheckInActionsInstructions, ["name", "exchange", "work"]),
+        new(CheckInAhead, CheckInGroup, "Check-in: think ahead",
+            "What Think ahead asks right after each reply, while the user hasn't answered yet. {persona} is the active " +
+            "personality and {conversation} the end of the conversation. Check-ins: each check adds the answer format (a PLAN: " +
+            "line with the character's own thoughts ahead, which goes with the next reply, or OK).",
+            DefaultCheckInAheadInstructions, ["name", "persona", "conversation"]),
         new(CheckInReactions, CheckInGroup, "Check-in: how I react",
             "What How I react checks. {persona} is the active personality, {conversation} the end of the conversation and " +
             "{touches} how the user touched the character lately. It changes nothing itself: the Touch reactions tools it calls " +
@@ -1060,7 +1081,8 @@ public static class PromptCatalog
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
             "or KEEP (move the eyes), a REMIND: line or OK (a reminder for the next reply), a SAY: line or OK (Martlet brings it " +
-            "up), a KNOW: line or OK (adds to what Martlet knows). Emptied, each check sends only its prompt and facts, so the " +
+            "up), a KNOW: line or OK (adds to what Martlet knows), a PLAN: line or OK (thinks ahead for the next reply). Emptied, " +
+            "each check sends only its prompt and facts, so the " +
             "prompt must then ask for the answer format itself.",
             DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),
         new(CheckInNote, CheckInGroup, "Check-in: reminder for the next reply",
@@ -1072,6 +1094,12 @@ public static class PromptCatalog
             "and only within a few minutes, never in the conversation or its instructions, so prompt caches keep working. " +
             "{context} is that line's text: a short description of what is happening, which the reply may draw on.",
             DefaultCheckInContextInstructions, ["context"]),
+        new(CheckInPlan, CheckInGroup, "Check-in: thoughts ahead for the next reply",
+            "Goes in the notes of the next message when a check-in that thinks ahead answers with a PLAN: line, once and only " +
+            "while no newer exchange ended, never in the conversation or its instructions, so prompt caches keep working. " +
+            "{plan} is that line's text: the character's own thoughts about what the user will say next and what it means to " +
+            "say then.",
+            DefaultCheckInPlanInstructions, ["plan"]),
         new(CheckInDue, CheckInGroup, "Check-in: brought up on its own",
             "The message of the reply Martlet starts on its own as soon as it is free, when one of your own check-ins that brings " +
             "things up answers with a SAY: line. {items} is what it said to bring up.",

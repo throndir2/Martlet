@@ -1523,8 +1523,8 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** The first five, How I react and Describe touches are on
-by default. The four that wait
+**Built-in check-ins.** The first five, How I react, Describe touches, Think
+ahead and Act on what was said are on by default. The four that wait
 for a signal (Welcome back, Unanswered question, On a call, Someone else is
 here) are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
@@ -1543,6 +1543,7 @@ own character and runs its own conversation.
 | On a call (`call`, off) | 2 min | A game, a call or a full-screen app started or ended: did a call start or end? What you do now and before. | A `REMIND:` line (keep quiet and short during the call, or talk as usual again) goes in the notes of the next message. `OK` changes nothing. |
 | Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
 | Describe touches (`touches`) | At most once a minute, right after your touches end | What have you been doing to the character, told vividly as the story so far, true to its personality? How you touched it in the last 10 minutes, the end of the conversation, the personality, the emotes it shows and `{adult}` (explicit only while Adult content is on). | A `KNOW:` line goes with the next reply as [background it may draw on](#describe-touches). `OK` changes nothing. |
+| Think ahead (`ahead`) | At most once a minute, right after a reply ends | As the character, before you answer: how is the conversation going, what will you likely say next, and what does it want to say then? Its personality and the end of the conversation. | A `PLAN:` line, the character's [own thoughts ahead](#think-ahead), goes in the notes of the next message, unless another reply ends first. `OK` changes nothing. |
 
 **One flow for every check-in.** A built-in check-in is only data: a prompt,
 the facts it gets to know, the conditions it waits for and what its answer
@@ -1578,6 +1579,7 @@ built-in check-in can be recreated, and changed, as your own.
 | On a call | What you are doing | What you do changed |
 | Someone else is here | Who is here, its personality | Someone else spoke |
 | Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
+| Think ahead | Its personality, the conversation | You talked lately, something new was said; it starts when a reply ends ([below](#think-ahead)) |
 | Act on what was said | The latest exchange (or every exchange since it last ran), reminders and background work | Something new was said; it starts when a reply ends ([below](#act-on-what-was-said)) |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
@@ -1710,6 +1712,47 @@ may be explicit, never about anyone under 18. With no pool member, it waits,
 and replies keep the local wording only. Turn it off, change its prompt or
 copy it as your own on its card, like any built-in check-in.
 
+<a id="think-ahead"></a>
+**Think ahead.** The built-in check-in `ahead` lets the character think
+between turns, as a person does while the other one is about to talk. It
+plans what to say next, true to its personality, and no reply waits for it.
+
+1. A reply ends (*A reply ends*, `ExchangeEnded`), and Think ahead starts on
+   a Thinking pool member, at most once a minute (its *Every*). It runs
+   before Act on what was said, because its thoughts are worth something only
+   until you answer.
+2. The member gets Companion › Prompts › *Check-in: think ahead*: the
+   personality and the end of the conversation. As the character, it thinks
+   about how the conversation goes (the mood, where it heads, what you seem to
+   want), what you will likely say or ask next, and what it wants to say
+   then: its take, a feeling, a joke, a question or a topic. It answers with
+   one `PLAN:` line in the first person, at most 200 characters, or `OK`.
+3. The thoughts go on the context board as `check-in-ahead` for at most 10
+   minutes (`CheckIns.PlanAge`). The next request takes them once, after your
+   words, in Companion › Prompts › *Check-in: thoughts ahead for the next
+   reply*: *Your own thoughts from just before this message (private; the
+   user may have said something else): ... Use them only where they fit, and
+   never mention them.*
+4. Thoughts are about the message after the exchange they read. When another
+   reply ends first, Martlet drops them: it stops a run that still thinks
+   (*Check-ins: Think ahead stopped: another reply ended before its thoughts
+   were ready.*), takes waiting thoughts off the board (`CheckIns.DropPlans`),
+   and drops an answer that comes after a newer exchange (*another reply ended
+   before its thoughts were ready, so they were dropped*). The same is true for
+   your own check-ins whose answer is *Thinks ahead for Martlet's next reply*
+   (`CheckInOutcome.Plan`).
+
+The thoughts are notes at the end of the message, never kept in the
+conversation, so the start of every request stays the same and prompt caches
+keep working. The next reply reads about 40 to 90 more tokens while thoughts
+wait for it (the desktop log says *Context board: the request took 1 note
+(check-in-ahead; 240 bytes; 1 consumed).*). Like every check-in, it runs only
+on the Thinking pool, never on the conversation's own route, and the live
+floor stops it while you talk on shared hardware. With no pool member, it
+waits and replies go on as before. A reply that comes before its thoughts are
+ready simply doesn't get them. Turn it off, change its prompt or copy it as
+your own on its card.
+
 An answer that turns off emotes looks only at emotes a reply turned on (their
 own tag or a combo's). It never turns off an emote you turned on with *Try*,
 or one a touch holds: `HeldEmote.Why` records why each emote went on.
@@ -1831,6 +1874,10 @@ What happens with its answer:
   `BackgroundJobKind.Wording`; due reminders keep theirs and come first.
 - *Adds to what Martlet knows*: a `KNOW:` line, a short description of what is
   happening, goes on the context board for the next reply, as above.
+- *Thinks ahead for Martlet's next reply*: a `PLAN:` line, the character's own
+  thoughts about what you'll say next and what it means to say then, goes on
+  the context board for the next reply until another reply ends, as [Think
+  ahead](#think-ahead) does.
 - *Turns off the emotes it names*: `OFF` lines with the tags of lingering
   emotes, as Lingering emotes does (tick *Emotes and gaze*).
 - *Takes the eyes back to their usual*: `USUAL`, as Where the character looks

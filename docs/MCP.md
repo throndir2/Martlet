@@ -1081,10 +1081,11 @@ minutes a Thinking pool member answers one short question for Martlet (do the
 lingering emotes still fit, does the gaze a reply chose still fit, did the
 character keep its promises, did it stay in character, does it keep saying the
 same things, the four that wait for a signal (welcome back, an unanswered
-question, a call, someone else here) and the owner's own),
+question, a call, someone else here), what to say after the next message
+(think ahead) and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
-instructions. A reminder for the next reply, or what a check-in adds to what
-Martlet knows, goes in the notes of that one
+instructions. A reminder for the next reply, what a check-in adds to what
+Martlet knows, or its thoughts ahead, go in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
 each run with words and counts only (`Check-ins:`).
 
@@ -1145,10 +1146,17 @@ makes every check-in read its answer from that file instead of asking the
 Thinking pool (FIXTURE - NOT AI; read again before each run, and check-ins run
 then without a pool member). `CheckInsNow` and each run's member say *FIXTURE -
 NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
-`REMIND:` line, a `SAY:` line and a `KNOW:` line answers all three kinds of
-the owner's own check-ins that use a line, so *Check now* shows the whole flow
-on a disposable data directory: a reminder waiting for the next reply,
-something Martlet brings up, or background for the next reply.
+a `REMIND:` line, a `SAY:` line, a `KNOW:` line and a `PLAN:` line answers all
+four kinds of the owner's own check-ins that use a line, so *Check now* shows the
+whole flow on a disposable data directory: a reminder waiting for the next
+reply, something Martlet brings up, background for the next reply, or
+thoughts ahead for the next reply. A reply's end fires Think ahead (`ahead`)
+with that file too: on a disposable data directory with Thinking on
+`model_lab`, send two messages in the talk window; `check_ins_status` shows
+Think ahead's run (*thoughts ahead wait for the next reply*), the second
+reply's `LiveTurnInputs` says *Last reply took your words and 1 context
+note.*, and the desktop log says *Context board: the request took 1 note
+(check-in-ahead; ...)*.
 
 [Check-in triggers](CONVERSATION.md#check-in-triggers) are driven live with
 `character_touch` and `character_stroke` (both need `--allow-ui-effects` and
@@ -6082,7 +6090,7 @@ after the prompt when it is ticked but not placed, and that facts past
 `intimate`, `often`), `filled` and the FIXTURE message. Three
 `triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
 with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
-check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger and Act on what was said on `ExchangeEnded`),
+check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, and Think ahead and Act on what was said on `ExchangeEnded`),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
 touches there, fire all four triggers once they settle; the ledger still holds
@@ -6118,7 +6126,18 @@ its cooldown and while the character is hidden; its message has the strokes
 from `{touches}`, the personality, the `KNOW:` format and the non-explicit
 `{adult}` line (the explicit line only with Adult content on); and a fixture
 member's `KNOW:` answer goes on a production context board as
-`check-in-touches` for one request only. Three `signals:` steps check the
+`check-in-touches` for one request only. `think ahead` checks the built-in
+[Think ahead](CONVERSATION.md#think-ahead) check-in the same way with FIXTURE
+facts and a canned answer: it is on, runs at most once a minute, thinks ahead
+for the next reply (`Plan`) and starts on `ExchangeEnded`; it waits with no
+trigger, runs on a fired trigger while you talk, waits during its cooldown and
+with nothing said; its message has the personality, the conversation and the
+`PLAN:` format; a fixture member's `PLAN:` line after a `<think>` block goes on
+a production context board as `check-in-ahead` for one request only, the next
+exchange drops thoughts that still wait (`CheckIns.DropPlans`), they are gone
+after `CheckIns.PlanAge` (10 minutes), `OK` and `PLAN: nothing to plan` change
+nothing, a `KNOW:` line can't be read, and an emptied *Check-in: thoughts ahead
+for the next reply* prompt posts nothing. Three `signals:` steps check the
 signal conditions and facts with FIXTURE facts: `signals: when they wait` (each
 condition waits for its signal since the last run and runs on it: you came
 back, a call, a change in what you do, the hours past midnight, an unanswered
