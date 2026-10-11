@@ -21,7 +21,7 @@ internal static class AppGuidesCheck
 {
     private const string Game = "Starfall Valley";
     private const string Other = "Moonlit Abyss";
-    private const string Question = "where do I find iron ore?";
+    private const string Question = "hey martlet, where tf do I find iron ore?";
     private const string Unrelated = "what should we cook for dinner tonight?";
     private const string Named = "in Starfall Valley, how do I get the moonstone sword?";
 

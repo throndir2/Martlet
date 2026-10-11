@@ -87,8 +87,14 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "martlet.memory": {
+      "martlet.core": {
         "type": "Project"
+      },
+      "martlet.memory": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.68.0, )"
+        }
       }
     }
   }

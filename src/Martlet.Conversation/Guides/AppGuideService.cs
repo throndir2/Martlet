@@ -48,6 +48,8 @@ public sealed class AppGuideService : IDisposable
     private AppGuideLibrary library = new();
     private AppGuideFront? front;
     private (string Key, string Name, string? Progress)? building;
+    private readonly ConcurrentDictionary<string, string> unreadable = new(StringComparer.Ordinal);
+    private string? loadProblem;
     private bool loaded, disposed;
     private int revision;
 
@@ -86,6 +88,12 @@ public sealed class AppGuideService : IDisposable
     /// <summary>The app being read up on now (its key and name) and what it is doing, or null.</summary>
     public (string Key, string Name, string? Progress)? Building { get { lock (gate) return building; } }
 
+    /// <summary>Why the library couldn't be read at <see cref="LoadAsync"/> (a few plain words), or null.</summary>
+    public string? LoadProblem { get { lock (gate) return loadProblem; } }
+
+    /// <summary>Why <paramref name="key"/>'s guide file couldn't be read (a few plain words), or null.</summary>
+    public string? GuideProblem(string key) => unreadable.TryGetValue(key, out var why) ? why : null;
+
     /// <summary>How many indexes are ready to search.</summary>
     public int ReadyIndexes => indexes.Count;
 
@@ -95,11 +103,21 @@ public sealed class AppGuideService : IDisposable
     /// <summary>Reads the library and starts building the index of every app with a guide (off the caller's thread).</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        var read = await Store.LoadLibraryAsync(cancellationToken).ConfigureAwait(false);
+        AppGuideLibrary read;
+        string? problem = null;
+        try { read = await Store.LoadLibraryAsync(cancellationToken).ConfigureAwait(false); }
+        catch (AppGuideFileException error)
+        {
+            // The store never resets it: App guides stay off until the owner turns them on again (a new library keeps a copy of
+            // the old one, and a newer Martlet's library is never replaced).
+            read = new();
+            problem = Describe(error);
+        }
         lock (gate)
         {
             library = read;
             loaded = true;
+            loadProblem = problem;
             revision++;
         }
         Changed?.Invoke();
@@ -159,6 +177,7 @@ public sealed class AppGuideService : IDisposable
         {
             await Store.DeleteGuideAsync(key, cancellationToken).ConfigureAwait(false);
             indexes.TryRemove(key, out _);
+            unreadable.TryRemove(key, out _);
             Keep(await Store.LoadLibraryAsync(cancellationToken).ConfigureAwait(false));
         }
         finally { saving.Release(); }
@@ -341,15 +360,23 @@ public sealed class AppGuideService : IDisposable
             var given = (sites ?? []).Select(AppGuideTools.Site).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(AppGuideTools.MaxSites).ToArray();
             // The entry is on the list from the start (with the pages the owner gave), so the page shows what is being read.
-            var entry = (await UpdateAsync(l =>
+            AppGuideEntry entry;
+            try
             {
-                var old = l.Apps.FirstOrDefault(a => a.Key == key);
-                var next = (old ?? WithOffered(new AppGuideEntry { Key = key, Name = shown })) with
+                entry = (await UpdateAsync(l =>
                 {
-                    Sites = given.Length > 0 ? given : old?.Sites ?? [], Declined = false
-                };
-                return l with { Apps = [.. l.Apps.Where(a => a.Key != key), next] };
-            }, cancellationToken).ConfigureAwait(false)).Apps.First(a => a.Key == key);
+                    var old = l.Apps.FirstOrDefault(a => a.Key == key);
+                    var next = (old ?? WithOffered(new AppGuideEntry { Key = key, Name = shown })) with
+                    {
+                        Sites = given.Length > 0 ? given : old?.Sites ?? [], Declined = false
+                    };
+                    return l with { Apps = [.. l.Apps.Where(a => a.Key != key), next] };
+                }, cancellationToken).ConfigureAwait(false)).Apps.First(a => a.Key == key);
+            }
+            catch (Exception error) when (Refusal(error) is { } why)
+            {
+                return new(key, shown, 0, 0, 0, [], 0, 0, clock.GetElapsedTime(started), why);
+            }
             var said = new Said(text =>
             {
                 lock (gate) if (building?.Key == key) building = (key, shown, text);
@@ -371,23 +398,34 @@ public sealed class AppGuideService : IDisposable
                 : guide!.Chunks.Count == 0 ? "the pages it read had no text to keep" : null;
             if (problem is not null)
             {
-                await UpdateAsync(l => l with { Apps = [.. l.Apps.Select(a => a.Key == key ? a with { Problem = problem } : a)] },
-                    CancellationToken.None).ConfigureAwait(false);
+                await KeepProblemAsync(key, problem).ConfigureAwait(false);
                 return new(key, shown, 0, 0, 0, outcome.Sites, outcome.Failed, outcome.Bytes, clock.GetElapsedTime(started), problem);
             }
             said.Report("Saving the guide");
             await saving.WaitAsync(cancellationToken).ConfigureAwait(false);
             AppGuideEntry saved;
+            string? refused = null;
             try
             {
-                await Store.SaveGuideAsync(guide!, cancellationToken).ConfigureAwait(false);
-                indexes[key] = WarmedUp(GuideIndex.Build(guide!.Chunks));
+                try { await Store.SaveGuideAsync(guide!, cancellationToken).ConfigureAwait(false); }
+                // The store's bounds (a guide too large, a full library) or a file it can't read: the guide isn't kept.
+                catch (Exception error) when (Refusal(error) is { } why) { refused = why; }
                 var read = await Store.LoadLibraryAsync(cancellationToken).ConfigureAwait(false);
-                Keep(read);
                 saved = read.Apps.FirstOrDefault(a => a.Key == key) ?? entry;
+                if (refused is null)
+                {
+                    unreadable.TryRemove(key, out _);
+                    indexes[key] = WarmedUp(GuideIndex.Build(guide!.Chunks, [shown, .. saved.Programs]));
+                    Keep(read);
+                }
             }
             finally { saving.Release(); }
-            return new(key, shown, guide.Sources.Count, guide.Chunks.Count, saved.Bytes, guide.Sites, outcome.Failed, outcome.Bytes,
+            if (refused is not null)
+            {
+                await KeepProblemAsync(key, refused).ConfigureAwait(false);
+                return new(key, shown, 0, 0, 0, outcome.Sites, outcome.Failed, outcome.Bytes, clock.GetElapsedTime(started), refused);
+            }
+            return new(key, shown, guide!.Sources.Count, guide.Chunks.Count, saved.Bytes, guide.Sites, outcome.Failed, outcome.Bytes,
                 clock.GetElapsedTime(started), null);
         }
         finally
@@ -407,15 +445,20 @@ public sealed class AppGuideService : IDisposable
     /// <summary>Starts building <paramref name="key"/>'s index off the caller's thread when it isn't ready or being built.</summary>
     public void Warm(string key)
     {
-        if (indexes.ContainsKey(key) || disposed) return;
+        if (indexes.ContainsKey(key) || unreadable.ContainsKey(key) || disposed) return;
         warming.GetOrAdd(key, k => Task.Run(async () =>
         {
             try
             {
                 var guide = await Store.LoadGuideAsync(k, CancellationToken.None).ConfigureAwait(false);
-                if (guide is not null) indexes[k] = WarmedUp(GuideIndex.Build(guide.Chunks));
+                var programs = Library.Apps.FirstOrDefault(a => a.Key == k)?.Programs ?? [];
+                if (guide is not null) indexes[k] = WarmedUp(GuideIndex.Build(guide.Chunks, [guide.Name, .. programs]));
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException) { }
+            catch (AppGuideFileException error) { unreadable[k] = Describe(error); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
+            {
+                unreadable[k] = "its guide file can't be read (" + error.GetType().Name + ")";
+            }
             finally { warming.TryRemove(k, out _); }
             Changed?.Invoke();
         }));
@@ -450,7 +493,7 @@ public sealed class AppGuideService : IDisposable
         lock (gate) (now, seen) = (library, front);
         if (!now.On) return null;
         var entry = Named(now, words) ?? (seen?.Entry is { } inFront ? now.Apps.FirstOrDefault(a => a.Key == inFront.Key) : null);
-        if (entry is not { BuiltAt: not null }) return null;
+        if (entry is not { BuiltAt: not null } || unreadable.ContainsKey(entry.Key)) return null;
         var started = Stopwatch.GetTimestamp();
         if (!indexes.TryGetValue(entry.Key, out var index))
         {
@@ -463,6 +506,31 @@ public sealed class AppGuideService : IDisposable
         var used = notes is null ? 0 : Math.Min(GuideRecall.MaximumChunks, fresh.Count(h => h.Relevance >= GuideRecall.MinimumRelevance));
         return new(entry.Name, notes, hits.Count, used, hits.Count == 0 ? 0 : hits.Max(h => h.Relevance), Stopwatch.GetElapsedTime(started), true);
     }
+
+    // Keeps why reading up failed on the app's entry; when even that can't be saved, the build's result still says it.
+    private async Task KeepProblemAsync(string key, string problem)
+    {
+        try
+        {
+            await UpdateAsync(l => l with { Apps = [.. l.Apps.Select(a => a.Key == key ? a with { Problem = problem } : a)] },
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception error) when (Refusal(error) is not null) { }
+    }
+
+    /// <summary>Why the store refused a change, in a few plain words (a file it can't read or a newer Martlet's, a guide too
+    /// large, a full library), or null for an error that isn't the store's refusal.</summary>
+    public static string? Refusal(Exception error) => error switch
+    {
+        AppGuideFileException file => Describe(file),
+        ArgumentException or InvalidOperationException => "it couldn't be kept: " + error.Message.TrimEnd('.'),
+        IOException or UnauthorizedAccessException => "the guides folder couldn't be written (" + error.GetType().Name + ")",
+        _ => null
+    };
+
+    /// <summary>A store file the store refused, in a few plain words (its file name and why; never its contents).</summary>
+    public static string Describe(AppGuideFileException error) =>
+        $"{Path.GetFileName(error.File)} " + (error.IsNewer ? "was written by a newer Martlet" : "can't be read: " + error.Reason.TrimEnd('.'));
 
     // The start of a section as the notes carry it (one line), to tell one already sent.
     private static string Opening(string text)

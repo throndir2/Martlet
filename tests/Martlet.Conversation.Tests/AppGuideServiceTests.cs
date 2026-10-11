@@ -222,6 +222,42 @@ public sealed class AppGuideServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AFileTheStoreCantReadIsShownAndNeverResetOrRetriedOnEachMessage()
+    {
+        using (var guides = Service())
+        {
+            await guides.LoadAsync();
+            await guides.SetOnAsync(true);
+            Assert.True((await guides.BuildAsync("Skyrim", [], null)).Built);
+        }
+        // The guide file is damaged: its index isn't built, the page says why, and a message about it goes without.
+        await File.WriteAllTextAsync(Path.Combine(directory, "skyrim" + FileAppGuideStore.GuideSuffix), "{ not json");
+        using (var guides = Service())
+        {
+            await guides.LoadAsync();
+            Assert.False(await guides.ReadyAsync("skyrim"));
+            Assert.Contains("skyrim.guide.json", guides.GuideProblem("skyrim"));
+            guides.See("Skyrim", "TESV", game: true, fullScreen: true);
+            Assert.Null(guides.Recall("where can I mine iron ore?"));
+            // Reading it again makes a new one.
+            Assert.True((await guides.BuildAsync("Skyrim", [], null)).Built);
+            Assert.Null(guides.GuideProblem("skyrim"));
+            Assert.NotNull(guides.Recall("where can I mine iron ore?")!.Notes);
+        }
+        // The library is damaged: App guides start off with the problem said, and the file stays as it was.
+        var library = Path.Combine(directory, FileAppGuideStore.LibraryFile);
+        await File.WriteAllTextAsync(library, "{ not json");
+        using (var guides = Service())
+        {
+            await guides.LoadAsync();
+            Assert.True(guides.Loaded);
+            Assert.False(guides.On);
+            Assert.Contains("library.json", guides.LoadProblem);
+            Assert.Equal("{ not json", await File.ReadAllTextAsync(library));
+        }
+    }
+
+    [Fact]
     public void TheToolsReadTheirArgumentsAndWordTheirAnswers()
     {
         Assert.Equal(["read_up_on", "search_guide", "skip_guide"], AppGuideTools.Definitions.Select(d => d.Name));

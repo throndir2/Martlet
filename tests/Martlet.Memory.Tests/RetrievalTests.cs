@@ -1,9 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Xunit.Abstractions;
 
 namespace Martlet.Memory.Tests;
 
-public sealed class RetrievalTests
+public sealed class RetrievalTests(ITestOutputHelper output)
 {
     private sealed record RetrievalFixture(
         [property: JsonPropertyName("facts")] FixtureFact[] Facts,
@@ -13,22 +14,26 @@ public sealed class RetrievalTests
         [property: JsonPropertyName("content")] string Content);
     private sealed record FixtureQuery(
         [property: JsonPropertyName("text")] string Text,
-        [property: JsonPropertyName("expected_first")] string ExpectedFirst);
+        [property: JsonPropertyName("expected_first")] string ExpectedFirst,
+        [property: JsonPropertyName("kind")] string? Kind);
 
-    [Fact]
-    public async Task HeldOutSyntheticCorpusReturnsExpectedFactWithProvenance()
+    private static async Task<RetrievalFixture> LoadFixtureAsync()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "retrieval-held-out.json");
         var fixture = JsonSerializer.Deserialize<RetrievalFixture>(await File.ReadAllBytesAsync(fixturePath));
         Assert.NotNull(fixture);
-        using var scope = new TestScope();
-        var clock = new ManualClock();
-        using var store = scope.Open(clock);
+        return fixture!;
+    }
+
+    /// <summary>Saves the fixture's facts one minute apart (so ties never fall to random fact IDs).</summary>
+    private static async Task<(Dictionary<string, Guid> Ids, Dictionary<string, MemoryProvenance> Provenance)> SaveFixtureAsync(
+        MemoryStore store, ManualClock clock, RetrievalFixture fixture)
+    {
         var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var provenance = new Dictionary<string, MemoryProvenance>(StringComparer.Ordinal);
-
-        foreach (var item in fixture!.Facts)
+        foreach (var item in fixture.Facts)
         {
+            clock.Advance(TimeSpan.FromMinutes(1));
             var source = MemoryFixtures.Provenance(clock, MemorySourceKind.UserReviewedImport);
             var saved = await store.SaveAsync(new()
             {
@@ -39,17 +44,62 @@ public sealed class RetrievalTests
             ids.Add(item.Key, saved.Fact.Id);
             provenance.Add(item.Key, source);
         }
+        return (ids, provenance);
+    }
+
+    [Fact]
+    public async Task HeldOutSyntheticCorpusReturnsExpectedFactWithProvenance()
+    {
+        var fixture = await LoadFixtureAsync();
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        using var store = scope.Open(clock);
+        var (ids, provenance) = await SaveFixtureAsync(store, clock, fixture);
 
         foreach (var query in fixture.Queries)
         {
             var result = await store.RetrieveAsync(new() { Text = query.Text, MaximumResults = 3 });
             var first = Assert.IsType<MemoryRetrievalHit>(result.Hits.FirstOrDefault());
-            Assert.Equal(ids[query.ExpectedFirst], first.Fact.Id);
+            Assert.True(ids[query.ExpectedFirst] == first.Fact.Id,
+                $"\"{query.Text}\" ranked \"{first.Fact.Content}\" first, not {query.ExpectedFirst}");
             Assert.Equal(provenance[query.ExpectedFirst], first.Fact.CreatedFrom);
             Assert.True(first.Score > 0);
             Assert.True(first.MatchedTerms > 0);
             Assert.InRange(result.Hits.Count, 1, 3);
         }
+    }
+
+    /// <summary>Recall@k (the expected fact is in the first k) and mean reciprocal rank over the held-out fixture, written to the
+    /// test output (run with a detailed console logger to see them) for the PR's before and after numbers.</summary>
+    [Fact]
+    public async Task HeldOutFixtureRecallAndMeanReciprocalRank()
+    {
+        var fixture = await LoadFixtureAsync();
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        using var store = scope.Open(clock);
+        var (ids, _) = await SaveFixtureAsync(store, clock, fixture);
+
+        var ranks = new List<(FixtureQuery Query, int Rank)>();
+        foreach (var query in fixture.Queries)
+        {
+            var hits = (await store.RetrieveAsync(new() { Text = query.Text, MaximumResults = MemoryLimits.MaximumResults })).Hits;
+            var index = hits.Select(hit => hit.Fact.Id).ToList().IndexOf(ids[query.ExpectedFirst]);
+            ranks.Add((query, index < 0 ? 0 : index + 1));
+            output.WriteLine($"rank {(index < 0 ? "-" : (index + 1).ToString())} [{query.Kind}] {query.Text}");
+        }
+
+        string Line(string name, IReadOnlyList<int> found) =>
+            $"{name}: queries {found.Count}, recall@1 {Recall(found, 1):0.00}, recall@3 {Recall(found, 3):0.00}, " +
+            $"recall@5 {Recall(found, 5):0.00}, MRR {found.Average(rank => rank == 0 ? 0 : 1d / rank):0.000}";
+        static double Recall(IReadOnlyList<int> found, int k) => found.Count(rank => rank is > 0 && rank <= k) / (double)found.Count;
+        var all = ranks.Select(r => r.Rank).ToArray();
+        output.WriteLine(Line("all", all));
+        foreach (var kind in ranks.GroupBy(r => r.Query.Kind ?? "-"))
+            output.WriteLine(Line(kind.Key, kind.Select(r => r.Rank).ToArray()));
+
+        Assert.Equal(1d, Recall(all, 3));
+        Assert.True(Recall(all, 1) >= 0.95, Line("all", all));
     }
 
     [Fact]

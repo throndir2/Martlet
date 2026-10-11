@@ -13,6 +13,11 @@ Each release's section here is also its notes on GitHub.
 - **Companion › App guides**: Martlet can read up on the games and apps you use (their fan wikis and help pages) and answer your questions about them from what it read, like *"where do I find iron ore?"* while the game is in front. It's off until you turn it on. Ask *"read up on Stardew Valley"*, or add an app with its program names and wiki pages on the page, where you can also read a guide again or delete it. ([#770](https://github.com/throndir2/Martlet/pull/770))
 - With App guides on, when you start a game (or an app on your list) that Martlet has no guide for, it asks once, in character, whether it should read up on it. Say no and it won't ask about that app again; **Ask again** on the page undoes that. ([#770](https://github.com/throndir2/Martlet/pull/770))
 
+### Changed
+
+- Martlet now recalls what it remembers about you more reliably, also when you use another form of a word ("cats" finds your cat, "running" finds that you run), puts the memories that answer more of what you said first, and no longer fills its memory notes with near-copies of the same fact. Recall also got faster. ([#771](https://github.com/throndir2/Martlet/pull/771))
+- When you mention an earlier conversation, Martlet now finds what was said more reliably: other forms of your words count ("plants" finds "plant"), the time you name and who said it help, a follow-up stays with the conversation it belongs to, and the same thing said several times comes back once. ([#772](https://github.com/throndir2/Martlet/pull/772))
+
 ## [0.68.0] - 2026-10-10
 
 ### Added

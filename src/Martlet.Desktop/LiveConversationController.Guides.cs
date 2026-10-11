@@ -74,7 +74,7 @@ internal sealed partial class LiveConversationController
             ? $"App guides: {by} read {built.Pages} pages from {built.Sites.Count} site{(built.Sites.Count == 1 ? "" : "s")} " +
               $"({built.Failed} unreadable, {built.Downloaded / 1024} KiB downloaded) into {built.Chunks} sections, " +
               $"{built.Bytes / 1024} KiB kept, in {BackgroundJobs.Duration(built.Took)}."
-            : $"App guides: {by} couldn't make a guide after {BackgroundJobs.Duration(built.Took)} ({(built.Busy ? "busy" : "failed")}; " +
+            : $"App guides: {by} couldn't make a guide after {BackgroundJobs.Duration(built.Took)} ({(built.Busy ? "busy" : built.Problem)}; " +
               $"{built.Failed} pages unreadable).");
 
     /// <summary>search_guide: the best sections of a guide, at once (an index still loading is waited for briefly).</summary>
@@ -130,8 +130,9 @@ internal sealed partial class LiveConversationController
             ErrorLog.Info("App guides: you said no to reading up on an app; Martlet won't offer it again.");
             return new(AppGuideTools.Skipped(declined.Name));
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
+            ErrorLog.Warn($"App guides: couldn't keep your no to an offer ({why}).");
             tools?.Record(server, AppGuideTools.SkipName, "failed", "", true);
             return new("Couldn't note that on this PC right now. Say okay briefly anyway.", true);
         }

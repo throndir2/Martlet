@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Martlet.Core.Settings;
 using Martlet.Core.Speakers;
+using Martlet.Core.Text;
 using Martlet.Providers;
 
 namespace Martlet.Conversation;
@@ -39,8 +40,9 @@ public static partial class PastConversations
     /// <summary>A time window: at or after <see cref="From"/>, before <see cref="To"/>.</summary>
     public readonly record struct Span(DateTimeOffset From, DateTimeOffset To);
 
-    /// <summary>What a search_conversations call asked for.</summary>
-    public sealed record SearchRequest(IReadOnlyList<string> Terms, string? Query, string? When, Span? Window);
+    /// <summary>What a search_conversations call asked for: the <see cref="SearchTerms"/> stems of its query, the query and time
+    /// as given, the time window and when it was asked.</summary>
+    public sealed record SearchRequest(IReadOnlyList<string> Terms, string? Query, string? When, Span? Window, DateTimeOffset? Asked = null);
 
     // ---------- recognizing a reference to an earlier conversation ----------
 
@@ -77,7 +79,8 @@ public static partial class PastConversations
     // ---------- times ----------
 
     /// <summary>The time <paramref name="text"/> names (in <paramref name="zone"/>'s days), or null: a YYYY-MM-DD date, today, this
-    /// morning, last night, yesterday, the day before yesterday, N days or weeks ago, a couple or a few days ago, a weekday (the
+    /// morning, last night, yesterday, the day before yesterday, N days or weeks ago, a couple or a few days ago, a couple of weeks
+    /// (two) or a few weeks ago, a weekday (the
     /// latest one before today), last weekend, this or last week, this or last month.</summary>
     public static Span? Window(string? text, DateTimeOffset now, TimeZoneInfo zone)
     {
@@ -106,7 +109,7 @@ public static partial class PastConversations
                     : ago.Groups[1].Value.Contains("couple", StringComparison.Ordinal) ? new(At(today.AddDays(-3)), At(today.AddDays(-1)))
                     : new(At(today.AddDays(-6)), At(today.AddDays(-1)));
             var days = ago.Groups[3].Value.StartsWith("week", StringComparison.Ordinal) ? 7 : 30;
-            var around = (amount ?? 3) * days;
+            var around = (amount ?? (ago.Groups[1].Value.Contains("couple", StringComparison.Ordinal) ? 2 : 3)) * days;
             return Days(around + days / 2, Math.Max(1, around - days / 2));
         }
         if (Regex.IsMatch(lower, @"\blast\s+weekend\b"))
@@ -147,36 +150,59 @@ public static partial class PastConversations
 
     // ---------- automatic recall ----------
 
-    /// <summary>The words of <paramref name="words"/> worth looking for: without common words and words about remembering,
-    /// talking or time.</summary>
-    public static IReadOnlyList<string> RecallTerms(string words) =>
-        ConversationHistory.Terms(words).Where(term => !StopWords.Contains(term) && !PastWords.Contains(term))
-            .Take(ConversationHistory.MaximumQueryTerms).ToArray();
+    /// <summary>The words of <paramref name="words"/> worth looking for, as <see cref="SearchTerms"/> stems, each once: without
+    /// common words and words about remembering, talking or time.</summary>
+    public static IReadOnlyList<string> RecallTerms(string words) => Asked(words, recall: true).Terms;
 
     /// <summary>The earlier exchanges a message referring to an earlier conversation should bring back, oldest first: the best
-    /// matches for its words (within the time it names; about half its words, at most three, must match, so one common word alone
-    /// brings back nothing), or with no words to look for, the latest exchanges of that time. Nothing when it doesn't refer to an
-    /// earlier conversation, so other messages are sent exactly as they would be without the record. <paramref name="exclude"/>
-    /// is the conversation going on, which the request already carries; <paramref name="skip"/> leaves out exchanges the request
-    /// already has in its notes before the best are picked.</summary>
+    /// matches for its words (<see cref="PastConversationRanking"/>: within or near the time it names; about half its words, at
+    /// most three, must match, so one common word alone brings back nothing; near-identical exchanges once), or with no words
+    /// to look for, the latest exchanges of that time. Nothing when it doesn't refer to an earlier conversation, so other
+    /// messages are sent exactly as they would be without the record. <paramref name="exclude"/> is the conversation going on,
+    /// which the request already carries; <paramref name="skip"/> leaves out exchanges the request already has in its notes
+    /// (and those nearly the same) before the best are picked.</summary>
     public static IReadOnlyList<HistoryExchange> Recall(ConversationHistory history, string? words, DateTimeOffset now, TimeZoneInfo zone,
         Guid? exclude, int limit = MaximumRecalled, Func<HistoryExchange, bool>? skip = null)
     {
         ArgumentNullException.ThrowIfNull(history);
-        if (!RefersToPast(words)) return [];
-        var window = Window(words, now, zone);
-        var terms = RecallTerms(words!);
-        IEnumerable<HistoryExchange> best;
-        if (terms.Count > 0)
-        {
-            var needed = Math.Min(3, (terms.Count + 1) / 2);
-            best = history.Search(terms, window?.From, window?.To, exclude, ConversationHistory.MaximumResults, Recallable)
-                .Where(hit => hit.MatchedTerms >= needed).Select(hit => hit.Exchange);
-        }
-        else if (window is { } span) best = history.Between(span.From, span.To, exclude, ConversationHistory.MaximumResults, Recallable).Reverse();
-        else return [];
-        return best.Where(exchange => skip?.Invoke(exchange) != true).Take(limit).OrderBy(exchange => exchange.At).ToArray();
+        return RankRecall(history, words, now, zone, exclude, skip, limit).Take(limit).OrderBy(exchange => exchange.At).ToArray();
     }
+
+    /// <summary>What <see cref="Recall"/> picks from, best first (<paramref name="want"/> picked with diversity, then the rest).</summary>
+    internal static IReadOnlyList<HistoryExchange> RankRecall(ConversationHistory history, string? words, DateTimeOffset now, TimeZoneInfo zone,
+        Guid? exclude, Func<HistoryExchange, bool>? skip = null, int want = ConversationHistory.MaximumResults)
+    {
+        if (!RefersToPast(words)) return [];
+        var (sequence, terms) = Asked(words!, recall: true);
+        return PastConversationRanking.Rank(history, new(sequence, terms, Window(words, now, zone), Recall: true), now, exclude, want, skip);
+    }
+
+    /// <summary>What <see cref="Find"/> picks from, best first.</summary>
+    internal static IReadOnlyList<HistoryExchange> RankFound(ConversationHistory history, SearchRequest request, Guid? exclude,
+        int want = ConversationHistory.MaximumResults)
+    {
+        var sequence = request.Query is null ? [] : Asked(request.Query, recall: false).Sequence;
+        return PastConversationRanking.Rank(history, new(sequence, request.Terms, request.Window, Recall: false),
+            request.Asked ?? DateTimeOffset.UtcNow, exclude, want, null);
+    }
+
+    // The stems of what was asked, in order (for phrases) and each once: grammar words left out, and for a message's recall
+    // words about remembering, talking or time too. A word is checked before it is reduced to its stem, so "Tim" stays.
+    private static (IReadOnlyList<string> Sequence, IReadOnlyList<string> Terms) Asked(string words, bool recall)
+    {
+        var sequence = new List<string>();
+        foreach (Match word in Word().Matches(words))
+        {
+            var raw = word.Value.ToLowerInvariant();
+            if (StopWords.Contains(raw) || recall && PastWords.Contains(raw)) continue;
+            foreach (var stem in SearchTerms.Of(raw))
+                if (!StopStems.Contains(stem) && !(recall && PastStems.Contains(stem))) sequence.Add(stem);
+        }
+        return (sequence, sequence.Distinct(StringComparer.Ordinal).Take(ConversationHistory.MaximumQueryTerms).ToArray());
+    }
+
+    [GeneratedRegex(@"[\p{L}\p{N}\p{Cs}]+", RegexOptions.CultureInvariant)]
+    private static partial Regex Word();
 
     /// <summary>The recalled exchanges for a message's notes: what they are (Companion › Prompts › Past conversations, unless
     /// emptied), then today's date and one line per exchange between <see cref="Label"/> labels, the replies under
@@ -242,24 +268,23 @@ public static partial class PastConversations
                 return (null, "Couldn't read that time. Use today, yesterday, last night, 3 days ago, last week, a weekday or YYYY-MM-DD.");
             when = null;
         }
-        IReadOnlyList<string> all = query is null ? [] : ConversationHistory.Terms(query);
-        IReadOnlyList<string> terms = all.Where(term => !StopWords.Contains(term)).Take(ConversationHistory.MaximumQueryTerms).ToArray();
-        if (terms.Count == 0) terms = all.Take(ConversationHistory.MaximumQueryTerms).ToArray();
+        var terms = query is null ? [] : Asked(query, recall: false).Terms;
+        // A query of grammar words alone looks for nothing: the record leaves them out too.
+        if (terms.Count == 0 && query is not null) terms = SearchTerms.Distinct(query, ConversationHistory.MaximumQueryTerms);
         if (terms.Count == 0 && window is null)
             return (null, "There was nothing to look for in that query. " + Example);
-        return (new(terms, query, when, window), null);
+        return (new(terms, query, when, window, now), null);
     }
 
-    /// <summary>What a search finds, oldest first: the best matches for its words (within its time), or with no words, the latest
-    /// exchanges of its time. <paramref name="exclude"/> is the conversation going on, which the model already has.</summary>
+    /// <summary>What a search finds, oldest first: the best matches for its words (<see cref="PastConversationRanking"/>: within
+    /// or near its time, near-identical exchanges once), or with no words, the latest exchanges of its time.
+    /// <paramref name="exclude"/> is the conversation going on, which the model already has.</summary>
     public static IReadOnlyList<HistoryExchange> Find(ConversationHistory history, SearchRequest request, Guid? exclude, int limit = MaximumFound)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(request);
-        IReadOnlyList<HistoryExchange> found = request.Terms.Count > 0
-            ? history.Search(request.Terms, request.Window?.From, request.Window?.To, exclude, limit, Recallable).Select(hit => hit.Exchange).ToArray()
-            : request.Window is { } span ? history.Between(span.From, span.To, exclude, limit, Recallable) : [];
-        return found.OrderBy(exchange => exchange.At).ToArray();
+        limit = Math.Clamp(limit, 1, ConversationHistory.MaximumResults);
+        return RankFound(history, request, exclude, limit).Take(limit).OrderBy(exchange => exchange.At).ToArray();
     }
 
     /// <summary>Whether an exchange may come back in the talk window's replies: the PC's own and the owner's paired messaging
@@ -320,4 +345,11 @@ public static partial class PastConversations
         "five", "six", "seven", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "already", "once",
         "think", "thought", "guess", "mean", "meant"
     };
+
+    // The stems of those words, so other forms of them ("remembering", "weekends", "wants") are left out too; a short stem that
+    // isn't one of the words itself stays (the stem of "times" is "tim", which is also a name).
+    private static readonly HashSet<string> StopStems = Stems(StopWords), PastStems = Stems(PastWords);
+
+    private static HashSet<string> Stems(HashSet<string> words) => new(words.Select(SearchTerms.Stem)
+        .Where(stem => stem.Length >= 4 || words.Contains(stem)), StringComparer.Ordinal);
 }

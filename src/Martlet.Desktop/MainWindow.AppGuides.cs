@@ -42,7 +42,7 @@ public partial class MainWindow
             await appGuides.LoadAsync(lifetime.Token);
             var library = appGuides.Library;
             ErrorLog.Info($"App guides: {(library.On ? "on" : "off")}, {library.Apps.Count(a => a.BuiltAt is not null)} guides, " +
-                $"{library.Apps.Count} apps on the list.");
+                $"{library.Apps.Count} apps on the list." + (appGuides.LoadProblem is { } problem ? $" The library couldn't be read: {problem}." : ""));
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
@@ -92,7 +92,8 @@ public partial class MainWindow
         }
         appGuidesDrawn = guides.Revision;
         var library = guides.Library;
-        var now = PageNowCard(AppGuidesNow(guides), null, "AppGuidesNow");
+        var now = PageNowCard(AppGuidesNow(guides), null, "AppGuidesNow",
+            guides.LoadProblem is { } unread ? $"Martlet couldn't read your guide library ({unread}). It wasn't changed. Turning App guides on starts a new library and keeps a copy of the old file, unless a newer Martlet wrote it." : null);
         appGuidesNowText = FindById<TextBlock>(now, "AppGuidesNow");
         page.Children.Add(now);
 
@@ -240,6 +241,7 @@ public partial class MainWindow
             text = $"{entry.Pages} page{(entry.Pages == 1 ? "" : "s")}, {Size(entry.Bytes)}, read {at.ToLocalTime():d MMM yyyy, HH:mm}." +
                 (entry.Problem is { } failed ? $" The last try didn't work: {failed}." : "");
         else text = entry.Problem is { } problem ? $"No guide yet. The last try didn't work: {problem}." : "No guide yet.";
+        if (guides.GuideProblem(entry.Key) is { } unread) text += $" Its guide can't be used: {unread}. Read it again to make a new one.";
         if (entry.Sites.Count > 0)
             text += " Reads from " + string.Join(", ", entry.Sites.Select(s => Uri.TryCreate(s, UriKind.Absolute, out var url) ? url.Host : s)) + ".";
         if (entry.Programs.Count > 0) text += " Programs: " + string.Join(", ", entry.Programs) + ".";
@@ -267,9 +269,9 @@ public partial class MainWindow
             await appGuides.SetOnAsync(on, lifetime.Token);
             ErrorLog.Info($"App guides: you turned them {(on ? "on" : "off")}.");
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
-            ActionText.Text = "Couldn't save the App guides choice. " + error.Message;
+            ActionText.Text = $"Couldn't save the App guides choice: {why}.";
         }
     }
 
@@ -277,9 +279,9 @@ public partial class MainWindow
     {
         if (appGuides is null || appGuides.Library.AskWhenStarted == ask) return;
         try { await appGuides.SetAskAsync(ask, lifetime.Token); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
-            ActionText.Text = "Couldn't save the App guides choice. " + error.Message;
+            ActionText.Text = $"Couldn't save the App guides choice: {why}.";
         }
     }
 
@@ -305,9 +307,10 @@ public partial class MainWindow
             if (read) await ReadUpFromPageAsync(entry);
             else if (openTab == CompanionTab.AppGuides) RenderTab();
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
-            appGuidesResult = "Couldn't add it. " + error.Message;
+            ErrorLog.Warn($"App guides: couldn't add an app ({why}).");
+            appGuidesResult = $"Couldn't add it: {why}.";
             if (openTab == CompanionTab.AppGuides) RenderTab();
         }
     }
@@ -334,10 +337,10 @@ public partial class MainWindow
         AppGuideBuild built;
         try { built = await Task.Run(() => guides.BuildAsync(entry.Name, entry.Sites, null, lifetime.Token)); }
         catch (OperationCanceledException) { return; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
-            ErrorLog.Warn("App guides: couldn't keep a guide read from the App guides page.", error);
-            appGuidesResult = $"Couldn't keep the guide about {entry.Name}. {error.Message}";
+            ErrorLog.Warn($"App guides: couldn't keep a guide read from the App guides page ({why}).");
+            appGuidesResult = $"Couldn't keep the guide about {entry.Name}: {why}.";
             if (!closing && openTab == CompanionTab.AppGuides) RenderTab();
             return;
         }
@@ -357,9 +360,9 @@ public partial class MainWindow
                 ? $"Deleted {entry.Name} and its guide." : $"Martlet is reading up on {entry.Name}; delete it once that's done.";
             ErrorLog.Info("App guides: you deleted an app and its guide.");
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
-            appGuidesResult = "Couldn't delete it. " + error.Message;
+            appGuidesResult = $"Couldn't delete it: {why}.";
         }
         if (!closing && openTab == CompanionTab.AppGuides) RenderTab();
     }
@@ -372,9 +375,9 @@ public partial class MainWindow
             await appGuides.AskAgainAsync(entry.Key, lifetime.Token);
             appGuidesResult = $"Martlet may offer to read up on {entry.Name} again.";
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
-            appGuidesResult = "Couldn't change it. " + error.Message;
+            appGuidesResult = $"Couldn't change it: {why}.";
         }
         if (!closing && openTab == CompanionTab.AppGuides) RenderTab();
     }

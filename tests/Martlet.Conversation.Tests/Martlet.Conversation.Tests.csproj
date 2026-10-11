@@ -14,4 +14,7 @@
     <Compile Include="..\Martlet.Providers.Tests\SpeechSynthesisFixtures.cs" Link="SharedFixtures\SpeechSynthesisFixtures.cs" />
     <Compile Include="..\Martlet.Audio.Tests\ControlledDevice.cs" Link="SharedFixtures\ControlledDevice.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\app-guides-held-out.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
