@@ -24,7 +24,7 @@ public sealed record ResearchStep(string? Search, IReadOnlyList<string> Read, st
 public sealed record ResearchLimits(int Steps = 4, int Searches = 3, int Pages = 8, long Bytes = 3_000_000, int PagesFirstRead = 3,
     int ExcerptCharacters = 2_400, int SourceCharacters = 9_000);
 
-/// <summary>Web research as background work (Companion › Deep thinking › Web research, off by default): research(topic,
+/// <summary>Web research as background work (Companion › Deep thinking › Web research, on by default): research(topic,
 /// what_to_find) starts a <see cref="KindName"/> job and returns at once; the job searches the web and reads pages with
 /// <see cref="WebAccess"/> (or another <see cref="IWebSearch"/>/<see cref="IWebFetch"/>), and asks the model where Deep
 /// thinking thinks, one bounded step at a time, whether to search again, read more or write the report

@@ -57,16 +57,16 @@ internal static class ResearchCheck
         }
     }
 
-    // Off by default; on only with Thinking longer on; saved lean.
+    // On by default; off when turned off or with Thinking longer off; saved lean (only off is saved).
     private static (bool Ok, object Report) Settings()
     {
         var byDefault = new ThinkLongerSettings();
-        var on = new ThinkLongerSettings { WebResearch = true };
-        var deepOff = new ThinkLongerSettings { WebResearch = true, Enabled = false };
-        var saved = JsonSerializer.Serialize(ThinkLongerSettings.Normalize(on));
-        var ok = !byDefault.Researches && on.Researches && !deepOff.Researches && ThinkLongerSettings.Normalize(on with { WebResearch = false }) is null &&
-            saved.Contains("true", StringComparison.Ordinal);
-        return (ok, new { ok, byDefault = byDefault.Researches, turnedOn = on.Researches, deepThinkingOff = deepOff.Researches, saved });
+        var off = new ThinkLongerSettings { WebResearch = false };
+        var deepOff = new ThinkLongerSettings { Enabled = false };
+        var saved = JsonSerializer.Serialize(ThinkLongerSettings.Normalize(off));
+        var ok = byDefault.Researches && byDefault.WebResearchOn && !off.Researches && !deepOff.Researches &&
+            ThinkLongerSettings.Normalize(off with { WebResearch = true }) is null && saved.Contains("false", StringComparison.Ordinal);
+        return (ok, new { ok, byDefault = byDefault.Researches, turnedOff = off.Researches, deepThinkingOff = deepOff.Researches, saved });
     }
 
     // Only public internet addresses are reachable (redirects included).

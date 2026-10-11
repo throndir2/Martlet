@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- Web research is now on by default, so asking Martlet to look something up just works. Earlier notes said it was on by default since 0.55.0, but it stayed off by mistake. If you turn it off in Companion › Thinking pool › **Web research**, it stays off. ([#784](https://github.com/throndir2/Martlet/pull/784))
+
 ## [0.70.0] - 2026-10-11
 
 ### Added
