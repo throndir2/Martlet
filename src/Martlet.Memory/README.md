@@ -1,8 +1,9 @@
 # Martlet.Memory
 
 Portable `net10.0` P03a/P03b foundation for an explicit, consented local fact
-store and bounded lexical retrieval. It has no project references or runtime
-packages. P03c now consumes it from Desktop, Core settings/recovery,
+store and bounded lexical retrieval. It references only `Martlet.Core` (for
+`SearchTerms`, the words search compares) and no runtime packages. P03c now
+consumes it from Desktop, Core settings/recovery,
 conversation, packaging and `Martlet.slnx`; the library itself remains
 UI/provider/network independent.
 
@@ -14,7 +15,9 @@ The public surface has no default path and no automatic ingestion:
 2. A path-bound one-use `Allow` authorization is required to `Open`.
 3. `SaveAsync`, `InspectAsync`, `EditAsync`, `DeleteAsync` and
    `PurgeExpiredAsync` are the only source/retention actions.
-4. `RetrieveAsync` uses a bounded in-memory lexical index only.
+4. `RetrieveAsync` uses a bounded in-memory lexical index only: BM25 over word
+   stems, then an in-process reranker (coverage, proximity, phrases, recency and
+   near-duplicates). No model, embedding or vector store is on this path.
 5. `CreateExportPreviewAsync` freezes exact versioned bytes; destination-bound
    export authorization defaults to No and is one use.
 

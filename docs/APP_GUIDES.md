@@ -116,23 +116,123 @@ files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
 ### Searching a guide (on the reply's path, with no added wait)
 
 [Never add conversation latency](../AGENTS.md#never-add-conversation-latency)
-decides the design: the search runs in this process, in well under a
-millisecond, and no model is asked.
+decides the design: the search runs in this process and no model is asked. A
+search over 5,000 chunks takes about 0.2 ms on average
+(`AppGuideRetrievalTests` keeps a loose guard on it). The hot methods are
+compiled fully optimized from the first call, because a user sends too few
+messages for the runtime to optimize them later.
 
-- **Words**: `SearchTerms` (Martlet.Core) makes the words: lower case, common
-  grammar words left out, light English stems (*swords* finds *sword*,
-  *mining* finds *mined*).
-- **First stage, BM25F**: BM25 with the page title and section heading
-  weighted above the body, so a question that names a page or section finds
-  it.
-- **Second stage, the reranker**: the best candidates are scored again by how
-  many of the question's words they have, how close together they are, exact
-  phrase matches and title matches, then near-duplicate chunks of one page are
-  left out (maximal marginal relevance), so the notes cover different sources.
-- **Relevance**: each hit has a relevance from 0 to 1. Only hits at or above
-  the threshold go with the message (at most 3 chunks and 2,400 characters),
-  so a message that isn't about the app gets nothing and its request is what
-  it always was.
+Build the index with `GuideIndex.Build(guide)`, or with
+`GuideIndex.Build(chunks, names)` to give the app's program names too, so the
+app's own name in a question is handled (below). An index is read-only and
+thread-safe.
+
+1. **Words** (`SearchTerms`, Martlet.Core): runs of letters and digits in
+   lower case, accents on Latin letters left out (*Pokémon* finds
+   *pokemon*), common grammar words and contractions left out (*don't*,
+   *dont*, *I'm*), and a light English stem: plurals, *-ing*, *-ed*, *-ied*,
+   *-ly* and common irregular forms (*swords* finds *sword*, *found* finds
+   *find*, *wolves* finds *wolf*, *manually* finds *manual*).
+2. **The question** (`GuideQuery`):
+   - Conversational filler is left out: *hey*, *martlet*, *wtf*, *tf*, *um*,
+     *please*, *lol* and similar.
+   - The app's full name is left out (*in Elden Ring*). A part of the name
+     (*in Stardew*) and question scaffolding (*find*, *use*, *best way*,
+     *spawn*, *any tips*) are *soft*: they help the order when a chunk has
+     them, and never lower relevance when it does not.
+   - *Where* adds soft *location*, *find* and *spawn*, so a wiki's
+     *Locations* section comes first. *Who* adds *sell*.
+   - Two words that the guide writes as one match it (*fire ball* finds
+     *Fireball*), and one word that the guide writes as two matches them
+     (*greatsword* finds *great sword*). A short list of spellings and
+     near-synonyms match each other (*colour* and *color*, *picture* and
+     *image*, *buy* and *sell*).
+3. **First stage, BM25F** (`GuideIndex`): each chunk has three fields: the
+   page title, the section headings (without the title) and the text. BM25F
+   adds each field's term frequency, weighted and length-normalized per
+   field, and then saturates the sum once. Weights: title 2.5, section 3.5,
+   text 1; length normalization (b): 0.3, 0.4 and 0.6; k1 1.2. The best 40
+   chunks go to the second stage.
+4. **Second stage, the reranker** (`GuideReranker`). For each candidate it
+   measures:
+   - *coverage*: the IDF-weighted share of the question's words that the
+     chunk has. A word that the guide does not have weighs as much as a
+     fairly rare word (one in twenty chunks), so a question about something
+     else stays unsure;
+   - *proximity*: the smallest window of the text that holds all matched
+     words (the "minimum cover"); words that a heading names count as close;
+   - *phrases*: question words that are also neighbours in the chunk
+     (*iron ore*);
+   - *headings*: the share of the question that the title or section names;
+   - *specificity*: whether a matched word means something. A word in a
+     heading, or one that is rare in the guide, counts fully. An everyday
+     chat word (*bed*, *morning*, *love*) that only the text has, or in a
+     longer heading (*Your first day* for *how was your day*), counts about
+     a third.
+5. **Relevance**, from 0 to 1: coverage^1.25 × specificity × (0.7 + 0.3 ×
+   closeness), where closeness is the best of proximity, phrases and
+   headings (1 for a one-word question). `GuideRecall` sends only hits at or
+   above 0.5 (at most 3 chunks and 2,400 characters). On the fixture below,
+   every question has a right section at or above 0.5 except one, and no
+   off-topic chat gets above 0.39.
+6. **Diversity**: maximal marginal relevance (λ 0.8) on word overlap and
+   page. A chunk with 80% or more of the same words as one already chosen is
+   left out, and a page gives at most 2 hits before every other candidate
+   has had its turn.
+
+**Chunks** (`GuideChunker`): a new chunk at each heading, so a section stays
+together. Lines (paragraphs, list items, table rows) are gathered up to 1,200
+characters; a line is cut only when it alone is longer, at a sentence end. A
+section too short to be a chunk (*Price*: *7 gold*) joins a neighbour as
+*Price: 7 gold* instead of being lost. When a long section continues in the
+next chunk, that chunk starts with the last sentence of the chunk before (at
+most 160 characters), or with the table's header row when a table
+continues.
+
+**The store** (`FileAppGuideStore`): `guides\library.json` and one
+`<key>.guide.json` for each app. Each file starts with its `formatVersion`.
+The store keeps at most 200 apps, guide files of at most 20 MB, at most
+25,000 chunks of at most 4,000 characters each. It refuses a file that it
+cannot read, that breaks a bound or that a newer Martlet wrote, with an
+`AppGuideFileException` (an `IOException`) that names the file, and it never
+resets the library. Saving a whole new library over an unreadable one keeps a
+copy (`library.json.unreadable`). Each write goes to a temporary file that is
+written through to the disk and then replaces the earlier file. All stores on
+one folder in a process share one lock.
+
+**How well it works.** `tests\Martlet.Conversation.Tests\Fixtures\app-guides-held-out.json`
+is a synthetic game wiki and an image editor's help site, with pages that
+mention everything in passing (main page, patch notes, item lists,
+achievements, a glossary). It has 88 questions (half used to choose the
+weights, half held out), which include plurals, verb forms, item and place
+names, *how do I ... in Photoshop* and filler-heavy voice questions, and 31
+off-topic chat lines. Plain BM25 (the first version) against BM25F with the
+reranker:
+
+| All 88 questions | Plain BM25 | BM25F + reranker |
+| --- | --- | --- |
+| Page recall@3 | 1.00 | 1.00 |
+| Page MRR | 0.95 | 0.98 |
+| Section recall@3 | 1.00 | 1.00 |
+| Section MRR | 0.89 | 0.97 |
+| Right section sent with the message (relevance ≥ 0.5) | 0.90 | 0.99 |
+| Highest relevance of off-topic chat | 1.00 | 0.39 |
+
+On the 44 held-out questions: section MRR 0.91 → 0.97 and answers sent
+0.93 → 0.98.
+
+**Choices, from current practice.** BM25F (Robertson, Zaragoza and Taylor,
+2004) is the standard way to weight fields such as titles and headings: it
+weights term frequency per field before the one saturation, which stops a
+term repeated in several fields from counting too much. Proximity scoring
+(Büttcher, Clarke and Lushman, 2006; Tao and Zhai, 2007) rewards query terms
+that occur close together; the minimum cover window is cheap to find from
+the stored positions. Maximal marginal relevance (Carbonell and Goldstein,
+1998) is the usual greedy way to trade relevance for variety. The section
+headings that every chunk keeps are a form of the "contextual chunk"
+technique: context added to each chunk helps lexical search find it. A
+cross-encoder reranker or an embedding model would need a model call on
+every message, so this workstream uses none (see below).
 
 **Why no embeddings or vector database (yet).** A guide is a few thousand
 chunks, which an in-memory index searches faster than any database call.
@@ -165,7 +265,7 @@ material read from the web, which may be wrong, and never instructions.
 | --- | --- |
 | Shared types and interfaces | `src\Martlet.Conversation\Guides\GuideContracts.cs` |
 | Search words | `src\Martlet.Core\Text\SearchTerms.cs` |
-| Chunker, index and reranker | `src\Martlet.Conversation\Guides\GuideChunker.cs`, `GuideIndex.cs` |
+| Chunker, index and reranker | `src\Martlet.Conversation\Guides\GuideChunker.cs`, `GuideIndex.cs`, `GuideQuery.cs`, `GuideReranker.cs` |
 | Store (`guides\library.json`, `<key>.guide.json`) | `src\Martlet.Conversation\Guides\FileAppGuideStore.cs` |
 | Wiki reader | `src\Martlet.Conversation\Guides\WebGuideBuilder.cs` |
 | Notes on the message | `src\Martlet.Conversation\Guides\GuideRecall.cs` |

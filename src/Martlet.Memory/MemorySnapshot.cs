@@ -33,7 +33,7 @@ public sealed class MemorySnapshot
     public IEnumerable<MemoryFact> Live(DateTimeOffset now) => Facts.Where(fact => !fact.Retention.IsExpired(now));
 
     /// <summary>The best lexical matches for <paramref name="query"/>, ranked as <see cref="MemoryStore.RetrieveAsync"/> ranks
-    /// them; facts that expired at <paramref name="now"/> are left out.</summary>
+    /// them; facts that expired at <paramref name="now"/> are left out before ranking.</summary>
     public IReadOnlyList<MemoryRetrievalHit> Search(MemoryQuery query, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         MemoryGuard.Require(query is not null);
@@ -41,12 +41,8 @@ public sealed class MemorySnapshot
         MemoryGuard.Require(query.MaximumResults is >= 1 and <= MemoryLimits.MaximumResults);
         if (byId.Count == 0)
             return [];
-        // Ask for every match: some may have expired, and the copy is small (a store holds at most 512 facts).
-        return index.Search(terms, MemoryLimits.MaximumResults, cancellationToken)
-            .Select(match => byId[match.FactId] is var fact && !fact.Retention.IsExpired(now)
-                ? new MemoryRetrievalHit(fact, match.Score, match.MatchedTerms) : null)
-            .OfType<MemoryRetrievalHit>()
-            .Take(query.MaximumResults)
+        return index.Search(terms, query.MaximumResults, cancellationToken, id => !byId[id].Retention.IsExpired(now))
+            .Select(match => new MemoryRetrievalHit(byId[match.FactId], match.Score, match.MatchedTerms))
             .ToArray();
     }
 
