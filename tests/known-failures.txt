@@ -57,3 +57,13 @@ Martlet.Desktop.Tests.CharacterGestureTests.EveryVoiceSoundAndToneHasAGlobalEmot
 # The check-ins rehearsal's "when check-ins wait" step fails on a clean worktree of origin/main b10d5fe0 alone (3 of 3 runs,
 # 2026-10-10, found by the W8 account settings change).
 Martlet.Desktop.Tests.McpServerTests.SaidLatelyAndCheckInsRehearsalsPassWithTheProductionCode
+# Fail alone on origin/main 58005289 on 2026-10-11 (3 of 3 runs, shown without the raise-arbitrary-limits changes): support
+# export owner/cleanup callbacks (NullReferenceException or false asserts) and a duplicate served option id.
+Martlet.Desktop.Tests.ServedModelsSetupTests.The_served_fixture_thinks_with_the_biggest_served_model_that_fits_and_the_review_names_the_app
+Martlet.Desktop.Tests.SupportIntegrationTests.BlockedExportAndCancellationCallbacksKeepOwnerAcrossCloseAndReopen
+Martlet.Desktop.Tests.SupportIntegrationTests.CancellationInsideCommittedRenameRetainsRealLocalReceiptAfterObserverCloses
+Martlet.Desktop.Tests.SupportIntegrationTests.ExportIoFailureAndFailedCloseRemainOwnedUntilExplicitCleanup
+Martlet.Desktop.Tests.SupportIntegrationTests.FaultedSnapshotDeleteKeepsExactPartialAndRequiresFreshPreviewAfterCleanup
+Martlet.Desktop.Tests.SupportIntegrationTests.PassiveReportOnlyUiRequiresExactDefaultNoConfirmation
+Martlet.Desktop.Tests.SupportIntegrationTests.ShownOwnerCloseRetiresOwnedSupportEvenWithoutChildClosing
+Martlet.Desktop.Tests.SupportIntegrationTests.WrongDigestUnapprovedAndExistingDestinationPreserveTargets

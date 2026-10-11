@@ -118,7 +118,8 @@ public sealed record ProviderCapabilities : IContract
         ContractRules.Defined(TtsAudioTransport);
         ContractRules.Defined(TtsIncrementalSynthesis);
         ContractRules.Defined(Cancellation);
-        ContractRules.Require(MaxInputBytes is > 0 and <= 16_777_216, "Provider input limit is out of range.");
+        // Above the largest upload any provider takes (OpenAI's 25 MB recording, TranscriptionLimits.HardMaxAudioBytes).
+        ContractRules.Require(MaxInputBytes is > 0 and <= 33_554_432, "Provider input limit is out of range.");
         ContractRules.Require(Role == ProviderRole.Stt || SttPartials != CapabilitySupport.Supported, "STT partials require an STT role.");
         ContractRules.Require(Role == ProviderRole.Llm || LlmTextDeltas != CapabilitySupport.Supported, "LLM deltas require an LLM role.");
         ContractRules.Require(Role == ProviderRole.Tts || (TtsAudioTransport != CapabilitySupport.Supported && TtsIncrementalSynthesis != CapabilitySupport.Supported),
