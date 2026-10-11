@@ -6253,6 +6253,69 @@ two other places free it runs on the one sharing least with the conversation
 No real web search or model is used; reads no credentials; the temporary folder
 is deleted.
 
+`app_guides_check` rehearses [App guides](APP_GUIDES.md) end to end with
+Martlet's own parts against fixtures on 127.0.0.1 (NOT real sites): a tiny wiki
+about a made-up game (sections about iron ore and a sword, links to more pages,
+navigation to leave out), a second wiki found only through a DuckDuckGo-like
+search page, and `robots.txt`. It uses the guide library service
+(`AppGuideService`), the store (`FileAppGuideStore`), the wiki reader
+(`WebGuideBuilder` with `WebAccess(allowLoopback: true)`), the chunker, the index,
+the notes (`GuideRecall`), the program-name match, the offer rule, the tool texts
+and the job scheduler (`AppGuideTools`, `BackgroundJobs`). Every fetch outside
+loopback is refused before it leaves the PC (`build.refusedOutsideLoopback`
+counts them), so nothing reaches a real site whatever the wiki reader tries.
+
+- `library`: App guides are off by default and *Ask when I start a game or app*
+  is on by default.
+- `build`: reading up from the pages the owner gave (`fromGivenPages`: the wiki's
+  `robots.txt` is read and the wiki is crawled through its own links, at least 2
+  pages) and from a web search alone (`fromSearch`: the wiki farms named after the
+  app are tried first and refused before they leave the PC, then `searchQueries`
+  holds *<name> wiki*, which finds the second wiki; `pagesFetched`), each with
+  pages, sections, bytes kept, sites, unreadable pages, bytes downloaded and time;
+  the guide file's size; and `restarted`: a new service on the same folder reads
+  the library and builds the indexes again (`indexReady`).
+- `notes`: the game in front, named as Windows names its program
+  (*STARFALL VALLEY™* matches *Starfall Valley*: `matchedKey`), gets notes for
+  *hey martlet, where tf do I find iron ore?* (`inFront`: matched and used sections, best
+  relevance, search time; the notes start and end with the labels, say they are
+  reference text and name the Ember Mines); an unrelated message gets none; a
+  message that names the game while Notepad is in front gets its notes; the same
+  message while Notepad is in front without naming it gets nothing; sections the
+  conversation already carries are not sent again (`sectionsSentAgain` 0); App
+  guides off gives nothing. `firstSearchMs` is the first search in a new process
+  and `laterSearchMs` a later one.
+- `offer`: a game without a guide is offered (`gameWithoutGuide`), once a session
+  (`afterAsked` null); an offer dropped before Martlet said it may come again
+  (`droppedOfferAgain`); a no is kept (`afterNo`), also after a new start
+  (`noKeptAfterRestart`), until Ask again (`afterAskAgain`); a game with a guide,
+  an app that isn't a game and *Ask* off are never offered; an app on the list is
+  (`listedApp`). `notice` and `message` are the `guideoffer` notice and the
+  message of the reply Martlet starts on its own (*App guides: offer to read up*).
+- `tools`: `read_up_on`, `search_guide` and `skip_guide` exactly as replies get
+  them, their arguments (sites made into `https://` links, others left out),
+  `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, 20
+  minutes, 4 an hour, its result), a second job refused as `busy` and the fifth in
+  an hour as `hourly_limit`, and the *App guides* prompt.
+- `latency`: what App guides add to a reply's path on a full-size guide (2,000
+  sections): `indexBuiltOffThePathMs`, and the notes step's median and worst time
+  of 200 runs for a message about the game in front, an unrelated message and
+  App guides off; `everyRequestWhileOn` is the bytes the three tool definitions
+  and the prompt add to every request (the same every time, so prompt caches keep
+  them). On this PC the notes step took about 0.13 ms (median, 0.23 ms worst) and
+  nothing while off.
+
+Each part has an `ok`. Temporary folder, deleted afterwards; reads no
+credentials.
+
+`app_guides_status` reads Companion › App guides from a data folder (optional
+absolute `dataDirectory`, default the current user's; the script gives it its
+disposable one): `folder` (`<data folder>\guides`), whether it `exists`, `on`,
+`askWhenStarted`, how many `guides`, `pages` and `bytes`, and each app on the
+list (`apps`): `key`, `name`, `programs`, `sites` (the start pages the owner
+gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem` and whether
+its guide `file` is there. Never a guide's text. Read-only.
+
 `songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
 (optional absolute `dataDirectory`, default the current user's):
 `backgroundWork` (Thinking longer, which the song tools come with), `creations`
@@ -8948,6 +9011,23 @@ verifying on a desktop whose sound must not be captured. Each reply writes a
 *Reply latency* line to the desktop log (see [Latency](#latency)), which
 `logs_tail` returns and `latency_report` summarizes.
 
+Companion › *App guides* (`CompanionTab-AppGuides`,
+[App guides](APP_GUIDES.md)): `AppGuidesNow` (*Off. Martlet doesn't read up on
+games and apps, or notice which one you play.*, *On. No guides yet.* or *On. 2
+guides, 84 pages, 6.1 MB. Reading up on Stardew Valley: Reading pages (3 of at
+most 60).*), the fixed `AppGuidesDisclosure`, `AppGuidesFront` (*In front:
+Elden Ring (a game, full screen), its guide is ready.*, or why Martlet doesn't
+look), `AppGuidesEmpty` and `AppGuidesResult` (what the last action did), the
+`AppGuidesOn` and `AppGuidesAsk` check boxes (`checkedState`; `ui_toggle` saves
+`guides\library.json`, so it needs `--allow-ui-effects`), and for each app on
+the list `AppGuideName-<key>` and `AppGuideStatus-<key>` (*42 pages, 3.1 MB, read
+10 Oct 2026, 18:40. Reads from stardewvalleywiki.com. Programs: StardewValley.*,
+*No guide yet.*, *Reading up now: ...* or the last problem; never a guide's
+text). Its buttons `AppGuideRead-<key>` (*Read up now* or *Read again*: reads on
+the web), `AppGuideAskAgain-<key>`, `AppGuideDelete-<key>`, `AppGuideAdd` and
+`AppGuideAddRead`, and typing in `AppGuideAddName`, `AppGuideAddPrograms` and
+`AppGuideAddSites` (`ui_set_text`), need `--allow-ui-effects`.
+
 At the end of Companion › Discord, *Martlet in your Discord calls* (see
 [DISCORD.md](DISCORD.md#martlet-in-your-own-calls)) has `DiscordCallOn` (the
 mode, off by default), `DiscordCallCapture` (*The Discord app only* or
@@ -9280,7 +9360,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -781,6 +781,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
         "WebResearchStatus", "WebResearchDisclosure",
+        // Companion › App guides (off by default): the Now line (off, or how many guides, pages and their size, and what Martlet is
+        // reading up on now), the fixed disclosure of what leaves this PC, what is in front as App guides sees it (a program's name,
+        // whether it is a game or on the list, and whether its guide is ready), the empty list's line and what the last action did.
+        // Its On and Ask when I start a game or app boxes report their state as checkedState; ticking them saves guides\library.json,
+        // so it needs --allow-ui-effects. Each app's name and line read through AppGuideName- and AppGuideStatus- below.
+        "AppGuidesNow", "AppGuidesDisclosure", "AppGuidesFront", "AppGuidesEmpty", "AppGuidesResult", "AppGuidesOn", "AppGuidesAsk",
         // Companion › Check-ins: how many check-ins are on and the Thinking pool member that takes them first, or why they can't
         // run ("CheckInsNow"), and the last check-in that ran, when, on which member and what came of it in a few words
         // ("CheckInsLast"; never what was said or answered). Each check-in's line reads through CheckInStatus- below.
@@ -1083,6 +1089,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The talk window's task list: each background task's status ("LiveJobState-think-1" reads "Checking it fits beside
         // Thinking." or "Done after 1:02. Martlet brought it up."; never what the task is about or what it found).
         "LiveJobState-",
+        // Companion › App guides: each app on the list, its name ("AppGuideName-elden-ring" reads "Elden Ring") and its line
+        // ("AppGuideStatus-elden-ring" reads "42 pages, 3.1 MB, read 10 Oct 2026, 18:40. Reads from eldenring.wiki.fextralife.com."
+        // or "No guide yet." or "Reading up now: Reading pages (3 of at most 60)."; never a guide's text). Its Read up now or Read
+        // again (AppGuideRead-<key>) reads up on the web, Ask again (AppGuideAskAgain-<key>) and Delete (AppGuideDelete-<key>)
+        // save guides\library.json, so they need --allow-ui-effects; typing in Add an app (AppGuideAddName, AppGuideAddPrograms,
+        // AppGuideAddSites) is ui_set_text, and Add (AppGuideAdd) and Add and read up (AppGuideAddRead) need --allow-ui-effects too.
+        "AppGuideName-", "AppGuideStatus-",
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), and for every check-in, built-in or
         // the owner's own, its On box and Every choice ("CheckInOn-emotes", "CheckInEvery-emotes"), its Its answer choice

@@ -181,6 +181,7 @@ public partial class MainWindow
             homeShareTimer.Stop();
             StopNearby();
             StopLogs();
+            StopAppGuides();
             audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
             audioSessionEvents.LockedChanged -= AvatarSessionLocked;
             if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;

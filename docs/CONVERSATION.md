@@ -1388,6 +1388,58 @@ same safety rules, but the document as it came (HTML, JSON or text, at most
 2 MB) and an honest bot user agent,
 `Martlet/1.0 (app guides; +https://github.com/throndir2/Martlet)`.
 
+## App guides
+
+*"Hey Martlet, where do I find iron ore?"* while a game is in front: Martlet
+answers from the guide it read about that game (its fan wiki), kept on this PC.
+The design, the wiki reader and the search are in [App guides](APP_GUIDES.md);
+this is what the conversation does.
+
+**Consent, off by default.** Companion › *App guides* turns it on
+(`guides\library.json` in the data folder, beside the guides). Its disclosure
+says what leaves the PC: the app's name goes to DuckDuckGo to find its wiki,
+and the wiki sites see the requests.
+
+**The tools.** While it is on and the Thinking route does function calling,
+every reply gets `read_up_on(app, sites?)`, `search_guide(app?, question)` and
+`skip_guide(app)` last, after `set_camera_background`, always worded the same,
+with the *App guides* prompt (Companion › Prompts) after the other tool
+prompts, so the start of every request stays the same; with it off, requests
+are exactly as before. `read_up_on` starts the job and returns at once
+(`AppGuideTools.Started`); `search_guide` searches a guide at once (an index
+that is still loading is waited for at most 5 seconds); `skip_guide` keeps the
+user's no to the offer.
+
+**The job** (`guide`: one at a time, 4 an hour, 20 minutes, *Reading up on*,
+not on the Thinking pool and no model) reads the app's pages
+(`WebGuideBuilder`), cuts them into sections and keeps the guide; its result
+says how many pages it read, and it is brought up like other finished work. The
+desktop log notes counts and time only (`App guides:` pages, sites, unreadable
+pages, KiB), never the app, a link or what was read.
+
+**The offer.** When a game (or an app on the list) without a guide comes to
+the front, *Ask when I start a game or app* is on and the user never said no
+to it, the main window starts a `guideoffer` notice in the conversation that
+runs (never one started for it), once a session. It is brought up as soon as
+Martlet is free with *App guides: offer to read up*, or with the user's next
+message with *App guides: offer to read up, with your message*, like a
+check-in's notice (`UnpromptedSpeech` drops one that is too old or that the
+conversation moved on from; then it may come again, at most 3 times a session).
+
+**Notes on the message.** On each of the user's own messages, while App guides
+are on, the guide of the app the words name (else of the app in front) is
+searched with the user's words, from memory only, after the earlier
+conversations' notes and before the song note (`GuideNotes`): at most 3
+sections and 2,400 characters with a relevance of 0.5 or more, opened by
+*App guide, with your message* and marked as reference text read from the web,
+never instructions. Sections an earlier message already carries aren't sent
+again. A guide whose index isn't built yet is never waited for: the message
+goes without, and the index is built off the reply's path. A message too long
+to fit drops these sections right after the earlier conversations' notes. The
+latency timeline marks *app guide*, and the desktop log notes counts, the best
+relevance and the time, never the words. Any other message gets nothing, so its
+request is what it always was.
+
 ## Reminders
 
 *"Remind me to do the dishes in an hour."* Every reply on a route that does
