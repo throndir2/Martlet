@@ -15,16 +15,17 @@ public sealed record GuideQuestion(string? App, string Question);
 
 /// <summary>App guides in the conversation (docs/APP_GUIDES.md): the reply's tools while Companion › App guides is on, always the
 /// same three in the same order so the start of every request stays the same (read_up_on starts a <see cref="KindName"/> job and
-/// returns at once, search_guide searches a guide at once, skip_guide remembers the user's no to an offer), the job kinds (reading
-/// up, and the offer Martlet makes on its own when a game without a guide comes to the front) and every text the model gets.</summary>
-public static class AppGuideTools
+/// returns at once, search_guide searches a guide at once, skip_guide stops reading up on an app and remembers the user's no), the
+/// job kinds (reading up, and the notice that Martlet started reading up on its own on a game that came to the front) and every
+/// text the model gets.</summary>
+public static partial class AppGuideTools
 {
     public const string ReadUpName = "read_up_on";
     public const string SearchName = "search_guide";
     public const string SkipName = "skip_guide";
     /// <summary>The reading-up job kind: guide-1, guide-2...</summary>
     public const string KindName = "guide";
-    /// <summary>The offer's notice kind: guideoffer-1...</summary>
+    /// <summary>The notice kind that Martlet started reading up on a game in front on its own: guideoffer-1...</summary>
     public const string OfferKindName = "guideoffer";
     public const int MaxAppCharacters = 80, MaxQuestionCharacters = 500, MaxSites = 4, MaxSiteCharacters = 500;
     /// <summary>How many sections search_guide returns at most.</summary>
@@ -39,9 +40,9 @@ public static class AppGuideTools
     /// <summary>Reading up: one at a time, 4 an hour, network only (no model), "Reading up on" in the talk window.</summary>
     public static BackgroundJobKind Kind { get; } = new(KindName, 1, 4, TimeLimit, Doing: "Reading up on");
 
-    /// <summary>The offer: a notice Martlet brings up as soon as it is free (or with what the user says next), with the App
-    /// guides: offer to read up prompts.</summary>
-    public static BackgroundJobKind OfferKind { get; } = new(OfferKindName, 2, 6, TimeSpan.FromMinutes(1), Doing: "Offering to read up on",
+    /// <summary>The notice that Martlet started reading up on a game in front on its own: it tells the user as soon as it is free
+    /// (or with what the user says next), with the App guides: reading up on a game you started prompts.</summary>
+    public static BackgroundJobKind OfferKind { get; } = new(OfferKindName, 2, 6, TimeSpan.FromMinutes(1), Doing: "Noticed you started",
         Notice: true)
     {
         Wording = new(PromptCatalog.AppGuideOffer, PromptCatalog.AppGuideOfferNotes, "apps")
@@ -58,8 +59,8 @@ public static class AppGuideTools
 
     public static TextToolDefinition ReadUpDefinition { get; } = new(ReadUpName,
         "Read up on a game or app in the background: its whole fan wiki or help pages, kept on this PC as a guide that grows as " +
-        "it reads, so later questions about it get answers from the guide. Only when the user asks you to read up on it, or says " +
-        "yes to your offer. Tell them first. One at a time.", ReadUpParametersJson);
+        "it reads, so later questions about it get answers from the guide. Only when the user asks you to read up on it. Tell " +
+        "them first. One at a time.", ReadUpParametersJson);
 
     public static TextToolDefinition SearchDefinition { get; } = new(SearchName,
         "Search a guide you read about a game or app for the user's question (instant). Notes already bring the best sections " +
@@ -67,8 +68,8 @@ public static class AppGuideTools
         "titles and links.", SearchParametersJson);
 
     public static TextToolDefinition SkipDefinition { get; } = new(SkipName,
-        "The user said no when you offered to read up on a game or app: you won't offer for it again. Only after such a no.",
-        SkipParametersJson);
+        "The user doesn't want you to read up on a game or app: you stop reading up on it, and never read up on it on your own " +
+        "again. Only after they say so.", SkipParametersJson);
 
     /// <summary>The three tools, in the order every request offers them.</summary>
     public static IReadOnlyList<TextToolDefinition> Definitions { get; } = [ReadUpDefinition, SearchDefinition, SkipDefinition];
@@ -144,6 +145,72 @@ public static class AppGuideTools
         _ => $"Not started: {start.Message ?? "it isn't available right now."} Tell the user you couldn't read up on it now."
     };
 
+    /// <summary>read_up_on's answer while Martlet already reads up on that app (it started on its own when the app came to the
+    /// front).</summary>
+    public static string AlreadyReading(string app) =>
+        JsonSerializer.Serialize(new { status = "already_reading" }) + "\n" +
+        $"You're already reading up on {app} in the background. Tell the user briefly, in character, and that you'll tell them " +
+        "when you're done. Don't make up what you'll find; a note tells you when the guide is ready.";
+
+    /// <summary>The note on the user's message when they asked to read up on <paramref name="app"/> and the reply can't call
+    /// read_up_on (a Thinking route without function calling): Martlet started reading up itself (<paramref name="start"/>; null
+    /// when it already reads up on that app).</summary>
+    public static string ReadingNote(string app, BackgroundJobStart? start) => start is null || start.Job is not null
+        ? $"(Martlet's note: the user asked you to read up on {app}, and you're reading up on it in the background now. Tell " +
+          "them briefly, in character, and that you'll tell them when you're done. Don't make up what you'll find, and don't say " +
+          "you're done before a note says the guide is ready.)"
+        : $"(Martlet's note: the user asked you to read up on {app}, but you couldn't start now: {start.Message ?? start.Refusal}. " +
+          "Tell them briefly, in character.)";
+
+    /// <summary>What the user's own words ask Martlet to read up on ("read up on Stardew Valley please" is "Stardew Valley"), or
+    /// null when they don't ask that. <see cref="InFront"/> when they mean the app in front ("read up on this game").</summary>
+    public static string? AskedToReadUp(string? words)
+    {
+        if (string.IsNullOrWhiteSpace(words)) return null;
+        var match = ReadUpWords().Match(words);
+        if (!match.Success) return null;
+        // "Don't read up on it", "no need to read up on that": never a request.
+        var before = words[..match.Index];
+        if (Negation().IsMatch(before[^Math.Min(before.Length, 30)..])) return null;
+        var app = match.Groups["app"].Value.Trim();
+        for (var trimmed = true; trimmed;)
+        {
+            trimmed = false;
+            foreach (var tail in Tails)
+                if (app.EndsWith(" " + tail, StringComparison.OrdinalIgnoreCase))
+                {
+                    app = app[..^(tail.Length + 1)].TrimEnd();
+                    trimmed = true;
+                }
+        }
+        if (InFrontWords.Contains(app)) return InFront;
+        var name = CleanName(app);
+        return name.Length < 2 || NotApps.Contains(name) ? null : name;
+    }
+
+    /// <summary><see cref="AskedToReadUp"/>'s answer when the user means the app in front.</summary>
+    public const string InFront = "\u0001in front";
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\bread\s+up\s+(?:on|about)\s+(?<app>[^\n.?!,;:()""]{1,80})",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex ReadUpWords();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"n['’]t\b|\b(dont|cant|wont|shouldnt|not|never|no|stop|without)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex Negation();
+
+    private static readonly string[] Tails = ["please", "for me", "now", "first", "then", "too", "again", "real quick", "quickly", "ok", "okay"];
+
+    private static readonly HashSet<string> InFrontWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "it", "this", "that", "this game", "that game", "the game", "my game", "this app", "that app", "the app", "this one", "that one"
+    };
+
+    private static readonly HashSet<string> NotApps = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "them", "these", "those", "him", "her", "me", "us", "you", "stuff", "things", "something", "anything", "everything"
+    };
+
     public const string TurnedOff =
         "Not started: app guides are off (Companion › App guides). Tell the user they can turn them on there, and answer from what you know.";
 
@@ -189,7 +256,8 @@ public static class AppGuideTools
         $"The guide about {app} is still loading. Try again in a moment, or answer from what you know.";
 
     public static string Skipped(string app) =>
-        $"Noted: you won't offer to read up on {app} again. Say okay briefly, in character. (The user can change that in Companion › App guides.)";
+        $"Noted: you've stopped reading up on {app}, and you won't read up on it on your own again. Say okay briefly, in character. " +
+        "(The user can change that in Companion › App guides.)";
 
     private static JsonObject? Object(string json)
     {

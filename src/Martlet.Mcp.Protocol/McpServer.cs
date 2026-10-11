@@ -2357,20 +2357,23 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "Loopback only; no real search or model; reads no credentials.", new { }),
         Tool("app_guides_check", "Rehearse App guides (Companion > App guides, off by default; docs/APP_GUIDES.md) end to end with " +
             "Martlet's own guide library service (AppGuideService), store (FileAppGuideStore), wiki reader (WebGuideBuilder with " +
-            "WebAccess allowing loopback), chunker, index, notes (GuideRecall), program-name match, offer rule, tool texts and job " +
+            "WebAccess allowing loopback), chunker, index, notes (GuideRecall), program-name match, the rule for reading up on its " +
+            "own, tool texts and job " +
             "scheduler, against fixtures on 127.0.0.1 (a tiny wiki about a made-up game and a DuckDuckGo-like search page, NOT real " +
             "sites; every fetch outside loopback is refused before it leaves this PC and counted): reads up from given pages and from " +
             "a search, keeps the guide, starts again from the folder, then the notes on a message while the game is in front (its " +
             "program named as Windows names it), for an unrelated message (none), for a message naming the game while another app " +
-            "is in front, for a repeat the conversation already carries and while off; the offer (once a session, a no kept across " +
-            "starts, Ask again, a game with a guide, a listed app, Ask off) and its notice; a read with the default caps (no page, " +
-            "download or time cap, so the whole fixture wiki), keeping what was read while reading and Stop reading; and the tools " +
-            "(read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one at a time and 4 an " +
-            "hour). Reports counts, relevance and search time, also on a whole-wiki-size guide. Temporary folder, deleted " +
+            "is in front, for a repeat the conversation already carries and while off; when Martlet reads up on its own (once a " +
+            "session, a no kept across starts, Allow again, a game with a guide, a listed app, Read up when I start off) and its " +
+            "notice; a game in front named as Windows names an Unreal game's program read up on with no model (on the list with its " +
+            "guide and program names, its guide in the notes while in front, readable names); a read with the default caps (no " +
+            "page, download or time cap, so the whole fixture wiki), keeping what was read while reading and Stop reading; and the " +
+            "tools (read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one at a time and 4 " +
+            "an hour). Reports counts, relevance and search time, also on a whole-wiki-size guide. Temporary folder, deleted " +
             "afterwards; reads no credentials.", new { }),
         Tool("app_guides_status", "Companion > App guides from a data directory (guides\\library.json): whether App guides are on and " +
-            "ask when a game starts, and each app on the list with its program names, start pages, whether the owner said no to " +
-            "the offer, its guide's pages, sections, size and time, and the last problem. Never a guide's text. Read-only.", new
+            "read up when a game starts, and each app on the list with its program names, start pages, whether the owner said no " +
+            "to reading up on it, its guide's pages, sections, size and time, and the last problem. Never a guide's text. Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),

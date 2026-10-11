@@ -2320,12 +2320,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
             // While the user's words name an app Martlet read up on, or that app is in front, its guide's best sections go in the
             // notes (Companion › App guides), read from memory only: a guide whose index isn't ready yet is never waited for. Any
-            // other message gets nothing, so its request is what it always was.
+            // other message gets nothing, so its request is what it always was. "Read up on X" while this reply can't call
+            // read_up_on starts reading up here, and the notes say so.
             string? guide = null;
-            if (own is not null && Guides is { On: true })
+            if (own is not null && Guides is { On: true } guides)
             {
                 guide = GuideNotes(own, sentHistory, configured.Prompts, out var guideSections);
                 operation.GuideSections = guideSections;
+                if (ReadUpAsked(guides, own, toolset) is { } reading) guide = guide is null ? reading : guide + "\n\n" + reading;
                 operation.LatencyTimeline?.Mark("app guide");
             }
 

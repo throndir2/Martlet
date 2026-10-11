@@ -7,8 +7,9 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 // App guides in the conversation (docs/APP_GUIDES.md, docs/CONVERSATION.md#app-guides): read_up_on, search_guide and skip_guide
-// while Companion › App guides is on, the reading-up job (network only, no model), the offer Martlet makes on its own when a game
-// without a guide comes to the front, and the guide's notes on the user's message (read from memory only, never waited for).
+// while Companion › App guides is on, the reading-up job (network only, no model), reading up on its own on a game without a guide
+// that comes to the front (never left to the model's answer), "read up on X" on a route that can't call read_up_on, and the
+// guide's notes on the user's message (read from memory only, never waited for).
 internal sealed partial class LiveConversationController
 {
     /// <summary>The guide library (Companion › App guides); null where guides can't be kept (no data folder).</summary>
@@ -40,6 +41,13 @@ internal sealed partial class LiveConversationController
             return new(problem!, true);
         }
         if (Guides is not { On: true } guides) return new(AppGuideTools.TurnedOff, true);
+        // Martlet may already read up on it: it started on its own when the app came to the front.
+        if (guides.Building is { } reading && reading.Key == (AppGuideService.Match(guides.Library, [arguments.App])?.Key ??
+                AppGuideService.KeyOf(AppGuideTools.CleanName(arguments.App))))
+        {
+            tools?.Record(server, AppGuideTools.ReadUpName, "already reading", "", false);
+            return new(AppGuideTools.AlreadyReading(reading.Name));
+        }
         var start = StartReadingUp(guides, arguments.App, arguments.Sites);
         if (start.Job is not { } job)
         {
@@ -50,14 +58,16 @@ internal sealed partial class LiveConversationController
         return new(AppGuideTools.Started(job, AppGuideTools.Label(arguments.App), !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text)));
     }
 
-    /// <summary>Starts a reading-up job for <paramref name="app"/> in this conversation (its talk window shows "Reading up on").</summary>
-    internal BackgroundJobStart StartReadingUp(AppGuideService guides, string app, IReadOnlyList<string> sites)
+    /// <summary>Starts a reading-up job for <paramref name="app"/> in this conversation (its talk window shows "Reading up on");
+    /// <paramref name="programs"/> join its entry (the names Windows gives the program in front).</summary>
+    internal BackgroundJobStart StartReadingUp(AppGuideService guides, string app, IReadOnlyList<string> sites,
+        IReadOnlyList<string>? programs = null)
     {
         var start = jobs.Start(AppGuideTools.Kind, AppGuideTools.Label(app), async (job, token) =>
         {
             job.Report(BackgroundJobState.Running, "Looking for its wiki");
-            var built = await guides.BuildAsync(app, sites, new GuideProgress(text => job.Report(BackgroundJobState.Running, text)), token)
-                .ConfigureAwait(false);
+            var built = await guides.BuildAsync(app, sites, new GuideProgress(text => job.Report(BackgroundJobState.Running, text)), token,
+                programs).ConfigureAwait(false);
             LogBuild(job.Id, built);
             return built.Built ? BackgroundJobOutcome.Done(AppGuideTools.Ready(built)) : BackgroundJobOutcome.Failed(built.Problem!);
         });
@@ -112,7 +122,8 @@ internal sealed partial class LiveConversationController
         return new(AppGuideTools.Found(entry.Name, hits));
     }
 
-    /// <summary>skip_guide: remembers the user's no to the offer, so Martlet never offers that app again.</summary>
+    /// <summary>skip_guide: the user doesn't want Martlet to read up on the app: it stops reading up on it (when it does now) and
+    /// never reads up on it on its own again.</summary>
     private async ValueTask<ConversationToolResult> SkipGuideAsync(TextToolCall call, CancellationToken token)
     {
         const string server = "Martlet";
@@ -123,26 +134,66 @@ internal sealed partial class LiveConversationController
             return new(problem!, true);
         }
         if (Guides is not { } guides) return new(AppGuideTools.TurnedOff, true);
+        // One app is read at a time: when it is this one, its job stops (and isn't brought up later, since Martlet knows).
+        if (guides.Building is { } reading && reading.Key == (AppGuideService.Match(guides.Library, [app])?.Key ??
+                AppGuideService.KeyOf(AppGuideTools.CleanName(app))) &&
+            jobs.Cancel(null, BackgroundJob.CanceledByMartlet, AppGuideTools.KindName) is { } stopped)
+            ErrorLog.Info($"App guides: {stopped.Id} stopped; you didn't want Martlet to read up on that app.");
         try
         {
             var declined = await guides.DeclineAsync(app, token).ConfigureAwait(false);
             tools?.Record(server, AppGuideTools.SkipName, "declined", "", false);
-            ErrorLog.Info("App guides: you said no to reading up on an app; Martlet won't offer it again.");
+            ErrorLog.Info("App guides: you said no to reading up on an app; Martlet won't read up on it on its own again.");
             return new(AppGuideTools.Skipped(declined.Name));
         }
         catch (Exception error) when (AppGuideService.Refusal(error) is { } why)
         {
-            ErrorLog.Warn($"App guides: couldn't keep your no to an offer ({why}).");
+            ErrorLog.Warn($"App guides: couldn't keep your no to reading up on an app ({why}).");
             tools?.Record(server, AppGuideTools.SkipName, "failed", "", true);
             return new("Couldn't note that on this PC right now. Say okay briefly anyway.", true);
         }
     }
 
-    /// <summary>The offer Martlet makes on its own: a notice it brings up as soon as it is free, or with what the user says next.
-    /// Null when the conversation is closing or too many wait.</summary>
+    /// <summary>A game (or an app on the list) without a guide came to the front: Martlet reads up on it on its own, as this
+    /// conversation's job (never left to the model's answer, so the app is on the list from the start, with the names Windows
+    /// gives its program), and tells the user with a notice (<see cref="OfferGuide"/>) as soon as it is free.</summary>
+    internal BackgroundJobStart ReadUpOnItsOwn(AppGuideService guides, AppGuideOfferCandidate offer)
+    {
+        var start = StartReadingUp(guides, offer.Name, [], offer.Programs);
+        if (start.Job is not null && OfferGuide(offer) is { } notice)
+            ErrorLog.Info($"App guides: {notice.Id} waits; Martlet tells you it reads up on the app in front as soon as it's free.");
+        return start;
+    }
+
+    /// <summary>The notice that Martlet started reading up on a game in front on its own: it brings it up as soon as it is free,
+    /// or with what the user says next. Null when the conversation is closing or too many wait.</summary>
     internal BackgroundJob? OfferGuide(AppGuideOfferCandidate offer) =>
         jobs.Start(AppGuideTools.OfferKind, AppGuideTools.Label(offer.Name),
             (_, _) => Task.FromResult(BackgroundJobOutcome.Done(AppGuideTools.OfferNote(offer)))).Job;
+
+    /// <summary>"Read up on X" in the user's own words while this reply can't call read_up_on (a Thinking route without function
+    /// calling, or a model that rejected tools): Martlet starts reading up itself, and the note tells the model. Null when the
+    /// words don't ask that ("read up on it" means the app in front, when there is one).</summary>
+    private string? ReadUpAsked(AppGuideService guides, string words, DesktopToolset? toolset)
+    {
+        if (toolset?.Offers(AppGuideTools.ReadUpName) == true || AppGuideTools.AskedToReadUp(words) is not { } asked) return null;
+        var front = guides.Front;
+        IReadOnlyList<string>? programs = null;
+        if (asked == AppGuideTools.InFront)
+        {
+            if (front is null) return null;
+            asked = front.Entry?.Name ?? AppGuideService.Readable(front.Program.Length > 0 ? front.Program : front.File);
+            programs = new[] { front.Program, front.File }.Where(p => p.Length > 0).ToArray();
+            if (asked.Length == 0) return null;
+        }
+        if (guides.Building is { } reading && reading.Key == (AppGuideService.Match(guides.Library, [asked])?.Key ??
+                AppGuideService.KeyOf(asked)))
+            return AppGuideTools.ReadingNote(reading.Name, null);
+        var start = StartReadingUp(guides, asked, [], programs);
+        tools?.Record("Martlet", AppGuideTools.ReadUpName,
+            start.Job is { } job ? "started " + job.Id + " (asked in words)" : "not started: " + start.Refusal, "", false);
+        return AppGuideTools.ReadingNote(AppGuideTools.Label(asked), start);
+    }
 
     /// <summary>The guide notes for the user's own words (the app they name, else the app in front), from memory only: the
     /// sections the conversation's notes don't carry yet. Null when there are none. Counts go to the desktop log.</summary>
