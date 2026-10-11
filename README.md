@@ -156,13 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.69.1
+## 🆕 What's new in 0.70.0
 
-- ⚡ **Updates in seconds**: Martlet now installs an update in the background while you keep using it, then restarts into it in about a second instead of closing for the whole install. Choose **Later** and it switches over when Martlet exits.
-- 📚 **App guides**: Martlet can read up on the games and apps you use, from their fan wikis and help pages, and answer from what it read. Ask *"where do I find iron ore?"* while the game is in front, or *"read up on Stardew Valley"*. It's off until you turn it on under Companion › App guides.
-- 🎮 **It asks when you start a game**: with App guides on, Martlet notices a game or an app on your list that it has no guide for and asks once, in character, whether it should read up on it.
-- 🧠 **Better memory recall**: Martlet finds what it remembers about you more reliably, also with other forms of a word ("cats" finds your cat), puts the best matches first and leaves out near-copies.
-- 💬 **Earlier conversations come back better**: when you mention an earlier conversation, other forms of your words, the time you name and who said it all help Martlet find what was said.
+- 🧹 **Free up this PC**: a new card on Home shows what Martlet keeps in your PC's memory right now, such as its local models and their size. One click ends the conversation, hides the character and unloads the models, so a game gets the memory back. Martlet rests until you talk to it again.
+- ⏳ **Warming up you can see**: when Martlet still has to load its model, Home and the talk window say so, with what is loading, how long it has taken and a progress bar. You can talk or type right away; the first reply starts once the model is ready.
+- 💭 **Think ahead**: after each reply, the character thinks ahead about how the conversation is going and what it wants to say next, in its own personality. Its next reply uses those thoughts, and no reply waits for them.
+- 🎙️ **Record your own voice**: read four short lines out loud under Companion › Voice › Voices and Martlet makes a voice from your own.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
