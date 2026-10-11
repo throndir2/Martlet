@@ -156,12 +156,13 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.70.0
+## 🆕 What's new in 0.70.1
 
-- 🧹 **Free up this PC**: a new card on Home shows what Martlet keeps in your PC's memory right now, such as its local models and their size. One click ends the conversation, hides the character and unloads the models, so a game gets the memory back. Martlet rests until you talk to it again.
-- ⏳ **Warming up you can see**: when Martlet still has to load its model, Home and the talk window say so, with what is loading, how long it has taken and a progress bar. You can talk or type right away; the first reply starts once the model is ready.
-- 💭 **Think ahead**: after each reply, the character thinks ahead about how the conversation is going and what it wants to say next, in its own personality. Its next reply uses those thoughts, and no reply waits for them.
-- 🎙️ **Record your own voice**: read four short lines out loud under Companion › Voice › Voices and Martlet makes a voice from your own.
+- 🗣️ **Talk as long as you like**: one turn of talking can last up to 10 minutes, and long replies are said aloud to the end instead of stopping after about 80 seconds.
+- 📏 **Longer replies and messages**: replies can be up to 32,768 tokens when you want them, and you can type a message of up to 262,144 characters.
+- 🧠 **Much more room**: Martlet remembers up to 100,000 facts and keeps up to 1,000 characters, personalities, lorebooks and voices. When memory is full, it tells you instead of forgetting your oldest facts.
+- 🎮 **App guides on their own**: App guides are now on by default. When you start a new game, Martlet reads its whole wiki by itself and tells you, in character.
+- 🔎 **Web research that digs deeper**: web research is on by default, reads up to 60 pages each time you ask and shows the model much more of each page.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
