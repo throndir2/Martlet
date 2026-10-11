@@ -48,6 +48,9 @@ public sealed class LiveSituationTests
         IReadOnlyList<string> stops = ["own-host", "gpu-box", "situation-test-away"];
         Assert.Same(stops, LiveSituation.Order(stops, s => s, "own-host", gaming: false));
         Assert.Equal(["gpu-box", "situation-test-away", "own-host"], LiveSituation.Order(stops, s => s, "own-host", gaming: true));
+        // A cloud member right after this PC's own host service never moves ahead of it.
+        IReadOnlyList<string> cloud = ["own-host", "cloud", "gpu-box"];
+        Assert.Same(cloud, LiveSituation.Order(cloud, s => s == "cloud" ? null : s, "own-host", gaming: true));
 
         HostPresence.Note("situation-test-away", false);
         try

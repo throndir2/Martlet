@@ -679,8 +679,8 @@ Martlet changes between the plans by itself while it runs
 
 - **Coming back.** Live Thinking comes back when the game ends (90 seconds
   after Martlet last saw it) or when the host answers again for 30 seconds.
-- **No added latency.** An open conversation switches between replies. A
-  reply that has started keeps its route.
+- **No added latency.** An open conversation switches only when nothing runs
+  and nobody talks. A reply that has started keeps its route.
 - **The model stays loaded.** While gaming, the companion PC's model stays
   loaded while the game leaves room on the card, so the change back is quick.
   Martlet unloads it only when the card has less than 1 GB free. When no
@@ -688,7 +688,8 @@ Martlet changes between the plans by itself while it runs
   the game needs the card's memory.
 - **Speaking and Listening** follow their lists (Companion › Voice and
   Listening). While gaming, this PC's own host service goes after the other
-  computers on the list. A computer that doesn't answer goes last.
+  computers that come right after it on the list; a cloud member never moves
+  ahead of it. A computer that doesn't answer goes last.
 - **Where to see it.** Companion › Thinking's *Now* card says the situation
   now and where live Thinking goes. The desktop log says each change
   (*Situations: While gaming. ...*).

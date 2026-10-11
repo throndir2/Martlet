@@ -40,7 +40,7 @@ public partial class MainWindow
 
     private void StartSituations()
     {
-        if (situationStarted || closing || Role != DeviceRole.Companion) return;
+        if (situationStarted || closing) return;
         situationStarted = true;
         PresenceChanged += SituationPresenceChanged;
         situationTimer.Tick += (_, _) => ObserveSituation();
@@ -65,7 +65,20 @@ public partial class MainWindow
     /// conversation (it switches between replies), the status line, situation.json and, while gaming, the card's model.</summary>
     private void ObserveSituation()
     {
-        if (closing || Role != DeviceRole.Companion) return;
+        if (closing) return;
+        if (Role != DeviceRole.Companion)
+        {
+            // A host PC doesn't talk: no situation, no moved route, no game watch (the role can change while Martlet runs).
+            FollowGameWatch(false);
+            LiveSituation.Gaming = false;
+            if (situationApplied is not null || LiveSituation.Current is not null)
+            {
+                situationApplied = null;
+                LiveSituation.Current = null;
+            }
+            situation = null;
+            return;
+        }
         var facts = SituationFactsNow();
         // The game watch runs only while it can matter: live Thinking on this PC's card, or this PC's own host service.
         var ownHost = WorkSharingRoster.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
@@ -106,12 +119,14 @@ public partial class MainWindow
     }
 
     /// <summary>Gives every conversation on this PC the situation's Thinking route when live Thinking moves, and the saved route
-    /// again when it comes back. An open talk window follows between replies.</summary>
+    /// again when it comes back. An open talk window follows once nothing runs and nobody talks. The route is made again when
+    /// what it is made from changes (the saved Thinking route, the host's pairing and route, the If Thinking fails settings).</summary>
     private void FollowSituationRoute(SituationDecision decision)
     {
         var saved = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         // A FIXTURE network's hosts are made up, so its decisions only show; the conversation keeps its route.
-        var wanted = decision.Moves && saved is not null && simulatedSituation?.Network is null ? $"{decision.Key}|{saved.ConfigurationRevision}" : null;
+        var wanted = decision.Moves && saved is not null && simulatedSituation?.Network is null
+            ? $"{decision.Key}|{saved.ConfigurationRevision}|{SituationIdentity(decision.Place!)}" : null;
         if (wanted == situationApplied) return;
         SituationOverride? moved = null;
         if (wanted is not null)
@@ -123,13 +138,30 @@ public partial class MainWindow
                 situationFailed = wanted;
                 wanted = null;
             }
-            else moved = new(decision.Key, saved!.ConfigurationRevision, route, decision.Place!.Text);
+            else moved = new(decision.Key, saved!.ConfigurationRevision, route, decision.Place!.Text)
+            {
+                Fallback = decision.Place!.Kind == LivePlaceKind.Hosted ? homeSettings?.ThinkingFallback : null
+            };
         }
         if (wanted == situationApplied) return;
         situationApplied = wanted;
         LiveSituation.Current = moved;
-        openConversation?.ReloadWhenIdle(moved is null ? "Live Thinking goes back to its usual route." : $"Live Thinking moves to {moved.Text}.");
+        openConversation?.ReloadWhenQuiet(moved is null ? "Live Thinking goes back to its usual route." : $"Live Thinking moves to {moved.Text}.");
     }
+
+    /// <summary>What <paramref name="place"/>'s route is made from, so a change there (a host paired again, a new key for If
+    /// Thinking fails) makes the route again. Never a secret: IDs, addresses and fingerprints.</summary>
+    private string SituationIdentity(LivePlace place) => place.Kind switch
+    {
+        LivePlaceKind.Host => homeHosts.FirstOrDefault(h => h.HostId == place.HostId) is { } host
+            ? $"{host.Pairing.Origin}|{host.Pairing.SpkiFingerprint}|{host.Pairing.DeviceId}|{host.Pairing.CredentialId}|" +
+              (hostChecks.GetValueOrDefault(host.HostId)?.Routes?.FirstOrDefault(r => r.RouteId == HostRoute.OllamaChatRouteId) is { } route
+                  ? $"{route.DestinationId}|{route.ModelId}|{route.ModelSha256}|{route.MaximumRequestBytes}" : "")
+            : "",
+        LivePlaceKind.Hosted => homeSettings?.ThinkingFallback is { } fallback
+            ? $"{fallback.Origin}|{fallback.ModelId}|{fallback.CredentialId}|{fallback.ConfigurationRevision}" : "",
+        _ => place.Model
+    };
 
     /// <summary>The Thinking route for <paramref name="place"/>, from what this PC holds: the host's pairing and the Ollama chat
     /// route its last check advertised, the If Thinking fails endpoint, or Ollama on this PC. Null when it can't be made now.</summary>

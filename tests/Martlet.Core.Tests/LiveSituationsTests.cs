@@ -97,6 +97,13 @@ public sealed class LiveSituationsTests
 
         Assert.Same(settings, SituationRoutes.Apply(settings, new("k", Guid.NewGuid(), hosted, "NVIDIA Build")));
         Assert.Same(settings, SituationRoutes.Apply(settings, null));
+
+        // A hosted route made from If Thinking fails does nothing after the owner changed it (a new key, another endpoint).
+        var withBackup = settings with { ThinkingFallback = fallback };
+        var bound = new SituationOverride("k", saved.ConfigurationRevision, hosted, "NVIDIA Build") { Fallback = fallback };
+        Assert.Equal(hosted, SituationRoutes.Apply(withBackup, bound).Setup!.Routes.Single(r => r.Role == SetupRole.Llm));
+        var newKey = withBackup with { ThinkingFallback = fallback with { CredentialId = Guid.NewGuid() } };
+        Assert.Same(newKey, SituationRoutes.Apply(newKey, bound));
     }
 
     [Fact]

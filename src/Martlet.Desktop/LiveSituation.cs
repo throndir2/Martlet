@@ -27,13 +27,24 @@ internal static class LiveSituation
 
     /// <summary>The order a request tries its computers in: as given, except that a computer that doesn't answer now
     /// (<see cref="HostPresence"/>) goes last, and while <see cref="Gaming"/> (or <paramref name="gaming"/>) this PC's own host
-    /// service <paramref name="own"/> goes after the others that answer. Stable, and the same list when nothing moves.</summary>
+    /// service <paramref name="own"/> goes after the other computers that come right after it. A stop that isn't a computer (a
+    /// cloud member) never moves ahead of this PC's own host service. Stable, and the same list when nothing moves.</summary>
     internal static IReadOnlyList<T> Order<T>(IReadOnlyList<T> stops, Func<T, string?> host, string? own, bool? gaming = null)
     {
         if (stops.Count < 2) return stops;
-        var game = gaming ?? Gaming;
-        int Rank(T stop) => host(stop) is not { } id ? 0 : HostPresence.IsOffline(id) ? 2 : game && id == own ? 1 : 0;
-        return stops.Any(stop => Rank(stop) > 0) ? [.. stops.OrderBy(Rank)] : stops;
+        var game = (gaming ?? Gaming) && own is not null;
+        var away = stops.Select(stop => host(stop) is { } id && HostPresence.IsOffline(id)).ToArray();
+        var order = stops.Where((_, i) => !away[i]).ToList();
+        var offline = stops.Where((_, i) => away[i]).ToList();
+        var moved = offline.Count > 0;
+        if (game)
+            for (var at = order.FindIndex(stop => host(stop) == own); at >= 0 && at + 1 < order.Count &&
+                 host(order[at + 1]) is { } next && next != own; at++)
+            {
+                (order[at], order[at + 1]) = (order[at + 1], order[at]);
+                moved = true;
+            }
+        return moved ? [.. order, .. offline] : stops;
     }
 }
 

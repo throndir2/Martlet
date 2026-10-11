@@ -174,8 +174,12 @@ public static class LiveSituations
 
 /// <summary>A situation's Thinking route for the conversation, never saved: <see cref="Route"/> replaces the saved Thinking
 /// route whose configuration revision is <see cref="ForRoute"/> (a stale override after the owner changed Thinking does
-/// nothing). <see cref="Text"/> says where it goes, in words.</summary>
-public sealed record SituationOverride(string Key, Guid ForRoute, SetupRoute Route, string Text);
+/// nothing). <see cref="Text"/> says where it goes, in words. <see cref="Fallback"/>: the If Thinking fails settings a hosted
+/// route was made from; after the owner changes them (a new key, another endpoint) the override does nothing.</summary>
+public sealed record SituationOverride(string Key, Guid ForRoute, SetupRoute Route, string Text)
+{
+    public ThinkingFallbackSettings? Fallback { get; init; }
+}
 
 /// <summary>Builds the Thinking route a situation moves live Thinking to, from what this PC already has: a paired host's
 /// pinned gateway and pairing, the If Thinking fails endpoint with its own key, or Ollama on this PC. Each is enabled with the
@@ -233,7 +237,8 @@ public static class SituationRoutes
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (situation is null || settings.Setup is not { } setup ||
-            setup.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is not { } saved || saved.ConfigurationRevision != situation.ForRoute)
+            setup.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is not { } saved || saved.ConfigurationRevision != situation.ForRoute ||
+            situation.Fallback is not null && settings.ThinkingFallback != situation.Fallback)
             return settings;
         var id = situation.Route.CredentialId;
         var changed = settings with

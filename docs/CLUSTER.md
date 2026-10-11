@@ -499,12 +499,15 @@ change the shared plan or your saved settings:
    live Thinking on its own card moves the same way, and its model stays
    loaded while the game leaves room.
 3. The conversation uses the moved route from its next reply
-   (`LiveSituation.Current`, `SituationRoutes`). A reply that has started keeps
-   its route, so a change never slows or stops it.
+   (`LiveSituation.Current`, `SituationRoutes`). An open talk window switches
+   only when nothing runs and nobody talks, and a reply that has started keeps
+   its route, so a change never slows or stops it. A change to what the route
+   is made from (the host's pairing, the *If Thinking fails* key) makes it again.
 4. Requests that go through the lists (`WorkSharingRoster.Places`: Speaking,
    Listening, Thinking on a host, lip-sync, reading) try a computer that doesn't
    answer now last, and while a game runs they try this PC's own host service
-   after the other computers.
+   after the other computers that come right after it on the list. A cloud
+   member never moves ahead of it.
 
 The desktop writes `situation.json` when the situation changes, for the
 `situation_status` MCP tool.
