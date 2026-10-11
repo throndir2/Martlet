@@ -9176,7 +9176,14 @@ the web), `AppGuideStop-<key>` (*Stop reading*, on the app being read: ends the
 read and keeps what it read), `AppGuideAskAgain-<key>` (*Allow again*),
 `AppGuideDelete-<key>`, `AppGuideAdd` and `AppGuideAddRead`, and typing in
 `AppGuideAddName`, `AppGuideAddPrograms` and `AppGuideAddSites`
-(`ui_set_text`), need `--allow-ui-effects`.
+(`ui_set_text` or `ui_type`), need `--allow-ui-effects`. These three boxes read
+as what is typed in them. They stay the same boxes when the page draws again
+(reading up starts, adds the app or ends, or Home refreshes), so they keep the
+text, the caret and the keyboard focus. To check it, `ui_type` a letter into
+`AppGuideAddName`, change a setting with `settings_set` (Martlet reads
+`settings.json` again and draws the page again), then `ui_type` more letters and
+`backspace` without `id`: the box shows the typing and `ui_snapshot` marks it
+`focused`.
 
 At the end of Companion › Discord, *Martlet in your Discord calls* (see
 [DISCORD.md](DISCORD.md#martlet-in-your-own-calls)) has `DiscordCallOn` (the
@@ -9441,11 +9448,21 @@ microphone never fails or changes, so only a real one shows these lines.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
-`ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_toggle`,
+`ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_type`,
+`ui_toggle`,
 `ui_set_range` (sets a slider to `value` within its range and returns its value
 and range, such as Companion › Voice's `VoiceVolume`, 0 to 100)
 and `ui_move` (moves a control that UI Automation can move, such as the
-character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). It does **not** waive the
+character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). `ui_type` types
+the way a person does, one key at a time: with `id` that text box takes the
+keyboard focus first; without `id` the keys go to the control that has the
+focus. Each character of `text` (at most 100), then each of `keys`
+(`backspace`, `delete`, `left`, `right`, `home`, `end`), is a key message posted
+to that Martlet window only (`window` names one; the main window by default),
+one every `stepMs` (default 50). It returns `focused`, the automation ID of the
+control that has the keyboard focus afterwards. `ui_snapshot` marks that control
+`focused: true`. So a test can type, let the page draw again and type on without
+clicking, and see whether the box kept the typing. It does **not** waive the
 desktop's own per-action confirmations, spending/data disclosures, or Stop
 controls. This opt-in can allow the LLM to approve chargeable provider calls,
 audio capture/playback, credential actions and file operations by manipulating
