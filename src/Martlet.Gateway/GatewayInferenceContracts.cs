@@ -1282,6 +1282,10 @@ public abstract class GatewayInferencePermissionLease : IAsyncDisposable
 
 public interface IOllamaGatewayInferenceWorker : IGatewayInferenceWorker
 {
+    /// <summary>What this worker's Ollama has loaded now (its <c>/api/ps</c>: each model's memory in all and on the graphics card),
+    /// for the host's machine report; null when it doesn't say. It only reads, so it never loads or unloads a model.</summary>
+    ValueTask<IReadOnlyList<GatewayLoadedModel>?> ReadLoadedAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult<IReadOnlyList<GatewayLoadedModel>?>(null);
 }
 
 public interface IF5GatewayInferenceWorker : IGatewayInferenceWorker

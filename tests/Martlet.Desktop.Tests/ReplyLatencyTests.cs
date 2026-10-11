@@ -30,6 +30,18 @@ public sealed class ReplyLatencyTests
         Assert.Equal(2.54, parsed.FirstPieceSpeechSeconds);
     }
 
+    [Fact]
+    public void The_measured_first_word_is_the_thinking_models_own_time()
+    {
+        // From the Thinking request (after Martlet's own steps) to its first words: what model-speed.json keeps.
+        Assert.Equal(780, ReplyLatency.ThinkingFirstWordMs(Reply(new ConversationTimings(TextRequestAfter: TimeSpan.FromMilliseconds(120)))));
+        Assert.Equal(900, ReplyLatency.ThinkingFirstWordMs(Reply(new())));
+        // Hidden reasoning came first, the fallback answered or no words came: not the model's own first word.
+        Assert.Null(ReplyLatency.ThinkingFirstWordMs(Reply(new ConversationTimings(FirstReasoningAfter: TimeSpan.FromMilliseconds(300)))));
+        Assert.Null(ReplyLatency.ThinkingFirstWordMs(Reply(new()) with { FellBackAfter = "ModelRetired" }));
+        Assert.Null(ReplyLatency.ThinkingFirstWordMs(Reply(new()) with { FirstTextAfter = null }));
+    }
+
     [Theory]
     [InlineData(0, 0)]
     [InlineData(3, 60)]

@@ -1,8 +1,9 @@
 # Recommendation design: ask three questions, plan for three situations
 
-Status: **Approved, being built** (2026-10-10). Stage 1, *Preferences*, stage
-2, *Situations*, and the first part of stage 3, *the planner on the catalog*,
-are done (see [Build stages](#build-stages)). It uses the model catalog and
+Status: **Approved, built** (2026-10-10). Stage 1, *Preferences*, stage 2,
+*Situations*, and stage 3, *the planner on the catalog* (3a, the options from the
+catalog, and 3b, feedback and locks), are done (see [Build stages](#build-stages)).
+It uses the model catalog and
 route facts in [Model catalog](MODEL_CATALOG.md)
 ([#663](https://github.com/throndir2/Martlet/issues/663)). Today's rules are in
 [Recommended setups](RECOMMENDED_SETUPS.md); this page says what changes.
@@ -173,7 +174,9 @@ has much free room; never split a live model between the card and main memory.
   never fills the card past them.
 - **Locked choices.** A choice the owner made by hand is locked. Recommended
   setup shows a suggestion next to it, but changes it only when the owner asks.
-  Each job gets a lock in Recommended setup.
+  Each job gets a lock in Recommended setup. (Built: a job starts locked, and
+  one the owner unlocked locks again when they change it by hand; see
+  [Your choices](RECOMMENDED_SETUPS.md#your-choices-and-a-better-setup).)
 - **Their own servers.** A new server or host model is checked once (route
   facts) and then counts like any catalog model.
 - **Full facts.** The option list shows each option's inputs, memory, first
@@ -188,6 +191,10 @@ has much free room; never split a live model between the card and main memory.
 - A retired model is the exception: Martlet proposes its replacement at once.
 - Measured numbers replace estimates: the first word for each host and model
   from the `Reply latency` log lines, and the memory from `/api/ps`.
+- Built in stage 3b: the background check also runs three minutes after start
+  (a hardware or network change since Martlet last ran) and when a computer
+  comes back or stays away
+  ([Your choices and a better setup](RECOMMENDED_SETUPS.md#your-choices-and-a-better-setup)).
 
 ## The first-run wizard
 
@@ -261,9 +268,10 @@ Each stage is one pull request.
    and the local facts; today's `FootprintCatalog.Seed` stays as the offline
    fallback. The smartness score, Deep thinking on NVIDIA, measured feedback,
    locks and *A better setup is available*. It follows stage 1 and the catalog
-   work. **Part a, the options from the catalog, is done** (part b, measured
-   feedback, locks, *A better setup is available* and a replacement for a
-   retired model, is the next PR). How it was built:
+   work. It is two pull requests: 3a (options and smartness from the catalog)
+   and 3b (feedback and locks).
+
+   **3a, options and smartness from the catalog, done.** How it was built:
    - `FootprintCatalog.FromModels(ModelCatalog, bandwidth)` gives the planners
      Martlet's own options with the catalog's facts, plus new options from the
      catalog. `PlanningCatalog` holds them for the desktop: it loads the
@@ -310,6 +318,46 @@ Each stage is one pull request.
      lists up to three catalog models that fit the card. MCP
      `recommended_setup_status` has `planning`, and the Doctor has
      `planning.catalog`.
+
+   **3b, feedback and locks, done.** How it was built:
+   - Measured numbers: `MeasuredFirstWords` (`model-speed.json`) keeps each
+     Thinking model's first word on each server, from the reply timings the
+     `Reply latency` line uses (`ReplyLatency.ThinkingFirstWordMs`: from the
+     Thinking request to the first words; replies that hidden reasoning, the
+     fallback or Backup Thinking answered first don't count), the middle of the
+     last nine replies, saved after the reply on a thread-pool thread.
+     `MeasuredModelMemory` (`model-memory.json`) now also gets each paired
+     host's loaded models: the gateway's `GET /martlet/v1/machine` lists
+     `loaded_models` from each Ollama role's `/api/ps` (two seconds at most,
+     kept 30 seconds; older hosts leave it out), and the desktop keeps them on
+     each host check. `FootprintCatalog.WithMeasured` puts the newest
+     measurement of a model in place of its first word and graphics memory
+     (`Evidence = Measured`, `Measurements` lists them); the desktop and MCP
+     plan with it.
+   - Locks: `RecommendationPreferences.Locks` (`JobLock(Job, Locked)` with
+     `Chose`, the choice that ran when unlocked or that Reconfigure set up) for
+     Thinking, Listening and Lip-sync; `LockState` is Kept (the default, the
+     same as locked), Locked, Unlocked or ChangedByHand (unlocked, but the job
+     now runs another choice). `NetworkSetupRequest.Unlocked` carries the
+     unlocked jobs and `NetworkRecommender.TodayChoice` what each job runs.
+   - Suggestions: `NetworkRecommender.Recommend` plans each lockable job once
+     more as if new (`NetworkSetupRequest.Fresh`, a hook at the top of
+     Thinking, Listening and Lip-sync) and keeps the clearly better choices in
+     `NetworkRecommendation.Suggestions` (`BetterChoice` Smarter or Lighter). A
+     locked job's suggestion is only shown; an unlocked job's is in the
+     changes. Recommended setup shows *Your choices* with each lock, the
+     suggestion and **Use the suggestion** (it plans it once).
+   - *A better setup is available*: three minutes after start, after the daily
+     catalog refresh and when a computer comes back or stays away, the desktop
+     plans again off the reply path; Home's Recommended setup button says so
+     while suggestions wait that the owner hasn't seen in a review
+     (`recommended-setup.json` keeps the seen ones). It never applies them.
+   - Retired models: `RetiredModels.Expired` (the catalog's expiration date)
+     and `RetiredModels.Replacement` (the provider's current model, else the
+     smartest current catalog model on that server that takes the same inputs).
+     Home's issue for a retired Thinking or If Thinking fails model has
+     **Use** with the replacement as soon as a reply, a test or the catalog
+     finds it.
 
 ## Decisions made for the owner
 

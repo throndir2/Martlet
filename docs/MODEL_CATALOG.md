@@ -268,7 +268,9 @@ Martlet already estimates memory the same way in
   file's header without the full download and estimates memory to about
   100 MB (From docs). Martlet can do the same arithmetic itself.
 - When a model runs, Ollama's `/api/ps` reports the memory it really uses. Save
-  that for each host and prefer it to the estimate.
+  that for each host and prefer it to the estimate. (Built: this PC after a
+  model loads, and each paired host's `loaded_models` in its machine report;
+  `FootprintCatalog.WithMeasured` plans with it.)
 - Ollama installs any Hugging Face GGUF with `hf.co/{repo}:{quant}`, so a new
   model needs no new Martlet release.
 
@@ -317,7 +319,8 @@ MCP `local_model_facts` shows it all.
 - **Speed:** no source measures the owner's own hardware. Estimate words per
   second from the card's memory bandwidth divided by the bytes of the active
   parameters. Then measure: the desktop log's `Reply latency` lines already
-  give real first-word times.
+  give real first-word times. (Built: Martlet keeps each reply's Thinking first
+  word in `model-speed.json`, and Recommended setup plans with it.)
 
 ## Checking a model when the owner adds it (Proposed)
 
@@ -358,9 +361,13 @@ repository when it has open weights, else by the provider's ID:
 One **route** record for each server and model (`CatalogRoute`): `Provider`,
 `ModelId`, `BaseUrl`, `Free` (OpenRouter's prices, NVIDIA Build's free trial
 tier, models.dev's cost), `Context`, `Expires`, `Retired`, `Deprecated` and the
-route `Facts`. What Martlet finds out on a route (`Video`, `Tools`, `Retired`
-and the measured first-word time) stays in `ModelAbility`, which the route
-order above puts first.
+route `Facts`. What Martlet finds out on a route (`Video`, `Tools` and
+`Retired`) stays in `ModelAbility`, which the route order above puts first. The
+measured first word of each server and model is kept in `model-speed.json`
+(`MeasuredFirstWords`), beside the measured memory in `model-memory.json`
+([Recommended setups](RECOMMENDED_SETUPS.md#your-choices-and-a-better-setup)). A
+route past its `Expires` date counts as retired: Martlet keeps that in
+`model-abilities.json` and proposes a replacement at once (`RetiredModels`).
 
 ## Next steps
 

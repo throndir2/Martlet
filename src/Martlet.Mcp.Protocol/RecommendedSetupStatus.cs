@@ -26,12 +26,25 @@ internal static class RecommendedSetupStatus
     internal const string OfflineFixtureName = "offline";
     internal const string ServedFixtureName = "served";
     internal const string HostModelsFixtureName = "hostmodels";
+    internal const string BetterFixtureName = "better";
+
+    /// <summary>The made-up measurements of the "better" fixture: Gemma 4 E2B on gpu-box.</summary>
+    private static (MeasuredModelMemory Memory, MeasuredFirstWords Speed) BetterMeasurements(DateTimeOffset now)
+    {
+        var speed = new MeasuredFirstWords();
+        foreach (var ms in new[] { 170, 180, 195 }) speed = speed.With("https://gpu-box.lan:8443", "gemma4:e2b", ms, now);
+        var memory = new MeasuredModelMemory().With(new MeasuredModelUse
+        {
+            Host = "https://gpu-box.lan:8443", Model = "gemma4:e2b", Bytes = 3_600_000_000, GraphicsBytes = 3_600_000_000, ContextTokens = 8192, MeasuredAt = now
+        });
+        return (memory, speed);
+    }
 
     /// <summary><paramref name="lookOnThisPc"/>: with a data directory whose Use models your apps already run is on, Martlet
     /// asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does. <paramref name="preferences"/>:
     /// recommendation preferences to plan with instead of the saved ones (each field optional; nothing is saved).</summary>
     internal static async Task<object> RunAsync(string? dataDirectory, string? fixture, CancellationToken cancellation, bool lookOnThisPc = false,
-        JsonElement? preferences = null, string? catalog = null)
+        JsonElement? preferences = null, string? catalogChoice = null)
     {
         SetupSources sources;
         string source;
@@ -64,7 +77,15 @@ internal static class RecommendedSetupStatus
                     "(a Linux host with an RTX 4090, 24 GB) that thinks with Gemma 4 E4B and keeps qwen2.5:14b downloaded; Prefer models " +
                     "your hosts already have is on";
             }
-            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\" or \"{HostModelsFixtureName}\".");
+            else if (fixture == BetterFixtureName)
+            {
+                sources = RecommendedSetupInputs.BetterFixture(DateTimeOffset.UtcNow);
+                source = "fixture better (NOT real computers or measurements): this PC (a companion PC without a graphics card) and gpu-box " +
+                    "(a Linux host with an RTX 4090, 24 GB) that thinks with Gemma 4 E2B; made-up measurements say its first word came in " +
+                    "0.18 s over 3 replies and Ollama held it in 3.6 GB on the card. A smarter model fits there, so Thinking gets a suggestion " +
+                    "(pass preferences.locks [{ job: \"thinking\", locked: false }] to let Martlet choose it)";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\", \"{OfflineFixtureName}\", \"{ServedFixtureName}\", \"{HostModelsFixtureName}\" or \"{BetterFixtureName}\".");
         }
         else
         {
@@ -85,15 +106,56 @@ internal static class RecommendedSetupStatus
             looked = true;
         }
         var build = RecommendedSetupInputs.Request(sources);
-        var options = PlanningOptions(fixture is null ? dataDirectory : null, catalog, build.Request);
-        var recommendation = NetworkRecommender.Recommend(build.Request, options);
-        var planned = options.WithServed(build.Request.ServedModels);
+        // The planners' options (the model catalog with its local facts, then Martlet's own list) with the numbers measured on your
+        // computers (model-memory.json and model-speed.json), as the desktop plans.
+        var (measuredMemory, measuredSpeed) = fixture == BetterFixtureName ? BetterMeasurements(DateTimeOffset.UtcNow)
+            : fixture is null ? (MeasuredModelMemory.Load(dataDirectory), MeasuredFirstWords.Load(dataDirectory)) : (new MeasuredModelMemory(), new MeasuredFirstWords());
+        var catalog = PlanningOptions(fixture is null ? dataDirectory : null, catalogChoice, build.Request).WithMeasured(measuredMemory, measuredSpeed);
+        var recommendation = NetworkRecommender.Recommend(build.Request, catalog);
+        var planned = catalog.WithServed(build.Request.ServedModels);
         var memory = fixture is null ? RecommendedSetupMemory.Load(dataDirectory) : new RecommendedSetupMemory();
         var (step, why) = SetupAskRule.Decide(recommendation, memory, companion: true, idle: TimeSpan.Zero);
         string Name(string? id) => id is null ? "" : build.Names.GetValueOrDefault(id) ?? id;
+        var retired = fixture is null ? await RetiredAsync(dataDirectory!, cancellation) : null;
         return new
         {
             source,
+            measured = new
+            {
+                firstWords = measuredSpeed.Models.Select(m => new { host = m.Host, model = m.Model, ms = m.Ms, replies = m.Samples.Count, measuredAt = m.MeasuredAt }),
+                memory = measuredMemory.Models.Select(m => new
+                {
+                    host = m.Host, model = m.Model, gb = Math.Round(m.Bytes / 1e9, 2), graphicsGb = Math.Round(m.GraphicsBytes / 1e9, 2),
+                    onGraphicsCard = m.OnGraphicsCard, contextTokens = m.ContextTokens, measuredAt = m.MeasuredAt
+                }),
+                replaced = catalog.Measurements.Select(m => new
+                {
+                    option = m.OptionId, model = m.Model, host = m.Host, firstWordMs = m.FirstWordMs, estimatedFirstWordMs = m.EstimatedFirstWordMs,
+                    replies = m.Replies, gpuGb = m.GpuGb, estimatedGpuGb = m.EstimatedGpuGb, describe = m.Describe()
+                }),
+                note = fixture == BetterFixtureName ? "FIXTURE: these measurements are made up."
+                    : fixture is not null ? "A fixture has no measurements."
+                    : "From model-speed.json (each reply's first word, after the reply) and model-memory.json (Ollama's /api/ps here and on paired hosts)."
+            },
+            locks = RecommendationPreferences.LockableJobs.Select(job => new
+            {
+                job, today = NetworkRecommender.TodayChoice(build.Request, job, catalog), state = sources.Preferences.LockState(job,
+                    NetworkRecommender.TodayChoice(build.Request, job, catalog)).ToString(), unlocked = build.Request.Unlocked.Contains(job),
+                chose = sources.Preferences.Locks.FirstOrDefault(l => l.Job == job)?.Chose
+            }),
+            suggestions = recommendation.Suggestions.Select(s => new
+            {
+                job = s.Job, option = s.OptionId, host = s.HostId is null ? null : Name(s.HostId), today = s.TodayOptionId, kind = s.Kind.ToString(),
+                why = s.Why, locked = s.Locked, applied = s.Applied, text = s.Text
+            }),
+            betterSetup = new
+            {
+                available = recommendation.BetterSetupAvailable, fingerprint = recommendation.SuggestionsFingerprint,
+                seenHere = memory.WasDeclined("better:" + recommendation.SuggestionsFingerprint),
+                homeButton = recommendation.BetterSetupAvailable && !memory.WasDeclined("better:" + recommendation.SuggestionsFingerprint)
+                    ? "A better setup is available" : null
+            },
+            retired,
             computers = sources.Computers.Select(c => new
             {
                 id = c.Id, name = c.Name, kind = c.Kind.ToString(), thisPc = c.ThisPc, hasHostService = c.HasHostService, manageable = c.Manageable,
@@ -286,7 +348,45 @@ internal static class RecommendedSetupStatus
             foreach (var answer in games.EnumerateArray().Take(64))
                 next = next.WithGames(answer.GetProperty("device").GetString() ?? throw new ArgumentException("preferences.games needs a device."),
                     answer.GetProperty("plays").GetBoolean());
+        if (given.TryGetProperty("locks", out var locks) && locks.ValueKind == JsonValueKind.Array)
+            foreach (var entry in locks.EnumerateArray().Take(8))
+            {
+                var job = entry.GetProperty("job").GetString();
+                if (job is null || !RecommendationPreferences.LockableJobs.Contains(job))
+                    throw new ArgumentException($"preferences.locks job must be {string.Join(", ", RecommendationPreferences.LockableJobs)}.");
+                // Unlocking here lets Martlet choose whatever runs today (no remembered choice).
+                next = next.WithLock(job, entry.GetProperty("locked").GetBoolean(), null);
+            }
         return next;
+    }
+
+    /// <summary>Whether the data directory's Thinking model or If Thinking fails' model is retired on its server (a reply's or a
+    /// test's HTTP 410, Martlet's list, or the model catalog's expiration date), and the replacement Martlet proposes.</summary>
+    private static async Task<object?> RetiredAsync(string directory, CancellationToken cancellation)
+    {
+        var loaded = await new SettingsStore(directory).LoadAsync(cancellation);
+        var routes = new List<(string Kind, string Origin, string Model)>();
+        if (loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.ChatCompletions } thinking)
+            routes.Add(("thinking", thinking.Origin, thinking.ModelId));
+        if (loaded.Settings?.ThinkingFallback is { } fallback) routes.Add(("fallback", fallback.Origin, fallback.ModelId));
+        if (routes.Count == 0) return null;
+        var abilities = ModelAbilities.Load(directory);
+        ModelCatalog? catalog = null;
+        try { catalog = ModelCatalogStore.For(directory).Load(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) { }
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        return routes.Select(r =>
+        {
+            var found = ChatCompletionsEndpointCatalog.RetiredOn(r.Origin, r.Model, abilities);
+            var expired = RetiredModels.Expired(catalog, r.Origin, r.Model, today);
+            return new
+            {
+                route = r.Kind, origin = r.Origin, model = r.Model, retired = found is not null || expired,
+                source = found?.Source ?? (expired ? "the model catalog (its expiration date passed)" : null),
+                since = found?.Since,
+                replacement = found is not null || expired ? RetiredModels.Replacement(catalog, r.Origin, r.Model, abilities, today) : null
+            };
+        }).ToArray();
     }
 
     // ---------- a data directory ----------

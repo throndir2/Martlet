@@ -17,7 +17,7 @@ public partial class MainWindow
     private readonly DispatcherTimer modelCatalogTimer = new() { Interval = TimeSpan.FromMinutes(3) };
     private readonly DispatcherTimer modelCatalogWatch = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private volatile bool modelCatalogHold;
-    private bool modelCatalogBusy;
+    private bool modelCatalogBusy, checkedAtStart;
     private ModelCatalogStore? modelCatalogStore;
 
     /// <summary>The model catalog for this PC (the daily copy, else the shipped snapshot); null before Martlet has a data folder.
@@ -33,6 +33,14 @@ public partial class MainWindow
         {
             modelCatalogTimer.Interval = TimeSpan.FromMinutes(15);
             RefreshModelCatalogAsync().Forget();
+            // Once, three minutes after start: plan again with what changed since Martlet last ran (the hardware, the network,
+            // measured numbers), and look for a retired model, off the reply path.
+            if (!checkedAtStart)
+            {
+                checkedAtStart = true;
+                CheckBetterSetupAsync("Martlet started").Forget();
+                FollowRetiredAsync().Forget();
+            }
         };
         // The first check comes three minutes after start, so it never competes with starting up.
         modelCatalogTimer.Start();
@@ -86,8 +94,14 @@ public partial class MainWindow
                 ErrorLog.Info($"Model catalog refreshed: {result.Models} models and {result.Routes} routes" +
                     (result.Saved ? $", saved in {catalogs.Folder?.Where ?? "the PC folder"}" : ", not saved") +
                     (result.Status.Problem is { } problem ? $". {problem}" : "."));
-                // The next recommendation plans with the new copy.
-                if (result.Saved) await PlanningOptionsAsync();
+                // Plan again with the new catalog (the planners' options first), and look for a model it says was retired
+                // (docs/RECOMMENDATION_DESIGN.md).
+                if (result.Saved)
+                {
+                    await PlanningOptionsAsync();
+                    CheckBetterSetupAsync("the daily model catalog refresh").Forget();
+                    FollowRetiredAsync().Forget();
+                }
             }
         }
         catch (OperationCanceledException) { }

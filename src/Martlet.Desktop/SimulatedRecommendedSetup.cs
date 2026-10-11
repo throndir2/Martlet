@@ -22,8 +22,9 @@ internal static class SimulatedRecommendedSetup
     internal static bool Active => StepTakes is not null;
 
     /// <summary>With <see cref="Variable"/> set, "offline" here plans <see cref="RecommendedSetupInputs.OfflineFixture"/> (two
-    /// hosts away for hours, so nobody can think) and "hostmodels" plans <see cref="RecommendedSetupInputs.HostModelsFixture"/>
-    /// (a host that keeps a bigger Thinking model) instead of the four-computer network.</summary>
+    /// hosts away for hours, so nobody can think), "hostmodels" plans <see cref="RecommendedSetupInputs.HostModelsFixture"/>
+    /// (a host that keeps a bigger Thinking model) and "better" plans <see cref="RecommendedSetupInputs.BetterFixture"/> (a host
+    /// that thinks with Gemma 4 E2B, so a smarter model is the suggestion) instead of the four-computer network.</summary>
     internal const string NetworkVariable = "MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK";
 
     /// <summary>The FIXTURE network Home's Recommended setup plans while <see cref="Active"/>.</summary>
@@ -31,6 +32,7 @@ internal static class SimulatedRecommendedSetup
     {
         "offline" => RecommendedSetupInputs.OfflineFixture(now),
         "hostmodels" => RecommendedSetupInputs.HostModelsFixture(now),
+        "better" => RecommendedSetupInputs.BetterFixture(now),
         _ => RecommendedSetupInputs.Fixture(now)
     };
 

@@ -967,7 +967,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             return;
         }
         UseAbilities(abilities);
+        AbilityRecorded?.Invoke(ability);
     }
+
+    /// <summary>A reply found something out about a model and saved it (a model its server retired, say): Home proposes a
+    /// replacement at once. Raised after the request ended, never on its path.</summary>
+    internal event Action<ModelAbility>? AbilityRecorded;
 
     /// <summary>Reads model-abilities.json again, after Martlet found out more or another computer shared it.</summary>
     internal void ReloadAbilities()

@@ -209,6 +209,17 @@ Martlet also uses it to keep impossible roles off its menus (for example F5 on a
 host without an NVIDIA GPU with 6 GB+) and says why; a host without a report is
 allowed with a note. See [Platforms](../../docs/PLATFORMS.md).
 
+The same answer also lists what the host's Ollama roles have loaded now
+(`loaded_models`: each model's role, name, bytes in all, bytes on the graphics
+card, context and digest). The gateway asks each Ollama role's own `/api/ps`
+on 127.0.0.1, together at most two seconds, and keeps the answer 30 seconds, so
+a host check asks Ollama at most that often. `/api/ps` only reads: it never
+loads or unloads a model, and no reply waits for it. Martlet keeps the numbers
+in `model-memory.json` under the host's address, so Recommended setup plans with
+the measured memory instead of the estimate
+([Recommended setups](../../docs/RECOMMENDED_SETUPS.md#your-choices-and-a-better-setup)).
+Older hosts leave `loaded_models` out, and older desktops ignore it.
+
 `martlet-host status` also says where each role runs (on graphics card
 `GPU-...`, on every card, or on the processor) and, when the `deep-thinking` role
 shares a card with a live role (thinking, listening, the voice), that live turns

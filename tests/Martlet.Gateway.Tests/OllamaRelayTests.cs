@@ -43,6 +43,10 @@ public sealed class OllamaRelayTests
                     await context.Response.Body.FlushAsync();
                 }
             });
+            // What Ollama has loaded: one model, mostly on the graphics card.
+            app.MapGet("/api/ps", () => Results.Text(
+                "{\"models\":[{\"name\":\"llama3.2:3b\",\"model\":\"llama3.2:3b\",\"size\":3000000000,\"size_vram\":2900000000," +
+                "\"digest\":\"abc123\",\"context_length\":8192}]}", "application/json"));
             await app.StartAsync();
             fake.Endpoint = new Uri(app.Urls.First() + "/");
             return fake;
@@ -65,6 +69,27 @@ public sealed class OllamaRelayTests
         var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
         var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.OllamaChatRouteId);
         return (connection, route);
+    }
+
+    [Fact]
+    public async Task The_machine_report_says_what_the_hosts_ollama_roles_have_loaded()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200, "{\"done\":true}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+        await using var deep = OllamaRelayWorker.DeepThinking(ollama.Endpoint, "llama3.2:3b", card: 2);
+        Assert.Equal("deep-thinking-2", Assert.Single((await deep.ReadLoadedAsync(CancellationToken.None))!).Role);
+
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        host.Server.Machine = GatewayMachineReport.Parse(System.Text.Encoding.UTF8.GetBytes(
+            "{\"collected_at\":\"2026-10-10T18:00:00Z\",\"method\":\"native\",\"operating_system\":\"Ubuntu 24.04\",\"gpus\":[]}"));
+        var (connection, _) = await ConnectAsync(host);
+        using var owned = connection;
+        var (hardware, _) = await connection.ReadMachineReportAsync();
+        var loaded = Assert.Single(hardware!.Loaded!);
+        Assert.Equal(("ollama", "llama3.2:3b", 3_000_000_000L, 2_900_000_000L, (int?)8192, "abc123"),
+            (loaded.Role, loaded.Model, loaded.Bytes, loaded.GraphicsBytes, loaded.ContextTokens, loaded.Digest));
+        // The relay only reads: nothing went to /api/chat, so no model loaded or unloaded.
+        Assert.Empty(ollama.Requests);
     }
 
     [Fact]

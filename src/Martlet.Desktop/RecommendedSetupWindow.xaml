@@ -62,6 +62,22 @@
                            Text="Martlet plans with these. A change plans again at once and is saved for all your computers (each computer keeps its own games answer)."/>
                 <StackPanel x:Name="PreferencesPanel" Margin="0,0,0,16" AutomationProperties.Name="Your preferences"/>
 
+                <!-- Your choices (RecommendedSetupReview.Choices): each job's lock (RecommendedSetupLock-<job>; a change saves the
+                     recommendation preferences and plans again), who does it today, Martlet's clearly better choice next to it
+                     (RecommendedSetupSuggestion-<job>) and Use the suggestion (RecommendedSetupUseSuggestion-<job>), which plans that
+                     job's suggestion this once. The voice always stays the owner's. Then the numbers Martlet measured instead of
+                     estimating (RecommendedSetupMeasured). -->
+                <StackPanel x:Name="ChoicesSection">
+                    <TextBlock Text="Your choices" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
+                               AutomationProperties.AutomationId="RecommendedSetupChoicesIntro"
+                               Text="A locked job keeps its model: Martlet only suggests a clearly better one (smarter at the same speed, or as smart with less memory). Unlock a job to let Martlet choose. A job you change by hand locks again."/>
+                    <StackPanel x:Name="ChoicesPanel" Margin="0,0,0,8" AutomationProperties.Name="Your choices"
+                                AutomationProperties.AutomationId="RecommendedSetupChoices"/>
+                    <TextBlock x:Name="MeasuredText" TextWrapping="Wrap" Margin="0,0,0,16" Visibility="Collapsed"
+                               Foreground="{DynamicResource MutedBrush}" AutomationProperties.AutomationId="RecommendedSetupMeasured"/>
+                </StackPanel>
+
                 <!-- Every part of Martlet in priority order (ComponentRanking): where it runs, or Off. Optional parts that run as
                      host roles have an explicit Off choice; the review then plans again without them. Vision, Reading, Hearing
                      and Smart home are this PC's choice on their Companion pages (ComponentRanking.SetOnPage). -->

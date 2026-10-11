@@ -5307,6 +5307,15 @@ real computers or models**): this PC, a companion PC with no graphics card, and
 and keeps `qwen2.5:14b` downloaded. *Prefer models your hosts already have* is
 on, so its recommended setup thinks with `qwen2.5:14b` on `gpu-box` and
 downloads nothing.
+Give `fixture: "better"` to plan the built-in better-setup network (**NOT real
+computers or measurements**): this PC, a companion PC with no graphics card,
+and `gpu-box`, a Linux host with an RTX 4090 (24 GB) that thinks with Gemma 4
+E2B, with made-up measurements (its first word 0.18 s over 3 replies, 3.6 GB in
+Ollama on the card). Thinking is locked, so the recommendation keeps Gemma 4
+E2B and `suggestions` has *Gemma 4 12B on gpu-box: smarter, ...*; with
+`preferences.locks` `[{ "job": "thinking", "locked": false }]` the change
+`ChangeModel` to `gemma4:12b` is in the recommendation and the suggestion is
+`applied`.
 Give `lookOnThisPc: true` with a data directory to ask the model apps on this
 PC (Ollama, LM Studio, llama.cpp, vLLM and the others Companion › Thinking
 finds; 127.0.0.1 only) for the models they serve, as the desktop's review does.
@@ -5317,8 +5326,10 @@ with the two model choices from `recommended-setup.json`), or with the
 fixture's. Give `preferences` to plan with others instead, nothing saved; each
 field is optional: `quality` (`balanced`, `quick`, `smarter`), `online`
 (`backup`, `never`, `yes`), `preferHearing`, `hostGpuShare` (90, 75, 50),
-`useServedModels`, `preferHostModels` and `games` (`[{ "device": "fixture-desk",
-"plays": true }]`, by Martlet device ID). An unknown value is an error. A data
+`useServedModels`, `preferHostModels`, `games` (`[{ "device": "fixture-desk",
+"plays": true }]`, by Martlet device ID) and `locks` (`[{ "job": "thinking",
+"locked": false }]`: `thinking`, `listening` or `lip-sync`; unlocking here lets
+Martlet choose whatever runs today). An unknown value is an error. A data
 directory has no game library guess: a companion PC without an answer counts
 as No. It plans as the desktop does, with the model catalog
 ([Recommendation design](RECOMMENDATION_DESIGN.md#build-stages), stage 3): the
@@ -5409,6 +5420,31 @@ alone, as before the catalog, to compare. The result has:
 - `companionInUseAsks`: what a companion PC someone uses would do after an
   automatic check (`Ask`, `Wait` or `Nothing`, and why), with `declinedHere`
   (this setup is in the directory's `recommended-setup.json`).
+- `measured`: the numbers Martlet measured, which the recommendation plans with
+  instead of its estimates: `firstWords` (from `model-speed.json`: each server's
+  `host`, the `model`, `ms` (the middle of the last replies) and `replies`),
+  `memory` (from `model-memory.json`: `host`, `model`, `gb`, `graphicsGb`,
+  `onGraphicsCard`, `contextTokens`; this PC's Ollama and each paired host's
+  `loaded_models`), `replaced` (each catalog option whose numbers they
+  replaced: `option`, `firstWordMs` and `estimatedFirstWordMs`, `gpuGb` and
+  `estimatedGpuGb`, `describe`) and `note`.
+- `locks`: each job with a lock (`thinking`, `listening`, `lip-sync`): `today`
+  (the option doing it today), `state` (`Kept`: never chosen, so Martlet keeps
+  it; `Locked`; `Unlocked`; `ChangedByHand`: unlocked, but it runs another choice
+  now, so it counts as locked), `unlocked` (the recommendation may change it) and
+  `chose` (the choice it remembers).
+- `suggestions`: each job's clearly better choice: `job`, `option`, `host`,
+  `today`, `kind` (`Smarter` or `Lighter`), `why`, `locked` (only shown),
+  `applied` (in `recommendation.changes`) and `text`.
+- `betterSetup`: `available` (a suggestion exists), `fingerprint`, `seenHere`
+  (the owner saw it in a review; `recommended-setup.json`) and `homeButton`
+  (*A better setup is available* when Home's Recommended setup button says so,
+  else null).
+- `retired`: with a data directory, the Thinking route (a Chat Completions
+  endpoint) and the If Thinking fails route: `route`, `origin`, `model`,
+  `retired`, `source` (an HTTP 410 answer, Martlet's list or the model
+  catalog's expiration date), `since` and `replacement` (the model Home's
+  **Use** button proposes). Null without such a route.
 
 It is read-only and reads no keys. It contacts nothing, except the model apps
 on this PC (127.0.0.1) when `lookOnThisPc` is true. On the desktop, Home's
@@ -5512,10 +5548,43 @@ computers**): Home's Recommended setup then plans the fixture network that
 `recommended_setup_status` plans with `fixture: "network"` (also on a PC
 alone), and Reconfigure applies it to simulated computers. Also set
 `MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK` to `offline` to plan the
-`fixture: "offline"` network instead. Each role change
+`fixture: "offline"` network instead, or to `better` for the `fixture:
+"better"` network (a host that thinks with Gemma 4 E2B; put a
+`model-speed.json` in the data directory to plan with measured first words). Each role change
 takes that many seconds and writes `FIXTURE` lines; nothing is installed,
 contacted, saved or shared, and the run shows on this PC's Home
-(`HomeConfiguringStatus`) only. When an automatic
+(`HomeConfiguringStatus`) only.
+
+The review's **Your choices** (`RecommendedSetupChoices`, intro
+`RecommendedSetupChoicesIntro`) has one row for Thinking, Listening, Lip-sync
+and the voice: `RecommendedSetupChoice-<job>` (*Thinking: Gemma 4 E2B on
+gpu-box. Locked: ...*; jobs are `thinking`, `listening`, `lip-sync` and
+`speaking`), `RecommendedSetupLockState-<job>` (the lock in words: kept,
+locked, unlocked, or changed by hand; the voice is *Always yours*),
+`RecommendedSetupLock-<job>` (`checkedState` `On` while locked; `ui_toggle`
+saves `recommendation-preferences.json` and the review opens again, so it
+needs `--allow-ui-effects`), `RecommendedSetupSuggestion-<job>` (*Suggested:
+Gemma 4 12B on gpu-box: smarter, and its first word comes in about 0.4 s
+(today about 0.18 s).*, plus *The recommendation makes this change.* when it
+is in the changes) and `RecommendedSetupUseSuggestion-<job>` (in `SafeClicks`:
+it closes the review and opens it again with that suggestion planned once;
+nothing is saved, and the job stays locked). `RecommendedSetupMeasured` reads
+the numbers measured on your computers that the plan used (*gemma4:e2b: first
+word 0.18 s (estimate 0.15 s) from 3 replies, measured on
+https://gpu-box.lan:8443*). Three minutes after start, after the daily model
+catalog refresh and when a computer comes back or stays away, each companion
+PC plans again off the reply path; while a suggestion waits that the owner
+hasn't seen in a review, Home's `HomeRecommendedSetup` reads *Recommended
+setup: a better setup is available* and `HomeBetterSetup` (under its label)
+reads *A better setup is available* (collapsed otherwise). The desktop log
+says *Recommended setup: a better setup is available after ...* with each
+suggestion. When the Thinking model or the If Thinking fails model is retired
+on its server, `HealthIssue-thinking-retired` (or `HealthIssue-fallback-retired`)
+names the replacement, and `HealthFix-thinking-retired-use-replacement` (or
+`HealthFix-fallback-retired-use-fallback-replacement`) saves it, so it needs
+`--allow-ui-effects`.
+
+When an automatic
 check finds a better setup, Home shows `HealthIssue-recommended-setup`. Its
 Review (`HealthOpen-recommended-setup-review`) opens the review, and its Not now
 (`HealthFix-recommended-setup-decline`) saves `recommended-setup.json`, so it

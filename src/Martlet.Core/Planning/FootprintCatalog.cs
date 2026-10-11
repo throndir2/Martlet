@@ -45,7 +45,7 @@ public sealed partial class FootprintCatalog
     public FootprintCatalog WithServed(IEnumerable<ServedModel>? served)
     {
         var added = ServedModels.Usable(served, this).Select(m => ServedModels.Option(m, Models)).ToList();
-        return added.Count == 0 ? this : new(options.Concat(added)) { Models = Models, From = From };
+        return added.Count == 0 ? this : new(options.Concat(added)) { Models = Models, From = From, Measurements = Measurements };
     }
 
     /// <summary>A model's quality tier (1 to 5) by its name: how smart the model catalog says it is

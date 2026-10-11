@@ -88,8 +88,9 @@ public partial class MainWindow
         conversation?.ReloadSenseModels();
         if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Hearing or CompanionTab.Thinking && !tabEdited)
             RenderTab();
-        // Home says when the Thinking model was found retired, or no longer is.
+        // Home says when the Thinking model was found retired, or no longer is, with its replacement.
         QueueHealth();
+        FollowRetiredAsync().Forget();
         QueueSettingsSync();
     }
 
