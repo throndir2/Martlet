@@ -805,7 +805,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
         "WebResearchStatus", "WebResearchDisclosure",
-        // Companion › App guides (off by default): the Now line (off, or how many guides, pages and their size, and what Martlet is
+        // Companion › App guides (on by default): the Now line (off, or how many guides, pages and their size, and what Martlet is
         // reading up on now), the fixed disclosure of what leaves this PC, what is in front as App guides sees it (a program's name,
         // whether it is a game or on the list, and whether its guide is ready), the empty list's line and what the last action did.
         // Its On and Read up when I start a game or app boxes report their state as checkedState (AppGuidesAsk is the second; its

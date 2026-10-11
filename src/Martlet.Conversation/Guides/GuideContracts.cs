@@ -44,11 +44,13 @@ public sealed record AppGuideEntry
 }
 
 /// <summary>The guide library's own settings and its apps, kept with the guides (guides\library.json), like lorebooks keep
-/// theirs. App guides are off until the owner turns them on: reading up on an app sends its name to a search engine, and the
-/// sites it reads see the requests.</summary>
+/// theirs. App guides and Read up when I start a game or app are on by default (a library.json without "on" is on too); a saved
+/// "on": false stays off. With the defaults, Martlet sends a game's name to a search engine and reads its wiki on its own when
+/// the game starts; the page says so and how to stop it. Martlet 0.70 and earlier had App guides off by default and wrote
+/// library.json only after the owner did something with App guides, so a saved off there may be a choice.</summary>
 public sealed record AppGuideLibrary
 {
-    public const bool DefaultOn = false;
+    public const bool DefaultOn = true;
     public const bool DefaultReadUpWhenStarted = true;
 
     public bool On { get; init; } = DefaultOn;

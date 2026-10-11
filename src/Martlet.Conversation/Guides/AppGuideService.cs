@@ -47,7 +47,8 @@ public sealed class AppGuideService : IDisposable
     private readonly ConcurrentDictionary<string, IGuideIndex> indexes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Task> warming = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (int Times, Func<bool>? Dropped)> offered = new(StringComparer.Ordinal);
-    private AppGuideLibrary library = new();
+    // Off until LoadAsync reads the saved choice, so no reply gets the guide tools before Martlet knows the owner wants them.
+    private AppGuideLibrary library = new() { On = false };
     private AppGuideFront? front;
     private (string Key, string Name, string? Progress)? building;
     private CancellationTokenSource? stopping;
@@ -74,7 +75,7 @@ public sealed class AppGuideService : IDisposable
     /// <summary>Raised on any thread when the library, the app in front, reading up or an index changes.</summary>
     public event Action? Changed;
 
-    /// <summary>The library as last read or saved (an empty, default one until <see cref="LoadAsync"/>).</summary>
+    /// <summary>The library as last read or saved (an empty one, with App guides off, until <see cref="LoadAsync"/>).</summary>
     public AppGuideLibrary Library { get { lock (gate) return library; } }
 
     /// <summary>Goes up by one each time the library changes (the page draws its list again only then).</summary>
@@ -82,7 +83,7 @@ public sealed class AppGuideService : IDisposable
 
     public bool Loaded { get { lock (gate) return loaded; } }
 
-    /// <summary>Whether App guides are on (Companion › App guides; off by default).</summary>
+    /// <summary>Whether App guides are on (Companion › App guides; on by default, off until <see cref="LoadAsync"/>).</summary>
     public bool On => Library.On;
 
     /// <summary>The program in front, or null before the first look (or while App guides are off).</summary>
@@ -111,9 +112,9 @@ public sealed class AppGuideService : IDisposable
         try { read = await Store.LoadLibraryAsync(cancellationToken).ConfigureAwait(false); }
         catch (AppGuideFileException error)
         {
-            // The store never resets it: App guides stay off until the owner turns them on again (a new library keeps a copy of
-            // the old one, and a newer Martlet's library is never replaced).
-            read = new();
+            // The store never resets it, and Martlet can't read the owner's choice: App guides stay off until the owner turns them
+            // on again (a new library keeps a copy of the old one, and a newer Martlet's library is never replaced).
+            read = new() { On = false };
             problem = Describe(error);
         }
         lock (gate)

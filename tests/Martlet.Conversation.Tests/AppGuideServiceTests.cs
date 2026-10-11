@@ -49,12 +49,48 @@ public sealed class AppGuideServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AppGuidesAreOnByDefaultAndASavedOffStaysOff()
+    {
+        using (var guides = Service())
+        {
+            Assert.False(guides.On); // Off until the saved choice is read.
+            await guides.LoadAsync();
+            Assert.True(guides.On);
+            Assert.True(guides.Library.ReadUpWhenStarted);
+        }
+        // A library an earlier Martlet saved with App guides off stays off, also after another change on the page.
+        Directory.CreateDirectory(directory);
+        var library = Path.Combine(directory, FileAppGuideStore.LibraryFile);
+        await File.WriteAllTextAsync(library, "{\"formatVersion\":1,\"on\":false,\"askWhenStarted\":true,\"apps\":[]}");
+        using (var guides = Service())
+        {
+            await guides.LoadAsync();
+            Assert.False(guides.On);
+            await guides.AddAsync("Paint Studio", [], []);
+            Assert.False(guides.On);
+        }
+        using (var guides = Service())
+        {
+            await guides.LoadAsync();
+            Assert.False(guides.On);
+        }
+        // A library without "on" gets the default.
+        await File.WriteAllTextAsync(library, "{\"formatVersion\":1,\"apps\":[]}");
+        using (var guides = Service())
+        {
+            await guides.LoadAsync();
+            Assert.True(guides.On);
+        }
+    }
+
+    [Fact]
     public async Task MartletReadsUpOnAGameWithoutAGuideOnceASessionAndKeepsANo()
     {
         using var guides = Service();
         await guides.LoadAsync();
+        await guides.SetOnAsync(false);
         guides.See("Crystal Caverns", "CrystalCaverns", game: true, fullScreen: true);
-        Assert.Null(guides.Offer()); // App guides are off by default.
+        Assert.Null(guides.Offer()); // Not while App guides are off.
 
         await guides.SetOnAsync(true);
         var offer = Assert.IsType<AppGuideOfferCandidate>(guides.Offer());

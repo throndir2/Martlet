@@ -7,10 +7,10 @@ using Martlet.Conversation.Guides;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › App guides (docs/APP_GUIDES.md): the On switch (off by default) with what leaves this PC, Read up when I
-/// start a game or app, the list of apps with their guides (Read up now or Read again, Allow again, Delete) and Add an app. The
-/// guide library lives in &lt;data folder&gt;\guides; the watch of the program in front runs only while App guides are on, on
-/// this companion PC.</summary>
+/// <summary>Companion › App guides (docs/APP_GUIDES.md): the On switch (on by default) with what leaves this PC, Read up when I
+/// start a game or app (on by default), the list of apps with their guides (Read up now or Read again, Allow again, Delete) and
+/// Add an app. The guide library lives in &lt;data folder&gt;\guides; the watch of the program in front runs only while App guides
+/// are on, on this companion PC.</summary>
 public partial class MainWindow
 {
     private AppGuideService? appGuides;
@@ -123,9 +123,11 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(on, "AppGuidesOn");
         on.Checked += (_, _) => SetAppGuidesOnAsync(true).Forget();
         on.Unchecked += (_, _) => SetAppGuidesOnAsync(false).Forget();
-        var disclosure = Note("When Martlet reads up on an app, it sends the app's name to DuckDuckGo to find its wiki, and the wiki " +
-            "sites see the requests and this PC's internet address. The guides stay on this PC. To notice a game, Martlet looks only " +
-            "at the name of the program in front and whether it fills the screen, never at window titles or the screen.",
+        var disclosure = Note("On by default. When you start a game Martlet has no guide for, it reads up on it on its own: it " +
+            "sends the game's name to DuckDuckGo to find its wiki, then reads the wiki. The wiki sites see the requests and this PC's " +
+            "internet address. The guides stay on this PC. To stop a read, press Stop reading below or tell Martlet no. To stop it " +
+            "from reading up on its own, turn off Read up when I start a game or app. To notice a game, Martlet looks only at the " +
+            "name of the program in front and whether it fills the screen, never at window titles or the screen.",
             new Thickness(24, 2, 0, 8));
         AutomationProperties.SetAutomationId(disclosure, "AppGuidesDisclosure");
         var ask = new CheckBox { Content = "Read up when I start a game or app", IsChecked = library.ReadUpWhenStarted, IsEnabled = library.On };
