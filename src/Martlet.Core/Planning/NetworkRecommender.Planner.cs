@@ -106,7 +106,8 @@ public static partial class NetworkRecommender
             return new Node
             {
                 Machine = machine, Presence = presence,
-                Capacity = spec.Gpus.Select(g => PlacementEngine.GpuCapacityGb(g, spec.KeepGpuForGames)).ToArray(),
+                Capacity = spec.Gpus.Select(g => PlacementEngine.GpuCapacityGb(g, false,
+                    machine.Kind == NetworkMachineKind.Host ? request.HostGpuShare : PlacementEngine.DefaultGpuShare)).ToArray(),
                 Pinnable = nvidia.Length >= 2, Nvidia = nvidia, MainCard = main,
                 RamCapacity = PlacementEngine.RamCapacityGb(spec), CpuCapacity = PlacementEngine.CpuCapacity(spec),
                 DiskCapacity = PlacementEngine.DiskCapacityGb(spec)
@@ -409,6 +410,8 @@ public static partial class NetworkRecommender
             return
             [
                 node.Companion && !singlePc ? 1 : 0,
+                // A companion PC that games is the last one to lend its card (its While gaming plan moves the work away).
+                node.Companion && node.Spec.KeepGpuForGames ? 1 : 0,
                 Displaces(node, card, option, query) ? 1 : 0,
                 windows ? 1 : 0,
                 query.Kind != ThinkingRole && card is { } shared && ThinkingCard(node, shared) ? 1 : 0,

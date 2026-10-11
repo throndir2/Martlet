@@ -33,7 +33,9 @@ public partial class MainWindow
         catch (OperationCanceledException) { gpus = []; }
         var current = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         double? thinkingGb = thinking ? null : IsLocalOllama(current) ? ListeningAdvisor.OllamaModelGb(current!.ModelId) : 0;
-        var plan = DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb, machine.MemoryGb);
+        var preferences = RecommendationPreferences.Load(store?.DataDirectory);
+        var plan = DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb, machine.MemoryGb, preferences,
+            preferences.PlaysGames(ClusterDevice) ?? GamesHere);
         if (!thinking) return plan;
         var served = await FindServedModelsAsync();
         return DefaultSetup.WithServed(plan, served, gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, machine.MemoryGb);
@@ -96,11 +98,8 @@ public partial class MainWindow
                     if (answer.Changed)
                     {
                         var directory = store?.DataDirectory;
-                        if (!RecommendedSetupMemory.Load(directory).WithServed(!useServed).Save(directory))
-                        {
-                            ActionText.Text = "Martlet couldn't save that choice on this PC.";
+                        if (!SaveRecommendationPreferences(RecommendationPreferences.Load(directory) with { UseServedModels = !useServed }, reopen: false))
                             return false;
-                        }
                         ErrorLog.Info($"Set it all up for me: Use models your apps already run is {(useServed ? "off" : "on")} on this PC.");
                         ActionText.Text = "Checking what fits this PC...";
                         plan = await DefaultPlanAsync(thinking);

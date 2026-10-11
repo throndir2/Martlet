@@ -61,11 +61,9 @@ flowchart TD
     F -->|Not listed| M[Add a computer:<br/>address and pairing code]
     P --> S
     M --> S
-    S[Here's what this PC has<br/>graphics card, memory, processor] --> Q{Where may Martlet<br/>do its thinking?}
-    Q -->|Keep everything on my computers| R[PlacementEngine.Plan<br/>PreferLocal]
-    Q -->|Free online services are fine| O[PlacementEngine.Plan<br/>PreferHosted]
+    S[Here's what this PC has<br/>graphics card, memory, processor] --> Q[Three quick questions<br/>games, online services, reply quality]
+    Q -->|Show my setup: saves the answers| R[PlacementEngine.Plan<br/>with the recommendation preferences]
     R --> L[Here's what fits this PC<br/>per-part resource bars]
-    O --> L
     L -->|Use these suggestions| K{Thinking on NVIDIA Build<br/>and no key yet?}
     K -->|yes| G[Get your free NVIDIA key<br/>steps, paste, consent]
     K -->|no| A
@@ -90,10 +88,29 @@ flowchart TD
    NVIDIA cards, including the memory in use now; otherwise the card Windows
    reports, with its vendor), memory and processor threads, all on this PC,
    and builds the planning contract's `MachineSpecs.ThisPc`.
-3. **Preference.** *Keep everything on my computers* plans with
-   `HostingPreference.PreferLocal` (nothing hosted). *Free online services are
-   fine* plans with `PreferHosted`: Thinking goes to the free NVIDIA Build
-   endpoint so the card goes to the voice and face.
+3. **Three questions** ([Recommendation design](RECOMMENDATION_DESIGN.md#what-martlet-asks)).
+   Martlet asks no question about models, memory or graphics cards.
+   - *Do you play games or use heavy apps on this PC?* Yes or No. Martlet
+     selects Yes when it finds a game library with a game in it on this PC
+     (Steam, Epic, GOG, Xbox, EA, Ubisoft, Riot, Rockstar or Amazon;
+     `GameLibraries.Found` in `PcActivity.cs`), and the hint under the question
+     says so. Yes sets `MachineSpecs.KeepGpuForGames` for this PC: its card
+     takes only Thinking and the voice.
+   - *May Martlet use free online services?* Never / Only as a backup (the
+     default) / Yes, when they're faster or smarter. Never plans with
+     `HostingPreference.PreferLocal`, only as a backup with `Backup` (no live
+     job online; Deep thinking and a backup for Thinking may be), and Yes with
+     `Balanced` (online options compete with local ones).
+   - *What matters more in a conversation?* Quick replies / Balanced (the
+     default) / Smarter replies: Thinking's first word within 0.25 s, 0.4 s or
+     1 s. Martlet takes the smartest model that meets it and leaves room for
+     the voice.
+
+   *Show my setup* saves the answers as the recommendation preferences
+   (`recommendation-preferences.json`, shared with your other computers; the
+   games answer is this PC's) and shows the suggestion. Settings ›
+   *Recommended setup preferences* and Recommended setup's *Your preferences*
+   change them later.
 4. **Suggestion.** `DefaultSetup.Recommend` calls `PlacementEngine.Plan` for
    Thinking, Voice, Listening, Character and Lip-sync (deep thinking, singing
    and pictures are set up later from their own pages). Each part shows what
@@ -128,7 +145,7 @@ flowchart TD
 Accepting the suggestion is one click plus the confirmation; downloads,
 installs, Docker Desktop's terms and the key's consent are still asked
 separately. Home's *Set it all up for me* fixes use the same engine with
-`PreferLocal`.
+`PreferLocal` and the saved reply quality, hearing preference and games answer.
 
 ## Limits
 
@@ -146,7 +163,10 @@ Automation IDs: `TourBegin`, `TourBack`, `TourSkip`; step 1 `WizardNewNetwork`,
 `WizardJoinNetwork`, `WizardScanAgain`, `WizardScanStatus`, `WizardFound-<n>`,
 `WizardConnect-<n>`, `WizardJoinManual`, `TourHost`; step 2
 `WizardSpecRow-Gpu|Vram|Ram|Cpu`, `WizardSpecs`, `WizardSpecsNext`; step 3
-`WizardPreferLocal`, `WizardPreferOnline`; step 4 `WizardPlanSummary`,
+`WizardGamesYes`, `WizardGamesNo`, `WizardGamesHint`, `WizardOnlineNever`,
+`WizardOnlineBackup`, `WizardOnlineYes`, `WizardQualityQuick`,
+`WizardQualityBalanced`, `WizardQualitySmarter`, `WizardQuestionsNext` (it
+saves the answers); step 4 `WizardPlanSummary`,
 `WizardPlanItem-Thinking|Voice|Listening|LipSync`, `WizardJoinSuggestion-<n>`,
 `WizardPlanTotals`, `WizardAccept`, `TourAdvisor`, `TourSetup`; step 5
 `WizardKeyIntro`, `WizardKeySteps`, `WizardKeyOpen`, `WizardKey`,

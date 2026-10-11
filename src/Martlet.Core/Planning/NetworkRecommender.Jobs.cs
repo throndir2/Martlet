@@ -202,7 +202,7 @@ public static partial class NetworkRecommender
             const string job = ClusterJobs.Listening;
             if (!decisions.TryGetValue(job, out var decision) || decision.Frozen || decision.HostId is not null) return;
             if (Find(decision.OptionId) is not { } now || now.IsLocal && !now.RunsInApp) return;
-            if (!now.IsLocal && request.Preference != HostingPreference.PreferLocal) return;
+            if (!now.IsLocal && !HostingRules.LiveLocal(request.Preference)) return;
             var options = catalog.For(PlanComponent.Listening)
                 .Where(o => o.IsLocal && o.UsesGpu && o.HostRoleKind == ListeningRole && NotSlower(o, now))
                 .OrderByDescending(o => o.QualityTier).ThenBy(o => o.FirstWordMs ?? int.MaxValue).ThenBy(o => o.Id, StringComparer.Ordinal);

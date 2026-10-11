@@ -9,6 +9,8 @@ public static class PlacementEngine
 {
     /// <summary>Graphics memory always left for the driver and desktop (at least; 10% of bigger cards).</summary>
     public const double GpuReserveGb = 0.8;
+    /// <summary>The share of a graphics card the planner may use by default (the headroom above: 10%).</summary>
+    public const double DefaultGpuShare = 0.9;
     /// <summary>Processor threads may be shared up to this factor: components rarely work at the same moment.</summary>
     public const double CpuOversubscription = 1.5;
     /// <summary>Score bonus for doing audio-path work (voice, listening, lip-sync, character) and what reads your screen or hears
@@ -158,12 +160,15 @@ public static class PlacementEngine
 
     /// <summary>The graphics memory the planner may use on <paramref name="gpu"/>: its size less what other programs use or
     /// the headroom kept for the driver and desktop (<see cref="GpuReserveGb"/>, or 10% of bigger cards; none for unified
-    /// memory), and nothing when the card is kept for games.</summary>
-    public static double GpuCapacityGb(MachineGpu gpu, bool keepForGames = false)
+    /// memory), at most <paramref name="share"/> of the card (the host graphics card share; the default changes nothing), and
+    /// nothing when the card is kept for games (the While gaming plan; a normal plan passes false and only prefers other
+    /// computers for a PC that games).</summary>
+    public static double GpuCapacityGb(MachineGpu gpu, bool keepForGames = false, double share = DefaultGpuShare)
     {
         ArgumentNullException.ThrowIfNull(gpu);
         var reserve = gpu.UnifiedMemory ? 0 : Math.Max(GpuReserveGb, gpu.VramGb * 0.1);
         var capacity = keepForGames ? 0 : Math.Max(0, gpu.VramGb - Math.Max(gpu.UsedGb, reserve));
+        if (share < DefaultGpuShare && !gpu.UnifiedMemory) capacity = Math.Min(capacity, gpu.VramGb * share);
         return Math.Round(capacity, 2);
     }
 
@@ -251,14 +256,16 @@ public static class PlacementEngine
         {
             this.request = request;
             this.catalog = catalog;
-            nodes = request.Machines.Select(Build).ToList();
+            nodes = request.Machines.Select(spec => Build(spec, spec.IsPrimary ? DefaultGpuShare : request.HostGpuShare)).ToList();
         }
 
         private HostingPreference Preference => request.Preference;
 
-        private static Node Build(MachineSpecs spec)
+        // A PC that games keeps its card's room in the normal plan too (only Thinking and the voice use it there); the While
+        // gaming plan leaves it empty (GpuCapacityGb's keepForGames).
+        private static Node Build(MachineSpecs spec, double share)
         {
-            var cards = spec.Gpus.Select((gpu, i) => new Card(i, gpu, GpuCapacityGb(gpu, spec.KeepGpuForGames))).ToList();
+            var cards = spec.Gpus.Select((gpu, i) => new Card(i, gpu, GpuCapacityGb(gpu, false, share))).ToList();
             return new Node
             {
                 Spec = spec, Cards = cards, RamCapacity = RamCapacityGb(spec), CpuCapacity = CpuCapacity(spec),
@@ -355,11 +362,18 @@ public static class PlacementEngine
         private bool Configured(ComponentOption option) =>
             option.ProviderId is { } provider && request.ConfiguredProviders.Contains(provider, StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Whether a hosted option may be planned: never when the user keeps everything local; configured providers
+        /// <summary>Whether a hosted option may be planned: never when the user keeps everything local, and only for Deep thinking
+        /// and Thinking's backup (<paramref name="backup"/>) when online services are only a backup; configured providers
         /// always; free sign-up providers for Thinking and Deep thinking (the user can get a key for free).</summary>
-        private bool ExternalAllowed(ComponentOption option) =>
-            !option.IsLocal && Preference != HostingPreference.PreferLocal &&
+        private bool ExternalAllowed(ComponentOption option, bool backup) =>
+            !option.IsLocal && HostingRules.Allows(Preference, option.Component, backup) &&
             (Configured(option) || option.FreeTier && option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking);
+
+        private bool ExternalAllowed(ComponentOption option) => ExternalAllowed(option, backup: false);
+
+        /// <summary>Why nothing hosted may do a part, in words.</summary>
+        private string KeptLocalWords => Preference == HostingPreference.Backup
+            ? "you use online services only as a backup" : "you keep everything on your computers";
 
         private static int ReliabilityPenalty(ComponentOption option) => option.Reliability switch
         {
@@ -397,6 +411,8 @@ public static class PlacementEngine
                 Card? card = null;
                 if (option.UsesGpu)
                 {
+                    // A PC that games lends its card only to the live Thinking model and the voice.
+                    if (node.Spec.KeepGpuForGames && option.Component is not (PlanComponent.Thinking or PlanComponent.Voice)) continue;
                     card = node.Cards.Where(c => GpuMatches(option, c.Spec.Vendor, c.Spec.VramGb) && c.Free >= option.GpuGb &&
                             !c.Exclusive && (option.CanShareGpu || c.Used == 0))
                         .OrderBy(c => c.Free).FirstOrDefault();
@@ -533,7 +549,7 @@ public static class PlacementEngine
             var local = catalog.For(component).Where(o => o.IsLocal && !o.UsesThinking).ToList();
             if (local.Count > 0 && local.All(o => o.Gpu == GpuRequirement.Nvidia) && !nodes.Any(n => n.Spec.HasNvidia && !n.Spec.KeepGpuForGames))
                 return DropReason.NeedsNvidia;
-            if (Preference == HostingPreference.PreferLocal && catalog.For(component).Any(o => !o.IsLocal)) return DropReason.KeptLocal;
+            if (!HostingRules.Allows(Preference, component) && catalog.For(component).Any(o => !o.IsLocal)) return DropReason.KeptLocal;
             return local.Count == 0 ? DropReason.NoProvider : DropReason.NoRoom;
         }
 
@@ -546,7 +562,7 @@ public static class PlacementEngine
                 : $" {smallest.DisplayName} needs about {Gb(smallest.Peak.RamGb)} GB of free memory.";
             return DropReasonFor(component) switch
             {
-                DropReason.KeptLocal => $"{name} has no room on your computers, and you chose to keep everything local.{need}",
+                DropReason.KeptLocal => $"{name} has no room on your computers, and {KeptLocalWords}.{need}",
                 DropReason.NeedsNvidia => $"{name} needs an NVIDIA graphics card that is free for Martlet.{need}",
                 _ => $"No computer has room for {name.ToLowerInvariant()} after the more important parts.{need}"
             };
@@ -572,10 +588,34 @@ public static class PlacementEngine
 
         private IEnumerable<ComponentOption> LocalThinking(bool hearingOnly) => catalog.For(PlanComponent.Thinking)
             .Where(o => o.IsLocal && (!hearingOnly || o.HearsAudio))
-            .OrderBy(o => o.UsesGpu ? 0 : 1).ThenByDescending(o => o.HearsAudio).ThenBy(o => o.FirstWordMs ?? int.MaxValue);
+            .OrderBy(o => o.UsesGpu ? 0 : 1).ThenByDescending(o => request.PreferHearing && o.HearsAudio).ThenBy(o => o.FirstWordMs ?? int.MaxValue);
 
-        private IEnumerable<ComponentOption> HostedThinking() => catalog.For(PlanComponent.Thinking)
-            .Where(ExternalAllowed)
+        /// <summary>Thinking's local model on a graphics card (docs/RECOMMENDATION_DESIGN.md, "Live Thinking"): with a reply
+        /// quality, the smartest model that meets its first-word target (<see cref="LiveThinking.Order"/>) and leaves room for the
+        /// voice still to come; when none does, or with no reply quality, the fastest model that works.</summary>
+        private ComponentOption? LocalGpuThinking()
+        {
+            var fastest = LocalThinking(hearingOnly: false).Where(o => o.UsesGpu).FirstOrDefault(Fits);
+            if (request.Quality is not { } quality) return fastest;
+            var target = RecommendationPreferences.TargetMs(quality);
+            var voice = request.Wants(PlanComponent.Voice) && !assignments.Any(a => a.Component == PlanComponent.Voice)
+                ? catalog.For(PlanComponent.Voice).Where(o => o.IsLocal && o.UsesGpu).OrderByDescending(Score).ThenBy(o => o.GpuGb).FirstOrDefault(Fits)
+                : null;
+            foreach (var option in LiveThinking.Order(catalog.For(PlanComponent.Thinking).Where(o => o.IsLocal && o.UsesGpu), quality, request.PreferHearing)
+                .Where(o => LiveThinking.Meets(o, target)))
+            {
+                if (!Fits(option)) continue;
+                if (voice is null) return option;
+                var placed = Place(option, AssignmentRole.Primary, "");
+                var room = Fits(voice);
+                Unplace(placed);
+                if (room) return option;
+            }
+            return fastest;
+        }
+
+        private IEnumerable<ComponentOption> HostedThinking(bool backup = false) => catalog.For(PlanComponent.Thinking)
+            .Where(o => ExternalAllowed(o, backup))
             .OrderByDescending(o => (Configured(o) ? 20 : 0) + (o.HearsAudio ? 10 : 0) + o.QualityTier * 10 - ReliabilityPenalty(o) * 2)
             .ThenBy(o => o.FirstWordMs ?? int.MaxValue);
 
@@ -586,8 +626,9 @@ public static class PlacementEngine
                 dropped.Add(new(PlanComponent.Thinking, DropReason.NotWanted, "Thinking is turned off."));
                 return;
             }
-            // The fastest local model that hears, on a graphics card: about 0.15 s to its first sentence, private and always up.
-            var localGpu = LocalThinking(hearingOnly: false).Where(o => o.UsesGpu).FirstOrDefault(Fits);
+            // A local model on a graphics card: private and always up. With a reply quality, the smartest model that meets its
+            // first-word target and leaves room for the voice; else (or when none does) the fastest model that hears.
+            var localGpu = LocalGpuThinking();
             var hosted = HostedThinking().FirstOrDefault();
             var localCpu = LocalThinking(hearingOnly: false).Where(o => !o.UsesGpu).FirstOrDefault(Fits);
             ComponentOption? chosen;
@@ -600,7 +641,10 @@ public static class PlacementEngine
             else if (localGpu is not null)
             {
                 chosen = localGpu;
-                why = $"{localGpu.DisplayName} on the graphics card: the fastest first word (about {Seconds(localGpu.FirstWordMs ?? 0)}), " +
+                var target = request.Quality is { } quality ? RecommendationPreferences.TargetMs(quality) : (int?)null;
+                why = $"{localGpu.DisplayName} on the graphics card: " + (target is { } most && LiveThinking.Meets(localGpu, most)
+                        ? $"the smartest model whose first word comes within {Seconds(most)} (about {Seconds(localGpu.FirstWordMs ?? 0)}), "
+                        : $"the fastest first word (about {Seconds(localGpu.FirstWordMs ?? 0)}), ") +
                     "private, and it keeps working without the internet." + (localGpu.HearsAudio ? " It hears your voice itself." : "");
             }
             else if (hosted is not null)
@@ -613,15 +657,15 @@ public static class PlacementEngine
             {
                 chosen = localCpu;
                 why = $"{localCpu.DisplayName}: no graphics card has room" +
-                    (Preference == HostingPreference.PreferLocal ? " and you keep everything local" : "") +
+                    (HostingRules.LiveLocal(Preference) ? $" and {KeptLocalWords}" : "") +
                     $", so it runs on the processor; replies start slowly (about {Seconds(localCpu.FirstWordMs ?? 0)}).";
             }
             else
             {
                 var lack = !catalog.For(PlanComponent.Thinking).Any(o => !o.IsLocal && Configured(o)) ? "no free API key is saved"
-                    : Preference == HostingPreference.PreferLocal ? "you keep everything on your computers"
+                    : HostingRules.LiveLocal(Preference) ? KeptLocalWords
                     : "no hosted provider is allowed";
-                dropped.Add(new(PlanComponent.Thinking, Preference == HostingPreference.PreferLocal ? DropReason.KeptLocal : DropReason.NoRoom,
+                dropped.Add(new(PlanComponent.Thinking, HostingRules.LiveLocal(Preference) ? DropReason.KeptLocal : DropReason.NoRoom,
                     $"No computer has room for a Thinking model, and {lack}. Martlet can't reply until one is set up."));
                 return;
             }
@@ -641,7 +685,7 @@ public static class PlacementEngine
                     (local.UsesGpu ? "." : $" (slower, about {Seconds(local.FirstWordMs ?? 0)} to the first word)."));
                 return;
             }
-            var other = HostedThinking().FirstOrDefault(o => o.ProviderId != primary.Option.ProviderId);
+            var other = HostedThinking(backup: true).FirstOrDefault(o => o.ProviderId != primary.Option.ProviderId);
             if (other is not null)
             {
                 Place(other, AssignmentRole.Fallback, $"{other.DisplayName} takes over when {primary.Option.DisplayName} is down or rate-limited.");
@@ -706,8 +750,8 @@ public static class PlacementEngine
             var primary = assignments.FirstOrDefault(a => a.Component == PlanComponent.Thinking && a.Role == AssignmentRole.Primary);
             if (primary is { IsExternal: true } && primary.Option.Reliability != OptionReliability.High)
                 notes.Add($"{primary.Option.DisplayName} is free but can be slow, rate-limited or retire its model without notice.");
-            if (nodes.Any(n => n.Spec.KeepGpuForGames && n.Spec.Gpus.Count > 0))
-                notes.Add("Graphics cards kept for games are left alone; Martlet uses only the processor there.");
+            foreach (var node in nodes.Where(n => n.Spec.KeepGpuForGames && n.Spec.Gpus.Count > 0))
+                notes.Add($"You play games on {node.Spec.Name}, so its graphics card takes only Thinking and the voice.");
             if (nodes.Any(n => n.Cards.Any(c => c.Spec.UnifiedMemory)))
                 notes.Add("Apple Silicon shares memory between the processor and graphics; Martlet counts both against main memory.");
             if (nodes.Any(n => n.Spec.Gpus.Any(g => g.Vendor is GpuVendor.Amd or GpuVendor.Intel)))
