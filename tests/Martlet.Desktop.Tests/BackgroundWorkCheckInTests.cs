@@ -14,6 +14,9 @@ public sealed class BackgroundWorkCheckInTests
     public async Task ACheckInStartsAThinkThatContinuesTheLastExchangeAndComesBack()
     {
         await using var fixture = await LiveFixture.Create();
+        // Web research is on by default; this test turns it off (saved as false) so research is refused and never reads the web.
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings! with { Generation = new() { ThinkLonger = new() { WebResearch = false } } });
         var controller = fixture.Controller;
         Assert.True(controller.OffersBackgroundWork);
         var think = Call(ThinkLonger.Name, """{"task":"Plan a three-day trip to Kyoto (FIXTURE)","reason":"many steps"}""");
@@ -27,7 +30,7 @@ public sealed class BackgroundWorkCheckInTests
         var exchange = fixture.Start("Can you plan my Kyoto trip?");
         await fixture.Finish(exchange);
 
-        // Bad arguments and research while Web research is off don't start anything.
+        // Bad arguments and research while Web research is turned off don't start anything.
         Assert.True(controller.StartBackgroundWork(Call(ThinkLonger.Name, "{}"), "Actions").IsError);
         var research = controller.StartBackgroundWork(Call(WebResearch.Name, """{"topic":"Kyoto temples","what_to_find":"opening hours"}"""), "Actions");
         Assert.True(research.IsError);

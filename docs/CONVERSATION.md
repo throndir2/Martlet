@@ -1316,10 +1316,12 @@ character that it'll look into it, calls `research` in the same reply and keeps
 talking; a few minutes later it brings up what it found (*"...oh, and I found out
 about those cat toys. Wanna see the report?"*) and shows the report on a yes.
 
-**Consent, off by default.** Searching sends the search words to a third party,
-so it is a switch of its own on Companion › Thinking pool › *Web research*
+**On by default, with its own switch.** Searching sends the search words to a
+third party, so it is a switch of its own on Companion › Thinking pool › *Web research*
 (`WebResearchOn`, saved with the reply settings as `ThinkLonger.WebResearch`,
-so all your computers share it, like Deep thinking's Off). Its disclosure
+so all your computers share it, like Deep thinking's Off). It is on by default,
+so asking Martlet to look something up works at once; turning it off saves
+`WebResearch: false`, and turning it back on drops the value again. Its disclosure
 (`WebResearchDisclosure`) says what leaves the PC: the search words go to
 DuckDuckGo, each page read sees the PC's internet address, and what the pages
 say goes to where Deep thinking thinks with the recent conversation. Deep
@@ -1413,7 +1415,7 @@ Martlet does now, and keeps the user's no. The prompt tells the model to use
 `read_up_on`, never `research` or `think_longer`, to read up on an app, and
 never to say it read up on something before a note says its guide is ready.
 
-**The job** (`guide`: one at a time, 4 an hour, 20 minutes, *Reading up on*,
+**The job** (`guide`: one at a time, 4 an hour, no time limit, *Reading up on*,
 not on the Thinking pool and no model) reads the app's pages
 (`WebGuideBuilder`), cuts them into sections and keeps the guide; its result
 says how many pages it read, and it is brought up like other finished work. The

@@ -62,7 +62,7 @@ internal static class ThinkLongerCheck
             {
                 enabled = settings.On, effort = settings.HowHard.ToString(), timeLimit = "none", hourlyLimit = "none",
                 delivery = settings.When.ToString(), chosen = generation?.ThinkLonger is not null,
-                webResearch = settings.WebResearch == true, researches = settings.Researches
+                webResearch = settings.WebResearchOn, researches = settings.Researches
             },
             thinking = route is null ? null : new
             {

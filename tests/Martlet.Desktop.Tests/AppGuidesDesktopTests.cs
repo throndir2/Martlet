@@ -163,7 +163,7 @@ public sealed class AppGuidesDesktopTests
         var asked = fixture.Start("Can you read up on Stardew Valley please?");
         await fixture.Finish(asked);
         Assert.Empty(ToolNames(fixture.Llm.Body));
-        Assert.Contains("you've started reading up on it in the background now", Notes(fixture.Llm.Body));
+        Assert.Contains("you're reading up on it in the background now", Notes(fixture.Llm.Body));
         await fixture.Advance(() => guides.Building is null && guides.Library.Apps.Any(a => a.BuiltAt is not null));
         Assert.Equal("Stardew Valley", Assert.Single(guides.Library.Apps).Name);
 

@@ -33,8 +33,9 @@ public static partial class AppGuideTools
     /// <summary>The characters of a section search_guide returns at most.</summary>
     public const int SearchCharacters = 900;
 
-    /// <summary>A guide takes at most <see cref="GuideBuildLimits.Time"/> (15 minutes); the job's limit leaves room to save it.</summary>
-    public static TimeSpan TimeLimit { get; } = TimeSpan.FromMinutes(20);
+    /// <summary>A read has no time limit: it reads the whole wiki until it ends, the guide is full or it is stopped, and keeps
+    /// what it read every few minutes (<see cref="AppGuideService.DefaultKeepEvery"/>).</summary>
+    public static TimeSpan? TimeLimit => null;
 
     /// <summary>Reading up: one at a time, 4 an hour, network only (no model), "Reading up on" in the talk window.</summary>
     public static BackgroundJobKind Kind { get; } = new(KindName, 1, 4, TimeLimit, Doing: "Reading up on");
@@ -57,9 +58,9 @@ public static partial class AppGuideTools
         """{"type":"object","properties":{"app":{"type":"string","description":"The game or app the user said no to."}},"required":["app"],"additionalProperties":false}""";
 
     public static TextToolDefinition ReadUpDefinition { get; } = new(ReadUpName,
-        "Read up on a game or app in the background (a few minutes): its fan wiki or help pages, kept on this PC as a guide, so " +
-        "later questions about it get answers from the guide. Only when the user asks you to read up on it. Tell them first. One " +
-        "at a time.", ReadUpParametersJson);
+        "Read up on a game or app in the background: its whole fan wiki or help pages, kept on this PC as a guide that grows as " +
+        "it reads, so later questions about it get answers from the guide. Only when the user asks you to read up on it. Tell " +
+        "them first. One at a time.", ReadUpParametersJson);
 
     public static TextToolDefinition SearchDefinition { get; } = new(SearchName,
         "Search a guide you read about a game or app for the user's question (instant). Notes already bring the best sections " +
@@ -130,7 +131,7 @@ public static partial class AppGuideTools
     public static string Label(string app) => CleanName(app) is { Length: > 0 } name ? name : "an app";
 
     public static string Started(BackgroundJob job, string app, bool toldUser) =>
-        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(TimeLimit) }) + "\n" +
+        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none" }) + "\n" +
         (toldUser
             ? $"You're reading up on {app} in the background now. You already told the user, so add nothing more, or at most a few words."
             : $"You're reading up on {app} in the background now. Tell the user now, in one short sentence in character, that you'll " +
@@ -155,9 +156,9 @@ public static partial class AppGuideTools
     /// read_up_on (a Thinking route without function calling): Martlet started reading up itself (<paramref name="start"/>; null
     /// when it already reads up on that app).</summary>
     public static string ReadingNote(string app, BackgroundJobStart? start) => start is null || start.Job is not null
-        ? $"(Martlet's note: the user asked you to read up on {app}, and you've started reading up on it in the background now, a " +
-          "few minutes. Tell them briefly, in character, and that you'll tell them when you're done. Don't make up what you'll " +
-          "find, and don't say you're done before a note says the guide is ready.)"
+        ? $"(Martlet's note: the user asked you to read up on {app}, and you're reading up on it in the background now. Tell " +
+          "them briefly, in character, and that you'll tell them when you're done. Don't make up what you'll find, and don't say " +
+          "you're done before a note says the guide is ready.)"
         : $"(Martlet's note: the user asked you to read up on {app}, but you couldn't start now: {start.Message ?? start.Refusal}. " +
           "Tell them briefly, in character.)";
 

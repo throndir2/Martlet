@@ -33,13 +33,17 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
    asks is searched in its guide. The best matching sections go with the
    message as reference notes, and the reply uses them. A message that isn't
    about the app gets nothing.
-5. When Martlet is done, it says so in character (*"I've read up on Elden
-   Ring: 42 pages."*).
+5. Martlet reads the whole wiki it finds, so a big wiki takes a while (about
+   one page a second). It keeps what it read every few minutes, so questions
+   get answers from the guide while it is still reading. When Martlet is done,
+   it says so in character (*"I've read up on Elden Ring: 2,400 pages."*).
 6. The App guides page lists every app: its pages, size, when it was read, the
    pages it reads from, its program names, the last problem and whether the
    user said no. Each app has **Read up now** (or **Read again**), **Delete**
-   and, after a no, **Allow again**. The page also says what is in front, as App
-   guides sees it.
+   and, after a no, **Allow again**. The app being read has **Stop reading**,
+   which ends the read and keeps what Martlet read. **Cancel** in the talk
+   window's task list also ends it. The page also says what is in front, as
+   App guides sees it.
 
 ## How it works
 
@@ -78,16 +82,24 @@ files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
   forum and encyclopedia sites (Wikipedia) are left out. A result counts only
   when its title or address names the app (its whole name, or more than half
   of its words).
+- **One wiki**: a site that Martlet found and that gave at least 100 pages
+  (`WebGuideBuilder.OneSiteIsEnough`) is the guide's wiki. Martlet does not
+  look for a second site then, because that is usually another copy of the
+  same wiki (a Fandom and a wiki.gg site). A smaller site can have a second
+  site with it (at most 2 sites).
 - **MediaWiki sites** (Fandom, wiki.gg and most game wikis) are read through
   their `api.php`, found from the farm's address or from the page's `EditURI`
-  link, search link or script path. The pages to read are the main page's
-  links and the site's most linked pages (`Mostlinked`), scored by both and by
-  size. Stubs, disambiguation pages, version history and very large pages are
-  left out. Each page picked from a category lowers the score of the others in
-  that category, so a guide covers the game's different parts (fish, cooking,
-  minerals), not one navigation box (every villager). Then come the pages that
-  the pages read link to most. Each page comes from `action=parse` with
-  redirects followed and edit links and the table of contents off.
+  link, search link or script path. The pages to read first are the main
+  page's links and the site's most linked pages (`Mostlinked`), scored by both
+  and by size. Stubs, disambiguation pages, version history and very large
+  pages are left out. Each page picked from a category lowers the score of the
+  others in that category, so the first pages cover the game's different parts
+  (fish, cooking, minerals), not one navigation box (every villager). Then come
+  the pages that the pages read link to most, and then every other content
+  page of the wiki (`generator=allpages`, 500 titles a request, in title
+  order), so Martlet reads the whole wiki. Each page comes from
+  `action=parse` with redirects followed and edit links and the table of
+  contents off.
 - **Other sites** are read breadth first through links on the same site and
   under the start page's folder (its parent while the folder has fewer than 5
   of the page's links), each page once by its canonical address. Links with a
@@ -118,12 +130,23 @@ files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
   the same safe web client as web research (`WebAccess`: public internet
   addresses only, every redirect checked, size and time caps, at most 2 MB a
   document).
-- **Caps**: 60 pages, 12 MB downloaded, 2 sites and 15 minutes a guide by
-  default (`GuideBuildLimits`), and at most 3 requests a page (plus 30). A
-  pause that would pass the time cap ends the job, and cancelling stops it at
-  once.
+- **Caps**: by default (`GuideBuildLimits`) there is no cap on pages, bytes
+  downloaded or time: Martlet reads the whole wiki it finds, from at most 2
+  sites. Reading ends when the wiki has no more pages, when the guide store
+  can hold no more (below), when the owner stops it (**Stop reading**, or
+  **Cancel** in the talk window) or when Martlet closes. A guard ends a job
+  whose requests give no pages: at most 3 requests a page read, plus 100 to
+  find the wiki. Checks pass small caps (pages, bytes, time); then the guard
+  is 3 requests a page of the cap, plus 30, and a pause that would pass the
+  time cap ends the job. Cancelling stops it at once.
+- **Kept while reading**: every 3 minutes (`AppGuideService.KeepEvery`) the
+  read keeps the pages read so far as the app's guide and makes its index
+  again. So a long read can be searched as it grows, and a read that ends
+  early (cancelled, or Martlet closed) keeps what it read until the last
+  keep. **Stop reading** keeps everything read up to that moment.
 - **Progress** is a few plain words ("Looking for its wiki", "Reading the
-  wiki's page list", "Reading pages (3 of at most 60)"), never a link.
+  wiki's page list", "Reading page 3", "Saving what it read so far"), never a
+  link.
 
 ### Searching a guide (on the reply's path, with no added wait)
 
@@ -203,8 +226,17 @@ continues.
 
 **The store** (`FileAppGuideStore`): `guides\library.json` and one
 `<key>.guide.json` for each app. Each file starts with its `formatVersion`.
-The store keeps at most 200 apps, guide files of at most 20 MB, at most
-25,000 chunks of at most 4,000 characters each. It refuses a file that it
+The store keeps at most 200 apps, and a guide of at most 25,000 pages and
+100,000 chunks of at most 4,000 characters each, in a file of at most 200 MB.
+These bounds are what one guide needs to work: a guide is loaded whole and its
+index is kept in memory (about 4.5 KB a chunk with its index, so about 440 MB
+at 100,000 chunks), and a search over 100,000 chunks takes about 0.7 ms. That
+holds the whole wiki of most games (a few thousand pages make 10,000 to 30,000
+chunks). When a read has more, the guide keeps the pages read first (the
+best ones on a MediaWiki site), and the read ends. A file that would pass
+200 MB is refused with an `AppGuideTooLargeException` before it replaces the
+earlier file; reading up then keeps four fifths of the pages and tries again.
+The store refuses a file that it
 cannot read, that breaks a bound or that a newer Martlet wrote, with an
 `AppGuideFileException` (an `IOException`) that names the file, and it never
 resets the library. Saving a whole new library over an unreadable one keeps a
@@ -324,11 +356,12 @@ user's own words *read up on X* start the job instead
   game you started* prompts; without one, the main window reads up by itself.
   The setting is kept as `askWhenStarted` in `library.json`, so a no to asking
   stays a no to reading.
-- **The job** (`guide`: one at a time, 4 an hour, 20 minutes, *Reading up on*)
-  runs the wiki reader, the chunker and the store; no model is asked. The app is
-  on the list from the start. Its result tells the reply how many pages it read,
-  or why it failed. Reading up from the page runs in the conversation when one
-  runs, else on its own.
+- **The job** (`guide`: one at a time, 4 an hour, no time limit, *Reading up
+  on*) runs the wiki reader, the chunker and the store; no model is asked. The
+  app is on the list from the start. Its result tells the reply how many pages
+  it read, or why it failed. Reading up from the page runs in the conversation
+  when one runs, else on its own. **Cancel** in the talk window or **Stop
+  reading** on the page ends it.
 - **Notes**: on each of the user's own messages, while App guides are on, the
   guide of the app the words name (else of the app in front) is searched with
   the user's words. Sections the conversation already carries aren't sent
@@ -341,11 +374,14 @@ user's own words *read up on X* start the job instead
   `app_guides_status` reads a data folder's library; the page's status lines
   are `SafeValues` (see [MCP](MCP.md)).
 
-**Latency.** On a full-size guide (2,000 sections) the notes step takes about
-0.13 ms (median; 0.23 ms worst) for a message about the app and nothing while App guides are
-off; the first search in a new process takes about 3 ms, because building an
-index also loads the search code. While on, the three tools and the prompt add
-about 2.5 KB to every request, the same every time, so prompt caches keep them.
+**Latency.** On a guide of 2,000 sections the notes step takes about 0.2 ms
+(median) for a message about the app, and nothing while App guides are off.
+On a whole-wiki-size guide of 25,000 sections it takes about 0.6 ms (median;
+0.35 ms for an unrelated message), and its index takes about 1.2 s to build,
+off the reply's path. The first search in a new process takes about 3 ms,
+because building an index also loads the search code. While on, the three
+tools and the prompt add about 2.5 KB to every request, the same every time,
+so prompt caches keep them.
 
 ## Files
 

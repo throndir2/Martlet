@@ -161,8 +161,9 @@ Every fetch goes through one fetcher in the desktop process:
 
 ## Privacy and consent
 
-- Web research is **off by default**. Turning it on says what leaves the PC:
-  search queries, written by the model from the conversation, go to every
+- Web research is **on by default**, so asking Martlet to look something up
+  works at once. Its card says what leaves the PC, and the owner can turn it off
+  there: search queries, written by the model from the conversation, go to every
   enabled backend, and fetched sites see the request.
 - The model is told to keep personal details (names, addresses, health,
   anything from memory) out of queries unless the user asked for exactly that.
@@ -189,7 +190,7 @@ The same change that adds research adds:
 1. **R0: first slice** (in progress in the *Web research background job*
    session): `research` job kind and the `research(topic, what_to_find)` tool,
    the loop on Deep thinking, the safe fetcher, a built-in search, the `report`
-   creation kind, the WebResearch switch and `research_check`.
+   creation kind, the WebResearch switch (on by default) and `research_check`.
 2. **R1: backends**: `IWebSearchProvider` with SearXNG (URL or host role),
    Ollama web search, Tavily, Brave and Exa; fan-out with rank fusion; Doctor
    probes.

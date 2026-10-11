@@ -801,7 +801,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and, since Martlet started, how many requests were stopped, made more important and tried again; counts only). The
         // box and both choices save thinking-pool.json, so they need --allow-ui-effects.
         "ThinkingPoolPreempt", "ThinkingPoolRaiseAfterStops", "ThinkingPoolRetries", "ThinkingPoolPriorityStatus",
-        // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
+        // Companion › Deep thinking › Web research (on by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
         "WebResearchStatus", "WebResearchDisclosure",
@@ -1116,10 +1116,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveJobState-",
         // Companion › App guides: each app on the list, its name ("AppGuideName-elden-ring" reads "Elden Ring") and its line
         // ("AppGuideStatus-elden-ring" reads "42 pages, 3.1 MB, read 10 Oct 2026, 18:40. Reads from eldenring.wiki.fextralife.com."
-        // or "No guide yet." or "Reading up now: Reading pages (3 of at most 60)."; never a guide's text). Its Read up now or Read
-        // again (AppGuideRead-<key>) reads up on the web, Allow again (AppGuideAskAgain-<key>) and Delete (AppGuideDelete-<key>)
-        // save guides\library.json, so they need --allow-ui-effects; typing in Add an app (AppGuideAddName, AppGuideAddPrograms,
-        // AppGuideAddSites) is ui_set_text, and Add (AppGuideAdd) and Add and read up (AppGuideAddRead) need --allow-ui-effects too.
+        // or "No guide yet." or "Reading up now: Reading page 3."; never a guide's text). Its Read up now or Read again
+        // (AppGuideRead-<key>) reads up on the web, Stop reading (AppGuideStop-<key>, on the app being read) ends the read and
+        // keeps what it read, Allow again (AppGuideAskAgain-<key>) and Delete (AppGuideDelete-<key>) save guides\library.json, so
+        // they need --allow-ui-effects; typing in Add an app (AppGuideAddName, AppGuideAddPrograms, AppGuideAddSites) is
+        // ui_set_text, and Add (AppGuideAdd) and Add and read up (AppGuideAddRead) need --allow-ui-effects too.
         "AppGuideName-", "AppGuideStatus-",
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), and for every check-in, built-in or

@@ -13,6 +13,10 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
     /// that can't be read).</summary>
     public const int ExtraTries = 4;
 
+    /// <summary>A site found by Martlet that gave this many pages is the guide's wiki: Martlet doesn't look for another one (it
+    /// would read a second copy of the same wiki).</summary>
+    public const int OneSiteIsEnough = 100;
+
     /// <summary>The pause between two requests to one site (checks pass one that doesn't sleep).</summary>
     internal Func<TimeSpan, CancellationToken, Task> Wait { get; init; } = Task.Delay;
 
@@ -25,9 +29,9 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
         if ((fetch as IWebDocuments ?? search as IWebDocuments) is not { } documents)
             return await ReadPagesAsync(request.Name, sites, limits, progress, cancellationToken).ConfigureAwait(false);
 
-        using var time = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        time.CancelAfter(limits.Time);
-        var run = new GuideRun(documents, limits, progress, Wait, time.Token);
+        using var time = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, request.Stop);
+        if (limits.Time is { } most) time.CancelAfter(most);
+        var run = new GuideRun(documents, limits, progress, Wait, time.Token, request.Keep, request.KeepEvery);
         var job = new Job(run, request.Name, search);
         var late = false;
         try
@@ -39,6 +43,7 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
             late = true;
         }
         var problem = run.Pages.Count > 0 ? null
+            : request.Stop.IsCancellationRequested ? "reading up was stopped"
             : late || run.TimeUp ? "reading up took too long"
             : !job.Found && job.SearchProblem is not null ? "the web search didn't work (" + job.SearchProblem + ")"
             : !job.Found ? "no wiki or help pages about it were found"
@@ -70,9 +75,9 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
         long bytes = 0;
         foreach (var start in starts.Take(limits.Sites))
         {
-            if (pages.Count >= limits.Pages || bytes >= limits.Bytes) break;
+            if (limits.Pages is { } cap && pages.Count >= cap || limits.Bytes is { } most && bytes >= most) break;
             if (!Uri.TryCreate(start, UriKind.Absolute, out var url) || !WebAccess.IsWeb(url)) { failed++; continue; }
-            progress?.Report($"Reading pages ({pages.Count + 1} of at most {limits.Pages})");
+            progress?.Report(GuideRun.ReadingWords(pages.Count, limits.Pages));
             try
             {
                 var page = await fetch.FetchAsync(url, cancellationToken).ConfigureAwait(false);
@@ -96,6 +101,9 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
         public string? SearchProblem { get; private set; }
 
         private bool Done => run.Full || run.Hosts.Count >= run.Limits.Sites || tries >= run.Limits.Sites + ExtraTries;
+
+        // Martlet looks for another site only while the sites it found gave few pages.
+        private bool Enough => Done || run.Pages.Count >= OneSiteIsEnough;
 
         public async Task RunAsync(IReadOnlyList<string> sites)
         {
@@ -130,7 +138,7 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
                 }
             foreach (var site in found.OrderByDescending(s => s.Articles))
             {
-                if (Done) return;
+                if (Enough) return;
                 Found = true;
                 tries++;
                 await MediaWikiReader.ReadAsync(run, site, []).ConfigureAwait(false);
@@ -144,7 +152,7 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
             var queries = WikiDiscovery.Queries(name);
             for (var i = 0; i < queries.Count; i++)
             {
-                if (Done || i > 0 && (run.Pages.Count > 0 || !await run.PauseAsync(run.Limits.Delay).ConfigureAwait(false))) return;
+                if (Enough || i > 0 && (run.Pages.Count > 0 || !await run.PauseAsync(run.Limits.Delay).ConfigureAwait(false))) return;
                 IReadOnlyList<WebSearchResult> results;
                 try { results = await search.SearchAsync(queries[i], run.Token).ConfigureAwait(false); }
                 catch (WebResearchException error)
@@ -154,7 +162,7 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
                 }
                 foreach (var url in WikiDiscovery.Rank(results, name))
                 {
-                    if (Done) return;
+                    if (Enough) return;
                     if (!tried.Contains(url.Host)) await ReadSiteAsync(url).ConfigureAwait(false);
                 }
             }
