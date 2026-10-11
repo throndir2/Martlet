@@ -4233,6 +4233,55 @@ temporary folder of its own, deleted afterwards (`savedFirst` true,
 `savedAgain` false while nothing changed, `graphicsGb`, `ContextTokens`), with
 `ok`. Keyless; downloads no model; saves nothing.
 
+`model_catalog_status`, `model_catalog_lookup` and `model_catalog_refresh` show
+Martlet's internal model catalog ([Model catalog](MODEL_CATALOG.md)). All take
+an optional absolute `dataDirectory`; the script gives them a disposable one.
+
+- `model_catalog_status`: `using` (`snapshot`, shipped with Martlet, or `daily
+  copy`), `built`, `folder` (where the daily copy is: `%ProgramData%\Martlet`
+  for the default data folder, else the data folder itself) and
+  `sharedByEveryWindowsUser`; `snapshot` and `dailyCopy` (`file` `none`,
+  `loaded` or `unreadable`) with each source's read date and item count;
+  `refresh` (`LastAttempt`, `LastFinished`, `LastSuccess`, `LastSaved`,
+  `Problem`, `due`, `nextDue`, and for each source `Tried`, `Read`, `Items`,
+  `Bytes`, `Seconds` and `Problem`); `catalog` counts (models, routes, open
+  weights, sees, hears, takes video, calls tools, inputs the sources disagree
+  on, ranked, LMArena rated, free and retired routes, routes per provider).
+  Read-only.
+- `model_catalog_lookup` with `name`: any name of a model (a Hugging Face
+  repository, an OpenRouter, NVIDIA Build, models.dev or provider model ID, a
+  `:free` variant, an Ollama tag such as `gemma4:26b`, `hf.co/{repo}:{quant}`,
+  or an LMArena name). Returns `found`, `how` it was found, and `model`: `Key`,
+  `Name`, `names` on each route, `Family`, `Size`, `inputs` (`text`, `image`,
+  `audio`, `video`, `videoAsFrames`: `yes`, `no`, `unknown` or `unknown
+  (sources disagree)`), `openWeights`, `locallyHostable`, `local` (when the
+  catalog looked it up on Hugging Face: `installName`, `quantization`,
+  `downloadGb`, `memoryAt8192`, `graphicsGb`, `systemMemoryGb`, the other
+  `quantizations` and `Problems`), `facts` (each fact's `value`, `from`,
+  `disagree` and every source's `answers` with `source`, `value`, `note` and
+  `checked`) and `smartness` (`Words`, `Tier`, `From`, `lmArenaText`,
+  `lmArenaVision`, `Credit` "LMArena (CC-BY-4.0)" and `lmArenaName`; never the
+  Artificial Analysis index or the rank). `routes` lists each server's
+  `Provider`, `ModelId`, `BaseUrl`, `Free`, `FreeNote`, `Context`, `Expires`,
+  `Retired`, `Deprecated`, `inputs`, `tools`, `reasoning` and `facts`. A name
+  the catalog doesn't know returns `found` false and the quality tier from the
+  name. Read-only.
+- `model_catalog_refresh` without `live` rehearses the production
+  `ModelCatalogRefresh` against FIXTURE sources on 127.0.0.1 (NOT the real
+  ones) and the FIXTURE local model facts, in a temporary folder deleted
+  afterwards. `report.steps`: `reads-every-source`, `no-analysis-index-kept`,
+  `once-a-day`, `gemma-4-26b-video`, `qwen3.5-122b-audio`,
+  `gemma-4-31b-provider-split`, `nvidia-route`, `expired-route-retired`,
+  `find-by-any-name`, `smartness`, `config-json-decides-by-size`,
+  `local-memory`, `keeps-last-good` (OpenRouter answers 500 and vLLM's answer
+  is over its size limit) and `waits-while-replying` (no request while a reply
+  is held for two seconds), each with `ok` and `detail`. `live: true` reads the
+  real public sources (no key) into the data folder's daily copy when a refresh
+  is due (`force: true`: now), and returns `Saved`, `Models`, `Routes` and the
+  status. With `snapshotPath` (absolute) it writes the release snapshot instead,
+  only when every source was read (`snapshotWritten`, `bytes`, `sources`,
+  `catalog`); `scripts\Update-ModelCatalog.ps1` runs this.
+
 `local_model_servers` is Companion › Thinking › This PC › *A model app you
 already use* without the window ([Local model apps](LOCAL_MODEL_APPS.md)).
 `apps` lists the apps Martlet looks for, each with `Id`, `Name`, `BaseUrl`
@@ -8968,7 +9017,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

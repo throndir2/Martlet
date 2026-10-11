@@ -1320,6 +1320,42 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         {
             martletDirectory = new { type = "string" }
         }),
+        Tool("model_catalog_status", "Martlet's internal model catalog (docs/MODEL_CATALOG.md): which copy is in use (the snapshot " +
+            "shipped with Martlet or the daily copy in the PC folder, %ProgramData%\\Martlet for the default data folder, else the data " +
+            "folder itself), when each was built and read each source, what the last daily refresh did (lastAttempt, lastFinished, " +
+            "lastSuccess, lastSaved, due, nextDue, problem, and per source: tried, read, items, bytes, seconds, problem), and counts " +
+            "(models, routes, open weights, sees, hears, takes video, calls tools, inputs the sources disagree on, ranked, LMArena " +
+            "rated, free and retired routes, routes per provider). Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("model_catalog_lookup", "Find a model in Martlet's internal model catalog by any name: a Hugging Face repository, an " +
+            "OpenRouter, NVIDIA Build, models.dev or provider model ID (\":free\" variants too), an Ollama tag (\"gemma4:26b\", by family " +
+            "and size) or \"hf.co/{repo}:{quant}\" name, or an LMArena name. Returns how it was found, the model (key, names on each " +
+            "route, family, size, inputs text/image/audio/video/videoAsFrames, open weights, and every fact with each source's answer, " +
+            "note and date and the answer worked out from them: the maker first (config.json, vLLM by architecture), then catalogs and " +
+            "servers; a disagreement at the same level is unknown), its routes (provider, model ID, free, context, expires, retired, " +
+            "deprecated, inputs, tools, reasoning: the server's own metadata, then the model's facts, then models.dev's row for that " +
+            "provider only) and how smart it is in words, with LMArena's rating and its credit (never the Artificial Analysis index). " +
+            "Read-only; contacts nothing.", new
+        {
+            name = new { type = "string", maxLength = 256 },
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("model_catalog_refresh", "Rehearse the model catalog's daily refresh (ModelCatalogRefresh) against FIXTURE sources on " +
+            "127.0.0.1 shaped like OpenRouter, models.dev (models.json and api.json), NVIDIA Build (models.md and its pages), vLLM's " +
+            "supported models and LMArena's dataset rows, in a temporary folder: every source read and saved; no Artificial Analysis " +
+            "index kept; once a day; the measured conflicts (Gemma 4 26B video, Qwen3.5 122B audio, the gemma-4-31b-it provider " +
+            "split); NVIDIA routes; an expired route retired; find by any name; smartness with its fallback; a failing source and an " +
+            "oversized one keep their last good part; and nothing is asked while Martlet is replying. live=true instead reads the real " +
+            "public sources (no key) into the data folder's daily copy when a refresh is due (force=true: now); with snapshotPath (an " +
+            "absolute path) it writes the release snapshot instead, only when every source was read (scripts\\Update-ModelCatalog.ps1).", new
+        {
+            live = new { type = "boolean" },
+            force = new { type = "boolean" },
+            snapshotPath = new { type = "string" },
+            dataDirectory = new { type = "string" }
+        }),
         Tool("model_ability_check", "What models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
             "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
             "detection (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like OpenRouter's model list " +
@@ -2543,6 +2579,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "straight_voice_check" => await StraightVoiceCheck.RunAsync(MartletDirectory(arguments), SpeechDirectory(arguments),
                     OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"), cancellation),
                 "discord_voice_check" => await DiscordVoiceCheck.RunAsync(OptionalString(arguments, "martletDirectory") is null ? null : MartletDirectory(arguments), cancellation),
+                "model_catalog_status" => ModelCatalogCheck.Status(DataDirectory(arguments)),
+                "model_catalog_lookup" => ModelCatalogCheck.Lookup(DataDirectory(arguments), RequiredString(arguments, "name")),
+                "model_catalog_refresh" => await ModelCatalogCheck.RefreshAsync(DataDirectory(arguments), OptionalBool(arguments, "live") ?? false,
+                    OptionalString(arguments, "snapshotPath"), OptionalBool(arguments, "force") ?? false, cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "testVision") ?? false,
                     cancellation),
