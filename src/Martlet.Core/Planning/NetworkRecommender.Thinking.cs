@@ -182,7 +182,7 @@ public static partial class NetworkRecommender
             // The owner lets Martlet choose (or asks for its suggestion): Thinking is placed as if it were new.
             if (Fresh(job))
             {
-                ChooseThinking((SetupChangeBenefit.Improvement, "You let Martlet choose Thinking's model.", true), null);
+                ChooseThinking((SetupChangeBenefit.Improvement, "Martlet's suggestion for Thinking's model:", true), null);
                 return;
             }
             var host = NodeOf(TodayJob(job)?.HostId);

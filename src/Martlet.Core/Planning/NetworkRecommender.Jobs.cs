@@ -159,7 +159,7 @@ public static partial class NetworkRecommender
             if (Settled(job)) return;
             if (Fresh(job))
             {
-                ChooseListening((SetupChangeBenefit.Improvement, "You let Martlet choose how it listens.", true), null);
+                ChooseListening((SetupChangeBenefit.Improvement, "Martlet's suggestion for listening:", true), null);
                 return;
             }
             var host = NodeOf(TodayJob(job)?.HostId);

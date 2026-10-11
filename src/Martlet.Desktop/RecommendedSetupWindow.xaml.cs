@@ -311,7 +311,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
             var text = Line(suggestion + (choice.SuggestionApplied ? " The recommendation makes this change." : ""), $"RecommendedSetupSuggestion-{choice.Job}");
             text.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
             body.Children.Add(text);
-            if (choice.Locked)
+            if (choice.Locked && !choice.SuggestionApplied)
             {
                 var use = new Button { Content = "Use the suggestion", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 4, 12, 4),
                     Margin = new Thickness(0, 2, 0, 0), ToolTip = "Plan this suggestion once, then review the changes before anything changes. The job stays locked." };
