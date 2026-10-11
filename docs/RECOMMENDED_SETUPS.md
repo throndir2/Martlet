@@ -11,9 +11,12 @@ measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS
 **Your preferences (new):** Martlet plans with your saved
 [recommendation preferences](#your-recommendation-preferences): the reply
 quality, online services, games on each companion PC, models that hear you and
-the host card share. The welcome wizard asks the first three. **Changing
-next:** [Recommendation design](RECOMMENDATION_DESIGN.md) adds plans for gaming
-and for a host that is away, and options from the [model catalog](MODEL_CATALOG.md).
+the host card share. The welcome wizard asks the first three. **Model choices
+from the catalog (new):** the models come from Martlet's
+[model catalog](MODEL_CATALOG.md), which updates every day
+([Keeping model choices current](#keeping-model-choices-current)). **Changing
+next:** [Recommendation design](RECOMMENDATION_DESIGN.md) adds measured numbers,
+locks and *A better setup is available*.
 
 **In the app:** the welcome tour's **Recommend a setup for me**, or **Plan a
 setup from scratch** on Home, opens the setup advisor. It asks for
@@ -701,34 +704,45 @@ and a real reply through the moved route are **NOT RUN**.
 
 ### Keeping model choices current
 
-Today the model choices are a bundled list that ships with each release. The
-next step ([#663](https://github.com/throndir2/Martlet/issues/663)) is a model
-catalog that updates itself, so the suggestions stay good without a
-maintainer and scale with the hardware:
+The model choices keep up with the times by themselves: Recommended setup, *Set
+it all up for me* and the option lists get their models from Martlet's
+[model catalog](MODEL_CATALOG.md), which refreshes once a day without a key, off
+the reply path ([Recommendation design](RECOMMENDATION_DESIGN.md#build-stages),
+stage 3). A new model needs no Martlet release. Martlet's own list
+(`FootprintCatalog.Seed.cs`) stays as the offline fallback, and its measured
+numbers win.
 
-1. **A bundled snapshot.** Each release ships a catalog: model, open weights,
-   parameters (total and active), what it can take in (text, pictures, audio),
-   tool calls, reasoning, context length and release date.
-2. **An optional background refresh.** Martlet downloads public model lists
-   that need no key, off the reply path, and keeps the last good catalog in the
-   data directory. It never adds latency to a conversation.
-3. **Public sources.**
-   - OpenRouter (`https://openrouter.ai/api/v1/models`): modalities, context
-     length, supported parameters (tools, reasoning), the Hugging Face ID and
-     the date it was added.
-   - models.dev (`https://models.dev/api.json`): reasoning, tool calls,
-     modalities, open weights and release date.
-   - Hugging Face (`/api/models/{repo}?expand[]=safetensors`): the parameter
-     count, and the GGUF files for each quantization's size.
-   - NVIDIA Build (`https://integrate.api.nvidia.com/v1/models`): which hosted
-     models exist (IDs only).
-4. **Ranking.** Open-weight models are ranked by: fits the card with headroom,
-   hears audio (for live Thinking), tool calls, newer release, then active
-   parameters (speed). Models that your apps already run come first.
-5. **Live Thinking stays fast.** The model you talk to stays the fastest model
-   that hears your voice ([rule 7](#the-rules)). Bigger models go to Deep
-   thinking and to hosts with free cards.
+1. **New local models.** An open-weight model whose files the catalog looked up
+   becomes a Thinking, Deep thinking, Vision and Hearing option for the jobs it
+   can do, when it has an install name (an Ollama tag or `hf.co/{repo}:{quant}`),
+   a memory estimate at Martlet's 8,192 tokens, writes text and fits 80 GB. A
+   record whose weights don't agree with its parameters is left out. Only what
+   the catalog says counts: unknown is not Yes. The planners still check that it
+   fits a card with the headroom and that your online answer allows it.
+   Martlet's host roles install only the models in their list, so a catalog
+   model outside that list runs only in a companion PC's own Ollama.
+2. **How smart.** New options, the models your apps serve and the models your
+   hosts keep take their quality tier from the catalog (LMArena and the ranking
+   index; the size in the name when nothing scores the model). Martlet's own
+   options keep their tier. The option facts show the words ("smarter than
+   most") or LMArena's rating with its credit, never a rank number.
+3. **How fast.** Where Martlet measured nothing, the first word and the words a
+   second are estimates from the model's local facts and your best graphics
+   card's memory bandwidth (fitted to Martlet's measured Gemma 4 E2B and E4B).
+4. **Online models.** Each online provider suggests its free model that sees,
+   calls tools and isn't retired, the fastest known first (what Martlet found
+   out on a route comes before the catalog). Today's suggestions stay when the
+   catalog has none.
+5. **Deep thinking on NVIDIA Build.** When your online services allow it (*Only
+   as a backup* or *Yes*) and no host's graphics card fits a model at least one
+   quality step smarter than live Thinking, Recommended setup suggests NVIDIA
+   Build's smartest free chat model for the Thinking pool. Add it in Companion ›
+   Thinking pool, where NVIDIA Build prefills it. It is a suggestion: it changes
+   no setup.
+6. **Live Thinking stays fast.** Today's Thinking model stays ([rule 7](#the-rules)):
+   the catalog changes only the choice for a new one.
 
-**Qualification:** `NetworkRecommenderTests` and the MCP tool
-`network_recommendation_check` run the planner on fixture networks
-([MCP](MCP.md)). They do not use real computers.
+**Qualification:** `NetworkRecommenderTests`, `CatalogOptionsTests` and the MCP
+tools `network_recommendation_check` and `recommended_setup_status` (its
+`planning` part) run the planner on fixture networks ([MCP](MCP.md)). They do
+not use real computers.

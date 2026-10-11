@@ -31,7 +31,8 @@ public static class DiagnosticCatalog
         new("host.setup", "Host and GPU diagnostics are unavailable. Do not change firewall, drivers or services on the strength of this status."),
         new("conversation.review", "Review the real conversation stage and supported saved routes. Use typed/text-only fallback if audio failed. Stop and wait for actual cleanup before a NEW explicitly permitted action; no automatic retry. Completion is not account readiness or proof of heard speech."),
         new("conversation.wait", "The observed conversation action is unfinished or stopped. Wait for actual resource release; a timeout does not prove IO stopped. No replacement worker, replay or renewed permission is implied."),
-        new("platform.windows_on_arm", "Windows on Arm: use cloud thinking, listening and speaking, or pair another computer with an NVIDIA GPU for GPU jobs such as Audio2Face and voice cloning. NVIDIA GPUs don't work on Windows on Arm.")
+        new("platform.windows_on_arm", "Windows on Arm: use cloud thinking, listening and speaking, or pair another computer with an NVIDIA GPU for GPU jobs such as Audio2Face and voice cloning. NVIDIA GPUs don't work on Windows on Arm."),
+        new("planning.review", "Open Recommended setup to see each part's plan. MCP recommended_setup_status lists where each option comes from (planning). The model catalog refreshes once a day by itself; nothing needs to be repaired.")
     ]);
 
     public static IReadOnlyList<DiagnosticFinding> Findings { get; } = Array.AsReadOnly<DiagnosticFinding>(
@@ -53,6 +54,9 @@ public static class DiagnosticCatalog
         new("audio.output_unavailable", ProbeOutcome.Skipped, "Playback diagnostics are unavailable. No audio devices were opened and no sound was played.", "audio.output_guide"),
         new("pipeline.unavailable", ProbeOutcome.Skipped, "This stage is unavailable in this diagnostic build. No pipeline was run.", "pipeline.unavailable"),
         new("host.unavailable", ProbeOutcome.NotConfigured, "Host and GPU diagnostics are not configured or implemented here. No DNS, network or GPU query was made.", "host.setup"),
+        new("planning.catalog_daily", ProbeOutcome.Passed, "Recommendations plan with Martlet's model catalog (the daily copy) and its local facts, plus Martlet's own list of models, whose measured numbers win. Nothing was downloaded for this check.", "planning.review"),
+        new("planning.catalog_snapshot", ProbeOutcome.Passed, "Recommendations plan with Martlet's model catalog (the snapshot shipped with Martlet, because no newer daily copy is on this PC) and its local facts, plus Martlet's own list of models. Nothing was downloaded for this check.", "planning.review"),
+        new("planning.seed_only", ProbeOutcome.Warning, "Martlet's model catalog can't be read here, so recommendations use only Martlet's own list of models.", "planning.review"),
         new("probe.not_run", ProbeOutcome.Skipped, "Catalog entry only: this check has not run.", "diagnostics.refresh"),
         new("probe.running", ProbeOutcome.Running, "Local diagnostics are running; no completed evidence is available yet.", "diagnostics.wait"),
         new("probe.effects_blocked", ProbeOutcome.Skipped, "This check declares effects beyond local read-only inspection and cannot run in this executor.", "diagnostics.refresh"),

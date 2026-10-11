@@ -26,6 +26,25 @@ public sealed class DefaultSetupTests
     }
 
     [Fact]
+    public void A_catalog_model_is_installed_by_its_own_name_not_swapped_for_the_smallest()
+    {
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        var option = new ComponentOption
+        {
+            Id = "hf.co/acme/Local-8B-GGUF:Q4_K_M", Component = PlanComponent.Thinking, DisplayName = "Local 8B", ModelId = "hf.co/acme/Local-8B-GGUF:Q4_K_M",
+            HostRoleKind = "ollama", Gpu = GpuRequirement.AnyGpu, Steady = new(5.9, 1, 1, 4.9), Peak = new(5.9, 1.5, 2, 4.9), Origin = OptionOrigin.LocalFacts,
+            FirstWordMs = 260, Source = "test"
+        };
+        var model = DefaultSetup.ChatModel(option);
+        Assert.Equal(("hf.co/acme/Local-8B-GGUF:Q4_K_M", "4.9 GB", 8.0, false), (model.Id, model.Size, model.MinimumVramGb, model.Hears));
+        // Martlet's own suggestions keep their entry, and an option it can't install falls back to the smallest model that hears.
+        Assert.Equal("gemma4:e4b", DefaultSetup.ChatModel(FootprintCatalog.Default.Find("gemma4:e4b")!).Id);
+        Assert.Equal(DefaultSetup.SmallestHearingModel, DefaultSetup.ChatModel(option with { Origin = OptionOrigin.Seed }));
+    }
+
+
+
+    [Fact]
     public void WithoutAGraphicsCardEverythingRunsOnTheProcessor()
     {
         var plan = Plan(null);
@@ -204,5 +223,74 @@ public sealed class DefaultSetupTests
             Route(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, Guid.NewGuid()), Fallback(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, null)));
         Assert.Empty(DefaultSetup.ConfiguredProviders(null, Fallback(ChatCompletionsEndpointCatalog.GeminiBaseUrl, null)));
         Assert.Equal(["openai"], DefaultSetup.ConfiguredProviders(Route("https://api.openai.com/v1", Guid.NewGuid(), SetupRouteType.OpenAi), null));
+    }
+}
+
+/// <summary>Tests that set the process-wide <see cref="PlanningCatalog"/> run alone, so no other test plans with their catalog.</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class PlanningCatalogCollection
+{
+    public const string Name = "Planning catalog";
+}
+
+[Collection(PlanningCatalogCollection.Name)]
+public sealed class PlanningCatalogTests
+{
+    // MainWindow's static resources use pack:// addresses, so the scheme must be known before MainWindow.LocalChatModels.
+    public PlanningCatalogTests() => _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+
+    [Fact]
+    public void The_thinking_picker_lists_catalog_models_that_fit_this_pcs_card()
+    {
+        var models = new ModelCatalogData { Built = DateTimeOffset.UtcNow }.With(CatalogSources.HuggingFace, new CatalogSourceBlock
+        {
+            Read = DateTimeOffset.UtcNow,
+            Items = [CatalogReaders.Local(new LocalModelFacts
+            {
+                Query = "acme/Local-8B", HuggingFaceRepo = "acme/Local-8B", Parameters = 8_000_000_000, WeightsParameters = 8_000_000_000,
+                Inputs = new(true, false, false, "config.json"), Quantizations = [new("Q4_K_M", 4_900_000_000, "hf.co/acme/Local-8B-GGUF:Q4_K_M", "Hugging Face")]
+            })!]
+        });
+        try
+        {
+            PlanningCatalog.Use(ModelCatalog.Build(models), "a test copy");
+            Assert.Equal(["hf.co/acme/Local-8B-GGUF:Q4_K_M"], JobOptions.CatalogModels(MainWindow.LocalChatModels, 12).Select(o => o.ModelId));
+            Assert.Empty(JobOptions.CatalogModels(MainWindow.LocalChatModels, 4));
+            Assert.Empty(JobOptions.CatalogModels(MainWindow.LocalChatModels, null));
+            var picker = JobOptions.OllamaModels(MainWindow.LocalChatModels, [], null, 12);
+            var listed = picker.Single(o => o.Key == "hf.co/acme/Local-8B-GGUF:Q4_K_M");
+            Assert.Equal("from the catalog", listed.Badge);
+            Assert.Contains(listed.Facts, f => f.Key == "source");
+        }
+        finally
+        {
+            PlanningCatalog.Reset();
+        }
+    }
+
+    [Fact]
+    public void The_review_shows_the_catalogs_facts_under_thinking_and_the_online_deep_thinking_suggestion()
+    {
+        static Dictionary<string, string> Chat() => new(StringComparer.Ordinal)
+        {
+            [CatalogFacts.InputText] = CatalogValues.Yes, [CatalogFacts.InputImage] = CatalogValues.Yes, [CatalogFacts.Tools] = CatalogValues.Yes,
+            [CatalogFacts.OutputText] = CatalogValues.Yes
+        };
+        var models = ModelCatalog.Build(new ModelCatalogData { Built = DateTimeOffset.UtcNow }.With(CatalogSources.NvidiaBuild, new CatalogSourceBlock
+        {
+            Read = DateTimeOffset.UtcNow,
+            Items = [new() { Id = "acme/giant-900b-a90b-it", Name = "Giant", Facts = Chat() }]
+        }));
+        var catalog = FootprintCatalog.FromModels(models);
+        var build = RecommendedSetupInputs.Request(RecommendedSetupInputs.WithPreferences(RecommendedSetupInputs.Fixture(DateTimeOffset.UtcNow),
+            new RecommendationPreferences()));
+        var recommendation = NetworkRecommender.Recommend(build.Request, catalog);
+        var parts = RecommendedSetupReview.From(recommendation, build, catalog).Parts;
+        Assert.Equal("acme/giant-900b-a90b-it", recommendation.OnlineDeepThinking?.ModelId);
+        Assert.Contains("from Martlet's model catalog", parts.Single(p => p.Component == PlanComponent.DeepThinking).Facts, StringComparison.Ordinal);
+        Assert.StartsWith("Takes text", parts.Single(p => p.Component == PlanComponent.Thinking).Facts, StringComparison.Ordinal);
+        Assert.All(parts.Where(p => p.Component is not (PlanComponent.Thinking or PlanComponent.DeepThinking)), p => Assert.Null(p.Facts));
+        // Before the catalog is loaded, the review has no facts lines.
+        Assert.All(RecommendedSetupReview.From(NetworkRecommender.Recommend(build.Request), build, FootprintCatalog.Default).Parts, p => Assert.Null(p.Facts));
     }
 }

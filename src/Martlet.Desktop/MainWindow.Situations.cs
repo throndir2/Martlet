@@ -412,7 +412,7 @@ public partial class MainWindow
         string Name(string? id) => id is null or "" ? "your companion PCs" : build.Names.GetValueOrDefault(id)
             ?? build.Request.Machines.FirstOrDefault(m => m.Specs.Id == id)?.Specs.Name ?? id;
         var (backup, _) = SituationBackup();
-        return SituationPlans.For(build.Request, recommendation, Name, FootprintCatalog.Default.WithServed(build.Request.ServedModels), backup,
+        return SituationPlans.For(build.Request, recommendation, Name, PlanningCatalog.Current.WithServed(build.Request.ServedModels), backup,
             SituationPreferences.BackupAllowed(store?.DataDirectory));
     }
 }

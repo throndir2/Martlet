@@ -1,7 +1,8 @@
 # Recommendation design: ask three questions, plan for three situations
 
-Status: **Approved, being built** (2026-10-10). Stage 1, *Preferences*, is
-done (see [Build stages](#build-stages)). It uses the model catalog and
+Status: **Approved, being built** (2026-10-10). Stage 1, *Preferences*, stage
+2, *Situations*, and the first part of stage 3, *the planner on the catalog*,
+are done (see [Build stages](#build-stages)). It uses the model catalog and
 route facts in [Model catalog](MODEL_CATALOG.md)
 ([#663](https://github.com/throndir2/Martlet/issues/663)). Today's rules are in
 [Recommended setups](RECOMMENDED_SETUPS.md); this page says what changes.
@@ -260,7 +261,55 @@ Each stage is one pull request.
    and the local facts; today's `FootprintCatalog.Seed` stays as the offline
    fallback. The smartness score, Deep thinking on NVIDIA, measured feedback,
    locks and *A better setup is available*. It follows stage 1 and the catalog
-   work.
+   work. **Part a, the options from the catalog, is done** (part b, measured
+   feedback, locks, *A better setup is available* and a replacement for a
+   retired model, is the next PR). How it was built:
+   - `FootprintCatalog.FromModels(ModelCatalog, bandwidth)` gives the planners
+     Martlet's own options with the catalog's facts, plus new options from the
+     catalog. `PlanningCatalog` holds them for the desktop: it loads the
+     catalog (the daily copy, else the snapshot) and `model-abilities.json` on
+     a thread-pool thread at start, before Recommended setup and *Set it all
+     up for me* plan, and after a daily refresh. Nothing on the reply path
+     loads it. Each option says where it came from (`ComponentOption.Origin`:
+     `Seed`, `Catalog`, `LocalFacts` or `Served`).
+   - **The gates.** An open-weight model with local facts becomes a Thinking,
+     Deep thinking, Vision (it sees) and Hearing (it hears) option when it has
+     an install name (an Ollama tag or `hf.co/{repo}:{quant}`) and a memory
+     estimate, writes text, is at most 80 GB, and its weights' size agrees with
+     its parameters (a broken record, such as a split file's part, never wins a
+     card). Unknown is not Yes. The planners still check the card, the headroom
+     and the owner's online answer. Martlet's host roles offer a fixed list of
+     models (`role.conf`), so a model outside it is `NativeOnly`: only a
+     companion PC's own Ollama runs it.
+   - **Smartness.** `catalog.Smartness` gives the tier of new options, served
+     models and models a host keeps (`ServedModels.Tier` is the fallback).
+     Martlet's own options keep the tier Martlet chose, and show the catalog's
+     words only when scores back them. The rank is never shown.
+   - **Speed.** Where nothing is measured, the first word is 100 ms plus nine
+     tokens at 60% of the memory bandwidth's bound (fitted to the measured
+     Gemma 4 E2B and E4B; it gives 153 ms and 207 ms), for this PC's best card
+     (else an RTX 4070's 504 GB/s). Measured numbers in the seed win; the
+     seed's estimates (Gemma 4 12B and 26B) are estimated again.
+   - **Deep thinking on NVIDIA Build.** `hosted:nvidia-build-deep` uses the
+     smartest free chat model that calls tools on NVIDIA's routes (Kimi K3 in
+     the snapshot of 2026-10-10). When online services allow it and no host card fits a model
+     one quality step smarter than live Thinking, Recommended setup suggests it
+     (`NetworkRecommendation.OnlineDeepThinking`, a note and the Deep thinking
+     line); the owner adds it in Companion › Thinking pool, which prefills it.
+     A suggestion changes no setup and no fingerprint. The single-PC planner
+     (`PlacementEngine`, which the setup advisor uses) places it and suggests
+     the free key.
+   - **Provider defaults.** Each hosted provider suggests its free route that
+     sees, calls tools and isn't retired, the fewest active parameters first
+     (`CatalogOptions.SuggestedChat`; route facts Martlet found out come
+     first). Today's `ChatCompletionsEndpointCatalog` defaults stay when the
+     catalog has none (Google Gemini in the snapshot).
+   - **Facts and MCP.** The option picker and Recommended setup show the
+     catalog's facts (inputs, smartness words or LMArena's credited rating,
+     words a second, where it comes from); Companion › Thinking › This PC also
+     lists up to three catalog models that fit the card. MCP
+     `recommended_setup_status` has `planning`, and the Doctor has
+     `planning.catalog`.
 
 ## Decisions made for the owner
 

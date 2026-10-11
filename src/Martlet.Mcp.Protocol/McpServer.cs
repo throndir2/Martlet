@@ -2239,10 +2239,17 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "the host graphics card share, the two model choices, each companion PC's games answer and which computers keep their " +
             "card for games), read from recommendation-preferences.json or the fixture; the preferences argument plans with other " +
             "ones instead (each field optional, nothing is saved). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
-            "directory) asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.", new
+            "directory) asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does. It plans as the " +
+            "desktop does, with the model catalog (the data directory's daily copy, else the snapshot shipped with Martlet; a fixture " +
+            "uses the snapshot), its local facts and the data directory's route facts (model-abilities.json), plus Martlet's own list; " +
+            "catalog \"seed\" plans with Martlet's own list alone. planning says where each option came from (Seed: Martlet's own list, " +
+            "Catalog: a hosted model the catalog chose, LocalFacts: an open-weight model sized from its local facts, Served: your model " +
+            "app): each job's option, each Deep thinking role, the online Deep thinking suggestion (onlineDeepThinking) and every option " +
+            "the catalog gave, with smartness in words or LMArena's rating with its credit, never a rank number.", new
         {
             dataDirectory = new { type = "string" },
             fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels" } },
+            catalog = new { type = "string", @enum = new[] { "models", "seed" } },
             lookOnThisPc = new { type = "boolean" },
             preferences = new
             {
@@ -2689,9 +2696,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "lip_sync_pool_status" => LipSyncPoolCheck.Status(DataDirectory(arguments), OptionalString(arguments, "deviceId")),
                 "lip_sync_pool_check" => await LipSyncPoolCheck.RunAsync(cancellation),
                 "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
-                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation, preferences: OptionalObject(arguments, "preferences"))
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation, preferences: OptionalObject(arguments, "preferences"),
+                        catalog: OptionalString(arguments, "catalog"))
                     : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation,
-                        OptionalBool(arguments, "lookOnThisPc") == true, OptionalObject(arguments, "preferences")),
+                        OptionalBool(arguments, "lookOnThisPc") == true, OptionalObject(arguments, "preferences"), OptionalString(arguments, "catalog")),
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),

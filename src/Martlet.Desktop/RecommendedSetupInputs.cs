@@ -60,6 +60,8 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     public string Device { get; init; } = "";
     public IReadOnlyCollection<string> ThinkingPool { get; init; } = [];
     public IReadOnlyCollection<string> PoolOptOut { get; init; } = [];
+    /// <summary>The Thinking pool's online members that are on, in words ("moonshotai/kimi-k3 on NVIDIA Build").</summary>
+    public IReadOnlyList<string> OnlinePool { get; init; } = [];
     /// <summary>The voice engine the owner chose, as a host role kind ("chatterbox").</summary>
     public string? VoiceEngine { get; init; }
     public IReadOnlyCollection<string> ConfiguredProviders { get; init; } = [];
@@ -154,6 +156,7 @@ internal static class RecommendedSetupInputs
             CurrentJobs = jobs,
             CurrentThinkingPool = [.. sources.ThinkingPool.Where(id => !sources.PoolOptOut.Contains(id, StringComparer.Ordinal)).Distinct(StringComparer.Ordinal)],
             ThinkingPoolOptOut = [.. sources.PoolOptOut.Distinct(StringComparer.Ordinal)],
+            OnlineThinkingPool = [.. sources.OnlinePool.Distinct(StringComparer.Ordinal)],
             VoiceEngine = sources.VoiceEngine,
             Off = [.. sources.Off.Where(c => ComponentRanking.CanBeOff(c) && !ComponentRanking.SetOnPage(c)).Distinct()],
             Choices = [.. sources.Choices.Where(c => c is not null && ComponentRanking.SetOnPage(c.Component)).DistinctBy(c => c.Component)],
@@ -424,6 +427,16 @@ internal static class RecommendedSetupInputs
             {
                 SizeGb = s.SizesGb.TryGetValue(model, out var gb) && gb > 0 ? gb : null
             }))];
+
+    /// <summary>The Thinking pool's online members that are on (an HTTPS endpoint, not a model app on this PC), in words:
+    /// "moonshotai/kimi-k3 on NVIDIA Build".</summary>
+    internal static IReadOnlyList<string> OnlinePool(ThinkingPoolSettings pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        return [.. pool.Members.Where(m => m is { Place: DeepThinkingPlace.Endpoint, ModelId.Length: > 0 } && m.Origin is { } origin &&
+                origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(origin, UriKind.Absolute, out _))
+            .Select(m => $"{m.ModelId} on {ChatCompletionsEndpointCatalog.Named(m.Origin)?.Name ?? new Uri(m.Origin!).Host}")];
+    }
 
 #if !MARTLET_MCP
     /// <summary>The desktop's view of the owner's computers as recommender sources: this PC (its own host service's id when it

@@ -29,11 +29,12 @@ public sealed partial class FootprintCatalog
     /// </list>
     /// Option IDs of the seed stay the same (settings save them). <paramref name="bandwidthGbps"/> is the memory bandwidth of the
     /// card the speed estimates are for (null: an RTX 4070's, where Martlet measured).</summary>
-    public static FootprintCatalog FromModels(ModelCatalog models, double? bandwidthGbps = null, string? from = null)
+    public static FootprintCatalog FromModels(ModelCatalog models, double? bandwidthGbps = null, string? from = null,
+        IReadOnlyList<Settings.ModelAbility>? tested = null)
     {
         ArgumentNullException.ThrowIfNull(models);
         var bandwidth = bandwidthGbps is > 0 ? bandwidthGbps.Value : CatalogOptions.ReferenceBandwidthGbps;
-        var options = Default.Options.Select(o => CatalogOptions.Enrich(models, o, bandwidth)).ToList();
+        var options = Default.Options.Select(o => CatalogOptions.Enrich(models, o, bandwidth, tested)).ToList();
         var seedModels = Default.Options.Where(o => o.IsLocal && o.ModelId is not null && CatalogOptions.TakesModels(o.Component))
             .Select(o => models.Find(o.ModelId)?.Model.Key).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         var ids = options.Select(o => o.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -175,45 +176,84 @@ public static partial class CatalogOptions
     /// <summary>The model a hosted provider suggests for live Thinking and Vision (docs/RECOMMENDATION_DESIGN.md, "Provider
     /// defaults"): a free chat route on <paramref name="provider"/> that sees and calls tools and is not retired or going
     /// away, the fastest known first (the fewest active parameters, since nothing measures hosted speed), then the smartest.
-    /// Null when the catalog has none: today's default stays.</summary>
-    public static CatalogRoute? SuggestedChat(ModelCatalog models, string provider)
+    /// What Martlet found out on a route (<paramref name="tested"/>, model-abilities.json) comes first
+    /// (<see cref="ModelCatalog.RouteFact"/>). Null when the catalog has none: today's default stays.</summary>
+    public static CatalogRoute? SuggestedChat(ModelCatalog models, string provider, IReadOnlyList<Settings.ModelAbility>? tested = null)
     {
         ArgumentNullException.ThrowIfNull(models);
-        return models.Routes.Where(r => Usable(models, r, provider) && r.Fact(CatalogFacts.InputImage).Yes == true && r.Fact(CatalogFacts.Tools).Yes == true)
+        return models.Routes.Where(r => Usable(models, r, provider, tested) && Says(models, r, CatalogFacts.InputImage, tested) == true &&
+                Says(models, r, CatalogFacts.Tools, tested) == true)
             .OrderBy(r => Active(models, r) ?? double.MaxValue).ThenByDescending(r => Smartness(models, r).Tier)
             .ThenBy(r => r.ModelId, StringComparer.Ordinal).FirstOrDefault();
     }
 
-    /// <summary>The smartest free chat route on <paramref name="provider"/> (Deep thinking: a few seconds don't matter there),
-    /// one that sees and calls tools first within a quality step (screen summaries and research use them). Null when none.</summary>
-    public static CatalogRoute? SmartestChat(ModelCatalog models, string provider)
+    /// <summary>The smartest free chat route on <paramref name="provider"/> that calls tools (Deep thinking: research and helper
+    /// jobs use them, and a few seconds don't matter there), one that also sees first within a quality step (screen summaries).
+    /// Null when none.</summary>
+    public static CatalogRoute? SmartestChat(ModelCatalog models, string provider, IReadOnlyList<Settings.ModelAbility>? tested = null)
     {
         ArgumentNullException.ThrowIfNull(models);
-        return models.Routes.Where(r => Usable(models, r, provider))
+        return models.Routes.Where(r => Usable(models, r, provider, tested) && Says(models, r, CatalogFacts.Tools, tested) == true)
             .OrderByDescending(r => Smartness(models, r).Tier)
-            .ThenByDescending(r => (r.Fact(CatalogFacts.InputImage).Yes == true ? 1 : 0) + (r.Fact(CatalogFacts.Tools).Yes == true ? 1 : 0))
+            .ThenByDescending(r => Says(models, r, CatalogFacts.InputImage, tested) == true)
             .ThenByDescending(r => Smartness(models, r).Rank ?? -1).ThenBy(r => r.ModelId, StringComparer.Ordinal).FirstOrDefault();
     }
 
     /// <summary>A free route on <paramref name="provider"/> that hears (Hearing's audio model), the fastest known first.</summary>
-    public static CatalogRoute? SuggestedHearing(ModelCatalog models, string provider)
+    public static CatalogRoute? SuggestedHearing(ModelCatalog models, string provider, IReadOnlyList<Settings.ModelAbility>? tested = null)
     {
         ArgumentNullException.ThrowIfNull(models);
-        return models.Routes.Where(r => string.Equals(r.Provider, provider, StringComparison.OrdinalIgnoreCase) && r.Free == true && !r.Retired &&
-                !r.Deprecated && r.Fact(CatalogFacts.InputAudio).Yes == true && models.Model(r.ModelKey)?.Fact(CatalogFacts.OutputText).Yes == true)
+        return models.Routes.Where(r => string.Equals(r.Provider, provider, StringComparison.OrdinalIgnoreCase) && r.Free == true && !Retired(r, tested) &&
+                !r.Deprecated && Says(models, r, CatalogFacts.InputAudio, tested) == true && models.Model(r.ModelKey)?.Fact(CatalogFacts.OutputText).Yes == true)
             .OrderBy(r => Active(models, r) ?? double.MaxValue).ThenByDescending(r => Smartness(models, r).Tier)
             .ThenBy(r => r.ModelId, StringComparer.Ordinal).FirstOrDefault();
     }
 
     /// <summary>The model <paramref name="providerId"/> suggests (<see cref="SuggestedChat"/>), else today's preset default
     /// (<see cref="Settings.ChatCompletionsEndpointCatalog"/>); null for a provider Martlet doesn't name.</summary>
-    public static string? SuggestedModel(ModelCatalog? models, string providerId) =>
-        (models is null ? null : SuggestedChat(models, providerId)?.ModelId) ?? Settings.ChatCompletionsEndpointCatalog.ById(providerId)?.DefaultModelId;
+    public static string? SuggestedModel(ModelCatalog? models, string providerId, IReadOnlyList<Settings.ModelAbility>? tested = null) =>
+        (models is null ? null : SuggestedChat(models, providerId, tested)?.ModelId) ??
+        Settings.ChatCompletionsEndpointCatalog.ById(providerId)?.DefaultModelId;
+
+    /// <summary>What <paramref name="route"/> says for <paramref name="key"/>: a Martlet test on the route first (<paramref name="tested"/>,
+    /// model-abilities.json), then the catalog's route order (<see cref="ModelCatalog.RouteFact"/>). Null: unknown.</summary>
+    public static bool? Says(ModelCatalog models, CatalogRoute route, string key, IReadOnlyList<Settings.ModelAbility>? tested = null)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+        ArgumentNullException.ThrowIfNull(route);
+        var ability = Tested(route, tested);
+        var (fact, value) = key switch
+        {
+            CatalogFacts.InputImage => (Settings.ModelFact.Sees, ability?.Sees),
+            CatalogFacts.InputAudio => (Settings.ModelFact.Hears, ability?.Hears),
+            CatalogFacts.InputVideo => (Settings.ModelFact.Video, ability?.Video),
+            CatalogFacts.Tools => (Settings.ModelFact.Tools, ability?.Tools),
+            _ => (Settings.ModelFact.Retired, (bool?)null)
+        };
+        var source = ability?.SourceOf(fact);
+        return models.RouteFact(route, key, value, source?.Source, source?.At).Yes;
+    }
+
+    /// <summary>The route is past its expiration date, or answered that the model is gone (HTTP 410, model-abilities.json).</summary>
+    public static bool Retired(CatalogRoute route, IReadOnlyList<Settings.ModelAbility>? tested = null)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        return route.Retired || Tested(route, tested)?.Retired is not null;
+    }
+
+    private static Settings.ModelAbility? Tested(CatalogRoute route, IReadOnlyList<Settings.ModelAbility>? tested)
+    {
+        if (tested is not { Count: > 0 }) return null;
+        var origin = (route.BaseUrl ?? Settings.ChatCompletionsEndpointCatalog.ById(route.Provider)?.BaseUrl)?.TrimEnd('/');
+        return origin is null ? null : tested.FirstOrDefault(a => a is not null && string.Equals(a.Origin?.TrimEnd('/'), origin, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(a.ModelId, route.ModelId, StringComparison.Ordinal));
+    }
 
     /// <summary>A seed option with what the catalog knows (see <see cref="FootprintCatalog.FromModels"/>).</summary>
-    internal static ComponentOption Enrich(ModelCatalog models, ComponentOption option, double bandwidthGbps)
+    internal static ComponentOption Enrich(ModelCatalog models, ComponentOption option, double bandwidthGbps,
+        IReadOnlyList<Settings.ModelAbility>? tested = null)
     {
-        if (!option.IsLocal) return Hosted(models, option);
+        if (!option.IsLocal) return Hosted(models, option, tested);
         if (!TakesModels(option.Component) || option.UsesThinking || option.ModelId is not { } id || models.Find(id)?.Model is not { } model)
             return option;
         var smartness = models.Smartness(model);
@@ -236,15 +276,15 @@ public static partial class CatalogOptions
             : enriched;
     }
 
-    private static ComponentOption Hosted(ModelCatalog models, ComponentOption option)
+    private static ComponentOption Hosted(ModelCatalog models, ComponentOption option, IReadOnlyList<Settings.ModelAbility>? tested)
     {
         if (option.ProviderId is not { } provider || !TakesModels(option.Component)) return option;
         var route = option.Component switch
         {
-            PlanComponent.Thinking or PlanComponent.Vision when option.ModelId is not null => SuggestedChat(models, provider),
-            PlanComponent.DeepThinking => SmartestChat(models, provider),
-            PlanComponent.Hearing when option.ModelId is { } id && models.Route(provider, id) is { Retired: false, Deprecated: false } today => today,
-            PlanComponent.Hearing => SuggestedHearing(models, provider),
+            PlanComponent.Thinking or PlanComponent.Vision when option.ModelId is not null => SuggestedChat(models, provider, tested),
+            PlanComponent.DeepThinking => SmartestChat(models, provider, tested),
+            PlanComponent.Hearing when option.ModelId is { } id && models.Route(provider, id) is { Deprecated: false } today && !Retired(today, tested) => today,
+            PlanComponent.Hearing => SuggestedHearing(models, provider, tested),
             _ => null
         };
         route ??= option.ModelId is { } current ? models.Route(provider, current) : null;
@@ -255,15 +295,16 @@ public static partial class CatalogOptions
         {
             ModelId = route.ModelId, Origin = chosen ? OptionOrigin.Catalog : option.Origin, CatalogKey = model.Key,
             Smartness = Words(smartness, estimates: chosen || option.Component == PlanComponent.DeepThinking),
-            SmartnessCredit = Credit(smartness), CallsTools = route.Fact(CatalogFacts.Tools).Yes, TakesVideo = route.Fact(CatalogFacts.InputVideo).Yes == true,
-            SeesImages = option.SeesImages || route.Fact(CatalogFacts.InputImage).Yes == true,
+            SmartnessCredit = Credit(smartness), CallsTools = Says(models, route, CatalogFacts.Tools, tested),
+            TakesVideo = Says(models, route, CatalogFacts.InputVideo, tested) == true,
+            SeesImages = option.SeesImages || Says(models, route, CatalogFacts.InputImage, tested) == true,
             // Deep thinking names its model, and its tier is the model's: the planner compares it with live Thinking's.
             QualityTier = option.Component == PlanComponent.DeepThinking ? smartness.Tier : option.QualityTier,
             DisplayName = option.Component == PlanComponent.DeepThinking ? $"{ProviderName(provider)}: {model.Name} (free endpoint)" : option.DisplayName,
             FreeTier = option.FreeTier || route.Free == true,
             Source = chosen
                 ? $"The model catalog's {ProviderName(provider)} route: " + (option.Component == PlanComponent.DeepThinking
-                    ? "the smartest free chat model, not retired"
+                    ? "the smartest free chat model that calls tools, not retired"
                     : option.Component == PlanComponent.Hearing ? "free, hears, not retired, the fewest active parameters"
                     : "free, sees, calls tools, not retired, the fewest active parameters (the fastest known)") + "; uses no local resources"
                 : option.Source
@@ -273,8 +314,8 @@ public static partial class CatalogOptions
     private static string ProviderName(string provider) =>
         Settings.ChatCompletionsEndpointCatalog.ById(provider)?.Name ?? provider;
 
-    private static bool Usable(ModelCatalog models, CatalogRoute route, string provider) =>
-        string.Equals(route.Provider, provider, StringComparison.OrdinalIgnoreCase) && route.Free == true && !route.Retired && !route.Deprecated &&
+    private static bool Usable(ModelCatalog models, CatalogRoute route, string provider, IReadOnlyList<Settings.ModelAbility>? tested) =>
+        string.Equals(route.Provider, provider, StringComparison.OrdinalIgnoreCase) && route.Free == true && !Retired(route, tested) && !route.Deprecated &&
         models.Model(route.ModelKey)?.Fact(CatalogFacts.OutputText).Yes == true && Chat(route.ModelId);
 
     private static double? Active(ModelCatalog models, CatalogRoute route) => models.Model(route.ModelKey) is { } model

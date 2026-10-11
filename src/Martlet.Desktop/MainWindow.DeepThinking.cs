@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
@@ -35,7 +35,7 @@ public partial class MainWindow
     /// seconds don't matter for background thinks), else the preset's default.</summary>
     private static IReadOnlyList<CloudProvider> DeepThinkingProviders =>
     [
-        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, PlanningCatalog.SmartestModel(e.Id) ?? e.DefaultModelId, true)),
+        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, Martlet.Core.Planning.PlanningCatalog.SmartestModel(e.Id) ?? e.DefaultModelId, true)),
         new("OpenAI", OpenAiChatBaseUrl, true, OpenAiTextGenerationCatalog.DefaultModelId, true),
         CustomCloud
     ];

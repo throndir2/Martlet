@@ -200,8 +200,8 @@ public static partial class NetworkRecommender
 
         /// <summary>The note for <see cref="OnlineDeepThinking"/>'s suggestion.</summary>
         private string OnlineDeepNote(ComponentOption deep) =>
-            $"Deep thinking: {deep.DisplayName} is smarter than any model your hosts' graphics cards fit beside the other jobs. " +
-            $"Add it in Companion › Thinking pool" + (request.ConfiguredProviders.Contains(deep.ProviderId ?? "", StringComparer.OrdinalIgnoreCase)
+            $"Deep thinking: {deep.DisplayName} is free and smarter than Thinking's model, and no host's graphics card has room for a " +
+            "smarter one. Add it in Companion › Thinking pool" + (request.ConfiguredProviders.Contains(deep.ProviderId ?? "", StringComparer.OrdinalIgnoreCase)
                 ? " with the key you saved." : " with a free key from its website.") +
             " What it thinks about goes to that service.";
 

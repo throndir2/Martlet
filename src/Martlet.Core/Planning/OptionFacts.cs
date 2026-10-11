@@ -344,6 +344,23 @@ public static class OptionFacts
         _ => "best"
     };
 
+    /// <summary>A model's catalog facts in one line, for Recommended setup: "Takes text, pictures and sound · smarter than most ·
+    /// first sentence in about 0.33 s · about 29 words a second · 9 GB of graphics memory · from Martlet's own list, ...". Null for
+    /// an option the model catalog adds nothing to.</summary>
+    public static string? Brief(ComponentOption option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        if (option.CatalogKey is null && option.Origin is OptionOrigin.Seed or OptionOrigin.Served) return null;
+        List<string> parts = [$"Takes {Inputs(option)}"];
+        if (option.Smartness is { } smart) parts.Add(smart + (option.SmartnessCredit is { } credit ? $" ({credit})" : ""));
+        if (option.FirstWordMs is { } ms && option.Component == PlanComponent.Thinking) parts.Add($"first sentence in about {Seconds(ms)}");
+        if (option.WordsPerSecond is { } words) parts.Add($"about {words.ToString("0", CultureInfo.InvariantCulture)} words a second");
+        if (option.UsesGpu) parts.Add($"{Gb(option.GpuGb)} GB of graphics memory");
+        if (!option.IsLocal) parts.Add(option.FreeTier ? "free" : "paid");
+        parts.Add("from " + OriginWords(option));
+        return string.Join(" · ", parts) + ".";
+    }
+
     /// <summary>What a model takes, in words: "text, pictures, sound and video".</summary>
     public static string Inputs(ComponentOption option)
     {
@@ -364,8 +381,8 @@ public static class OptionFacts
             OptionOrigin.Catalog => "Martlet's model catalog, which updates every day: chosen by rule from the provider's free models",
             OptionOrigin.LocalFacts => "Martlet's model catalog, which updates every day: its size and speed are estimates from the model's " +
                 "files on Hugging Face and the Ollama registry",
-            OptionOrigin.Served => $"{option.ServedBy ?? "your model app"}, with how smart it is from Martlet's model catalog",
-            _ => "Martlet's own list, with how smart it is from Martlet's model catalog"
+            OptionOrigin.Served => $"{option.ServedBy ?? "your model app"}" + (option.CatalogKey is null ? "" : ", with how smart it is from Martlet's model catalog"),
+            _ => "Martlet's own list" + (option.CatalogKey is null ? "" : ", with how smart it is from Martlet's model catalog")
         };
     }
 

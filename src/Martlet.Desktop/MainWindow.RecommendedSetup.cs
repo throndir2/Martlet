@@ -112,7 +112,8 @@ public partial class MainWindow
             offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
             poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
             off: RecommendedSetupMemory.Load(directory).OffParts, choices: RecommendedSetupChoices(directory),
-            pools: directory is null ? null : PoolSettings.Load(directory), preferences: preferences, gamesHere: GamesHere);
+            pools: directory is null ? null : PoolSettings.Load(directory), preferences: preferences, gamesHere: GamesHere)
+            with { OnlinePool = RecommendedSetupInputs.OnlinePool(poolSettings) };
     }
 
     /// <summary>Martlet's guess for this PC's games answer: a game library is on it (<see cref="Martlet.Audio.GameLibraries"/>),

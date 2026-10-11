@@ -79,7 +79,7 @@ public partial class MainWindow
     internal static IReadOnlyList<CloudProvider> ThinkingProviders =>
     [
         OpenAiCloud,
-        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, PlanningCatalog.SuggestedModel(e.Id) ?? e.DefaultModelId, true)),
+        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, Martlet.Core.Planning.PlanningCatalog.SuggestedModel(e.Id) ?? e.DefaultModelId, true)),
         CustomCloud
     ];
 

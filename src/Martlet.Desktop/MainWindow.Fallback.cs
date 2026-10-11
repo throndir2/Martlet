@@ -18,7 +18,7 @@ public partial class MainWindow
 
     internal static IReadOnlyList<CloudProvider> FallbackProviders =>
     [
-        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, PlanningCatalog.SuggestedModel(e.Id) ?? e.DefaultModelId, true)),
+        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(e => new CloudProvider(e.Name, e.BaseUrl, true, Martlet.Core.Planning.PlanningCatalog.SuggestedModel(e.Id) ?? e.DefaultModelId, true)),
         new("OpenAI", OpenAiChatBaseUrl, true, OpenAiTextGenerationCatalog.DefaultModelId, true),
         new("Ollama on this PC", LocalOllamaBaseUrl, true, LocalChatModels[0].Id, false),
         CustomCloud

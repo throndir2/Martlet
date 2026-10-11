@@ -27,7 +27,7 @@ public sealed class DiagnosticTests
         Assert.Equal(2, report.ExitCode);
         Assert.Equal(SettingsLoadState.FirstRun, report.SettingsState);
         Assert.False(Directory.Exists(path));
-        Assert.All(report.Probes.Where(p => p.Id is not ("settings.load" or "application.version" or "runtime.version" or "platform.architecture")),
+        Assert.All(report.Probes.Where(p => p.Id is not ("settings.load" or "application.version" or "runtime.version" or "platform.architecture" or "planning.catalog")),
             p => Assert.Equal(EvidenceProvenance.NotRun, p.Provenance));
         Assert.DoesNotContain(typeof(FoundationStatusService).Assembly.GetReferencedAssemblies(), a =>
             a.Name is "PresentationFramework" or "NAudio" or "System.Net.Http");
