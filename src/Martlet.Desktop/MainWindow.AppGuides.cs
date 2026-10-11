@@ -19,8 +19,9 @@ public partial class MainWindow
     private int appGuidesDrawn = -1;
     private TextBlock? appGuidesNowText, appGuidesFrontText;
     private readonly Dictionary<string, TextBlock> appGuideRows = new(StringComparer.Ordinal);
-    // What the Add an app boxes hold, kept while the page draws again.
-    private string appGuideAddName = "", appGuideAddPrograms = "", appGuideAddSites = "";
+    // The Add an app boxes are made once and moved into each new drawing of the page. The page draws again while you type (reading
+    // up starts, adds the app and ends; Home refreshes), and a new box would lose your caret, so you could no longer type or delete.
+    private TextBox? appGuideAddName, appGuideAddPrograms, appGuideAddSites;
     private string? appGuidesResult;
 
     private void InitializeAppGuides()
@@ -215,18 +216,6 @@ public partial class MainWindow
 
     private Border AddAppGuideCard(AppGuideService guides)
     {
-        var name = new TextBox { Text = appGuideAddName, MinWidth = 260 };
-        AutomationProperties.SetAutomationId(name, "AppGuideAddName");
-        AutomationProperties.SetName(name, "App name");
-        name.TextChanged += (_, _) => appGuideAddName = name.Text;
-        var programs = new TextBox { Text = appGuideAddPrograms, MinWidth = 260 };
-        AutomationProperties.SetAutomationId(programs, "AppGuideAddPrograms");
-        AutomationProperties.SetName(programs, "Program names (optional)");
-        programs.TextChanged += (_, _) => appGuideAddPrograms = programs.Text;
-        var sites = new TextBox { Text = appGuideAddSites, MinWidth = 260 };
-        AutomationProperties.SetAutomationId(sites, "AppGuideAddSites");
-        AutomationProperties.SetName(sites, "Wiki addresses (optional)");
-        sites.TextChanged += (_, _) => appGuideAddSites = sites.Text;
         var on = guides.On;
         var add = PageButton("Add", () => AddAppGuideAsync(read: false).Forget(), id: "AppGuideAdd");
         var addRead = PageButton("Add and read up", () => AddAppGuideAsync(read: true).Forget(), primary: true, id: "AppGuideAddRead");
@@ -235,11 +224,33 @@ public partial class MainWindow
             Note("Add a game or app Martlet should know: its name, the program names Windows shows for it (if they differ, " +
                 "separated by commas) and the wiki or help pages to read (optional; Martlet finds its wiki itself otherwise).",
                 new Thickness(0, 0, 0, 4)),
-            Labeled("Name", WithHint(name, "Stardew Valley")),
-            Labeled("Program names", WithHint(programs, "Optional, such as StardewValley")),
-            Labeled("Wiki pages", WithHint(sites, "Optional, such as stardewvalleywiki.com")),
+            Labeled("Name", AppGuideAddBox(ref appGuideAddName, "AppGuideAddName", "App name", "Stardew Valley")),
+            Labeled("Program names", AppGuideAddBox(ref appGuideAddPrograms, "AppGuideAddPrograms", "Program names (optional)",
+                "Optional, such as StardewValley")),
+            Labeled("Wiki pages", AppGuideAddBox(ref appGuideAddSites, "AppGuideAddSites", "Wiki addresses (optional)",
+                "Optional, such as stardewvalleywiki.com")),
             Row(addRead, add));
     }
+
+    /// <summary>An Add an app box with its hint, made the first time and taken out of the page's last drawing after that, so it keeps
+    /// its text, caret, selection and undo. The box you type in keeps the keyboard focus too: it is on the new page before WPF
+    /// looks again at where the focus is.</summary>
+    private static Grid AppGuideAddBox(ref TextBox? kept, string id, string name, string hint)
+    {
+        if (kept is null)
+        {
+            kept = new TextBox { MinWidth = 260 };
+            AutomationProperties.SetAutomationId(kept, id);
+            AutomationProperties.SetName(kept, name);
+            WithHint(kept, hint);
+        }
+        var field = (Grid)kept.Parent;
+        if (field.Parent is Panel drawn) drawn.Children.Remove(field);
+        return field;
+    }
+
+    /// <summary>What an Add an app box holds now ("" before the page first draws).</summary>
+    private static string AppGuideAddText(TextBox? box) => box?.Text ?? "";
 
     /// <summary>The Now card's line: off, or how many guides and what is being read.</summary>
     private static string AppGuidesNow(AppGuideService guides)
@@ -322,20 +333,20 @@ public partial class MainWindow
     private async Task AddAppGuideAsync(bool read)
     {
         if (appGuides is null) return;
-        var name = AppGuideTools.CleanName(appGuideAddName);
+        var name = AppGuideTools.CleanName(AppGuideAddText(appGuideAddName));
         if (name.Length == 0)
         {
             appGuidesResult = "Type the app's name first.";
             RenderTab();
             return;
         }
-        var programs = appGuideAddPrograms.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var given = appGuideAddSites.Split([',', ';', ' ', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var programs = AppGuideAddText(appGuideAddPrograms).Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var given = AppGuideAddText(appGuideAddSites).Split([',', ';', ' ', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var sites = given.Select(AppGuideTools.Site).OfType<string>().ToArray();
         try
         {
             var entry = await appGuides.AddAsync(name, programs, sites, lifetime.Token);
-            appGuideAddName = appGuideAddPrograms = appGuideAddSites = "";
+            foreach (var box in new[] { appGuideAddName, appGuideAddPrograms, appGuideAddSites }) box?.Clear();
             appGuidesResult = $"Added {entry.Name}." + (sites.Length < given.Length ? " Some addresses weren't web links, so they were left out." : "");
             ErrorLog.Info($"App guides: you added an app ({entry.Programs.Count} program names, {entry.Sites.Count} start pages).");
             if (read) await ReadUpFromPageAsync(entry);
