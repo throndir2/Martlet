@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Companion › App guides, typing a game's name in **Add an app** works again while Martlet reads up on a game or refreshes the page. The cursor no longer gets stuck after the first letter. ([#PRNUMBER](https://github.com/throndir2/Martlet/pull/PRNUMBER))
+
 ## [0.70.0] - 2026-10-11
 
 ### Added

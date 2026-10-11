@@ -809,8 +809,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reading up on now), the fixed disclosure of what leaves this PC, what is in front as App guides sees it (a program's name,
         // whether it is a game or on the list, and whether its guide is ready), the empty list's line and what the last action did.
         // Its On and Ask when I start a game or app boxes report their state as checkedState; ticking them saves guides\library.json,
-        // so it needs --allow-ui-effects. Each app's name and line read through AppGuideName- and AppGuideStatus- below.
+        // so it needs --allow-ui-effects. Each app's name and line read through AppGuideName- and AppGuideStatus- below. The Add an
+        // app boxes read as what is typed in them: an app's name, its program names and wiki addresses (ui_type and ui_set_text
+        // type there).
         "AppGuidesNow", "AppGuidesDisclosure", "AppGuidesFront", "AppGuidesEmpty", "AppGuidesResult", "AppGuidesOn", "AppGuidesAsk",
+        "AppGuideAddName", "AppGuideAddPrograms", "AppGuideAddSites",
         // Companion › Check-ins: how many check-ins are on and the Thinking pool member that takes them first, or why they can't
         // run ("CheckInsNow"), and the last check-in that ran, when, on which member and what came of it in a few words
         // ("CheckInsLast"; never what was said or answered). Each check-in's line reads through CheckInStatus- below.
@@ -1118,7 +1121,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // or "No guide yet." or "Reading up now: Reading pages (3 of at most 60)."; never a guide's text). Its Read up now or Read
         // again (AppGuideRead-<key>) reads up on the web, Ask again (AppGuideAskAgain-<key>) and Delete (AppGuideDelete-<key>)
         // save guides\library.json, so they need --allow-ui-effects; typing in Add an app (AppGuideAddName, AppGuideAddPrograms,
-        // AppGuideAddSites) is ui_set_text, and Add (AppGuideAdd) and Add and read up (AppGuideAddRead) need --allow-ui-effects too.
+        // AppGuideAddSites) is ui_set_text or ui_type, and Add (AppGuideAdd) and Add and read up (AppGuideAddRead) need
+        // --allow-ui-effects too.
         "AppGuideName-", "AppGuideStatus-",
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), and for every check-in, built-in or
@@ -1370,6 +1374,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 // character's position is locked.
                 if (element.TryGetCurrentPattern(TransformPattern.Pattern, out var transform))
                     entry["movable"] = ((TransformPattern)transform).Current.CanMove;
+                // The control that has the keyboard focus (where ui_type without id types): only that one says so.
+                if (Focused(element)) entry["focused"] = true;
                 if (layout)
                 {
                     entry["bounds"] = Box(element.Current.BoundingRectangle);
@@ -1518,6 +1524,76 @@ internal sealed class DesktopAutomation(bool allowEffects)
         ((ValuePattern)pattern).SetValue(text);
         return new { updated = id };
     }
+
+    /// <summary>The keys ui_type presses besides characters, with their virtual-key codes (all but Backspace are extended keys).</summary>
+    internal static readonly IReadOnlyDictionary<string, (int Code, bool Extended)> TypeKeys = new Dictionary<string, (int, bool)>(StringComparer.Ordinal)
+    {
+        ["backspace"] = (0x08, false), ["delete"] = (0x2E, true), ["left"] = (0x25, true), ["right"] = (0x27, true),
+        ["home"] = (0x24, true), ["end"] = (0x23, true)
+    };
+
+    internal const int MaximumTyped = 100, MaximumTypeStepMs = 1000;
+
+    /// <summary>Types the way a person does, one key at a time: with <paramref name="id"/> that text box takes the keyboard focus
+    /// first (as a click into it does); without it, the keys go to whatever has the focus in the window, so a test can type, let
+    /// the page draw again and type on without clicking. Each character of <paramref name="text"/>, then each of
+    /// <paramref name="keys"/>, is a key message posted to that Martlet window only (never to another app or the screen), every
+    /// <paramref name="stepMs"/>. Unlike ui_set_text the box isn't filled at once, so a box the page replaced under the typing
+    /// shows: the result names the control that has the keyboard focus afterwards.</summary>
+    internal async Task<object> TypeAsync(string? id, string? text, string[]? keys, string? window, int? stepMs)
+    {
+        if (!allowEffects) throw new InvalidOperationException("Typing requires --allow-ui-effects.");
+        text ??= "";
+        keys ??= [];
+        if (text.Length == 0 && keys.Length == 0) throw new ArgumentException("Give text, keys or both.");
+        if (text.Length > MaximumTyped || keys.Length > MaximumTyped)
+            throw new ArgumentException($"Type at most {MaximumTyped} characters and {MaximumTyped} keys at a time.");
+        if (keys.FirstOrDefault(key => !TypeKeys.ContainsKey(key)) is { } unknown)
+            throw new ArgumentException($"Unknown key '{unknown}'. Keys: {string.Join(", ", TypeKeys.Keys)}.");
+        var step = TimeSpan.FromMilliseconds(Math.Clamp(stepMs ?? 50, 0, MaximumTypeStepMs));
+        AutomationElement target;
+        if (id is not null)
+        {
+            var element = Find(id, window);
+            if (!element.Current.IsEnabled || element.Current.ControlType != ControlType.Edit && element.Current.ControlType != ControlType.ComboBox)
+                throw new InvalidOperationException($"Control '{id}' is not an enabled text field.");
+            element.SetFocus();
+            target = Controls(ConnectedWindows()).First(control => control.Element.Equals(element)).Window;
+        }
+        else
+        {
+            var windows = ConnectedWindows();
+            target = (window is null ? windows.FirstOrDefault(w => w.Current.AutomationId == "MartletMainWindow")
+                : windows.FirstOrDefault(w => string.Equals(w.Current.Name, window, StringComparison.Ordinal)))
+                ?? throw new ArgumentException(window is null ? "Martlet's main window is not open." : $"Window '{window}' is not open.");
+        }
+        var handle = (nint)target.Current.NativeWindowHandle;
+        RequireOwnedVisibleWindow(processId!.Value, handle);
+        foreach (var character in text)
+        {
+            PostMessage(handle, CharMessage, character, 1);
+            await Task.Delay(step);
+        }
+        foreach (var key in keys)
+        {
+            var (code, extended) = TypeKeys[key];
+            var flags = 1 | (extended ? 1 << 24 : 0);
+            PostMessage(handle, KeyDownMessage, code, flags);
+            PostMessage(handle, KeyUpMessage, code, unchecked(flags | (int)0xC0000000));
+            await Task.Delay(step);
+        }
+        // The window takes the last key before the focus is read.
+        await Task.Delay(TimeSpan.FromMilliseconds(150));
+        var focused = Controls([target]).FirstOrDefault(control => Focused(control.Element)).Element;
+        return new { typed = text.Length, keys = keys.Length, focused = focused?.Current.AutomationId };
+    }
+
+    private const int KeyDownMessage = 0x100, KeyUpMessage = 0x101, CharMessage = 0x102;
+
+    // Whether a control has the keyboard focus. The window frame's own parts (TitleBar, SystemMenuBar) say so too while the window
+    // has it, so they don't count.
+    private static bool Focused(AutomationElement element) =>
+        element.Current.HasKeyboardFocus && element.Current.FrameworkId != "Win32";
 
     internal object Toggle(string id)
     {

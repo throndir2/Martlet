@@ -23,6 +23,9 @@ public sealed class McpServerTests(ITestOutputHelper output)
         var tools = messages[1].GetProperty("result").GetProperty("tools").EnumerateArray().ToArray();
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_click");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_scroll");
+        var type = tools.Single(tool => tool.GetProperty("name").GetString() == "ui_type").GetProperty("inputSchema").GetProperty("properties");
+        Assert.Equal(["backspace", "delete", "left", "right", "home", "end"],
+            type.GetProperty("keys").GetProperty("items").GetProperty("enum").EnumerateArray().Select(key => key.GetString()));
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_touch");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_pose");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_mouth");
@@ -368,11 +371,13 @@ public sealed class McpServerTests(ITestOutputHelper output)
         var messages = await SendAsync(
             """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ui_click","arguments":{"id":"LiveSend"}}}""",
             """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ui_connect","arguments":{"pid":-1}}}""",
-            """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ui_snapshot"}}""");
+            """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ui_snapshot"}}""",
+            """{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ui_type","arguments":{"id":"AppGuideAddName","text":"Stardew"}}}""");
         Assert.All(messages, message => Assert.True(message.GetProperty("result").GetProperty("isError").GetBoolean()));
         Assert.Contains("--allow-ui-effects", messages[0].GetRawText());
         Assert.Contains("positive", messages[1].GetRawText());
         Assert.Contains("Connect", messages[2].GetRawText());
+        Assert.Contains("--allow-ui-effects", messages[3].GetRawText());
     }
 
     [Fact]
