@@ -416,6 +416,27 @@ internal static class RecommendedSetupInputs
         };
     }
 
+    /// <summary>FIXTURE better (NOT real computers): this PC (no graphics card) and gpu-box (a Linux host with an RTX 4090, 24 GB)
+    /// that thinks with Gemma 4 E2B, so a smarter model fits there: Recommended setup suggests it next to the locked Thinking job,
+    /// or makes it once Thinking is unlocked.</summary>
+    internal static SetupSources BetterFixture(DateTimeOffset now)
+    {
+        var report = new HostHardware("gpu-box", "https://gpu-box.lan:8443", now, now, "docker", "Ubuntu 24.04", "6.8.0", "Fixture processor",
+            32, 64, "docker", "yes", [new HostGpu("NVIDIA GeForce RTX 4090", "nvidia", 24 * 1024, "570")]) { Platform = "linux" };
+        var plan = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "gpu-box", false, true, null, "fixture-desk", now);
+        return new SetupSources(
+        [
+            new("desk", "This PC", NetworkMachineKind.Companion) { Specs = MachineSpecs.ThisPc([], 16, 8, diskFreeGb: 200), ThisPc = true, Device = "fixture-desk" },
+            new("gpu-box", "gpu-box", NetworkMachineKind.Host)
+            {
+                Hardware = report, HasHostService = true, Reachable = true, Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:e2b" }
+            }
+        ])
+        {
+            Plan = plan, Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind
+        };
+    }
+
     /// <summary>The chat models the model apps found on this PC serve (<see cref="Martlet.Providers.LocalModelServers.DetectAsync"/>),
     /// as the recommender takes them; an app that asks for a key first lists none. The request puts them on this PC.</summary>
     internal static IReadOnlyList<ServedModel> Served(IEnumerable<Martlet.Providers.LocalModelServer>? servers) =>

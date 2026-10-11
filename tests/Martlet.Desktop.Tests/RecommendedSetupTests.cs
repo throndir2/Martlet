@@ -632,4 +632,38 @@ public sealed class RecommendedSetupTests
         // Something changed: a new recommended setup is asked about again.
         Assert.Equal(SetupAskStep.Ask, SetupAskRule.Decide(worth with { Fingerprint = "def456" }, declined, companion: true, active).Step);
     }
+
+    [Fact]
+    public void Your_choices_show_each_jobs_lock_and_the_suggestion_next_to_it()
+    {
+        var sources = RecommendedSetupInputs.BetterFixture(Now);
+        var build = RecommendedSetupInputs.Request(sources);
+        var speed = new MeasuredFirstWords().With("https://gpu-box.lan:8443", "gemma4:e2b", 180, Now);
+        var catalog = FootprintCatalog.Default.WithMeasured(null, speed);
+        var recommendation = NetworkRecommender.Recommend(build.Request, catalog);
+        var review = RecommendedSetupReview.From(recommendation, build, catalog);
+
+        // Locked by default: Thinking keeps its model, and the review shows a better one next to it.
+        Assert.DoesNotContain(recommendation.Changes, c => c.RoleKind == "ollama");
+        var thinking = Assert.Single(review.Choices, c => c.Job == ClusterJobs.Thinking);
+        Assert.Equal("Gemma 4 E2B on gpu-box", thinking.Today);
+        Assert.Equal(JobLockState.Kept, thinking.State);
+        Assert.True(thinking.Locked);
+        Assert.Equal("gemma4:e2b", thinking.TodayOption);
+        Assert.StartsWith("Suggested: Gemma 4 12B on gpu-box: smarter", thinking.Suggestion, StringComparison.Ordinal);
+        Assert.False(Assert.Single(review.Choices, c => c.Job == ClusterJobs.Speaking).CanLock);
+        Assert.Contains(review.Measured, m => m.StartsWith("gemma4:e2b: first word 0.18 s (estimate 0.15 s)", StringComparison.Ordinal));
+
+        // Unlocked (or Use the suggestion once): the recommendation makes the change.
+        var unlocked = RecommendedSetupInputs.Request(sources with
+        {
+            Preferences = new RecommendationPreferences().WithLock(ClusterJobs.Thinking, locked: false, "gemma4:e2b")
+        });
+        Assert.Equal([ClusterJobs.Thinking], unlocked.Request.Unlocked);
+        var made = NetworkRecommender.Recommend(unlocked.Request, catalog);
+        Assert.Contains(made.Changes, c => c.Kind == SetupChangeKind.ChangeModel && c.Model == "gemma4:12b");
+        var choice = Assert.Single(RecommendedSetupReview.From(made, unlocked, catalog).Choices, c => c.Job == ClusterJobs.Thinking);
+        Assert.Equal(JobLockState.Unlocked, choice.State);
+        Assert.True(choice.SuggestionApplied);
+    }
 }

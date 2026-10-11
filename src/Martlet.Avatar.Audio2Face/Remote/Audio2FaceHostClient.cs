@@ -705,6 +705,16 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
                     ? downloads.EnumerateArray().Take(64).Where(d => d.ValueKind == JsonValueKind.Object)
                         .Select(d => Text(d, "role") is { } role && Text(d, "model") is { } model ? new HostDownload(role, model) : null)
                         .OfType<HostDownload>().ToArray()
+                    : null,
+                // Newer hosts: what their Ollama roles have loaded now (/api/ps), for the measured memory.
+                Loaded = root.TryGetProperty("loaded_models", out var loaded) && loaded.ValueKind == JsonValueKind.Array
+                    ? loaded.EnumerateArray().Take(32).Where(l => l.ValueKind == JsonValueKind.Object)
+                        .Select(l => Text(l, "role") is { } role && Text(l, "model") is { } model &&
+                            l.TryGetProperty("bytes", out var bytes) && bytes.ValueKind == JsonValueKind.Number && bytes.TryGetInt64(out var all) && all > 0 &&
+                            l.TryGetProperty("graphics_bytes", out var vram) && vram.ValueKind == JsonValueKind.Number && vram.TryGetInt64(out var card) && card >= 0
+                            ? new HostLoadedModel(role, model, all, card, Integer(l, "context_tokens") is > 0 and var tokens ? tokens : null, Text(l, "digest"))
+                            : null)
+                        .OfType<HostLoadedModel>().ToArray()
                     : null
             }, version);
         }

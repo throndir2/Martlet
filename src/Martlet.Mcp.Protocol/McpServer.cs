@@ -2228,7 +2228,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "record) or, with fixture \"network\", from a built-in four-computer network, or with fixture \"offline\", from a small " +
             "companion PC whose two hosts haven't answered for 155 minutes, or with fixture \"served\", from a PC alone with an " +
             "RTX 5090 whose model apps serve qwen3-32b and llama3.3:70b, or with fixture \"hostmodels\", from a host with an RTX " +
-            "4090 that keeps qwen2.5:14b downloaded while Prefer models your hosts already have is on (all NOT real computers), runs the production " +
+            "4090 that keeps qwen2.5:14b downloaded while Prefer models your hosts already have is on, or with fixture \"better\", from a " +
+            "host with an RTX 4090 that thinks with Gemma 4 E2B and made-up measurements (all NOT real computers), runs the production " +
             "recommender (NetworkRecommender) and lists the computers (kind, planned or left as they are, manageable), today's jobs " +
             "and Thinking pool, the chat models your model apps serve (servedModels: Use models your apps already run, on unless " +
             "recommended-setup.json turns it off), the chat models your hosts run or keep downloaded (hostModels: Prefer models " +
@@ -2238,11 +2239,18 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "quality and its first-word target, online services and the planners' hosting preference, prefer models that hear you, " +
             "the host graphics card share, the two model choices, each companion PC's games answer and which computers keep their " +
             "card for games), read from recommendation-preferences.json or the fixture; the preferences argument plans with other " +
-            "ones instead (each field optional, nothing is saved). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
+            "ones instead (each field optional, nothing is saved; locks [{ job, locked }] locks or unlocks thinking, listening or lip-sync). " +
+            "It plans with the numbers measured on your computers (measured: each Thinking model's first word from model-speed.json and " +
+            "its memory from model-memory.json, here and on paired hosts, and the estimates they replaced), and lists each job's lock " +
+            "(locks: Kept, Locked, Unlocked or ChangedByHand, and the choice it remembers), each job's clearly better choice " +
+            "(suggestions: smarter at the same speed or as smart with less memory; a locked job's is only shown, an unlocked job's is " +
+            "in the changes), whether Home's Recommended setup button says A better setup is available (betterSetup; a review the owner " +
+            "saw, kept in recommended-setup.json, stops it) and whether the Thinking or If Thinking fails model is retired on its server, " +
+            "with the replacement Martlet proposes (retired). Read-only; reads no keys and contacts nothing, except that lookOnThisPc (with a data " +
             "directory) asks the model apps on this PC (127.0.0.1 only) which models they serve, as the desktop does.", new
         {
             dataDirectory = new { type = "string" },
-            fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels" } },
+            fixture = new { type = "string", @enum = new[] { "network", "offline", "served", "hostmodels", "better" } },
             lookOnThisPc = new { type = "boolean" },
             preferences = new
             {
@@ -2259,6 +2267,15 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     {
                         type = "array",
                         items = new { type = "object", properties = new { device = new { type = "string" }, plays = new { type = "boolean" } } }
+                    },
+                    locks = new
+                    {
+                        type = "array",
+                        items = new
+                        {
+                            type = "object",
+                            properties = new { job = new { type = "string", @enum = new[] { "thinking", "listening", "lip-sync" } }, locked = new { type = "boolean" } }
+                        }
                     }
                 }
             }

@@ -105,6 +105,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // RecommendedSetupPreferHostModels) save recommendation-preferences.json, Settings' Recommended setup preferences (the
         // same controls with the Recommendation prefix) do too, and Set it up installs, so they need --allow-ui-effects.
         "HomeRecommendedSetup", "RecommendedSetupClose",
+        // Your choices in the review: Use the suggestion for a locked job (RecommendedSetupUseSuggestion-<job>) only closes the
+        // review and opens it again with that suggestion planned (nothing is saved; Reconfigure would make it). The locks
+        // (RecommendedSetupLock-<job>) save recommendation-preferences.json, so they need --allow-ui-effects.
+        "RecommendedSetupUseSuggestion-thinking", "RecommendedSetupUseSuggestion-listening", "RecommendedSetupUseSuggestion-lip-sync",
         // The free API key prompt (FreeKeyPrompt): Add your key (the review's RecommendedSetupFreeKeyAdd, Companion › Thinking's
         // FreeKeyAdd-Thinking, Home's HealthOpen-recommended-setup-free-key) only opens Companion › Thinking at A cloud provider
         // with NVIDIA Build chosen; the review's button closes the review first. Get a free key (RecommendedSetupFreeKeyGet,
@@ -820,8 +824,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ElevenLabsSave uploads a recording and saves the route, so it needs --allow-ui-effects (and spends money on ElevenLabs).
         "ElevenLabsStatus", "ElevenLabsKeyStatus", "ElevenLabsModel",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
-        // Home's Recommended setup button (its label).
-        "HomeRecommendedSetup",
+        // Home's Recommended setup button (its label) and, under it, "A better setup is available" while a background check found
+        // a clearly better choice for a job (HomeBetterSetup; collapsed otherwise; the button's tooltip lists the suggestions).
+        "HomeRecommendedSetup", "HomeBetterSetup",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeHelp", "DockerState", "RolesSummaryText", "HostRunPairAddress", "NetworkStatus",
         // A run window's pairing panel: the note on how long the code works (fixed text) and its Copy code button's label
@@ -1207,7 +1212,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "RecommendedSetupPreferences"), Use models your apps already run (whether
         // "RecommendedSetupUseServedModels" is ticked) and the models found ("RecommendedSetupServedModels": model names and apps),
         // and Prefer models your hosts already have (whether "RecommendedSetupPreferHostModels" is ticked) and the models your
-        // hosts keep ("RecommendedSetupHostModels": model names and computer names) read through the same prefix.
+        // hosts keep ("RecommendedSetupHostModels": model names and computer names) read through the same prefix. So do Your choices:
+        // each job's line ("RecommendedSetupChoice-thinking": who does it today), its lock ("RecommendedSetupLock-thinking" is
+        // ticked while locked; "RecommendedSetupLockState-thinking" says Kept, Locked, Unlocked or changed by hand in words), Martlet's
+        // suggestion ("RecommendedSetupSuggestion-thinking": model and computer names and why) and the numbers measured instead of
+        // estimated ("RecommendedSetupMeasured": model names, times, memory and server addresses).
         "RecommendedSetup",
         // Settings › Recommended setup preferences: the same controls with the Recommendation prefix (RecommendationQuality,
         // RecommendationOnline, RecommendationGames-0, RecommendationHearing, RecommendationHostShare,

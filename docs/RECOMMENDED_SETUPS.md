@@ -11,9 +11,12 @@ measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS
 **Your preferences (new):** Martlet plans with your saved
 [recommendation preferences](#your-recommendation-preferences): the reply
 quality, online services, games on each companion PC, models that hear you and
-the host card share. The welcome wizard asks the first three. **Changing
-next:** [Recommendation design](RECOMMENDATION_DESIGN.md) adds plans for gaming
-and for a host that is away, and options from the [model catalog](MODEL_CATALOG.md).
+the host card share. The welcome wizard asks the first three. Each job has a
+lock, a clearly better choice shows next to it, and Martlet plans with the
+first words and memory it measured on your computers
+([Your choices and a better setup](#your-choices-and-a-better-setup)). **Changing
+next:** [Recommendation design](RECOMMENDATION_DESIGN.md) adds options from the
+[model catalog](MODEL_CATALOG.md).
 
 **In the app:** the welcome tour's **Recommend a setup for me**, or **Plan a
 setup from scratch** on Home, opens the setup advisor. It asks for
@@ -539,7 +542,9 @@ The planner uses these rules, in this order of importance:
    room.
 8. **Your choices stay.** The planner keeps a hosted Thinking provider that you
    chose (unless your online services are *Never*), your voice engine, loudness
-   lip-sync and your preferences. It changes where things run, not
+   lip-sync and your preferences. A locked job keeps its model, and Martlet only
+   suggests a better one; an unlocked job gets the suggestion
+   ([Your choices](#your-choices-and-a-better-setup)). It changes where things run, not
    what runs. The voice is the one exception: when no computer has room for
    your voice engine, Chatterbox Nano speaks on a card, or else on the
    processor (about 8 free threads, in the host service, which needs Docker).
@@ -612,7 +617,56 @@ shared setting); each companion PC keeps its own games answer.
 | Prefer models your hosts already have | Off / On | [Below](#models-your-hosts-already-have) |
 
 Today's Thinking model stays where it runs (rule 7): a new reply quality
-changes only a Thinking model the planner places new.
+changes only a Thinking model the planner places new, or one you unlock (below).
+
+### Your choices and a better setup
+
+Recommended setup shows **Your choices** under Your preferences: each job, who
+does it today, its lock and Martlet's suggestion
+([Recommendation design](RECOMMENDATION_DESIGN.md#owners-who-run-their-own-models)).
+
+- **Locks.** Thinking, Listening and Lip-sync each have a **Locked** box. A job
+  starts locked: Martlet keeps what runs today, as rule 7 and rule 8 say, and
+  only suggests. Clear the box to let Martlet choose: the recommendation then
+  makes the job's suggestion, and Reconfigure applies it. Martlet remembers the
+  choice that ran when you unlocked the job, and the one Reconfigure set up.
+  When you change that job by hand later (on its Companion page), it is locked
+  again. The voice has no lock: your voice engine always stays, because your
+  voices are made for it. The locks are saved with your preferences
+  (`locks` in `recommendation-preferences.json`, shared by your computers).
+- **Suggestions.** For each job Martlet also plans as if the job were new. When
+  that choice is clearly better, it shows next to the job: *Suggested: Gemma 4
+  12B on gpu-box: smarter, and its first word comes in about 0.4 s (today about
+  0.18 s).* Clearly better means smarter while the first word still comes within
+  your reply quality's target (or no later than today's), or as smart with at
+  least 15% and 0.5 GB less graphics memory. Another place for the same model is
+  not a suggestion. **Use the suggestion** plans it once, so you review the
+  change before Reconfigure; the job stays locked.
+- **Measured numbers.** Martlet plans with what it measured, not only its
+  estimates. After each reply it keeps the Thinking model's first word on its
+  server (`model-speed.json`: the time from the Thinking request to the first
+  words, the middle of the last nine replies; a reply that hidden reasoning, the
+  fallback or Backup Thinking answered first doesn't count). It keeps the memory
+  Ollama reports for each loaded model (`model-memory.json`): on this PC after a
+  model loads, and on each paired host from its machine report
+  ([What the host tells Martlet](../deploy/host/README.md#what-the-host-tells-martlet)).
+  The newest measurement of a model replaces its first word and graphics memory;
+  the review lists them under Your choices. Nothing is measured on the reply's
+  path.
+- **A better setup is available.** Three minutes after Martlet starts (a
+  hardware or network change since it last ran), after the daily model catalog
+  refresh, and when a computer comes back or stays away, each companion PC plans
+  again in the background, never while Martlet replies or hears you. When a job
+  has a suggestion you haven't seen in a review, Home's **Recommended setup**
+  button says *A better setup is available*. Martlet never applies it by itself;
+  opening the review shows it, and the button stops saying so until another
+  better setup is found.
+- **Retired models.** When the Thinking model, or the model If Thinking fails
+  asks, is retired on its server (it answered HTTP 410, Martlet's list says so,
+  or the model catalog's expiration date passed), Home says so at once with
+  **Use** and the replacement: the provider's own current model, or else the
+  smartest current model the catalog lists on that server that takes the same
+  inputs (and is free when the old one was). It doesn't wait for the daily check.
 
 ### Models your apps already run
 

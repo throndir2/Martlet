@@ -27,7 +27,9 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
     private static readonly UTF8Encoding Utf8 = new(false, false);
     private readonly Uri chat;
     private readonly Uri create;
+    private readonly Uri origin;
     private readonly string model;
+    private readonly string roleKind;
     private readonly HttpClient http;
     private readonly CancellationTokenSource lifetime = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> running = new();
@@ -42,7 +44,9 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             throw new ArgumentException("The Ollama relay only reaches a loopback http://127.0.0.1:<port>/ server.", nameof(endpoint));
         chat = new Uri(endpoint, "api/chat");
         create = new Uri(endpoint, OllamaDraftHead.CreatePath.TrimStart('/'));
+        origin = endpoint;
         this.model = model;
+        roleKind = !deepThinking ? "ollama" : card <= 1 ? "deep-thinking" : $"deep-thinking-{card}";
         var selection = new OllamaChatModelSelection(Alias(model), model);
         Route = GatewayInferenceRoute.OllamaChat(destinationId, workerId, selection, "ollama",
             Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(model))), deepThinking, slots, card);
@@ -54,6 +58,25 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
     }
 
     public GatewayInferenceRoute Route { get; }
+
+    /// <summary>What this role's Ollama has loaded now (<c>/api/ps</c>, at most two seconds), for the host's machine report; null
+    /// when it doesn't answer. A read only: it never loads, unloads or waits for a reply.</summary>
+    public async ValueTask<IReadOnlyList<GatewayLoadedModel>?> ReadLoadedAsync(CancellationToken cancellationToken)
+    {
+        if (lifetime.IsCancellationRequested) return null;
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token);
+        limit.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            var loaded = await Martlet.Providers.LocalModels.OllamaMeasuredMemory.ReadAsync(http, origin, null, limit.Token).ConfigureAwait(false);
+            return loaded?.Select(m => new GatewayLoadedModel
+            {
+                Role = roleKind, Model = m.Model, Bytes = m.Bytes, GraphicsBytes = m.GraphicsBytes, ContextTokens = m.ContextTokens, Digest = m.Digest
+            }).ToArray();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return null; }
+        catch (ObjectDisposedException) { return null; }
+    }
 
     /// <summary>The relay of a Thinking pool host role: its own Ollama (a second server beside the conversation model's), on
     /// Deep thinking's route, so a think there never waits for a reply or the other way round. <paramref name="slots"/> thinks

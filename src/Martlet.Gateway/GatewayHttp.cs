@@ -231,13 +231,18 @@ internal sealed partial class GatewayHttpApplication
             });
             if (rawTarget == "/martlet/v1/machine")
             {
+                // What the Ollama roles have loaded now, for the paired desktops' measured memory; an older desktop skips it.
+                GatewayLoadedModel[]? loaded = null;
+                try { loaded = await inference.LoadedModelsAsync(context.RequestAborted).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested) { }
                 await WriteJsonAsync(context, 200, new MachineDocument
                 {
                     ProtocolVersion = GatewayProtocolVersion.Current,
                     HostId = identity.HostId,
                     GeneratedAt = clock.GetUtcNow(),
                     MartletVersion = MartletVersion,
-                    Machine = machine
+                    Machine = machine,
+                    LoadedModels = loaded
                 }).ConfigureAwait(false);
                 return;
             }
@@ -550,6 +555,8 @@ internal sealed partial class GatewayHttpApplication
         /// <summary>The Martlet release this gateway was built from, so desktops can offer to update older hosts.</summary>
         public string? MartletVersion { get; init; }
         public GatewayMachineReport? Machine { get; init; }
+        /// <summary>What the host's Ollama roles have loaded now (<c>/api/ps</c>); absent when none answers and on older hosts.</summary>
+        public GatewayLoadedModel[]? LoadedModels { get; init; }
     }
 
     private sealed record FailureDocument

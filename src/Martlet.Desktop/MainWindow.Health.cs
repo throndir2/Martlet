@@ -416,11 +416,12 @@ public partial class MainWindow
                  new("advisor", "Get a recommendation", () => Advisor_Click(this, new RoutedEventArgs()))],
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
         }
+        if (RetiredFallbackIssue(SavedModelAbilities()) is { } fallbackRetired && !dismissedHealth.Contains(fallbackRetired.Id)) issues.Add(fallbackRetired);
         if (llm is not null && LiveConversationConfiguration.Retired(llm, SavedModelAbilities()) is { } retired)
             Add("thinking-retired", HealthLevel.Problem, "Your thinking model was retired",
                 $"This model is no longer available{(retired.Since is { } since ? $" ({retired.Server} said so on {since.LocalDateTime:d MMM})" : "")}. " +
-                retired.Remedy,
-                [Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
+                RetiredProposal(llm.Origin, llm.ModelId, retired),
+                RetiredThinkingFixes(llm, retired), "Martlet can't reply right now");
         else if (llm is not null && thinkingDown is null)
         {
             var model = llm.ModelId;

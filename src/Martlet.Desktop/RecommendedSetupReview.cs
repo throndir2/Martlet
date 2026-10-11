@@ -13,6 +13,28 @@ internal sealed record ReviewComputer(string Id, string Name, string Kind, strin
 /// <summary>One change in the review, in the recommender's words, with how much it matters.</summary>
 internal sealed record ReviewChange(string Summary, string Why, string Benefit, string Computer, bool NeedsSomeoneThere);
 
+/// <summary>One job in the review's Your choices: <see cref="Today"/> is who does it today in words, <see cref="State"/> its lock
+/// (<see cref="CanLock"/> false: the voice, which always stays the owner's choice), <see cref="TodayOption"/> the option doing it
+/// today (unlocking remembers it), and <see cref="Suggestion"/> Martlet's clearly better choice, when there is one:
+/// <see cref="SuggestionApplied"/> means the recommendation already makes it (the job is unlocked).</summary>
+internal sealed record ReviewChoice(string Job, string Title, string Today, JobLockState State, bool CanLock = true)
+{
+    public string? TodayOption { get; init; }
+    public string? Suggestion { get; init; }
+    public bool SuggestionApplied { get; init; }
+    public bool Locked => State != JobLockState.Unlocked;
+
+    /// <summary>The lock in words.</summary>
+    public string StateText => !CanLock ? "Always yours: your voices are made for your voice engine, so Martlet never changes it."
+        : State switch
+        {
+            JobLockState.Unlocked => "Unlocked: Martlet may choose a clearly better model when you reconfigure.",
+            JobLockState.Locked => "Locked: Martlet keeps your choice and only suggests.",
+            JobLockState.ChangedByHand => "Locked: you changed it by hand, so Martlet keeps it and only suggests.",
+            _ => "Locked: Martlet keeps what runs today and only suggests. Unlock it to let Martlet choose."
+        };
+}
+
 /// <summary>One part of Martlet in the review's priority list: its place in the list, whether a conversation needs it
 /// ("Needed") or it is optional and can be off, where it runs in the recommended setup or that it is off, and why.
 /// <see cref="OffChoice"/>: the review offers its Off (a part this PC sets on its Companion page is turned off there);
@@ -37,6 +59,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     string? Offline = null)
 {
     internal const string OptimalTitle = "Your computers already use the recommended setup.";
+    internal const string BetterTitle = "A better setup is available";
 
     /// <summary>Every part of Martlet in priority order: where it runs, or that it is off.</summary>
     public IReadOnlyList<ReviewPart> Parts { get; init; } = [];
@@ -62,6 +85,14 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     /// <summary>The three plans (Normal, While gaming, Host away): where each live job goes in each situation
     /// (<see cref="SituationPlans"/>).</summary>
     public IReadOnlyList<SituationPlan> Situations { get; init; } = [];
+
+    /// <summary>Your choices: each job's lock and Martlet's suggestion next to it (docs/RECOMMENDATION_DESIGN.md, "Owners who run
+    /// their own models"), then the voice, which always stays yours.</summary>
+    public IReadOnlyList<ReviewChoice> Choices { get; init; } = [];
+
+    /// <summary>The numbers the recommendation planned with that Martlet measured on your computers instead of estimating
+    /// ("gemma4:e4b: first word 0.26 s (estimate 0.21 s) from 5 replies, measured on http://127.0.0.1:11434").</summary>
+    public IReadOnlyList<string> Measured { get; init; } = [];
 
     /// <summary>The review of <paramref name="recommendation"/> for the computers in <paramref name="build"/>. Pure.</summary>
     internal static RecommendedSetupReview From(NetworkRecommendation recommendation, SetupRequestBuild build, FootprintCatalog? catalog = null)
@@ -129,6 +160,28 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             poolLine += $" (today: {(poolBefore.Count == 0 ? "no computers" : string.Join(", ", poolBefore.Select(Name)))})";
         jobs.Add(poolLine + ".");
 
+        // Your choices: each job's lock, who does it today, and Martlet's suggestion next to it.
+        var choices = new List<ReviewChoice>();
+        foreach (var job in RecommendationPreferences.LockableJobs)
+        {
+            var today = recommendation.Current.Job(job) ?? request.CurrentJobs.FirstOrDefault(j => j.Job == job);
+            var suggestion = recommendation.Suggestions.FirstOrDefault(s => s.Job == job);
+            var chosen = NetworkRecommender.TodayChoice(request, job, catalog);
+            var option = chosen is null || today is { Off: true } ? null : catalog.Find(chosen);
+            var who = today is null ? "not set up yet"
+                : option is null ? Who(today, Name, catalog)
+                : today.HostId is { } host ? $"{option.DisplayName} on {Name(host)}" : Who(today with { OptionId = option.Id }, Name, catalog);
+            choices.Add(new ReviewChoice(job, ClusterSync.Title(job), who, build.Preferences.LockState(job, chosen))
+            {
+                TodayOption = chosen,
+                Suggestion = suggestion is null ? null : $"Suggested: {suggestion.Name}: {suggestion.Why}",
+                SuggestionApplied = suggestion?.Applied == true
+            });
+        }
+        var voice = recommendation.Current.Job(ClusterJobs.Speaking) ?? request.CurrentJobs.FirstOrDefault(j => j.Job == ClusterJobs.Speaking);
+        choices.Add(new ReviewChoice(ClusterJobs.Speaking, ClusterSync.Title(ClusterJobs.Speaking),
+            voice is null ? "not set up yet" : Who(voice, Name, catalog), JobLockState.Locked, CanLock: false));
+
         var downloads = recommendation.Changes.Where(c => c.DownloadGb is > 0).GroupBy(c => c.MachineId)
             .Select(g => (Name: Name(g.Key), Gb: g.Sum(c => c.DownloadGb!.Value))).ToArray();
         var downloadText = downloads.Length == 0 ? null
@@ -145,7 +198,12 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             ? $"Martlet checked {Count(computersCount, "computer")} against the recommended setup. Nothing needs to change."
             : $"{Count(count, "change")}{(places > 0 ? $" on {Count(places, "computer")}" : "")}. Companion PCs stay light so games keep their graphics card, " +
               "and each graphics card runs at most one language model. Nothing changes until you choose Reconfigure.";
-        return new(recommendation.AlreadyOptimal ? OptimalTitle : "A better setup is ready for your computers", summary, computers, jobs,
+        var better = recommendation.AlreadyOptimal && recommendation.BetterSetupAvailable;
+        if (better)
+            summary = $"Your computers use the recommended setup. Martlet found a clearly better choice for " +
+                $"{string.Join(" and ", recommendation.Suggestions.Select(s => ClusterSync.Title(s.Job).ToLowerInvariant()))}, which you keep locked: " +
+                "see Your choices. Nothing changes unless you choose Use the suggestion or unlock the job.";
+        return new(better ? BetterTitle : recommendation.AlreadyOptimal ? OptimalTitle : "A better setup is ready for your computers", summary, computers, jobs,
             changes, notes, downloadText, manual, recommendation.AlreadyOptimal, recommendation.Fingerprint, cannotReply,
             FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()))
         {
@@ -156,7 +214,9 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             PreferHostModels = request.PreferHostModels,
             HostModels = HostModelLines(request.Machines, Name),
             Preferences = build.Preferences,
-            Games = build.Games
+            Games = build.Games,
+            Choices = choices,
+            Measured = [.. catalog.Measurements.Select(m => m.Describe())]
         };
     }
 
