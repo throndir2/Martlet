@@ -161,6 +161,29 @@ public sealed class RecommendationFeedbackTests
     }
 
     [Fact]
+    public void ARetiredModelGetsAReplacementAtOnce()
+    {
+        var catalog = ModelCatalog.Build(ModelCatalogStore.Snapshot());
+        var today = DateOnly.FromDateTime(Now.UtcDateTime);
+        var nvidia = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl;
+        var retired = ChatCompletionsEndpointCatalog.ById(ChatCompletionsEndpointCatalog.NvidiaBuildId)!.RetiredModelIds[0];
+        // The provider's own current choice comes first.
+        Assert.Equal(ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId, RetiredModels.Replacement(catalog, nvidia, retired, null, today));
+        // When that is retired too, the smartest current model the catalog lists on that server that takes the same inputs.
+        var gone = new ModelAbilities().With(new ModelAbility
+        {
+            Origin = nvidia, ModelId = ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId, Retired = Now, Source = ModelAbility.GoneAnswer, CheckedAt = Now
+        });
+        var next = RetiredModels.Replacement(catalog, nvidia, retired, gone, today);
+        Assert.NotNull(next);
+        Assert.NotEqual(ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId, next);
+        Assert.NotNull(catalog.Route(nvidia, next!));
+        Assert.False(RetiredModels.Expired(catalog, nvidia, next!, today));
+        // Without a catalog or a suggestion there is nothing to propose.
+        Assert.Null(RetiredModels.Replacement(null, "https://example.invalid/v1", "gone-model", null, _ => false, today));
+    }
+
+    [Fact]
     public void AsSmartWithClearlyLessMemoryIsALighterSuggestion()
     {
         ComponentOption Model(string id, double gb) => FootprintCatalog.Default.Find("gemma4:12b")! with
