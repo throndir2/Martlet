@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-10-11
+
 ### Added
 
 - **Free up this PC** on Home: a new *Martlet on this PC* card says what Martlet keeps in your PC's memory right now (its local models with their size, listening, the character, the conversation). One click ends the conversation, hides the character and unloads the models, so a game or other heavy program gets the memory back. Martlet then rests until you talk to it again. ([#782](https://github.com/throndir2/Martlet/pull/782))
