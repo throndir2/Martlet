@@ -108,7 +108,7 @@ public partial class MainWindow
 
     /// <summary>What one space's sync did, for the status line (counts only).</summary>
     private sealed record SpaceSync(string Space, int Remembered, int Same, int Taken, int Forgot, int Down, int Old, int Denied,
-        int Unreadable, string? Problem, string? Waiting);
+        int Unreadable, string? Problem, string? Waiting, int Full = 0);
 
     /// <param name="only">The spaces to sync (an account's spaces after a switch); null: every space of the account signed in.</param>
     /// <param name="oldDocument">The space that also keeps the old single memory document the same: the owner's space.</param>
@@ -193,11 +193,14 @@ public partial class MainWindow
         if (result.Taken > 0 || result.Forgot > 0)
             ErrorLog.Info($"Shared memories ({SpaceName(space.Id, service.Account)}): took {result.Taken} and forgot {result.Forgot} from your other computers.");
         if (result.Problem is not null) ErrorLog.Warn($"Shared memories couldn't change this PC's memory: {result.Problem}");
+        if (result.Full > 0)
+            ErrorLog.Warn($"Shared memories ({SpaceName(space.Id, service.Account)}): {result.Full} fact(s) didn't fit one memory " +
+                $"({MemorySyncNode.StoreCapacity:N0} facts); the oldest picked out of conversations were forgotten.");
         var same = reads.Count(r => (r.Ok && memoryCopies.GetValueOrDefault((r.HostId, space.Id)).Digest == digest) ||
             (!r.Ok && r.Old is not null && memoryCopies.GetValueOrDefault((r.HostId, OldMemoryDocument)).Digest == digest));
         return new(space.Id, result.Document.Live.Count(), same, result.Taken, result.Forgot,
             reads.Count(r => !r.Ok && !r.NoSpaces && !r.Denied), reads.Count(r => r.NoSpaces && r.Old is null), reads.Count(r => r.Denied),
-            result.Unreadable, result.Problem, null);
+            result.Unreadable, result.Problem, null, result.Full);
     }
 
     private async Task GiveMemoriesAsync(PairedHost host, string key, Func<Audio2FaceHostConnection, Task<SharedMemories>> merge)
@@ -227,6 +230,7 @@ public partial class MainWindow
         var old = synced.Max(s => s.Old);
         var denied = synced.Max(s => s.Denied);
         var unreadable = synced.Sum(s => s.Unreadable);
+        var full = synced.Sum(s => s.Full);
         var problem = synced.Select(s => s.Problem).FirstOrDefault(p => p is not null);
         var counts = synced.Count == 1 ? $"{synced[0].Remembered} remembered"
             : string.Join(", ", synced.Select(s => $"{s.Remembered} {SpaceName(s.Space, account)}"));
@@ -236,6 +240,7 @@ public partial class MainWindow
             (old > 0 ? $" Update {(old == 1 ? "one host" : old + " hosts")} to share memories." : "") +
             (denied > 0 ? $" {(denied == 1 ? "One host doesn't" : denied + " hosts don't")} know you on this PC yet." : "") +
             (unreadable > 0 ? $" {unreadable} need a newer Martlet on this PC." : "") +
+            (full > 0 ? $" Memory is full: {full} didn't fit ({MemorySyncNode.StoreCapacity:N0} facts at most); delete some in Companion › Memory." : "") +
             (problem is not null ? $" This PC couldn't take them yet: {problem}" : "");
     }
 

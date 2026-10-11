@@ -1059,7 +1059,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "accounts\\<id>\\memory, household and character spaces in memory-spaces\\<space>) with its space ID and the same counts. The " +
             "top-level counts are the store in the memory setting's folder (memories from before accounts until they move to the owner's " +
             "space, or a custom folder). Never a fact's text, a name, a voice ID or a path. Read-only (it never opens or locks a " +
-            "store); contacts nothing.", new
+            "store); contacts nothing. limits: the most facts a store holds, characters per fact and store bytes.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -2459,8 +2459,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "other (\"cats\" finds \"cat\", \"running\" finds \"runs\"), grammar words left out, facts holding more of the question " +
             "first, query words next to each other and in order first, a gentle recency boost, a near-duplicate of a better match " +
             "moving down (never one of another person), a snapshot ranking like the store, a deleted fact never recalled, and the " +
-            "time to rank a query on a full store of 512 facts (median, p95 and max in microseconds; it must stay well under a " +
-            "millisecond). Optional query ranks those words against the sample facts, or against facts (1-512 strings, later " +
+            "time to rank a query on a store of 512 facts and on a full store of 100,000 facts (median, p95 and max in microseconds, " +
+            "and how long filling the store took; 512 facts must stay well under a millisecond, a full store under 10 milliseconds). " +
+            "Optional query ranks those words against the sample facts, or against facts (1-100,000 strings, later " +
             "counts as newer) when given, and returns the ranked facts with their scores and matched terms. Never opens your " +
             "memory. Nothing leaves this PC.", new
         {
@@ -4540,10 +4541,15 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         // The store in the memory setting's folder: this PC's memories from before accounts (until they move into the owner's
         // space) or the owner's custom folder.
         var here = await MemoryStoreCountsAsync(folder, roster, cancellation);
-        return here is null ? new { memory, storage, state = "none", voiceList, spaces = (object)spaces }
-            : here.State == "unreadable" ? new { memory, storage, state = "unreadable", voiceList, spaces = (object)spaces }
+        var limits = new
+        {
+            facts = Martlet.Memory.MemoryLimits.MaximumFacts, factCharacters = Martlet.Memory.MemoryLimits.MaximumContentCharacters,
+            storeBytes = Martlet.Memory.MemoryLimits.MaximumStoreBytes
+        };
+        return here is null ? new { memory, storage, state = "none", voiceList, spaces = (object)spaces, limits }
+            : here.State == "unreadable" ? new { memory, storage, state = "unreadable", voiceList, spaces = (object)spaces, limits }
             : (object)new { memory, storage, state = "loaded", voiceList, facts = here.Facts, typed = here.Typed,
-                fromConversation = here.FromConversation, expiring = here.Expiring, whose = here.Whose, spaces };
+                fromConversation = here.FromConversation, expiring = here.Expiring, whose = here.Whose, spaces, limits };
     }
 
     private sealed record MemoryCounts(string State, int Facts = 0, int Typed = 0, int FromConversation = 0, int Expiring = 0, object? Whose = null);
@@ -4567,7 +4573,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             byte[] bytes;
             await using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             {
-                if (stream.Length > 8 * 1024 * 1024) return new("unreadable");
+                if (stream.Length > Martlet.Memory.MemoryLimits.MaximumStoreBytes) return new("unreadable");
                 bytes = new byte[stream.Length];
                 await stream.ReadExactlyAsync(bytes, cancellation);
             }

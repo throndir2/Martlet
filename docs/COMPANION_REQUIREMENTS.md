@@ -58,9 +58,11 @@ must not arm a microphone, increase capture permission or change provider routes
 Support explicit UTF-8 plain-text import/export of the persona text so a user
 can edit it externally and swap files. Show the imported draft before Apply;
 do not silently watch files or execute scripts, templates or embedded commands.
-Each profile is limited to 8,192 characters and 16 KiB UTF-8; all profile texts
-together are limited to 16,384 characters and 32 KiB UTF-8 so every accepted
-profile collection remains persistable within the bounded settings document.
+Each profile is limited to 100,000 characters; there can be up to 1,000
+personas and 1,000 character profiles, and all profile texts together are
+limited to 1,000,000 characters so every accepted profile collection remains
+persistable within the bounded (8 MiB) settings document and syncs as one
+shared setting (at most 16 MiB).
 Version and bound persisted profile data in the existing settings ownership
 and migration system; do not introduce a second competing settings store.
 Reject unreadable, malformed, oversized or unsupported files with a remedy,

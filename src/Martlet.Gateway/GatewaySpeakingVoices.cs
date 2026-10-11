@@ -146,7 +146,7 @@ internal sealed partial class GatewayHttpApplication
 {
     internal const string SpeakingVoicesPath = "/martlet/v1/speaking-voices";
     internal const string SpeakingVoiceAudioPath = SpeakingVoicesPath + "/audio/";
-    private const int MaximumSpeakingVoicesResponseBytes = SpeakingVoiceLibrary.MaximumBytes + 16_384;
+    private const int MaximumSpeakingVoicesResponseBytes = SpeakingVoiceLibrary.MaximumHostAnswerBytes;
     private const int MaximumSpeakingVoiceAudioBytes = (SpeakingVoiceLibrary.MaximumAudioBytes + 2) / 3 * 4 + 4_096;
 
     internal GatewaySpeakingVoiceStore SpeakingVoices { get; } = new();

@@ -45,9 +45,11 @@ public sealed record SharedSecret
 public sealed record SharedSettings
 {
     public const int SchemaVersion1 = 1;
-    public const int MaximumBytes = 2 * 1024 * 1024;
+    // Every value is read whole (here, on hosts and in each request), so the document and each value keep a bound: room for all
+    // personas' text (CompanionSettings) or a large set of lorebooks in one value.
+    public const int MaximumBytes = 64 * 1024 * 1024;
     public const int MaximumSettings = 64;
-    public const int MaximumValueBytes = 1024 * 1024;
+    public const int MaximumValueBytes = 16 * 1024 * 1024;
     public const int MaximumSecretLength = 1024;
     private const long MaximumRevision = long.MaxValue / 4;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);

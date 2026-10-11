@@ -94,7 +94,9 @@ test("encoded bytes, JSON, file count and decoded texture budgets are enforced",
   for (let i = 0; i < 128; i++) many.set(`${i}.png`, png());
   assert.throws(() => new LocalModelBundle(many, "avatar.model3.json"), code("RESOURCE_LIMIT"));
   const total = files();
-  for (let i = 0; i < 3; i++) total.set(`${i}.moc3`, new Uint8Array(LIMITS.fileBytes));
+  // One shared array keeps the test's memory low; the bundle refuses before it copies anything.
+  const largest = new Uint8Array(LIMITS.fileBytes);
+  for (let i = 0; i < 3; i++) total.set(`${i}.moc3`, largest);
   assert.throws(() => new LocalModelBundle(total, "avatar.model3.json"), code("RESOURCE_LIMIT"));
   const names = ["texture.png", "2.png", "3.png", "4.png", "5.png"];
   const sourceBudget = files({ FileReferences: { Moc: "avatar.moc3", Textures: names } });

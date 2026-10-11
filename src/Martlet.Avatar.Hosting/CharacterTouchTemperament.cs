@@ -167,7 +167,8 @@ public sealed record TouchReactionPlan(IReadOnlyList<CharacterActionSource> Acti
 public static class CharacterTouchTemperaments
 {
     public const string FileName = "character-temperaments.json";
-    public const int MinimumAttitude = -2, MaximumAttitude = 3, MaximumReactions = 3, MaximumPersonas = 32, MaximumBytes = 1024 * 1024;
+    public const int MinimumAttitude = -2, MaximumAttitude = 3, MaximumReactions = 3,
+        MaximumPersonas = Martlet.Core.Settings.CompanionSettings.MaximumPersonas, MaximumBytes = 16 * 1024 * 1024;
     public const int MinimumAfter = 2, MaximumAfter = 20;
     public const double MaximumLinger = 15, RepeatWindowSeconds = 30, MaximumLook = CharacterGaze.MaximumAttention;
     /// <summary>The word a temperament writes for a part the character doesn't react to at all.</summary>

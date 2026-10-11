@@ -31,7 +31,7 @@ public static class ContractJson
 
     public static T Read<T>(ReadOnlyMemory<byte> json, int maximumBytes, int maxDepth) where T : IContract
     {
-        ContractRules.Require(maximumBytes is > 0 and <= ContractRules.MaxJsonBytes, "Invalid JSON size limit.");
+        ContractRules.Require(maximumBytes is > 0 and <= ContractRules.MaxExplicitJsonBytes, "Invalid JSON size limit.");
         ContractRules.Require(maxDepth is DefaultMaxDepth or DeepMaxDepth, "Invalid JSON depth limit.");
         ContractRules.Require(json.Length <= maximumBytes, "JSON exceeds the supported size limit.", ErrorCode.PayloadTooLarge);
         try
@@ -51,7 +51,7 @@ public static class ContractJson
 
     public static byte[] Write<T>(T value, int maximumBytes = ContractRules.MaxJsonBytes) where T : IContract
     {
-        ContractRules.Require(maximumBytes is > 0 and <= ContractRules.MaxJsonBytes, "Invalid JSON size limit.");
+        ContractRules.Require(maximumBytes is > 0 and <= ContractRules.MaxExplicitJsonBytes, "Invalid JSON size limit.");
         ArgumentNullException.ThrowIfNull(value);
         value.Validate();
         var bytes = JsonSerializer.SerializeToUtf8Bytes(value, Options);

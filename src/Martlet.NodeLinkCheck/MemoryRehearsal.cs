@@ -220,13 +220,13 @@ internal static class MemoryRehearsal
                 return (result.Recorded == 0 && before == after && same, $"took {result.Taken}, recorded {result.Recorded}; facts on lab-memory-1 {before} -> {after}; same as A: {same}");
             });
 
-            await Run("Together too many for one store (512): every computer forgets the oldest facts picked out of conversations, never one the owner typed", async () =>
+            await Run("Together too many for one store (512 in this rehearsal): every computer forgets the oldest facts picked out of conversations, never one the owner typed, and says how many didn't fit", async () =>
             {
                 await a.BulkAsync(300, "a");
                 await c.BulkAsync(300, "c");
                 var typedBefore = (await a.FactsAsync()).Count(f => f.LastModifiedBy.SourceKind != MemorySourceKind.Conversation);
                 await a.SyncAsync(hosts, token);
-                await c.SyncAsync(hosts, token);
+                var full = (await c.SyncAsync(hosts, token)).Full;
                 await a.SyncAsync(hosts, token);
                 await b.SyncAsync(hosts, token);
                 var af = await a.FactsAsync();
@@ -234,8 +234,8 @@ internal static class MemoryRehearsal
                 var bf = await b.FactsAsync();
                 var typedAfter = af.Count(f => f.LastModifiedBy.SourceKind != MemorySourceKind.Conversation);
                 var oldestKept = af.Where(f => f.Content.StartsWith("Bulk", StringComparison.Ordinal)).Min(f => f.UpdatedAtUtc);
-                return (af.Count <= MemorySyncNode.StoreCapacity && Same(af, cf) && Same(af, bf) && typedAfter >= typedBefore,
-                    $"A holds {af.Count}, C {cf.Count}, B {bf.Count}; same everywhere: {Same(af, cf) && Same(af, bf)}; typed facts kept: {typedAfter} of {typedBefore}; oldest conversation fact kept from {oldestKept:u}");
+                return (af.Count <= LabDesktop.LabCapacity && full > 0 && Same(af, cf) && Same(af, bf) && typedAfter >= typedBefore,
+                    $"didn't fit: {full}; A holds {af.Count}, C {cf.Count}, B {bf.Count}; same everywhere: {Same(af, cf) && Same(af, bf)}; typed facts kept: {typedAfter} of {typedBefore}; oldest conversation fact kept from {oldestKept:u}");
             });
 
             await Run("Memory spaces: A puts a fact in Sam's account space on both hosts; B reads it there with the same digest; Alex's space is refused to B (Alex isn't signed in there); the household and the old document never see it; it survives a host restart; a bad space ID never leaves the desktop", async () =>
@@ -424,6 +424,9 @@ internal static class MemoryRehearsal
         private string memoryDirectory;
         internal string DeviceId { get; }
         internal MemorySyncNode Node { get; }
+        /// <summary>The lab's store size (a real store holds <see cref="MemorySyncNode.StoreCapacity"/>), so a full store is
+        /// rehearsed with a few hundred facts.</summary>
+        internal const int LabCapacity = 512;
 
         internal LabDesktop(string deviceId, string directory)
         {
@@ -431,7 +434,7 @@ internal static class MemoryRehearsal
             dataDirectory = directory;
             memoryDirectory = Path.Combine(directory, "memory");
             Directory.CreateDirectory(directory);
-            Node = new MemorySyncNode(directory, deviceId);
+            Node = new MemorySyncNode(directory, deviceId, LabCapacity);
         }
 
         internal void UseMemoryFolder(string directory) => memoryDirectory = directory;
@@ -540,7 +543,7 @@ internal static class MemoryRehearsal
                 }
                 catch (Exception error) when (error is HttpRequestException or Audio2FaceHostException or IOException or OperationCanceledException) { }
             }
-            var node = new MemorySyncNode(MemorySpaceFolders.Sync(dataDirectory, space), DeviceId);
+            var node = new MemorySyncNode(MemorySpaceFolders.Sync(dataDirectory, space), DeviceId, LabCapacity);
             var result = await WithStoreAsync(store => node.SyncAsync(copies, read => ReadLocalAsync(store, read),
                 (changes, apply) => store.MergeAsync(new() { Facts = changes.Facts, Forget = changes.Forget }, apply),
                 Describe, DateTimeOffset.UtcNow, token), space);

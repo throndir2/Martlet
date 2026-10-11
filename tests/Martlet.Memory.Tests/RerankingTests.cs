@@ -148,14 +148,18 @@ public sealed class RerankingTests(ITestOutputHelper output)
         Assert.Equal(full, LexicalIndex.Build(Enumerable.Reverse(facts)).Search(terms, MemoryLimits.MaximumResults, CancellationToken.None));
     }
 
-    /// <summary>Recall runs on the reply's path: ranking a full store of 512 facts must stay well under a millisecond.</summary>
-    [Fact]
-    public void RankingAFullStoreStaysWellUnderAMillisecond()
+    /// <summary>Recall runs on the reply's path: ranking a store of 512 facts (the old limit) must stay well under a millisecond, and
+    /// a full store (<see cref="MemoryLimits.MaximumFacts"/>) under 10 milliseconds, even with this small vocabulary where every
+    /// query word is in thousands of facts.</summary>
+    [Theory]
+    [InlineData(512, 1)]
+    [InlineData(MemoryLimits.MaximumFacts, 10)]
+    public void RankingAFullStoreStaysWellUnderAMillisecond(int count, double medianMilliseconds)
     {
         var random = new Random(7);
         var vocabulary = Enumerable.Range(0, 400).Select(i => Word(random, i)).ToArray();
         string Sentence(int words) => string.Join(' ', Enumerable.Range(0, words).Select(_ => vocabulary[random.Next(vocabulary.Length)]));
-        var facts = Enumerable.Range(0, MemoryLimits.MaximumFacts).Select(i => Fact($"The user {Sentence(random.Next(6, 16))}.", i % 90)).ToArray();
+        var facts = Enumerable.Range(0, count).Select(i => Fact($"The user {Sentence(random.Next(6, 16))}.", i % 90)).ToArray();
         var index = LexicalIndex.Build(facts);
         var queries = Enumerable.Range(0, 200)
             .Select(_ => MemoryQuery.TryFromBoundedSource($"Hey, do you remember what I said about {Sentence(random.Next(4, 20))}?", 12)!)
@@ -174,9 +178,9 @@ public sealed class RerankingTests(ITestOutputHelper output)
             }
         timings.Sort();
         var median = timings[timings.Count / 2];
-        output.WriteLine($"512 facts, {timings.Count} queries: median {median * 1000:0} µs, p95 {timings[timings.Count * 95 / 100] * 1000:0} µs, " +
+        output.WriteLine($"{count} facts, {timings.Count} queries: median {median * 1000:0} µs, p95 {timings[timings.Count * 95 / 100] * 1000:0} µs, " +
             $"max {timings[^1] * 1000:0} µs");
-        Assert.True(median < 1, $"median {median:0.000} ms");
+        Assert.True(median < medianMilliseconds, $"median {median:0.000} ms");
     }
 
     private static string Word(Random random, int index)

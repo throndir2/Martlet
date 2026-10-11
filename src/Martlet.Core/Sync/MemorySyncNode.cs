@@ -18,9 +18,10 @@ public sealed record MemoryFactInfo(bool Expired, bool Typed);
 public sealed record MemoryChanges(IReadOnlyList<string> Facts, IReadOnlyCollection<Guid> Forget);
 
 /// <summary>What one memory sync did: the merged copy to give the hosts, how many facts it took from other computers and forgot
-/// because another computer forgot them, how many changes made here it recorded, how many facts need a newer Martlet, and why
-/// it couldn't change this computer's store (or null).</summary>
-public sealed record MemorySyncResult(SharedMemories Document, int Taken, int Forgot, int Recorded, int Unreadable, string? Problem);
+/// because another computer forgot them, how many changes made here it recorded, how many facts need a newer Martlet, why
+/// it couldn't change this computer's store (or null), and how many facts didn't fit one store (<see cref="MemorySyncNode.StoreCapacity"/>)
+/// when every computer's facts were put together.</summary>
+public sealed record MemorySyncResult(SharedMemories Document, int Taken, int Forgot, int Recorded, int Unreadable, string? Problem, int Full = 0);
 
 /// <summary>What this computer remembers about its memory store between syncs (memory-sync.json in Martlet's data folder, no
 /// fact content): which store it is, the revision and digest of each fact it had at the last sync and which computer wrote
@@ -96,17 +97,22 @@ public sealed record MemorySyncState
 /// which the caller runs while it owns the store.</summary>
 public sealed class MemorySyncNode
 {
-    /// <summary>The most facts one memory store holds (Martlet.Memory's limit).</summary>
-    public const int StoreCapacity = 512;
+    /// <summary>The most facts one memory store holds (Martlet.Memory's MemoryLimits.MaximumFacts).</summary>
+    public const int StoreCapacity = 100_000;
 
     private readonly string directory;
     private readonly string device;
+    private readonly int capacity;
 
-    public MemorySyncNode(string directory, string device)
+    /// <param name="capacity">The most facts a store holds: <see cref="StoreCapacity"/>, or less to rehearse a full store.</param>
+    public MemorySyncNode(string directory, string device, int capacity = StoreCapacity)
     {
         ContractRules.Identifier(device);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, StoreCapacity);
         this.directory = directory;
         this.device = device;
+        this.capacity = capacity;
     }
 
     /// <summary>The merged copy from the last sync (with every fact), ready to give the hosts.</summary>
@@ -123,8 +129,12 @@ public sealed class MemorySyncNode
         MemoryFactInfo? Describe(string fact) => info.TryGetValue(fact, out var known) ? known : info[fact] = describe(fact);
 
         // What this computer has: its facts (a version it didn't have at the last sync is a change made here) and the deletions
-        // made here since then.
-        var document = SharedMemories.Empty;
+        // made here since then. Gathered per fact ID, then made one document, so a large store costs one pass.
+        var entries = new Dictionary<Guid, SharedMemory>();
+        void Put(SharedMemory entry)
+        {
+            if (!entries.TryGetValue(entry.Id, out var existing) || !SharedMemories.Newer(existing, entry)) entries[entry.Id] = entry;
+        }
         var recorded = 0;
         var mine = new Dictionary<Guid, (long Revision, string Fact)>();
         foreach (var fact in local.Facts)
@@ -135,34 +145,41 @@ public sealed class MemorySyncNode
             var digest = SharedMemories.Sha256(canonical);
             var known = observed.TryGetValue(fact.Id, out var seen) && seen.Revision == fact.Revision && seen.Digest == digest;
             if (!known) recorded++;
-            document = document.With(new()
+            Put(new()
             {
                 Id = fact.Id, Revision = fact.Revision, UpdatedAt = fact.UpdatedAt.ToUniversalTime(), UpdatedBy = known ? seen!.By : device,
                 Fact = canonical
             });
         }
-        foreach (var gone in state.Forgotten) document = document.With(gone);
+        foreach (var gone in state.Forgotten) Put(gone);
         foreach (var (id, seen) in observed)
         {
             if (mine.ContainsKey(id)) continue;
             var forget = Tombstone(id, seen.Revision, now);
-            if (document.Find(id) is { } existing && !SharedMemories.Newer(forget, existing)) continue;
-            document = document.With(forget);
+            if (entries.TryGetValue(id, out var existing) && !SharedMemories.Newer(forget, existing)) continue;
+            Put(forget);
             recorded++;
         }
+        var document = SharedMemories.Of(entries.Values);
 
         foreach (var copy in copies) document = SharedMemories.Merge(document, copy);
 
         // Facts that expired, then (when every computer's facts together don't fit one store) the oldest facts picked out of
-        // conversations, are forgotten everywhere.
-        foreach (var fact in document.Live.ToArray())
+        // conversations, are forgotten everywhere. Those that didn't fit are counted, so the owner is told.
+        var merged = document.Facts.ToDictionary(f => f.Id);
+        foreach (var fact in document.Live)
             if (Describe(fact.Fact!) is { Expired: true })
-                document = document.With(Tombstone(fact.Id, fact.Revision, now));
-        var live = document.Live.ToArray();
-        if (live.Length > StoreCapacity)
+                merged[fact.Id] = Tombstone(fact.Id, fact.Revision, now);
+        var live = merged.Values.Where(f => !f.Forgotten).ToArray();
+        var full = 0;
+        if (live.Length > capacity)
             foreach (var fact in live.Where(f => Describe(f.Fact!) is { Typed: false }).OrderBy(f => f.UpdatedAt).ThenBy(f => f.Id)
-                .Take(live.Length - StoreCapacity).ToArray())
-                document = document.With(Tombstone(fact.Id, fact.Revision, now));
+                .Take(live.Length - capacity).ToArray())
+            {
+                merged[fact.Id] = Tombstone(fact.Id, fact.Revision, now);
+                full++;
+            }
+        document = SharedMemories.Of(merged.Values);
 
         // What this computer's store must change to hold the newest version of every fact.
         var upserts = new List<SharedMemory>();
@@ -183,12 +200,13 @@ public sealed class MemorySyncNode
             }
             upserts.Add(entry);
         }
-        // A store holds StoreCapacity facts: when the owner typed more than that across computers, the newest fit.
-        var room = StoreCapacity - (mine.Count - forgetHere.Count) - upserts.Count(u => !mine.ContainsKey(u.Id));
+        // A store holds capacity facts: when the owner typed more than that across computers, the newest fit.
+        var room = capacity - (mine.Count - forgetHere.Count) - upserts.Count(u => !mine.ContainsKey(u.Id));
         if (room < 0)
         {
             var dropped = upserts.Where(u => !mine.ContainsKey(u.Id)).OrderBy(u => u.UpdatedAt).ThenBy(u => u.Id).Take(-room).ToHashSet();
             upserts.RemoveAll(dropped.Contains);
+            full += dropped.Count;
         }
 
         string? problem = null;
@@ -207,11 +225,12 @@ public sealed class MemorySyncNode
         }
 
         var seenNow = new Dictionary<Guid, MemorySyncState.Seen>();
+        var final = document.Facts.ToDictionary(f => f.Id);
         foreach (var fact in after.Facts)
         {
             var canonical = SharedMemories.Canonical(fact.Fact);
             if (Describe(canonical) is { Expired: true }) continue;
-            var entry = document.Find(fact.Id);
+            var entry = final.GetValueOrDefault(fact.Id);
             var by = entry is { Forgotten: false } && entry.Revision == fact.Revision && entry.Fact == canonical ? entry.UpdatedBy : device;
             seenNow[fact.Id] = new(fact.Revision, SharedMemories.Sha256(canonical), by);
         }
@@ -221,7 +240,7 @@ public sealed class MemorySyncNode
             Forgotten = [.. document.Forgotten]
         }.Save(directory);
         Document = document;
-        return new(document, problem is null ? upserts.Count : 0, problem is null ? forgetHere.Count : 0, recorded, unreadable, problem);
+        return new(document, problem is null ? upserts.Count : 0, problem is null ? forgetHere.Count : 0, recorded, unreadable, problem, full);
     }
 
     private SharedMemory Tombstone(Guid id, long revision, DateTimeOffset now) => new()

@@ -45,7 +45,7 @@
                     <TextBox x:Name="PersonaName" MaxLength="64" TextChanged="Editor_Changed"
                              AutomationProperties.AutomationId="CompanionName"/>
                     <Label Target="{Binding ElementName=PersonaText}" Content="Persona _instructions"/>
-                    <TextBox x:Name="PersonaText" MaxLength="8192" AcceptsReturn="True" TextWrapping="Wrap"
+                    <TextBox x:Name="PersonaText" MaxLength="100000" AcceptsReturn="True" TextWrapping="Wrap"
                              Height="220" VerticalScrollBarVisibility="Auto" TextChanged="Editor_Changed"
                              AutomationProperties.AutomationId="CompanionText"/>
                     <WrapPanel Margin="0,8">

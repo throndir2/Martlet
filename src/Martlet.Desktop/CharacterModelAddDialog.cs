@@ -40,7 +40,8 @@ internal sealed class CharacterModelAddDialog : ThemedWindow
         root.Children.Add(new TextBlock
         {
             Text = "Choose a Live2D model's .model3.json (Martlet copies the files it uses: model, textures, motions and sounds, up " +
-                "to 128 MB) or a VRM 1.0 .vrm file of up to 32 MB. Martlet keeps a copy and shares it with your paired Martlet computers, so any of " +
+                $"to {CharacterModelLibrary.SizeText(CharacterModelLibrary.MaximumModelBytes)}) or a VRM 1.0 .vrm file of up to " +
+                $"{CharacterModelLibrary.SizeText(CharacterModelLibrary.MaximumVrmBytes)}. Martlet keeps a copy and shares it with your paired Martlet computers, so any of " +
                 "them can show this character. Only add models you may use.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
         });

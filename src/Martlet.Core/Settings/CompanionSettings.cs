@@ -9,8 +9,9 @@ namespace Martlet.Core.Settings;
 public sealed record PersonaProfile : IContract
 {
     public const int MaximumNameCharacters = 64;
-    public const int MaximumTextCharacters = 8_192;
-    public const int MaximumTextUtf8Bytes = 16_384;
+    public const int MaximumTextCharacters = 100_000;
+    // Three UTF-8 bytes per UTF-16 character: the byte bound never refuses text the character bound allows.
+    public const int MaximumTextUtf8Bytes = 3 * MaximumTextCharacters;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     public required Guid Id { get; init; }
@@ -48,7 +49,7 @@ public sealed record PersonaProfile : IContract
         try
         {
             ContractRules.Require(StrictUtf8.GetByteCount(text) <= MaximumTextUtf8Bytes,
-                "Persona text exceeds the 16 KiB UTF-8 limit.");
+                $"Persona text exceeds the {MaximumTextUtf8Bytes:N0}-byte UTF-8 limit.");
         }
         catch (EncoderFallbackException)
         {
@@ -60,11 +61,13 @@ public sealed record PersonaProfile : IContract
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record CompanionSettings : IContract
 {
-    public const int MaximumPersonas = 16;
-    public const int MaximumAggregateTextCharacters = 16_384;
-    public const int MaximumAggregateTextUtf8Bytes = 32_768;
+    public const int MaximumPersonas = 1_000;
+    // All personas' text together is bounded because it is saved in settings.json (AppSettings.MaxFileBytes) and synced as one
+    // shared setting (SharedSettings.MaximumValueBytes).
+    public const int MaximumAggregateTextCharacters = 1_000_000;
+    public const int MaximumAggregateTextUtf8Bytes = 3 * MaximumAggregateTextCharacters;
 
-    public const int MaximumCharacters = 32;
+    public const int MaximumCharacters = 1_000;
 
     public required int SchemaVersion { get; init; }
     public required Guid ActivePersonaId { get; init; }
@@ -234,11 +237,11 @@ public sealed record CompanionSettings : IContract
             ContractRules.Require(names.Add(persona.Name), "Persona profile names must be unique.");
         }
         ContractRules.Require(Personas.Sum(persona => persona.Text.Length) <= MaximumAggregateTextCharacters,
-            "Persona texts exceed the combined 16,384-character settings limit.");
+            $"Persona texts exceed the combined {MaximumAggregateTextCharacters:N0}-character settings limit.");
         try
         {
             ContractRules.Require(Personas.Sum(persona => StrictUtf8Length(persona.Text)) <= MaximumAggregateTextUtf8Bytes,
-                "Persona texts exceed the combined 32 KiB UTF-8 settings limit.");
+                $"Persona texts exceed the combined {MaximumAggregateTextUtf8Bytes:N0}-byte UTF-8 settings limit.");
         }
         catch (EncoderFallbackException)
         {

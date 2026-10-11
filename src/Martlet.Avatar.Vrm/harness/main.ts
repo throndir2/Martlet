@@ -78,7 +78,7 @@ file.addEventListener("change", () => {
   const selected = file.files?.[0];
   if (!selected) return;
   if (!/\.(vrm|glb)$/i.test(selected.name) || selected.size > LIMITS.fileBytes) {
-    report(new Error("Select a local .vrm/.glb no larger than 32 MiB.")); return;
+    report(new Error(`Select a local .vrm/.glb no larger than ${LIMITS.fileBytes / (1024 * 1024)} MiB.`)); return;
   }
   void selected.arrayBuffer().then(load).catch(report);
 });

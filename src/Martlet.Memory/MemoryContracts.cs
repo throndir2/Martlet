@@ -25,19 +25,24 @@ public enum MemoryRetentionKind
 public static class MemoryLimits
 {
     public const int SchemaVersion = 1;
-    public const int MaximumFacts = 512;
-    public const int MaximumContentCharacters = 4096;
-    public const int MaximumContentUtf8Bytes = 8192;
+    public const int MaximumFacts = 100_000;
+    public const int MaximumContentCharacters = 32_768;
+    // Three UTF-8 bytes per UTF-16 character: the byte bound never refuses text the character bound allows.
+    public const int MaximumContentUtf8Bytes = 3 * MaximumContentCharacters;
+    /// <summary>One fact's JSON as it travels between computers (<see cref="MemoryFactJson"/>): the longest fact with every
+    /// character escaped (\uXXXX) and its fields.</summary>
+    public const int MaximumFactJsonBytes = 256 * 1024;
     public const int MaximumVoiceIdCharacters = 64;
     public const int MaximumQueryCharacters = 256;
     public const int MaximumQueryUtf8Bytes = 512;
     public const int MaximumQueryTerms = 24;
     public const int MaximumResults = 20;
     public const int MaximumCachedQueries = 64;
-    public const int MaximumStoreBytes = 8 * 1024 * 1024;
+    // The store is one JSON file read whole into memory, so it keeps a bound: room for MaximumFacts facts of a few hundred
+    // characters each.
+    public const int MaximumStoreBytes = 256 * 1024 * 1024;
     public const int MaximumExportBytes = MaximumStoreBytes;
     public const long MaximumRevision = long.MaxValue - 1;
-    public static readonly TimeSpan MaximumExpiringRetention = TimeSpan.FromDays(366);
 }
 
 public sealed record MemoryProvenance
@@ -96,12 +101,7 @@ public sealed record MemoryRetention
         }
     }
 
-    internal void ValidateForWrite(DateTimeOffset now)
-    {
-        ValidatePersisted(now);
-        if (Kind == MemoryRetentionKind.ExpiresAt)
-            MemoryGuard.Require(ExpiresAtUtc <= now + MemoryLimits.MaximumExpiringRetention);
-    }
+    internal void ValidateForWrite(DateTimeOffset now) => ValidatePersisted(now);
 
     internal bool IsExpired(DateTimeOffset now) =>
         Kind == MemoryRetentionKind.ExpiresAt && ExpiresAtUtc <= now;

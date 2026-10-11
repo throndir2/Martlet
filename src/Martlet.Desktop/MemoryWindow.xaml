@@ -107,7 +107,7 @@
                         <StackPanel Grid.Column="2">
                             <TextBlock x:Name="EditorHeading" Text="New fact" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
                             <Label Target="{Binding ElementName=FactContent}" Content="_Fact" Padding="0,0,0,3" />
-                            <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="110"
+                            <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="32768" Height="110"
                                      VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent" />
                             <Label Target="{Binding ElementName=PersonChoice}" Content="Belongs _to" Padding="0,8,0,3" />
                             <ComboBox x:Name="PersonChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryPerson"

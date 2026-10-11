@@ -96,12 +96,12 @@ public sealed class HouseholdSharingTests
             Books = [.. lorebooks.Books, new Lorebook
             {
                 Id = Guid.NewGuid(), Name = "Encyclopedia", Activation = LorebookActivation.SelectedPersonas, PersonaIds = [aria.PersonaId],
-                Entries = [.. Enumerable.Range(0, 12).Select(i => new LorebookEntry { Uid = i, Keys = [$"k{i}"], Content = new string('x', 30_000) })]
+                Entries = [.. Enumerable.Range(0, HouseholdSharing.MaximumBytes / 30_000 + 1).Select(i => new LorebookEntry { Uid = i, Keys = [$"k{i}"], Content = new string('x', 30_000) })]
             }]
         };
         var error = Assert.Throws<ContractException>(() => HouseholdSharing.Empty(Sam).WithMode(aria.Id, CharacterShareMode.Copy, companion, big));
         Assert.Equal(ErrorCode.PayloadTooLarge, error.Code);
-        Assert.Contains("lorebooks are too large", error.Message);
+        Assert.Contains("too large to share", error.Message);
 
         // A refresh that no longer fits keeps the last snapshot.
         var sharing = HouseholdSharing.Empty(Sam).WithMode(aria.Id, CharacterShareMode.Copy, companion, lorebooks);

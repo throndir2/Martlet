@@ -15,6 +15,9 @@ public sealed class ContractException(ErrorCode code, string message) : Exceptio
 public static partial class ContractRules
 {
     public const int MaxJsonBytes = 262_144;
+    /// <summary>The largest limit a caller may pass to <see cref="ContractJson"/> explicitly (a settings snapshot); the default
+    /// stays <see cref="MaxJsonBytes"/>.</summary>
+    public const int MaxExplicitJsonBytes = 16 * 1024 * 1024;
     /// <summary>The most text one reply (or one provider event) may carry: room for a reply of the largest max reply length
     /// (<c>TextGenerationLimits.HardMaxOutputTokens</c>, 32,768 tokens at up to eight characters each).</summary>
     public const int MaxTextCharacters = 262_144;

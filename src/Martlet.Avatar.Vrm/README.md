@@ -223,7 +223,8 @@ models. Decode failures surface rather than render success with a silently missi
 texture. The bounded parser is defense-in-depth,
 **not a full glTF schema validator or an OS/browser security sandbox**.
 
-Main hard limits are in `LIMITS`: 32MiB input, 2MiB JSON, 120,000 JSON entries,
+Main hard limits are in `LIMITS`: 512MiB input (the same as the desktop host's
+and the shared character list's), 2MiB JSON, 120,000 JSON entries,
 48 JSON depth, 512 nodes/128 hierarchy depth, 2048 accessors, 500,000 accessor
 elements, 64MiB decoded/expanded geometry, 128 meshes/16 primitives each,
 64MiB aggregate buffer-view copies (overlapping views count separately),

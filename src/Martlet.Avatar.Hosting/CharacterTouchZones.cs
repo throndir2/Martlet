@@ -228,8 +228,15 @@ public static partial class CharacterTouchZones
 {
     public const string FileName = "character-touch-zones.json";
     public const string SnapshotFolder = "character-touch-zones";
-    /// <summary><see cref="MaximumActions"/>: at most this many entries in a zone's reaction list.</summary>
-    public const int MaximumModels = 32, MaximumZones = 64, MaximumBytes = 4 * 1024 * 1024, MaximumActions = 8;
+    /// <summary><see cref="MaximumActions"/>: at most this many entries in a zone's reaction list. Zones are kept for the newest
+    /// <see cref="MaximumModels"/> models (as many characters as the shared character list holds). <see cref="MaximumBytes"/>
+    /// bounds one model's sent and probe files.</summary>
+    public const int MaximumModels = Martlet.Core.Characters.CharacterModelLibrary.MaximumModels, MaximumZones = 64, MaximumBytes = 4 * 1024 * 1024,
+        MaximumActions = 8;
+    /// <summary>character-touch-zones.json is read whole, so it stays bounded: 128 KiB for each of <see cref="MaximumModels"/>
+    /// models, the room each of the 32 models it held before had. A model with 32 zones, each with 16 drawables and two areas,
+    /// takes about 107 KB.</summary>
+    public const int MaximumListBytes = 128 * 1024 * 1024;
     /// <summary>At most this many areas make up one zone.</summary>
     public const int MaximumAreas = 8;
     public const int MaximumNarrationLength = 160, MaximumLabelLength = 40;
@@ -1043,7 +1050,7 @@ public static partial class CharacterTouchZones
         try
         {
             var path = Path(dataDirectory);
-            if (!File.Exists(path) || new FileInfo(path).Length > MaximumBytes) return [];
+            if (!File.Exists(path) || new FileInfo(path).Length > MaximumListBytes) return [];
             var document = JsonSerializer.Deserialize<Document>(File.ReadAllBytes(path), Json);
             if (document is not { Version: 1 or DocumentVersion, Models: { } models }) return [];
             var valid = models.Where(m => m is { ModelId: not null, Zones: not null } && m.Zones.All(z => z is { Id: not null, Box: not null } &&
@@ -1094,7 +1101,7 @@ public static partial class CharacterTouchZones
             var models = LoadAll(dataDirectory).Where(m => m.ModelId != settings.ModelId).Append(settings)
                 .OrderByDescending(m => m.UpdatedAt).Take(MaximumModels).OrderBy(m => m.ModelId, StringComparer.Ordinal).ToArray();
             var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(DocumentVersion, models), Json);
-            ContractRules.Require(bytes.Length <= MaximumBytes, "The touch zones are too large.", ErrorCode.PayloadTooLarge);
+            ContractRules.Require(bytes.Length <= MaximumListBytes, "The touch zones are too large.", ErrorCode.PayloadTooLarge);
             Directory.CreateDirectory(dataDirectory);
             var temporary = System.IO.Path.Combine(dataDirectory, $"character-touch-zones.{Guid.NewGuid():N}.tmp");
             try

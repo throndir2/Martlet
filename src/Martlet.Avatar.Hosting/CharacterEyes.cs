@@ -148,7 +148,10 @@ public static class CharacterEyes
     public const string Folder = "character-eyes";
     /// <summary>The picture of the boxes kept for each model: the close-up with the answer's boxes drawn and numbered.</summary>
     public const string BoxesFile = "boxes.png";
-    public const int MaximumModels = 32, MaximumBytes = 1024 * 1024, Edge = 768;
+    /// <summary>Measurements are kept for the newest <see cref="MaximumModels"/> models (as many characters as the shared character
+    /// list holds). The file is read whole, so it stays bounded: one measurement with both pictures and long steps takes about
+    /// 4.5 KB, so <see cref="MaximumModels"/> of them need about 4.5 MB.</summary>
+    public const int MaximumModels = Martlet.Core.Characters.CharacterModelLibrary.MaximumModels, MaximumBytes = 16 * 1024 * 1024, Edge = 768;
     /// <summary>How wide the close-up is, in face widths, and how much it may enlarge the snapshot.</summary>
     public const double FaceWidths = 1.6, MaximumZoom = 8;
     /// <summary>The smallest face (pixels across in the snapshot) worth a close-up.</summary>

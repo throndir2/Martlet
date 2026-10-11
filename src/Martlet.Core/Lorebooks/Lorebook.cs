@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Core.Lorebooks;
 
@@ -61,7 +62,7 @@ public sealed record LorebookEntry : IContract
         ContractRules.Require(Probability is >= 0 and <= 100, "Lorebook entry probability must be 0-100.");
         ContractRules.Require(Order is >= -1_000_000 and <= 1_000_000, "Lorebook entry order must be between -1,000,000 and 1,000,000.");
         ContractRules.Require(ScanDepth is null or >= 0 and <= LorebookLibrary.MaximumScanDepth,
-            $"Lorebook entry scan depth must be 0-{LorebookLibrary.MaximumScanDepth} messages.");
+            $"Lorebook entry scan depth must be 0-{LorebookLibrary.MaximumScanDepth:N0} messages.");
     }
 
     private static void ValidateKeys(IReadOnlyList<string>? keys, string name)
@@ -81,8 +82,8 @@ public sealed record Lorebook : IContract
 {
     public const int MaximumNameCharacters = 128;
     public const int MaximumDescriptionCharacters = 4_096;
-    public const int MaximumEntries = 2_000;
-    public const int MaximumPersonas = 64;
+    public const int MaximumEntries = 100_000;
+    public const int MaximumPersonas = CompanionSettings.MaximumPersonas;
 
     public required Guid Id { get; init; }
     public required string Name { get; init; }
@@ -107,8 +108,8 @@ public sealed record Lorebook : IContract
         ContractRules.Text(Description, MaximumDescriptionCharacters);
         ContractRules.Defined(Activation);
         ContractRules.Require(PersonaIds is { Count: <= MaximumPersonas } && PersonaIds.All(id => id != Guid.Empty) &&
-            PersonaIds.Distinct().Count() == PersonaIds.Count, $"A lorebook lists at most {MaximumPersonas} distinct personas.");
-        ContractRules.Require(Entries is { Count: <= MaximumEntries }, $"A lorebook has at most {MaximumEntries} entries.");
+            PersonaIds.Distinct().Count() == PersonaIds.Count, $"A lorebook lists at most {MaximumPersonas:N0} distinct personas.");
+        ContractRules.Require(Entries is { Count: <= MaximumEntries }, $"A lorebook has at most {MaximumEntries:N0} entries.");
         var uids = new HashSet<int>();
         foreach (var entry in Entries!)
         {
@@ -124,8 +125,9 @@ public sealed record Lorebook : IContract
 public sealed record LorebookLibrary : IContract
 {
     public const int CurrentSchemaVersion = 1;
-    public const int MaximumBooks = 64;
-    public const int MaximumScanDepth = 17;
+    public const int MaximumBooks = 1_000;
+    /// <summary>The scan reads only the messages there are, so a deep scan of a short conversation costs no more.</summary>
+    public const int MaximumScanDepth = 1_000;
     public const int MinimumBudgetUtf8Bytes = 256;
     public const int MaximumBudgetUtf8Bytes = 12_288;
     public const int DefaultBudgetUtf8Bytes = 4_096;
@@ -147,10 +149,10 @@ public sealed record LorebookLibrary : IContract
     {
         ContractRules.Require(SchemaVersion == CurrentSchemaVersion,
             "This lorebook file was saved by a newer Martlet. Update Martlet to use it; the file was not changed.", ErrorCode.UnsupportedVersion);
-        ContractRules.Require(ScanDepth is >= 0 and <= MaximumScanDepth, $"Scan depth must be 0-{MaximumScanDepth} messages.");
+        ContractRules.Require(ScanDepth is >= 0 and <= MaximumScanDepth, $"Scan depth must be 0-{MaximumScanDepth:N0} messages.");
         ContractRules.Require(BudgetUtf8Bytes is >= MinimumBudgetUtf8Bytes and <= MaximumBudgetUtf8Bytes,
             $"The lorebook budget must be {MinimumBudgetUtf8Bytes:N0}-{MaximumBudgetUtf8Bytes:N0} UTF-8 bytes.");
-        ContractRules.Require(Books is { Count: <= MaximumBooks }, $"At most {MaximumBooks} lorebooks are supported.");
+        ContractRules.Require(Books is { Count: <= MaximumBooks }, $"At most {MaximumBooks:N0} lorebooks are supported.");
         var ids = new HashSet<Guid>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var book in Books!)

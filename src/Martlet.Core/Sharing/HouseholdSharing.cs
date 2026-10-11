@@ -75,7 +75,8 @@ public sealed record HouseholdSharing
     public const string KeyPrefix = "sharing.";
     public const int MaximumCharacters = CompanionSettings.MaximumCharacters;
     public const int MaximumJoined = 64;
-    public const int MaximumBytes = 256 * 1024;
+    // One household shared-settings value (SharedSettings.MaximumValueBytes) holds it beside the other accounts' entries.
+    public const int MaximumBytes = 4 * 1024 * 1024;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -142,7 +143,8 @@ public sealed record HouseholdSharing
         catch (ContractException error) when (error.Code == ErrorCode.PayloadTooLarge)
         {
             throw new ContractException(ErrorCode.PayloadTooLarge,
-                "Its lorebooks are too large to share with the household. Make them smaller, then share it again.");
+                $"This character is too large to share with the household (at most {MaximumBytes / (1024 * 1024)} MB for everything " +
+                "you share, with its personality and lorebooks). Make its personality or lorebooks smaller, then share it again.");
         }
     }
 

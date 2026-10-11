@@ -83,6 +83,29 @@ public sealed class BundledVoicesTests
         Assert.Same(result.Library, F5SharedVoices.WithoutRetired(result.Library, "this-desktop", DateTimeOffset.UtcNow));
     }
 
+    [Fact]
+    public async Task AVoiceOnlyThisComputerHasThatTheFullListCantTakeIsCounted()
+    {
+        using var scope = new F5TestScope();
+        F5TestData.WriteWav(scope.SourcePath, durationMilliseconds: 2_000);
+        using (var store = scope.OpenStore()) await F5TestData.SnapshotAsync(store, scope.SourcePath);
+        var now = DateTimeOffset.UtcNow;
+        var full = new SpeakingVoiceLibrary
+        {
+            SchemaVersion = SpeakingVoiceLibrary.SchemaVersion1,
+            Voices = Enumerable.Range(1, SpeakingVoiceLibrary.MaximumVoices).Select(n => SpeakingVoiceLibrary.Voice($"Voice {n}", "Hello there.",
+                n.ToString("x64"), 2_000, SpeakingVoiceRights.OwnVoice, null, now, 2, "other-desktop", now)).ToArray()
+        };
+
+        var result = await F5SharedVoices.ReconcileAsync(scope.StoreDirectory, Path.Combine(scope.Root, "incoming"), F5TestData.Destination,
+            full, (_, _) => Task.FromResult<byte[]?>(null), "this-desktop", now);
+
+        // The list stays as it was, and the voice that didn't fit is counted for the owner rather than skipped silently.
+        Assert.Equal(1, result.Full);
+        Assert.Equal(SpeakingVoiceLibrary.MaximumVoices, result.Library.Live.Count);
+        Assert.Empty(result.Local);
+    }
+
     private static (string Name, string Transcript, string AudioSha256, int DurationMilliseconds, string? Note) Entry(string key)
     {
         if (F5BundledVoices.Find(key) is { } starter)

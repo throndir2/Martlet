@@ -43,13 +43,16 @@ public sealed class VoiceClipsTests : IDisposable
         Assert.Equal(1, clips[0].Seconds);
         Assert.Empty(voices.Clips.List(b.Id));
         Assert.Empty(voices.Clips.List("..\\..\\x"));
+        // A long stretch of speech keeps its first MaximumSeconds.
+        voices.Clips.Save(b.Id, Tone(VoiceClips.MaximumSeconds + 4), Start.AddMinutes(1));
+        Assert.Equal(VoiceClips.MaximumSeconds, voices.Clips.List(b.Id).Single().Seconds);
 
         // A learned name isn't the owner saying who it is; typing one is.
         voices.SetNames(a.Id, null, ["Sam"]);
         Assert.Equal(VoiceClips.MaximumClips, voices.Clips.List(a.Id).Count);
         voices.SetNames(a.Id, "Samantha", ["Sam"]);
         Assert.Empty(voices.Clips.List(a.Id));
-        Assert.Equal((0, 0), voices.Clips.Count());
+        Assert.Equal((1, 1), voices.Clips.Count());
     }
 
     [Fact]

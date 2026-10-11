@@ -139,7 +139,7 @@ public sealed class AppSettingsSections
 
     private static T ReadContract<T>(string json) where T : IContract
     {
-        try { return ContractJson.Read<T>(Encoding.UTF8.GetBytes(json)); }
+        try { return ContractJson.Read<T>(Encoding.UTF8.GetBytes(json), SharedSettings.MaximumValueBytes); }
         catch (ContractException error)
         {
             throw new ContractException(error.Code, $"It can't be used here ({error.Message}). Update this PC if another computer runs a newer Martlet.");

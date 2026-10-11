@@ -81,8 +81,10 @@ stopped.
 ## Reference preset lifecycle
 
 `F5ReferencePresetStore` owns a selected local directory and a strict
-schema-v1 manifest. It supports up to 16 named presets, 16 snapshots per
-preset, and 64 snapshots total. Snapshotting, applying and deleting are
+schema-v1 manifest. It holds as many named presets as the shared voice list has
+voices (1,000), 16 snapshots per preset, and 2,000 snapshots total; the
+manifest is read whole, so it keeps a size limit sized for every preset and
+snapshot at its most (about 63 MiB). Snapshotting, applying and deleting are
 explicit; none of them synthesizes, uploads, plays audio, downloads a model, or
 starts a worker. F5 copies a voice from the reference at each request; nothing
 is trained.
