@@ -2359,12 +2359,13 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "for quick jobs) and the budget (an in-memory web and fixture model reading until the production budget of pages runs " +
             "out: searches, pages, model steps, notes and the largest step's bytes). " +
             "Loopback only; no real search or model; reads no credentials.", new { }),
-        Tool("app_guides_check", "Rehearse App guides (Companion > App guides, off by default; docs/APP_GUIDES.md) end to end with " +
+        Tool("app_guides_check", "Rehearse App guides (Companion > App guides, on by default; docs/APP_GUIDES.md) end to end with " +
             "Martlet's own guide library service (AppGuideService), store (FileAppGuideStore), wiki reader (WebGuideBuilder with " +
             "WebAccess allowing loopback), chunker, index, notes (GuideRecall), program-name match, the rule for reading up on its " +
             "own, tool texts and job " +
             "scheduler, against fixtures on 127.0.0.1 (a tiny wiki about a made-up game and a DuckDuckGo-like search page, NOT real " +
-            "sites; every fetch outside loopback is refused before it leaves this PC and counted): reads up from given pages and from " +
+            "sites; every fetch outside loopback is refused before it leaves this PC and counted): the defaults (on, ask on) and " +
+            "libraries saved earlier (a saved off stays off, one without on is on, an unreadable one starts off), reads up from given pages and from " +
             "a search, keeps the guide, starts again from the folder, then the notes on a message while the game is in front (its " +
             "program named as Windows names it), for an unrelated message (none), for a message naming the game while another app " +
             "is in front, for a repeat the conversation already carries and while off; when Martlet reads up on its own (once a " +
@@ -2376,7 +2377,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "time); and the tools (read_up_on, search_guide, skip_guide: arguments, search_guide's answer, the reading-up job, one " +
             "at a time and 4 an hour). Reports counts, relevance and search time, also on a whole-wiki-size guide. Temporary folder, deleted " +
             "afterwards; reads no credentials.", new { }),
-        Tool("app_guides_status", "Companion > App guides from a data directory (guides\\library.json): whether App guides are on and " +
+        Tool("app_guides_status", "Companion > App guides from a data directory (guides\\library.json): whether the library is saved " +
+            "(else the defaults: both on), whether App guides are on and " +
             "read up when a game starts, and each app on the list with its program names, start pages, whether the owner said no " +
             "to reading up on it, its guide's pages, sections, size and time, and the last problem. Never a guide's text. Read-only.", new
         {

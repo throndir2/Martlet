@@ -13,9 +13,16 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
 
 ## What the user sees
 
-1. Turn on **Companion › App guides** (off by default, because reading up
-   sends the app's name to a search engine and the wiki sites see the
-   requests). The page says what leaves the PC.
+1. **Companion › App guides** is on by default, and so is *Read up when I
+   start a game or app*. With these defaults, when you start a game Martlet
+   has no guide for, it sends the game's name to DuckDuckGo to find its wiki
+   and reads the wiki on its own (step 2). The wiki sites see the requests and
+   this PC's internet address. The page says so. To stop a read, press **Stop
+   reading** or tell Martlet no; to stop reading up on its own, turn off *Read
+   up when I start a game or app*; the **Read up on games and apps** box turns
+   App guides off. A `guides\library.json` saved with App guides off (by an
+   earlier Martlet, where they were off by default) stays off; see
+   [Default](#default).
 2. Start a game. When Martlet sees a game (or an app on the list) in front and
    it has no guide yet, it reads up on it on its own, once a session, while
    *Read up when I start a game or app* is on (on by default). The app is on
@@ -397,6 +404,37 @@ because building an index also loads the search code. While on, the three
 tools and the prompt add about 2.5 KB to every request, the same every time,
 so prompt caches keep them.
 
+### Default
+
+App guides are on by default (`AppGuideLibrary.DefaultOn`), and *Read up when
+I start a game or app* is on by default too
+(`AppGuideLibrary.DefaultReadUpWhenStarted`). So for a new user, Martlet sends
+a game's name to DuckDuckGo and reads its wiki on its own when the game
+starts, and tells the user in character. The user stops it with **Stop
+reading** or a no (which Martlet keeps for that app), or turns off *Read up
+when I start a game or app*. The choice is `on` in `guides\library.json`:
+
+- No `library.json` (a new user, or one who never used App guides): on.
+- A `library.json` without `on`: on.
+- A saved `"on": false` stays off. Martlet 0.69 and 0.70 had App guides off by
+  default and always wrote `on`. They wrote `library.json` only after the
+  owner did something with App guides: turned the box on or off, added or
+  deleted an app, read up or said no to an offer. Martlet can't tell an owner
+  who turned App guides off from one who added an app while they were off, so
+  both stay off. Either can turn them on with one box.
+- A `library.json` Martlet can't read: off, until the owner turns App guides
+  on again (as before).
+
+Until the library is read at start, the service reports App guides as off, so
+no request gets the guide tools before Martlet knows the owner's choice.
+
+**Latency with App guides on by default.** A reply's path gets nothing that
+App guides didn't already add while on: the notes step reads memory only
+(well under a millisecond), the watch runs on its own timer, and reading up is
+a background job with no model. The three tools and the prompt (about 2.5 KB)
+are the same in every request, so prompt caches keep them; only a request that
+misses the cache (the first one after a start) reads them again.
+
 ## Files
 
 | Part | Where |
@@ -415,8 +453,12 @@ so prompt caches keep them.
 
 ## Privacy
 
-- Off by default; turning it on says what leaves the PC (the app's name in a
-  search, and requests to the wiki sites).
+- On by default, and so is *Read up when I start a game or app*: when a game
+  without a guide starts, Martlet sends its name to DuckDuckGo and reads its
+  wiki on its own, and the wiki sites see the requests. The page says so.
+- The user stops a read with **Stop reading** or a no (kept for that app),
+  stops reading on its own with *Read up when I start a game or app*, and
+  turns App guides off with one box.
 - Detection reads only the program's name and whether it fills the screen
   (`ActiveApp`, `PcActivity`), never window titles or the screen.
 - Guides hold public web pages only, never the conversation. The desktop log

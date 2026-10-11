@@ -6344,8 +6344,11 @@ and the job scheduler (`AppGuideTools`, `BackgroundJobs`). Every fetch outside
 loopback is refused before it leaves the PC (`build.refusedOutsideLoopback`
 counts them), so nothing reaches a real site whatever the wiki reader tries.
 
-- `library`: App guides are off by default and *Read up when I start a game or
-  app* is on by default (`readUpWhenStartedByDefault`).
+- `library`: App guides are on by default and *Read up when I start a game or
+  app* is on by default (`readUpWhenStartedByDefault`). `saved`: libraries
+  saved earlier, each loaded by a new service (`noLibrary` on, `savedOff` off,
+  `savedOffThenAdded` still off after an app is added, `savedOn` on,
+  `withoutOn` on, `unreadable` off).
 - `build`: reading up from the pages the owner gave (`fromGivenPages`: the wiki's
   `robots.txt` is read and the wiki is crawled through its own links, at least 2
   pages) and from a web search alone (`fromSearch`: the wiki farms named after the
@@ -6416,7 +6419,9 @@ credentials.
 
 `app_guides_status` reads Companion › App guides from a data folder (optional
 absolute `dataDirectory`, default the current user's; the script gives it its
-disposable one): `folder` (`<data folder>\guides`), whether it `exists`, `on`,
+disposable one): `folder` (`<data folder>\guides`), whether it `exists`, whether
+`library.json` is `saved` (else `on` and `readUpWhenStarted` are the defaults,
+both on), `on`,
 `readUpWhenStarted` (kept as `askWhenStarted` in the file), how many `guides`, `pages` and `bytes`, and each app on the
 list (`apps`): `key`, `name`, `programs`, `sites` (the start pages the owner
 gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem` and whether
