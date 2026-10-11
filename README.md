@@ -52,19 +52,19 @@ cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.67.0
+## 🆕 What's new in 0.68.0
 
-- 👨‍👩‍👧 **Martlet for the whole household**: Martlet signs you in with your Windows account, and anyone else can **Add a person** or switch at the bottom left. Each person has their own characters, personalities, memories, creations and settings, while your computers, hosts and paid API keys stay shared.
-- 🤝 **Share characters and memories**: share a character as a copy or together, so the same character remembers everyone, and copy or move memories to the household or another person.
-- 🗣️ **Martlet knows who's talking**: link a voice on People to your account. Voices are always shared with all your computers, so Martlet learns everyone's voice everywhere.
-- 🔐 **Your own Account page**: add a password and an authenticator app, lock your account with a PIN or Windows Hello on a shared PC, and sign in as someone else.
-- 🔗 **Link any sign-in**: link your Windows login, Google, Microsoft, Authentik, Discord or Steam to your account, set a provider up once for every host, and let a new computer join by signing in.
+- 🧠 **Martlet knows its AI models**: it keeps its own list of models with what each one takes in (text, pictures, sound and video), whether it runs on your computers and how much memory it needs, which services offer it free, and how smart it is. The list updates itself every day, so newer models show up without a Martlet update.
+- 🧭 **A setup made for you**: the welcome tour asks three quick questions (games, free online services, quick or smarter replies), and you can change them any time under **Your preferences**. Recommended setup plans with the speed and memory Martlet measured, lets you lock each job, and tells you when **a better setup is available**.
+- 🎮 **Game without the lag**: while you play on a gaming PC, Martlet moves its thinking to one of your hosts, your backup service or a small local model, and moves it back when the game ends. It does the same when a host stops answering.
+- 🛠️ **Know your Thinking model**: Companion › Thinking shows whether your model hears, sees, takes video and calls tools, with **Test tools**, and a retired model gets a replacement with one click on Home.
+- 🤖 **Let your AI assistant set Martlet up**: assistants like GitHub Copilot and Claude can make and change characters and settings through Martlet's MCP server.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
 ## 🔮 Coming soon
 
-Everything finished so far shipped in 0.67.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
+Everything finished so far shipped in 0.68.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
 
 ## 💬 Things you can say
 
