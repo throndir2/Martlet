@@ -148,10 +148,10 @@ capture failure, and unimplemented speech/no-speech detection.
 
 | Resource | Enforced policy |
 | --- | --- |
-| Utterance | At most 30 seconds and 2 MiB canonical PCM. At 16 kHz PCM16, the duration normally limits this to **960,000 bytes / 480,000 samples**. Options and requests may lower limits, not raise them. |
+| Utterance | At most 15 minutes of canonical 16 kHz PCM16 (`CaptureOptions.HardMaximumDuration`, 28,800,000 bytes); a conversation turn uses 10 minutes (`CaptureOptions.LongestTurn`), a safety stop for a microphone left open, not a limit on talking. Defaults are 30 seconds and 2 MiB. Options and requests may lower limits, not raise them. |
 | Byte/duration limits | Seal at the exact allowed canonical count and report `ByteLimit`/`DurationLimit`; do not silently continue recording. Minimum request duration is 20 ms; byte cap can be as low as one aligned PCM16 sample. |
 | Authorization deadline | Capture duration and the original monotonic consent lifetime are separate limits, both including opening time. The abort timer uses the earlier one. The shared authorization check rejects either absolute UTC expiry or elapsed time reaching the original consent lifetime, including after seal and before transfer. Timer/cancellation callback delivery is not the sole authority. |
-| Audio memory | One pre-sized canonical buffer, one source remainder, 128 mono history samples, fixed coefficient tables and a 3,264-byte canonical scratch. Worker and Windows adapter each have one source-format scratch of at most 100 ms (up to 307,200 bytes each in the supported subset). No unbounded native-to-managed audio channel. |
+| Audio memory | One canonical buffer that starts at 30 seconds and doubles as speech goes on, up to the capacity (the old buffer is cleared before it is let go), one source remainder, 128 mono history samples, fixed coefficient tables and a 3,264-byte canonical scratch. Worker and Windows adapter each have one source-format scratch of at most 100 ms (up to 307,200 bytes each in the supported subset). No unbounded native-to-managed audio channel. |
 | Admission | Packet bounds are checked before conversion/copy/queueing; output is capped before copying into owned storage. Oversized or discontinuous packets fail, not drop-oldest audio. |
 | Capture events | 128 metadata-only entries, drop oldest, monotonic sequence/elapsed time and cumulative `DroppedEvents`. Meters occur only after source samples arrive; no animation/synthetic listening state. |
 | Local stop | Immediately invalidates local ownership and clears retained buffers. Default reporting/cleanup wait is at most 2 seconds, configurable lower. Not a measured 250 ms physical-stop guarantee. |
@@ -170,7 +170,8 @@ Expiry of either authorization clock is a hard `DeadlineExceeded` failure with
 It wins if consent expiry and the duration limit coincide. Callers wanting a normal
 duration-limit utterance should choose a shorter capture duration within the
 authorization window (as in the sketch), leaving time for cleanup/transfer.
-Limits have not been increased: authorization still expires within 30 seconds.
+A capture's authorization may last at most its longest capture plus 30 seconds
+(`CaptureOptions.CleanupAllowance`).
 
 No temporary audio, audio files, transcript, provider request, endpoint logging,
 recording retention setting, telemetry upload or diagnostic bundle is produced.

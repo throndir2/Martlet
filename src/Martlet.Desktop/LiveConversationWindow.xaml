@@ -207,7 +207,7 @@
                                 Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="LiveSend" />
                     </StackPanel>
                     <Grid>
-                        <TextBox x:Name="InputText" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" MinHeight="42" MaxHeight="150"
+                        <TextBox x:Name="InputText" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="262144" MinHeight="42" MaxHeight="150"
                                  VerticalScrollBarVisibility="Auto" TextChanged="Input_Changed" PreviewKeyDown="Input_KeyDown"
                                  SizeChanged="Input_SizeChanged"
                                  AutomationProperties.AutomationId="LiveInput" AutomationProperties.Name="Message Martlet"

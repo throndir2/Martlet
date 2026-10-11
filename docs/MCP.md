@@ -1299,6 +1299,30 @@ said by a Windows voice (System.Speech rendered to memory, never played) after
 with the reason. Nothing is downloaded, recorded or played, and nothing leaves
 this PC.
 
+`long_talk_check` shows how long one turn of talking and one spoken reply may
+be, and hears a long recording the way the conversation does. `limits` gives
+`longestTurnSeconds` (600: a safety stop for a microphone left open, not a
+limit on talking), `captureHardMaximumSeconds` (900),
+`speechToTextPieceSeconds` (25: the most one speech-to-text request hears),
+`recordingHardMaximumBytes` (25,000,000, OpenAI's upload limit),
+`messageCharacters` (262,144), `replyLifetimeSeconds` (1,200),
+`replySpokenSentences` (512), `replySpokenTextBytes` (262,144) and
+`messageRecordingSeconds` (30: a longer turn goes to models that hear as its
+transcript only). It puts `phrases` (default `parakeet_check`'s; up to 8) said
+by a Windows voice (System.Speech rendered to memory, never played) one after
+another into `seconds` (30-600, default 70) of talking, and cuts it with the
+production splitter (`BoundedWaveAudio.Split`). It returns
+`recordingSeconds`, `phrasesSaid`, each piece's `seconds`, each cut's
+`atSeconds` and `quieterThanRecordingDb`, and `everyPieceFitsOneRequest`,
+`piecesCoverEverySample` and `everyCutInAPause` (at least 20 dB quieter than
+the recording). With a Parakeet model downloaded in `speechDirectory` (default
+the data directory's `speech` folder) and the sherpa-onnx runtime in
+`martletDirectory`, `transcription` also has each piece transcribed through the
+production `ParakeetEngine`: the joined `transcript`, its `wordErrorRate` and
+`ok` (at most 20%); otherwise `ran` is false with the reason. `ok` needs more
+than one piece, all three checks and a passing transcription when it ran.
+Nothing is downloaded, recorded or played, and nothing leaves this PC.
+
 `voices_engine_check` runs the voice recognition engine that ships in a Martlet
 folder (same optional `martletDirectory`) the way the desktop does: it loads the
 bundled runtime and both models, takes a voiceprint of a generated test tone
@@ -9538,9 +9562,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `long_talk_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

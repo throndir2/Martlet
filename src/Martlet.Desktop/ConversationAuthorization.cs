@@ -25,6 +25,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     private readonly Dictionary<ProviderRole, int> credentialTickets = [];
     private readonly HashSet<Guid> requests = [];
     private int revoked, textRequests, sttRequests, speechRequests, speechBytes, fallbackTickets, standIns;
+    // The pieces speech-to-text hears this action's recording in (BoundedWaveAudio.Split): one request (and one stand-in) each.
+    private int audioPieces = 1;
     private long speechSamples;
     private BoundedTextInput? exactInput;
     private int maxTextRequests = 1;
@@ -81,6 +83,14 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         }
     }
     internal void Revoke() => Interlocked.Exchange(ref revoked, 1);
+
+    /// <summary>Speech-to-text hears this action's recording in <paramref name="pieces"/> pieces (a turn longer than one request
+    /// takes): each may have its own request, and its own stand-in when the route fails it.</summary>
+    internal void HearInPieces(int pieces)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(pieces, 1);
+        lock (gate) audioPieces = Math.Max(audioPieces, pieces);
+    }
     internal bool IsCanceled => Volatile.Read(ref revoked) != 0 || caller.IsCancellationRequested ||
         worker.IsCancellationRequested || !current();
 
@@ -128,7 +138,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         Check();
         lock (gate)
         {
-            if (!Microphone || sttRequests != 0) throw new LiveActionException("conversation.audio_not_authorized");
+            if (!Microphone || sttRequests >= audioPieces) throw new LiveActionException("conversation.audio_not_authorized");
             sttRequests++;
             Ticket(ProviderRole.Stt);
         }
@@ -145,7 +155,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         Check();
         lock (gate)
         {
-            if (!Microphone || sttRequests > 1 || standIns != 0 || Configuration.LocalStt())
+            if (!Microphone || sttRequests > audioPieces || standIns >= audioPieces || Configuration.LocalStt())
                 throw new LiveActionException("conversation.audio_not_authorized");
             standIns++;
         }
@@ -187,15 +197,18 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         await ValidateSettingsAsync(token).ConfigureAwait(false);
         if (!Voice) return null;
         var selection = Configuration.SpeechSelection();
+        var speech = LiveConversationConfiguration.SpeechLimits;
+        var turn = LiveConversationConfiguration.TurnLimits;
         var expected = new OperationBudget(action.Context.Ids, action.Context.Epoch, ProviderRole.Tts, 1,
-            action.Input.Utf8Bytes, 0, 0, LiveConversationConfiguration.SpeechLimits.MaxSamples);
-        var expiry = Min(action.Context.Deadline, Deadline(TimeSpan.FromSeconds(20)));
+            action.Input.Utf8Bytes, 0, 0, speech.MaxSamples);
+        var expiry = Min(action.Context.Deadline, Deadline(speech.MaxRequestTime));
         lock (gate)
         {
             Check(token);
-            if (action.Selection != selection || action.Limits != LiveConversationConfiguration.SpeechLimits ||
-                action.Budget != expected || speechRequests >= 8 || action.Segment != speechRequests + 1 ||
-                speechBytes + action.Input.Utf8Bytes > 12_288 || speechSamples + expected.OutputSamples > 1_920_000 ||
+            if (action.Selection != selection || action.Limits != speech ||
+                action.Budget != expected || speechRequests >= turn.MaxSpeechSegments || action.Segment != speechRequests + 1 ||
+                speechBytes + action.Input.Utf8Bytes > turn.MaxSpeechTextBytes ||
+                speechSamples + expected.OutputSamples > turn.MaxReservedSpeechSamples ||
                 !requests.Add(action.Context.Ids.RequestId)) return null;
             speechRequests++;
             speechBytes += action.Input.Utf8Bytes;

@@ -74,7 +74,7 @@
                 <StackPanel DockPanel.Dock="Bottom" x:Name="EditorPanel" Visibility="Collapsed" Margin="0,8,0,0">
                     <Label Target="{Binding ElementName=EditText}" x:Name="EditLabel" Content="Edit the message" Padding="0,4" />
                     <TextBox x:Name="EditText" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" MaxHeight="200"
-                             VerticalScrollBarVisibility="Auto" MaxLength="16384" AutomationProperties.AutomationId="HistoryEditText"
+                             VerticalScrollBarVisibility="Auto" MaxLength="262144" AutomationProperties.AutomationId="HistoryEditText"
                              AutomationProperties.Name="The message's new text" />
                     <WrapPanel Margin="0,6,0,0">
                         <Button x:Name="EditSaveButton" Content="Save edit" Click="EditSave_Click" Padding="10,4" Margin="0,0,8,0"

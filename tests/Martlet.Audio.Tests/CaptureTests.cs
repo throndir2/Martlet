@@ -497,6 +497,29 @@ public sealed class CaptureTests
     }
 
     [Fact]
+    public async Task CaptureLongerThanThirtySecondsGrowsItsBufferAndKeepsEverySample()
+    {
+        var clock = new CaptureClock();
+        var device = new ControlledCapture();
+        var options = new CaptureOptions { MaximumDuration = TimeSpan.FromSeconds(90), MaximumPcmBytes = CaptureOptions.HardMaximumPcmBytes };
+        await using var capture = new MicrophoneCapture(Session, device, options, clock);
+        var run = Press(capture, Request(clock, seconds: 90));
+        await run.Ready.WaitAsync(WaitLimit);
+        const int packets = 750;
+        for (var i = 0; i < packets; i++) device.Packets.Enqueue(Pcm(Enumerable.Repeat((short)(i % 1000 + 1), 1600).ToArray()));
+        await Until(() => run.Snapshot.CanonicalSamples == packets * 1600);
+        var result = await run.ReleaseAsync().WaitAsync(WaitLimit);
+        Assert.Equal(CaptureState.Completed, result.State);
+        Assert.Equal(CaptureEndReason.Released, result.EndReason);
+        using var utterance = run.TakeUtterance();
+        var pcm = new byte[utterance!.ByteCount];
+        utterance.CopyPcmTo(pcm);
+        Assert.Equal(packets * 1600 * 2, pcm.Length);
+        for (var i = 0; i < packets; i++)
+            Assert.Equal((short)(i % 1000 + 1), BitConverter.ToInt16(pcm, (i * 1600 + 800) * 2));
+    }
+
+    [Fact]
     public async Task ThirtySecondSourceBoundIsEnforcedWithoutWallClockAdvance()
     {
         var clock = new CaptureClock();
@@ -626,12 +649,22 @@ public sealed class CaptureTests
             Assert.Throws<ContractException>(() => Press(capture, invalid));
         foreach (var options in new[]
         {
-            new CaptureOptions { MaximumDuration = TimeSpan.FromSeconds(31) },
-            new CaptureOptions { MaximumPcmBytes = 2 * 1024 * 1024 + 2 },
+            new CaptureOptions { MaximumDuration = CaptureOptions.HardMaximumDuration + TimeSpan.FromMilliseconds(1) },
+            new CaptureOptions { MaximumPcmBytes = CaptureOptions.HardMaximumPcmBytes + 2 },
             new CaptureOptions { MaximumPcmBytes = 3 },
             new CaptureOptions { ShutdownTimeout = TimeSpan.FromSeconds(3) }
         })
             Assert.Throws<ContractException>(() => new MicrophoneCapture(Session, device, options));
+        // The longest capture is far beyond anything said in one go, and its authorization may last for it plus cleanup.
+        await using var longest = new MicrophoneCapture(Session, device, new CaptureOptions
+        {
+            MaximumDuration = CaptureOptions.HardMaximumDuration, MaximumPcmBytes = CaptureOptions.HardMaximumPcmBytes
+        }, clock);
+        Assert.Throws<ContractException>(() => Press(longest, request with
+        {
+            MaximumDuration = CaptureOptions.HardMaximumDuration,
+            ExpiresAt = clock.GetUtcNow() + CaptureOptions.HardMaximumDuration + CaptureOptions.CleanupAllowance + TimeSpan.FromSeconds(1)
+        }));
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
         Assert.Throws<OperationCanceledException>(() => capture.Press(request, new(request, true), canceled.Token));

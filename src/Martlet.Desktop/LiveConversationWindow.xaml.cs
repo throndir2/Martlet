@@ -1799,7 +1799,7 @@ public partial class LiveConversationWindow : ThemedWindow
     // A PC bubble in the history takes the PC's next lines until it is about this long.
     private const int MaximumPcBubble = 1200;
 
-    private const int MaximumMessage = 4096;
+    private const int MaximumMessage = BoundedTextInput.HardMaxMessageCharacters;
     // Silence between utterances answered together, when their recordings go to a Thinking model that hears.
     private static readonly TimeSpan HeardGap = TimeSpan.FromMilliseconds(300);
     private static readonly HashSet<string> Continuations = new(StringComparer.OrdinalIgnoreCase)

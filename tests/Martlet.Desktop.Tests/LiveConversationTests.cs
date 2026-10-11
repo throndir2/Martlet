@@ -104,7 +104,7 @@ public sealed class LiveConversationTests
         // A paired host is on the home network: it gets the local timing, so a loading or slow model isn't cut off at 45 s.
         Assert.True(configuration.NetworkThinking);
         Assert.Equal(TimeSpan.FromMinutes(2), configuration.TextLimits.MaxRequestTime);
-        Assert.Equal(LiveConversationConfiguration.ActionLifetime,
+        Assert.Equal(ConversationLimits.ReplyLifetime,
             configuration.Request(new("Hi"), false, [], null, null, out _, out _, out _).Limits.TurnTimeout);
         // Host Ollama's num_predict also pays for thinking: the Chat Completions budget, under a small saved context size.
         Assert.Equal(GenerationSettings.ChatReplyTokens, configuration.TextLimits.MaxOutputTokens);
@@ -1460,6 +1460,34 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task TalkingLongerThanOneSpeechToTextRequestIsHeardInPiecesAndAnsweredWhole()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var piece = 0;
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json($$"""{"text":"piece {{Interlocked.Increment(ref piece)}}"}"""));
+        // 70 seconds of talking with a short pause at 24 s and at 48 s: longer than the old 25 s turn and than one
+        // speech-to-text request, so it is heard in three pieces cut at those pauses.
+        const int seconds = 70;
+        for (var packet = 0; packet < seconds * 10; packet++)
+        {
+            var pcm = new byte[3200];
+            var quiet = packet is 240 or 241 or 480 or 481;
+            for (var i = 0; i < 1600; i++)
+                BitConverter.TryWriteBytes(pcm.AsSpan(i * 2), quiet ? (short)0 : (short)(4_000 * Math.Sin((packet * 1600 + i) * 0.2)));
+            fixture.Capture.Packets.Enqueue(pcm);
+        }
+        var operation = fixture.Start(microphone: true);
+        await Until(() => operation.Capture?.Snapshot.CanonicalSamples == seconds * 16_000);
+        operation.ReleasePress();
+        await fixture.Finish(operation);
+        Assert.Equal((3, 1), (fixture.Stt.Calls, fixture.Llm.Calls));
+        Assert.Equal("piece 1 piece 2 piece 3", operation.Transcription!.Text);
+        Assert.Contains("piece 1 piece 2 piece 3", Encoding.UTF8.GetString(fixture.Llm.Body));
+        Assert.Equal(ConversationState.Completed, operation.Turn!.Snapshot.State);
+        Assert.Equal(0, operation.Capture!.Snapshot.RetainedPcmBytes);
+    }
+
+    [Fact]
     public async Task ParakeetOnThisPcHearsWhatListeningsOwnRouteCouldNot()
     {
         // OpenAI refuses the transcription; Parakeet on this PC (FIXTURE words) hears the same recording and the reply goes on.
@@ -1676,7 +1704,7 @@ public sealed class LiveConversationTests
         var operation = fixture.Start();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         fixture.Clock.DeferCallbacks = true;
-        fixture.Clock.Advance(TimeSpan.FromSeconds(151));
+        fixture.Clock.Advance(LiveConversationConfiguration.ActionLifetime + TimeSpan.FromSeconds(1));
         fixture.Clock.ShiftUtc(TimeSpan.FromHours(-1));
         release.SetResult();
         await fixture.Finish(operation, advance: false);
@@ -2499,7 +2527,7 @@ public sealed class LiveConversationTests
         var operation = fixture.Start(microphone: true);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         fixture.Clock.DeferCallbacks = true;
-        fixture.Clock.Advance(TimeSpan.FromSeconds(28));
+        fixture.Clock.Advance(LiveConversationConfiguration.CapturePermission - TimeSpan.FromSeconds(2));
         fixture.Clock.ShiftUtc(TimeSpan.FromHours(-1));
         release.SetResult();
         await Until(() => operation.Capture?.Snapshot.CanonicalSamples > 0);
@@ -2524,7 +2552,7 @@ public sealed class LiveConversationTests
         operation.ReleasePress();
         await Until(() => fixture.Capture.DisposeEntered.IsSet);
         fixture.Clock.DeferCallbacks = true;
-        fixture.Clock.Advance(TimeSpan.FromSeconds(31));
+        fixture.Clock.Advance(LiveConversationConfiguration.CapturePermission + TimeSpan.FromSeconds(1));
         fixture.Clock.ShiftUtc(TimeSpan.FromHours(-1));
         Assert.True(fixture.Runner.IsRunning);
         release.Set();

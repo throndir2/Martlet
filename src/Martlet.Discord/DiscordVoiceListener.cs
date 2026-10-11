@@ -68,8 +68,9 @@ public sealed record DiscordEndpointOptions
     public TimeSpan EndSilence { get; init; } = TimeSpan.FromMilliseconds(700);
     /// <summary>Less voice than this is a cough or a click, not words.</summary>
     public TimeSpan MinimumVoice { get; init; } = TimeSpan.FromMilliseconds(250);
-    /// <summary>Longest utterance kept for speech-to-text (Martlet's capture bound).</summary>
-    public TimeSpan MaximumUtterance { get; init; } = TimeSpan.FromSeconds(25);
+    /// <summary>Longest utterance kept for speech-to-text: a safety stop for a stuck microphone, as Martlet's own capture
+    /// (speech-to-text hears a longer one in pieces).</summary>
+    public TimeSpan MaximumUtterance { get; init; } = TimeSpan.FromMinutes(10);
     /// <summary>Audio kept from before the first voiced frame so the first syllable isn't clipped.</summary>
     public TimeSpan PreRoll { get; init; } = TimeSpan.FromMilliseconds(200);
     /// <summary>Voice that counts as talking over Martlet (real words, not a short sound).</summary>
