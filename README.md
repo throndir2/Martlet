@@ -52,19 +52,18 @@ cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.68.0
+## 🆕 What's new in 0.69.0
 
-- 🧠 **Martlet knows its AI models**: it keeps its own list of models with what each one takes in (text, pictures, sound and video), whether it runs on your computers and how much memory it needs, which services offer it free, and how smart it is. The list updates itself every day, so newer models show up without a Martlet update.
-- 🧭 **A setup made for you**: the welcome tour asks three quick questions (games, free online services, quick or smarter replies), and you can change them any time under **Your preferences**. Recommended setup plans with the speed and memory Martlet measured, lets you lock each job, and tells you when **a better setup is available**.
-- 🎮 **Game without the lag**: while you play on a gaming PC, Martlet moves its thinking to one of your hosts, your backup service or a small local model, and moves it back when the game ends. It does the same when a host stops answering.
-- 🛠️ **Know your Thinking model**: Companion › Thinking shows whether your model hears, sees, takes video and calls tools, with **Test tools**, and a retired model gets a replacement with one click on Home.
-- 🤖 **Let your AI assistant set Martlet up**: assistants like GitHub Copilot and Claude can make and change characters and settings through Martlet's MCP server.
+- 📚 **App guides**: Martlet can read up on the games and apps you use, from their fan wikis and help pages, and answer from what it read. Ask *"where do I find iron ore?"* while the game is in front, or *"read up on Stardew Valley"*. It's off until you turn it on under Companion › App guides.
+- 🎮 **It asks when you start a game**: with App guides on, Martlet notices a game or an app on your list that it has no guide for and asks once, in character, whether it should read up on it.
+- 🧠 **Better memory recall**: Martlet finds what it remembers about you more reliably, also with other forms of a word ("cats" finds your cat), puts the best matches first and leaves out near-copies.
+- 💬 **Earlier conversations come back better**: when you mention an earlier conversation, other forms of your words, the time you name and who said it all help Martlet find what was said.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
 ## 🔮 Coming soon
 
-Everything finished so far shipped in 0.68.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
+Everything finished so far shipped in 0.69.0. See [Unreleased](CHANGELOG.md#unreleased) in the changelog for what lands next.
 
 ## 💬 Things you can say
 

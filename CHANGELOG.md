@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-10-10
+
 ### Added
 
 - **Companion › App guides**: Martlet can read up on the games and apps you use (their fan wikis and help pages) and answer your questions about them from what it read, like *"where do I find iron ore?"* while the game is in front. It's off until you turn it on. Ask *"read up on Stardew Valley"*, or add an app with its program names and wiki pages on the page, where you can also read a guide again or delete it. ([#770](https://github.com/throndir2/Martlet/pull/770))
