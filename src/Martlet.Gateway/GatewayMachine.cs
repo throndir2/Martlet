@@ -17,6 +17,20 @@ public sealed record GatewayMachineGpu
     public bool? Persistence { get; init; }
 }
 
+/// <summary>A model a host's Ollama has loaded now, as its <c>/api/ps</c> says (the host's machine report, <c>loaded_models</c>):
+/// <see cref="Bytes"/> in all and <see cref="GraphicsBytes"/> of that on the graphics card, at <see cref="ContextTokens"/>.
+/// <see cref="Role"/> is the host role whose Ollama it is (ollama, deep-thinking, deep-thinking-2...). Paired desktops keep it
+/// in model-memory.json, so the measured memory replaces the estimate.</summary>
+public sealed record GatewayLoadedModel
+{
+    public required string Role { get; init; }
+    public required string Model { get; init; }
+    public required long Bytes { get; init; }
+    public required long GraphicsBytes { get; init; }
+    public int? ContextTokens { get; init; }
+    public string? Digest { get; init; }
+}
+
 /// <summary>A model a host role ran on this host whose download the host keeps (in the role's data volumes): turning the
 /// role back on, or switching back to the model, downloads nothing.</summary>
 public sealed record GatewayMachineDownload
@@ -33,6 +47,8 @@ public sealed record GatewayMachineDownload
 public sealed record GatewayMachineReport
 {
     public const int MaximumBytes = 16_384;
+    /// <summary>The most loaded models the machine document lists (<see cref="GatewayLoadedModel"/>).</summary>
+    public const int MaximumLoadedModels = 32;
     public required DateTimeOffset CollectedAt { get; init; }
     /// <summary>How the gateway runs on the host: docker, native, or app (inside the Martlet app on a Mac, phone or tablet).</summary>
     public required string Method { get; init; }

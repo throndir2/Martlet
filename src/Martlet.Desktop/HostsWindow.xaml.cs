@@ -768,7 +768,29 @@ public partial class HostsWindow : ThemedWindow
         if (report is null) return ("Hardware details aren't available yet. Check the host and try again.", version);
         try { store?.Save(report); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        RecordLoaded(report, store?.DataDirectory);
         return ("Hardware: " + DescribeHardware(report) + ".", version);
+    }
+
+    /// <summary>Keeps what a host's Ollama roles had loaded (its machine report's loaded models, from their /api/ps) in
+    /// model-memory.json under the host's address, so the planner uses the measured memory instead of the estimate. A host check
+    /// does it, never a reply. Older hosts don't report it.</summary>
+    internal static int RecordLoaded(HostHardware report, string? dataDirectory)
+    {
+        if (dataDirectory is null || report.Loaded is not { Count: > 0 } loaded ||
+            Martlet.Core.Planning.MeasuredFirstWords.HostKey(report.Origin) is not { } host) return 0;
+        var saved = 0;
+        foreach (var model in loaded)
+            if (Martlet.Core.Planning.MeasuredModelMemory.Record(dataDirectory, new Martlet.Core.Planning.MeasuredModelUse
+                {
+                    Host = host, Model = model.Model, Bytes = model.Bytes, GraphicsBytes = model.GraphicsBytes, ContextTokens = model.ContextTokens,
+                    Digest = model.Digest, MeasuredAt = report.ReceivedAt
+                }))
+                saved++;
+        if (saved > 0)
+            ErrorLog.Info($"{report.HostId} reported the memory of {saved} loaded model{(saved == 1 ? "" : "s")} ({string.Join(", ", loaded.Select(m =>
+                $"{m.Model} {m.Bytes / 1e9:0.0} GB, {m.GraphicsBytes / 1e9:0.0} GB on the graphics card"))}); Martlet plans with it.");
+        return saved;
     }
 
     internal static string DescribeHardware(HostHardware report)

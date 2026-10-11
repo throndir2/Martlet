@@ -26,6 +26,10 @@ public sealed record HostGpu(string Name, string Vendor, int? MemoryMb, string? 
 /// role back on, or switching back to the model, downloads nothing.</summary>
 public sealed record HostDownload(string Role, string Model);
 
+/// <summary>A model a host's Ollama role (<paramref name="Role"/>: ollama, deep-thinking...) has loaded now, as its <c>/api/ps</c>
+/// says: <paramref name="Bytes"/> in all and <paramref name="GraphicsBytes"/> of that on the graphics card.</summary>
+public sealed record HostLoadedModel(string Role, string Model, long Bytes, long GraphicsBytes, int? ContextTokens = null, string? Digest = null);
+
 /// <summary>What a paired Martlet host reported about itself (collected by martlet-host on that machine and
 /// served over the pinned, paired connection). Host-reported facts, not measurements or qualification.</summary>
 public sealed record HostHardware(
@@ -46,6 +50,9 @@ public sealed record HostHardware(
     public IReadOnlyList<string>? Features { get; init; }
     /// <summary>The downloads the host keeps for its roles (also for roles that are off); null when the host doesn't report them.</summary>
     public IReadOnlyList<HostDownload>? Downloads { get; init; }
+    /// <summary>What the host's Ollama roles had loaded when Martlet asked (newer hosts only; null otherwise). Not kept in
+    /// host-hardware.json: Martlet keeps the measured memory in model-memory.json.</summary>
+    [JsonIgnore] public IReadOnlyList<HostLoadedModel>? Loaded { get; init; }
 
     [JsonIgnore] public HostGpu? BestGpu => Gpus.OrderByDescending(g => g.IsNvidia).ThenByDescending(g => g.MemoryMb ?? 0).FirstOrDefault();
 
@@ -84,6 +91,9 @@ public sealed class HostHardwareStore(string dataDirectory)
     };
 
     private string PathName => Path.Combine(dataDirectory, FileName);
+
+    /// <summary>The data directory this store keeps host-hardware.json in.</summary>
+    public string DataDirectory => dataDirectory;
 
     public IReadOnlyList<HostHardware> Load()
     {
