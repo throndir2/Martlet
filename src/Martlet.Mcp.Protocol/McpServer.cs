@@ -2343,17 +2343,21 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "the game watch finds a game from a Steam library, keeps it through a switch to another window and ends it after 90 " +
             "seconds; Recommended setup's three plans (Normal, While gaming, Host away). In-process; reads and writes nothing.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, on by default) " +
-            "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
-            "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
+            "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, no hourly limit, no time limit, " +
+            "offered when done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
             "unwrapped, page reader keeping readable text, public-address guard on every connection and redirect), research loop " +
-            "(WebResearchRun: first search and pages, then model steps of SEARCH, READ or the report, each a background think through " +
+            "(WebResearchRun: first search and pages, then model steps that rewrite their notes and answer SEARCH, READ or the " +
+            "report, each a background think through " +
             "the conversation runtime and Chat Completions adapter), report creation and its web page (ResearchReports), against " +
             "fixtures on 127.0.0.1 (a search page, web pages including a PDF and a redirect to a private address, and a model with " +
             "canned answers, NOT AI): a reply says it'll look into it and calls research (returns at once, the reply completes while " +
-            "the job runs), the steps' requests, the note the conversation gets (offer first, perform_creation with the report's " +
+            "the job runs), the steps' requests (the second carries the first one's notes and only the pages read since), the note " +
+            "the conversation gets (offer first, perform_creation with the report's " +
             "id), the report kept in a temporary Creations library and shown as a page; plus the settings (on by default, off when " +
-            "turned off or with Thinking longer off), the address guard and the limits (busy beside a think, Cancel, the hourly limit, a failed search, " +
-            "and placement on Deep thinking's places, where research never takes the pool's last free slot, kept for quick jobs). " +
+            "turned off or with Thinking longer off), the address guard, the limits (busy beside a think, Cancel, no hourly limit, " +
+            "a failed search, and placement on Deep thinking's places, where research never takes the pool's last free slot, kept " +
+            "for quick jobs) and the budget (an in-memory web and fixture model reading until the production budget of pages runs " +
+            "out: searches, pages, model steps, notes and the largest step's bytes). " +
             "Loopback only; no real search or model; reads no credentials.", new { }),
         Tool("app_guides_check", "Rehearse App guides (Companion > App guides, off by default; docs/APP_GUIDES.md) end to end with " +
             "Martlet's own guide library service (AppGuideService), store (FileAppGuideStore), wiki reader (WebGuideBuilder with " +

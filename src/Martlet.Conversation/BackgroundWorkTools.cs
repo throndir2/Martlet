@@ -21,8 +21,8 @@ public static class BackgroundWorkTools
 
     /// <summary>research as a check-in sees it.</summary>
     public const string ResearchDescription =
-        "Starts web research on the last exchange (a few minutes): Martlet searches the web, writes a short report with sources " +
-        "and offers it when it's done. Only when the user asked to look something up, search for it or research it, or the reply " +
+        "Starts web research on the last exchange (it can take a while): Martlet researches it on the web as thoroughly as a " +
+        "careful person would, writes a report with sources and offers it when it's done. Only when the user asked to look something up, search for it or research it, or the reply " +
         "said it would look into it. One at a time.";
 
     public static CheckInToolSet Set { get; } = new(SetId, "Background work",
