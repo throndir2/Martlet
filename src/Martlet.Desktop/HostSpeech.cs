@@ -85,8 +85,18 @@ internal static class F5Voices
     {
         var result = await F5SharedVoices.ReconcileAsync(Directory(dataDirectory), Path.Combine(dataDirectory, StagingDirectoryName),
             destination, View(dataDirectory), fetch ?? ((_, _) => Task.FromResult<byte[]?>(null)), by, DateTimeOffset.UtcNow, keep, token);
+        // Said once each time the number changes, not on every pass.
+        if (Interlocked.Exchange(ref fullNoted, result.Full) != result.Full && result.Full > 0)
+            ErrorLog.Warn(FullText(result.Full));
         return result with { Library = Commit(dataDirectory, result.Library) };
     }
+
+    private static int fullNoted;
+
+    /// <summary>What to tell the owner when <paramref name="count"/> voices didn't fit this PC's voice list.</summary>
+    internal static string FullText(int count) =>
+        $"{count} voice{(count == 1 ? "" : "s")} didn't fit: Martlet keeps {SpeakingVoiceLibrary.MaximumVoices:N0} voices on each computer. " +
+        "Remove voices you no longer use under Companion > Voice > Voices.";
 
     /// <summary>The voice to speak with on <paramref name="destination"/> when the owner has not picked one there: the voice
     /// chosen on all computers, else the one applied here, else the first in the list. Never a recording Martlet no longer

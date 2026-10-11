@@ -103,8 +103,17 @@ again for the same persona replaces that lorebook's entries.
 
 ## Limits
 
-- At most 64 lorebooks, 2,000 entries each, 64 keywords per entry (256
-  characters each) and 32,768 characters of content per entry; `lorebooks.json`
-  is at most 16 MB. Import files are at most 32 MB (character cards 8 MB of card
-  text).
-- Scan depth 0-17 messages.
+- At most 1,000 lorebooks, 100,000 entries each, 64 keywords per entry (256
+  characters each) and 32,768 characters of content per entry. A lorebook can
+  be on for up to 1,000 personas (as many as Martlet keeps).
+- `lorebooks.json` and import files are at most 256 MB each, so a lorebook you
+  can import can also be saved (character cards: 8 MB of card text). Martlet
+  reads the whole file at once, so this limit keeps one damaged or very large
+  file from using all the memory. A file that is too large is refused with a
+  message, and the import message counts the entries it skipped (empty ones,
+  and any past 100,000, which it names as the reason).
+- Scan depth 0-1,000 messages. Only the messages the conversation has are
+  searched, so a deep scan costs no more than the conversation is long. Each
+  reply searches every entry that is on, so a very large lorebook makes each
+  reply a little slower to start (about 0.15 s for 100,000 entries on a
+  desktop PC).

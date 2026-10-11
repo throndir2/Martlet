@@ -272,11 +272,11 @@ hostile same-user manipulation and OS-vault roundtrips are not qualified here.
 
 ### Local configuration recovery transaction (V07a)
 
-The explicit `.martlet-config` output is a bounded 256 KiB format-1 JSON
+The explicit `.martlet-config` output is a bounded 16 MiB format-1 JSON
 envelope, not a ZIP/support bundle. Its deterministic manifest records
 `Martlet.Configuration`, producer assembly version, minimum reader format,
 settings schema, source profile UUID, snapshot UUID, UTC creation time and
-source SHA-256. `settings_bytes` is base64 of the **exact** <=128 KiB validated
+source SHA-256. `settings_bytes` is base64 of the **exact** <=8 MiB validated
 v1-v6 settings file (base64 is not encryption). Envelope SHA-256 covers the
 canonical serialized manifest, including the payload; source SHA-256 covers
 the original bytes. A fixed manifest serializes deterministically, but new
@@ -569,8 +569,8 @@ transcript as soon as it has read the recording; check it and fix anything it
 misheard. **Add another recording** adds
 more recordings of the same voice (up to 10, 30 seconds in all), each converted
 the same way and then joined. Only the WAV is stored and shared
-with your other computers. The new voice is used right away. Up to 32 voices
-are kept.
+with your other computers. The new voice is used right away. Up to 1,000 voices
+are kept; when the list is full, Martlet says so and you remove one first.
 
 **Record your own voice...** makes a voice from your microphone instead of a
 file. Tick the box that says it is your own voice, then press **Record** beside

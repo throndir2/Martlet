@@ -19,7 +19,9 @@ public sealed record LorebookSaveResult(bool Saved, LorebookLibrary Library, str
 public sealed class LorebookStore
 {
     public const string FileName = "lorebooks.json";
-    public const int MaximumFileBytes = 16 * 1024 * 1024;
+    /// <summary>The largest lorebooks.json Martlet reads or saves. Martlet reads the whole file at once, so one damaged or
+    /// enormous file can't take all the memory; imports use the same limit, so an imported lorebook can always be saved.</summary>
+    public const int MaximumFileBytes = 256 * 1024 * 1024;
     private static readonly JsonSerializerOptions Options = CreateOptions();
     private readonly SemaphoreSlim gate = new(1, 1);
     private (DateTime WrittenUtc, long Length, LorebookLoadResult Result)? cache;

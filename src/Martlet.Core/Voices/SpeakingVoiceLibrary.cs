@@ -73,9 +73,12 @@ public sealed record SpeakingVoiceChoice
 public sealed record SpeakingVoiceLibrary
 {
     public const int SchemaVersion1 = 1;
-    public const int MaximumBytes = 1_048_576;
-    public const int MaximumVoices = 32;
-    public const int MaximumTombstones = 64;
+    /// <summary>How many voices <see cref="Add"/> accepts. A merge of several computers' copies can hold more; no live voice
+    /// leaves the list unless it is removed.</summary>
+    public const int MaximumVoices = 1_000;
+    /// <summary>Removed voices remembered, so an older copy of the list can't bring one back. Each is a few hundred bytes;
+    /// beyond it the oldest tombstones are dropped.</summary>
+    public const int MaximumTombstones = 4_000;
     public const int MaximumNameLength = 80;
     public const int MaximumNameUtf8Bytes = 160;
     public const int MaximumTranscriptLength = 4096;
@@ -90,12 +93,25 @@ public sealed record SpeakingVoiceLibrary
     public const int MaximumClips = 10;
     public const int MinimumClipMilliseconds = 500;
     public const int ClipPauseMilliseconds = 500;
+    // The most one voice takes in the list's JSON: its name, transcript and note, the same words again in its recordings'
+    // transcripts (theirs joined are its transcript), each character escaped (at most 6 bytes), plus the other fields.
+    private const int MaximumVoiceJsonBytes = 6 * (MaximumNameLength + 2 * MaximumTranscriptLength + MaximumNoteLength) +
+        MaximumClips * 128 + 2_048;
+    private const int MaximumTombstoneJsonBytes = 512;
+    /// <summary>The written list's size limit: <see cref="MaximumVoices"/> voices and every tombstone at their most. The whole
+    /// list is read into memory, so it keeps a byte limit.</summary>
+    public const int MaximumBytes = MaximumVoices * MaximumVoiceJsonBytes + MaximumTombstones * MaximumTombstoneJsonBytes + 4_096;
+    /// <summary>The most a host's answer with the list takes: the list and the SHA-256 of each recording it holds (one per
+    /// live voice, under a quarter of the smallest voice's entry).</summary>
+    public const int MaximumHostAnswerBytes = MaximumBytes + MaximumBytes / 4 + 16_384;
     public static readonly IReadOnlyList<int> SampleRates = [16_000, 22_050, 24_000, 44_100, 48_000];
     /// <summary>The writer and revision of starter entries: every computer writes the same entry, and any change wins.</summary>
     public const string StarterWriter = "martlet";
     public const long StarterRevision = 1;
     private const long MaximumRevision = long.MaxValue / 4;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly string TooLargeMessage =
+        $"The voice list is larger than {(MaximumBytes + (1 << 20) - 1) >> 20} MB. Remove some voices first.";
 
     internal static readonly JsonSerializerOptions Json = new()
     {
@@ -177,7 +193,8 @@ public sealed record SpeakingVoiceLibrary
             }
             return Put(updated);
         }
-        ContractRules.Require(Live.Count < MaximumVoices, "The voice list is full. Remove a voice first.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(Live.Count < MaximumVoices, $"The voice list is full ({MaximumVoices:N0} voices). Remove a voice first.",
+            ErrorCode.PayloadTooLarge);
         var voice = Voice(name, transcript, audioSha256, durationMilliseconds, rights, note, now, NextRevision(now), by, now, clips, sampleRate);
         Validate(voice);
         return Put(voice);
@@ -242,11 +259,12 @@ public sealed record SpeakingVoiceLibrary
         : a.UpdatedBy != b.UpdatedBy ? string.CompareOrdinal(a.UpdatedBy, b.UpdatedBy) > 0
         : string.CompareOrdinal(a.VoiceId, b.VoiceId) >= 0;
 
-    // The most recently added live voices, then the newest tombstones; sorted by ID so equal content writes equal bytes.
+    // Every live voice (none is ever dropped: Add refuses a voice the list has no room for, and a merge keeps all) and the
+    // newest MaximumTombstones tombstones; sorted by ID so equal content writes equal bytes.
     private static SpeakingVoice[] Bounded(IEnumerable<SpeakingVoice> voices)
     {
         var all = voices.ToArray();
-        return all.Where(v => !v.Removed).OrderByDescending(v => v.AddedAt).ThenBy(v => v.Id, StringComparer.Ordinal).Take(MaximumVoices)
+        return all.Where(v => !v.Removed)
             .Concat(all.Where(v => v.Removed).OrderByDescending(v => v.Revision).ThenBy(v => v.Id, StringComparer.Ordinal).Take(MaximumTombstones))
             .OrderBy(v => v.Id, StringComparer.Ordinal).ToArray();
     }
@@ -313,12 +331,13 @@ public sealed record SpeakingVoiceLibrary
             voice.Transcript == JoinedTranscript(voice.Clips), "A voice's recordings don't match its recording and transcript.");
     }
 
+    /// <summary>Checks the list and every voice. The number of voices is not checked here: a merge of several computers'
+    /// copies can pass <see cref="MaximumVoices"/>, and the list's byte size (<see cref="MaximumBytes"/>) bounds it when it is
+    /// read or written.</summary>
     public void Validate()
     {
         ContractRules.Require(SchemaVersion == SchemaVersion1, "This voice list was written by a newer Martlet.", ErrorCode.UnsupportedVersion);
-        ContractRules.Require(Voices is not null && Voices.All(v => v is not null) &&
-            Voices.Count(v => !v.Removed) <= MaximumVoices && Voices.Count(v => v.Removed) <= MaximumTombstones,
-            "The voice list has too many voices.");
+        ContractRules.Require(Voices is not null && Voices.All(v => v is not null), "The voice list is malformed.");
         ContractRules.Require(Voices!.Select(v => v.Id).Distinct(StringComparer.Ordinal).Count() == Voices!.Count, "The voice list lists a voice twice.");
         foreach (var voice in Voices) Validate(voice);
         if (Chosen is { } chosen)
@@ -332,13 +351,14 @@ public sealed record SpeakingVoiceLibrary
     {
         Validate();
         var bytes = JsonSerializer.SerializeToUtf8Bytes(this with { Voices = Bounded(Voices) }, Json);
-        ContractRules.Require(bytes.Length <= MaximumBytes, "The voice list is too large.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(bytes.Length <= MaximumBytes, TooLargeMessage, ErrorCode.PayloadTooLarge);
         return bytes;
     }
 
     public static SpeakingVoiceLibrary Parse(ReadOnlySpan<byte> bytes)
     {
-        ContractRules.Require(bytes.Length is > 0 and <= MaximumBytes, "The voice list is empty or too large.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(bytes.Length > 0, "The voice list is empty.");
+        ContractRules.Require(bytes.Length <= MaximumBytes, TooLargeMessage, ErrorCode.PayloadTooLarge);
         SpeakingVoiceLibrary? library;
         try { library = JsonSerializer.Deserialize<SpeakingVoiceLibrary>(bytes, Json); }
         catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException or FormatException)

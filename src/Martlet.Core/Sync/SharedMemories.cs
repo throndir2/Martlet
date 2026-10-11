@@ -35,10 +35,15 @@ public sealed record SharedMemory
 public sealed record SharedMemories
 {
     public const int SchemaVersion1 = 1;
-    public const int MaximumBytes = 12 * 1024 * 1024;
-    public const int MaximumFacts = 1024;
-    public const int MaximumForgotten = 4096;
-    public const int MaximumFactBytes = 64 * 1024;
+    // The merged copy of every computer's store is read whole (by hosts too), so it keeps a byte bound: twice a full store
+    // (Martlet.Memory's MemoryLimits.MaximumStoreBytes) with room for the tombstones.
+    public const int MaximumBytes = 512 * 1024 * 1024;
+    /// <summary>Twice the facts one store holds (<see cref="MemorySyncNode.StoreCapacity"/>), so two computers' facts merge
+    /// before the sync decides what fits.</summary>
+    public const int MaximumFacts = 2 * MemorySyncNode.StoreCapacity;
+    public const int MaximumForgotten = 2 * MemorySyncNode.StoreCapacity;
+    /// <summary>One fact's canonical JSON (Martlet.Memory's MemoryLimits.MaximumFactJsonBytes).</summary>
+    public const int MaximumFactBytes = 256 * 1024;
     private const long MaximumRevision = long.MaxValue / 4;
 
     private static readonly JsonSerializerOptions Json = new()
@@ -79,6 +84,20 @@ public sealed record SharedMemories
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
         return Bounded(left.Facts.Concat(right.Facts).GroupBy(f => f.Id).Select(group => group.Aggregate((a, b) => Newer(a, b) ? a : b)));
+    }
+
+    /// <summary>A copy of <paramref name="entries"/> (each checked as <see cref="With"/> checks it): per fact the newest entry
+    /// wins. One pass for any number of entries, where adding them one by one with <see cref="With"/> costs a pass each.</summary>
+    public static SharedMemories Of(IEnumerable<SharedMemory> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var newest = new Dictionary<Guid, SharedMemory>();
+        foreach (var entry in entries)
+        {
+            Validate(entry);
+            if (!newest.TryGetValue(entry.Id, out var existing) || !Newer(existing, entry)) newest[entry.Id] = entry;
+        }
+        return Bounded(newest.Values);
     }
 
     /// <summary>Whether <paramref name="a"/> wins over <paramref name="b"/>: the higher revision, then the later change, then a

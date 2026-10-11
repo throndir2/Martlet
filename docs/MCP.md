@@ -80,7 +80,8 @@ return names and, when asked, the personality text, because they edit them.
 
 - `characters_list` (`includeText`): every personality with its profile, which
   one Martlet is now, the looks and voices a profile can use, and the limits
-  (16 personalities, 32 profiles, 8,192 characters each and 16,384 together).
+  (1,000 personalities, 1,000 profiles, 100,000 characters each and 1,000,000
+  together).
 - `character_create`: `name` and `personality`, or `cardPath` (an absolute path
   to a SillyTavern, Chub or other Tavern character card: PNG, JSON or CHARX,
   read like Personality's import; its keyword lorebook entries are kept in a
@@ -1259,7 +1260,7 @@ learned names, `withCompanionName`: voices that learned one of the companion's
 own names from the saved personas, which Martlet drops when it next hears them,
 `withPlaceholderName`: voices that learned a placeholder such as "no name
 yet", dropped the same way, `mostNames`: the most names one voice has, merged,
-tombstones) and `clips` (`keep`: People's *Keep the last 5 clips* choice,
+tombstones) and `clips` (`keep`: People's *Keep the last 20 clips* choice,
 `voices` and `clips`: how many clips of voices not named yet are kept). It never
 returns names, voiceprints or audio and runs no model.
 
@@ -1546,9 +1547,11 @@ character spaces in `memory-spaces\<space>`): `space` (its ID) and `store` with
 the same `state`, `facts`, `typed`, `fromConversation`, `expiring` and `whose`.
 It reads each store's file as JSON without opening or locking a store (the
 desktop can keep running), and never returns a fact's text, a name, a voice ID
-or a path. It contacts nothing.
+or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
+characters per fact (`factCharacters`, 32,768) and store bytes (`storeBytes`,
+256 MiB). It contacts nothing.
 
-`memory_recall_check` (optional `query`, optional `facts`: 1-512 strings)
+`memory_recall_check` (optional `query`, optional `facts`: 1-100,000 strings)
 rehearses how recall ranks remembered facts
 ([Lexical retrieval and reranking](MEMORY.md#lexical-retrieval-and-reranking))
 with the production code (`MemoryStore` and `LexicalIndex` in
@@ -1560,10 +1563,11 @@ comes first, a message of only grammar words has no words to look for, a
 snapshot ranks exactly like the store, a deleted fact is never recalled, query
 words next to each other and in order rank first, recency is a gentle boost
 (under 11%), a near-duplicate of a better match moves below a different match
-(never one of another person), and the time to rank one query on a full store
-of 512 facts (`rankMedianMicroseconds`, `rankP95Microseconds`,
-`rankMaxMicroseconds`, `storeRetrieveMedianMicroseconds`; the step passes when
-the median is under 1,000). With `query`, `query.ranked` lists the facts that
+(never one of another person), and the time to rank one query on a store of
+512 facts and on a full store of 100,000 facts (`rankMedianMicroseconds`,
+`rankP95Microseconds`, `rankMaxMicroseconds`, `storeRetrieveMedianMicroseconds`
+and `fillMilliseconds`, how long filling the store took; the 512-fact step passes
+when the median is under 1,000 and the full-store step when it is under 10,000). With `query`, `query.ranked` lists the facts that
 query recalls (`fact`, `score`, `matchedTerms`, best first) from the sample
 facts, or from `facts` when given (a later fact counts as newer), and
 `query.words` shows the words recall looked for. It never opens the owner's
@@ -1633,7 +1637,8 @@ shares its fact; a fact expiring in two seconds is forgotten everywhere once
 expired; a newer Martlet's fact passes through hosts and desktops without
 entering this version's stores; a new memory folder takes everything again and
 forgets nothing; 600 old conversation facts from two computers end as the same
-512 everywhere (oldest conversation facts forgotten, typed facts kept); memory
+512 everywhere in this rehearsal's small store (oldest conversation facts
+forgotten, typed facts kept, and the sync says how many didn't fit); memory
 spaces ([accounts](ACCOUNTS.md#memory-spaces)): A merges a fact into Sam's
 `account-<id>` space on both hosts with `MergeMemorySpaceAsync`, B reads it
 there (`ReadMemorySpaceAsync`) with the same digest
@@ -2427,8 +2432,9 @@ first desktop never reached; removing a character deletes its pieces on both
 hosts and the other desktops' copies; a stale copy can't bring it back; a
 computer keeps the copy it shows until another is chosen; a host restart keeps
 the list and pieces; a wrong SHA-256, a piece no character has and a removed
-character's piece are refused; reading a missing piece answers none; a 17th
-character and a Live2D model that refers to a script are refused. Nothing leaves
+character's piece are refused; reading a missing piece answers none; character
+1,001 is refused, a merge with another computer's list past that keeps all 1,001
+characters, and a Live2D model that refers to a script is refused. Nothing leaves
 loopback, the temporary folder is deleted and Windows Credential Manager is not
 touched; it does not cover the desktop window and its 30-second sync, the Linux
 host's files, rendering a copied model or a real LAN.

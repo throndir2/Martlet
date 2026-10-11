@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Martlet.Avatars;
+using Martlet.Core.Characters;
 using Martlet.Core.Contracts;
 
 namespace Martlet.Avatar.Hosting;
@@ -44,8 +45,13 @@ public static class LocalAvatarFiles
 {
     public const int MaximumModelFiles = 128;
     public const int MaximumModelJsonBytes = 1024 * 1024;
-    public const int MaximumModelAssetBytes = 64 * 1024 * 1024;
-    public const long MaximumModelBytes = 128L * 1024 * 1024;
+    /// <summary>One Live2D file's size limit (JSON files: <see cref="MaximumModelJsonBytes"/>); the same as
+    /// <see cref="CharacterModelLibrary.MaximumLive2DFileBytes"/> and the Live2D renderer's.</summary>
+    public const int MaximumModelAssetBytes = CharacterModelLibrary.MaximumLive2DFileBytes;
+    /// <summary>A model's size limit; the same as <see cref="CharacterModelLibrary.MaximumModelBytes"/> and the Live2D renderer's.</summary>
+    public const long MaximumModelBytes = CharacterModelLibrary.MaximumModelBytes;
+    /// <summary>A VRM file's size limit; the same as <see cref="CharacterModelLibrary.MaximumVrmBytes"/> and the VRM renderer's.</summary>
+    public const int MaximumVrmBytes = CharacterModelLibrary.MaximumVrmBytes;
 
     // Letters and digits of any script plus a few punctuation marks; never separators, escapes, URL syntax or traversal.
     // Mirrors localPath in Martlet.Avatar.Live2D/lib/assets.ts.
@@ -146,7 +152,10 @@ public static class LocalAvatarFiles
         {
             ContractRules.Require(Path.GetExtension(modelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
                 "Select a local VRM1 .vrm model.");
-            assets.Add(new(modelFile, await ReadBoundedAsync(modelPath, 32 * 1024 * 1024, token), "application/octet-stream"));
+            CheckAncestors(modelPath);
+            ContractRules.Require(!File.Exists(modelPath) || new FileInfo(modelPath).Length <= MaximumVrmBytes,
+                $"The VRM file is larger than Martlet's {CharacterModelLibrary.SizeText(MaximumVrmBytes)} limit.");
+            assets.Add(new(modelFile, await ReadBoundedAsync(modelPath, MaximumVrmBytes, token), "application/octet-stream"));
             return assets;
         }
         ContractRules.Require(modelFile.EndsWith(".model3.json", StringComparison.Ordinal), "Select a model3.json model.");
@@ -175,11 +184,13 @@ public static class LocalAvatarFiles
             ContractRules.Require(file.Exists, $"The model refers to {reference}, which isn't in its folder.");
             var limit = extension == ".json" ? MaximumModelJsonBytes : MaximumModelAssetBytes;
             ContractRules.Require(file.Length <= limit,
-                $"{reference} is larger than Martlet's {limit / (1024 * 1024)} MB limit for one model file.");
+                $"{reference} is larger than Martlet's {CharacterModelLibrary.SizeText(limit)} limit for one model file.");
+            ContractRules.Require(total + file.Length <= MaximumModelBytes,
+                $"The model's files add up to more than Martlet's {CharacterModelLibrary.SizeText(MaximumModelBytes)} limit.");
             var bytes = await ReadBoundedAsync(path, limit, token);
             total += bytes.Length;
             ContractRules.Require(total <= MaximumModelBytes,
-                $"The model's files add up to more than Martlet's {MaximumModelBytes / (1024 * 1024)} MB limit.");
+                $"The model's files add up to more than Martlet's {CharacterModelLibrary.SizeText(MaximumModelBytes)} limit.");
             assets.Add(new(reference, bytes, extension == ".png" ? "image/png" : "application/octet-stream"));
         }
         foreach (var extra in ExtraReferences(root, modelFile))

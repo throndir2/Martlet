@@ -65,14 +65,15 @@ internal sealed record SnapshotEnvelope : IContract
     {
         ContractRules.Require(Manifest is not null, "Missing snapshot manifest.");
         Manifest!.Validate();
-        ContractRules.Require(Sha256 == ConfigurationSnapshot.Hash(ContractJson.Write(Manifest)),
+        ContractRules.Require(Sha256 == ConfigurationSnapshot.Hash(ContractJson.Write(Manifest, ConfigurationSnapshot.MaximumBytes)),
             "Snapshot integrity check failed.");
     }
 }
 
 public static class ConfigurationSnapshot
 {
-    public const int MaximumBytes = 262_144;
+    // A snapshot holds the settings file in Base64 (4/3 of its size) and a small manifest.
+    public const int MaximumBytes = 2 * AppSettings.MaxFileBytes;
     public const string Scope = "Configuration snapshots are local files for restoring Martlet settings. " +
         "They are not encrypted, so keep them private. They do not include secrets, conversations, audio, memory data or logs. No upload is performed.";
 
@@ -101,7 +102,7 @@ public static class ConfigurationSnapshot
         };
         return ContractJson.Write(new SnapshotEnvelope
         {
-            Manifest = manifest, Sha256 = Hash(ContractJson.Write(manifest))
+            Manifest = manifest, Sha256 = Hash(ContractJson.Write(manifest, MaximumBytes))
         }, MaximumBytes);
     }
 

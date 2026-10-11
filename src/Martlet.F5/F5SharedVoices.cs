@@ -6,9 +6,11 @@ namespace Martlet.F5;
 
 /// <summary>What <see cref="F5SharedVoices.ReconcileAsync"/> did: the library with any voices this computer had that it
 /// lacked, how many recordings were copied in and removed, the voices still waiting for their recording, and each live
-/// voice's snapshot in the store (by voice ID).</summary>
+/// voice's snapshot in the store (by voice ID). <see cref="Full"/> counts voices that didn't fit: this computer's own voices
+/// the full list couldn't take (<see cref="SpeakingVoiceLibrary.MaximumVoices"/>) and the list's voices the full store
+/// couldn't take (<see cref="F5ReferenceLimits.MaximumPresets"/>); the caller tells the owner.</summary>
 public sealed record F5SharedVoicesResult(SpeakingVoiceLibrary Library, int Added, int Removed, int Waiting,
-    IReadOnlyDictionary<string, F5ReferenceSnapshot> Local);
+    IReadOnlyDictionary<string, F5ReferenceSnapshot> Local, int Full = 0);
 
 /// <summary>Keeps a computer's F5 reference store, its working copy of every recording, in step with the shared
 /// <see cref="SpeakingVoiceLibrary"/>: live voices it lacks are copied in (a starter voice's recording from Martlet itself,
@@ -84,6 +86,7 @@ public static class F5SharedVoices
         IReadOnlyDictionary<string, F5ReferenceSnapshot> local;
         Guid? applied;
         Guid[] retired;
+        var full = 0;
         using (var store = F5ReferencePresetStore.Open(storeDirectory, cancellationToken: cancellationToken))
         {
             var inspection = store.Inspect();
@@ -92,10 +95,15 @@ public static class F5SharedVoices
             retired = inspection.Presets.Where(p => p.Id != applied && p.Snapshots.Count > 0 &&
                     p.Snapshots.All(s => F5BundledVoices.IsRetired(s.AudioSha256) && keep?.Contains(Id(s)) != true))
                 .Select(p => p.Id).ToArray();
-            // Voices only this computer has (added before voices were shared) join the library.
+            // Voices only this computer has (added before voices were shared) join the library; a full list is counted.
             foreach (var (id, snapshot) in local)
             {
-                if (library.Find(id) is not null || library.Live.Count >= SpeakingVoiceLibrary.MaximumVoices) continue;
+                if (library.Find(id) is not null) continue;
+                if (library.Live.Count >= SpeakingVoiceLibrary.MaximumVoices)
+                {
+                    full++;
+                    continue;
+                }
                 using var lease = await store.AcquireForPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, cancellationToken);
                 var name = SpeakingVoiceLibrary.IsName(snapshot.PresetName) ? snapshot.PresetName : "Voice";
                 library = library.Add(name, lease.Reference.Transcript, snapshot.AudioSha256, snapshot.AudioFormat.DurationMilliseconds,
@@ -126,7 +134,7 @@ public static class F5SharedVoices
                 await File.WriteAllBytesAsync(path, audio, cancellationToken);
                 fetched.Add((voice, path));
             }
-            if (fetched.Count == 0 && removed.Length == 0 && retired.Length == 0) return new(library, 0, 0, waiting, Live(library, local));
+            if (fetched.Count == 0 && removed.Length == 0 && retired.Length == 0) return new(library, 0, 0, waiting, Live(library, local), full);
 
             var added = 0;
             var deleted = 0;
@@ -148,7 +156,12 @@ public static class F5SharedVoices
                     }, cancellationToken);
                     added++;
                 }
-                catch (F5Exception error) when (error.Failure is F5Failure.LimitExceeded or F5Failure.InvalidAudio)
+                // The store is full (F5ReferenceLimits): counted, so the owner hears of it, not shown as still copying.
+                catch (F5Exception error) when (error.Failure is F5Failure.LimitExceeded)
+                {
+                    full++;
+                }
+                catch (F5Exception error) when (error.Failure is F5Failure.InvalidAudio)
                 {
                     waiting++;
                 }
@@ -172,7 +185,7 @@ public static class F5SharedVoices
                 }
                 catch (F5Exception error) when (error.Failure is F5Failure.Conflict or F5Failure.NotFound) { }
             }
-            return new(library, added, deleted, waiting, Live(library, current));
+            return new(library, added, deleted, waiting, Live(library, current), full);
         }
         finally
         {

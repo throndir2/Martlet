@@ -120,7 +120,7 @@ Derived `is_terminal`/PCM alignment are not serialized. Report `exit_code` and
 
 | Bound | Enforced behavior |
 | --- | --- |
-| JSON / settings | At most 256 KiB per contract document; settings at most 128 KiB. Settings reads stop at limit + 1 before decoding. |
+| JSON / settings | At most 256 KiB per contract document unless a caller passes a larger limit (at most 16 MiB: settings snapshots); settings at most 8 MiB (room for 1,000 personas). Settings reads stop at limit + 1 before decoding and size their buffer by the file. |
 | IDs | Nonempty UUID session/turn/request/profile/credential IDs. Provider/model/adapter/action/probe tokens: 1-64 ASCII letters/digits/dot/underscore/hyphen, starting with a letter/digit. These are internal aliases, not arbitrary upstream model names or URLs. |
 | Text / summaries | At most 16,384 UTF-16 characters per event text and 512 per error/probe summary; no control characters except CR/LF/tab. JSON byte cap also applies. |
 | Sequence / epoch | 0 through signed 32-bit maximum, held in `long`. These are per-attempt/turn labels; temporal ordering is not yet enforced. |

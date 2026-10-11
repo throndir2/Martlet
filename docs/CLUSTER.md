@@ -560,7 +560,7 @@ NVIDIA Build and its old key.
 | `thinking-fallback` | The *If Thinking fails* endpoint, model and its own key (or none) | |
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
-| `lorebooks` | Every lorebook and the scan settings (up to 1 MiB) | |
+| `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |
 | `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, how chatty Martlet is about what it sees and what the PC plays (Martlet decides included; a computer on an older Martlet reads it as Chatty) | Microphone sensitivity, cameras and video addresses, Watch on or off and what it looks at (consent at that screen), echo reduction, hearing what the PC plays |
@@ -796,8 +796,9 @@ removed like any other ([F5 voice](F5_VOICE.md#one-voice-list-on-every-computer)
   rules as the plan; removed voices leave tombstones. Starter entries are
   revision 1, so a removal anywhere wins everywhere. A recording Martlet no
   longer ships (the former "anime" starter voices) is removed the same way by
-  the first updated desktop. JSON, snake case, schema 1,
-  at most 1 MiB, 32 voices and 64 tombstones.
+  the first updated desktop. JSON, snake case, schema 1, at most 4,000
+  tombstones and about 54 MiB (room for 1,000 voices at their most). Adding a
+  voice is refused while 1,000 are live, and a merge keeps every live voice.
 - **A voice made from several recordings** (2 to 10, each at least 0.5 s) is
   still one recording on the wire: the desktop joins them, in order, after a
   0.5 s pause each, at the highest sample rate among them (others resampled), and
@@ -881,17 +882,22 @@ complete). The built-in character is part of Martlet and never in the list.
   SHA-256 of every 3 MiB piece: a file travels piece by piece, each piece in
   one signed request within the gateway's request limit, and an interrupted copy
   continues where it stopped. Same hybrid revisions and merge rules as the plan;
-  removed models leave tombstones. JSON, snake case, schema 1, at most 2 MiB,
-  16 models (512 MB together; older ones leave the list when newer ones need
-  the room) and 64 tombstones. Each model follows the renderer's rules: a VRM is
-  one `.vrm` of at most 32 MB; a Live2D model is its `.model3.json` and the
-  files it declares, `.json`, `.moc3`, `.png` and `.wav` only (128 files,
-  128 folders, 64 MB per file, 1 MB per JSON, 128 MB in all), never scripts;
+  removed models leave tombstones. JSON, snake case, schema 1, at most 128 MiB
+  (every computer reads the whole list into memory) and the newest 4,000
+  tombstones. Adding a character is refused with a clear message when the list
+  already has 1,000 characters or when all characters would pass 16 GB
+  together. A merge of several computers' lists keeps every character, even
+  past those numbers; no character ever leaves the list unless it is removed.
+  Each model follows the renderer's rules: a VRM is one `.vrm` of at most
+  512 MB; a Live2D model is its `.model3.json` and the files it declares,
+  `.json`, `.moc3`, `.png` and `.wav` only (128 files, 128 folders, 512 MB per
+  file, 1 MB per JSON, 1 GB in all), never scripts;
   other files beside it (VTube Studio settings, readmes) are not copied.
 - **Each host** keeps `character-models.json` and one
   `character-model-chunk-<sha256>.bin` per piece of a live model beside
   `host.json` (0600, gateway service owner; not part of the approved
-  configuration). Pieces live on disk, not in memory; a piece no live model uses
+  configuration). Pieces live on disk, not in memory (a host that can't save a
+  piece keeps at most 512 MB of pieces in memory); a piece no live model uses
   is deleted.
 - **Each desktop** keeps `character-models.json` in its data folder and each
   model's files in `character-models\<first 16 hex digits of its ID>`, laid out

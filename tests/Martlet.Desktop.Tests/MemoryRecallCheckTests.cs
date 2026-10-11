@@ -11,12 +11,14 @@ public sealed class MemoryRecallCheckTests
         var result = JsonSerializer.SerializeToElement(await MemoryRecallCheck.RunAsync(null, null, CancellationToken.None));
         var steps = result.GetProperty("steps").EnumerateArray().ToArray();
         Assert.True(steps.Length >= 14);
-        // The timing step depends on this PC's load; every other step is exact.
-        Assert.All(steps.Where(step => !step.GetProperty("name").GetString()!.StartsWith("512 facts", StringComparison.Ordinal)),
+        // The timing steps depend on this PC's load; every other step is exact.
+        static bool Timing(JsonElement step) => step.GetProperty("name").GetString()! is var name &&
+            (name.StartsWith("512 facts", StringComparison.Ordinal) || name.StartsWith("a full store", StringComparison.Ordinal));
+        Assert.All(steps.Where(step => !Timing(step)),
             step => Assert.True(step.GetProperty("passed").GetBoolean(), step.GetProperty("name").GetString()));
-        var timing = steps.Single(step => step.GetProperty("name").GetString()!.StartsWith("512 facts", StringComparison.Ordinal)).GetProperty("detail");
-        Assert.Equal(512, timing.GetProperty("facts").GetInt32());
-        Assert.True(timing.GetProperty("rankMedianMicroseconds").GetDouble() > 0);
+        var timings = steps.Where(Timing).Select(step => step.GetProperty("detail")).ToArray();
+        Assert.Equal([512, Martlet.Memory.MemoryLimits.MaximumFacts], timings.Select(t => t.GetProperty("facts").GetInt32()));
+        Assert.All(timings, t => Assert.True(t.GetProperty("rankMedianMicroseconds").GetDouble() > 0));
 
         var sample = JsonSerializer.SerializeToElement(await MemoryRecallCheck.RunAsync("Did my tomato plants get staked?", null, CancellationToken.None));
         Assert.Equal("The garden tomatoes need staking before the weekend.",

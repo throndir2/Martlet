@@ -15,7 +15,8 @@ public sealed partial class Audio2FaceHostConnection
 {
     private const string CharacterModelsPath = "/martlet/v1/character-models";
     private const string CharacterModelChunkPath = CharacterModelsPath + "/chunks/";
-    private const int MaximumCharacterModelsBytes = CharacterModelLibrary.MaximumBytes + 262_144;
+    // The list, and the SHA-256 of each piece the host holds: at most one per piece the list names, so at most the list's size again.
+    private const int MaximumCharacterModelsBytes = 2 * CharacterModelLibrary.MaximumBytes + 262_144;
     private const int MaximumCharacterModelChunkBytes = (CharacterModelLibrary.ChunkBytes + 2) / 3 * 4 + 4_096;
 
     public async Task<HostCharacterModels> ReadCharacterModelsAsync(CancellationToken cancellationToken = default)

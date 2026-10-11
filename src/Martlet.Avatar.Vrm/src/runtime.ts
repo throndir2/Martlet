@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRM, type VRMExpression, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
-import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
+import { blinkPresets, finite, gazePresets, inspectVrm, integer, LIMITS, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
 import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, readEyeHint, VrmEyes } from "./eyes.js";
 import { capturePose, hitTestVrm, type RestPose, type VrmHit } from "./touch.js";
@@ -366,7 +366,7 @@ function releaseResources(value: unknown, seen = new Set<unknown>()): void {
 
 /** Production importer also used by CPU-only tests. Only built-in, bundled loader code is registered. */
 export async function loadLocalVrm(buffer: ArrayBuffer): Promise<{ vrm: VRM; capabilities: VrmCapabilities }> {
-  requireValid(buffer instanceof ArrayBuffer && buffer.byteLength <= 32 * 1024 * 1024, "VRM buffer exceeds limit.");
+  requireValid(buffer instanceof ArrayBuffer && buffer.byteLength <= LIMITS.fileBytes, "VRM buffer exceeds limit.");
   // Own the bytes across async decoding; caller mutation must not bypass preflight.
   const snapshot = buffer.slice(0);
   const capabilities = inspectVrm(snapshot);

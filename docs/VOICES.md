@@ -29,7 +29,7 @@ are recognized and learned only from the microphone, never from
   Martlet learns everyone's voice everywhere. It doesn't depend on **Keep
   Martlet the same on all my computers**. See
   [sharing](#sharing-between-your-computers).
-- **Keep the last 5 clips of voices you haven't named.** On unless you turn it
+- **Keep the last 20 clips of voices you haven't named.** On unless you turn it
   off (`voice-clips.txt`, this PC only; turning it off deletes every clip). See
   [clips](#clips-of-voices-you-havent-named).
 - **Voices Martlet knows.** Every voice it has heard: yours first, then voices
@@ -86,8 +86,11 @@ on), while speech-to-text runs:
    everyone) adds *Voice N*. Anything in between stays unattributed: Martlet
    never forces a guess. An utterance too short for clean evidence is matched
    on all its speech, but only a confident match counts and nothing is learned
-   or added. When the list is full (64 voices), the longest-unheard voice with
-   no name that isn't linked to anyone's account makes room.
+   or added. When the list is full (1,000 voices), the longest-unheard voice with
+   no name that isn't linked to anyone's account makes room, and the log says
+   which voice was forgotten and when it was last heard. When every voice has a
+   name or is linked, the new voice isn't added and the log says so once; forget
+   or merge a voice to make room.
 3. **Telling the Thinking model.** The reply's instructions say what the
    voices block means (Companion › Prompts › *Who is talking*), and the notes
    on the message carry the labeled block (`MARTLET_VOICES`, background data,
@@ -148,19 +151,20 @@ only voiceprints (256 numbers per sample) and names.
 
 ## Clips of voices you haven't named
 
-So you can tell who an unknown voice is, Martlet keeps what it said the last 5
-times it was recognized (or added), each at most 8 seconds: the stretch where
+So you can tell who an unknown voice is, Martlet keeps what it said the last 20
+times it was recognized (or added), each at most 30 seconds: the stretch where
 that person spoke, or the whole utterance when it was too short to split. They
 are 16 kHz mono WAV files in `voice-clips\<voice ID>\` in Martlet's data
 folder, on this PC only: never synced to your other computers or hosts, never
-uploaded. The sixth clip replaces the oldest. Copies are taken while
+uploaded. The 21st clip replaces the oldest. A clip takes about 32 KB per
+second, so one voice keeps at most about 19 MB. Copies are taken while
 recognition runs and written in the background, so replies never wait for them.
 
 A voice keeps clips until you say who it is: type a name for it (or confirm a
 learned one), link it to an account (**This voice is ...**), merge it into a voice you named, or forget
 it, and its clips are deleted. A name only learned in conversation keeps the
 clips, so you can check it. Merging moves the clips to the kept voice.
-Unticking **Keep the last 5 clips** deletes every clip and keeps no more.
+Unticking **Keep the last 20 clips** deletes every clip and keeps no more.
 
 ## Sharing between your computers
 
@@ -187,8 +191,13 @@ my computers** is off:
   as the cluster plan; forgetting and merging leave tombstones so a voice does
   not come back from an older copy. Its account link is a register of its own
   with its own revision, so a copy without links never removes one. The merge
-  is commutative, associative and idempotent. At most 64 voices and 64
-  tombstones, 1 MiB.
+  is commutative, associative and idempotent. A new voice joins while the list
+  has fewer than 1,000 voices (past that, the housekeeping above makes room); a
+  merge of several computers' copies keeps every voice, even past 1,000. The
+  newest 4,000 tombstones are kept (a tombstone is a few hundred bytes; dropping
+  old ones could let a forgotten voice come back from an old copy). The list is
+  read whole, so it keeps a size limit: about 37 MiB, room for 1,000 voices with
+  all their names and samples. A list past it can't be saved, and Martlet says so.
 - So when another computer becomes your companion PC, it already knows the
   same people and their names. Sync runs whichever role this PC has.
 - Whether Martlet recognizes voices at all (`voice-recognition.txt`) and Voice

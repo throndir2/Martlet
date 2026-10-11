@@ -134,13 +134,13 @@ it is never reset to an empty store.
 
 | Bound | Value |
 | --- | --- |
-| Facts | 512 |
-| Fact content | 4,096 UTF-16 characters and 8,192 UTF-8 bytes |
-| Authoritative/export JSON | 8 MiB |
+| Facts | 100,000 (a full store saves no new fact and says so; nothing is deleted to make room) |
+| Fact content | 32,768 UTF-16 characters (the UTF-8 byte bound, 3 bytes for each character, never refuses less) |
+| Authoritative/export JSON | 256 MiB (the file is read whole into memory, so it keeps a bound) |
 | Query | 256 characters, 512 UTF-8 bytes and 24 distinct terms |
 | Retrieval result | 1-20 facts |
 | Derived query cache | 64 revision-bound queries |
-| Expiring retention | At most 366 days when saved/edited |
+| Expiring retention | Any future time (no maximum) |
 
 Retention is an explicit `until_deleted` or `expires_at` choice; there is no
 implicit permanent/default policy in a save request. The library has no idle
@@ -230,7 +230,7 @@ provenance and the exact store revision. A `MemorySnapshot` leaves out the facts
 that expired before it ranks, and otherwise ranks exactly like its store.
 
 **Speed.** On the developer PC (shared with other work, so numbers vary), a
-query on a full store of 512 facts takes this long (median):
+query on a store of 512 facts takes this long (median):
 
 | Facts of | Before (TF-IDF) | Now (BM25 and the reranker) |
 |---|---|---|
@@ -238,9 +238,16 @@ query on a full store of 512 facts takes this long (median):
 | 60-120 words | 351 µs | 83 µs |
 | 600-700 words | 266 µs | 161 µs |
 
-`memory_recall_check` ([MCP](MCP.md)) measures it on any PC.
-`RankingAFullStoreStaysWellUnderAMillisecond` keeps the median under a
-millisecond.
+A full store of 100,000 facts of 6-16 words, with a small vocabulary where every
+query word is in thousands of facts, takes about 2.9 ms (median; 512 facts:
+40 µs). The reranker keeps the 64 best BM25 candidates with a heap instead of
+sorting every candidate, and a query uses per-thread working arrays and clears
+only the facts it touched, so its cost follows what it matches, not the size of
+the store.
+
+`memory_recall_check` ([MCP](MCP.md)) measures both on any PC.
+`RankingAFullStoreStaysWellUnderAMillisecond` keeps the median for 512 facts
+under a millisecond and for a full store under 10 milliseconds.
 
 ### Exact invalidation
 
@@ -400,9 +407,11 @@ validates every line (single line, <=300 characters, real words, in-range
 numbers, no memory labels), skips near-duplicates of the same person's facts,
 applies updates/forgets only
 to the exact fact revisions it showed, and saves new facts with `conversation`
-provenance until deleted. A full store drops its oldest conversation fact, never
-a fact the user typed. The conversation window shows what was remembered
-(*Remembered: … (Sam)*), and Memory lists it.
+provenance until deleted. A full store (100,000 facts) saves no new fact and
+deletes nothing to make room: the conversation window says *Couldn't update
+memory. Memory is full. Delete some facts in Companion › Memory.* and the log
+says how many facts weren't saved. The conversation window shows what was
+remembered (*Remembered: … (Sam)*), and Memory lists it.
 
 A model that declines or answers with nothing simply has nothing to remember;
 an answer cut off by the max reply length keeps the lines it finished. If the
@@ -702,20 +711,23 @@ local store, in the folder chosen on that computer.
   another wins by its revision, two edits of the same revision made apart keep
   the later one, and a deletion wins over the version it deleted. The merge is
   commutative, associative and idempotent, so every copy converges. JSON, snake
-  case, schema 1, at most 12 MiB, 1,024 facts, 4,096 tombstones and 64 KiB per
-  fact. Hosts never look inside a fact, so a newer Martlet's facts pass through
-  them and through this version's desktops unchanged.
+  case, schema 1, at most 512 MiB, 200,000 facts (two full stores), 200,000
+  tombstones and 256 KiB per fact. The whole copy is read into memory, so it
+  keeps a byte bound. Hosts never look inside a fact, so a newer Martlet's
+  facts pass through them and through this version's desktops unchanged.
 - **The sync** (`Martlet.Core.Sync.MemorySyncNode`, every 30 seconds and a few
   seconds after the Memory window closes): the desktop reads each paired host's
   copy when its digest changed, then, only while nobody else uses the store, opens
   it once: a fact saved or edited here since the last sync is a change made here,
-  and a fact gone from the store (deleted, forgotten by remembering, expired or
-  dropped to make room) is forgotten everywhere. It merges in the hosts'
-  copies, forgets expired facts and, when every computer's facts together don't
-  fit one store (512), the oldest facts picked out of conversations (never one
-  the owner typed), and makes the store hold exactly the newest version of every
-  fact in one commit (`MemoryStore.MergeAsync`). Then it gives every host whose
-  copy differs the merged one.
+  and a fact gone from the store (deleted, forgotten by remembering or expired)
+  is forgotten everywhere. It merges in the hosts' copies in one pass, forgets
+  expired facts and, when every computer's facts together don't fit one store
+  (100,000), the oldest facts picked out of conversations (never one the owner
+  typed). It counts the facts that didn't fit, and the status line and the log
+  say how many (`Memory is full: N didn't fit`). Then it makes the store hold
+  exactly the newest version of every fact in one commit
+  (`MemoryStore.MergeAsync`). Then it gives every host whose copy differs the
+  merged one.
 - **Never in a conversation's way**: the sync skips its turn while Martlet replies,
   while you are talking to it or while the Memory window is open, and it never
   waits for the store: if recall, remembering or the Memory window holds it, the

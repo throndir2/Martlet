@@ -12,7 +12,9 @@ public sealed record AppSettings : IContract
     public const int CurrentSchemaVersion = 6;
     /// <summary>From settings v6 memory is ON by default; earlier versions only recorded the old OFF default.</summary>
     public const int MemoryOnByDefaultSchemaVersion = 6;
-    public const int MaxFileBytes = 131_072;
+    // Room for every persona's text (CompanionSettings.MaximumAggregateTextCharacters, up to 6 bytes each when JSON escapes it),
+    // every character profile and the edited prompts. The file is read whole, so it keeps a bound.
+    public const int MaxFileBytes = 8 * 1024 * 1024;
     public required int SchemaVersion { get; init; }
     public required ProfileSettings Profile { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

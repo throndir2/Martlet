@@ -12,7 +12,7 @@ public sealed record LorebookImport(Lorebook Book, int SkippedEntries, string Fo
 /// <see cref="CharacterCardReader"/>) and NovelAI lorebooks, and writes SillyTavern World Info JSON.</summary>
 public static class SillyTavernLorebooks
 {
-    public const int MaximumFileBytes = 32 * 1024 * 1024;
+    public const int MaximumFileBytes = LorebookStore.MaximumFileBytes;
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
     /// <summary>Reads a lorebook file. Throws <see cref="ContractException"/> with a message for the user when it has none.</summary>
@@ -38,12 +38,12 @@ public static class SillyTavernLorebooks
             $"Choose a lorebook file of at most {MaximumFileBytes / (1024 * 1024)} MB.", ErrorCode.PayloadTooLarge);
         var bytes = new byte[input.Length];
         input.ReadExactly(bytes);
-        var json = bytes.AsSpan();
-        if (json.StartsWith("\uFEFF"u8)) json = json[3..];
+        var json = bytes.AsMemory();
+        if (json.Span.StartsWith("\uFEFF"u8)) json = json[3..];
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(json.ToArray(), new JsonDocumentOptions
+            document = JsonDocument.Parse(json, new JsonDocumentOptions
             {
                 AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip, MaxDepth = 64
             });
@@ -103,7 +103,7 @@ public static class SillyTavernLorebooks
 
     private static LorebookImport WorldInfo(IEnumerable<JsonElement> source, string name, string? description)
     {
-        var entries = new List<LorebookEntry>();
+        var entries = new EntryList();
         var skipped = 0;
         foreach (var item in source)
         {
@@ -135,7 +135,7 @@ public static class SillyTavernLorebooks
 
     private static LorebookImport CharacterBook(JsonElement book, string name, string format)
     {
-        var entries = new List<LorebookEntry>();
+        var entries = new EntryList();
         var skipped = 0;
         if (Prop(book, "entries") is { ValueKind: JsonValueKind.Array } source)
             foreach (var item in source.EnumerateArray())
@@ -174,7 +174,7 @@ public static class SillyTavernLorebooks
 
     private static LorebookImport NovelAi(JsonElement source, string name)
     {
-        var entries = new List<LorebookEntry>();
+        var entries = new EntryList();
         var skipped = 0;
         foreach (var item in source.EnumerateArray())
         {
@@ -193,7 +193,14 @@ public static class SillyTavernLorebooks
 
     private static string AsRegex(string key) => LorebookScanner.IsRegexKey(key) ? key : "/" + key + "/i";
 
-    private static void Add(List<LorebookEntry> entries, ref int skipped, LorebookEntry raw)
+    // The entries read so far, with their ids, so a large import checks each id once instead of against every entry.
+    private sealed class EntryList : List<LorebookEntry>
+    {
+        internal HashSet<int> Uids { get; } = [];
+        internal int LargestUid { get; set; }
+    }
+
+    private static void Add(EntryList entries, ref int skipped, LorebookEntry raw)
     {
         var content = Clean(raw.Content, int.MaxValue, true).Trim();
         var keys = Keys(raw.Keys);
@@ -203,8 +210,8 @@ public static class SillyTavernLorebooks
             skipped++;
             return;
         }
-        var uid = raw.Uid >= 0 && entries.All(entry => entry.Uid != raw.Uid) ? raw.Uid
-            : entries.Count == 0 ? 0 : entries.Max(entry => entry.Uid) + 1;
+        var uid = raw.Uid >= 0 && !entries.Uids.Contains(raw.Uid) ? raw.Uid
+            : entries.Count == 0 ? 0 : entries.LargestUid + 1;
         var entry = raw with
         {
             Uid = uid,
@@ -219,6 +226,8 @@ public static class SillyTavernLorebooks
         };
         entry.Validate();
         entries.Add(entry);
+        entries.Uids.Add(entry.Uid);
+        entries.LargestUid = Math.Max(entries.LargestUid, entry.Uid);
     }
 
     private static string[] Keys(IEnumerable<string> keys) => keys
@@ -234,7 +243,7 @@ public static class SillyTavernLorebooks
             Name = cleanName.Length == 0 ? "Imported lorebook" : cleanName,
             Description = Clean(description ?? "", Lorebook.MaximumDescriptionCharacters, true).Trim(),
             Activation = LorebookActivation.AllPersonas,
-            Entries = entries
+            Entries = [.. entries]
         };
         book.Validate();
         return new(book, skipped, format);

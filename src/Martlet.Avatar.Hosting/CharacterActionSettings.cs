@@ -144,12 +144,18 @@ public sealed partial record CharacterActionCatalog(CharacterActionInventory Inv
 public sealed record CharacterActionPrompt(string Instructions, IReadOnlyList<string> Tags, string? Showing = null, string? Looking = null);
 
 /// <summary>Default settings, the owner's edits and the Thinking model's naming of a model's emotes and motions, kept per
-/// model in character-actions.json on this PC.</summary>
+/// model in character-actions.json on this PC (and shared with the owner's other computers as one shared setting).</summary>
 public static partial class CharacterActions
 {
     public const string FileName = "character-actions.json";
-    public const int MaximumModels = 32;
-    public const int MaximumBytes = 2 * 1024 * 1024;
+    /// <summary>Settings are kept for the newest <see cref="MaximumModels"/> models (as many characters as the shared character
+    /// list holds).</summary>
+    public const int MaximumModels = Martlet.Core.Characters.CharacterModelLibrary.MaximumModels;
+    /// <summary>The file is read whole, so it stays bounded: 64 KiB for each of <see cref="MaximumModels"/> models, the room each
+    /// of the 32 models it held before had. A model with every Martlet gesture, 30 emotes and motions of its own, a When to use
+    /// for each and Martlet's combos takes about 23 KB (about 14.4 KB in <see cref="Share"/>, so 1,000 such models fit in one
+    /// shared setting).</summary>
+    public const int MaximumBytes = 64 * 1024 * 1024;
 
     private static readonly JsonSerializerOptions Json = new()
     {

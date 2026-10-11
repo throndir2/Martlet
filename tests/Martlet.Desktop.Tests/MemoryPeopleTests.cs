@@ -194,6 +194,48 @@ public sealed class MemoryPeopleTests
     }
 
     [Fact]
+    public async Task AFullMemoryRefusesNewFactsAndDeletesNothingToMakeRoom()
+    {
+        using var scope = new Scope();
+        var clock = new SteppedClock(DateTimeOffset.UtcNow);
+        var store = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await store.SaveAsync(initial, null);
+        var filled = false;
+        using var memory = new DesktopMemoryService(store, clock, (preview, approval, token) =>
+        {
+            var opened = MemoryStore.Open(preview, approval, clock, null, token);
+            if (!filled)
+            {
+                filled = true;
+                var at = clock.GetUtcNow().AddDays(-1);
+                opened.MergeAsync(new()
+                {
+                    Facts = [.. Enumerable.Range(0, MemoryLimits.MaximumFacts).Select(i => MemoryFactJson.Write(new MemoryFact
+                    {
+                        Id = Guid.NewGuid(), Revision = 1, Content = $"Picked out of conversation number {i}.", CreatedAtUtc = at,
+                        UpdatedAtUtc = at, CreatedFrom = MemoryProvenance.Conversation(Guid.NewGuid(), at),
+                        LastModifiedBy = MemoryProvenance.Conversation(Guid.NewGuid(), at), Retention = MemoryRetention.UntilDeleted()
+                    }))],
+                    Forget = []
+                }, token).GetAwaiter().GetResult();
+            }
+            return opened;
+        });
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true, MemoryStoragePolicy.AppLocalData, null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+
+        var error = await Assert.ThrowsAsync<MemoryException>(() => memory.RememberAsync(revision, [],
+            [new MemoryCaptureOperation(MemoryCaptureKind.Remember, Content: "Sam's dog is called Biscuit.")]));
+        Assert.Equal(MemoryFailure.LimitExceeded, error.Failure);
+        Assert.Equal("Memory is full. Delete some facts in Companion › Memory.",
+            LiveConversationWindow.MemoryFailureReason("memory." + error.Failure, null));
+        var facts = (await memory.InspectAsync(revision)).Facts;
+        Assert.Equal(MemoryLimits.MaximumFacts, facts.Count);
+        Assert.Contains(facts, f => f.Content == "Picked out of conversation number 0.");
+    }
+
+    [Fact]
     public async Task SpokenFactsBelongToTheSpeakerAndLaterRepliesAreToldWhoseEachIs()
     {
         await using var fixture = await LiveFixture.Create(voices: true);

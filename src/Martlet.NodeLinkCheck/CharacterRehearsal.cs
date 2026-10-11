@@ -166,7 +166,8 @@ internal static class CharacterRehearsal
                 var missing = await a.FetchAsync(h1, new string('0', 64), token);
                 return (missing is null, missing is null ? "no piece" : "unexpected bytes");
             });
-            await Run("The list keeps its limits: a 17th character is refused, and so is a Live2D model that refers to a script", async () =>
+            await Run("The list keeps its limits: one character more than it holds is refused, a merge past that keeps every character, " +
+                "and a Live2D model that refers to a script is refused", async () =>
             {
                 var library = CharacterModelLibrary.Empty;
                 for (var i = 0; i < CharacterModelLibrary.MaximumModels; i++)
@@ -174,6 +175,8 @@ internal static class CharacterRehearsal
                         [CharacterModelLibrary.File($"tiny{i}.vrm", Encoding.ASCII.GetBytes("glTF" + i))], a.DeviceId, DateTimeOffset.UtcNow.AddSeconds(i));
                 var full = Refused(() => library.Add("One more", CharacterModelLibrary.Vrm, "more.vrm",
                     [CharacterModelLibrary.File("more.vrm", Encoding.ASCII.GetBytes("glTF-more"))], a.DeviceId, DateTimeOffset.UtcNow));
+                var merged = CharacterModelLibrary.Parse(CharacterModelLibrary.Merge(library, SharedCharacterModels.View(a.DataDirectory)).Write());
+                var kept = merged.Live.Count == CharacterModelLibrary.MaximumModels + 1;
                 var folder = Path.Combine(root, "scripted");
                 Directory.CreateDirectory(folder);
                 await File.WriteAllTextAsync(Path.Combine(folder, "m.model3.json"),
@@ -182,8 +185,9 @@ internal static class CharacterRehearsal
                 await File.WriteAllTextAsync(Path.Combine(folder, "run.js"), "alert(1)", token);
                 var scripted = await RefusedAsync(() => SharedCharacterModels.ImportAsync(a.DataDirectory, AvatarRenderer.Live2D,
                     Path.Combine(folder, "m.model3.json"), "Scripted", a.DeviceId, DateTimeOffset.UtcNow, token));
-                return (full && scripted && SharedCharacterModels.View(a.DataDirectory).Live.Count == 1,
-                    $"17th character refused: {full}; model that refers to a script refused: {scripted}");
+                return (full && kept && scripted && SharedCharacterModels.View(a.DataDirectory).Live.Count == 1,
+                    $"character {CharacterModelLibrary.MaximumModels + 1:N0} refused: {full}; merged with another computer's list: " +
+                    $"{merged.Live.Count:N0} characters kept; model that refers to a script refused: {scripted}");
             });
         }
         finally

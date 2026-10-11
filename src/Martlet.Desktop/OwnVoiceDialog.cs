@@ -372,7 +372,7 @@ internal sealed class OwnVoiceDialog : ThemedWindow
         {
             if (F5Voices.View(dataDirectory).Live.Count >= SpeakingVoiceLibrary.MaximumVoices)
             {
-                Show("The voice list is full. Remove one you no longer use first.");
+                Show($"The voice list is full ({SpeakingVoiceLibrary.MaximumVoices:N0} voices). Remove one you no longer use first.");
                 return;
             }
             added = await AddVoiceAsync(dataDirectory, destination, name.Text.Trim(), lines.Select(l => l.Take!).ToArray(),

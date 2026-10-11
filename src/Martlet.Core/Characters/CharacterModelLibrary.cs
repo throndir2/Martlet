@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -55,29 +56,46 @@ public sealed record CharacterModelLibrary
 {
     public const int SchemaVersion1 = 1;
     public const string Live2D = "live2d", Vrm = "vrm";
-    public const int MaximumBytes = 2 * 1024 * 1024;
-    public const int MaximumModels = 16;
-    public const int MaximumTombstones = 64;
+    /// <summary>The written list's size limit. Every computer and host reads the whole list into memory, so it stays bounded.
+    /// It holds <see cref="MaximumModels"/> models of <see cref="MaximumModelBytes"/> each (about 470 piece SHA-256s and
+    /// <see cref="MaximumFiles"/> files with <see cref="MaximumPathLength"/>-character paths: about 80 KB of JSON a model) and
+    /// <see cref="MaximumTombstones"/> tombstones, with room to spare.</summary>
+    public const int MaximumBytes = 128 * 1024 * 1024;
+    /// <summary>How many characters <see cref="Add"/> accepts. A merge of several computers' additions can hold more; no
+    /// live model ever leaves the list unless it is removed.</summary>
+    public const int MaximumModels = 1_000;
+    /// <summary>How many removed models the list remembers, so a removed model doesn't return from an older copy. Beyond it
+    /// the oldest tombstones are forgotten.</summary>
+    public const int MaximumTombstones = 4_000;
     public const int MaximumNameLength = 80;
     public const int MaximumNameUtf8Bytes = 160;
     public const int MaximumFiles = 128;
     public const int MaximumDirectories = 128;
     public const int MaximumPathLength = 240;
     /// <summary>A model's size limit, the same as the character renderer's.</summary>
-    public const long MaximumModelBytes = 128L * 1024 * 1024;
+    public const long MaximumModelBytes = 1024L * 1024 * 1024;
     /// <summary>A VRM file's size limit, the same as the character renderer's.</summary>
-    public const int MaximumVrmBytes = 32 * 1024 * 1024;
+    public const int MaximumVrmBytes = 512 * 1024 * 1024;
     /// <summary>A Live2D file's size limit (JSON files: <see cref="MaximumLive2DJsonBytes"/>), the same as the renderer's.</summary>
-    public const int MaximumLive2DFileBytes = 64 * 1024 * 1024;
+    public const int MaximumLive2DFileBytes = 512 * 1024 * 1024;
     public const int MaximumLive2DJsonBytes = 1024 * 1024;
-    /// <summary>The combined size of every listed model; older models leave the list when newer ones need the room.</summary>
-    public const long MaximumTotalBytes = 512L * 1024 * 1024;
+    /// <summary>The combined size of the live models <see cref="Add"/> accepts a new model beside. A merge of several
+    /// computers' additions can hold more; no live model ever leaves the list unless it is removed.</summary>
+    public const long MaximumTotalBytes = 16L * 1024 * 1024 * 1024;
     /// <summary>The size of each piece a file travels in (the last piece of a file may be shorter).</summary>
     public const int ChunkBytes = 3 * 1024 * 1024;
     private const long MaximumRevision = long.MaxValue / 4;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private static readonly string[] Live2DExtensions = [".json", ".moc3", ".png", ".wav"];
     private const string WindowsInvalid = "<>:\"/\\|?*";
+    private static readonly string FullMessage =
+        $"Your character list is full ({MaximumModels.ToString("N0", CultureInfo.InvariantCulture)} characters). Remove a character first.";
+    private static readonly string NoRoomMessage =
+        $"Your characters can use {SizeText(MaximumTotalBytes)} together, and this one doesn't fit. Remove a character first.";
+    private static readonly string ModelTooLargeMessage = $"A character is larger than {SizeText(MaximumModelBytes)}.";
+    private static readonly string VrmTooLargeMessage = $"A VRM character must be one .vrm file of at most {SizeText(MaximumVrmBytes)}.";
+    private static readonly string ListTooLargeMessage =
+        $"The character list is larger than {SizeText(MaximumBytes)}. Remove a character first.";
 
     internal static readonly JsonSerializerOptions Json = new()
     {
@@ -137,7 +155,8 @@ public sealed record CharacterModelLibrary
     }
 
     /// <summary>Adds a model (or renames the live model it already is). Throws <see cref="ContractException"/> with
-    /// <see cref="ErrorCode.PayloadTooLarge"/> when the list is full or has no room for its size.</summary>
+    /// <see cref="ErrorCode.PayloadTooLarge"/> when the list already has <see cref="MaximumModels"/> live models or the live
+    /// models and this one together would pass <see cref="MaximumTotalBytes"/>.</summary>
     public CharacterModelLibrary Add(string name, string renderer, string entry, IReadOnlyList<CharacterModelFile> files, string by,
         DateTimeOffset now)
     {
@@ -146,15 +165,14 @@ public sealed record CharacterModelLibrary
         if (Find(id) is { Removed: false } existing)
             return existing.Name == name ? this : Put(existing with { Name = name, Revision = NextRevision(now), UpdatedAt = now.ToUniversalTime(), UpdatedBy = by });
         var live = Live;
-        ContractRules.Require(live.Count < MaximumModels, "Your character list is full. Remove a character first.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(live.Count < MaximumModels, FullMessage, ErrorCode.PayloadTooLarge);
         var model = new CharacterModel
         {
             Id = id, Name = name, Renderer = renderer, Entry = entry, Files = files.OrderBy(f => f.Path, StringComparer.Ordinal).ToArray(),
             AddedBy = by, AddedAt = now.ToUniversalTime(), Revision = NextRevision(now), UpdatedAt = now.ToUniversalTime(), UpdatedBy = by
         };
         Validate(model);
-        ContractRules.Require(live.Sum(m => m.Bytes) + model.Bytes <= MaximumTotalBytes,
-            "Your characters already use 512 MB. Remove a character first.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(live.Sum(m => m.Bytes) + model.Bytes <= MaximumTotalBytes, NoRoomMessage, ErrorCode.PayloadTooLarge);
         return Put(model);
     }
 
@@ -180,22 +198,23 @@ public sealed record CharacterModelLibrary
         : a.UpdatedBy != b.UpdatedBy ? string.CompareOrdinal(a.UpdatedBy, b.UpdatedBy) > 0
         : string.CompareOrdinal(a.Content, b.Content) >= 0;
 
-    // The most recently added live models that fit the count and size limits, then the newest tombstones; sorted by ID so equal
-    // content writes equal bytes.
+    // Every live model (none is ever dropped: Add refuses a model the list has no room for, and a merge keeps all) and the
+    // newest MaximumTombstones tombstones; sorted by ID so equal content writes equal bytes.
     private static CharacterModel[] Bounded(IEnumerable<CharacterModel> models)
     {
         var all = models.ToArray();
-        var live = new List<CharacterModel>();
-        long total = 0;
-        foreach (var model in all.Where(m => !m.Removed).OrderByDescending(m => m.AddedAt).ThenBy(m => m.Id, StringComparer.Ordinal))
-        {
-            if (live.Count == MaximumModels) break;
-            if (total + model.Bytes > MaximumTotalBytes) continue;
-            live.Add(model);
-            total += model.Bytes;
-        }
-        return live.Concat(all.Where(m => m.Removed).OrderByDescending(m => m.Revision).ThenBy(m => m.Id, StringComparer.Ordinal).Take(MaximumTombstones))
+        return all.Where(m => !m.Removed)
+            .Concat(all.Where(m => m.Removed).OrderByDescending(m => m.Revision).ThenBy(m => m.Id, StringComparer.Ordinal).Take(MaximumTombstones))
             .OrderBy(m => m.Id, StringComparer.Ordinal).ToArray();
+    }
+
+    /// <summary>A size as the owner reads it, in whole GB or MB of 1,024: for example "16 GB" or "512 MB".</summary>
+    public static string SizeText(long bytes)
+    {
+        const long Megabyte = 1024 * 1024, Gigabyte = 1024 * Megabyte;
+        return bytes >= Gigabyte && bytes % Gigabyte == 0
+            ? (bytes / Gigabyte).ToString(CultureInfo.InvariantCulture) + " GB"
+            : ((bytes + Megabyte - 1) / Megabyte).ToString(CultureInfo.InvariantCulture) + " MB";
     }
 
     public static bool IsSha256(string? value) => value is { Length: 64 } && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
@@ -240,12 +259,12 @@ public sealed record CharacterModelLibrary
         foreach (var file in files)
             ContractRules.Require(IsPath(file.Path) && IsSha256(file.Sha256) && file.Bytes > 0 && file.Chunks is not null &&
                 file.Chunks.Count == ChunkCount(file.Bytes) && file.Chunks.All(IsSha256), "A character's file is invalid.");
-        ContractRules.Require(model.Bytes <= MaximumModelBytes, "A character is larger than 128 MB.");
+        ContractRules.Require(model.Bytes <= MaximumModelBytes, ModelTooLargeMessage);
         if (model.Renderer == Vrm)
         {
             ContractRules.Require(files.Count == 1 && files[0].Path == model.Entry && !model.Entry!.Contains('/') &&
                 model.Entry.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase) && files[0].Bytes <= MaximumVrmBytes,
-                "A VRM character must be one .vrm file of at most 32 MB.");
+                VrmTooLargeMessage);
         }
         else
         {
@@ -265,28 +284,29 @@ public sealed record CharacterModelLibrary
         ContractRules.Require(ModelId(model.Renderer!, model.Entry!, files) == model.Id, "A character's ID does not match its files.");
     }
 
+    /// <summary>Checks the list and every model. The number of live models and their combined size are not checked here: a
+    /// merge of several computers' additions can pass <see cref="MaximumModels"/> and <see cref="MaximumTotalBytes"/>, and
+    /// the list's byte size (<see cref="MaximumBytes"/>) bounds it when it is read or written.</summary>
     public void Validate()
     {
         ContractRules.Require(SchemaVersion == SchemaVersion1, "This character list was written by a newer Martlet.", ErrorCode.UnsupportedVersion);
-        ContractRules.Require(Models is not null && Models.All(m => m is not null) &&
-            Models.Count(m => !m.Removed) <= MaximumModels && Models.Count(m => m.Removed) <= MaximumTombstones,
-            "The character list has too many characters.");
+        ContractRules.Require(Models is not null && Models.All(m => m is not null), "The character list is malformed.");
         ContractRules.Require(Models!.Select(m => m.Id).Distinct(StringComparer.Ordinal).Count() == Models!.Count, "The character list lists a character twice.");
         foreach (var model in Models) Validate(model);
-        ContractRules.Require(Models.Where(m => !m.Removed).Sum(m => m.Bytes) <= MaximumTotalBytes, "The character list is larger than 512 MB.");
     }
 
     public byte[] Write()
     {
         Validate();
         var bytes = JsonSerializer.SerializeToUtf8Bytes(this with { Models = Bounded(Models) }, Json);
-        ContractRules.Require(bytes.Length <= MaximumBytes, "The character list is too large.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(bytes.Length <= MaximumBytes, ListTooLargeMessage, ErrorCode.PayloadTooLarge);
         return bytes;
     }
 
     public static CharacterModelLibrary Parse(ReadOnlySpan<byte> bytes)
     {
-        ContractRules.Require(bytes.Length is > 0 and <= MaximumBytes, "The character list is empty or too large.", ErrorCode.PayloadTooLarge);
+        ContractRules.Require(bytes.Length > 0, "The character list is empty.");
+        ContractRules.Require(bytes.Length <= MaximumBytes, ListTooLargeMessage, ErrorCode.PayloadTooLarge);
         CharacterModelLibrary? library;
         try { library = JsonSerializer.Deserialize<CharacterModelLibrary>(bytes, Json); }
         catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException or FormatException)

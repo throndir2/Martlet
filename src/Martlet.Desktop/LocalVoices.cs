@@ -118,6 +118,7 @@ internal sealed class LocalVoices : IDisposable
         var analysis = earlier is { } early && early.Hash.AsSpan().SequenceEqual(Hash(samples)) ? early.Analysis : Analyze(samples);
         var heard = new List<HeardVoice>();
         var spans = new List<(string Id, double Start, double End)>();
+        var notes = new List<string>();
         var repaired = 0;
         lock (gate)
         {
@@ -136,8 +137,16 @@ internal sealed class LocalVoices : IDisposable
                         heard.Add(new(roster.Resolve(match.Voice.Id), match.Kind, match.Score, speaker.CleanSeconds, false));
                         break;
                     case VoiceMatchKind.New:
-                        var (next, added) = roster.Add(speaker.Voiceprint, speaker.CleanSeconds, by, now);
+                        var (next, added) = roster.Add(speaker.Voiceprint, speaker.CleanSeconds, by, now, out var forgotten);
                         roster = next;
+                        if (forgotten is not null)
+                            notes.Add($"Martlet forgot {forgotten.DisplayName} (not heard since {forgotten.LastHeardAt.ToLocalTime():yyyy-MM-dd}) " +
+                                $"to make room for a new voice: the voice list keeps at most {VoiceRoster.MaximumVoices:N0} voices. " +
+                                "Name a voice in Companion › People to keep it.");
+                        if (added is null && !listFullNoted)
+                            notes.Add($"A new voice wasn't added: the voice list is full ({VoiceRoster.MaximumVoices:N0} voices) and every " +
+                                "voice has a name or belongs to someone. Forget or merge a voice in Companion › People to make room.");
+                        listFullNoted = added is null;
                         if (added is not null) spans.Add((added.Id, speaker.Start, speaker.End));
                         heard.Add(new(added, added is null ? VoiceMatchKind.Unsure : VoiceMatchKind.New, match.Score, speaker.CleanSeconds, added is not null));
                         break;
@@ -171,6 +180,9 @@ internal sealed class LocalVoices : IDisposable
             if (!ReferenceEquals(before, roster)) SaveLocked();
         }
         KeepClips(samples, spans);
+        // A voice forgotten to make room takes its clips with it, as when the owner forgets one.
+        if (notes.Count > 0) Clips.Prune(Roster);
+        foreach (var note in notes) ErrorLog.Info(note);
         if (repaired > 0) ErrorLog.Info($"A voice heard went by Martlet's own name or a placeholder, learned by mistake; dropped it from {repaired} voice(s).");
         if (heard.Any(h => h.Voice is not null)) Changed?.Invoke();
         return Stamp(new(heard, analysis.Overlap));
@@ -212,6 +224,8 @@ internal sealed class LocalVoices : IDisposable
 
     // The last utterance Identify analyzed: its samples' SHA-256 and who was heard in it.
     private (byte[] Hash, SpeakerAnalysis Analysis)? identified;
+    // A full list whose voices all have names was already noted in the log; noted again after a voice can be added.
+    private bool listFullNoted;
 
     private static byte[] Hash(float[] samples) =>
         System.Security.Cryptography.SHA256.HashData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(samples.AsSpan()));

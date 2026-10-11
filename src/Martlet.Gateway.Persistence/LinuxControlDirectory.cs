@@ -18,16 +18,16 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const string Cluster = "cluster.json", ClusterStaging = "cluster.staging";
     /// <summary>The shared voice list (voiceprints and names) the gateway keeps for paired desktops.</summary>
     internal const string Voices = "voices.json", VoicesStaging = "voices.staging";
-    internal const int MaximumVoicesBytes = 1_048_576;
+    internal const int MaximumVoicesBytes = Martlet.Core.Speakers.VoiceRoster.MaximumBytes;
     /// <summary>The shared list of voices Martlet speaks with; each live voice's recording is speaking-voice-&lt;sha256&gt;.wav.</summary>
     internal const string SpeakingVoices = "speaking-voices.json", SpeakingVoicesStaging = "speaking-voices.staging";
-    internal const int MaximumSpeakingVoicesBytes = 1_048_576;
+    internal const int MaximumSpeakingVoicesBytes = Martlet.Core.Voices.SpeakingVoiceLibrary.MaximumBytes;
     internal const string SpeakingVoiceAudioPrefix = "speaking-voice-", SpeakingVoiceAudioSuffix = ".wav";
     internal const string SpeakingVoiceAudioStaging = "speaking-voice.staging";
     internal const int MaximumSpeakingVoiceAudioBytes = 4 * 1024 * 1024;
     /// <summary>The shared list of character models; each live model's pieces are character-model-chunk-&lt;sha256&gt;.bin.</summary>
     internal const string CharacterModels = "character-models.json", CharacterModelsStaging = "character-models.staging";
-    internal const int MaximumCharacterModelsBytes = 2 * 1024 * 1024;
+    internal const int MaximumCharacterModelsBytes = Martlet.Core.Characters.CharacterModelLibrary.MaximumBytes;
     internal const string CharacterModelChunkPrefix = "character-model-chunk-", CharacterModelChunkSuffix = ".bin";
     internal const string CharacterModelChunkStaging = "character-model-chunk.staging";
     internal const int MaximumCharacterModelChunkBytes = 3 * 1024 * 1024;

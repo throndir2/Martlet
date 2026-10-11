@@ -751,6 +751,9 @@ public sealed class MemoryStore : IDisposable
         {
             EnsureWritable();
             current = state;
+            // Recall calls this on the reply's path: with nothing expired (the usual case) no fact is copied.
+            if (!current.Facts.Values.Any(fact => fact.Retention.IsExpired(now)))
+                return new(0, current.Revision);
             active = current.Facts.Values.Where(fact => !fact.Retention.IsExpired(now)).ToArray();
         }
         var deleted = current.Facts.Count - active.Length;

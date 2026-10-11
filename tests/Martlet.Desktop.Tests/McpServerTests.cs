@@ -471,6 +471,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Equal(5, result.GetProperty("typed").GetInt32());
             Assert.Equal(0, result.GetProperty("fromConversation").GetInt32());
             Assert.Equal(1, result.GetProperty("expiring").GetInt32());
+            Assert.Equal(Martlet.Memory.MemoryLimits.MaximumFacts, result.GetProperty("limits").GetProperty("facts").GetInt32());
             var whose = result.GetProperty("whose");
             Assert.Equal(1, whose.GetProperty("everyone").GetInt32());
             Assert.Equal(1, whose.GetProperty("forgottenVoices").GetInt32());
