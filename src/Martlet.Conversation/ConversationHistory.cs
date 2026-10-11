@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Martlet.Core.Text;
+using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
@@ -100,15 +101,16 @@ public sealed record HistoryStats(int Conversations, int Exchanges, long Bytes, 
 public sealed partial class ConversationHistory
 {
     public const string DirectoryName = "conversations";
-    public const int MaximumUserCharacters = 8_192;
-    public const int MaximumReplyCharacters = 16_384;
+    /// <summary>The longest message of the user's (and reply) kept: the bound of a message Thinking takes, so nothing said is cut.</summary>
+    public const int MaximumUserCharacters = BoundedTextInput.HardMaxMessageCharacters;
+    public const int MaximumReplyCharacters = BoundedTextInput.HardMaxMessageCharacters;
     public const int MaximumSpeakerCharacters = 64;
     /// <summary>The newest exchanges indexed when the record is read; older ones stay in their files and count as not indexed.</summary>
     public const int MaximumIndexedExchanges = 100_000;
     public const int MaximumQueryTerms = 24;
     public const int MaximumResults = 50;
     // Worst case for the longest exchange: every character escaped (lines written before relaxed escaping) plus the fields.
-    private const int MaximumLineBytes = 262_144;
+    private const int MaximumLineBytes = 4 * 1024 * 1024;
     private const long MaximumFileBytes = 512L * 1024 * 1024;
     private const int MaximumTokenRunes = 64;
     private const int Schema = 1;

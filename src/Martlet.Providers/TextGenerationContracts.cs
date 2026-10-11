@@ -61,9 +61,11 @@ public sealed class BoundedImage
 
 public sealed class BoundedTextInput
 {
-    /// <summary>The bound of the user's message and of each earlier message (characters), and the whole input a paired host's
-    /// gateway takes (UTF-8 bytes).</summary>
+    /// <summary>The whole input a paired host's gateway takes (UTF-8 bytes).</summary>
     public const int HardMaxUtf8Bytes = 16_384;
+    /// <summary>The bound of the user's message and of each earlier message (characters): far more than anyone types or says in
+    /// one go (ten minutes of talking is about 10,000 characters); the context size decides how much of a conversation goes.</summary>
+    public const int HardMaxMessageCharacters = 262_144;
     /// <summary>The bound of a whole input (instructions, earlier messages and the message, UTF-8 bytes): about two million
     /// tokens, the largest context size Martlet uses.</summary>
     public const int HardMaxInputUtf8Bytes = 8_388_608;
@@ -268,7 +270,7 @@ public sealed class BoundedTextInput
     }
 
     private static bool Sendable(string? text) =>
-        text is { Length: <= HardMaxUtf8Bytes } && !text.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t');
+        text is { Length: <= HardMaxMessageCharacters } && !text.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t');
 
     private BoundedTextInput(BoundedTextInput origin, IReadOnlyList<TextToolDefinition> tools, IReadOnlyList<TextToolRound> rounds,
         bool callsAllowed, bool keepAudio, bool keepImage = true, string? words = null)
@@ -342,7 +344,7 @@ public sealed class BoundedTextInput
     private static int ToolReservation(int bytes, int tools, int calls) =>
         bytes == 0 ? 0 : (bytes + 2) / 3 + 32 * tools + 64 * calls + 64;
 
-    private static int Count(string value, int maximum = HardMaxUtf8Bytes)
+    private static int Count(string value, int maximum = HardMaxMessageCharacters)
     {
         ContractRules.Text(value, maximum);
         try { return new UTF8Encoding(false, true).GetByteCount(value); }

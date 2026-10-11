@@ -1541,7 +1541,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             finally { CryptographicOperations.ZeroMemory(speech); }
             if (audio is null) return;
             if (utterance.Voiceprint is not null) utterance.LatencyTimeline?.Mark("Voice ID");
-            if (GoesStraight(listening.Options, utterance))
+            if (Hearable(audio) && GoesStraight(listening.Options, utterance))
             {
                 utterance.Heard = await HeardAsync(utterance, token).ConfigureAwait(false);
                 if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
@@ -1560,8 +1560,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // An audio model of its own hears it beside speech-to-text and puts what the words miss into words (never on the
             // reply's path: the reply takes them only if they are ready in time).
             utterance.VoiceNote = StartVoiceNote(utterance, audio);
-            // Never longer than the upload's own 30 s deadline, even if a native boundary ignores it.
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
+            // Never longer than the uploads' own 30 s deadlines (one for each piece of a long turn), even if a native boundary
+            // ignores them.
+            using var deadline = new CancellationTokenSource(LiveConversationConfiguration.TranscriptionTime(audio), clock);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
             // What the PC plays is transcribed beside the microphone, with its own speech-to-text credentials.
             var pc = listening.Options.Pc;
@@ -1610,7 +1611,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
             if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
             var heardBy = utterance.Authorization.Configuration;
-            if (listening.Options.HearsWith(RecordingStaysOnThisPc(heardBy)) && ThinkingTakesVoice(heardBy)) utterance.Recording = audio;
+            if (listening.Options.HearsWith(RecordingStaysOnThisPc(heardBy)) && ThinkingTakesVoice(heardBy) && Hearable(audio, "Thinking"))
+                utterance.Recording = audio;
             utterance.Publish(new("listen.heard", Finished: true));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -1657,7 +1659,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (utterance.Authorization.Configuration is { LocalThinking: true } local && local.LocalStt())
                 await Task.WhenAny(words.MayTranscribe, Task.Delay(TranscribeAfter, clock, token)).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
+            using var deadline = new CancellationTokenSource(LiveConversationConfiguration.TranscriptionTime(audio), clock);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
             var started = clock.GetTimestamp();
             Volatile.Write(ref transcribing, utterance);
@@ -2147,7 +2149,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 operation.Heard = await HeardAsync(operation, worker).ConfigureAwait(false);
                 if (operation.Recognition is not null) operation.LatencyTimeline?.Mark("voice recognition");
                 operation.Transcript = result.Text;
-                if (operation.Authorization.Hear) operation.Recording = audio;
+                if (operation.Authorization.Hear && Hearable(audio, "Thinking")) operation.Recording = audio;
                 input = new(result.Text!);
             }
             // Straight to Thinking: the recording alone, unless it can't go (the model refused one since, or hearing that was on
@@ -2155,7 +2157,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var straight = operation.StraightWords is { Count: > 0 };
             if (straight && (operation.Recording is null || !operation.Authorization.Hear || !Hears(operation.Authorization.Configuration)))
             {
-                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
+                // What went straight is at most a message's recording, heard in at most that many pieces.
+                using var deadline = new CancellationTokenSource(
+                    LiveConversationConfiguration.TranscriptionTime(TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)), clock);
                 using var bound = CancellationTokenSource.CreateLinkedTokenSource(worker, deadline.Token);
                 string? words;
                 try { words = await SpokenWords.TranscriptAsync(operation.StraightWords!, bound.Token).ConfigureAwait(false); }
@@ -4243,6 +4247,40 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private async Task<TranscriptionResult?> TranscribeAsync(LiveConversationOperation operation, BoundedWaveAudio audio,
         OpenAiTranscriptionAdapter openAi, CancellationToken worker)
     {
+        var pieces = audio.Split(LiveConversationConfiguration.TranscriptionPiece);
+        if (pieces.Count == 1) return await TranscribePieceAsync(operation, audio, openAi, worker).ConfigureAwait(false);
+        // Talking longer than one speech-to-text request hears: each piece, cut at a pause, is heard in turn and the words are
+        // joined. The quick transcript (of at most a minute) never covers all of it.
+        if (operation.QuickWords is { } quick)
+        {
+            CryptographicOperations.ZeroMemory(quick.Pcm);
+            operation.QuickWords = null;
+        }
+        operation.Authorization.HearInPieces(pieces.Count);
+        ErrorLog.Info($"Speech-to-text hears {audio.Duration.TotalSeconds:0} s of talking in {pieces.Count} pieces.");
+        var heard = new List<TranscriptionResult>(pieces.Count);
+        var offsets = new List<TimeSpan>(pieces.Count);
+        var at = TimeSpan.Zero;
+        foreach (var part in pieces)
+        {
+            if (await TranscribePieceAsync(operation, part, openAi, worker, piece: true).ConfigureAwait(false) is not { } result)
+                return null;
+            heard.Add(result);
+            offsets.Add(at);
+            at += part.Duration;
+        }
+        var whole = TranscriptionResult.Join(heard, offsets);
+        operation.Transcription = whole;
+        if (whole.Outcome == TranscriptionOutcome.Completed) return whole;
+        operation.Publish(new("stt." + whole.Outcome, Finished: true));
+        return null;
+    }
+
+    // One speech-to-text request for a whole turn, or for one piece of a longer one (piece: a piece without speech is returned,
+    // not published, since the turn's other pieces may have words).
+    private async Task<TranscriptionResult?> TranscribePieceAsync(LiveConversationOperation operation, BoundedWaveAudio audio,
+        OpenAiTranscriptionAdapter openAi, CancellationToken worker, bool piece = false)
+    {
         operation.Authorization.Check(worker);
         await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
         var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
@@ -4251,7 +4289,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (RouteFailedAgo(stt) is { } ago && StandInModel(stt) is { } standIn)
         {
             operation.Publish(new("stt.uploading"));
-            return await StandInAsync(operation, audio, null, standIn, worker, ago).ConfigureAwait(false);
+            return await StandInAsync(operation, audio, null, standIn, worker, ago, piece).ConfigureAwait(false);
         }
         var context = new ProviderRequestContext
         {
@@ -4294,7 +4332,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // in memory, when a model is downloaded here. A route that answers is never held up by it.
         if (result.Outcome is TranscriptionOutcome.Failed or TranscriptionOutcome.DeadlineExceeded &&
             result.Failure?.Code != ProviderFailureCode.AudioLimit && StandInModel(stt) is { } model)
-            return await StandInAsync(operation, audio, result, model, worker).ConfigureAwait(false);
+            return await StandInAsync(operation, audio, result, model, worker, piece: piece).ConfigureAwait(false);
         operation.Transcription = result;
         // The route answered: turns ask it first again.
         if (result.Outcome is TranscriptionOutcome.Completed or TranscriptionOutcome.NoSpeech) lock (gate) routeFailed = null;
@@ -4303,6 +4341,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             Succeeded(SetupRole.Stt);
             return result;
         }
+        if (piece && result.Outcome == TranscriptionOutcome.NoSpeech) return result;
         if (result.Outcome != TranscriptionOutcome.NoSpeech)
             LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt, Outcome(result));
         operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
@@ -4336,7 +4375,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// route answers again. Null (with the reason published) when nothing usable came back; a stand-in that fails after the
     /// route did publishes the route's own failure.</summary>
     private async Task<TranscriptionResult?> StandInAsync(LiveConversationOperation operation, BoundedWaveAudio audio,
-        TranscriptionResult? failed, string model, CancellationToken worker, TimeSpan? ago = null)
+        TranscriptionResult? failed, string model, CancellationToken worker, TimeSpan? ago = null, bool piece = false)
     {
         var context = new ProviderRequestContext
         {
@@ -4376,7 +4415,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         operation.Authorization.Check(worker);
         var result = failed is not null && heard.Outcome is TranscriptionOutcome.Failed or TranscriptionOutcome.DeadlineExceeded ? failed : heard;
         operation.Transcription = result;
-        if (result.Outcome == TranscriptionOutcome.Completed)
+        if (result.Outcome == TranscriptionOutcome.Completed || piece && result.Outcome == TranscriptionOutcome.NoSpeech)
         {
             // The reply latency line names the model that heard the turn.
             if (operation.LatencyTimeline is { } timeline) timeline.StandIn = model;
@@ -5149,7 +5188,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         void StartQuick(byte[] heard, int offset, int length, int keptBytes, long at)
         {
             var configured = operation.Authorization.Configuration;
-            if (localWords is not { } local || !configured.LocalStt() || configured.SttHostTarget() is not null || length < keptBytes || keptBytes <= 0)
+            if (localWords is not { } local || !configured.LocalStt() || configured.SttHostTarget() is not null || length < keptBytes || keptBytes <= 0 ||
+                keptBytes > Martlet.Sherpa.ParakeetEngine.MaximumSeconds * 16_000 * 2)
                 return;
             var kept = heard.AsSpan(offset, keptBytes).ToArray();
             var model = configured.Route(SetupRole.Stt).ModelId;
@@ -5713,7 +5753,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             : operation.Listening?.ReduceEcho == true && echoReducer is not null
             ? echoReducer.For(audio.Output.EndpointId, operation.Echo) : captureDevices;
         await using var microphone = new MicrophoneCapture(runtime.SessionId, devices,
-            new() { MaximumDuration = LiveConversationConfiguration.CaptureDuration, MaximumPcmBytes = 800_000 }, clock);
+            new() { MaximumDuration = LiveConversationConfiguration.CaptureDuration, MaximumPcmBytes = LiveConversationConfiguration.CaptureBytes }, clock);
         var request = new CaptureRequest(Ids(), Interlocked.Increment(ref captureEpoch),
             pc ? new(InputPolicy.FollowDefaultOnNextPress)
                 : new(selected.EndpointId is null ? InputPolicy.FollowDefaultOnNextPress : InputPolicy.FixedEndpoint, selected.EndpointId),
@@ -5787,15 +5827,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     }
 
     // Voice ID (before anything is uploaded), then who is talking alongside speech-to-text: the audio to transcribe, or null
-    // with the reason published.
+    // with the reason published. Both look at the first minute of a longer turn (what the speaker engine takes at once).
     private BoundedWaveAudio? Screen(LiveConversationOperation operation, byte[] speech)
     {
         var permission = operation.Authorization;
         permission.Check();
+        var voice = speech.AsSpan(0, Math.Min(speech.Length, VoiceCheckBytes));
         if (operation.Voiceprint is { } voiceprint)
         {
             operation.Publish(new("speaker.checking"));
-            var check = SpeakerVerifier.Check(VoiceIdentity.Encoder, voiceprint.Embedding, voiceprint.Threshold, speech);
+            var check = SpeakerVerifier.Check(VoiceIdentity.Encoder, voiceprint.Embedding, voiceprint.Threshold, voice);
             permission.Check();
             operation.SpeakerCheck = check;
             if (check.Verdict != SpeakerVerdict.User)
@@ -5806,7 +5847,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.Publish(new("speaker.verified"));
         }
         // Voices are recognized (and learned) only from the microphone, never from what the PC plays.
-        if (operation.Listening?.Pc != true) Recognize(operation, speech);
+        if (operation.Listening?.Pc != true) Recognize(operation, voice);
         if (speech.Length < 2)
         {
             operation.Publish(new("mic.no_speech", Finished: true));
@@ -5815,6 +5856,22 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var wave = BoundedWaveAudio.FromPcm(CapturedUtterance.Format, speech);
         operation.Publish(new("mic.transferred_and_cleared"));
         return wave;
+    }
+
+    /// <summary>The most of a turn Voice ID and voice recognition look at: a minute of 16 kHz PCM16, what the speaker engine
+    /// takes at once.</summary>
+    private const int VoiceCheckBytes = Martlet.Sherpa.SpeakerEngine.MaximumSeconds * 16_000 * 2;
+
+    /// <summary>Whether a recording of what was said may go with its message to a model that hears: at most
+    /// <see cref="BoundedTextInput.MessageAudioSeconds"/>. A longer turn goes as its whole transcript only; the log says so when
+    /// <paramref name="to"/> names who would have heard it.</summary>
+    private static bool Hearable(BoundedWaveAudio audio, string? to = null)
+    {
+        if (audio.Duration.TotalSeconds <= BoundedTextInput.MessageAudioSeconds) return true;
+        if (to is not null)
+            ErrorLog.Info($"Your recording ({audio.Duration.TotalSeconds:0} s) is longer than the {BoundedTextInput.MessageAudioSeconds:0} s " +
+                $"a message's recording may be: {to} gets its whole transcript instead.");
+        return false;
     }
 
     public async ValueTask DisposeAsync()

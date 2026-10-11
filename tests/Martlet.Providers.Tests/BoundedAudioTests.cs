@@ -88,10 +88,11 @@ public sealed class BoundedAudioTests
         Assert.Throws<ContractException>(() => BoundedWaveAudio.FromPcm(format, [1]));
         Assert.Throws<ContractException>(() => BoundedWaveAudio.FromPcm(format with { Channels = 2 }, [1, 2, 3, 4]));
         Assert.Throws<ContractException>(() => BoundedWaveAudio.FromPcm(format with { Encoding = (PcmEncoding)42 }, [1, 2]));
-        var exactlyNinety = BoundedWaveAudio.FromWave(ProviderFixtures.Wave(16000 * 90));
-        Assert.Equal(TimeSpan.FromSeconds(90), exactlyNinety.Duration);
-        Assert.Throws<ContractException>(() => BoundedWaveAudio.FromWave(ProviderFixtures.Wave(16000 * 90 + 1)));
-        Assert.Throws<ContractException>(() => BoundedWaveAudio.FromPcm(format, new byte[16000 * 90 * 2 + 2]));
+        // Ten minutes of 16 kHz talking is one recording; 16 kHz meets OpenAI's 25 MB upload limit (about 13 minutes) before the
+        // 15-minute duration bound.
+        var tenMinutes = BoundedWaveAudio.FromWave(ProviderFixtures.Wave(16000 * 600));
+        Assert.Equal(TimeSpan.FromMinutes(10), tenMinutes.Duration);
+        Assert.Throws<ContractException>(() => BoundedWaveAudio.FromPcm(format, new byte[(TranscriptionLimits.HardMaxAudioBytes - 44) / 2 * 2 + 2]));
         Assert.Throws<ContractException>(() => BoundedWaveAudio.FromWave(new byte[TranscriptionLimits.HardMaxAudioBytes + 1]));
         Assert.Throws<ContractException>(() => BoundedWaveAudio.FromPcm(format, new byte[TranscriptionLimits.HardMaxAudioBytes]));
     }

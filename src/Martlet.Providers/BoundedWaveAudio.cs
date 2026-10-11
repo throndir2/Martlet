@@ -71,8 +71,17 @@ public sealed class BoundedWaveAudio
         ContractRules.Require(format.Channels == 1 && byteLength > 0 && byteLength % format.BlockAlignment == 0,
             "Transcription requires nonempty, sample-aligned mono PCM16.", ErrorCode.AudioFormatUnsupported);
         ContractRules.Require(byteLength <= TranscriptionLimits.HardMaxAudioBytes - 44 &&
-            byteLength / format.BlockAlignment <= format.SampleRate * 90,
+            byteLength / format.BlockAlignment <= format.SampleRate * TranscriptionLimits.HardMaxDuration.TotalSeconds,
             "The utterance exceeds the byte or duration limit.", ErrorCode.PayloadTooLarge);
+    }
+
+    /// <summary>This recording in pieces of at most <paramref name="longest"/>, each cut at the quietest moment near its end
+    /// (<see cref="SpeechPieces"/>); just this recording when it fits.</summary>
+    public IReadOnlyList<BoundedWaveAudio> Split(TimeSpan longest)
+    {
+        if (Duration <= longest) return [this];
+        var pcm = wave.AsSpan(44);
+        return SpeechPieces.Split(pcm, Format.SampleRate, longest).Select(piece => FromPcm(Format, wave.AsSpan(44 + piece.Start, piece.Length))).ToArray();
     }
 
     /// <summary>Several utterances of the same format as one recording, with <paramref name="gap"/> of silence between them, or

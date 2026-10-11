@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Voices;
@@ -85,9 +86,20 @@ internal sealed class RecordingTranscriber : IDisposable
         });
     }
 
-    /// <summary>What 16 kHz mono PCM16 says, trimmed (Discord voice hands over its utterances already converted).</summary>
-    internal async Task<string> TranscribePcmAsync(ReadOnlyMemory<byte> pcm16kMono, CancellationToken token) =>
-        (await transcribe(pcm16kMono, token).ConfigureAwait(false)).Trim();
+    /// <summary>What 16 kHz mono PCM16 says, trimmed (Discord voice hands over its utterances already converted). Longer than
+    /// the speech-to-text takes at once, it is heard in pieces cut at pauses and the words joined.</summary>
+    internal async Task<string> TranscribePcmAsync(ReadOnlyMemory<byte> pcm16kMono, CancellationToken token)
+    {
+        var pieces = SpeechPieces.Split(pcm16kMono.Span, SampleRate, TimeSpan.FromMilliseconds(MaximumMilliseconds));
+        if (pieces.Count == 1) return (await transcribe(pcm16kMono, token).ConfigureAwait(false)).Trim();
+        var words = new List<string>(pieces.Count);
+        foreach (var (start, length) in pieces)
+        {
+            var text = (await transcribe(pcm16kMono.Slice(start, length), token).ConfigureAwait(false)).Trim();
+            if (text.Length > 0) words.Add(text);
+        }
+        return string.Join(" ", words);
+    }
 
     /// <summary>What <paramref name="wave"/> (a mono 16-bit PCM WAV) says, trimmed; empty when no words were heard.</summary>
     internal async Task<string> TranscribeAsync(ReadOnlyMemory<byte> wave, CancellationToken token)

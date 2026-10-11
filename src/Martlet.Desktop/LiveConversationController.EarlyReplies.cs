@@ -159,7 +159,8 @@ internal sealed partial class LiveConversationController
             BoundedTextInput input;
             try
             {
-                recording = (hear || straight) && (!listening.HearLocalOnly || configured.RecordingStaysOnThisPc())
+                recording = (hear || straight) && (!listening.HearLocalOnly || configured.RecordingStaysOnThisPc()) &&
+                    quick.Pcm.Length / 2 <= BoundedTextInput.MessageAudioSeconds * CapturedUtterance.Format.SampleRate
                     ? BoundedWaveAudio.FromPcm(CapturedUtterance.Format, quick.Pcm) : null;
                 input = new(straight ? LiveConversationConfiguration.VoiceOnlyText : text);
             }

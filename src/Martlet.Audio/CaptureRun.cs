@@ -210,11 +210,25 @@ public sealed class CaptureRun
         var count = Math.Min(bytes.Length, capacity - byteCount);
         if (count > 0)
         {
+            if (byteCount + count > pcm!.Length) Grow(byteCount + count);
             bytes[..count].CopyTo(pcm.AsSpan(byteCount));
             byteCount += count;
             canonicalSamples = byteCount / 2;
         }
     }
+
+    // The buffer starts with InitialBytes (or the capacity, when smaller) and doubles as speech goes on, so a long capacity costs
+    // memory only when it is used. The old buffer is cleared before it is let go.
+    private void Grow(int needed)
+    {
+        var grown = new byte[(int)Math.Min(capacity, Math.Max(needed, (long)pcm!.Length * 2))];
+        pcm.AsSpan(0, byteCount).CopyTo(grown);
+        CryptographicOperations.ZeroMemory(pcm);
+        pcm = grown;
+    }
+
+    /// <summary>The buffer a capture starts with: 30 seconds of canonical 16 kHz PCM16.</summary>
+    internal const int InitialBytes = 30 * 16_000 * 2;
 
     private void Accept(ReadOnlySpan<byte> source)
     {
@@ -264,7 +278,7 @@ public sealed class CaptureRun
                 CheckAuthorization();
                 sourceFormat = format;
                 normalizer = new(format);
-                pcm = new byte[capacity];
+                pcm = new byte[Math.Min(capacity, InitialBytes)];
                 scratch = new byte[format.MaximumPacketBytes];
             }
             CheckAuthorization();

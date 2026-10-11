@@ -413,6 +413,22 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             models = new { type = "array", maxItems = 3, items = new { type = "string", @enum = Martlet.Sherpa.ParakeetModels.All.Select(m => m.Id).ToArray() } },
             phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
         }),
+        Tool("long_talk_check", "How long one turn of talking and one spoken reply may be (limits: the longest turn, the most one " +
+            "speech-to-text request hears, the reply's time and spoken budget), and a long recording heard in pieces the way the " +
+            "conversation hears it: phrases a Windows voice says (System.Speech rendered to memory, never played; optional phrases, " +
+            "up to 8 English sentences) put one after another into seconds (30-600, default 70) of talking, cut by the production " +
+            "splitter (BoundedWaveAudio.Split) into pieces one request takes. Reports each piece, each cut (how much quieter it is " +
+            "than the recording: a pause, not a word) and whether the pieces cover every sample; with a Parakeet model downloaded in " +
+            "speechDirectory (optional absolute path, default the data directory's speech folder) and the sherpa-onnx runtime in " +
+            "martletDirectory, also transcribes each piece through the production ParakeetEngine and the joined words' error rate " +
+            "(ok at most 20%). Nothing is downloaded, recorded or played; nothing leaves this PC.", new
+        {
+            dataDirectory = new { type = "string" },
+            martletDirectory = new { type = "string" },
+            speechDirectory = new { type = "string" },
+            seconds = new { type = "integer", minimum = 30, maximum = LongTalkCheck.MaximumSeconds },
+            phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
+        }),
         Tool("voices_naming_check", "Rehearse learning names (Companion › People) with the production checks and changes on a fixture " +
             "voice list in memory: the companion's own names (persona names, \"You are ...\" in persona text, \"I'm ...\" in Martlet's " +
             "reply) are never given to a voice, a heard voice drops one it learned by mistake, a voice keeps many names and shows the " +
@@ -2578,6 +2594,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "early_reply_check" => await EarlyReplyCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "thinkingMs"),
                     OptionalInt(arguments, "voiceMs"), OptionalInt(arguments, "sttMs"), OptionalInt(arguments, "judgeMs"), cancellation),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
+                    OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
+                    cancellation),
+                "long_talk_check" => await LongTalkCheck.RunAsync(arguments, MartletDirectory(arguments),
                     OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
                     cancellation),
                 "voices_naming_check" => VoiceNamingCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"),

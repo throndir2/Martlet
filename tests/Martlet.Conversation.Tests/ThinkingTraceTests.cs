@@ -36,7 +36,7 @@ public sealed class ThinkingTraceTests
         var started = lines.Single(" started: ");
         Assert.Contains($" started: OpenAI Responses, model {TextFixtures.Selection.UpstreamModelId}; input of about ", started);
         Assert.Contains("with 0 earlier messages; text only; at most 256 output tokens; first words within 15 s, no words for at most 10 s, " +
-            "each request within 60 s, the turn within 90 s.", started);
+            "each request within 60 s, the turn within 1200 s.", started);
         var request = lines.Single(": request 1 (first) answered at ");
         Assert.Contains("authorized at ", request);
         Assert.Contains(" ms, sent at ", request);

@@ -31,8 +31,8 @@ public sealed record CaptureRequest(CorrelationIds Ids, long Epoch, InputSelecti
             "Capture must belong to the current session and a valid epoch.");
         ContractRules.Require(MaximumDuration >= TimeSpan.FromMilliseconds(20) && MaximumDuration <= options.MaximumDuration,
             "Capture duration must be between 20 ms and the configured maximum.");
-        ContractRules.Require(ExpiresAt > now && ExpiresAt <= now.AddSeconds(30),
-            "Capture authorization needs a future expiry at most 30 seconds away.", ErrorCode.DeadlineExceeded);
+        ContractRules.Require(ExpiresAt > now && ExpiresAt <= now + options.MaximumDuration + CaptureOptions.CleanupAllowance,
+            "Capture authorization needs a future expiry at most the longest capture plus 30 seconds away.", ErrorCode.DeadlineExceeded);
     }
 }
 
@@ -41,16 +41,27 @@ public sealed record CaptureAuthorization(CaptureRequest Request, bool Microphon
 
 public sealed record CaptureOptions
 {
+    /// <summary>The longest one turn of talking in a conversation: a safety stop for a microphone left open (a TV keeps
+    /// hands-free listening going), not a limit on what anyone says in one go.</summary>
+    public static TimeSpan LongestTurn => TimeSpan.FromMinutes(10);
+    /// <summary>The longest one capture may be: a safety stop for a microphone left open (a TV keeps hands-free listening
+    /// going), far beyond anything said in one go. Speech-to-text hears a long capture in pieces.</summary>
+    public static TimeSpan HardMaximumDuration => TimeSpan.FromMinutes(15);
+    /// <summary>The canonical 16 kHz PCM16 bytes of <see cref="HardMaximumDuration"/>.</summary>
+    public const int HardMaximumPcmBytes = 15 * 60 * 16_000 * 2;
+    /// <summary>The time a capture's authorization may last beyond its longest capture, for opening, cleanup and transfer.</summary>
+    public static TimeSpan CleanupAllowance => TimeSpan.FromSeconds(30);
+
     public TimeSpan MaximumDuration { get; init; } = TimeSpan.FromSeconds(30);
     public int MaximumPcmBytes { get; init; } = 2 * 1024 * 1024;
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(2);
 
     internal void Validate()
     {
-        ContractRules.Require(MaximumDuration >= TimeSpan.FromMilliseconds(20) && MaximumDuration <= TimeSpan.FromSeconds(30),
-            "Maximum capture duration must be 20 ms through 30 seconds.");
-        ContractRules.Require(MaximumPcmBytes is >= 2 and <= 2 * 1024 * 1024 && MaximumPcmBytes % 2 == 0,
-            "Capture capacity must be aligned PCM16, at most 2 MiB.");
+        ContractRules.Require(MaximumDuration >= TimeSpan.FromMilliseconds(20) && MaximumDuration <= HardMaximumDuration,
+            "Maximum capture duration must be 20 ms through 15 minutes.");
+        ContractRules.Require(MaximumPcmBytes is >= 2 and <= HardMaximumPcmBytes && MaximumPcmBytes % 2 == 0,
+            "Capture capacity must be aligned PCM16, at most 15 minutes of 16 kHz audio.");
         ContractRules.Require(ShutdownTimeout > TimeSpan.Zero && ShutdownTimeout <= TimeSpan.FromSeconds(2),
             "Capture shutdown timeout must be positive and at most two seconds.");
     }

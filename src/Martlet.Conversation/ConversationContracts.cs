@@ -12,23 +12,32 @@ public enum ConversationEventKind { State, Text, SegmentQueued, SegmentStarted, 
 
 public sealed record ConversationLimits
 {
-    public TimeSpan TurnTimeout { get; init; } = TimeSpan.FromSeconds(90);
+    /// <summary>A safety stop for one reply, its voice included: far beyond any reply. Each request and each spoken sentence has
+    /// its own much shorter time limit, so a stuck model or voice ends long before this.</summary>
+    public static TimeSpan ReplyLifetime => TimeSpan.FromMinutes(20);
+    public const int HardMaxSpeechSegments = 4_096;
+    public const int HardMaxSpeechTextBytes = 1_048_576;
+    /// <summary>Each spoken sentence reserves its voice's longest audio (at most 90 s at 24 kHz, 2,160,000 samples).</summary>
+    public const long HardMaxReservedSpeechSamples = HardMaxSpeechSegments * 2_160_000L;
+
+    public TimeSpan TurnTimeout { get; init; } = ReplyLifetime;
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(2);
-    public int MaxSpeechSegments { get; init; } = 8;
-    public int MaxSpeechTextBytes { get; init; } = 12_288;
-    public long MaxReservedSpeechSamples { get; init; } = 2_160_000;
+    // Enough for a long story read aloud: what is said aloud is limited by the reply itself, not by a speech budget.
+    public int MaxSpeechSegments { get; init; } = 512;
+    public int MaxSpeechTextBytes { get; init; } = 262_144;
+    public long MaxReservedSpeechSamples { get; init; } = 512 * 2_160_000L;
     public int EventCapacity { get; init; } = 128;
     /// <summary>Tool rounds one reply may use when the request offers tools; the next request must answer in text.</summary>
     public int MaxToolRounds { get; init; } = 4;
 
     internal void Validate()
     {
-        // A reply's turn stays within its 150-second action; a background think (think_longer) has no time limit of its own and
-        // runs within the providers' request ceiling (a day).
+        // A reply's turn stays within its action; a background think (think_longer) has no time limit of its own and runs within
+        // the providers' request ceiling (a day).
         ContractRules.Require(TurnTimeout > TimeSpan.Zero && TurnTimeout <= TextGenerationLimits.HardMaxRequestTime &&
             ShutdownTimeout > TimeSpan.Zero && ShutdownTimeout <= TimeSpan.FromSeconds(2) &&
-            MaxSpeechSegments is >= 1 and <= 32 && MaxSpeechTextBytes is >= 1 and <= 16_384 &&
-            MaxReservedSpeechSamples is >= 1 and <= 2_160_000 && EventCapacity is >= 4 and <= 128 &&
+            MaxSpeechSegments is >= 1 and <= HardMaxSpeechSegments && MaxSpeechTextBytes is >= 1 and <= HardMaxSpeechTextBytes &&
+            MaxReservedSpeechSamples is >= 1 and <= HardMaxReservedSpeechSamples && EventCapacity is >= 4 and <= 128 &&
             MaxToolRounds is >= 0 and <= BoundedTextInput.HardMaxToolRounds,
             "Conversation limits are out of range.");
     }

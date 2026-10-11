@@ -270,7 +270,8 @@ microphone or speakers for Discord.
   mapped to a user from the connection's Speaking events): packets are put back in order (late ones dropped, a frame still
   missing after two later ones is concealed), decoded at 48 kHz stereo, mixed to mono and low-passed down to 16 kHz, and an
   utterance ends after 0.7 s of silence or of no packets (Discord clients stop sending in silence). Under 0.25 s of voice is
-  dropped; utterances are capped at 25 s.
+  dropped; an utterance stops at 10 minutes (a safety stop), and one longer than speech-to-text takes at once is heard in
+  pieces cut at its pauses.
 - **Speech-to-text never uses the cloud** for other people's voices: Parakeet on this PC (Listening's model, or a downloaded
   Parakeet) or the paired computer Listening uses, chosen like Add a voice does (`RecordingTranscriber`). Without either,
   the status says to download Parakeet. While the local conversation is replying, Discord's transcription waits for it (up

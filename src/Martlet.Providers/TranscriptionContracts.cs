@@ -5,8 +5,13 @@ namespace Martlet.Providers;
 
 public sealed record TranscriptionLimits : IContract
 {
-    public const int HardMaxAudioBytes = 8_640_044;
-    public static TimeSpan HardMaxDuration => TimeSpan.FromSeconds(90);
+    /// <summary>The largest recording Martlet holds or uploads at once: OpenAI's 25 MB upload limit (about 13 minutes of 16 kHz
+    /// speech). A request may set less; talking longer than one request takes is split (<see cref="BoundedWaveAudio.Split"/>).</summary>
+    public const int HardMaxAudioBytes = 25_000_000;
+    public static TimeSpan HardMaxDuration => TimeSpan.FromMinutes(15);
+    /// <summary>The most a conversation's one speech-to-text request hears (canonical 16 kHz PCM16 in a WAV: 800,044 bytes); a longer
+    /// turn goes in pieces of at most this, each cut at a pause.</summary>
+    public static TimeSpan ConversationPiece => TimeSpan.FromSeconds(25);
     public int MaxAudioBytes { get; init; } = HardMaxAudioBytes;
     public TimeSpan MaxAudioDuration { get; init; } = HardMaxDuration;
     public int MaxResponseBytes { get; init; } = ContractRules.MaxJsonBytes;
@@ -126,6 +131,44 @@ public sealed class TranscriptionResult
         Usage = usage ?? TranscriptionUsage.Unknown;
         Failure = failure;
         Evidence = evidence;
+    }
+
+    /// <summary>The pieces of one long recording (<see cref="BoundedWaveAudio.Split"/>) heard in turn as one transcript: their
+    /// words in order, Completed when any piece had words, otherwise NoSpeech. Every piece must have completed or heard no
+    /// speech; <paramref name="offsets"/> are where each piece starts in the recording.</summary>
+    public static TranscriptionResult Join(IReadOnlyList<TranscriptionResult> pieces, IReadOnlyList<TimeSpan> offsets)
+    {
+        ArgumentNullException.ThrowIfNull(pieces);
+        ArgumentNullException.ThrowIfNull(offsets);
+        ContractRules.Require(pieces.Count > 0 && offsets.Count == pieces.Count &&
+            pieces.All(p => p is { Outcome: TranscriptionOutcome.Completed or TranscriptionOutcome.NoSpeech }),
+            "Only heard pieces of one recording can be joined.");
+        if (pieces.Count == 1) return pieces[0];
+        var words = pieces.Where(p => p.Outcome == TranscriptionOutcome.Completed && !string.IsNullOrWhiteSpace(p.Text))
+            .Select(p => p.Text!.Trim()).ToArray();
+        var outcome = words.Length > 0 ? TranscriptionOutcome.Completed : TranscriptionOutcome.NoSpeech;
+        var usage = pieces.Select(p => p.Usage).Distinct().Count() == 1 ? pieces[0].Usage
+            : pieces.All(p => p.Usage.Kind == UsageKind.Duration) ? new TranscriptionUsage(UsageKind.Duration, Seconds: pieces.Sum(p => p.Usage.Seconds ?? 0))
+            : pieces.All(p => p.Usage.Kind == UsageKind.Tokens) ? new TranscriptionUsage(UsageKind.Tokens, pieces.Sum(p => p.Usage.InputTokens ?? 0),
+                pieces.Sum(p => p.Usage.OutputTokens ?? 0), pieces.Sum(p => p.Usage.TotalTokens ?? 0))
+            : TranscriptionUsage.Unknown;
+        var heard = pieces.Select((p, i) => (p.Evidence, Offset: offsets[i])).Where(e => e.Evidence is not null).ToArray();
+        TranscriptionEvidence? evidence = heard.Length == 0 ? null : new()
+        {
+            Engine = heard[0].Evidence!.Engine,
+            MeanProbability = Average(heard.Select(e => e.Evidence!.MeanProbability)),
+            MinimumProbability = heard.Select(e => e.Evidence!.MinimumProbability).Min(),
+            // The whole recording held speech when any piece did.
+            NoSpeechProbability = heard.Select(e => e.Evidence!.NoSpeechProbability).Min(),
+            AverageLogProbability = Average(heard.Select(e => e.Evidence!.AverageLogProbability)),
+            WordsStart = heard.Where(e => e.Evidence!.WordsStart is not null).Select(e => e.Offset + e.Evidence!.WordsStart).FirstOrDefault(),
+            WordsEnd = heard.Where(e => e.Evidence!.WordsEnd is not null).Select(e => e.Offset + e.Evidence!.WordsEnd).LastOrDefault()
+        };
+        return new(pieces[0].Context, pieces[0].Provenance, outcome, words.Length > 0 ? string.Join(" ", words) : null,
+            pieces.SelectMany(p => p.Languages).Distinct(StringComparer.Ordinal).ToArray(), usage, null, evidence);
+
+        static double? Average(IEnumerable<double?> values) =>
+            values.Where(v => v is not null).ToArray() is { Length: > 0 } known ? known.Average() : null;
     }
 
     public ProviderEvent ToTerminalEvent() => new()

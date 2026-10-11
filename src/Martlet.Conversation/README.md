@@ -226,19 +226,18 @@ the entire answer is not routinely buffered before speech starts.
 
 | Limit | Default | Hard maximum |
 | --- | --- | --- |
-| Whole turn | 90 s | 90 s |
+| Whole turn | 20 min | 24 h |
 | Local Stop observation/cleanup wait | 2 s | 2 s |
-| Committed speech actions | 8 | 32 |
-| Reserved speech input bytes | 12,288 | 16,384 |
-| Reserved speech output samples (24 kHz/channel) | 2,160,000 | 2,160,000 (90 s) |
+| Committed speech actions | 512 | 4,096 |
+| Reserved speech input bytes | 262,144 | 1,048,576 |
+| Reserved speech output samples (24 kHz/channel) | 1,105,920,000 (512 × 90 s) | 8,847,360,000 (4,096 × 90 s) |
 | Pending speech segments | 2, fixed | 2 |
 
 Each committed action reserves its **full configured** per-segment output
 maximum against the aggregate, not just the short body a fixture happened
-to return. Unused reservations are not silently recycled. For example, eight
-segments with a 10-second per-segment maximum fit an 80-second aggregate;
-the provider's default 90-second segment maximum leaves room for only one
-segment in a 90-second turn budget. Callers must deliberately choose useful
+to return. Unused reservations are not silently recycled. The defaults let
+512 sentences of up to 90 seconds each be said, so a long reply is said aloud
+to its end. Callers must deliberately choose useful
 per-segment limits rather than mistake `MaxSpeechSegments` for a guaranteed
 number of requests. `CommittedSegments` counts selected authorization
 attempts, including a denied action; it is not a count of billed requests.

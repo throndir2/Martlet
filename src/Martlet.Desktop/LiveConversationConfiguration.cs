@@ -34,14 +34,27 @@ internal sealed class LiveConversationConfiguration
     internal TextGenerationLimits TextLimits { get; }
     /// <summary>How much a reply request may hold (Companion › Replies › Context size, within the model's known limit).</summary>
     internal ContextBudget Context { get; }
-    internal static TimeSpan ActionLifetime => TimeSpan.FromSeconds(150);
-    internal static TimeSpan CaptureDuration => TimeSpan.FromSeconds(25);
-    internal static TimeSpan CapturePermission => TimeSpan.FromSeconds(30);
+    /// <summary>A safety stop for one whole action (what was said, speech-to-text, the reply and its voice), far beyond any of
+    /// them; each step has its own much shorter time limit.</summary>
+    internal static TimeSpan ActionLifetime => TimeSpan.FromMinutes(45);
+    /// <summary>The longest one turn of talking: a safety stop for a microphone left open (a TV keeps hands-free listening
+    /// going), not a limit on what anyone says in one go. Speech-to-text hears a longer turn in pieces.</summary>
+    internal static TimeSpan CaptureDuration => CaptureOptions.LongestTurn;
+    internal static TimeSpan CapturePermission => CaptureDuration + TimeSpan.FromSeconds(5);
+    /// <summary>The canonical 16 kHz PCM16 bytes of <see cref="CaptureDuration"/>.</summary>
+    internal static int CaptureBytes => (int)(CaptureDuration.TotalSeconds * 16_000 * 2);
+    /// <summary>The most one speech-to-text request hears; a longer turn goes in pieces of at most this, each cut at a pause.</summary>
+    internal static TimeSpan TranscriptionPiece => TranscriptionLimits.ConversationPiece;
     internal static TranscriptionLimits TranscriptionLimits { get; } = new()
     {
-        MaxAudioBytes = 800_044, MaxAudioDuration = CaptureDuration,
+        MaxAudioBytes = 800_044, MaxAudioDuration = TranscriptionPiece,
         MaxTextCharacters = 4096, MaxRequestTime = TimeSpan.FromSeconds(30)
     };
+    /// <summary>The longest speech-to-text of <paramref name="audio"/> may take: one request's 30 s deadline (and 5 s to spare)
+    /// for each piece it is heard in.</summary>
+    internal static TimeSpan TranscriptionTime(BoundedWaveAudio? audio) => TranscriptionTime(audio?.Duration ?? TimeSpan.Zero);
+    internal static TimeSpan TranscriptionTime(TimeSpan duration) =>
+        TimeSpan.FromSeconds(35) * Math.Max(1, (int)Math.Ceiling(duration / TranscriptionPiece));
     /// <summary>The estimated input tokens for a reply's own text (persona, lore, memory, the conversation so far and the
     /// message): the context size less the reply's room. Tool descriptions, calls and results have their own room on top
     /// (<see cref="ToolInputTokens"/>).</summary>
@@ -57,10 +70,11 @@ internal sealed class LiveConversationConfiguration
         MaxEventBytes = Martlet.Core.Contracts.ContractRules.MaxJsonBytes,
         MaxOutputTokens = GenerationSettings.DefaultMaxReplyTokens, MaxRequestTime = TimeSpan.FromSeconds(45)
     };
+    /// <summary>One spoken sentence: as long as a voice contract allows, so a long sentence is never cut off.</summary>
     internal static SpeechSynthesisLimits SpeechLimits { get; } = new()
     {
-        MaxAudioBytes = 480_000, MaxAudioDuration = TimeSpan.FromSeconds(10),
-        MaxRequestTime = TimeSpan.FromSeconds(20)
+        MaxAudioBytes = SpeechSynthesisLimits.HardMaxAudioBytes, MaxAudioDuration = TimeSpan.FromSeconds(90),
+        MaxRequestTime = TimeSpan.FromSeconds(90)
     };
     /// <summary>The LLM bounds for Ollama on this PC. Ollama loads the model into memory on the first request after it unloaded
     /// it (by default five idle minutes), which takes 15 s to 2 minutes before the first token, and it abandons the load when
@@ -80,14 +94,12 @@ internal sealed class LiveConversationConfiguration
         MaxOutputTokens = GenerationSettings.ChatReplyTokens, MaxContextTokens = 98_304 + GenerationSettings.ChatReplyTokens,
         MaxEvents = 4094, MaxStreamBytes = 4_194_304
     };
-    internal static ConversationLimits TurnLimits { get; } = new()
-    {
-        MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000
-    };
-    /// <summary>A reply that may use tools: up to four tool rounds and a longer runtime, still inside the 150 s action.</summary>
-    internal static ConversationLimits ToolTurnLimits { get; } = TurnLimits with { TurnTimeout = TimeSpan.FromSeconds(140), MaxToolRounds = 4 };
-    /// <summary>A reply from Ollama on this PC may wait for the model to load, so it has the whole 150 s action.</summary>
-    internal static ConversationLimits LocalOllamaTurnLimits { get; } = ToolTurnLimits with { TurnTimeout = ActionLifetime };
+    /// <summary>A reply's turn: Martlet says the whole reply aloud, however long (ConversationLimits' defaults).</summary>
+    internal static ConversationLimits TurnLimits { get; } = new();
+    /// <summary>A reply that may use tools: up to four tool rounds.</summary>
+    internal static ConversationLimits ToolTurnLimits { get; } = TurnLimits with { MaxToolRounds = 4 };
+    /// <summary>A reply from Ollama on this PC may first wait for the model to load (its requests' own two-minute limits).</summary>
+    internal static ConversationLimits LocalOllamaTurnLimits { get; } = ToolTurnLimits;
 
     /// <summary>Thinking runs in Ollama on this PC (its OpenAI-compatible endpoint on loopback).</summary>
     internal bool LocalOllama { get; }
