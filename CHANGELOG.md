@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- Companion › Thinking now says what your Thinking model takes: whether it hears, sees, takes video and calls tools, each with where Martlet found it out and when. **Test tools** checks whether a model calls tools with one made-up tool, and Martlet now reads this from OpenRouter, Ollama, LM Studio, llama.cpp and NVIDIA Build's model pages. A model that can't call tools isn't offered them, and a model its server retired (HTTP 410) is remembered as retired until it answers again or you choose it again. ([#PRNUMBER](https://github.com/throndir2/Martlet/pull/PRNUMBER))
+- Companion › Thinking now says what your Thinking model takes: whether it hears, sees, takes video and calls tools, each with where Martlet found it out and when. **Test tools** checks whether a model calls tools with one made-up tool, and Martlet now reads this from OpenRouter, Ollama, LM Studio, llama.cpp and NVIDIA Build's model pages. A model that can't call tools isn't offered them, and a model its server retired (HTTP 410) is remembered as retired until it answers again or you choose it again. ([#764](https://github.com/throndir2/Martlet/pull/764))
 - Your AI assistant can now set Martlet up for you. Martlet's own MCP server tells assistants like GitHub Copilot, Claude and VS Code what it can do, and lets them make characters (from a description or a SillyTavern or Chub card), change, switch and delete them, and change Martlet's settings; a running Martlet follows the changes at once. `scripts\Register-MartletMcp.ps1` connects your assistants. ([#761](https://github.com/throndir2/Martlet/pull/761))
 
 ### Changed
