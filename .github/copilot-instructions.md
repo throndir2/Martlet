@@ -30,6 +30,11 @@ runner's `summary.md` and the MCP results in the PR. Never claim an unrun check
 passed, and add to `tests\known-failures.txt` only tests shown failing on
 `origin/main` without your change.
 
+**Martlet's MCP server is also for using Martlet:** to make or change a
+character, change a setting or see how Martlet is set up, start with its
+`martlet_guide` tool, then the `character_*` and `settings_*` tools
+([Use Martlet through its MCP server](../AGENTS.md#use-martlet-through-its-mcp-server)).
+
 For implementation work, reuse the assigned worktree branch, commit, publish a
 PR and merge it into `main` yourself once validation passes, without routine
 approval prompts. Explicit user holds, required protections and authorization

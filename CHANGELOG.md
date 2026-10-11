@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Your AI assistant can now set Martlet up for you. Martlet's own MCP server tells assistants like GitHub Copilot, Claude and VS Code what it can do, and lets them make characters (from a description or a SillyTavern or Chub card), change, switch and delete them, and change Martlet's settings; a running Martlet follows the changes at once. `scripts\Register-MartletMcp.ps1` connects your assistants. ([#761](https://github.com/throndir2/Martlet/pull/761))
+
 ### Changed
 
 - When you test or load a model in Ollama on this PC, the run window now says how much memory it really takes and how much of it is on the graphics card, and Martlet remembers it for each model. ([#760](https://github.com/throndir2/Martlet/pull/760))
