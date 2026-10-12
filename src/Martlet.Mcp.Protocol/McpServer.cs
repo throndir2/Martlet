@@ -2635,7 +2635,15 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "with the date it stopped being true; lines across groups or about unknown numbers left out; history never recalled " +
             "and left out of a snapshot's current facts; a correction keeping the earlier version; the new fields travelling as " +
             "JSON while a fact without them is written as before; and forgetting a fact forgetting its earlier versions. Never " +
-            "opens your memory; no model, network or credentials.", new { })
+            "opens your memory; no model, network or credentials.", new { }),
+        Tool("search_engine_check", "Show and check the shared search engine that memory, app guides and past conversations use " +
+            "(Martlet.Core.Search; docs/SEARCH.md): each source's search profile (fields with their BM25F weights and length " +
+            "normalization, k1, positions, candidates, the reranker's weights, cutoff and selection), and on synthetic documents: the " +
+            "first stage keeping exactly the best candidates and honouring a filter, a title outranking the text (BM25F), a second " +
+            "field finding a document by words it doesn't say (search words), an index without positions growing while it is " +
+            "searched, reciprocal rank fusion with a second ranked list, and the time of the first stage and ranking on 100,000 " +
+            "documents (median and p95 in microseconds; under 10 milliseconds). Each source's ranking end to end is in " +
+            "memory_recall_check, app_guides_check and conversation_history_check. Reads and writes nothing.", new { })
     ];
 
     private static object Tool(string name, string description, object properties, string[]? required = null) =>
@@ -3004,6 +3012,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "memory_recall_check" => await MemoryRecallCheck.RunAsync(OptionalString(arguments, "query"), MemoryRecallCheck.Facts(arguments), cancellation),
                 "search_languages_check" => await LanguagesCheck.RunAsync(cancellation),
                 "memory_upkeep_check" => await MemoryUpkeepCheck.RunAsync(cancellation),
+                "search_engine_check" => SearchEngineCheck.Run(cancellation),
                 "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "song_playback_check" => await SongsCheck.RunAsync(
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "songId"),

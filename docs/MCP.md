@@ -1727,7 +1727,7 @@ the owner's other computers. It returns `preview`, `matched`, `deleted` and
 rehearses how recall ranks remembered facts
 ([Lexical retrieval and reranking](MEMORY.md#lexical-retrieval-and-reranking))
 with the production code (`MemoryStore` and `LexicalIndex` in
-`src\Martlet.Memory`) on synthetic facts in disposable stores, and returns
+`src\Martlet.Memory`, on the shared [search engine](SEARCH.md)) on synthetic facts in disposable stores, and returns
 `{passed, failures, steps, query, note}`. The steps: plurals and verb forms
 find each other (*Do I have any cats?* finds the cat fact, *running* finds
 *runs*), grammar words are left out, the fact that holds more of the question
@@ -1790,6 +1790,23 @@ out; a correction keeps the earlier version; the new fields travel as JSON while
 a fact without them is written as before; forgetting a fact forgets its earlier
 versions; and search words from a model line are cleaned up. It never opens the
 owner's memory and contacts nothing.
+
+`search_engine_check` (no arguments) shows and checks the shared
+[search engine](SEARCH.md) that memory, app guides and past conversations use,
+and returns `{passed, failures, steps, profiles, note}`. `profiles` has each
+source's search profile (`memory`, `appGuides`, `pastConversationsRecall`,
+`pastConversationsFind`): `fields` (`name`, `weight`, `lengthNormalization`),
+`k1`, `positions`, `candidates`, `refined`, `scoring` (`combination` and each
+feature's weight, `recencyHalfLifeDays`), `cutoff` and `diversity`. The steps,
+on synthetic documents: each source has a profile; the first stage keeps
+exactly the best candidates, best first, and leaves out what a filter refuses;
+BM25F ranks a title match above a text match; a second field finds a document
+by words it doesn't say (search words); an index without positions grows
+while it is searched; reciprocal rank fusion puts a document both lists have
+first and adds one only the second list has; and the first stage and ranking
+of a query on 100,000 documents (`medianMicroseconds`, `p95Microseconds`;
+passes under 10,000). Each source's own ranking is in `memory_recall_check`,
+`app_guides_check` and `conversation_history_check`. It reads and writes nothing.
 
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in

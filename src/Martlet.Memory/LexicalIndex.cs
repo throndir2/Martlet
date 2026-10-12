@@ -1,11 +1,18 @@
 using System.Numerics;
-using System.Runtime.InteropServices;
 using System.Text;
+using Martlet.Core.Search;
 using Martlet.Core.Text;
 
 namespace Martlet.Memory;
 
 internal readonly record struct LexicalMatch(Guid FactId, double Score, int MatchedTerms);
+
+/// <summary>How memory searches its facts on the shared search engine (docs/SEARCH.md), for tools that show it.</summary>
+public static class MemorySearch
+{
+    /// <summary>Memory's search profile: one `content` field, the reranker's weights and the penalty selection.</summary>
+    public static SearchProfile Profile => LexicalIndex.Profile;
+}
 
 /// <summary>The words of a fact or a query as memory compares them: <see cref="SearchTerms"/> (lower case, common English grammar
 /// words left out, light stems so "cats" finds "cat" and "running" finds "runs"), without terms that hold no letter or digit
@@ -30,109 +37,78 @@ internal static class MemoryTerms
     }
 }
 
-/// <summary>The deterministic in-memory index of one store revision's facts, rebuilt on every change. Retrieval has two stages,
-/// both in this process and without a model: BM25 over <see cref="MemoryTerms"/> finds the candidates, then a reranker orders the
-/// best of them by how much of the query they cover, how close and in what order the query's words stand in them, and a gentle
-/// recency boost, and moves near-duplicates of a better match (of the same person) down. The order never depends on the number
-/// of results asked for, so a shorter list is always the start of a longer one.</summary>
+/// <summary>The deterministic in-memory index of one store revision's facts, rebuilt on every change, on the shared search engine
+/// (<see cref="SearchIndex"/> and <see cref="SearchRanker"/> in Martlet.Core, docs/SEARCH.md). Retrieval has two stages, both in
+/// this process and without a model: BM25 over <see cref="MemoryTerms"/> finds the candidates, then a reranker orders the best of
+/// them by how much of the query they cover, how close and in what order the query's words stand in them, and a gentle recency
+/// boost, and moves near-duplicates of a better match (of the same person) down. The order never depends on the number of results
+/// asked for, so a shorter list is always the start of a longer one.</summary>
 internal sealed class LexicalIndex
 {
-    // BM25 (Robertson and Zaragoza, "The Probabilistic Relevance Framework: BM25 and Beyond", 2009) with its usual parameters.
-    private const double K1 = 1.2;
-    private const double B = 0.75;
     // The reranker looks at this many of BM25's best candidates (more than the most results a query can ask for); the rest are
     // left out.
     internal const int RerankDepth = 64;
-    // Each feature multiplies the BM25 score by at most 1 + its weight. Coverage is the share of the query's IDF weight the fact
-    // holds; proximity is 1 / the smallest distance between two different query terms in it (Tao and Zhai, SIGIR 2007); phrases
-    // count query word pairs that stand next to each other in the query's order; recency halves every 30 days before the newest
-    // fact of the index (not the clock, so a cached result stays exact).
-    private const double CoverageWeight = 0.5;
-    private const double ProximityWeight = 0.25;
-    private const double PhraseWeight = 0.25;
-    private const double RecencyWeight = 0.1;
-    private const double RecencyHalfLifeDays = 30;
-    // As remembering skips a near-duplicate (Jaccard similarity of the words at least 0.8), recall counts one at a quarter of
-    // its score after a better match of the same person was chosen: it adds little that the first doesn't already say. The
-    // similarity is exact for facts of up to SketchSize different words and estimated from that many hashed words (a bottom-k
-    // MinHash sketch) for longer ones, so the check costs the same for any fact.
-    private const double DuplicateSimilarity = 0.8;
-    private const double DuplicatePenalty = 0.25;
-    private const int SketchSize = 32;
-    // Each fact's words set bits of a 256-bit signature. A bit set in only one of two signatures comes from a word in only one of
-    // the facts, so more such bits than a near-duplicate can differ by rules the pair out without comparing sketches.
-    private const int SignatureWords = 4;
 
-    private sealed record Document(Guid Id, DateTimeOffset UpdatedAtUtc, string? VoiceId, int Length, int Words, ulong[] Sketch,
-        ulong[] Signature);
-    private readonly record struct Posting(int Document, int[] Positions);
+    /// <summary>How memory searches. BM25 (Robertson and Zaragoza, 2009) with its usual parameters over one field, the fact's
+    /// content. Each reranker feature multiplies the BM25 score by at most 1 + its weight: coverage is the share of the query's IDF
+    /// weight the fact holds; proximity is 1 / the smallest distance between two different query terms in it (Tao and Zhai, SIGIR
+    /// 2007); phrases count query word pairs that stand next to each other in the query's order; recency halves every 30 days
+    /// before the newest fact of the index (not the clock, so a cached result stays exact). As remembering skips a near-duplicate
+    /// (Jaccard similarity of the words at least 0.8), recall counts one at a quarter of its score after a better match of the same
+    /// person was chosen: it adds little that the first doesn't already say. The similarity is exact for facts of up to
+    /// <see cref="SearchSketch.Size"/> different words and estimated from that many hashed words for longer ones, so the check
+    /// costs the same for any fact.</summary>
+    internal static SearchProfile Profile { get; } = new()
+    {
+        Fields = [new("content", 1, 0.75)],
+        K1 = 1.2,
+        Candidates = RerankDepth,
+        Scoring = new()
+        {
+            Combination = SearchCombination.Multiply, Coverage = 0.5, Proximity = 0.25, Phrases = 0.25, Recency = 0.1,
+            RecencyHalfLifeDays = 30
+        },
+        Diversity = new() { Selection = SearchSelection.Penalty, NearDuplicate = 0.8, Penalty = 0.25 }
+    };
 
+    private sealed record Document(Guid Id, DateTimeOffset UpdatedAtUtc, string? VoiceId, SearchSketch Sketch);
+
+    private readonly SearchIndex index;
     private readonly Document[] documents;
-    private readonly Dictionary<string, int> termIds;
-    private readonly Posting[][] postings;
-    private readonly double averageLength;
     private readonly DateTimeOffset newest;
 
-    private LexicalIndex(Document[] documents, Dictionary<string, int> termIds, Posting[][] postings)
+    private LexicalIndex(SearchIndex index, Document[] documents)
     {
+        this.index = index;
         this.documents = documents;
-        this.termIds = termIds;
-        this.postings = postings;
-        averageLength = documents.Length == 0 ? 1 : Math.Max(1, documents.Average(document => document.Length));
         newest = documents.Length == 0 ? DateTimeOffset.MinValue : documents.Max(document => document.UpdatedAtUtc);
     }
 
     internal int DocumentCount => documents.Length;
-    internal int TermCount => termIds.Count;
+    internal int TermCount => index.TermCount;
 
     /// <summary>Whether every term of <paramref name="word"/> is in the index (a word stands for its stem).</summary>
     internal bool ContainsTerm(string word) =>
-        MemoryTerms.Of(word) is { Count: > 0 } terms && terms.All(termIds.ContainsKey);
+        MemoryTerms.Of(word) is { Count: > 0 } terms && terms.All(term => index.TryGetTerm(term, out _));
 
     internal static LexicalIndex Build(IEnumerable<MemoryFact> facts)
     {
-        var termIds = new Dictionary<string, int>(StringComparer.Ordinal);
-        var hashes = new List<ulong>();
-        var lists = new List<List<Posting>>();
+        var index = new SearchIndex(Profile);
         var documents = new List<Document>();
-        var positions = new Dictionary<int, List<int>>();
-        var said = new List<int>();
         foreach (var fact in facts)
         {
             // History is never recalled as current.
             if (fact.IsHistory)
                 continue;
             MemoryGuard.Require(fact.Content.Length <= MemoryLimits.MaximumContentCharacters);
-            // A fact is found by its words and by its hidden search words; near-duplicates compare only what it says.
+            // A fact is found by its words and by its hidden search words, after its content in the same field; near-duplicates
+            // compare only what it says.
             var content = MemoryTerms.Of(fact.Content);
             IReadOnlyList<string> terms = fact.SearchWords is { } words ? [.. content, .. MemoryTerms.Of(words)] : content;
-            positions.Clear();
-            for (var i = 0; i < terms.Count; i++)
-            {
-                if (!termIds.TryGetValue(terms[i], out var id))
-                {
-                    id = termIds.Count;
-                    termIds.Add(terms[i], id);
-                    hashes.Add(Hash(terms[i]));
-                    lists.Add([]);
-                }
-                if (!positions.TryGetValue(id, out var at))
-                    positions.Add(id, at = []);
-                at.Add(i);
-            }
-            foreach (var (id, at) in positions)
-                lists[id].Add(new(documents.Count, [.. at]));
-            said.Clear();
-            foreach (var (id, at) in positions)
-                if (at[0] < content.Count)
-                    said.Add(id);
-            var sketch = said.Select(id => hashes[id]).Order().Take(SketchSize).ToArray();
-            var signature = new ulong[SignatureWords];
-            foreach (var id in said)
-                signature[(int)((hashes[id] >> 6) % SignatureWords)] |= 1UL << (int)(hashes[id] & 63);
-            documents.Add(new(fact.Id, fact.UpdatedAtUtc, fact.VoiceId, terms.Count, said.Count, sketch, signature));
+            index.Add(terms);
+            documents.Add(new(fact.Id, fact.UpdatedAtUtc, fact.VoiceId, SearchSketch.Of(content)));
         }
-        return new([.. documents], termIds, [.. lists.Select(list => list.ToArray())]);
+        return new(index.Freeze(), [.. documents]);
     }
 
     internal static string[] QueryTerms(string query)
@@ -155,8 +131,8 @@ internal sealed class LexicalIndex
         return terms;
     }
 
-    /// <summary>A query text within the query bounds made of <paramref name="source"/>'s own words (lower case), first seen first,
-    /// one for each new search term, so the query's terms are exactly the terms of those words: a stem is never stemmed again.
+    /// <summary>A query text within the query bounds made of <paramref name="source"/>'s own words as <see cref="SearchTerms.Words"/>
+    /// reads them (the same words in every language search reads), first seen first, one for each new search term, so the query's terms are exactly the terms of those words: a stem is never stemmed again.
     /// Null when no word has a search term.</summary>
     internal static string? TryBoundedQueryText(string source)
     {
@@ -176,7 +152,7 @@ internal sealed class LexicalIndex
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var text = new StringBuilder();
         var bytes = 0;
-        foreach (var word in Words(source))
+        foreach (var word in SearchTerms.Words(source))
         {
             if (seen.Count == MemoryLimits.MaximumQueryTerms)
                 break;
@@ -200,6 +176,7 @@ internal sealed class LexicalIndex
 
     /// <summary>The ranked matches for <paramref name="queryTerms"/>: at most <paramref name="maximumResults"/>, best first.
     /// <paramref name="include"/> leaves facts out before ranking (a snapshot's expired facts).</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal LexicalMatch[] Search(string[] queryTerms, int maximumResults, CancellationToken token,
         Func<Guid, bool>? include = null)
     {
@@ -208,303 +185,79 @@ internal sealed class LexicalIndex
         if (documents.Length == 0)
             return [];
 
-        // Stage 1: BM25 over the inverted index. Each fact also keeps a list of its hits (which query term, at which positions)
-        // for stage 2. The per-fact numbers live in this thread's scratch arrays, and only the facts a query term holds are
-        // touched (and cleared again), so a query costs what it matches, not the size of the store.
-        var ids = new int[queryTerms.Length];
-        var scratch = Scratch.For(documents.Length,
-            queryTerms.Sum(term => termIds.TryGetValue(term, out var id) ? postings[id].Length : 0));
-        try
+        var query = SearchQuery.Of(index, queryTerms);
+        var rules = new Rules(this, query);
+        var candidates = index.Search(query, Profile.Candidates,
+            include is null ? null : [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)] (document, _) => include(documents[document].Id),
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)] (left, right) => rules.Tie(left, right),
+            ordered: false, token: token);
+        var ranking = SearchRanker.Rank(candidates, Profile, rules, maximumResults, token: token);
+        var matches = new LexicalMatch[ranking.Hits.Length];
+        for (var i = 0; i < matches.Length; i++)
         {
-            return Rank(queryTerms, maximumResults, token, include, ids, scratch);
+            var hit = ranking.Hits[i];
+            matches[i] = new(documents[hit.Document].Id, hit.Score, BitOperations.PopCount((uint)hit.Mask));
         }
-        finally
-        {
-            scratch.Clear();
-        }
+        return matches;
     }
 
-    private LexicalMatch[] Rank(string[] queryTerms, int maximumResults, CancellationToken token, Func<Guid, bool>? include,
-        int[] ids, Scratch scratch)
+    /// <summary>One query's reranker features: coverage, proximity, phrases and recency; equal scores go to more matched query
+    /// terms, then the newer fact, then the fact ID; near-duplicates are facts of the same person (or of no one in particular).</summary>
+    private sealed class Rules : ISearchRules
     {
-        var bm25 = scratch.Bm25;
-        var covered = scratch.Covered;
-        var matched = scratch.Matched;
-        var touched = scratch.Touched;
-        var hits = new Hits(scratch);
-        var queryWeight = 0d;
-        for (var q = 0; q < queryTerms.Length; q++)
+        private readonly LexicalIndex owner;
+        private readonly SearchQuery query;
+        private readonly double[] idf;
+        private readonly double queryWeight;
+        private readonly List<int> occurrences = [];
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        internal Rules(LexicalIndex owner, SearchQuery query)
         {
-            token.ThrowIfCancellationRequested();
-            if (!termIds.TryGetValue(queryTerms[q], out ids[q]))
+            this.owner = owner;
+            this.query = query;
+            idf = new double[query.Terms.Count];
+            for (var q = 0; q < idf.Length; q++)
             {
-                ids[q] = -1;
-                continue;
-            }
-            var list = postings[ids[q]];
-            var idf = Math.Log(1 + (documents.Length - list.Length + 0.5) / (list.Length + 0.5));
-            queryWeight += idf;
-            foreach (var posting in list)
-            {
-                var frequency = posting.Positions.Length;
-                bm25[posting.Document] += idf * frequency * (K1 + 1) /
-                    (frequency + K1 * (1 - B + B * documents[posting.Document].Length / averageLength));
-                covered[posting.Document] += idf;
-                if (matched[posting.Document]++ == 0)
-                    touched.Add(posting.Document);
-                hits.Add(posting.Document, q, posting.Positions);
+                if (query.Terms[q].Term < 0)
+                    continue;
+                idf[q] = owner.index.Idf(query.Terms[q].Term);
+                queryWeight += idf[q];
             }
         }
 
-        var candidates = new List<int>();
-        foreach (var d in touched)
-            if (include is null || include(documents[d].Id))
-                candidates.Add(d);
-        if (candidates.Count == 0)
-            return [];
-        // Only a cut needs BM25's order; the selection below doesn't depend on the candidates' order. The RerankDepth best are kept
-        // with a heap (exactly the set a full sort would cut to), so a large store doesn't sort every candidate.
-        if (candidates.Count > RerankDepth)
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        public bool Score(in SearchCandidate candidate, ref SearchFeatures features)
         {
-            var best = new PriorityQueue<int, int>(RerankDepth + 1,
-                Comparer<int>.Create((left, right) => Compare(right, bm25[right], left, bm25[left], matched)));
-            foreach (var d in candidates)
-            {
-                if (best.Count < RerankDepth)
-                    best.Enqueue(d, d);
-                else
-                    best.EnqueueDequeue(d, d);
-            }
-            candidates = [.. best.UnorderedItems.Select(item => item.Element)];
+            var (proximity, phrases) = BitOperations.PopCount((uint)candidate.Mask) < 2
+                ? (0d, 0)
+                : SearchMeasures.ClosestPair(owner.index.Terms(candidate.Document, 0), query, candidate.Mask, occurrences);
+            features.Coverage = queryWeight > 0 ? SearchMeasures.Weight(candidate.Mask, idf) / queryWeight : 0;
+            features.Proximity = proximity;
+            features.Phrases = 1 - Math.Pow(0.5, phrases);
+            features.Recency = SearchMeasures.Recency((owner.newest - owner.documents[candidate.Document].UpdatedAtUtc).TotalDays,
+                Profile.Scoring.RecencyHalfLifeDays);
+            return true;
         }
 
-        // Stage 2: coverage, proximity, phrases and recency.
-        var score = scratch.Score;
-        var occurrences = new List<int>();
-        foreach (var d in candidates)
+        /// <summary>More matched query terms, then the newer fact, then the fact ID.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        public int Tie(in SearchCandidate left, in SearchCandidate right)
         {
-            token.ThrowIfCancellationRequested();
-            var (proximity, phrases) = matched[d] < 2 ? (0d, 0) : Closeness(hits, d, occurrences);
-            var coverage = queryWeight > 0 ? covered[d] / queryWeight : 0;
-            var age = Math.Max(0, (newest - documents[d].UpdatedAtUtc).TotalDays);
-            var recency = Math.Pow(0.5, age / RecencyHalfLifeDays);
-            score[d] = bm25[d] *
-                (1 + CoverageWeight * coverage) *
-                (1 + ProximityWeight * proximity) *
-                (1 + PhraseWeight * (1 - Math.Pow(0.5, phrases))) *
-                (1 + RecencyWeight * recency);
+            var order = BitOperations.PopCount((uint)right.Mask).CompareTo(BitOperations.PopCount((uint)left.Mask));
+            Document a = owner.documents[left.Document], b = owner.documents[right.Document];
+            if (order == 0)
+                order = b.UpdatedAtUtc.CompareTo(a.UpdatedAtUtc);
+            return order != 0 ? order : a.Id.CompareTo(b.Id);
         }
 
-        // Greedy selection: a near-duplicate of a fact already chosen (of the same person) counts a quarter. Scores only go down,
-        // so the chosen scores never rise and the result is the same at any length.
-        var remaining = candidates;
-        var penalized = new HashSet<int>();
-        var results = new List<LexicalMatch>(Math.Min(maximumResults, remaining.Count));
-        while (results.Count < maximumResults && remaining.Count > 0)
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        public double Similarity(int left, int right)
         {
-            token.ThrowIfCancellationRequested();
-            var best = 0;
-            for (var i = 1; i < remaining.Count; i++)
-                if (Compare(remaining[i], score[remaining[i]], remaining[best], score[remaining[best]], matched) < 0)
-                    best = i;
-            var chosen = remaining[best];
-            remaining.RemoveAt(best);
-            results.Add(new(documents[chosen].Id, score[chosen], matched[chosen]));
-            foreach (var other in remaining)
-                if (!penalized.Contains(other) && NearDuplicates(documents[chosen], documents[other]))
-                {
-                    penalized.Add(other);
-                    score[other] *= DuplicatePenalty;
-                }
+            Document a = owner.documents[left], b = owner.documents[right];
+            if (a.VoiceId is not null && b.VoiceId is not null && !string.Equals(a.VoiceId, b.VoiceId, StringComparison.Ordinal))
+                return 0;
+            return a.Sketch.Similarity(b.Sketch, Profile.Diversity.NearDuplicate);
         }
-        return [.. results];
-    }
-
-    /// <summary>Score first, then more matched query terms, then the newer fact, then the fact ID.</summary>
-    private int Compare(int left, double leftScore, int right, double rightScore, int[] matched)
-    {
-        var order = rightScore.CompareTo(leftScore);
-        if (order == 0)
-            order = matched[right].CompareTo(matched[left]);
-        if (order == 0)
-            order = documents[right].UpdatedAtUtc.CompareTo(documents[left].UpdatedAtUtc);
-        return order != 0 ? order : documents[left].Id.CompareTo(documents[right].Id);
-    }
-
-    /// <summary>How close two different query terms stand in fact <paramref name="document"/> (1 next to each other, 1/n n words
-    /// apart) and how many of the query's word pairs it holds next to each other in the query's order. Reads only the positions
-    /// of the query's terms, so a long fact costs no more than a short one.</summary>
-    private static (double Proximity, int Phrases) Closeness(Hits hits, int document, List<int> occurrences)
-    {
-        // Each occurrence is position * QueryStride + query index: sorting the numbers sorts by position.
-        const int QueryStride = 32;
-        occurrences.Clear();
-        for (var hit = hits.First(document); hit >= 0; hit = hits.Next(hit))
-        {
-            var query = hits.Query(hit);
-            foreach (var position in hits.Positions(hit))
-                occurrences.Add(position * QueryStride + query);
-        }
-        var sorted = CollectionsMarshal.AsSpan(occurrences);
-        sorted.Sort();
-        var gap = int.MaxValue;
-        var phrases = 0;
-        for (var i = 1; i < sorted.Length; i++)
-        {
-            int previousQuery = sorted[i - 1] % QueryStride, query = sorted[i] % QueryStride;
-            if (previousQuery == query)
-                continue;
-            var distance = sorted[i] / QueryStride - sorted[i - 1] / QueryStride;
-            gap = Math.Min(gap, distance);
-            if (distance == 1 && query == previousQuery + 1)
-                phrases++;
-        }
-        return (gap == int.MaxValue ? 0 : 1d / gap, phrases);
-    }
-
-    /// <summary>One query's hits, a linked list for each fact: which query term, at which positions (in the scratch arrays).</summary>
-    private sealed class Hits(Scratch scratch)
-    {
-        private readonly int[] first = scratch.First;
-        private readonly int[] next = scratch.Next;
-        private readonly int[] queries = scratch.Queries;
-        private readonly int[][] positions = scratch.Positions;
-
-        internal void Add(int document, int query, int[] at)
-        {
-            var count = scratch.HitCount++;
-            next[count] = first[document];
-            queries[count] = query;
-            positions[count] = at;
-            first[document] = count;
-        }
-
-        internal int First(int document) => first[document];
-        internal int Next(int hit) => next[hit];
-        internal int Query(int hit) => queries[hit];
-        internal int[] Positions(int hit) => positions[hit];
-    }
-
-    /// <summary>One thread's working arrays for <see cref="Search"/>, at least as long as the largest index searched on it. Between
-    /// searches every entry is zero (<see cref="First"/>: -1), because a search clears the entries it touched.</summary>
-    private sealed class Scratch
-    {
-        [ThreadStatic] private static Scratch? current;
-
-        internal double[] Bm25 = [];
-        internal double[] Covered = [];
-        internal double[] Score = [];
-        internal int[] Matched = [];
-        internal int[] First = [];
-        internal int[] Next = [];
-        internal int[] Queries = [];
-        internal int[][] Positions = [];
-        internal readonly List<int> Touched = [];
-        internal int HitCount;
-
-        internal static Scratch For(int documents, int hits)
-        {
-            var scratch = current ??= new();
-            if (scratch.Bm25.Length < documents)
-            {
-                var length = Math.Max(documents, Math.Min(2 * scratch.Bm25.Length, Array.MaxLength));
-                scratch.Bm25 = new double[length];
-                scratch.Covered = new double[length];
-                scratch.Score = new double[length];
-                scratch.Matched = new int[length];
-                scratch.First = new int[length];
-                Array.Fill(scratch.First, -1);
-            }
-            if (scratch.Next.Length < hits)
-            {
-                var length = Math.Max(hits, Math.Min(2 * scratch.Next.Length, Array.MaxLength));
-                scratch.Next = new int[length];
-                scratch.Queries = new int[length];
-                scratch.Positions = new int[length][];
-            }
-            return scratch;
-        }
-
-        internal void Clear()
-        {
-            foreach (var d in Touched)
-            {
-                Bm25[d] = 0;
-                Covered[d] = 0;
-                Score[d] = 0;
-                Matched[d] = 0;
-                First[d] = -1;
-            }
-            Touched.Clear();
-            // The positions belong to an index; don't keep it alive.
-            Array.Clear(Positions, 0, HitCount);
-            HitCount = 0;
-        }
-    }
-
-    private static bool NearDuplicates(Document left, Document right)
-    {
-        if (left.VoiceId is not null && right.VoiceId is not null && !string.Equals(left.VoiceId, right.VoiceId, StringComparison.Ordinal))
-            return false;
-        int a = left.Words, b = right.Words;
-        if (a == 0 || b == 0 || Math.Min(a, b) < DuplicateSimilarity * Math.Max(a, b))
-            return false;
-        // Jaccard of at least 0.8 leaves at most 20% of the two facts' words in only one of them.
-        var differing = 0;
-        for (var w = 0; w < SignatureWords; w++)
-            differing += BitOperations.PopCount(left.Signature[w] ^ right.Signature[w]);
-        if (differing > (1 - DuplicateSimilarity) * (a + b))
-            return false;
-        // Jaccard similarity from the smallest hashes of the union (exact when both facts fit in the sketch).
-        int i = 0, j = 0, taken = 0, shared = 0;
-        while (taken < SketchSize && (i < left.Sketch.Length || j < right.Sketch.Length))
-        {
-            if (j == right.Sketch.Length || (i < left.Sketch.Length && left.Sketch[i] < right.Sketch[j]))
-                i++;
-            else if (i == left.Sketch.Length || right.Sketch[j] < left.Sketch[i])
-                j++;
-            else
-            {
-                shared++;
-                i++;
-                j++;
-            }
-            taken++;
-        }
-        return shared >= DuplicateSimilarity * taken;
-    }
-
-    /// <summary>FNV-1a with a final mix: the same for a word in every process (unlike string.GetHashCode).</summary>
-    private static ulong Hash(string term)
-    {
-        var hash = 14695981039346656037UL;
-        foreach (var c in term)
-        {
-            hash ^= c;
-            hash *= 1099511628211UL;
-        }
-        hash ^= hash >> 33;
-        hash *= 0xff51afd7ed558ccdUL;
-        hash ^= hash >> 33;
-        hash *= 0xc4ceb9fe1a85ec53UL;
-        return hash ^ (hash >> 33);
-    }
-    /// <summary>The runs of letters and digits of <paramref name="text"/> in lower case, as <see cref="SearchTerms"/> reads words.</summary>
-    private static IEnumerable<string> Words(string text)
-    {
-        var word = new StringBuilder();
-        foreach (var c in text)
-        {
-            if (char.IsLetterOrDigit(c) || char.IsSurrogate(c))
-            {
-                word.Append(char.ToLowerInvariant(c));
-                continue;
-            }
-            if (word.Length > 0)
-                yield return word.ToString();
-            word.Clear();
-        }
-        if (word.Length > 0)
-            yield return word.ToString();
     }
 }
