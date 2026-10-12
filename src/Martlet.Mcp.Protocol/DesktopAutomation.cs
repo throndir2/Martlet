@@ -877,6 +877,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "Not saved yet: <why>"), in Personality (the Companion window), the Character window and Lorebooks; and the Character
         // window's character status ("Character is showing...", "Character hidden. Voice continues.").
         "CompanionSaveState", "AvatarSaveState", "LorebookSaveState", "AvatarStatus",
+        // Lorebooks › Try it: which entries a sample message would trigger, by title, lorebook and keyword, and what the budget
+        // left out (never an entry's text).
+        "LorebookTestResult",
         // Personality › Where the voice pauses: how short an ending is said with the words before it ("Up to 2 words"). Its
         // check boxes report their state as checkedState; changing any of them saves, so it needs --allow-ui-effects.
         "CompanionShortEnding",

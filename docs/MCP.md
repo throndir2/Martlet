@@ -4464,7 +4464,9 @@ the *Where the voice pauses* check boxes
 `CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
 `AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields
 (among them the scan setting `LorebookWordForms`, *Match other word forms*, and
-an entry's three-state `LorebookEntryWordForms`, *Other word forms*),
+an entry's three-state `LorebookEntryWordForms`, *Other word forms*; *Try it*'s
+`LorebookTestResult` reads which entries a sample message would add, by title,
+lorebook and keyword, never their text),
 `MemoryEnable` and Memory's fact fields: `MemoryFactContent`, `MemoryPerson`
 (*Belongs to*), `MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
 choosing in `MemoryPersonFilter` (it only filters the list) still goes through
