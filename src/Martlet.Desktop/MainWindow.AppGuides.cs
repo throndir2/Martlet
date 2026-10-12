@@ -29,7 +29,11 @@ public partial class MainWindow
         if (store is null) return;
         var web = new WebAccess();
         appGuides = new AppGuideService(new FileAppGuideStore(Path.Combine(store.DataDirectory, "guides")), new WebGuideBuilder(web, web), web);
-        if (conversation is not null) conversation.Guides = appGuides;
+        if (conversation is not null)
+        {
+            conversation.Guides = appGuides;
+            conversation.StartGuideResearch(appGuides, web);
+        }
         appGuideWatch = new AppGuideWatch(appGuides);
         appGuideWatch.OfferDue += offer => Dispatcher.BeginInvoke(() => OfferAppGuide(offer));
         appGuides.Changed += () => Dispatcher.BeginInvoke(AppGuidesChanged);
@@ -55,6 +59,7 @@ public partial class MainWindow
 
     private void StopAppGuides()
     {
+        conversation?.StopGuideResearch();
         appGuideWatch?.Dispose();
         appGuides?.Dispose();
     }

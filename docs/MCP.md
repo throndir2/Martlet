@@ -6558,7 +6558,7 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   (`afterIdleTime`: only the app in front, `keptWhenIdle`) and 0 when App
   guides stop watching (`afterWatchStopped`). `idleMinutes` and
   `otherIndexesAtMost` are the limits.
-- `tools`: `read_up_on`, `search_guide` and `skip_guide` exactly as replies get
+- `tools`: `read_up_on`, `search_guide`, `skip_guide` and `update_guide_brief` exactly as replies get
   them, their arguments (sites made into `https://` links, others left out),
   `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, no
   time limit, 4 an hour, its result), a second job refused as `busy` and the
@@ -6567,11 +6567,24 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   sections (`sections`) and on a whole-wiki-size guide of 25,000 sections
   (`wholeWiki`): `indexBuiltOffThePathMs`, and the notes step's median and worst
   time of 200 runs for a message about the game in front, an unrelated message
-  and App guides off; `everyRequestWhileOn` is the bytes the three tool
+  and App guides off; `everyRequestWhileOn` is the bytes the four tool
   definitions and the prompt add to every request (the same every time, so
   prompt caches keep them). On this PC the notes step took about 0.2 ms
   (median) on 2,000 sections, about 0.6 ms on 25,000 sections and nothing
   while off.
+- `research`: [the brief and area research](APP_GUIDES.md#the-brief) with a
+  stand-in Thinking pool member that gives canned answers (NOT a model):
+  `briefAfterRead` (a brief is written after a read), `briefWithMessage` (it
+  goes with the first message and is not `sentAgain`), `screen` (an area the
+  guide covers is not read on the web; an area it doesn't cover is searched
+  with `searches` *wiki*, *reddit* and *guide*, its page is read and sections
+  are added; `redditSnippetKept` is true and `redditOrVideoPageRead` false;
+  a screen with no area gives none), `readAgain` (the research sections stay
+  and a new brief is written), `updateGuideBrief` (the tool's result, bad
+  arguments, the same area within the hour, and no pool member: refused),
+  `saved` (the brief and areas in the library), `thinkingRequests` (each kind
+  with its count and largest input), `sameInstructionsEveryTime` and `log`
+  (counts and times only; no area names or links).
 
 Each part has an `ok`. Temporary folder, deleted afterwards; reads no
 credentials.
@@ -6583,8 +6596,11 @@ disposable one): `folder` (`<data folder>\guides`), whether it `exists`, whether
 both on), `on`,
 `readUpWhenStarted` (kept as `askWhenStarted` in the file), how many `guides`, `pages` and `bytes`, and each app on the
 list (`apps`): `key`, `name`, `programs`, `sites` (the start pages the owner
-gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem` and whether
-its guide `file` is there. Never a guide's text. Read-only.
+gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem`, whether
+its guide `file` is there, whether it has a `brief` with `briefAt` and
+`briefCharacters`, how many `areas` were looked into and `researchedAreas`
+found on the web, `researchedSections` and `lastAreaAt`. Never a guide's or
+brief's text, nor area names. Read-only.
 
 `songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
 (optional absolute `dataDirectory`, default the current user's):

@@ -245,6 +245,10 @@ public sealed class FileAppGuideStore : IAppGuideStore
                 return $"the app \"{app.Key}\" has too many or too long programs or sites";
             if (app.Problem is { Length: > 1_000 }) return $"the app \"{app.Key}\" has a too long problem";
             if (app.Pages < 0 || app.Chunks < 0 || app.Bytes < 0) return $"the app \"{app.Key}\" has negative counts";
+            if (app.Brief is { Length: > GuideBrief.MaximumCharacters }) return $"the app \"{app.Key}\" has a too long brief";
+            if (app.Areas is null || app.Areas.Count > GuideAreaResearch.MaximumAreas ||
+                app.Areas.Any(a => a is null || string.IsNullOrWhiteSpace(a.Name) || a.Name.Length > GuideAreaResearch.MaximumAreaCharacters || a.Sections < 0))
+                return $"the app \"{app.Key}\" has too many or bad researched areas";
         }
         return null;
     }
