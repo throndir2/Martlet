@@ -224,12 +224,20 @@ public partial class MainWindow
             Note("Add a game or app Martlet should know: its name, the program names Windows shows for it (if they differ, " +
                 "separated by commas) and the wiki or help pages to read (optional; Martlet finds its wiki itself otherwise).",
                 new Thickness(0, 0, 0, 4)),
-            Labeled("Name", AppGuideAddBox(ref appGuideAddName, "AppGuideAddName", "App name", "Stardew Valley")),
-            Labeled("Program names", AppGuideAddBox(ref appGuideAddPrograms, "AppGuideAddPrograms", "Program names (optional)",
+            Field("Name", AppGuideAddBox(ref appGuideAddName, "AppGuideAddName", "App name", "Stardew Valley")),
+            Field("Program names", AppGuideAddBox(ref appGuideAddPrograms, "AppGuideAddPrograms", "Program names (optional)",
                 "Optional, such as StardewValley")),
-            Labeled("Wiki pages", AppGuideAddBox(ref appGuideAddSites, "AppGuideAddSites", "Wiki addresses (optional)",
+            Field("Wiki pages", AppGuideAddBox(ref appGuideAddSites, "AppGuideAddSites", "Wiki addresses (optional)",
                 "Optional, such as stardewvalleywiki.com")),
             Row(addRead, add));
+
+        // The labels line up with the card's heading, text and buttons, not indented like an option's details.
+        static DockPanel Field(string label, UIElement box)
+        {
+            var row = Labeled(label, box);
+            row.Margin = new Thickness(0, 6, 0, 0);
+            return row;
+        }
     }
 
     /// <summary>An Add an app box with its hint, made the first time and taken out of the page's last drawing after that, so it keeps
@@ -242,7 +250,7 @@ public partial class MainWindow
             kept = new TextBox { MinWidth = 260 };
             AutomationProperties.SetAutomationId(kept, id);
             AutomationProperties.SetName(kept, name);
-            WithHint(kept, hint);
+            WithHint(kept, hint, id + "Hint");
         }
         var field = (Grid)kept.Parent;
         if (field.Parent is Panel drawn) drawn.Children.Remove(field);

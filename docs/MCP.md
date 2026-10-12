@@ -9322,7 +9322,12 @@ text, the caret and the keyboard focus. To check it, `ui_type` a letter into
 `AppGuideAddName`, change a setting with `settings_set` (Martlet reads
 `settings.json` again and draws the page again), then `ui_type` more letters and
 `backspace` without `id`: the box shows the typing and `ui_snapshot` marks it
-`focused`.
+`focused`. While a box is empty, its grey hint (`AppGuideAddNameHint`,
+`AppGuideAddProgramsHint` and `AppGuideAddSitesHint`, Martlet's own fixed
+words) shows; with `layout`, a hint's `bounds` start at the same `x` as the
+`textBounds` of text typed into its box. The box labels line up with the
+card's heading and buttons, so a box's `bounds` start one label column (110
+pixels at 100 % display scale) right of `AppGuideAddRead`'s left edge.
 
 At the end of Companion › Discord, *Martlet in your Discord calls* (see
 [DISCORD.md](DISCORD.md#martlet-in-your-own-calls)) has `DiscordCallOn` (the
