@@ -1528,6 +1528,29 @@ internal sealed partial class RendererWindow : Window
             using var handshake = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             handshake.CancelAfter(TimeSpan.FromSeconds(15));
             var message = await RendererProtocol.ReadAsync(input, handshake.Token);
+            // A model Martlet shows from memory (a VRoid Hub character) comes first, in pieces: it is never on disk.
+            if (message.Kind == "model")
+            {
+                activation = message.Activation;
+                byte[]? model = null;
+                string? modelPath = null;
+                for (var index = 0; ; index++)
+                {
+                    var piece = RendererProtocol.Data<RendererModelPiece>(message);
+                    if (modelPath is not null && piece.Path != modelPath) throw new InvalidDataException("Model pieces name two models.");
+                    modelPath = piece.Path;
+                    model = piece.AddTo(model, index);
+                    await ReplyAsync("ok", new { piece = index });
+                    if (index == piece.Count - 1) break;
+                    handshake.CancelAfter(TimeSpan.FromSeconds(30));
+                    message = await RendererProtocol.ReadAsync(input, handshake.Token);
+                    if (message.Kind != "model" || message.Activation != activation) throw new InvalidDataException("Model pieces stopped part way.");
+                }
+                RemoteCharacterModels.Put(modelPath!, model!);
+                handshake.CancelAfter(TimeSpan.FromSeconds(15));
+                message = await RendererProtocol.ReadAsync(input, handshake.Token);
+                if (message.Activation != activation) throw new InvalidDataException("Private renderer initialization required.");
+            }
             if (message.Kind != "load") throw new InvalidDataException("Private renderer initialization required.");
             activation = message.Activation;
             var load = RendererProtocol.Data<RendererLoad>(message);

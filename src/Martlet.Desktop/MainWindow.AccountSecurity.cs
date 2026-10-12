@@ -214,6 +214,7 @@ public partial class MainWindow
         public Task SignOutAsync(Guid accountId) => main.SignOutAccountAsync(accountId);
         public Task PrepareMergeAsync(Martlet.Avatar.Audio2Face.Remote.HostAccountProof other, CancellationToken token) =>
             Security.PrepareMergeAsync(other, token);
+        public VRoidHubService? VRoidHub => main.vroidHub;
 
         public IReadOnlyList<IAccountMergeStep> MergeSteps =>
         [

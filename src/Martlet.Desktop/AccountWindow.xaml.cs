@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Interop;
@@ -30,10 +31,57 @@ public partial class AccountWindow : ThemedWindow
         Loaded += async (_, _) =>
         {
             Refresh();
+            ShowVRoidHub();
             await ShowPasswordStateAsync();
             await ShowHelloAsync();
             await ShowProviderLoginsAsync();
         };
+    }
+
+    private void ShowVRoidHub()
+    {
+        if (host.VRoidHub is not { } hub)
+        {
+            VRoidHubStateText.Text = "VRoid Hub: not ready yet.";
+            VRoidHubLinkButton.IsEnabled = VRoidHubUnlinkButton.IsEnabled = false;
+            return;
+        }
+        var linked = hub.Tokens() is not null;
+        VRoidHubStateText.Text = "VRoid Hub: " + hub.Status();
+        VRoidHubLinkButton.IsEnabled = VRoidHubService.CanLink && !linked;
+        VRoidHubUnlinkButton.IsEnabled = linked;
+    }
+
+    private async void VRoidHubLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (host.VRoidHub is not { } hub) return;
+        VRoidHubLinkButton.IsEnabled = false;
+        StatusText.Text = "Sign in on VRoid Hub's page in your browser and allow Martlet. Martlet waits up to 5 minutes.";
+        try
+        {
+            var tokens = await hub.LinkAsync(lifetime.Token);
+            StatusText.Text = $"VRoid Hub is linked as {tokens.UserName}.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is Martlet.Avatar.Hosting.VRoidHubException or HttpRequestException or InvalidOperationException or
+            System.Net.Sockets.SocketException)
+        {
+            StatusText.Text = "VRoid Hub wasn't linked: " + error.Message;
+        }
+        finally { ShowVRoidHub(); }
+    }
+
+    private async void VRoidHubUnlink_Click(object sender, RoutedEventArgs e)
+    {
+        if (host.VRoidHub is not { } hub) return;
+        VRoidHubUnlinkButton.IsEnabled = false;
+        try
+        {
+            await hub.UnlinkAsync(lifetime.Token);
+            StatusText.Text = "VRoid Hub is unlinked. VRoid Hub characters can't show on this PC until you link it again.";
+        }
+        catch (OperationCanceledException) { }
+        finally { ShowVRoidHub(); }
     }
 
     private Account? Active => host.Active;

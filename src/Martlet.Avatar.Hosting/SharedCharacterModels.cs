@@ -117,9 +117,29 @@ public static class SharedCharacterModels
     public static async Task<CharacterModel> ImportAsync(string dataDirectory, AvatarRenderer renderer, string modelPath, string name, string by,
         DateTimeOffset now, CancellationToken token)
     {
+        ContractRules.Require(!RemoteCharacterModels.IsRemote(modelPath),
+            "A VRoid Hub character can't join your characters: VRoid Hub doesn't let apps keep its model files.");
         var assets = await LocalAvatarFiles.ReadModelAsync(renderer, modelPath, token);
+        return await ImportAsync(dataDirectory, renderer, assets, renderer == AvatarRenderer.Vrm ? assets[0].Name : Path.GetFileName(modelPath),
+            name, by, now, token);
+    }
+
+    /// <summary>Adds a VRM model downloaded into memory (a free model from Open Source Avatars) to the shared list as
+    /// <paramref name="fileName"/>, like <see cref="ImportAsync(string, AvatarRenderer, string, string, string, DateTimeOffset, CancellationToken)"/>.</summary>
+    public static Task<CharacterModel> ImportVrmAsync(string dataDirectory, string fileName, byte[] bytes, string name, string by,
+        DateTimeOffset now, CancellationToken token)
+    {
+        ContractRules.Require(LocalAvatarFiles.IsSafeModelName(fileName) && fileName.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase),
+            "A VRM model's file name is invalid.");
+        ContractRules.Require(bytes.Length is > 0 and <= LocalAvatarFiles.MaximumVrmBytes,
+            $"The VRM file is larger than Martlet's {CharacterModelLibrary.SizeText(LocalAvatarFiles.MaximumVrmBytes)} limit.");
+        return ImportAsync(dataDirectory, AvatarRenderer.Vrm, [new AvatarAsset(fileName, bytes, "application/octet-stream")], fileName, name, by, now, token);
+    }
+
+    private static async Task<CharacterModel> ImportAsync(string dataDirectory, AvatarRenderer renderer, IReadOnlyList<AvatarAsset> assets, string entry,
+        string name, string by, DateTimeOffset now, CancellationToken token)
+    {
         var files = assets.Select(a => CharacterModelLibrary.File(a.Name, a.Bytes)).ToArray();
-        var entry = renderer == AvatarRenderer.Vrm ? assets[0].Name : Path.GetFileName(modelPath);
         var id = CharacterModelLibrary.ModelId(RendererName(renderer), entry, files);
         await Gate.WaitAsync(token);
         try

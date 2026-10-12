@@ -1581,22 +1581,51 @@ later in the same start don't greet you again.
 on a reply's path):
 
 - the day, the time and the part of the day (morning, afternoon, evening,
-  night or late at night);
+  night or late at night), whether it is the weekend, and a special day many
+  people mark (New Year's Day, Valentine's Day, Halloween, Christmas Eve,
+  Christmas Day, New Year's Eve);
+- your name, only when it looks like a real name (`Greetings.PersonName`). It
+  tries, in order, the name of your own voice on Companion › People, the name
+  of your Martlet account and your Windows login's full name, and uses the
+  first one that passes, by its first name (*Sam Rivera* gives *Sam*). A user
+  name or a handle never passes: digits, `_`, `@` or dots inside a word,
+  all lowercase (*mozar*), all capitals (*SAM*), an upper-case letter inside a
+  word other than after *Mc*, *Mac*, *De* and similar (*DarkLord*), an initial
+  first, or words such as *User*, *Admin*, *Owner* or *Player*. A name in a
+  script without capital letters (Chinese, Japanese, Korean) is used as written;
 - the end of the last conversation on this PC (its last 3 exchanges, how long
-  ago), only while Companion › Memory keeps conversations; messaging-app chats
-  are left out, and an empty record says this may be your first talk;
+  ago) and, when a Telegram or WhatsApp chat with Martlet ended after it, the
+  end of that chat (its last 2 exchanges), only while Companion › Memory keeps
+  conversations; Discord is left out (it is a group), and an empty record says
+  this may be your first talk;
+- the [reminders](#reminders) that came and went while no companion PC ran
+  (more than 12 hours late, so they were let go) since Martlet last warmed up
+  here, at most 3;
 - the [reminders](#reminders) due in the next 12 hours (at most 5); due ones
   are said by the reminders themselves;
+- a Martlet update since it last warmed up on this PC (*updated from 0.70.1 to
+  0.71.0*). `greeting.json` in the data folder keeps the version and the time
+  of the last warm-up (this PC's own, never shared); every warm-up replaces it,
+  whether the greeting is on or not;
 - the apps open on this PC: each program with a window on the taskbar, by its
   name (*Google Chrome*, *Discord*), the one in front first, at most 8, never
   window titles and never Martlet itself.
 
+**In character, or not at all.** The character greets you only the way it
+would. The *Greeting* prompt asks it to greet in its own voice, mood and
+manner; a shy, cold, grumpy or aloof character greets the way it really would.
+It calls you by name only if it would, and it brings up at most one or two
+facts, only ones it would care about. A character that wouldn't greet you at
+all answers `[pass]` and says nothing: like every reply Martlet starts on its
+own (finished work, a reminder, a check-in, a reaction to a touch), the
+greeting may be only the no-reply marker, which is never shown or spoken.
+
 **How it is said.** The greeting is a notice in the conversation, like a due
 reminder (`Greetings.Kind`, job `greeting-1`): Martlet brings it up on its own
-as soon as it is free, with Companion › Prompts › *Greeting* (one or two short
-sentences in character, fit to the time of day, at most one or two of the
-facts). When you talk first, it goes in the notes of your message with
-*Greeting, with your message*. Martlet treats it like a check-in's notice
+as soon as it is free, with Companion › Prompts › *Greeting*. When you talk
+first, it goes in the notes of your message with *Greeting, with your
+message*, and the reply answers you first and greets you only if the
+character would. Martlet treats it like a check-in's notice
 (`UnpromptedSpeech`): it waits while you talk and is let go after waiting 10
 minutes. It
 shows in the talk window's task list as *Greeting*, and the reply stays in the
@@ -1606,15 +1635,19 @@ latency to it; talking over the greeting stops it.
 
 **Seeing it.** Settings' `GreetingStatus` line says whether Martlet greets you,
 did (*Martlet warmed up at 5:08 PM and greeted you. It knew the time of day,
-your last conversation and 3 open apps.*) or why it didn't. The desktop log
-records *Greeting: Martlet warmed up; greeting-1 waits...* with counts only;
-neither ever names an app, a reminder or what was said.
+your name, your last conversation, the update and 3 open apps.*), stayed quiet
+(*... and stayed quiet: your character wouldn't greet you. ...*) or why it
+didn't. The desktop log records *Greeting: Martlet warmed up; greeting-1
+waits...* with counts only; neither ever names you, an app, a reminder or what
+was said.
 
-Checked locally: the facts, the counts-only line and the notice's wording with
-`GreetingsTests`, and MCP `greeting_check` (a real conversation record in a
-temporary folder, reminders, apps, the message on its own and with your first
-message, said once, let go when too old). A real model saying the greeting is
-**NOT RUN**.
+Checked locally: the facts, the name rule, the counts-only line and the
+notice's wording with `GreetingsTests`, a greeting answered with `[pass]`
+shown and kept quiet in the talk window (`ACharacterThatWouldNotGreetStaysQuiet`),
+and MCP `greeting_check` (a real conversation record in a temporary folder
+with a newer Telegram chat, names, reminders, an update, a special day, apps,
+the message on its own and with your first message, said once, let go when too
+old). A real model greeting in character is **NOT RUN**.
 
 ## Check-ins
 

@@ -156,11 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.71.0
+## 🆕 What's new in 0.72.0
 
-- 👋 **Martlet says hello when it starts**: once it has warmed up, Martlet greets you on its own, in character and fit to the time of day. Turn it off in Settings › Startup and closing.
-- 🌐 **Your laptop reaches your hosts through Tailscale**: away from home, a laptop now connects to your hosts at their Tailscale addresses, with the same pairing. At home it still uses the home address first.
-- 🔁 **Hosts follow Tailscale by themselves**: a Linux or Mac host listens on its Tailscale address even when Tailscale starts late or gets a new address. A Windows host opens its port on all of its addresses once you set outside addresses in *Outside access*.
+- 🔍 **Find a character**: name a character in Companion › Character › *Find a character...*. Martlet writes its personality and finds 3D models of it on VRoid Hub and Open Source Avatars, with each creator's license, and one click makes the character.
+- 🔗 **Link VRoid Hub**: link your pixiv account on the Account page to use your own VRoid Hub characters and the ones their creators let anyone use.
+- 🧭 **When nothing is found**: Find a character gives you web pages that may have a model or voice recordings of the character, and you can add what you download.
+- 🧍 **VRM 0.x models**: Martlet now shows VRM 0.x characters, like most VRoid Studio and VRoid Hub models, and VRM models with JPEG textures.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

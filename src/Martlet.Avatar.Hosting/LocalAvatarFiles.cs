@@ -147,11 +147,18 @@ public static class LocalAvatarFiles
     public static async Task<IReadOnlyList<AvatarAsset>> ReadModelAsync(AvatarRenderer renderer, string modelPath, CancellationToken token)
     {
         var assets = new List<AvatarAsset>();
+        if (RemoteCharacterModels.IsRemote(modelPath))
+        {
+            ContractRules.Require(renderer == AvatarRenderer.Vrm, "A VRoid Hub character is a VRM model.");
+            assets.Add(new(RemoteCharacterModels.FileName(modelPath), await RemoteCharacterModels.ReadAsync(modelPath, token),
+                "application/octet-stream"));
+            return assets;
+        }
         var modelFile = Path.GetFileName(modelPath);
         if (renderer == AvatarRenderer.Vrm)
         {
             ContractRules.Require(Path.GetExtension(modelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
-                "Select a local VRM1 .vrm model.");
+                "Select a local VRM .vrm model.");
             CheckAncestors(modelPath);
             ContractRules.Require(!File.Exists(modelPath) || new FileInfo(modelPath).Length <= MaximumVrmBytes,
                 $"The VRM file is larger than Martlet's {CharacterModelLibrary.SizeText(MaximumVrmBytes)} limit.");

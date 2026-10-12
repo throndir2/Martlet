@@ -3364,11 +3364,30 @@ public sealed class LiveConversationTests
             await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
             Assert.Equal(1, fixture.Llm.Calls);
             var body = Encoding.UTF8.GetString(fixture.Llm.Body);
-            Assert.Contains("and is ready to talk. This is your first moment together since then.", body);
+            Assert.Contains("you are ready to talk. This is your first moment together since then.", body);
             Assert.Contains("Apps open on this PC: Steam (in front).", body);
             Assert.False(window.Fresh);
+            Assert.False(window.StayedQuiet(job));
             Click(window, "TasksChip");
             await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet brought it up.");
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task ACharacterThatWouldNotGreetStaysQuiet() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("[pass]");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            var job = window.Greet(Greetings.Facts(new GreetingFacts { Now = new(2026, 10, 11, 17, 8, 0, TimeSpan.Zero), Zone = TimeZoneInfo.Utc }))!;
+            await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
+            Assert.Equal(1, fixture.Llm.Calls);
+            Assert.True(window.StayedQuiet(job));
+            Assert.DoesNotContain(window.Messages, message => message.Text.Contains("pass", StringComparison.OrdinalIgnoreCase));
         }
         finally { window.Close(); }
     });
