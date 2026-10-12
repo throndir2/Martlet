@@ -471,6 +471,10 @@ cloud providers and servers on your network (an NVIDIA Build or OpenRouter
 model, for example), with their API keys and their choices, are the same on all
 your computers ([shared setting `thinking-pool`](CLUSTER.md#one-martlet-on-every-computer)):
 add one on any computer and the others get it at their next settings sync.
+The pool-wide choices (*Backup for slow replies* with its wait, *Busy pool*
+and *Use the conversation's model when empty*) are also the same on all your
+computers ([shared setting `thinking-pool-choices`](CLUSTER.md#one-martlet-on-every-computer)).
+*Runs on* stays with each computer, because it can name this PC's own models.
 Paired computers join each PC's pool by themselves, and models in Ollama on
 this PC stay this PC's own. It replaces the older *Deep thinking*
 places. The live conversation keeps its own Thinking route and prompt cache;

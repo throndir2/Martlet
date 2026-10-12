@@ -25,6 +25,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- Companion › Thinking pool's **Backup for slow replies** (and its wait) and **Busy pool** choices are now the same on all your computers too, so a PC you set up later gets them along with the cloud models and their API keys. *Runs on* stays each PC's own. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - *Measure the face* no longer accepts a vision model that copies the example boxes instead of measuring, which put the eyes, cheeks and mouth in the wrong place. A measurement like that is dropped and done again. The Eyes page now names each numbered box, and *Open the pictures and answers* shows exactly what Martlet asked and what the model answered. ([#813](https://github.com/throndir2/Martlet/pull/813))
 - A computer you add to your network with your approval now signs in to the household owner's account and uses its settings, and folds the account it made before it joined into yours. Hosts no longer refuse the owner's account (*Refused 1 account entry*) after another computer changed it. ([#811](https://github.com/throndir2/Martlet/pull/811))
 - **Martlet sings when its Thinking model runs on one of your computers**: ask it for a song and it says it'll write one, makes it in the background and tells you when it's ready, then sings it when you say yes. Before, a Thinking model on a paired computer had no way to start a song. ([#806](https://github.com/throndir2/Martlet/pull/806))
