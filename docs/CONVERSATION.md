@@ -2321,6 +2321,22 @@ other own tools (`think_longer` and `cancel_thinking` while Deep thinking can
 think), with the *Singing* prompt (Companion › Prompts), so the start of every
 request stays the same. Without singing set up, requests are exactly as before.
 
+**Singing without tools.** Where the Thinking route does no function calling (a
+model on a paired computer through its gateway, or a model that rejected tools),
+replies sing through control tags in place of the three tools, with the
+*Singing without tools* prompt (Companion › Prompts). The reply says in a few
+words that it will write the song and ends with `[sing: what it's about]`; it
+writes `[play_song: ID]` or `[play_song: ID from chorus]` once the user says yes
+to a ready song, and `[stop_singing]` to stop. The tags are never shown or
+spoken (`SongTags`, offered with the other control tags). Martlet does what they
+ask once the reply is done, exactly as the tools would, so the time to the first
+word doesn't change. The conversation keeps the tags after the reply's words, so
+later replies see that a song was started. A song that can't start (no Deep
+thinking to write the words, busy, the hourly limit) is brought up by Martlet on
+its own. The mode depends only on settings and on whether the model rejected
+tools, so the start of every request stays the same. MCP's `songs_status` shows
+it under `withoutTools`.
+
 **`sing_song(about, lyrics?, style?, duration?)`** starts a `song` job (one at a
 time, 4 an hour, 15 minutes at most; `Offer`, *Making a song*) and returns at
 once; the result tells Martlet to tell the user now if it hadn't. Without

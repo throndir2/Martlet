@@ -6564,7 +6564,13 @@ three `tools` exactly as the Thinking model gets them, the filled Singing
 `prompt` and `afterReply` (the Songs, pictures and creations
 [check-in tool set](CONVERSATION.md#check-in-tool-sets): its `set`, its
 `tools`, the reply tools it `replaces` and the `replyGuidance` line a reply gets
-in their place). Read-only.
+in their place) and `withoutTools` (singing through reply tags where the
+Thinking route carries no tools: the Thinking `routeType`, whether the route
+`routeCarriesTools`, whether the model `toolsRejected` them, whether replies
+`usesTags`, the three `tags`, the filled *Singing without tools* `prompt` and a
+`sample` reply run through the speech filter: what is `shown` and `spoken`, the
+`tags` it found, `tagsHidden`, the tool `calls` they stand for with their
+arguments and what the conversation `kept`). Read-only.
 
 `song_playback_check` runs the production playback (`SongTransport`,
 `SongMixer`, `SongPlayer` pumping a fixture output that plays ten times faster
