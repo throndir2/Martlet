@@ -664,7 +664,7 @@ public partial class HostsWindow : ThemedWindow
         return host;
     }
 
-    private static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, Audio2FaceHostPairing pairing,
+    internal static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, Audio2FaceHostPairing pairing,
         string secret, HostSetupMethod method, string? ssh, string? sshHostKey, CancellationToken token,
         IReadOnlyList<string>? outsideAddresses = null, string? access = null, string? signedInAs = null)
     {
@@ -854,6 +854,14 @@ public partial class HostsWindow : ThemedWindow
             var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null, outsideAddresses: outside);
             try { await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
             catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }
+        }, acceptShareLink: async text =>
+        {
+            // A friend's share link: the main window signs in to every host it names; this wizard closes.
+            if (Application.Current.MainWindow is MainWindow main && !ReferenceEquals(main, this))
+            {
+                Close();
+                await main.AcceptShareLinkAsync(text);
+            }
         }) { Owner = this }.ShowDialog();
     }
 

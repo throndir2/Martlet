@@ -264,6 +264,14 @@ internal static class SignInLab
         }, token);
 
         var invite = new NetworkInvite { HostId = host.HostId, SpkiFingerprint = host.Fingerprint, Origin = host.Origin, Label = "Ana's Martlet" }.Write();
+        // The owner also shares all of their hosts with a share link (docs/NETWORK.md, "Sharing with a link"): the desktop can
+        // accept it instead of signing in at the provider.
+        var shareLink = ShareLink.Create([NetworkInvite.Parse(invite)], host.Server.NetworkState.NetworkId, "Lab owner", "Ana");
+        await owner.ChangeAsync(host.HostId, new JsonObject
+        {
+            ["action"] = "share-link", ["id"] = shareLink.Id, ["label"] = "Ana", ["verifier"] = ShareLink.Verifier(shareLink.Id, shareLink.Secret)
+        }, token);
+        var link = shareLink.Url();
         string? desktopDevice = null;
         if (signInDesktop)
         {
@@ -298,7 +306,7 @@ internal static class SignInLab
                 }
             }), token);
         }
-        Console.WriteLine(JsonSerializer.Serialize(new { ready = true, mode = "friend", hostId = host.HostId, invite, desktop = desktopDevice }));
+        Console.WriteLine(JsonSerializer.Serialize(new { ready = true, mode = "friend", hostId = host.HostId, invite, shareLink = link, desktop = desktopDevice }));
         var events = new List<string>();
         var browsePage = Path.Combine(browserFolder, BrowserFile);
         var asked = false;
@@ -327,11 +335,20 @@ internal static class SignInLab
                 }
                 catch (Exception error) when (error is not OperationCanceledException) { events.Add("owner sync failed: " + error.Message); }
                 var friends = host.Server.Credentials.PairedDevices().Where(d => d.Access == GatewayAccess.Friend).ToArray();
+                var linkComputers = 0;
+                try
+                {
+                    using var saved = JsonDocument.Parse(host.SignInBytes ?? "{}"u8.ToArray());
+                    linkComputers = saved.RootElement.TryGetProperty("enrolled", out var enrolled)
+                        ? enrolled.EnumerateArray().Count(e => e.TryGetProperty("provider", out var p) && p.GetString() == "link") : 0;
+                }
+                catch (JsonException) { }
                 var status = new
                 {
-                    ready = true, mode = "friend", hostId = host.HostId, origin = host.Origin, invite, network = host.Server.NetworkState.State,
+                    ready = true, mode = "friend", hostId = host.HostId, origin = host.Origin, invite, shareLink = link, network = host.Server.NetworkState.State,
                     ownersNetwork = host.Server.NetworkState.NetworkId,
                     desktopSignedInAsFriend = friends.Length > 0,
+                    signedInWithShareLink = linkComputers,
                     friendComputers = friends.Select(d => new { device = d.DeviceId, name = d.DisplayName, lastSeen = d.LastSeen }).ToArray(),
                     ownersRoster = owner.State.Roster?.ActiveDesktops.Select(d => d.Id).ToArray() ?? [],
                     askedToJoin = asked,

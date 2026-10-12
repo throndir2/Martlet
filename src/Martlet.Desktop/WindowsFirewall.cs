@@ -68,6 +68,53 @@ internal static class WindowsFirewall
 
     internal static string Encoded(string script) => Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
 
+    /// <summary>The rule that lets connections from outside your home network reach the gateway port (any remote address,
+    /// private and domain networks), needed once the router forwards a port to this PC (docs/NETWORK.md, "Opening a port on
+    /// your router"). The usual rule above lets only your local network in.</summary>
+    internal const string OutsideRuleName = "Martlet-Host-Gateway-Outside";
+
+    internal static string OutsideScript(bool add, int port)
+    {
+        var script = new StringBuilder("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';");
+        script.Append($"Remove-NetFirewallRule -Name '{OutsideRuleName}' -ErrorAction SilentlyContinue;");
+        if (add)
+        {
+            script.Append($"New-NetFirewallRule -Name '{OutsideRuleName}' -DisplayName 'Martlet host (from outside your home)' ");
+            script.Append("-Description 'Lets friends and your own computers outside your home reach this PC''s Martlet host through the port your router forwards. Every request still needs a Martlet sign-in. Added by Martlet.' ");
+            script.Append($"-Direction Inbound -Action Allow -Protocol TCP -LocalPort {port} -Profile Private,Domain -RemoteAddress Any | Out-Null;");
+        }
+        return script.ToString();
+    }
+
+    internal static async Task<bool> OutsideRuleExistsAsync(CancellationToken token)
+    {
+        using var process = Process.Start(new ProcessStartInfo("powershell.exe",
+            $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {Encoded($"[bool](Get-NetFirewallRule -Name '{OutsideRuleName}' -ErrorAction SilentlyContinue)")}")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+        }) ?? throw new InvalidOperationException("Could not start Windows PowerShell.");
+        var output = await process.StandardOutput.ReadToEndAsync(token);
+        await process.WaitForExitAsync(token);
+        return output.Trim().EndsWith("True", StringComparison.Ordinal);
+    }
+
+    /// <summary>Adds or removes the outside rule through Windows' administrator prompt (UAC).</summary>
+    internal static async Task<Outcome> ApplyOutsideAsync(bool add, int port, CancellationToken token)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo("powershell.exe",
+                $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {Encoded(OutsideScript(add, port))}")
+            {
+                UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden
+            });
+            if (process is null) return Outcome.Failed;
+            await process.WaitForExitAsync(token);
+            return process.ExitCode == 0 ? Outcome.Applied : Outcome.Failed;
+        }
+        catch (Win32Exception error) when (error.NativeErrorCode == 1223) { return Outcome.Declined; }
+    }
+
     internal static async Task<State> ProbeAsync(string address, CancellationToken token)
     {
         using var process = Process.Start(new ProcessStartInfo("powershell.exe",
