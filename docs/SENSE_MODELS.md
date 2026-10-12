@@ -323,8 +323,9 @@ Thinking instead.
 **Privacy.** Pictures go to the image model only while vision is on and you
 pressed Start watching. Martlet's own windows, password managers and private
 windows are greyed out or skipped, as for every look. The image model is told
-never to copy private details and to say only who or which app a notification
-is from; Thinking is told never to read out private details. Descriptions are
+never to copy private details. For a notification it says who or which app it
+is from and, in a few words, what it is about, or only that it is personal;
+Thinking is told never to read out private details. Descriptions are
 kept in memory only (the newest three), go when the conversation is cleared,
 paused or locked and when watching stops, and never go to logs or status
 files.

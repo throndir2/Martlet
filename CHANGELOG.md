@@ -15,6 +15,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- **Notification heads-ups that know what's going on**: when a notification pops up while Martlet watches your screen, it now reads the whole notification and words its heads-up around it ("Sam wants to know if you're still up for dinner"). If it looks personal or could get someone in trouble, Martlet says nothing about what it says, at most who it's from. ([#808](https://github.com/throndir2/Martlet/pull/808))
+
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))
 - **A greeting that knows you and stays in character**: Martlet's hello when it starts now calls you by your name when your account, your voice on People or Windows has a real name (never a user name or handle). It can also mention a weekend or a holiday, your newer Telegram or WhatsApp chat, a reminder it missed while it wasn't running, or a Martlet update. Your character greets you only the way it would, and one that wouldn't greet you stays quiet. ([#801](https://github.com/throndir2/Martlet/pull/801))
 
