@@ -10,10 +10,10 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- **Find a character**: name a character in Companion › Character › *Find a character...* and Martlet writes its personality with your Thinking model and finds 3D models of it on VRoid Hub and Open Source Avatars. Each look shows its creator, license and every condition of use before you choose it, and one click makes the character and switches to it. ([#796](https://github.com/throndir2/Martlet/pull/796))
-- **Link VRoid Hub**: link your pixiv account on the Account page (*Linked services*) to use your own VRoid Hub characters and the ones their creators let anyone use. Martlet shows them straight from VRoid Hub and never saves the model files, as VRoid Hub asks. ([#796](https://github.com/throndir2/Martlet/pull/796))
-- **When nothing is found**: Find a character gives you web pages that may have a model of the character, and pages with recordings of its voice. Download what you may use, then add it with *Add a model you downloaded* or *Add a voice clip you downloaded*. ([#796](https://github.com/throndir2/Martlet/pull/796))
-- **VRM 0.x models**: Martlet now shows VRM 0.x characters (most VRoid Studio and VRoid Hub models), and VRM models with JPEG textures, not only VRM 1.0. ([#796](https://github.com/throndir2/Martlet/pull/796))
+- **Find a character**: name a character in Companion › Character › *Find a character...* and Martlet writes its personality with your Thinking model and finds 3D models of it on VRoid Hub and Open Source Avatars. Each look shows its creator, license and every condition of use before you choose it, and one click makes the character and switches to it. ([#799](https://github.com/throndir2/Martlet/pull/799))
+- **Link VRoid Hub**: link your pixiv account on the Account page (*Linked services*) to use your own VRoid Hub characters and the ones their creators let anyone use. Martlet shows them straight from VRoid Hub and never saves the model files, as VRoid Hub asks. ([#799](https://github.com/throndir2/Martlet/pull/799))
+- **When nothing is found**: Find a character gives you web pages that may have a model of the character, and pages with recordings of its voice. Download what you may use, then add it with *Add a model you downloaded* or *Add a voice clip you downloaded*. ([#799](https://github.com/throndir2/Martlet/pull/799))
+- **VRM 0.x models**: Martlet now shows VRM 0.x characters (most VRoid Studio and VRoid Hub models), and VRM models with JPEG textures, not only VRM 1.0. ([#799](https://github.com/throndir2/Martlet/pull/799))
 
 ## [0.70.1] - 2026-10-11
 
