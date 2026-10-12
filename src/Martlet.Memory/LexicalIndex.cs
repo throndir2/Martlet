@@ -7,6 +7,13 @@ namespace Martlet.Memory;
 
 internal readonly record struct LexicalMatch(Guid FactId, double Score, int MatchedTerms);
 
+/// <summary>How memory searches its facts on the shared search engine (docs/SEARCH.md), for tools that show it.</summary>
+public static class MemorySearch
+{
+    /// <summary>Memory's search profile: one `content` field, the reranker's weights and the penalty selection.</summary>
+    public static SearchProfile Profile => LexicalIndex.Profile;
+}
+
 /// <summary>The words of a fact or a query as memory compares them: <see cref="SearchTerms"/> (lower case, common English grammar
 /// words left out, light stems so "cats" finds "cat" and "running" finds "runs"), without terms that hold no letter or digit
 /// (emoji).</summary>

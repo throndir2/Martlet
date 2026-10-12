@@ -28,6 +28,9 @@ public static class GuideIndex
 
     internal static LexicalGuideIndex Build(IReadOnlyList<GuideChunk> chunks, IEnumerable<string>? appNames, GuideRanking ranking) =>
         new(chunks ?? throw new ArgumentNullException(nameof(chunks)), appNames, ranking);
+
+    /// <summary>The guide's search profile on the shared search engine (docs/SEARCH.md), for tools that show it.</summary>
+    public static SearchProfile Profile => GuideRanking.Default.Search;
 }
 
 /// <summary>How a guide is searched, tuned on the evaluation fixture (tests\Martlet.Conversation.Tests\Fixtures): the search

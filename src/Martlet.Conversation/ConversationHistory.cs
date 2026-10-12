@@ -385,6 +385,12 @@ public sealed partial class ConversationHistory
     /// <summary>The most exchanges <see cref="Candidates"/> returns for ranking.</summary>
     internal const int MaximumCandidates = 200;
 
+    /// <summary>How a message's automatic recall ranks past exchanges on the shared search engine (docs/SEARCH.md).</summary>
+    public static SearchProfile RecallProfile => PastConversationRanking.Recalled;
+
+    /// <summary>How a search_conversations call ranks past exchanges on the shared search engine (docs/SEARCH.md).</summary>
+    public static SearchProfile FindProfile => PastConversationRanking.Found;
+
     /// <summary>What ranking past exchanges starts from: the exchanges matching at least one of <paramref name="stems"/>
     /// (<see cref="SearchTerms"/> stems, at most <see cref="MaximumQueryTerms"/>) within the optional time window, leaving out the
     /// <paramref name="exclude"/> conversation and those <paramref name="include"/> leaves out, best BM25 score first (at most

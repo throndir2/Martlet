@@ -1738,6 +1738,23 @@ facts, or from `facts` when given (a later fact counts as newer), and
 `query.words` shows the words recall looked for. It never opens the owner's
 memory and contacts nothing.
 
+`search_engine_check` (no arguments) shows and checks the shared
+[search engine](SEARCH.md) that memory, app guides and past conversations use,
+and returns `{passed, failures, steps, profiles, note}`. `profiles` has each
+source's search profile (`memory`, `appGuides`, `pastConversationsRecall`,
+`pastConversationsFind`): `fields` (`name`, `weight`, `lengthNormalization`),
+`k1`, `positions`, `candidates`, `refined`, `scoring` (`combination` and each
+feature's weight, `recencyHalfLifeDays`), `cutoff` and `diversity`. The steps,
+on synthetic documents: each source has a profile; the first stage keeps
+exactly the best candidates, best first, and leaves out what a filter refuses;
+BM25F ranks a title match above a text match; a second field finds a document
+by words it doesn't say (search words); an index without positions grows
+while it is searched; reciprocal rank fusion puts a document both lists have
+first and adds one only the second list has; and the first stage and ranking
+of a query on 100,000 documents (`medianMicroseconds`, `p95Microseconds`;
+passes under 10,000). Each source's own ranking is in `memory_recall_check`,
+`app_guides_check` and `conversation_history_check`. It reads and writes nothing.
+
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in
 `Invoke-MartletMcp.ps1`): `memory` (`on`, `off` or `not chosen`), `preferences`
