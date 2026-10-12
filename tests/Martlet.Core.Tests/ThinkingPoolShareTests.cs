@@ -213,4 +213,69 @@ public sealed class ThinkingPoolShareTests : IDisposable
         Assert.Equal(["endpoint:http://127.0.0.1:11434/v1|qwen3:4b"], ThinkingPoolSettings.Load(lumine.Data).All.Select(m => m.Key));
         Assert.False(lumine.Vault.Has(NvidiaKey));
     }
+
+    [Fact]
+    public async Task A_pool_set_up_before_sharing_existed_reaches_a_pc_that_never_had_one()
+    {
+        // IMOUTO had NVIDIA models in its pool before this Martlet; LUMINE has only its paired computer. Both update.
+        var imouto = new Pc(Path.Combine(root, "imouto"), "desktop-imouto");
+        var lumine = new Pc(Path.Combine(root, "lumine"), "desktop-lumine");
+        var profile = await imouto.ProfileAsync();
+        await lumine.ProfileAsync();
+        var id = Guid.NewGuid();
+        using (var lease = new SecretLease(NvidiaKey)) imouto.Vault.Write(Endpoint(Nvidia, "x").Binding(profile, id), lease);
+        Assert.True(new ThinkingPoolSettings { Members = [Endpoint(Nvidia, "nvidia/nemotron-ultra", id)], BackupThinking = true }.Save(imouto.Data));
+        Assert.True(new ThinkingPoolSettings { Members = [Host("imouto-host")] }.Save(lumine.Data));
+
+        var now = DateTimeOffset.UtcNow.AddMinutes(1);
+        await lumine.Node.SyncAsync([], true, now, CancellationToken.None);
+        var recorded = await imouto.Node.SyncAsync([lumine.Node.Document], true, now, CancellationToken.None);
+        Assert.Contains(AppSettingsSections.ThinkingPool, recorded.Recorded);
+        Assert.Contains(AppSettingsSections.ThinkingPoolChoices, recorded.Recorded);
+
+        var followed = await lumine.Node.SyncAsync([imouto.Node.Document], true, now.AddMinutes(1), CancellationToken.None);
+        Assert.Contains(followed.Applied, a => a.Key == AppSettingsSections.ThinkingPool);
+        var pool = ThinkingPoolSettings.Load(lumine.Data);
+        Assert.Equal(["host:imouto-host", $"endpoint:{Nvidia}|nvidia/nemotron-ultra"], pool.Members.Select(m => m.Key));
+        Assert.True(pool.BackupThinking);
+        Assert.True(lumine.Vault.Has(NvidiaKey));
+    }
+
+    [Fact]
+    public async Task Pool_choices_follow_and_a_choice_made_on_another_pc_keeps_the_cloud_models()
+    {
+        var imouto = new Pc(Path.Combine(root, "imouto"), "desktop-imouto");
+        var lumine = new Pc(Path.Combine(root, "lumine"), "desktop-lumine");
+        await imouto.ProfileAsync();
+        await lumine.ProfileAsync();
+        await imouto.Node.SyncAsync([], true, Start, CancellationToken.None);
+        await lumine.Node.SyncAsync([imouto.Node.Document], true, Start, CancellationToken.None);
+
+        // On IMOUTO the owner adds a cloud model and sets Backup for slow replies and Busy pool.
+        Assert.True(new ThinkingPoolSettings
+        {
+            Members = [Endpoint(OpenRouter, "x-ai/grok")], BackupThinking = true, BackupDelayMs = 1200, PreemptLowerPriority = false,
+            RaisePriorityAfterStops = 5, RetriesOnFailure = 3, UseConversationModelWhenEmpty = false
+        }.Save(imouto.Data));
+        var recorded = await imouto.Node.SyncAsync([], true, Start.AddMinutes(1), CancellationToken.None);
+        Assert.Contains(AppSettingsSections.ThinkingPoolChoices, recorded.Recorded);
+
+        Assert.True(new ThinkingPoolSettings { Members = [Host("lumine-host")] }.Save(lumine.Data));
+        var followed = await lumine.Node.SyncAsync([imouto.Node.Document], true, Start.AddMinutes(2), CancellationToken.None);
+        Assert.Contains(followed.Applied, a => a.Key == AppSettingsSections.ThinkingPoolChoices);
+        Assert.False(followed.Waiting.ContainsKey(AppSettingsSections.ThinkingPoolChoices));
+        var pool = ThinkingPoolSettings.Load(lumine.Data);
+        Assert.Equal(["host:lumine-host", $"endpoint:{OpenRouter}|x-ai/grok"], pool.Members.Select(m => m.Key));
+        Assert.Equal((true, 1200, false, 5, 3, false), (pool.BackupThinking, pool.BackupDelayMs, pool.PreemptLowerPriority,
+            pool.RaisePriorityAfterStops, pool.RetriesOnFailure, pool.UseConversationModelWhenEmpty));
+
+        // On LUMINE the owner turns Backup for slow replies off: IMOUTO follows and keeps its cloud model.
+        Assert.True((pool with { BackupThinking = false }).Save(lumine.Data));
+        var changed = await lumine.Node.SyncAsync([imouto.Node.Document], true, Start.AddMinutes(3), CancellationToken.None);
+        Assert.Equal([AppSettingsSections.ThinkingPoolChoices], changed.Recorded);
+        await imouto.Node.SyncAsync([lumine.Node.Document], true, Start.AddMinutes(4), CancellationToken.None);
+        var back = ThinkingPoolSettings.Load(imouto.Data);
+        Assert.False(back.BackupThinking);
+        Assert.Equal([$"endpoint:{OpenRouter}|x-ai/grok"], back.Members.Select(m => m.Key));
+    }
 }
