@@ -64,7 +64,10 @@ most 16 KiB) in the entry, and the number of sources in metadata. Martlet may
 clean old ones up. `perform_creation` takes no options: the desktop's handler
 writes the report as a plain web page (no scripts, links only to http and https)
 to `research-reports\<key>.html` in the data folder and opens it in the default
-browser.
+browser. Every computer that has a report also makes it searchable in memory,
+so `search_guide` finds what it said later (see
+[Finding a report again](CONVERSATION.md#finding-a-report-again)); deleting the
+report drops it.
 
 **Pictures** (`PictureCreations.Kind`, registered by the desktop at startup): one
 asset, `image` (PNG, JPEG or WebP, at most 24 MiB); its text is the description it

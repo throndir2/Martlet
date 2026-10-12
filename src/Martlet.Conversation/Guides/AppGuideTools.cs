@@ -15,7 +15,8 @@ public sealed record GuideQuestion(string? App, string Question);
 
 /// <summary>App guides in the conversation (docs/APP_GUIDES.md): the reply's tools while Companion › App guides is on, always the
 /// same four in the same order so the start of every request stays the same (read_up_on starts a <see cref="KindName"/> job and
-/// returns at once, search_guide searches a guide at once, skip_guide stops reading up on an app and remembers the user's no,
+/// returns at once, search_guide searches a guide or a research report at once, skip_guide stops reading up on an app and
+/// remembers the user's no,
 /// update_guide_brief starts research on the app or a part of it on a Thinking pool member and returns at once), the
 /// job kinds (reading up, and the notice that Martlet started reading up on its own on a game that came to the front) and every
 /// text the model gets.</summary>
@@ -55,7 +56,7 @@ public static partial class AppGuideTools
         """{"type":"object","properties":{"app":{"type":"string","description":"The game or app's name, such as Elden Ring or Adobe Photoshop."},"sites":{"type":"array","items":{"type":"string"},"description":"Optional: wiki or help page addresses the user gave to read from."}},"required":["app"],"additionalProperties":false}""";
 
     public const string SearchParametersJson =
-        """{"type":"object","properties":{"app":{"type":"string","description":"The game or app whose guide to search. Leave it out for the one in front."},"question":{"type":"string","description":"What the user wants to know, in their words."}},"required":["question"],"additionalProperties":false}""";
+        """{"type":"object","properties":{"app":{"type":"string","description":"The game or app whose guide to search, or a report's title. Leave it out for the one in front."},"question":{"type":"string","description":"What the user wants to know, in their words."}},"required":["question"],"additionalProperties":false}""";
 
     public const string SkipParametersJson =
         """{"type":"object","properties":{"app":{"type":"string","description":"The game or app the user said no to."}},"required":["app"],"additionalProperties":false}""";
@@ -65,10 +66,12 @@ public static partial class AppGuideTools
         "guide that grows as it reads, so later questions about it get answers from the guide. Only when the user asks you to " +
         "read up on it. Tell them first. One at a time.", ReadUpParametersJson);
 
+    /// <summary>search_guide also searches the web research reports Martlet wrote (<see cref="ResearchReportIndex"/>); it is
+    /// offered alone, without the other three, while App guides are off and Web research is offered.</summary>
     public static TextToolDefinition SearchDefinition { get; } = new(SearchName,
-        "Search a guide you read about a game or app for the user's question (instant). Notes already bring the best sections " +
-        "while the app is in front; use this for more, or for another app's guide. Returns the matching sections with their page " +
-        "titles and links.", SearchParametersJson);
+        "Search a guide you read about a game or app, or a web research report you wrote, for the user's question (instant). " +
+        "Notes already bring the best guide sections while the app is in front; use this for more, for another app's guide, or " +
+        "for what a report found. Returns the matching sections with their titles and links.", SearchParametersJson);
 
     public static TextToolDefinition SkipDefinition { get; } = new(SkipName,
         "The user doesn't want you to read up on a game or app: you stop reading up on it, and never read up on it on your own " +
@@ -279,11 +282,21 @@ public static partial class AppGuideTools
         return text.ToString().TrimEnd();
     }
 
-    public static string NoGuide(string? app, IReadOnlyList<AppGuideEntry> guides) =>
+    /// <summary>search_guide's answer when no guide (and no report) is the one asked for: the guides and the newest
+    /// <paramref name="reports"/> (titles) there are.</summary>
+    public static string NoGuide(string? app, IReadOnlyList<AppGuideEntry> guides, IReadOnlyList<string>? reports = null) =>
         (app is null ? "Which app's guide? " : $"There's no guide about {app} yet. ") +
         (guides.Count == 0 ? "You haven't read up on anything yet."
             : "Guides you have: " + string.Join(", ", guides.Select(g => g.Name)) + ".") +
+        (reports is { Count: > 0 } ? " Reports you wrote: " + string.Join("; ", reports.Take(10)) + "." : "") +
         " If the user wants, offer to read up on it (read_up_on).";
+
+    /// <summary>search_guide's answer while App guides are off and no report is the one asked for: the newest
+    /// <paramref name="reports"/> (titles) there are.</summary>
+    public static string NoReport(string? app, IReadOnlyList<string> reports) =>
+        (app is null ? "" : $"There's no report about {app}. ") +
+        (reports.Count == 0 ? "You haven't written any research reports yet." : "Reports you wrote: " + string.Join("; ", reports.Take(10)) + ".") +
+        " Answer from what you know, saying so.";
 
     public static string NotReady(string app) =>
         $"The guide about {app} is still loading. Try again in a moment, or answer from what you know.";

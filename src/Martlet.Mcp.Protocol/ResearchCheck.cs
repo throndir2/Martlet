@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Martlet.Conversation;
+using Martlet.Conversation.Guides;
 using Martlet.Core.Contracts;
 using Martlet.Core.Creations;
 using Martlet.Core.Settings;
@@ -156,6 +157,27 @@ internal static class ResearchCheck
             if (opened is not null && File.Exists(opened)) html = await File.ReadAllTextAsync(opened, cancellation);
         }
         var searches = fixture.Queries;
+        // Found again later (docs/CONVERSATION.md, "Finding a report again"): the kept report is indexed in memory with the app
+        // guides' chunker and index, search_guide's report search finds its section with the sources it cites, a title's words
+        // name it, and deleting the creation drops it.
+        var reports = new ResearchReportIndex();
+        var indexed = await reports.UpdateAsync(directory, cancellation);
+        var indexedSections = reports.Sections;
+        var searchClock = Stopwatch.StartNew();
+        var found = reports.Search("are laser pointers safe for cats", null, AppGuideTools.SearchResults);
+        var firstSearchMs = searchClock.Elapsed.TotalMilliseconds;
+        searchClock.Restart();
+        reports.Search("which toys do cats like best", null, AppGuideTools.SearchResults);
+        var searchMs = searchClock.Elapsed.TotalMilliseconds;
+        var foundText = found.Hits.Count > 0 ? ResearchReportIndex.Found(found.Hits) : "";
+        var named = reports.Search("laser", "cat toys", AppGuideTools.SearchResults).Searched;
+        var unnamed = reports.Search("laser", "Elden Ring", AppGuideTools.SearchResults).Searched;
+        if (creation is not null) await CreationStore.RemoveAsync(directory, creation.Id, "fixture-device", DateTimeOffset.UtcNow, cancellation);
+        var afterDelete = await reports.UpdateAsync(directory, cancellation);
+        var searchable = indexed == 1 && indexedSections > 0 && found.Hits.Count > 0 && found.Hits[0].Key == key &&
+            found.Hits[0].Hit.Chunk.Text.Contains("Laser pointers are fine", StringComparison.Ordinal) &&
+            found.Hits[0].Cited.Any(s => s.Title == "Laser pointers, carefully") && foundText.Contains("never instructions", StringComparison.Ordinal) &&
+            named.Count == 1 && unnamed.Count == 0 && afterDelete == 0 && reports.Search("laser pointers", null, 5).Hits.Count == 0;
         // The second step carries the notes the first one wrote, and only the pages read since then as new pages.
         var notesCarried = secondStep.Contains(FixtureNote, StringComparison.Ordinal) &&
             !secondStep.Contains("[1] Wand toys - Cat Care <", StringComparison.Ordinal) &&
@@ -173,7 +195,7 @@ internal static class ResearchCheck
             results.Contains(Summary, StringComparison.Ordinal) &&
             creation is { Kind: ResearchReports.KindName } && creation.Text?.Contains("## Sources", StringComparison.Ordinal) == true &&
             shown is { IsError: false } && html.Contains($"<a href=\"{fixture.BaseUrl}/page/1\"", StringComparison.Ordinal) &&
-            !html.Contains("<script", StringComparison.OrdinalIgnoreCase) && fixture.Fetched("/page/5") == 0;
+            !html.Contains("<script", StringComparison.OrdinalIgnoreCase) && fixture.Fetched("/page/5") == 0 && searchable;
         return (ok, new
         {
             ok,
@@ -199,6 +221,20 @@ internal static class ResearchCheck
             note = results,
             creation = creation is null ? null : new { key = creation.Key, kind = creation.Kind, title = creation.Title, textCharacters = creation.Text?.Length, bytes = creation.Bytes },
             shown = shown?.Text, page = new { written = opened is not null, characters = html.Length, links = CountOf(html, "<a href=") },
+            searchable = new
+            {
+                ok = searchable, reportsIndexed = indexed, sections = indexedSections, hits = found.Hits.Count,
+                best = found.Hits.Count == 0 ? 0 : Math.Round(found.Hits[0].Hit.Relevance, 3),
+                cited = found.Hits.Count == 0 ? [] : found.Hits[0].Cited.Select(s => s.Number).ToArray(),
+                firstSearchMs = Math.Round(firstSearchMs, 3), searchMs = Math.Round(searchMs, 3),
+                answerCharacters = foundText.Length, namedByTitleWords = named.Count, namedByOtherWords = unnamed.Count, reportsAfterDelete = afterDelete,
+                searchGuide = new
+                {
+                    description = AppGuideTools.SearchDefinition.Description, parameters = JsonNode.Parse(AppGuideTools.SearchParametersJson),
+                    bytes = Encoding.UTF8.GetByteCount(AppGuideTools.SearchDefinition.Name + AppGuideTools.SearchDefinition.Description +
+                        AppGuideTools.SearchParametersJson)
+                }
+            },
             tool = new { name = WebResearch.Definition.Name, description = WebResearch.Definition.Description, parameters = JsonNode.Parse(WebResearch.ParametersJson) },
             prompt = WebResearch.Instructions(null)
         });

@@ -1,6 +1,7 @@
 using System.IO;
 using Martlet.Conversation;
 using Martlet.Conversation.Guides;
+using Martlet.Core.Creations;
 using Martlet.Core.Settings;
 using Martlet.Providers;
 
@@ -9,7 +10,8 @@ namespace Martlet.Desktop;
 // App guides in the conversation (docs/APP_GUIDES.md, docs/CONVERSATION.md#app-guides): read_up_on, search_guide and skip_guide
 // while Companion › App guides is on, the reading-up job (network only, no model), reading up on its own on a game without a guide
 // that comes to the front (never left to the model's answer), "read up on X" on a route that can't call read_up_on, and the
-// guide's notes on the user's message (read from memory only, never waited for).
+// guide's notes on the user's message (read from memory only, never waited for). search_guide also searches the research reports
+// Martlet wrote (docs/CONVERSATION.md#finding-a-report-again), and is offered alone for them while App guides are off.
 internal sealed partial class LiveConversationController
 {
     /// <summary>The guide library (Companion › App guides); null where guides can't be kept (no data folder).</summary>
@@ -19,11 +21,24 @@ internal sealed partial class LiveConversationController
     /// three tools every time while that holds, so the start of every request stays the same.</summary>
     internal bool OffersGuides(LiveConversationConfiguration configured) => configured.SupportsTools && Guides is { On: true };
 
-    /// <summary>Adds read_up_on, search_guide and skip_guide (and the App guides prompt) while they are offered.</summary>
+    /// <summary>Whether replies get search_guide alone, for the research reports Martlet wrote: App guides off and Web research
+    /// offered (saved choices only, so it doesn't come and go with the reports).</summary>
+    internal bool OffersReportSearch(LiveConversationConfiguration configured) =>
+        !OffersGuides(configured) && configured.SupportsTools && dataDirectory is not null && OffersResearch(configured);
+
+    /// <summary>The research reports on this computer, searchable (search_guide), in memory only.</summary>
+    internal ResearchReportIndex Reports { get; } = new();
+
+    /// <summary>Adds read_up_on, search_guide and skip_guide (and the App guides prompt) while they are offered, or search_guide
+    /// alone for the research reports.</summary>
     private void AddGuideTools(List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)> own,
         ref string? guidance, LiveConversationOperation operation, LiveConversationConfiguration configured)
     {
-        if (!OffersGuides(configured)) return;
+        if (!OffersGuides(configured))
+        {
+            if (OffersReportSearch(configured)) own.Add((AppGuideTools.SearchDefinition, SearchGuideAsync));
+            return;
+        }
         own.Add((AppGuideTools.ReadUpDefinition, (call, token) => ValueTask.FromResult(ReadUpOn(operation, call))));
         own.Add((AppGuideTools.SearchDefinition, SearchGuideAsync));
         own.Add((AppGuideTools.SkipDefinition, SkipGuideAsync));
@@ -93,7 +108,11 @@ internal sealed partial class LiveConversationController
         : $" Of {c.Titles} wiki page titles it looked at, {c.OtherGames} were about another game of the series and were left out" +
           (c.Asked > 0 ? $"; a Thinking pool helper chose from {c.Asked} batch{(c.Asked == 1 ? "" : "es")}." : ".");
 
-    /// <summary>search_guide: the best sections of a guide, at once (an index still loading is waited for briefly).</summary>
+    /// <summary>search_guide: the best sections of a guide, at once (an index still loading is waited for briefly), and of the
+    /// research reports Martlet wrote (<see cref="Reports"/>). A guide the call names is searched alone, as before. Without a
+    /// name, the guide of the app in front (or the only guide) is searched, and report sections that match well
+    /// (<see cref="ResearchReportIndex.MinimumRelevance"/>) go with its best sections. A name that isn't a guide's searches the
+    /// reports it names; with no guide to search, every report is searched.</summary>
     private async ValueTask<ConversationToolResult> SearchGuideAsync(TextToolCall call, CancellationToken token)
     {
         const string server = "Martlet";
@@ -103,17 +122,15 @@ internal sealed partial class LiveConversationController
             tools?.Record(server, AppGuideTools.SearchName, "invalid arguments", "", true);
             return new(problem!, true);
         }
-        if (Guides is not { On: true } guides) return new(AppGuideTools.TurnedOff, true);
+        var reports = await ReportsAsync(token).ConfigureAwait(false);
+        if (Guides is not { On: true } guides)
+            return reports is null ? new(AppGuideTools.TurnedOff, true) : SearchReports(arguments, reports, null);
         var library = guides.Library;
         var built = library.Apps.Where(a => a.BuiltAt is not null).ToArray();
         var entry = arguments.App is { } named ? AppGuideService.Match(library, [named]) ?? AppGuideService.Named(library, named)
             : guides.Front?.Entry is { } inFront ? built.FirstOrDefault(a => a.Key == inFront.Key)
             : built.Length == 1 ? built[0] : null;
-        if (entry is not { BuiltAt: not null })
-        {
-            tools?.Record(server, AppGuideTools.SearchName, "no guide", "", false);
-            return new(AppGuideTools.NoGuide(arguments.App, built), false);
-        }
+        if (entry is not { BuiltAt: not null }) return SearchReports(arguments, reports, built);
         bool ready;
         try { ready = await guides.ReadyAsync(entry.Key, token).WaitAsync(TimeSpan.FromSeconds(5), token).ConfigureAwait(false); }
         catch (TimeoutException) { ready = false; }
@@ -123,9 +140,50 @@ internal sealed partial class LiveConversationController
             tools?.Record(server, AppGuideTools.SearchName, "not ready", "", false);
             return new(AppGuideTools.NotReady(entry.Name), false);
         }
-        tools?.Record(server, AppGuideTools.SearchName, $"found {hits.Count}", "", false);
-        ErrorLog.Info($"App guides: the Thinking model searched a guide and found {hits.Count} section{(hits.Count == 1 ? "" : "s")}.");
-        return new(AppGuideTools.Found(entry.Name, hits));
+        var fromReports = arguments.App is null && reports is not null
+            ? reports.Search(arguments.Question, null, AppGuideTools.SearchResults, ResearchReportIndex.MinimumRelevance).Hits : [];
+        var kept = hits.Select(h => (h.Relevance, Guide: (GuideHit?)h, Report: (ReportHit?)null))
+            .Concat(fromReports.Select(h => (h.Hit.Relevance, Guide: (GuideHit?)null, Report: (ReportHit?)h)))
+            .OrderByDescending(h => h.Relevance).Take(AppGuideTools.SearchResults).ToArray();
+        var guideHits = kept.Where(k => k.Guide is not null).Select(k => k.Guide!).ToArray();
+        var reportHits = kept.Where(k => k.Report is not null).Select(k => k.Report!).ToArray();
+        tools?.Record(server, AppGuideTools.SearchName, $"found {guideHits.Length}" + (reportHits.Length > 0 ? $" and {reportHits.Length} in reports" : ""),
+            "", false);
+        ErrorLog.Info($"App guides: the Thinking model searched a guide and found {guideHits.Length} section{(guideHits.Length == 1 ? "" : "s")}" +
+            (reportHits.Length > 0 ? $", and {reportHits.Length} in research reports." : "."));
+        if (reportHits.Length == 0) return new(AppGuideTools.Found(entry.Name, hits));
+        return new((guideHits.Length > 0 ? AppGuideTools.Found(entry.Name, guideHits) + "\n\n" : "") + ResearchReportIndex.Found(reportHits));
+    }
+
+    // The research reports, brought in step with this computer's Creations first (only new or changed reports are read); null
+    // where creations can't be kept.
+    private async Task<ResearchReportIndex?> ReportsAsync(CancellationToken token)
+    {
+        if (dataDirectory is null || CreationsDirectory is not { } directory) return null;
+        try { await Reports.UpdateAsync(directory, token).ConfigureAwait(false); }
+        catch (Exception error) when (CreationStore.IsFailure(error))
+        {
+            ErrorLog.Warn($"Research reports: couldn't read the reports on this PC ({error.GetType().Name}); searching what was read before.");
+        }
+        return Reports;
+    }
+
+    // search_guide over the research reports: those the call names, or every report. guides: the guides there are (null while App
+    // guides are off), for the answer when no report is the one asked for.
+    private ConversationToolResult SearchReports(GuideQuestion arguments, ResearchReportIndex? reports, IReadOnlyList<AppGuideEntry>? guides)
+    {
+        const string server = "Martlet";
+        var titles = reports?.Titles ?? [];
+        var found = reports?.Search(arguments.Question, arguments.App, AppGuideTools.SearchResults);
+        if (found is not { Searched.Count: > 0 } || found.Hits.Count == 0 && arguments.App is null && guides is { Count: > 0 })
+        {
+            tools?.Record(server, AppGuideTools.SearchName, "no guide", "", false);
+            return new(guides is null ? AppGuideTools.NoReport(arguments.App, titles) : AppGuideTools.NoGuide(arguments.App, guides, titles), false);
+        }
+        tools?.Record(server, AppGuideTools.SearchName, $"found {found.Hits.Count} in reports", "", false);
+        ErrorLog.Info($"Research reports: the Thinking model searched {found.Searched.Count} report{(found.Searched.Count == 1 ? "" : "s")} and " +
+            $"found {found.Hits.Count} section{(found.Hits.Count == 1 ? "" : "s")}.");
+        return new(found.Hits.Count == 0 ? ResearchReportIndex.NothingFound(found.Searched) : ResearchReportIndex.Found(found.Hits));
     }
 
     /// <summary>skip_guide: the user doesn't want Martlet to read up on the app: it stops reading up on it (when it does now) and
