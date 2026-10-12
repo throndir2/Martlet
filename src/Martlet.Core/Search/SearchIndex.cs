@@ -218,11 +218,11 @@ public sealed class SearchIndex
                 if (term < 0) continue;
                 var list = postings[term];
                 var idf = Idf(term) * weight;
-                var documents = list.Documents;
+                var documents = list.Documents.AsSpan(0, list.Length);
                 if (several)
                 {
-                    var weights = list.Weights!;
-                    for (var i = 0; i < list.Length; i++)
+                    var weights = list.Weights.AsSpan(0, documents.Length);
+                    for (var i = 0; i < documents.Length; i++)
                     {
                         var d = documents[i];
                         if (masks[d] == 0) touched.Add(d);
@@ -232,8 +232,8 @@ public sealed class SearchIndex
                     }
                     continue;
                 }
-                var counts = list.Counts!;
-                for (var i = 0; i < list.Length; i++)
+                var counts = list.Counts.AsSpan(0, documents.Length);
+                for (var i = 0; i < documents.Length; i++)
                 {
                     var d = documents[i];
                     if (masks[d] == 0) touched.Add(d);
@@ -248,9 +248,12 @@ public sealed class SearchIndex
             var order = new Order(scores, masks, touched, tie);
             var heap = scratch.Heap(Math.Min(depth, touched.Count));
             var size = 0;
+            // Once the heap is full, a document scoring below the worst kept can't get in: most are left out with one compare.
+            var worst = double.NegativeInfinity;
             for (var o = 0; o < touched.Count; o++)
             {
                 var d = touched[o];
+                if (size == depth && scores[d] < worst) continue;
                 if (any != 0 && (masks[d] & any) == 0) continue;
                 if (include is not null && !include(d, masks[d])) continue;
                 if (size < depth)
@@ -263,6 +266,8 @@ public sealed class SearchIndex
                     heap[0] = o;
                     order.Down(heap, 0, size);
                 }
+                else continue;
+                if (size == depth) worst = scores[touched[heap[0]]];
             }
             var candidates = new SearchCandidate[size];
             if (!ordered)
@@ -392,6 +397,7 @@ public sealed class SearchIndex
         internal int[] Masks = [];
         internal readonly List<int> Touched = [];
         private int[] heap = [];
+        private int used;
 
         internal int[] Heap(int size)
         {
@@ -409,17 +415,25 @@ public sealed class SearchIndex
                 scratch.Scores = new double[length];
                 scratch.Masks = new int[length];
             }
+            scratch.used = documents;
             return scratch;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         internal void Return()
         {
-            foreach (var d in Touched)
+            // A search that touched much of the index clears the whole of it at once, which is faster than one by one.
+            if (Touched.Count > used / 8)
             {
-                Scores[d] = 0;
-                Masks[d] = 0;
+                Array.Clear(Scores, 0, used);
+                Array.Clear(Masks, 0, used);
             }
+            else
+                foreach (var d in Touched)
+                {
+                    Scores[d] = 0;
+                    Masks[d] = 0;
+                }
             Touched.Clear();
             Pool.Add(this);
         }
