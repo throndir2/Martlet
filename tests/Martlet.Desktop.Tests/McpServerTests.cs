@@ -927,6 +927,42 @@ public sealed class McpServerTests(ITestOutputHelper output)
         });
     });
 
+    [Fact]
+    public Task TalkWindowIsAWindowOfItsOwnThatMartletsWindowCanCover() => WithDesktop(async (_, automation) =>
+    {
+        await Task.Run(() => automation.ClickAsync("OpenLiveConversation"));
+        var snapshot = await WaitForWindowCount(automation, 2);
+        Assert.All(snapshot.GetProperty("windowStates").EnumerateArray(),
+            state => Assert.Equal(JsonValueKind.Null, state.GetProperty("ownedBy").ValueKind));
+        Assert.Equal(["Talk with Martlet", "Martlet"], await WaitForFrontWindow(automation, "Talk with Martlet"));
+
+        // Martlet's window comes in front of the conversation (to change settings), and Show conversation brings it back.
+        await Task.Run(() => automation.ClickAsync("NavSettings", focus: true));
+        Assert.Equal(["Martlet", "Talk with Martlet"], await WaitForFrontWindow(automation, "Martlet"));
+        await Task.Run(() => automation.ClickAsync("NavHome"));
+        await Task.Run(() => automation.ClickAsync("OpenLiveConversation"));
+        Assert.Equal(["Talk with Martlet", "Martlet"], await WaitForFrontWindow(automation, "Talk with Martlet"));
+
+        // A dialog still belongs to Martlet's window.
+        await Task.Run(() => automation.ClickAsync("OpenSetupAdvisor"));
+        snapshot = await WaitForWindowCount(automation, 3);
+        Assert.Contains(snapshot.GetProperty("windowStates").EnumerateArray(),
+            state => state.GetProperty("ownedBy").ValueKind == JsonValueKind.String && state.GetProperty("ownedBy").GetString() == "Martlet");
+    });
+
+    private static async Task<string[]> WaitForFrontWindow(DesktopAutomation automation, string front)
+    {
+        string[] windows = [];
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            windows = [.. JsonSerializer.SerializeToElement(await Task.Run(() => automation.Snapshot()))
+                .GetProperty("windows").EnumerateArray().Select(window => window.GetString() ?? "")];
+            if (windows.FirstOrDefault() == front) break;
+            await Task.Delay(100);
+        }
+        return windows;
+    }
+
     private async Task WithDesktop(Func<Process, DesktopAutomation, Task> action)
     {
         var executable = Path.Combine(AppContext.BaseDirectory, "Martlet.Desktop.exe");
