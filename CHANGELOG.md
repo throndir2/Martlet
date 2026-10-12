@@ -15,6 +15,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- A computer you add to your network with your approval now signs in to the household owner's account and uses its settings, and folds the account it made before it joined into yours. Hosts no longer refuse the owner's account (*Refused 1 account entry*) after another computer changed it. ([#PR](https://github.com/throndir2/Martlet/pulls))
 - In App guides › *Add an app*, the labels line up with the rest of the card, and the grey hint in each empty box starts where your typing starts. ([#803](https://github.com/throndir2/Martlet/pull/803))
 
 ## [0.72.0] - 2026-10-11

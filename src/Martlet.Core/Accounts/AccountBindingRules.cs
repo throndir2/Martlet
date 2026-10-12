@@ -12,9 +12,10 @@ namespace Martlet.Core.Accounts;
 /// <item>The device created the account (<see cref="Account.CreatedBy"/>, which no later write may change).</item>
 /// <item>It carries an <see cref="AccountAttestation"/> that <see cref="AccountAttestation.Check"/> accepts against the roster
 /// at the binding's <see cref="AccountDevice.SignedInAt"/>, for that device and for this account.</item>
-/// <item>Migration: the account is the household's owner account (<see cref="OwnerAccount.IdFor"/>) and the device, an active
-/// member desktop of the roster, binds itself (it wrote the entry) with its own Windows login. Every desktop of a household
-/// that existed before accounts was the owner's.</item>
+/// <item>Migration: the account is the household's owner account (<see cref="IsHouseholdOwner"/>) and the device, an active
+/// member desktop of the roster, is bound with its own Windows login. Every desktop of a household that existed before accounts
+/// was the owner's, and a desktop the owner let join signs in to the owner's account. The proof stays valid after another
+/// desktop writes the entry, so a computer that checks the entry for the first time accepts every such binding.</item>
 /// <item>Merged: "Merge another account into this one" moved it from an account that the directory shows merged into this
 /// one (the device created that account, or has an attestation for it), and the device that wrote that merge is bound to this
 /// account by one of the proofs above.</item>
@@ -58,11 +59,21 @@ public static class AccountBindingRules
         if (accepted is not null && accepted.Id == account.Id && accepted.Device(device.DeviceId) is { } kept && kept == device) return "accepted";
         if (device.DeviceId == account.CreatedBy) return "creator";
         if (Attested(account, device, roster, [])) return "attestation";
-        if (account.Id == OwnerAccount.IdFor(roster.NetworkId) && account.UpdatedBy == device.DeviceId &&
+        if (IsHouseholdOwner(account, roster) &&
             device.Login is { Kind: AccountLoginKinds.Windows } login && login.Provider == device.DeviceId &&
             roster.Desktop(device.DeviceId) is { Removed: false })
             return "migration";
         return null;
+    }
+
+    /// <summary>Whether <paramref name="account"/> is the household's owner account: the owner account of a household from before
+    /// accounts (<see cref="OwnerAccount.IdFor"/>), or an owner account that the desktop which founded the network made.</summary>
+    public static bool IsHouseholdOwner(Account account, NetworkRoster roster)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(roster);
+        return account.Id == OwnerAccount.IdFor(roster.NetworkId) ||
+            account.Role == AccountRoles.Owner && roster.Founder is { Id: { Length: > 0 } founder } && account.CreatedBy == founder;
     }
 
     /// <summary>The removed accounts that <paramref name="directories"/> show merged into <paramref name="id"/>.</summary>

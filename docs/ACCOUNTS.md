@@ -533,14 +533,14 @@ hosts check every device binding of an incoming entry
 | (accepted) | This computer already accepted exactly that binding (it was checked then; a host removed since doesn't undo it) |
 | `creator` | The device made the account (`created_by`, which never changes) |
 | `attestation` | Its `attestation` checks out (`AccountAttestation.Check`) against the roster at the binding's `signed_in_at`, for that device and that account |
-| `migration` | The owner's account (`OwnerAccount.IdFor`) and an active member desktop of the roster that binds itself, with its own Windows login, in an entry it wrote: every desktop of a household from before accounts was the owner's |
+| `migration` | The household's owner account (`AccountBindingRules.IsHouseholdOwner`: `OwnerAccount.IdFor`, or an `owner` account that the founding desktop made) and an active member desktop of the roster that is bound with its own Windows login. Every desktop of a household from before accounts was the owner's, and a desktop the owner let join signs in to the owner's account. The proof does not depend on which desktop wrote the entry last, so a new desktop or host accepts the bindings of all the owner's desktops |
 | `merged` | It came from an account merged into this one (that account's creator, or an attestation for it), and the device that wrote the merge is bound to this account by one of the proofs above |
 
 So linking a login to an existing account, *Sign in as someone else* and
 *Continue as* always need a Prove, and nobody carries a PC into someone else's
 account by merging an account of their own into it. Limits: a member desktop
-can still bind itself to the owner's account as a migration; a modified
-desktop of the network can always do harm (it signs roster entries).
+can still bind itself to the household's owner account as a migration; a
+modified desktop of the network can always do harm (it signs roster entries).
 
 ### Roles on a host
 
@@ -723,10 +723,24 @@ button, the picker and the directory sync), `AddPersonDialog.cs` and
   reply. It reads each member host's digest, takes the copies it vouches for
   (`Accept`), then writes this PC's accounts (`AccountSession.Reconcile`):
   pending accounts get their entry, and each signed-in account gets this
-  device's binding again when a concurrent write dropped it. A pending `owner`
-  is written as `member` when the directory already has another owner, so a
-  household keeps one owner. Pending accounts wait until a host's copy was
-  read. Then it pushes the merged copy to hosts whose digest differs.
+  device's binding again when a concurrent write dropped it. A household keeps
+  one owner: a pending `owner` is written as `member` when the directory
+  already has another owner, and is not written at all when this PC signs in
+  to the household's owner account instead (next item). Pending accounts wait
+  until a host's copy was read. Then it pushes the merged copy to hosts whose
+  digest differs.
+- **Joining with the owner's approval** (`AccountSession.OwnerJoin`,
+  `MainWindow.OwnerJoin.cs`): a fresh install makes its own `owner` account
+  before it joins. When the directory sync then finds the household's owner
+  account (`IsHouseholdOwner`) and this PC is on an `owner` account that it
+  made itself, with no Prove sign-in on this PC and no sign-in join
+  (`joined-account.json`), this PC signs in to the household's owner account
+  with its Windows login (a `migration` binding). Between replies it switches
+  to that account and folds its own account into it with the *Merge* steps:
+  files, memories, characters and voice links move, and its own account is
+  removed with `merged_into`. An account that never reached the directory is
+  only signed out. So the owner's settings and characters are on the new PC.
+  MCP `accounts_status` shows the plan as `ownerJoin`.
 - Someone who deletes both `accounts.json` and `accounts\session.json` on a
   member desktop is migrated again as the owner; account locks (W12) close this.
 

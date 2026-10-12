@@ -25,6 +25,8 @@ internal static class AccountRehearsal
         var started = DateTimeOffset.UtcNow;
         await using var h1 = await LabHost.StartAsync("lab-accounts-1");
         await using var h2 = await LabHost.StartAsync("lab-accounts-2");
+        // lab-accounts-3 joins the network but gets the account directory only late: it checks every binding for the first time.
+        await using var h3 = await LabHost.StartAsync("lab-accounts-3");
         LabHost[] hosts = [h1, h2];
         using var keyA = NetworkKey.Create("lab-desktop-a");
         using var keyB = NetworkKey.Create("lab-desktop-b");
@@ -47,19 +49,22 @@ internal static class AccountRehearsal
             }
         }
 
-        await Run("A founds a household network with lab-accounts-1 and lab-accounts-2 and lets B in; both hosts are bound to it", async () =>
+        await Run("A founds a household network with lab-accounts-1, lab-accounts-2 and lab-accounts-3 and lets B in; every host is bound to it", async () =>
         {
             foreach (var desktop in new[] { a, b })
             foreach (var host in hosts)
                 await desktop.PairAsync(host);
+            await a.PairAsync(h3);
             var now = DateTimeOffset.UtcNow;
             var roster = NetworkRoster.Found(keyA, "LAB-A", now)
                 .AddHost(keyA, h1.HostId, "LAB-ACCOUNTS-1", h1.Origin, h1.Identity.SpkiFingerprint, now)
                 .AddHost(keyA, h2.HostId, "LAB-ACCOUNTS-2", h2.Origin, h2.Identity.SpkiFingerprint, now)
+                .AddHost(keyA, h3.HostId, "LAB-ACCOUNTS-3", h3.Origin, h3.Identity.SpkiFingerprint, now)
                 .AddDesktop(keyA, keyB.DeviceId, "LAB-B", keyB.PublicKey, now);
-            foreach (var host in hosts) await a.MergeNetworkAsync(host, roster, token);
+            foreach (var host in new[] { h1, h2, h3 }) await a.MergeNetworkAsync(host, roster, token);
             a.Roster = b.Roster = roster;
-            return (h1.State == "bound" && h2.State == "bound", $"network {roster.NetworkId}; lab-accounts-1 {h1.State}, lab-accounts-2 {h2.State}");
+            return (h1.State == "bound" && h2.State == "bound" && h3.State == "bound",
+                $"network {roster.NetworkId}; lab-accounts-1 {h1.State}, lab-accounts-2 {h2.State}, lab-accounts-3 {h3.State}");
         });
 
         await Run("A migrates to accounts: it adds the household owner (the ID every computer derives from the network, its Windows " +
@@ -122,6 +127,25 @@ internal static class AccountRehearsal
                 $"names: {string.Join(", ", names)}; the creator stays {a.Local.Find(ownerId)!.CreatedBy}");
         });
 
+        await Run("B binds itself to the owner account with its own Windows login (migration), then A writes the owner entry last; " +
+            "lab-accounts-3, which never saw the owner account, takes it with both bindings", async () =>
+        {
+            var windowsB = AccountLoginKey.ForWindows(keyB.DeviceId, SidA);
+            b.Put(b.Local.Find(ownerId)!.WithLogin(AccountLogin.For(windowsB, null, DateTimeOffset.UtcNow))
+                .WithDevice(AccountDevice.For(keyB.DeviceId, windowsB, DateTimeOffset.UtcNow)));
+            var byB = await b.SyncAsync(hosts, token);
+            await a.SyncAsync(hosts, token);
+            a.Put(a.Local.Find(ownerId)! with { Name = "Owner" });
+            var byA = await a.SyncAsync(hosts, token);
+            var latest = a.Local.Find(ownerId)!;
+            var fresh = await a.MergeAsync(h3, a.Local, token);
+            var onH3 = fresh.Directory.Find(ownerId);
+            var bound = onH3?.Device(keyB.DeviceId) is not null && onH3.Device(keyA.DeviceId) is not null;
+            return (byB.RefusedByHosts == 0 && byA.RefusedByHosts == 0 && latest.UpdatedBy == keyA.DeviceId && fresh.Rejected == 0 && bound,
+                $"written last by {latest.UpdatedBy}; refused by hosts: {byB.RefusedByHosts + byA.RefusedByHosts}; lab-accounts-3 refused " +
+                $"{fresh.Rejected} and keeps A's and B's bindings: {bound}");
+        });
+
         await Run("While apart, A renames Alex after B removed Alex: the removal wins everywhere and Alex never comes back", async () =>
         {
             b.Remove(alexId);
@@ -178,7 +202,7 @@ internal static class AccountRehearsal
             passed = steps.Count(s => s.Ok),
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
-            scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with an in-memory network.json and accounts.json, " +
+            scope = "Three real gateways on 127.0.0.1 (Kestrel, pinned TLS, signed requests) with an in-memory network.json and accounts.json, " +
                 "bound to one lab network, two member desktops and one outside computer with real network keys and the desktop's paired " +
                 "client, merging with the production account directory. Synthetic accounts. Not covered: the desktop's account sync and " +
                 "picker (later work), a friend's credential (Martlet.Gateway.Tests), the Linux host's file and two real computers on a LAN.",
