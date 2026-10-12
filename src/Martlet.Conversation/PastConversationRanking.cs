@@ -1,11 +1,13 @@
+using Martlet.Core.Search;
 using Martlet.Core.Text;
 
 namespace Martlet.Conversation;
 
-/// <summary>How <see cref="PastConversations"/> ranks earlier exchanges for a message or a search_conversations call: in memory,
-/// in about a millisecond, with no model, embedding or other process. First BM25 over the <see cref="SearchTerms"/> stems of what
-/// was said (<see cref="ConversationHistory.Candidates"/>: "plants" finds "plant", "baking" finds "baked"). Then a deterministic
-/// reranker scores each candidate on:
+/// <summary>How <see cref="PastConversations"/> ranks earlier exchanges for a message or a search_conversations call, on the shared
+/// search engine (<see cref="SearchIndex"/> and <see cref="SearchRanker"/> in Martlet.Core, docs/SEARCH.md): in memory, in about a
+/// millisecond, with no model, embedding or other process. First BM25 over the <see cref="SearchTerms"/> stems of what was said
+/// (<see cref="ConversationHistory.Candidates"/>: "plants" finds "plant", "baking" finds "baked"). Then a deterministic reranker
+/// scores each candidate on:
 /// <list type="bullet">
 /// <item>coverage: how much of what was asked it has, each word weighted by how rare it is in the record (a word never said
 /// counts as the rarest), with the speaker's name counting as said and words the exchanges around it in its conversation have
@@ -27,28 +29,34 @@ internal static class PastConversationRanking
     /// (which must match enough of the message) or a search the model asked for.</summary>
     internal sealed record Query(IReadOnlyList<string> Sequence, IReadOnlyList<string> Terms, PastConversations.Span? Window, bool Recall);
 
-    private const double BestMatchWeight = 1.0, CoverageWeight = 2.0, ProximityWeight = 0.5, PhraseWeight = 0.5, RecencyWeight = 0.2,
-        TimeWeight = 1.0;
-    // Recency halves about every three weeks: only a tie-breaker between matches that are otherwise alike.
-    private const double RecencyDays = 30;
+    /// <summary>How a search_conversations call ranks. BM25 over one field, what the user and Martlet said (no positions are kept:
+    /// a record holds up to 100,000 exchanges). The score adds the BM25 score as a share of the best (1.0), coverage (2.0),
+    /// recency (0.2; it halves about every three weeks, only a tie-breaker between matches that are otherwise alike), the time
+    /// asked about (1.0), and for the 48 best, proximity and phrases (0.5 each), read from their words. Picking: maximal marginal
+    /// relevance over the best 30 (weight 0.3), near-identical exchanges (80% of the same words) left out.</summary>
+    internal static SearchProfile Found { get; } = new()
+    {
+        Fields = [new("said", 1, 0.75)],
+        K1 = 1.2,
+        Positions = false,
+        Candidates = ConversationHistory.MaximumCandidates,
+        Refined = 48,
+        Scoring = new()
+        {
+            FirstStage = 1.0, Coverage = 2.0, Proximity = 0.5, Phrases = 0.5, Recency = 0.2, RecencyHalfLifeDays = 30 * Math.Log(2),
+            Time = 1.0
+        },
+        Diversity = new() { Selection = SearchSelection.Mmr, Weight = 0.3, NearDuplicate = 0.8, Pool = 30 }
+    };
+
+    /// <summary>How a message's automatic recall ranks: as <see cref="Found"/>, keeping only exchanges that score at least half the
+    /// best.</summary>
+    internal static SearchProfile Recalled { get; } = Found with { Cutoff = 0.5 };
+
     private const double NearbyShare = 0.5;
-    private const double Cutoff = 0.5;
     private const double OwnCoverageAccepted = 0.6;
-    private const double SameExchange = 0.8;
-    private const double Diversity = 0.3;
-    private const int Diversified = 30;
-    // How many of the best have their words read for proximity, phrases and near-identical exchanges (at least Diversified).
-    private const int Read = 48;
     private const int Followed = 2;
     private const int SideCharacters = 4_000;
-
-    private sealed class Scored(HistoryCandidate hit)
-    {
-        internal HistoryCandidate Hit { get; } = hit;
-        internal HistoryExchange Exchange => Hit.Exchange;
-        internal HashSet<string> Stems { get; set; } = [];
-        internal double Score { get; set; }
-    }
 
     /// <summary>The exchanges <paramref name="query"/> brings back, best first: at most <paramref name="want"/> picked with
     /// diversity (and those following them), then, beyond that, the rest of the candidates by score. Leaves out the
@@ -75,101 +83,133 @@ internal static class PastConversationRanking
         var found = history.Candidates(query.Terms, from, to, exclude, ConversationHistory.MaximumCandidates, PastConversations.Recallable);
         if (found.Hits.Count == 0) return [];
 
-        var terms = query.Terms.Take(found.Idf.Count).ToArray();
-        var position = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var i = 0; i < terms.Length; i++) position[terms[i]] = i;
-        var pairs = Pairs(query.Sequence, position);
-        var idf = found.Idf;
-        var total = idf.Sum();
-        var needed = Math.Min(3, (terms.Length + 1) / 2);
-        var bestScore = found.Hits.Max(hit => hit.Score);
-
-        var scored = new List<Scored>(found.Hits.Count);
-        foreach (var hit in found.Hits)
-        {
-            var own = hit.Matched | Speaker(hit.Exchange.Speaker, position);
-            var nearby = hit.Nearby & ~own;
-            var ownShare = Weight(own, idf) / total;
-            if (query.Recall && !Accepted(Count(own), Count(nearby), ownShare, needed)) continue;
-            var coverage = ownShare + NearbyShare * Weight(nearby, idf) / total;
-            var recency = Math.Exp(-Math.Max(0, (now - hit.Exchange.At).TotalDays) / RecencyDays);
-            var score = BestMatchWeight * hit.Score / bestScore + CoverageWeight * coverage + RecencyWeight * recency;
-            if (query.Window is { } named)
-                score += TimeWeight * (hit.Exchange.At >= named.From && hit.Exchange.At < named.To ? 1
-                    : 1 - Math.Min(1, Distance(hit.Exchange.At, named) / margin.TotalDays));
-            scored.Add(new(hit) { Score = score });
-        }
-        if (scored.Count == 0) return [];
-        // Proximity and phrases read the words of the best only. They only add to a score, so the exchanges read stay ahead of
-        // those not read, and picking (from the first Diversified) never needs words it didn't read.
-        scored.Sort(Better);
-        foreach (var candidate in scored.Take(Read))
-        {
-            var user = SearchTerms.Of(Cut(candidate.Exchange.User));
-            var reply = SearchTerms.Of(Cut(candidate.Exchange.Reply));
-            var (proximity, phrase) = Closeness(user, reply, position, pairs, terms.Length);
-            candidate.Score += ProximityWeight * proximity + PhraseWeight * phrase;
-            candidate.Stems = new HashSet<string>(user, StringComparer.Ordinal);
-            candidate.Stems.UnionWith(reply);
-        }
-        scored.Sort(Better);
-        if (query.Recall)
-        {
-            var floor = Cutoff * scored[0].Score;
-            scored.RemoveAll(candidate => candidate.Score < floor);
-        }
-        return Pick(scored, want, skip);
+        var profile = query.Recall ? Recalled : Found;
+        var rules = new Rules(found, query, now, margin, profile, skip);
+        var candidates = new SearchCandidate[found.Hits.Count];
+        for (var i = 0; i < candidates.Length; i++) candidates[i] = new(i, found.Hits[i].Score, found.Hits[i].Matched, i);
+        var ranking = SearchRanker.Rank(candidates, profile, rules, want);
+        return Follow(ranking, found, rules, profile, want, skip);
     }
-
-    private static int Better(Scored a, Scored b) =>
-        b.Score != a.Score ? b.Score.CompareTo(a.Score) : b.Exchange.At.CompareTo(a.Exchange.At);
 
     // An exchange matches enough of a message: about half its words (at most three), counting words the exchanges around it
     // have, or most of what the message's words weigh, so one common word alone brings back nothing.
     internal static bool Accepted(int own, int nearby, double ownShare, int needed) =>
         own >= 1 && (own + nearby >= needed || ownShare >= OwnCoverageAccepted);
 
-    private static IReadOnlyList<HistoryExchange> Pick(List<Scored> ranked, int want, Func<HistoryExchange, bool>? skip)
+    /// <summary>One ranking's features: coverage (own and nearby), recency and time for every candidate; proximity and phrases,
+    /// from its words, for the best; equal scores go to the newer exchange; similarity is the overlap of the words.</summary>
+    private sealed class Rules : ISearchRules
     {
-        var pool = ranked.Take(Diversified).ToList();
-        var similar = new double[pool.Count];
-        var open = Enumerable.Range(0, pool.Count).ToList();
-        var picked = new List<Scored>();
-        var shown = new List<HashSet<string>>();
-        var top = pool[0].Score;
-        while (picked.Count < want && open.Count > 0)
+        private readonly HistoryCandidates found;
+        private readonly Query query;
+        private readonly DateTimeOffset now;
+        private readonly TimeSpan margin;
+        private readonly SearchProfile profile;
+        private readonly Func<HistoryExchange, bool>? skip;
+        private readonly Dictionary<string, int> position = new(StringComparer.Ordinal);
+        private readonly List<(int First, int Second)> pairs;
+        private readonly int asked;
+        private readonly double total;
+        private readonly int needed;
+        private readonly HashSet<string>[] stems;
+
+        internal Rules(HistoryCandidates found, Query query, DateTimeOffset now, TimeSpan margin, SearchProfile profile,
+            Func<HistoryExchange, bool>? skip)
         {
-            var choice = open.MaxBy(i => (pool[i].Score - Diversity * top * similar[i], pool[i].Exchange.At));
-            open.Remove(choice);
-            var candidate = pool[choice];
-            var skipped = skip?.Invoke(candidate.Exchange) == true;
-            if (!skipped) picked.Add(candidate);
-            shown.Add(candidate.Stems);
-            for (var at = open.Count - 1; at >= 0; at--)
-            {
-                var sameness = Jaccard(pool[open[at]].Stems, candidate.Stems);
-                if (sameness >= SameExchange) open.RemoveAt(at);
-                else if (!skipped) similar[open[at]] = Math.Max(similar[open[at]], sameness);
-            }
+            this.found = found;
+            this.query = query;
+            this.now = now;
+            this.margin = margin;
+            this.profile = profile;
+            this.skip = skip;
+            var terms = query.Terms.Take(found.Idf.Length).ToArray();
+            for (var i = 0; i < terms.Length; i++) position[terms[i]] = i;
+            pairs = Pairs(query.Sequence, position);
+            asked = terms.Length;
+            total = found.Idf.Sum();
+            needed = Math.Min(3, (terms.Length + 1) / 2);
+            stems = new HashSet<string>[found.Hits.Count];
         }
 
-        var result = picked.Select(candidate => candidate.Exchange).ToList();
-        var taken = new HashSet<Guid>(ranked.Select(candidate => candidate.Exchange.Id));
-        foreach (var leader in picked.Take(Followed).ToArray())
+        internal HashSet<string> Stems(int document) => stems[document] ?? [];
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        public bool Score(in SearchCandidate candidate, ref SearchFeatures features)
+        {
+            var hit = found.Hits[candidate.Document];
+            var own = hit.Matched | Speaker(hit.Exchange.Speaker, position);
+            var nearby = hit.Nearby & ~own;
+            var ownShare = SearchMeasures.Weight(own, found.Idf) / total;
+            if (query.Recall && !Accepted(Count(own), Count(nearby), ownShare, needed)) return false;
+            features.Coverage = ownShare + NearbyShare * SearchMeasures.Weight(nearby, found.Idf) / total;
+            features.Recency = SearchMeasures.Recency((now - hit.Exchange.At).TotalDays, profile.Scoring.RecencyHalfLifeDays);
+            if (query.Window is { } named) features.Time = SearchMeasures.TimeCloseness(hit.Exchange.At, named.From, named.To, margin);
+            return true;
+        }
+
+        // Proximity and phrases read the words of the best only. They only add to a score, so the exchanges read stay ahead of
+        // those not read, and picking (from the first 30) never needs words it didn't read.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        public void Refine(in SearchCandidate candidate, ref SearchFeatures features)
+        {
+            var exchange = found.Hits[candidate.Document].Exchange;
+            var user = SearchTerms.Of(Cut(exchange.User));
+            var reply = SearchTerms.Of(Cut(exchange.Reply));
+            if (asked >= 2)
+            {
+                int[] userTerms = Sequence(user), replyTerms = Sequence(reply);
+                features.Proximity = Math.Max(SearchMeasures.Stretch(userTerms, asked), SearchMeasures.Stretch(replyTerms, asked));
+                if (pairs.Count > 0)
+                    features.Phrases = (double)pairs.Count(pair => SearchMeasures.Adjacent(userTerms, pair.First, pair.Second) ||
+                        SearchMeasures.Adjacent(replyTerms, pair.First, pair.Second)) / pairs.Count;
+            }
+            var said = new HashSet<string>(user, StringComparer.Ordinal);
+            said.UnionWith(reply);
+            stems[candidate.Document] = said;
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        public int Tie(in SearchCandidate left, in SearchCandidate right) =>
+            found.Hits[right.Document].Exchange.At.CompareTo(found.Hits[left.Document].Exchange.At);
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+        public double Similarity(int left, int right) => SearchMeasures.Jaccard(Stems(left), Stems(right));
+
+        public bool Skip(int document) => skip?.Invoke(found.Hits[document].Exchange) == true;
+
+        private int[] Sequence(IReadOnlyList<string> side)
+        {
+            var terms = new int[side.Count];
+            for (var at = 0; at < terms.Length; at++) terms[at] = position.GetValueOrDefault(side[at], -1);
+            return terms;
+        }
+    }
+
+    // When there is room, the exchange after one of the first picked follows it when it takes up the reply; then, beyond the
+    // picked, the rest of the candidates by score.
+    private static IReadOnlyList<HistoryExchange> Follow(SearchRanking ranking, HistoryCandidates found, Rules rules, SearchProfile profile,
+        int want, Func<HistoryExchange, bool>? skip)
+    {
+        var result = ranking.Hits.Select(hit => found.Hits[hit.Document].Exchange).ToList();
+        var shown = ranking.Seen.Select(rules.Stems).ToList();
+        var taken = new HashSet<Guid>(ranking.Ranked.Select(hit => found.Hits[hit.Document].Exchange.Id));
+        foreach (var leader in ranking.Hits.Take(Followed).Select(hit => found.Hits[hit.Document]).ToArray())
         {
             if (result.Count >= want) break;
-            if (leader.Hit.Next is not { } next || !Continues(leader.Exchange, next) || taken.Contains(next.Id) || result.Any(e => e.Id == next.Id))
+            if (leader.Next is not { } next || !Continues(leader.Exchange, next) || taken.Contains(next.Id) || result.Any(e => e.Id == next.Id))
                 continue;
             var stems = new HashSet<string>(SearchTerms.Of(Cut(next.User)), StringComparer.Ordinal);
             stems.UnionWith(SearchTerms.Of(Cut(next.Reply)));
-            if (shown.Any(other => Jaccard(other, stems) >= SameExchange) || skip?.Invoke(next) == true) continue;
+            if (shown.Any(other => SearchMeasures.Jaccard(other, stems) >= profile.Diversity.NearDuplicate) || skip?.Invoke(next) == true)
+                continue;
             result.Add(next);
             shown.Add(stems);
         }
         if (result.Count >= want) return result;
+        var pool = Math.Min(ranking.Ranked.Length, profile.Diversity.Pool);
         var listed = new HashSet<Guid>(result.Select(exchange => exchange.Id));
-        listed.UnionWith(pool.Select(candidate => candidate.Exchange.Id));
-        result.AddRange(ranked.Skip(Diversified).Select(candidate => candidate.Exchange)
+        listed.UnionWith(ranking.Ranked.Take(pool).Select(hit => found.Hits[hit.Document].Exchange.Id));
+        result.AddRange(ranking.Ranked.Skip(pool).Select(hit => found.Hits[hit.Document].Exchange)
             .Where(exchange => !listed.Contains(exchange.Id) && skip?.Invoke(exchange) != true));
         return result;
     }
@@ -194,54 +234,11 @@ internal static class PastConversationRanking
             if (kept.Count >= want) break;
             var stems = new HashSet<string>(SearchTerms.Of(Cut(exchange.User)), StringComparer.Ordinal);
             stems.UnionWith(SearchTerms.Of(Cut(exchange.Reply)));
-            if (shown.Any(other => Jaccard(other, stems) >= SameExchange)) continue;
+            if (shown.Any(other => SearchMeasures.Jaccard(other, stems) >= Found.Diversity.NearDuplicate)) continue;
             shown.Add(stems);
             if (skip?.Invoke(exchange) != true) kept.Add(exchange);
         }
         return kept;
-    }
-
-    // How close the asked words are on one side of the exchange (all of them next to each other: 1), and the share of the
-    // asked word pairs that appear one right after the other.
-    private static (double Proximity, double Phrase) Closeness(IReadOnlyList<string> user, IReadOnlyList<string> reply,
-        Dictionary<string, int> position, IReadOnlyList<(int First, int Second)> pairs, int asked)
-    {
-        if (asked < 2) return (0, 0);
-        var proximity = Math.Max(Proximity(user, position, asked), Proximity(reply, position, asked));
-        if (pairs.Count == 0) return (proximity, 0);
-        var found = pairs.Count(pair => Adjacent(user, position, pair) || Adjacent(reply, position, pair));
-        return (proximity, (double)found / pairs.Count);
-    }
-
-    private static double Proximity(IReadOnlyList<string> side, Dictionary<string, int> position, int asked)
-    {
-        var hits = new List<(int At, int Term)>();
-        for (var at = 0; at < side.Count; at++)
-            if (position.TryGetValue(side[at], out var term)) hits.Add((at, term));
-        var distinct = hits.Select(hit => hit.Term).Distinct().Count();
-        if (distinct < 2) return 0;
-        // The shortest stretch holding every asked word this side has.
-        var counts = new Dictionary<int, int>();
-        int covered = 0, left = 0, shortest = int.MaxValue;
-        for (var right = 0; right < hits.Count; right++)
-        {
-            if ((counts[hits[right].Term] = counts.GetValueOrDefault(hits[right].Term) + 1) == 1) covered++;
-            while (covered == distinct)
-            {
-                shortest = Math.Min(shortest, hits[right].At - hits[left].At + 1);
-                if (--counts[hits[left].Term] == 0) covered--;
-                left++;
-            }
-        }
-        return (double)(distinct - 1) / (asked - 1) * distinct / shortest;
-    }
-
-    private static bool Adjacent(IReadOnlyList<string> side, Dictionary<string, int> position, (int First, int Second) pair)
-    {
-        for (var at = 0; at + 1 < side.Count; at++)
-            if (position.GetValueOrDefault(side[at], -1) == pair.First && position.GetValueOrDefault(side[at + 1], -1) == pair.Second)
-                return true;
-        return false;
     }
 
     private static List<(int First, int Second)> Pairs(IReadOnlyList<string> sequence, Dictionary<string, int> position)
@@ -264,25 +261,7 @@ internal static class PastConversationRanking
         return mask;
     }
 
-    private static double Jaccard(HashSet<string> a, HashSet<string> b)
-    {
-        if (a.Count == 0 || b.Count == 0) return 0;
-        var shared = a.Count <= b.Count ? a.Count(b.Contains) : b.Count(a.Contains);
-        return (double)shared / (a.Count + b.Count - shared);
-    }
-
-    private static double Weight(int mask, IReadOnlyList<double> idf)
-    {
-        var weight = 0.0;
-        for (var term = 0; term < idf.Count; term++)
-            if ((mask & 1 << term) != 0) weight += idf[term];
-        return weight;
-    }
-
     private static int Count(int mask) => System.Numerics.BitOperations.PopCount((uint)mask);
-
-    private static double Distance(DateTimeOffset at, PastConversations.Span window) =>
-        at < window.From ? (window.From - at).TotalDays : (at - window.To).TotalDays;
 
     private static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
 

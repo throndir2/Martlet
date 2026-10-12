@@ -223,10 +223,13 @@ chooses pages from their titles before it downloads them
 
 [Never add conversation latency](../AGENTS.md#never-add-conversation-latency)
 decides the design: the search runs in this process and no model is asked. A
-search over 5,000 chunks takes about 0.2 ms on average
+search over 5,000 chunks takes about 0.15-0.2 ms on average
 (`AppGuideRetrievalTests` keeps a loose guard on it). The hot methods are
 compiled fully optimized from the first call, because a user sends too few
-messages for the runtime to optimize them later.
+messages for the runtime to optimize them later. The search runs on the shared
+[search engine](SEARCH.md) that memory and past conversations also use:
+`GuideRanking.Search` is the guide's profile, and `GuideQuery` and
+`GuideReranker` give the guide's own query and features.
 
 Build the index with `GuideIndex.Build(guide)`, or with
 `GuideIndex.Build(chunks, names)` to give the app's program names too, so the
@@ -253,13 +256,13 @@ thread-safe.
      (*greatsword* finds *great sword*). A short list of spellings and
      near-synonyms match each other (*colour* and *color*, *picture* and
      *image*, *buy* and *sell*).
-3. **First stage, BM25F** (`GuideIndex`): each chunk has three fields: the
+3. **First stage, BM25F** (`GuideIndex` on `SearchIndex`): each chunk has three fields: the
    page title, the section headings (without the title) and the text. BM25F
    adds each field's term frequency, weighted and length-normalized per
    field, and then saturates the sum once. Weights: title 2.5, section 3.5,
    text 1; length normalization (b): 0.3, 0.4 and 0.6; k1 1.2. The best 40
    chunks go to the second stage.
-4. **Second stage, the reranker** (`GuideReranker`). For each candidate it
+4. **Second stage, the reranker** (`GuideReranker` on `SearchRanker`). For each candidate it
    measures:
    - *coverage*: the IDF-weighted share of the question's words that the
      chunk has. A word that the guide does not have weighs as much as a
@@ -281,8 +284,8 @@ thread-safe.
    above 0.5 (at most 3 chunks and 2,400 characters). On the fixture below,
    every question has a right section at or above 0.5 except one, and no
    off-topic chat gets above 0.39.
-6. **Diversity**: maximal marginal relevance (λ 0.8) on word overlap and
-   page. A chunk with 80% or more of the same words as one already chosen is
+6. **Diversity**: maximal marginal relevance (weight 0.25, which is λ 0.8) on
+   word overlap and page. A chunk with 80% or more of the same words as one already chosen is
    left out, and a page gives at most 2 hits before every other candidate
    has had its turn.
 
@@ -565,6 +568,7 @@ misses the cache (the first one after a start) reads them again.
 | --- | --- |
 | Shared types and interfaces | `src\Martlet.Conversation\Guides\GuideContracts.cs` |
 | Search words | `src\Martlet.Core\Text\SearchTerms.cs` |
+| Search engine (index, ranker, measures) | `src\Martlet.Core\Search\` ([Search engine](SEARCH.md)) |
 | Chunker, index and reranker | `src\Martlet.Conversation\Guides\GuideChunker.cs`, `GuideIndex.cs`, `GuideQuery.cs`, `GuideReranker.cs` |
 | Store (`guides\library.json`, `<key>.guide.json`) | `src\Martlet.Conversation\Guides\FileAppGuideStore.cs` |
 | Wiki reader | `src\Martlet.Conversation\Guides\WebGuideBuilder.cs` |

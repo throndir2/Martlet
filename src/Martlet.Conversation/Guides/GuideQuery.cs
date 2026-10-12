@@ -77,6 +77,7 @@ internal sealed class GuideQuery
         int contentMask, int softMask)
     {
         Concepts = concepts;
+        ConceptTerms = [.. concepts.Select(concept => concept.Terms)];
         Terms = terms;
         Pairs = pairs;
         ContentWeight = contentWeight;
@@ -88,6 +89,8 @@ internal sealed class GuideQuery
 
     /// <summary>The concepts in the question's order (added soft ones last).</summary>
     public Concept[] Concepts { get; }
+    /// <summary>The guide terms of each concept (<see cref="Concept.Terms"/>), for <see cref="Martlet.Core.Search.SearchMeasures.MinimumCover"/>.</summary>
+    public int[][] ConceptTerms { get; }
     /// <summary>The guide terms to score, each once, with its query weight (soft ones count less).</summary>
     public (int Term, double Weight)[] Terms { get; }
     /// <summary>Neighbouring content concepts in the question, for phrase matches; Compound is a term joining them or -1.</summary>

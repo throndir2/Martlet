@@ -347,7 +347,8 @@ builds once (`LoadAsync`) for `Search`, `Between` and the ranking candidates
 `PastConversations` decides when a message refers to an earlier conversation
 (`RefersToPast`, English phrasing), reads times such as *yesterday* or *3 days
 ago* in the user's days (`Window`), picks the exchanges to bring back
-(`Recall`, ranked by `PastConversationRanking`: BM25, then a fixed reranker for
+(`Recall`, ranked by `PastConversationRanking` on the shared search engine in
+`Martlet.Core`, docs/SEARCH.md: BM25, then a fixed reranker for
 coverage, proximity, phrases, time, speakers and near-identical exchanges),
 words the notes block (`Notes`) and the opt-in
 `search_conversations` tool (`Definition`, `Parse`, `Find`, `Result`). Neither

@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Martlet.Core.Search;
 using Martlet.Core.Text;
 using Martlet.Providers;
 
@@ -85,7 +86,7 @@ public sealed record HistoryHit(HistoryExchange Exchange, double Score, int Matc
 internal sealed record HistoryCandidate(HistoryExchange Exchange, double Score, int Matched, int Nearby, HistoryExchange? Next);
 
 /// <summary>The candidates of one query, each query stem's inverse document frequency and how many exchanges are indexed.</summary>
-internal sealed record HistoryCandidates(IReadOnlyList<HistoryCandidate> Hits, IReadOnlyList<double> Idf, int Exchanges);
+internal sealed record HistoryCandidates(IReadOnlyList<HistoryCandidate> Hits, double[] Idf, int Exchanges);
 
 /// <summary>Counts only, never content: what the record holds and what couldn't be read. <paramref name="Apps"/> counts
 /// exchanges per app.</summary>
@@ -114,7 +115,6 @@ public sealed partial class ConversationHistory
     private const long MaximumFileBytes = 512L * 1024 * 1024;
     private const int MaximumTokenRunes = 64;
     private const int Schema = 1;
-    private const double K1 = 1.2, B = 0.75;
     // Relaxed escaping keeps what was said readable UTF-8 (not \uXXXX), so a line stays well within its bound in any language.
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -133,15 +133,15 @@ public sealed partial class ConversationHistory
     private int skipped, notIndexed;
 
     // Turn: the exchange's place in its conversation (0 for the first), so ranking can look at the exchanges around it.
-    private sealed record Entry(HistoryExchange Exchange, int Length, int Turn);
-    private readonly record struct Posting(int Entry, int Count);
+    private sealed record Entry(HistoryExchange Exchange, int Turn);
 
+    // The exchanges in order and their search index (the shared engine, docs/SEARCH.md): one field, the stems of what the user
+    // and Martlet said, document i being entry i.
     private sealed class Index
     {
         internal List<Entry> Entries { get; } = [];
-        internal Dictionary<string, List<Posting>> Postings { get; } = new(StringComparer.Ordinal);
+        internal SearchIndex Search { get; } = new(PastConversationRanking.Found);
         internal Dictionary<Guid, List<int>> Turns { get; } = [];
-        internal long TotalLength { get; private set; }
 
         internal static Index Of(IEnumerable<HistoryExchange> exchanges)
         {
@@ -152,23 +152,11 @@ public sealed partial class ConversationHistory
 
         internal void Add(HistoryExchange exchange)
         {
-            var at = Entries.Count;
-            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-            var length = 0;
-            foreach (var term in SearchTerms.Of(exchange.User).Concat(SearchTerms.Of(exchange.Reply)))
-            {
-                counts[term] = counts.GetValueOrDefault(term) + 1;
-                length++;
-            }
-            foreach (var (term, count) in counts)
-            {
-                if (!Postings.TryGetValue(term, out var list)) Postings[term] = list = [];
-                list.Add(new(at, count));
-            }
+            string[] said = [.. SearchTerms.Of(exchange.User), .. SearchTerms.Of(exchange.Reply)];
+            var at = Search.Add(said);
             if (!Turns.TryGetValue(exchange.ConversationId, out var turns)) Turns[exchange.ConversationId] = turns = [];
-            Entries.Add(new(exchange, length, turns.Count));
+            Entries.Add(new(exchange, turns.Count));
             turns.Add(at);
-            TotalLength += length;
         }
     }
 
@@ -412,86 +400,40 @@ public sealed partial class ConversationHistory
         {
             var entries = index.Entries;
             var count = entries.Count;
+            if (query.Length == 0 || count == 0) return new([], new double[query.Length], count);
+            var search = index.Search;
+            var terms = SearchQuery.Of(search, query);
             var idf = new double[query.Length];
-            if (query.Length == 0 || count == 0) return new([], idf, count);
-            var average = Math.Max(1, (double)index.TotalLength / count);
-            // Scratch arrays kept between searches (searches take the gate in turn): the stems each exchange matched (with whether
-            // it was seen and whether it is left out) and its score, for the exchanges touched, which are cleared afterwards.
-            if (matchedScratch.Length < count)
-            {
-                matchedScratch = new int[Math.Max(count, matchedScratch.Length * 2)];
-                scoreScratch = new double[matchedScratch.Length];
-            }
-            var (matched, scores) = (matchedScratch, scoreScratch);
-            touchedScratch.Clear();
-            try
-            {
-                for (var term = 0; term < query.Length; term++)
+            for (var term = 0; term < query.Length; term++) idf[term] = search.Idf(terms.Terms[term].Term);
+            HistoryCandidate[] hits = [];
+            // Ties go to the newer exchange. The exchanges around a candidate count what they matched even when they are left out
+            // themselves (another time, or not recallable).
+            search.Search(terms, limit,
+                (at, _) =>
                 {
-                    var list = index.Postings.GetValueOrDefault(query[term]);
-                    var frequency = list?.Count ?? 0;
-                    idf[term] = Math.Log(1 + (count - frequency + 0.5) / (frequency + 0.5));
-                    if (list is null) continue;
-                    foreach (var posting in list)
+                    var exchange = entries[at].Exchange;
+                    return !(exchange.ConversationId == exclude || from is { } start && exchange.At < start ||
+                        to is { } end && exchange.At >= end || include?.Invoke(exchange) == false);
+                },
+                (left, right) => right.Document.CompareTo(left.Document),
+                (candidates, matched) =>
+                {
+                    hits = new HistoryCandidate[candidates.Length];
+                    for (var place = 0; place < candidates.Length; place++)
                     {
-                        var at = posting.Entry;
-                        var state = matched[at];
-                        if (state == 0)
-                        {
-                            touchedScratch.Add(at);
-                            var exchange = entries[at].Exchange;
-                            state = Seen | (exchange.ConversationId == exclude || from is { } start && exchange.At < start ||
-                                to is { } end && exchange.At >= end || include?.Invoke(exchange) == false ? LeftOut : 0);
-                        }
-                        matched[at] = state | 1 << term;
-                        if ((state & LeftOut) != 0) continue;
-                        scores[at] += idf[term] * posting.Count * (K1 + 1) /
-                            (posting.Count + K1 * (1 - B + B * entries[at].Length / average));
+                        var at = candidates[place].Document;
+                        var (turn, turns) = (entries[at].Turn, index.Turns[entries[at].Exchange.ConversationId]);
+                        var nearby = 0;
+                        for (var other = Math.Max(0, turn - 2); other <= Math.Min(turns.Count - 1, turn + 2); other++)
+                            if (other != turn) nearby |= matched(turns[other]);
+                        var next = turn + 1 < turns.Count ? entries[turns[turn + 1]].Exchange : null;
+                        if (next is not null && include?.Invoke(next) == false) next = null;
+                        hits[place] = new(entries[at].Exchange, candidates[place].Score, candidates[place].Mask, nearby, next);
                     }
-                }
-                // The best `limit` by score (ties to the newer), without sorting every match.
-                var best = new PriorityQueue<int, (double Score, int Entry)>(limit + 1);
-                foreach (var at in touchedScratch)
-                {
-                    if ((matched[at] & LeftOut) != 0) continue;
-                    var key = (scores[at], at);
-                    if (best.Count == limit)
-                    {
-                        if (best.TryPeek(out _, out var lowest) && key.CompareTo(lowest) <= 0) continue;
-                        best.Dequeue();
-                    }
-                    best.Enqueue(at, key);
-                }
-                var hits = new HistoryCandidate[best.Count];
-                for (var place = hits.Length - 1; place >= 0; place--)
-                {
-                    best.TryDequeue(out var at, out var key);
-                    var (turn, turns) = (entries[at].Turn, index.Turns[entries[at].Exchange.ConversationId]);
-                    var nearby = 0;
-                    for (var other = Math.Max(0, turn - 2); other <= Math.Min(turns.Count - 1, turn + 2); other++)
-                        if (other != turn) nearby |= matched[turns[other]];
-                    var next = turn + 1 < turns.Count ? entries[turns[turn + 1]].Exchange : null;
-                    if (next is not null && include?.Invoke(next) == false) next = null;
-                    hits[place] = new(entries[at].Exchange, key.Score, matched[at] & TermBits, nearby & TermBits, next);
-                }
-                return new(hits, idf, count);
-            }
-            finally
-            {
-                foreach (var at in touchedScratch)
-                {
-                    matched[at] = 0;
-                    scores[at] = 0;
-                }
-                touchedScratch.Clear();
-            }
+                });
+            return new(hits, idf, count);
         }
     }
-
-    private const int TermBits = (1 << MaximumQueryTerms) - 1, Seen = 1 << 30, LeftOut = 1 << 29;
-    private int[] matchedScratch = [];
-    private double[] scoreScratch = [];
-    private readonly List<int> touchedScratch = [];
 
     /// <summary>Deletes one conversation from its files and the index, on the thread pool. Returns how many exchanges went.</summary>
     public Task<int> DeleteAsync(Guid conversation, CancellationToken token = default) =>

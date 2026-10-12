@@ -180,6 +180,9 @@ Every change builds it again. Nothing on this path calls a model, makes
 embeddings or uses a vector store: recall runs on the reply's path, and it must
 not make a reply slower (see
 [Never add conversation latency](../AGENTS.md#never-add-conversation-latency)).
+Memory uses the shared [search engine](SEARCH.md) that app guides and past
+conversations also use: `LexicalIndex` gives memory's profile (one `content`
+field, the weights below and the penalty selection) and its features.
 
 **Words.** A fact and a query are read as search terms (`SearchTerms` in
 `Martlet.Core`, which app guides and past conversations also use): runs of
@@ -239,11 +242,12 @@ query on a store of 512 facts takes this long (median):
 | 600-700 words | 266 µs | 161 µs |
 
 A full store of 100,000 facts of 6-16 words, with a small vocabulary where every
-query word is in thousands of facts, takes about 2.9 ms (median; 512 facts:
-40 µs). The reranker keeps the 64 best BM25 candidates with a heap instead of
-sorting every candidate, and a query uses per-thread working arrays and clears
-only the facts it touched, so its cost follows what it matches, not the size of
-the store.
+query word is in thousands of facts, takes about 0.3 ms (median; 512 facts:
+about 20 µs; before the shared [search engine](SEARCH.md#speed), 1.5-2.6 ms and
+18-30 µs on the same PC). The reranker keeps the 64 best BM25 candidates with a
+heap instead of sorting every candidate, and a query reuses working arrays and
+clears only the facts it touched, so its cost follows what it matches, not the
+size of the store.
 
 `memory_recall_check` ([MCP](MCP.md)) measures both on any PC.
 `RankingAFullStoreStaysWellUnderAMillisecond` keeps the median for 512 facts
@@ -587,7 +591,8 @@ only a time (*what did we talk about yesterday?*) the latest exchanges of that
 time do, an exchange nearly the same as a later one left out.
 
 **How matches are ranked.** Ranking runs in memory on the reply's path, with no
-model, embedding or other process (`PastConversationRanking`): BM25 over the
+model, embedding or other process, on the shared [search engine](SEARCH.md)
+(`PastConversationRanking` gives its profile and features): BM25 over the
 stems finds up to 200 candidates, then a fixed reranker scores each one on:
 
 - *Coverage*: how much of what was asked the exchange has, each word weighted

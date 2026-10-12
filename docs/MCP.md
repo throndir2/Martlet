@@ -1687,7 +1687,7 @@ the owner's other computers. It returns `preview`, `matched`, `deleted` and
 rehearses how recall ranks remembered facts
 ([Lexical retrieval and reranking](MEMORY.md#lexical-retrieval-and-reranking))
 with the production code (`MemoryStore` and `LexicalIndex` in
-`src\Martlet.Memory`) on synthetic facts in disposable stores, and returns
+`src\Martlet.Memory`, on the shared [search engine](SEARCH.md)) on synthetic facts in disposable stores, and returns
 `{passed, failures, steps, query, note}`. The steps: plurals and verb forms
 find each other (*Do I have any cats?* finds the cat fact, *running* finds
 *runs*), grammar words are left out, the fact that holds more of the question
