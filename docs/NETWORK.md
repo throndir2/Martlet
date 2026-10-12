@@ -232,7 +232,9 @@ before: remove it from the network and every host revokes it.
    nothing is open to the internet, and pinned TLS works unchanged (the overlay
    address is just another way to the same host key). Add each host's overlay
    address (for example `100.101.102.103:9443` or `gpu-box.tailnet.ts.net:9443`)
-   as an outside address.
+   as an outside address. A host's gateway normally listens on its home address
+   only, so a host with outside addresses also listens where the overlay reaches
+   it (`GatewayOverlayListeners.cs`, see *Where a host listens* below).
 2. **Port forward on your router:** forward one public TCP port to a host's
    gateway port and add `your-name.example.net:<port>` (or your public IP) as
    that host's outside address. Turn on the host's *reachable from outside*
@@ -267,6 +269,70 @@ entry has none or it is newer. Outside addresses are part of the signed entry
 existing rosters are unchanged). Martlet before this release refuses a roster
 that lists outside addresses, so update every computer (Update host) before
 adding them.
+
+**Where a host listens.** A gateway listens on its home address only, but an
+overlay network reaches the computer on another of its own addresses (for
+example Tailscale's `100.x.y.z`). So while a host has outside addresses:
+
+- **A native Linux or Mac host** (`martlet-host` native method,
+  `"mode":"privateIp"`) also listens on each of the computer's Tailscale
+  addresses (100.64.0.0/10 and fd7a:115c:a1e0::/48), on the home port, and on
+  each of its addresses that an outside address names as an IP (for example a
+  ZeroTier `10.147.17.5:9443`), on that port. It doesn't need to resolve a
+  MagicDNS name. It reads the computer's addresses every 10 seconds and when
+  they change, so Tailscale may start after the host, stop or get another
+  address. Its own outside addresses come from `exposure.json` and from its
+  roster entry, so the network card's **Outside addresses** is enough. The host
+  log says `Listening on 100.101.102.103:9443 too (overlay network) ...` and
+  `Stopped listening on ...`, and the security audit lists the addresses in
+  `outside_listeners` (the Devices map's *Outside home* detail shows them). It
+  never adds the home address, loopback or any other address that nothing
+  names.
+- **A Docker host** (Docker Desktop on Windows, or the Docker method on Linux)
+  can't see its own addresses from inside the container, and Docker Desktop
+  can't publish on an address that may come and go (the holder would not start
+  while Tailscale is off). So when you set outside addresses in **Outside
+  access** (`martlet-host exposure --outside ...`), the network holder
+  (`martlet-host-net`) publishes the gateway port on every address of the
+  Docker host (`-p 9443:9443`), and with `--clear-outside` on its home address
+  only again. Its `martlet.home` label keeps the home address, and *Set up*
+  and *Update host* keep the choice. Replacing the holder restarts the gateway
+  and roles. On a Docker host, set the addresses in **Outside access**; the
+  network card's **Outside addresses** alone only signs the roster.
+  `host_service_status` reports `publishedEverywhere`. Docker Desktop's own
+  firewall rule allows its port on private and public networks, so publish
+  everywhere only on a PC that stays at home.
+
+Connections that arrive through an overlay come from outside home for the
+guard (Tailscale's 100.64.0.0/10 is not a private address), so each host
+needs sign-in set up before it serves them (see *Sign-in comes first* below).
+Tailscale adds its own firewall rule for its interface on Windows
+(`Tailscale-In`) and Linux (`ts-input`), so Martlet's home-network-only rules
+don't block it. If a Linux host with `ufw` still doesn't answer through
+Tailscale, run `sudo ufw allow in on tailscale0` on it.
+
+**A laptop that goes in and out of home with Tailscale.** The laptop uses the
+home address while it is at home and the Tailscale address while it is away,
+with the same pairing:
+
+1. Install Tailscale on the laptop and on every host, and sign in to the same
+   tailnet. Find each host's Tailscale address with `tailscale ip -4`.
+2. Update every computer to this Martlet (Update host for each host).
+3. At home, pair the laptop with each host as usual.
+4. On each host, set up sign-in: Devices › **Add a computer** with the host
+   selected › **Sign-in from outside** (an owner account with an authenticator).
+5. Give each host its Tailscale address as an outside address, for example
+   `100.101.102.103:9443` or `gpu-box.tailnet.ts.net:9443`. For a Docker host
+   (a Windows PC), use Devices › the host › **Outside access**. For a native
+   Linux or Mac host, **Outside access** or the network card's **Outside
+   addresses** works.
+6. Wait for one network sync while the laptop is at home, so it learns the
+   addresses.
+7. Leave home. The first connection waits 1.5 seconds for the home address,
+   then uses the Tailscale address, and later connections go there at once.
+   Back at home, the home address wins again within about 2 minutes.
+8. Check it away from home: MCP `outside_reachability_check` with
+   `contactHosts: true`, or the Devices card (*reached from outside*).
 
 **Which address a desktop uses** (`Remote/HostRoutes.cs`). Requests keep the
 host's home origin, so TLS still checks the pinned key and signatures are
@@ -858,7 +924,7 @@ to join through it.
 | MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
 | Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`, household account logins), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/prove`, `/settings`); `Martlet.Core` `Access/Totp.cs`, `Accounts/AccountAttestation.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs` (`ProveAsync`, `ProveWithPasswordAsync`, `ProveInBrowserAsync`), `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest`, `signin_lab` mode `account` |
 | Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Devices › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
-| Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`) |
+| Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit), `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`) and `GatewayOverlayListeners.cs` (listening on overlay addresses); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`); Docker holder publishing in `deploy/host/martlet-host` (`ensure_holder`) and `LocalHostService.ParseHolder` |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
 join it: they use [API keys](API.md), which belong to the network too. A key
@@ -977,5 +1043,8 @@ get `outside.paused` while sign-in's settings still answer the owner. Also
 `exposure_selftest` (loopback, every guard rule), `host_engine_check`'s
 exposure steps (the engine) and `node_link_check`'s `exposure-command` (the
 `host.exposure` command through a real gateway and the desktop's agent loop).
-**NOT RUN:** a real router port forward, overlay network or internet path, and
-saving Outside access against a live host service (it restarts that service).
+**NOT RUN:** a real router port forward, an internet path, another computer on
+an overlay network, and saving Outside access against a live host service (it
+restarts that service). `exposure_selftest`'s last step reaches a gateway on
+this PC's home address through this PC's own Tailscale address (refused as
+outside home until sign-in is set up, then answering), when the PC has one.

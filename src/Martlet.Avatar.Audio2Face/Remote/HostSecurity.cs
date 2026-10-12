@@ -18,6 +18,9 @@ public sealed record HostSecurityAudit(string HostId, bool InternetReachable, bo
     /// <summary>The host has outside addresses (or allows typed codes outside) while sign-in has no usable method, so it
     /// refuses requests from outside home.</summary>
     public bool OutsideAccessPaused { get; init; }
+    /// <summary>The overlay network addresses ("ip:port") the host listens on besides its home address. Hosts older than
+    /// this, and hosts in a container (whose runtime publishes the port), report none.</summary>
+    public IReadOnlyList<string> OutsideListeners { get; init; } = [];
 }
 
 public sealed partial class Audio2FaceHostConnection
@@ -51,7 +54,9 @@ public sealed partial class Audio2FaceHostConnection
             {
                 OutsideAccessBlockedReason = root.TryGetProperty("outside_access_blocked_reason", out var blocked) && blocked.ValueKind == JsonValueKind.String
                     ? blocked.GetString() : null,
-                OutsideAccessPaused = root.TryGetProperty("outside_access_paused", out var paused) && paused.ValueKind == JsonValueKind.True
+                OutsideAccessPaused = root.TryGetProperty("outside_access_paused", out var paused) && paused.ValueKind == JsonValueKind.True,
+                OutsideListeners = root.TryGetProperty("outside_listeners", out var listeners) && listeners.ValueKind == JsonValueKind.Array
+                    ? listeners.EnumerateArray().Take(16).Select(e => e.GetString() ?? throw new InvalidOperationException()).ToArray() : []
             };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
