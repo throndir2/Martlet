@@ -193,13 +193,50 @@ public static class CharacterEyes
         "brows). For each cheek give one box, \"cheek\": the round of the cheek below and a little outside that eye, where an " +
         "anime blush is painted, on the skin (not on the eye, the hair or the face's outline). Give one box for the \"mouth\" " +
         "(the lips, or where the mouth is when it is only a line). Give each box as fractions of THIS picture, with two " +
-        "decimals: left and right as fractions of its width, top and bottom as fractions of its height. Answer with JSON only, " +
-        "no other text, in this form:\n" +
-        "{\"left\":{\"iris\":{\"left\":0.33,\"top\":0.41,\"right\":0.41,\"bottom\":0.52},\"eye\":{\"left\":0.27,\"top\":0.42," +
-        "\"right\":0.45,\"bottom\":0.52},\"cheek\":{\"left\":0.24,\"top\":0.57,\"right\":0.4,\"bottom\":0.66}}," +
-        "\"right\":{\"iris\":{\"left\":0.59,\"top\":0.41,\"right\":0.67,\"bottom\":0.52},\"eye\":{\"left\":0.55,\"top\":0.42," +
-        "\"right\":0.73,\"bottom\":0.52},\"cheek\":{\"left\":0.6,\"top\":0.57,\"right\":0.76,\"bottom\":0.66}}," +
-        "\"mouth\":{\"left\":0.45,\"top\":0.7,\"right\":0.55,\"bottom\":0.75}}";
+        "decimals: left and right as fractions of its width, top and bottom as fractions of its height. Every face is " +
+        "different: measure THIS picture and don't use typical positions. Answer with JSON only, no other text, in this form, " +
+        "where you replace each L, T, R and B with the left, top, right and bottom you read for that box:\n" +
+        "{\"left\":{\"iris\":{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B},\"eye\":{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B}," +
+        "\"cheek\":{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B}}," +
+        "\"right\":{\"iris\":{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B},\"eye\":{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B}," +
+        "\"cheek\":{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B}}," +
+        "\"mouth\":{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B}}";
+
+    /// <summary>The boxes of the numbered example the instructions gave in Martlet 0.72 and before (a typical face, not a measured
+    /// one). A small vision model sometimes sent them back unchanged, and they pass every other check, so an answer (or a saved
+    /// measurement) with them is not a measurement.</summary>
+    public static readonly EyeBoxes OldExample = new(
+        Edges(0.33, 0.41, 0.41, 0.52), Edges(0.27, 0.42, 0.45, 0.52), Edges(0.59, 0.41, 0.67, 0.52), Edges(0.55, 0.42, 0.73, 0.52),
+        Edges(0.24, 0.57, 0.4, 0.66), Edges(0.6, 0.57, 0.76, 0.66), Edges(0.45, 0.7, 0.55, 0.75));
+
+    private static TouchZoneBox Edges(double left, double top, double right, double bottom) => new(left, top, right - left, bottom - top);
+
+    /// <summary>Whether <paramref name="boxes"/> are the old instructions' example (<see cref="OldExample"/>): all four eye boxes
+    /// within half a hundredth of it.</summary>
+    public static bool CopiedExample(EyeBoxes boxes)
+    {
+        static bool Same(TouchZoneBox a, TouchZoneBox b) => Math.Abs(a.X - b.X) < 0.005 && Math.Abs(a.Y - b.Y) < 0.005 &&
+            Math.Abs(a.Width - b.Width) < 0.005 && Math.Abs(a.Height - b.Height) < 0.005;
+        var (ordered, _) = Ordered(boxes);
+        return Same(ordered.LeftIris, OldExample.LeftIris) && Same(ordered.LeftEye, OldExample.LeftEye) &&
+            Same(ordered.RightIris, OldExample.RightIris) && Same(ordered.RightEye, OldExample.RightEye);
+    }
+
+    /// <summary>The problem Martlet reports for an answer that is the example (<see cref="CopiedExample"/>).</summary>
+    public const string CopiedProblem = "These boxes are an example's numbers, not boxes measured on this picture. Read each box from this picture's grid.";
+
+    /// <summary>The names of the boxes drawn on the close-up, by number (1 to 7), as the owner and the check see them.</summary>
+    public static readonly IReadOnlyList<string> MarkNames =
+        ["left iris", "left eye's opening", "right iris", "right eye's opening", "left cheek", "right cheek", "mouth"];
+
+    /// <summary>The text file kept beside a picture sent (<paramref name="pictureFile"/>): the exact request and answer.</summary>
+    public static string ExchangeFile(string pictureFile) => System.IO.Path.ChangeExtension(pictureFile, ".txt");
+
+    /// <summary>The exact text of one request and its answer, as kept beside the picture sent: the instructions, the message,
+    /// the picture's size, and the raw answer (or why there was none).</summary>
+    public static string Exchange(EyeAsk ask, string picture, string? answer, string? failure) =>
+        $"Step: {ask.Step} ({ask.Kind})\nPicture: {picture}\n\n--- Instructions ---\n{ask.Instructions}\n\n--- Message ---\n{ask.Text}\n\n" +
+        (answer is null ? $"--- No answer ---\n{failure ?? "no answer"}\n" : $"--- Answer ---\n{answer}\n");
 
     /// <summary>The message of the first request.</summary>
     public const string Text = "This close-up shows the character's face, with its eyes open and looking straight ahead. Mark both eyes, both cheeks and the mouth.";
@@ -347,6 +384,7 @@ public static class CharacterEyes
     /// when they pass.</summary>
     public static IReadOnlyList<string> EyeProblems(EyeBoxes boxes, EyeCloseUp closeUp)
     {
+        if (CopiedExample(boxes)) return [CopiedProblem];
         var problems = new List<string>();
         void Eye(string side, int number, TouchZoneBox iris, TouchZoneBox eye)
         {
@@ -570,8 +608,11 @@ public static class CharacterEyes
             var path = Path(dataDirectory);
             if (!File.Exists(path) || new FileInfo(path).Length > MaximumBytes) return [];
             var document = JsonSerializer.Deserialize<Document>(File.ReadAllBytes(path), Json);
+            // A measurement whose boxes are the old instructions' example was copied, not measured: it is left out, so the model is
+            // measured again.
             return document is { Version: 1, Models: { } models }
-                ? models.Where(m => m is { ModelId.Length: > 0, Left.IsValid: true, Right.IsValid: true } && m.Hint.IsValid).ToArray() : [];
+                ? models.Where(m => m is { ModelId.Length: > 0, Left.IsValid: true, Right.IsValid: true } && m.Hint.IsValid &&
+                    !(m.Boxes is { } boxes && CopiedExample(boxes))).ToArray() : [];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException) { return []; }
     }

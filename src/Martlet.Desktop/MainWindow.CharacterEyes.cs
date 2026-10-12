@@ -200,9 +200,33 @@ public partial class MainWindow
                 AutomationProperties.SetName(picture, "The close-up Thinking saw, with its boxes: 1 and 2 the left iris and eye, 3 and 4 the right ones, " +
                     "5 and 6 the left and right cheeks, 7 the mouth");
                 stack.Add(picture);
+                stack.Add(EyesLegend());
             }
             catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { }
+            var open = PageButton("Open the pictures and answers", () => OpenTouchZonePictures(Path.GetDirectoryName(path)!), id: "CharacterEyesOpen");
+            AutomationProperties.SetHelpText(open, "Opens the folder with each picture sent to the Thinking model and, beside it, a text file with " +
+                "the exact instructions, message and answer.");
+            stack.Add(Row(open));
         }
         return Card([.. stack]);
+    }
+
+    /// <summary>What each numbered box on the close-up is, each name in its box's color; "left" and "right" as you see them.</summary>
+    private static TextBlock EyesLegend()
+    {
+        var legend = Note("", new Thickness(0, 0, 0, 4));
+        legend.Inlines.Add(new System.Windows.Documents.Run("Boxes, left and right as you see them: "));
+        var marks = CharacterEyes.Marks(CharacterEyes.OldExample);
+        for (var i = 0; i < marks.Count; i++)
+        {
+            var color = marks[i].Color;
+            if (i > 0) legend.Inlines.Add(new System.Windows.Documents.Run(", "));
+            legend.Inlines.Add(new System.Windows.Documents.Run($"{marks[i].Number} {CharacterEyes.MarkNames[marks[i].Number - 1]}")
+            {
+                Foreground = new SolidColorBrush(Color.FromRgb(color.R, color.G, color.B)), FontWeight = FontWeights.SemiBold
+            });
+        }
+        AutomationProperties.SetAutomationId(legend, "CharacterEyesLegend");
+        return legend;
     }
 }

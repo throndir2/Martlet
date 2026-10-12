@@ -678,8 +678,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // went (each step while it runs, or why it failed) and, only when no model can see pictures, why Measure the face is off.
         // Fixed text, times and counts only. Measure the face (CharacterEyesMeasure) sends a close-up of the character's face to
         // Thinking and Forget the measurement (CharacterEyesForget) deletes it, so they need --allow-ui-effects;
-        // CharacterEyesPicture (the close-up with its boxes) isn't a value.
-        "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote",
+        // CharacterEyesPicture (the close-up with its boxes) isn't a value. CharacterEyesLegend names each numbered box (1 left iris
+        // ... 7 mouth), fixed text. CharacterEyesOpen opens the folder of pictures and exact answers in Explorer, so it needs
+        // --allow-ui-effects.
+        "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote", "CharacterEyesLegend",
         // Companion › Touch › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
         // whole temperament in words: "head loves, torso hates, ..., intimate loves", its eyes and the parts whose touch turns them to

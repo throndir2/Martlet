@@ -105,8 +105,17 @@ internal sealed class CharacterEyeService(string? dataDirectory)
                 pictures.Add(new(name, eyeAsk.Step, image.Width, image.Height, image.ByteCount, image.MimeType));
                 ErrorLog.Info($"Measuring the eyes ({eyeAsk.Step}): {(fixture is null ? "sending" : "FIXTURE - NOT AI, not sending")} a {image.Width}x{image.Height} " +
                     $"{image.MimeType} picture ({image.ByteCount / 1024} KB) of the face with a grid{(eyeAsk.Marks.Count > 0 ? $" and {eyeAsk.Marks.Count} numbered boxes" : "")}.");
-                if (fixture is not null) return (answerText, answerText is null ? "the fixture file is missing" : null);
-                return await ask("Measuring the eyes", eyeAsk.Instructions, eyeAsk.Text, image, cancel);
+                var exchange = Path.Combine(folder, CharacterEyes.ExchangeFile(name));
+                var size = $"{image.Width}x{image.Height} {image.MimeType}, {image.ByteCount} bytes ({name})";
+                (string? Answer, string? Failure) reply = fixture is not null ? (answerText, answerText is null ? "the fixture file is missing" : null)
+                    : await ask("Measuring the eyes", eyeAsk.Instructions, eyeAsk.Text, image, cancel);
+                // The exact request and answer, kept beside the picture and in the log, so a wrong measurement can be traced to what
+                // the model said.
+                await File.WriteAllTextAsync(exchange, (fixture is null ? "" : "FIXTURE - NOT AI: a stand-in answered, no vision request was made.\n") +
+                    CharacterEyes.Exchange(eyeAsk, size, reply.Answer, reply.Failure), cancel);
+                ErrorLog.Info($"Measuring the eyes ({eyeAsk.Step}): {(fixture is null ? "the answer" : "FIXTURE - NOT AI answer")}: " +
+                    (reply.Answer is { } said ? Clip(said) : $"none ({reply.Failure ?? "no answer"})"));
+                return reply;
             }
 
             var result = await CharacterEyes.RunAsync(closeUp, AskAsync, text => Report(tag + text), token);
@@ -178,6 +187,13 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         Volatile.Write(ref progress, text);
         Changed?.Invoke();
         return text;
+    }
+
+    // A raw answer for the log, on one line and at most 1500 characters.
+    private static string Clip(string text)
+    {
+        var line = string.Join(' ', text.Split((char[])['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)).Trim();
+        return line.Length <= 1500 ? line : line[..1500] + "...";
     }
 
     // A measurement that ends without a result: the desktop log says why too.

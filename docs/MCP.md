@@ -3048,8 +3048,9 @@ last two. Choosing a level, Reset and its `ConfirmationYes` need
 `character_eyes` rehearses Companion › Eyes › [Where the face is](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
 width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
-`check` message that goes with the boxes drawn and numbered, and the `again`
-message after an answer Martlet couldn't use), `closeUp` (the picture's
+`check` message that goes with the boxes drawn and numbered, the `again`
+message after an answer Martlet couldn't use, and `boxNames`, the name of each
+numbered box), `closeUp` (the picture's
 `width` and `height`, the `area` it cuts from the snapshot and the `face` in
 the snapshot's pixels with its `rollDegrees`), `measurement` (with `answer`, a
 simulated vision reply about the close-up such as
@@ -3058,7 +3059,8 @@ as fractions, pixels or the 0..1000 grid, or flat keys such as `left_iris`,
 `left_cheek` and `mouth`;
 and `second`, the answer to the second request when the first can't be read
 or fails Martlet's checks: the `steps`, each request `asked` (its `step`,
-`kind` `Eyes`, `Check` or `Again`, picture, `marks`, message and answer), the
+`kind` `Eyes`, `Check` or `Again`, picture, `exchange` (the `.txt` file with
+the exact request and answer), `marks`, message and answer), the
 `boxes` as fractions of the close-up (`leftIris`, `leftEye`, `rightIris`,
 `rightEye`, and `leftCheek`, `rightCheek` and `mouth` when given), the
 `problems` the checks found (for a measurement that saved, the cheeks or mouth
@@ -3068,7 +3070,7 @@ eye's `iris` (`x`, `y`, `r`) and opening (`eye`: `x`, `y`, `rx`, `ry`), and
 widths from the face's middle, roll removed), `checks` (the limits the checks
 use, in face widths, with `cheekWidth`, `cheekDrop` and `mouthWidth`),
 `saved` (the model's measurement in `character-eyes.json`: who measured it,
-when, the `hint`, the pictures kept, whether the picture of its boxes is kept
+when, the `hint`, the pictures kept, the `answers` (`.txt` files) kept, whether the picture of its boxes is kept
 and its plain `line`) and, with `eyesFrom` (`mesh`, `bones`, `vision` or
 `estimate`, what the renderer says the eyes use), the `status` line the
 section shows. Without `snapshotPath` the close-up is exactly 1.6 face widths
@@ -3098,7 +3100,17 @@ the face*, or *Measure the face again* once a measurement is saved) sends a
 close-up of the character's face to Thinking and
 `CharacterEyesForget` (*Forget the measurement*) deletes it, so both need
 `--allow-ui-effects`; `CharacterEyesPicture` is the close-up Thinking saw with
-its numbered boxes (1 to 4 the eyes, 5 and 6 the cheeks, 7 the mouth). The measurement uses the same off-screen still
+its numbered boxes (1 to 4 the eyes, 5 and 6 the cheeks, 7 the mouth), and
+`CharacterEyesLegend` names each box in its color (*Boxes, left and right as
+you see them: 1 left iris, 2 left eye's opening, ...*). `CharacterEyesOpen`
+(*Open the pictures and answers*) opens the model's folder in File Explorer,
+so it needs `--allow-ui-effects`. Each request is kept beside its picture as
+`NN-step.txt` (the instructions, the message and the model's exact answer,
+with a FIXTURE header when a stand-in answered), and the desktop log records
+*Measuring the eyes (step): the answer: ...*. An answer that copies the old
+example boxes from the instructions fails the checks (*These boxes are an
+example's numbers...*), and a saved measurement with those boxes loads as absent,
+so the model is measured again. The measurement uses the same off-screen still
 renderer as *Detect zones*, whose picture now also carries the face anchor (that
 renderer never gets the hint, so a new measurement is always relative to
 Martlet's own anchor); the

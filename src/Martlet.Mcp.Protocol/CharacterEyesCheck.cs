@@ -37,6 +37,7 @@ internal static class CharacterEyesCheck
         object? measurement = null;
         EyeMeasurementResult? result = null;
         var pictures = new List<(EyeSentPicture Sent, byte[] Bytes)>();
+        var exchanges = new List<(string File, string Text)>();
         if (answer is not null)
         {
             var asked = new List<object>();
@@ -54,8 +55,17 @@ internal static class CharacterEyesCheck
                     if (previewDirectory is not null) await File.WriteAllBytesAsync(Path.Combine(previewDirectory, file), bytes, token);
                 }
                 var reply = answers.Count > 0 ? answers.Dequeue() : null;
-                asked.Add(new { ask.Step, kind = ask.Kind.ToString(), picture, file, marks = ask.Marks.Count, text = ask.Text, answer = reply });
-                return (reply, reply is null ? "no simulated answer for this request (give second)" : null);
+                var failure = reply is null ? "no simulated answer for this request (give second)" : null;
+                string? exchange = null;
+                if (file is not null)
+                {
+                    exchange = CharacterEyes.ExchangeFile(file);
+                    var text = "FIXTURE - NOT AI: a simulated answer, no vision request was made.\n" + CharacterEyes.Exchange(ask, picture!, reply, failure);
+                    exchanges.Add((exchange, text));
+                    if (previewDirectory is not null) await File.WriteAllTextAsync(Path.Combine(previewDirectory, exchange), text, token);
+                }
+                asked.Add(new { ask.Step, kind = ask.Kind.ToString(), picture, file, exchange, marks = ask.Marks.Count, text = ask.Text, answer = reply });
+                return (reply, failure);
             }, null, cancellation);
             measurement = new
             {
@@ -84,6 +94,7 @@ internal static class CharacterEyesCheck
             var model = Need(id, problem);
             var folder = CharacterEyes.ClearPictures(dataDirectory, model);
             foreach (var (sent, bytes) in pictures) await File.WriteAllBytesAsync(Path.Combine(folder, sent.File), bytes, cancellation);
+            foreach (var (file, text) in exchanges) await File.WriteAllTextAsync(Path.Combine(folder, file), text, cancellation);
             if (closeUp.Picture(CharacterEyes.Marks(result.Boxes!)) is { } marked)
                 await File.WriteAllBytesAsync(Path.Combine(folder, CharacterEyes.BoxesFile), TouchZoneImages.Encode(marked).Content.ToArray(), cancellation);
             await CharacterEyes.SaveAsync(dataDirectory, CharacterEyeMeasurement.From(model, hint) with
@@ -101,7 +112,7 @@ internal static class CharacterEyesCheck
             model = new { renderer, modelId = id, problem },
             request = new
             {
-                instructions = CharacterEyes.Instructions, text = CharacterEyes.Text,
+                instructions = CharacterEyes.Instructions, text = CharacterEyes.Text, boxNames = CharacterEyes.MarkNames,
                 check = CharacterEyes.CheckText(["The left iris (box 1) lies mostly outside the left eye's opening (box 2)."]),
                 again = CharacterEyes.AgainText("it gave no box for the right iris"),
                 edge = CharacterEyes.Edge, faceWidths = CharacterEyes.FaceWidths, maximumZoom = CharacterEyes.MaximumZoom
@@ -120,6 +131,8 @@ internal static class CharacterEyesCheck
             {
                 saved.By, saved.MeasuredAt, saved.Requests, hint = Hint(saved.Hint), pictures = saved.Pictures.Select(p => p.File).ToArray(), saved.Steps,
                 boxesPicture = File.Exists(Path.Combine(CharacterEyes.PictureFolder(dataDirectory, saved.ModelId), CharacterEyes.BoxesFile)),
+                answers = saved.Pictures.Select(p => CharacterEyes.ExchangeFile(p.File))
+                    .Where(f => File.Exists(Path.Combine(CharacterEyes.PictureFolder(dataDirectory, saved.ModelId), f))).ToArray(),
                 line = CharacterEyes.Measured(saved, DateTimeOffset.Now)
             },
             checks = new
