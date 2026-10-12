@@ -1,0 +1,16 @@
+{
+  "name": "@martlet/motion-vrma-check",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local check: loads converter output with @pixiv/three-vrm-animation and measures the posed VRM bones.",
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "3.5.5",
+    "@pixiv/three-vrm-animation": "3.5.5",
+    "gltf-validator": "2.0.0-dev.3.10",
+    "three": "0.180.0"
+  }
+}
