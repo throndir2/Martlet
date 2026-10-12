@@ -5,6 +5,7 @@ import { blinkPresets, finite, gazePresets, inspectVrm, integer, LIMITS, mouthPr
   type VrmCapabilities } from "./inspect.js";
 import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, readEyeHint, VrmEyes } from "./eyes.js";
 import { capturePose, hitTestVrm, type RestPose, type VrmHit } from "./touch.js";
+import { animationName, loadVrmAnimation, type VrmAnimationInfo, type VrmAnimationReading, VrmClipPlayer } from "./animation.js";
 
 type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 
@@ -535,6 +536,8 @@ export class VrmRuntime {
   private rest: RestPose | undefined;
   /** A VRM 0.x model: its normalized bones face -Z, so turns about X and Z are mirrored (see animateIdle). */
   private mirrored = false;
+  /** The VRMA clips kept for this model and the ones playing (see loadAnimation). */
+  private readonly clips = new VrmClipPlayer();
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -640,7 +643,8 @@ export class VrmRuntime {
       else this.held.push({ name, seconds: 0, progress: 0, on: true });
       return true;
     }
-    if (name === "bounce") this.hipsRest ??= model.humanoid.getNormalizedBoneNode("hips")?.position.y;
+    if (name === "bounce") this.hipsRest ??= model.humanoid.normalizedRestPose.hips?.position?.[1] ??
+      model.humanoid.getNormalizedBoneNode("hips")?.position.y;
     this.gesture = { name: name as VrmGesture, seconds: 0 };
     return true;
   }
@@ -663,6 +667,38 @@ export class VrmRuntime {
     if (this.blush?.hold) held.push(this.blush.level);
     return Object.freeze({ ...(this.gesture ? { playing: this.gesture.name } : {}), held: Object.freeze(held) });
   }
+
+  /**
+   * Reads a VRMA clip (a .vrma file's bytes: binary glTF with VRMC_vrm_animation 1.0) with the official loader, retargets it to
+   * this model (VRM 0.x or 1.0) and keeps it as `name` while the model stays loaded, replacing a clip of that name; at most 16
+   * are kept, the oldest goes first. Play it with playAnimation. The clip moves the hips up and down; with `inPlace` (the
+   * default) they stay at rest across the ground, so a clip that walks or drifts keeps the character in its window. Throws a
+   * VrmError for a file that isn't a usable clip.
+   */
+  async loadAnimation(name: string, buffer: ArrayBuffer, inPlace = true): Promise<VrmAnimationInfo> {
+    const model = this.loaded();
+    animationName(name);
+    const animation = await loadVrmAnimation(buffer);
+    requireValid(!this.disposed && this.model === model, "The model changed while the clip was read.");
+    return this.clips.keep(model, name, animation, inPlace !== false);
+  }
+
+  /** Plays the kept clip `name` once over the idle pose (see VrmClipPlayer): it blends in, then gives the body back to the
+   *  idle pose, breathing and sway by its end. Lip-sync, blinking, the look, expressions and touches keep working. False when
+   *  no clip has that name or the idle motion isn't running (a still picture). */
+  playAnimation(name: string): boolean {
+    this.loaded();
+    return this.idle && typeof name === "string" && this.clips.play(name);
+  }
+
+  /** Blends the playing clip (only `name`, when given) back to the idle pose; false when none played. */
+  stopAnimation(name?: string): boolean { this.loaded(); return this.clips.stop(name); }
+
+  /** The clip that plays now (name, seconds into it, its length and how much of the body it has), or undefined. */
+  get animationReading(): VrmAnimationReading | undefined { return this.model ? this.clips.reading : undefined; }
+
+  /** The clips kept for the loaded model, oldest first. */
+  get animations(): readonly VrmAnimationInfo[] { return this.model ? this.clips.kept : []; }
 
   /** The held gestures' combined pose `deltaSeconds` later, eased back by `duck` (0..1) under a gesture playing once. */
   private advanceHeld(deltaSeconds: number, duck: number): GesturePose {
@@ -1138,6 +1174,8 @@ export class VrmRuntime {
     finite(deltaSeconds, 0, 0.1, "deltaSeconds");
     this.poses++;
     this.composedAge += deltaSeconds;
+    // The bones a clip turned go back to rest first, so the idle pose below is the clip's base.
+    this.clips.rest();
     if (this.identity && this.selection?.head) {
       // The head quaternion is for VRM 1.0's normalized bones; a VRM 0.x model's are mirrored (see animateIdle).
       const [x, y, z, w] = this.pose.head ?? [0, 0, 0, 1], sign = this.mirrored ? -1 : 1;
@@ -1145,6 +1183,7 @@ export class VrmRuntime {
     }
     this.restoreFace(model);
     if (this.idle) this.animateIdle(model, deltaSeconds); else this.face = {};
+    if (this.idle) this.clips.apply(deltaSeconds);
     this.updateActions(model, deltaSeconds);
     this.applyFace(model);
     this.giveMouth(model);
@@ -1234,6 +1273,7 @@ export class VrmRuntime {
     this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
     this.rest = undefined;
     this.mirrored = false;
+    this.clips.clear();
     this.talk = 0; this.speaking = false; this.heldMouth = 0;
   }
 }

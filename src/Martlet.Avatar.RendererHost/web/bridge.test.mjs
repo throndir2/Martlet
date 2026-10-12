@@ -38,7 +38,7 @@ async function page(Renderer, posts) {
     } } },
     requestAnimationFrame: callback => { draw = callback; },
     fetch: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(1) }),
-    ArrayBuffer, Uint8Array, Map, Set, Error
+    ArrayBuffer, Uint8Array, Map, Set, Error, atob
   });
   const module = new vm.SourceTextModule(await readFile(new URL("app.js", import.meta.url), "utf8"),
     { context, identifier: new URL("app.js", import.meta.url).href, importModuleDynamically: async () => {
@@ -378,11 +378,77 @@ test("a pose reading says how a VRM's idle body breathes and hangs its arms, and
   await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
   await send({ kind: "pose", data: { id: 2 } });
   assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { poseReading: { id: 2, found: true, renderer: "Vrm", ...idle,
-    bones: { leftHand: { x: 0.6123, y: 0.5 } } } }, "the idle reading with the shoulders, hands and hips placed; no finger bones");
+    bones: { leftHand: { x: 0.6123, y: 0.5 } }, animation: null, clips: [] } },
+    "the idle reading with the shoulders, hands and hips placed; no finger bones, no clip");
   throws = true;
   await send({ kind: "pose", data: { id: 3 } });
   assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { poseReading: { id: 3, found: false } }, "a failed reading is only not found");
   assert.ok(!posts.some(post => post.error));
+});
+
+test("a VRMA clip is kept and played on a VRM, played again as a motion, read in the pose, and a bad one never fails the renderer", async () => {
+  const posts = [], calls = [];
+  const kept = new Map();
+  let playing = null;
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    startIdle() {}
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    get idleReading() { return { idle: true }; }
+    bonePoints() { return []; }
+    async loadAnimation(name, buffer, inPlace) {
+      const bytes = new Uint8Array(buffer);
+      calls.push(["load", name, [...bytes], inPlace]);
+      if (bytes[0] === 0) throw new Error("This glTF file is not a VRM Animation: it has no VRMC_vrm_animation extension.");
+      kept.set(name, { name, duration: 2.5 });
+      return kept.get(name);
+    }
+    get animations() { return [...kept.values()]; }
+    playAnimation(name) { calls.push(["play", name]); if (!kept.has(name)) return false; playing = name; return true; }
+    stopAnimation(name) { calls.push(["stop", name]); const was = playing === name; playing = null; return was; }
+    get animationReading() { return playing ? { name: playing, time: 0.5, duration: 2.5, weight: 1 } : undefined; }
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "animation", data: { name: "wave", clip: "AQID" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { kept: false, started: false, name: "wave", duration: 0, clips: [],
+    reason: "No character shows." }, "nothing before a model shows");
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+
+  await send({ kind: "animation", data: { name: "wave", clip: "AQID" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { kept: true, started: true, name: "wave", duration: 2.5, clips: ["wave"] });
+  assert.deepEqual(calls.slice(0, 2), [["load", "wave", [1, 2, 3], true], ["play", "wave"]], "the clip's bytes, in place by default");
+  await send({ kind: "animation", data: { name: "bow", clip: "AQID", play: false, inPlace: false } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { kept: true, started: false, name: "bow", duration: 2.5, clips: ["wave", "bow"] },
+    "kept without playing");
+  assert.equal(calls.at(-1)[3], false, "and moving across the ground when asked");
+
+  // A bad clip, or a name nothing has, only doesn't start; the reply says why.
+  await send({ kind: "animation", data: { name: "bad", clip: "AAEC" } });
+  assert.equal(posts.at(-1).started, false);
+  assert.match(posts.at(-1).reason, /not a VRM Animation/);
+  await send({ kind: "animation", data: { name: "nothing" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { kept: false, started: false, name: "nothing", duration: 0,
+    clips: ["wave", "bow"], reason: "No clip has that name now; give the clip again." });
+
+  // A kept clip plays again as a motion, and the motion's off blends it out.
+  await send({ kind: "action", data: { kind: "motion", name: "bow" } });
+  assert.deepEqual({ ...posts.at(-1) }, { started: true });
+  await send({ kind: "pose", data: { id: 7 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).poseReading.animation)), { name: "bow", time: 0.5, duration: 2.5, weight: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).poseReading.clips)), ["wave", "bow"]);
+  await send({ kind: "action", data: { kind: "motion", name: "bow", on: false } });
+  assert.deepEqual({ ...posts.at(-1) }, { started: true });
+  await send({ kind: "action", data: { kind: "motion", name: "missing" } });
+  assert.deepEqual({ ...posts.at(-1) }, { started: false });
+
+  // Martlet's MCP asks with an id: the answer comes unprompted, never as a command reply.
+  await send({ kind: "animation", data: { id: 4, name: "wave" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { animationPlayed: { id: 4, kept: true, started: true, name: "wave",
+    duration: 2.5, clips: ["wave", "bow"] } });
+  assert.ok(!posts.some(post => post.error), "nothing failed the renderer");
 });
 
 test("a mouth reading says who moves the mouth, and voice levels move it frame by frame, never failing the renderer", async () => {

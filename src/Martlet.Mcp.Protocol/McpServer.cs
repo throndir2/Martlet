@@ -289,6 +289,26 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
+        Tool("character_animation", "Play a VRM Animation clip (.vrma: binary glTF with VRMC_vrm_animation 1.0) on the showing VRM " +
+            "character, through the character overlay's UI Automation (MoveAvatar's value \"animation:{...}\"). path is the full " +
+            "path of a .vrma file on this PC (at most 4 MB and 120 seconds); the renderer keeps the clip as name (default: the " +
+            "file's name; 1 to 128 characters) while the model stays loaded, at most 16 clips, the oldest going first. Without " +
+            "path it plays the clip kept as name. play (default true) plays it once: it blends in over the idle pose, then gives " +
+            "the body back to the idle pose, breathing and sway by its end; lip-sync, blinking, the look, expressions and touches " +
+            "keep working. inPlace (default true) keeps the hips at rest across the ground and moves them only up and down, so a " +
+            "clip that walks or drifts keeps the character in its window. Returns played (n, name, kept, started, duration in " +
+            "seconds, clips: every clip kept, file, and reason when it didn't start) and, with samples (1 to 60) gapMs apart " +
+            "(default 250), pose: character_pose's readings, whose animation says which clip plays (name, time, duration, " +
+            "weight: how much of the body it has) and clips the clips kept. It changes the character, so it needs " +
+            "--allow-ui-effects.", new
+        {
+            path = new { type = "string" },
+            name = new { type = "string", minLength = 1, maxLength = 128 },
+            play = new { type = "boolean" },
+            inPlace = new { type = "boolean" },
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("character_zones", "Read where each area of the showing character's touch zones is now, samples times (1 to 60, default " +
             "1) gapMs apart (0 to 5000, default 250), as each frame is drawn: the zones Martlet last gave the renderer (the saved " +
             "zones in use of the model it shows; Companion > Touch > Touch zones > Show the zones on the character draws them over " +
@@ -2630,6 +2650,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_animation" => await desktop.AnimateCharacterAsync(OptionalString(arguments, "path"), OptionalString(arguments, "name"),
+                    OptionalBool(arguments, "play") ?? true, OptionalBool(arguments, "inPlace") ?? true, OptionalInt(arguments, "samples"),
+                    OptionalInt(arguments, "gapMs")),
                 "character_zones" => await desktop.ZonesCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_mouth" => await desktop.MouthCharacterAsync(MouthLevels(arguments), OptionalInt(arguments, "stepMs"),
                     OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),

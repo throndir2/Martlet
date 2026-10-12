@@ -77,6 +77,49 @@ export function encodeGlb(document: unknown, bin: Uint8Array = new Uint8Array(0)
 }
 export function fixture(): ArrayBuffer { const { document, bin } = fixtureDocument(); return encodeGlb(document, bin); }
 
+/** A self-authored VRMA clip (VRMC_vrm_animation 1.0) on the fixture's skeleton in its T-pose, `seconds` long and the same at
+ *  both ends: the right upper arm turned `armZ` radians about Z (negative raises it, for VRM 1.0's +Z-facing bones), with
+ *  `head` the head tilted that many radians about Z, with `eye` the left eye turned, and with `hips` the hips moved from
+ *  (0, 0.9, 0) at the start to there at the end. Importer evidence only, not motion quality. */
+export function vrmaFixture({ seconds = 1, armZ = -1.4, head, eye, hips, specVersion = "1.0" }: { seconds?: number; armZ?: number;
+  head?: number; eye?: boolean; hips?: readonly [number, number, number]; specVersion?: string } = {}): ArrayBuffer {
+  const roles = [
+    ["hips", -1, [0, 0.9, 0]], ["spine", 0, [0, 0.2, 0]], ["head", 1, [0, 0.4, 0]],
+    ["leftUpperLeg", 0, [0.1, -0.1, 0]], ["leftLowerLeg", 3, [0, -0.3, 0]], ["leftFoot", 4, [0, -0.3, 0.1]],
+    ["rightUpperLeg", 0, [-0.1, -0.1, 0]], ["rightLowerLeg", 6, [0, -0.3, 0]], ["rightFoot", 7, [0, -0.3, 0.1]],
+    ["leftUpperArm", 1, [0.2, 0.3, 0]], ["leftLowerArm", 9, [0.2, 0, 0]], ["leftHand", 10, [0.2, 0, 0]],
+    ["rightUpperArm", 1, [-0.2, 0.3, 0]], ["rightLowerArm", 12, [-0.2, 0, 0]], ["rightHand", 13, [-0.2, 0, 0]],
+    ["leftEye", 2, [0.04, 0.05, 0.05]],
+  ] as const;
+  const nodes = roles.map(([name, , translation]) => ({ name, translation: [...translation], children: [] as number[] }));
+  roles.forEach(([, parent], i) => { if (parent >= 0) nodes[parent]!.children.push(i); });
+  const index = (name: string) => roles.findIndex(([role]) => role === name);
+  const turn = (angle: number) => [0, 0, Math.sin(angle / 2), Math.cos(angle / 2)];
+  const floats: number[] = [0, seconds];
+  const accessors: Record<string, unknown>[] = [{ bufferView: 0, byteOffset: 0, componentType: 5126, count: 2, type: "SCALAR", min: [0], max: [seconds] }];
+  const channels: Record<string, unknown>[] = [], samplers: Record<string, unknown>[] = [];
+  const track = (node: number, path: string, values: number[], type: string) => {
+    accessors.push({ bufferView: 0, byteOffset: floats.length * 4, componentType: 5126, count: 2, type });
+    floats.push(...values);
+    samplers.push({ input: 0, output: accessors.length - 1, interpolation: "LINEAR" });
+    channels.push({ sampler: samplers.length - 1, target: { node, path } });
+  };
+  track(index("rightUpperArm"), "rotation", [...turn(armZ), ...turn(armZ)], "VEC4");
+  if (head !== undefined) track(index("head"), "rotation", [...turn(head), ...turn(head)], "VEC4");
+  if (eye) track(index("leftEye"), "rotation", [...turn(0.5), ...turn(0.5)], "VEC4");
+  if (hips) track(index("hips"), "translation", [0, 0.9, 0, ...hips], "VEC3");
+  const bin = new Uint8Array(new Float32Array(floats).buffer);
+  const document = {
+    asset: { version: "2.0", generator: "Martlet self-authored synthetic VRMA fixture" },
+    extensionsUsed: ["VRMC_vrm_animation"],
+    extensions: { VRMC_vrm_animation: { specVersion, humanoid: { humanBones: Object.fromEntries(roles.map(([name], node) => [name, { node }])) } } },
+    scene: 0, scenes: [{ nodes: [0] }], nodes,
+    buffers: [{ byteLength: bin.length }], bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: bin.length }], accessors,
+    animations: [{ channels, samplers }],
+  };
+  return encodeGlb(document, bin);
+}
+
 /** The same synthetic triangle rig as a VRM 0.x model (the VRM extension), as VRoid Studio and UniVRM export it: facing -Z
  *  with the character's left at -X, bones listed as {bone, node}, blend shape groups with VRM 0.x preset names and 0..100
  *  weights, a first-person BlendShape look-at, a secondary-animation hair group and one MToon material property set.

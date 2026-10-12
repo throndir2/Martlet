@@ -2083,12 +2083,48 @@ internal sealed class DesktopAutomation(bool allowEffects)
             arms = new { left = Arm("left"), right = Arm("right") },
             curl = new { left = Range(Numbers(found, "curl", "left")), right = Range(Numbers(found, "curl", "right")) },
             sway = Range(Numbers(found, "sway")),
+            // The VRMA clips seen playing and how much of the body they had (0 to 1).
+            animations = found.Select(pose => At(pose, ["animation", "name"])).Where(value => value is { ValueKind: System.Text.Json.JsonValueKind.String })
+                .Select(value => value!.Value.GetString()).Distinct().ToArray(),
+            animationWeight = Range(Numbers(found, "animation", "weight")),
             moved = bones.ToDictionary(name => name, name => new { x = Spread(Numbers(found, "bones", name, "x")), y = Spread(Numbers(found, "bones", name, "y")) })
         };
     }
 
     internal const int MaximumMouthSamples = 60;
     internal const int MaximumVoiceLevels = 400;
+
+    /// <summary>Gives the showing VRM character a VRMA clip from the file at <paramref name="path"/> (or, without one, plays the clip
+    /// it keeps as <paramref name="name"/>) through MoveAvatar's UI Automation value ("animation:{...}"), and waits for the
+    /// renderer's answer. With <paramref name="samples"/> it then reads the pose (character_pose) to show the clip playing. It
+    /// changes the character, so it needs --allow-ui-effects.</summary>
+    internal async Task<object> AnimateCharacterAsync(string? path, string? name, bool play, bool inPlace, int? samples, int? gapMs)
+    {
+        if (!allowEffects) throw new InvalidOperationException("Playing a clip on the character requires --allow-ui-effects.");
+        if (path is null && name is null) throw new ArgumentException("Give path (a .vrma file) or name (a clip the character keeps).");
+        if (path is not null && !System.IO.Path.IsPathFullyQualified(path)) throw new ArgumentException("path is the full path of a .vrma file.");
+        if (path is not null && !System.IO.File.Exists(path)) throw new ArgumentException("The .vrma file doesn't exist.");
+        if (name is not null && !Martlet.Avatar.Hosting.VrmAnimationClip.IsValidName(name))
+            throw new ArgumentException($"name is 1 to {Martlet.Avatar.Hosting.VrmAnimationClip.MaximumNameLength} characters without control characters.");
+        if (samples is < 1 or > MaximumPoseSamples) throw new ArgumentException($"samples is 1 to {MaximumPoseSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be reached through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character can't play a clip until it has loaded.");
+        static System.Text.Json.JsonElement? Played(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("animation", out var animation) ? animation.Clone() : null;
+        var before = Played(value.Current.Value)?.GetRawText();
+        value.SetValue("animation:" + System.Text.Json.JsonSerializer.Serialize(new { path, name, play, inPlace }));
+        var waited = Stopwatch.StartNew();
+        System.Text.Json.JsonElement? after;
+        while ((after = Played(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(20);
+        var played = after is { } read && read.GetRawText() != before ? read : (System.Text.Json.JsonElement?)null;
+        var pose = samples is { } count && played is not null ? await PoseCharacterAsync(count, gapMs) : null;
+        return new { played, pose, note = played is null ? "The renderer didn't answer within 10 seconds." : null };
+    }
 
     /// <summary>Reads who moves the showing character's mouth, the voice or its emotes, <paramref name="samples"/> times,
     /// <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("mouth"). With <paramref name="levels"/> (0 to
