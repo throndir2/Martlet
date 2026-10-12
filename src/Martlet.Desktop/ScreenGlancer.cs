@@ -18,8 +18,11 @@ internal enum GlanceSkip { None, MartletInFront, NoWindow, Minimized, Private, B
 /// before of the same area (<see cref="Changes"/>, for where the character looks). A screenshot of the screen also knows the
 /// program in front (<see cref="App"/>) and whether its window fills its monitor (<see cref="FullScreen"/>).</summary>
 internal sealed class ScreenFrame(byte[] pixels, int width, int height, string title, double change, ScreenRect? area = null,
-    byte[]? changes = null, string app = "", bool fullScreen = false)
+    byte[]? changes = null, string app = "", bool fullScreen = false, byte[]? signature = null)
 {
+    /// <summary>The picture's 16x9 grey thumbnail, to tell later whether anything changed since a look (<see cref="LookChange"/>);
+    /// null when the capture didn't make one.</summary>
+    internal byte[]? Signature { get; } = signature;
     private byte[]? pixels = pixels;
     internal int Width { get; } = width;
     internal int Height { get; } = height;
@@ -294,7 +297,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
         previousGrid = grid;
         previousArea = area;
         return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change,
-            new ScreenRect(area.Left, area.Top, area.Width, area.Height), changes, app.Name, app.FullScreen),
+            new ScreenRect(area.Left, area.Top, area.Width, area.Height), changes, app.Name, app.FullScreen, signature),
             GlanceSkip.None, note, protectedContent, behind, monitors);
     }
 

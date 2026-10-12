@@ -924,6 +924,11 @@ public static class PromptCatalog
             "genuinely worth a remark right now: a notable moment, a win or a fail, progress or a setback, something funny or " +
             "surprising, a switch to something new, a quick tip they would welcome, or a new message, call or reminder they may " +
             "want to know about.\n" +
+            "Nothing new, nothing to say. Martlet's message says how much changed since your last look. When nothing really " +
+            "changed (the same scene, or only small things such as the pointer, a clock, a blinking cursor, a loading icon, or a " +
+            "game or video sitting idle), reply [{silent}], however long it has been quiet: silence can last as long as nothing " +
+            "happens. When nobody has used the keyboard or mouse for a while and little changes, they are away or busy elsewhere. " +
+            "Never speak just to break a silence, because time passed or to check on them, and never ask if they're still there.\n" +
             "If you speak, talk about that activity like a friend glancing over (\"Ooh, that boss is almost down!\" or \"Nice, the " +
             "build went green.\"); when you aren't sure, a light guess is fine. Never comment on the UI, their computer or their " +
             "setup: the app's own buttons, menus, toolbars, sidebars, tabs, panels, settings, icons or theme; their monitors, " +
@@ -941,6 +946,10 @@ public static class PromptCatalog
             "their room, a pet, a table game, a TV or whatever their phone points at). You are hanging out with them like a friend in the room.\n" +
             "Real friends stay quiet most of the time. Reply with exactly [{silent}] unless something is genuinely worth a remark " +
             "right now: a notable moment, a win or a fail, something funny or surprising, a clear change of scene, or a quick tip they would welcome.\n" +
+            "Nothing new, nothing to say. Martlet's message says how much changed since your last look. When nothing really " +
+            "changed (the same scene, or only small things such as the light, noise in the picture or a slight movement), reply " +
+            "[{silent}], however long it has been quiet. Never speak just to break a silence, because time passed or to check on " +
+            "them, and never ask if they're still there.\n" +
             "React to what happens, never to what is merely in view: furniture, objects and anything else that is just there are " +
             "never worth a remark. If you can't tie a remark to something that just changed or that they just did, reply [{silent}].\n" +
             "Never describe or narrate what the camera sees, never mention images, cameras or pictures, never repeat or paraphrase something you said recently, " +
@@ -967,16 +976,20 @@ public static class PromptCatalog
             "Your chattiness right now: {level}.", ["level"]),
         new(GlanceScreen, VisionGroup, "Screen glance message",
             "The message sent with each screenshot. {app} is the program in front by name (such as Google Chrome), with " +
-            "(full screen) when its window fills its monitor, a borderless one too; {title} is the active window's title. What " +
-            "Martlet said lately goes in its notes (What you said lately).",
-            "(Screen glance. Active app: {app}. Active window: \"{title}\". Reply [{silent}] or one short remark on what " +
-            "they're doing.)",
-            ["app", "title", "silent"]),
-        new(GlanceCamera, VisionGroup, "Camera look message",
-            "The message sent with each camera image. {title} is the camera's name. What Martlet said lately goes in its notes " +
+            "(full screen) when its window fills its monitor, a borderless one too; {title} is the active window's title; " +
+            "{changed} says how much changed since Martlet's last look and how long ago it was (\"Only small things changed " +
+            "since your last look 3 min ago.\"), then how long nobody used the keyboard or mouse once it is a minute or more. " +
+            "While nothing changed since the last look, Martlet doesn't look at all. What Martlet said lately goes in its notes " +
             "(What you said lately).",
-            "(Camera glance. Camera: \"{title}\". Reply [{silent}] or one short remark.)",
-            ["title", "silent"]),
+            "(Screen glance. Active app: {app}. Active window: \"{title}\". {changed} Reply [{silent}] or one short remark on " +
+            "what they're doing.)",
+            ["app", "title", "changed", "silent"]),
+        new(GlanceCamera, VisionGroup, "Camera look message",
+            "The message sent with each camera image. {title} is the camera's name; {changed} says how much changed since " +
+            "Martlet's last look and how long ago it was (\"It changed since your last look 2 min ago.\"). While nothing changed " +
+            "since the last look, Martlet doesn't look at all. What Martlet said lately goes in its notes (What you said lately).",
+            "(Camera glance. Camera: \"{title}\". {changed} Reply [{silent}] or one short remark.)",
+            ["title", "changed", "silent"]),
         new(GlanceAttention, VisionGroup, "Notification glance message",
             "The message sent with the screenshot Martlet takes right away when a notification pops up or a taskbar button flashes " +
             "while it watches your whole screen. {what} says which; {app} is the program in front (as in the Screen glance " +

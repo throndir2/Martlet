@@ -4964,8 +4964,17 @@ game, Companion › Prompts › *Screen glance message* (`glance`) and *Active a
 with your message* (`withMessage`) as the data directory's settings.json fills
 them (`state` `none`, `loaded` or `unreadable`; optional absolute
 `dataDirectory`, a disposable one through `scripts\Invoke-MartletMcp.ps1`), and
-the `[Screen]` line the conversation keeps (`kept`). In a running
-conversation, the talk window's `LiveVisionStatus` `help` shows it as *Active
+the `[Screen]` line the conversation keeps (`kept`). `sinceLook` runs the
+desktop's production `LookChange` on FIXTURE thumbnails of that game: each
+`scenario` gets `since` (`First`, `Same`, `Little` or `Changed`), `looks`
+(false while nothing changed since the last look: Martlet doesn't look at
+all), `picture` (how much the thumbnail changed, 0 to 1) and `changed`, the
+words a look's message gets (*It changed since your last look 3 min ago.
+Nobody has used the keyboard or mouse for 6 min.*). A clock that ticks counts
+as `Same`; a pop-up or a new window title is `Little`; new words on the
+screen, a new scene or another program is `Changed`. In a running
+conversation, the talk window's `LiveVisionStatus` shows *Nothing changed
+since the last look.* while it holds off, and its `help` shows *Active
 app: Google Chrome (full screen).* It reads no credentials and contacts
 nothing.
 
