@@ -11,8 +11,10 @@ namespace Martlet.Mcp;
 /// process that exits after about two seconds stands in for Martlet, and Martlet.NodeLinkCheck stands in for the installer
 /// and for the restarted Martlet (FIXTURE: it records how it was started and installs nothing). Three installs run side by
 /// side: one another computer asked for, an automatic one from the notification area whose installer fails, and one you
-/// confirmed. Two more install the update beside a disposable program folder first and then switch to it: one that
-/// switches in seconds, and one whose program folder is still in use, so the whole installer runs instead. Touches no real
+/// confirmed. Four more install the update beside a disposable program folder first and then switch to it: one that
+/// switches in seconds; one whose program folder is still in use (a file held open), so the whole installer runs instead;
+/// and two with a program Martlet started still running after Martlet exits: working in the program folder it blocks the
+/// switch, and working where Martlet now puts it (outside the program folder) it doesn't. Touches no real
 /// install, data directory or network.</summary>
 internal static class AppUpdateCheck
 {
@@ -51,8 +53,10 @@ internal static class AppUpdateCheck
             var outcomes = await Task.WhenAll(scenarios.Select(scenario => RunScenarioAsync(root, fixture, scenario, cancellation)));
             foreach (var (scenario, outcome) in scenarios.Zip(outcomes)) Check(scenario, outcome, Step);
             await Task.WhenAll(
-                CheckStagedAsync(root, fixture, "staged-switch", folderInUse: false, Step, cancellation),
-                CheckStagedAsync(root, fixture, "staged-folder-in-use", folderInUse: true, Step, cancellation));
+                CheckStagedAsync(root, fixture, "staged-switch", Holder.None, Step, cancellation),
+                CheckStagedAsync(root, fixture, "staged-folder-in-use", Holder.OpenFile, Step, cancellation),
+                CheckStagedAsync(root, fixture, "staged-program-working-inside", Holder.ProgramInside, Step, cancellation),
+                CheckStagedAsync(root, fixture, "staged-program-working-outside", Holder.ProgramOutside, Step, cancellation));
             CheckResume(Path.Combine(root, "resume", "updates"), Step);
         }
         finally
@@ -132,16 +136,24 @@ internal static class AppUpdateCheck
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>What keeps the program folder in use while the helper tries to switch: nothing; a file in it held open; a
+    /// program Martlet started that lives on after Martlet exits, working in the program folder's Desktop folder (as every
+    /// program Martlet started did before Martlet moved its working folder out); or the same program working where
+    /// <see cref="AppUpdateStaging.OutsideProgramFolder"/> puts it.</summary>
+    private enum Holder { None, OpenFile, ProgramInside, ProgramOutside }
+
     /// <summary>An update installed beside the running Martlet (<see cref="AppUpdateStaging"/>), in a disposable program folder
     /// holding an old Desktop file and an uninstall folder. First the prepare step, as Martlet runs it while it keeps working:
     /// the stand-in installer gets /STAGE=prepare with the staging folder as /DIR, no window and idle priority, and the program
-    /// folder is untouched. Then the helper, as Martlet starts it when it closes for the update: with
-    /// <paramref name="folderInUse"/> false it switches folders, moves the uninstall folder over, runs only the finish step
-    /// and starts Martlet again within seconds; with a file in the program folder held open, it gives up switching and runs
-    /// the whole installer as before, leaving the program folder as it was for that installer.</summary>
-    private static async Task CheckStagedAsync(string root, string fixture, string name, bool folderInUse,
+    /// folder is untouched. Then the helper, as Martlet starts it when it closes for the update: when nothing holds the
+    /// program folder (<paramref name="holder"/>) it switches folders, moves the uninstall folder over, runs only the finish
+    /// step and starts Martlet again within seconds; with a file in the program folder held open, or a program working in
+    /// it, it gives up switching and runs the whole installer as before, leaving the program folder as it was for that
+    /// installer.</summary>
+    private static async Task CheckStagedAsync(string root, string fixture, string name, Holder holder,
         Action<string, bool, string> step, CancellationToken cancellation)
     {
+        var folderInUse = holder is Holder.OpenFile or Holder.ProgramInside;
         var data = Path.Combine(root, name);
         var updates = Path.Combine(data, "updates");
         var program = Path.Combine(data, "Programs", "Martlet");
@@ -173,20 +185,48 @@ internal static class AppUpdateCheck
         var script = AppUpdateHelper.Script(updates, fixture, Version, martlet.Id, unattended: true, fixture,
             AppUpdateHelper.RelaunchArguments(data, AppUpdateHelper.AfterUpdateArgument), program, staged: true);
         // Something else still using a file in the program folder (a Doctor window, a tool server) stops the rename.
-        using var held = folderInUse ? new FileStream(old, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
+        using var held = holder == Holder.OpenFile ? new FileStream(old, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
+        // A program Martlet started that outlives it for a moment (the character renderer's WebView2 processes, Ollama, a
+        // browser) works where Martlet worked when it started it. It lives about 15 s, longer than the helper tries to switch.
+        string? lingeringFolder = null;
+        Process? lingering = null;
+        if (holder is Holder.ProgramInside or Holder.ProgramOutside)
+        {
+            var desktop = Path.Combine(program, AppUpdateStaging.DesktopFolder);
+            lingeringFolder = holder == Holder.ProgramInside ? desktop
+                : AppUpdateStaging.OutsideProgramFolder(program, desktop, Directory.CreateDirectory(Path.Combine(data, "home")).FullName);
+            lingering = Process.Start(new ProcessStartInfo("cmd.exe", "/d /c ping -n 16 127.0.0.1 >NUL")
+            {
+                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = lingeringFolder
+            }) ?? throw new InvalidOperationException("Could not start the stand-in for a program Martlet started.");
+        }
         using var helper = AppUpdateHelper.Start(updates, script, environment)
             ?? throw new InvalidOperationException("Could not start the update helper.");
+        var lingeredThroughSwitch = false;
         try
         {
             await martlet.WaitForExitAsync(limit.Token);
             await helper.WaitForExitAsync(limit.Token);
+            lingeredThroughSwitch = lingering is { HasExited: false };
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
         {
             helper.Kill(entireProcessTree: true);
             throw new TimeoutException($"The update helper ({name}) did not finish within {Limit.TotalSeconds:0} seconds.");
         }
+        finally
+        {
+            if (lingering is not null)
+            {
+                try { lingering.Kill(entireProcessTree: true); }
+                catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                lingering.Dispose();
+            }
+        }
         held?.Dispose();
+        var lingeringNote = lingeringFolder is null ? "" :
+            $"; a program Martlet started worked in {(holder == Holder.ProgramInside ? "the program folder's Desktop folder" : "a folder outside the program folder")} " +
+            $"and still ran when the helper finished: {lingeredThroughSwitch}";
         var exited = new DateTimeOffset(martlet.ExitTime).ToUniversalTime();
         var started = new List<Started>();
         for (var wait = 0; wait < 50; wait++)
@@ -207,9 +247,10 @@ internal static class AppUpdateCheck
         var logged = log.Count == 0 ? "update.log was empty" : $"update.log ({log.Count} lines): " + string.Join(" | ", log);
         if (!folderInUse)
         {
-            step($"{name}: switches-folders", newDesktop && !oldDesktop && uninstall && !leftovers,
+            step($"{name}: switches-folders", newDesktop && !oldDesktop && uninstall && !leftovers &&
+                    (lingeringFolder is null || lingeredThroughSwitch),
                 $"program folder holds the staged version: {newDesktop}; old version gone: {!oldDesktop}; uninstall folder moved " +
-                $"over: {uninstall}; staging and previous folders removed: {!leftovers}");
+                $"over: {uninstall}; staging and previous folders removed: {!leftovers}{lingeringNote}");
             step($"{name}: runs-only-finish-step", installer is not null && installer.At >= exited &&
                     installer.Args.Contains(AppUpdateStaging.FinishArgument) && installer.Args.Contains("/VERYSILENT"),
                 installer is null ? "the installer's finish step never ran"
@@ -232,11 +273,12 @@ internal static class AppUpdateCheck
             step($"{name}: falls-back-to-whole-install", oldDesktop && uninstall && !leftovers && installer is not null &&
                     !installer.Args.Contains(AppUpdateStaging.FinishArgument) && installer.Args.Contains("/VERYSILENT") &&
                     restarted is not null && result == ("0", Version) &&
-                    log.Any(line => line.Contains("still in use", StringComparison.Ordinal)),
+                    log.Any(line => line.Contains("still in use", StringComparison.Ordinal)) &&
+                    (lingeringFolder is null || lingeredThroughSwitch),
                 $"program folder kept for the whole installer: {oldDesktop && uninstall}; installer ran " +
                 $"{(installer is null ? "never" : installer.Args.Contains(AppUpdateStaging.FinishArgument) ? "only its finish step" : "whole")}; " +
                 $"staging folder removed: {!Directory.Exists(staged)}; Martlet started again " +
-                $"{(away is { } s ? $"{s:0.0} s after it exited" : "never")}; {logged}");
+                $"{(away is { } s ? $"{s:0.0} s after it exited" : "never")}{lingeringNote}; {logged}");
     }
 
     /// <summary>The note Martlet leaves for itself as it closes to install (<see cref="AppUpdateResume"/>), so the restarted

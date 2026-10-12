@@ -26,6 +26,24 @@ public sealed class AppUpdateStagingTests : IDisposable
     }
 
     [Fact]
+    public void WorkingFolderMovesOutOfTheProgramFolderOnly()
+    {
+        var program = Path.Combine(root, "Programs", "Martlet");
+        var outside = Path.Combine(root, "home");
+        // Started from its shortcut or by the update helper, Martlet works in its Desktop folder.
+        Assert.Equal(outside, AppUpdateStaging.OutsideProgramFolder(program, Path.Combine(program, "Desktop"), outside));
+        Assert.Equal(outside, AppUpdateStaging.OutsideProgramFolder(program, Path.Combine(program, "Desktop", "AvatarRenderer"), outside));
+        Assert.Equal(outside, AppUpdateStaging.OutsideProgramFolder(program, program + Path.DirectorySeparatorChar, outside));
+        Assert.Equal(outside, AppUpdateStaging.OutsideProgramFolder(program, program.ToUpperInvariant(), outside));
+        // A sibling with the same start, or any other folder, stays as it is.
+        var sibling = program + "Data";
+        Assert.Equal(sibling, AppUpdateStaging.OutsideProgramFolder(program, sibling, outside));
+        Assert.Equal(root, AppUpdateStaging.OutsideProgramFolder(program, root, outside));
+        // A development build has no program folder.
+        Assert.Equal(Path.Combine(program, "Desktop"), AppUpdateStaging.OutsideProgramFolder(null, Path.Combine(program, "Desktop"), outside));
+    }
+
+    [Fact]
     public void StagedScriptSwitchesFoldersRunsOnlyTheFinishStepAndFallsBackToTheWholeInstaller()
     {
         var program = Path.Combine(root, "Programs", "Martlet");

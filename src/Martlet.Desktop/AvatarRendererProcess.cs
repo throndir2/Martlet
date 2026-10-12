@@ -90,7 +90,14 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         var executable = Path.Combine(AppContext.BaseDirectory, "AvatarRenderer", "Martlet.Avatar.RendererHost.exe");
         LocalAvatarFiles.CheckAncestors(executable);
         if (!File.Exists(executable)) throw new FileNotFoundException("The character renderer is missing. Reinstall Martlet or choose another character.");
-        var info = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
+        // Not in the program folder: the renderer's WebView2 processes work where it does and can outlive it for a moment, which
+        // would keep an update installed beside Martlet from switching in.
+        var info = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = AppUpdateStaging.OutsideProgramFolder(AppUpdateInstaller.InstallRoot, Path.GetDirectoryName(executable)!,
+                Path.GetTempPath())
+        };
         info.Environment.Clear();
         foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "DOTNET_ROOT" })
             if (Environment.GetEnvironmentVariable(name) is { } value) info.Environment[name] = value;

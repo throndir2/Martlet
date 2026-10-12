@@ -3573,7 +3573,7 @@ didn't save watching yet (`reads-note-without-watching`), leaves nothing when no
 (`nothing-on-leaves-no-note`) and is ignored after 15 minutes, when you started
 Martlet yourself rather than the update (`stale-note-ignored`).
 
-Two more scenarios check an update installed beside the running Martlet
+Four more scenarios check an update installed beside the running Martlet
 (`AppUpdateStaging`), in a disposable program folder that holds an old Desktop
 file and an `uninstall` folder. `<scenario>: prepares-beside-martlet` runs the
 prepare step as the desktop does while it keeps working: the stand-in installer
@@ -3594,6 +3594,17 @@ rename for about ten seconds, logs *Martlet's program folder is still in use,
 so it could not be switched. Running the whole installer instead.*, runs the
 whole installer on the unchanged program folder, removes the staging folder and
 starts Martlet again (`falls-back-to-whole-install`).
+`staged-program-working-inside` does the same with a program that Martlet
+started and that still runs after Martlet exits (as the character renderer's
+WebView2 processes, Ollama or a browser can), working in the program folder's
+Desktop folder: it also falls back to the whole installer. This is why an
+installed Martlet moves its own working folder to your user profile folder when
+it starts (it logs *Martlet works in ..., outside its program folder, ...*) and
+starts the character renderer in the temp folder: the programs it starts work
+there too. `staged-program-working-outside` starts that program in the folder
+`AppUpdateStaging.OutsideProgramFolder` gives, and the switch succeeds
+(`switches-folders`, `back-in-seconds`). Both steps also check that the program
+still ran when the helper finished.
 
 **Updates installed beside Martlet.** An installed Martlet (its Desktop folder
 is beside the installer's `uninstall` folder) installs a downloaded update into

@@ -88,6 +88,15 @@ public partial class App : Application
             error = "Martlet can't open its data folder. Launch normally, or choose an accessible folder.";
         }
         var crashedLastTime = ErrorLog.Initialize(ErrorLog.DefaultDirectory(store?.DataDirectory), "desktop");
+        try
+        {
+            if (AppUpdateInstaller.LeaveProgramFolder() is { } moved)
+                ErrorLog.Info($"Martlet works in {moved}, outside its program folder, so updates installed beside it can switch in.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Security.SecurityException)
+        {
+            ErrorLog.Warn("Couldn't move Martlet's working folder out of its program folder; an update may need the whole installer.", ex);
+        }
         CrashedLastTime = crashedLastTime && !afterUpdate;
         ErrorLog.AttachDispatcher(this, "Martlet", showReport: (title, heading, report) =>
             ProblemDialog.Show(MainWindow, title, heading, report, () => ErrorLog.OpenFolder()));
