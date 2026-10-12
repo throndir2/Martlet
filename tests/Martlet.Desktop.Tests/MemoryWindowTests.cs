@@ -397,6 +397,60 @@ public sealed class MemoryWindowTests
         }
     });
 
+    [Fact]
+    public Task ReplacedFactsShowOnlyWhenAskedAndSayWhenTheyStoppedBeingTrue() =>
+        OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        var store = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await store.SaveAsync(initial, null);
+        using var memory = new DesktopMemoryService(store);
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, enabled: true,
+            policy: MemoryStoragePolicy.AppLocalData, customDirectory: null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+        await memory.RememberAsync(revision, [],
+            [new MemoryCaptureOperation(MemoryCaptureKind.Remember, Content: "Lives in Portland.", SearchWords: "home, city")]);
+        var shown = (await memory.KnownFactsAsync(configured.Settings.Memory, "Portland", 5)).Facts;
+        await memory.RememberAsync(revision, shown, [new MemoryCaptureOperation(MemoryCaptureKind.Update, 1, "Lives in Seattle.")]);
+        var runner = new SetupOperationRunner();
+        var window = new MemoryWindow(memory, runner) { ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var list = Control<ListBox>(window, "FactsList");
+            await Until(() => list.Items.Count == 1 && Text(window, "FactStatus") == "1 fact remembered; 1 replaced kept as history.",
+                () => Text(window, "FactStatus"));
+            list.SelectedIndex = 0;
+            Assert.Contains("Earlier versions: 1", Text(window, "FactDetails"));
+
+            Check(window, "MemoryShowHistory").IsChecked = true;
+            await Until(() => list.Items.Count == 2);
+            var earlier = list.Items.Cast<MemoryWindow.FactItem>().Single(item => item.Fact.IsHistory);
+            Assert.StartsWith("Replaced ", earlier.Caption);
+            list.SelectedItem = earlier;
+            Assert.Contains("kept as history; never recalled", Text(window, "FactDetails"));
+            Assert.Contains("Replaced by: Lives in Seattle.", Text(window, "FactDetails"));
+            Assert.Contains("Search words: home, city", Text(window, "FactDetails"));
+            // History stays as it was: it can be deleted, not changed.
+            await Until(() => !runner.IsRunning);
+            Assert.False(Control<Button>(window, "EditFactButton").IsEnabled);
+            Assert.True(Control<Button>(window, "DeleteFactButton").IsEnabled);
+
+            // A search finds a fact by its hidden search words too.
+            Check(window, "MemoryShowHistory").IsChecked = false;
+            Control<TextBox>(window, "SearchBox").Text = "city";
+            await Until(() => list.Items.Count == 0);
+            Check(window, "MemoryShowHistory").IsChecked = true;
+            await Until(() => list.Items.Count == 1 && list.Items.Cast<MemoryWindow.FactItem>().Single().Fact.IsHistory);
+        }
+        finally
+        {
+            window.Close();
+            await Until(() => !runner.IsRunning && window.Settled);
+        }
+    });
+
     private static T Control<T>(Window window, string name) where T : FrameworkElement =>
         Assert.IsType<T>(window.FindName(name));
 

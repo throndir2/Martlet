@@ -97,10 +97,16 @@ internal sealed class LexicalIndex
         var documents = new List<Document>();
         foreach (var fact in facts)
         {
+            // History is never recalled as current.
+            if (fact.IsHistory)
+                continue;
             MemoryGuard.Require(fact.Content.Length <= MemoryLimits.MaximumContentCharacters);
-            var terms = MemoryTerms.Of(fact.Content);
+            // A fact is found by its words and by its hidden search words, after its content in the same field; near-duplicates
+            // compare only what it says.
+            var content = MemoryTerms.Of(fact.Content);
+            IReadOnlyList<string> terms = fact.SearchWords is { } words ? [.. content, .. MemoryTerms.Of(words)] : content;
             index.Add(terms);
-            documents.Add(new(fact.Id, fact.UpdatedAtUtc, fact.VoiceId, SearchSketch.Of(terms)));
+            documents.Add(new(fact.Id, fact.UpdatedAtUtc, fact.VoiceId, SearchSketch.Of(content)));
         }
         return new(index.Freeze(), [.. documents]);
     }
@@ -125,8 +131,8 @@ internal sealed class LexicalIndex
         return terms;
     }
 
-    /// <summary>A query text within the query bounds made of <paramref name="source"/>'s own words (lower case), first seen first,
-    /// one for each new search term, so the query's terms are exactly the terms of those words: a stem is never stemmed again.
+    /// <summary>A query text within the query bounds made of <paramref name="source"/>'s own words as <see cref="SearchTerms.Words"/>
+    /// reads them (the same words in every language search reads), first seen first, one for each new search term, so the query's terms are exactly the terms of those words: a stem is never stemmed again.
     /// Null when no word has a search term.</summary>
     internal static string? TryBoundedQueryText(string source)
     {
@@ -146,7 +152,7 @@ internal sealed class LexicalIndex
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var text = new StringBuilder();
         var bytes = 0;
-        foreach (var word in Words(source))
+        foreach (var word in SearchTerms.Words(source))
         {
             if (seen.Count == MemoryLimits.MaximumQueryTerms)
                 break;
@@ -253,24 +259,5 @@ internal sealed class LexicalIndex
                 return 0;
             return a.Sketch.Similarity(b.Sketch, Profile.Diversity.NearDuplicate);
         }
-    }
-
-    /// <summary>The runs of letters and digits of <paramref name="text"/> in lower case, as <see cref="SearchTerms"/> reads words.</summary>
-    private static IEnumerable<string> Words(string text)
-    {
-        var word = new StringBuilder();
-        foreach (var c in text)
-        {
-            if (char.IsLetterOrDigit(c) || char.IsSurrogate(c))
-            {
-                word.Append(char.ToLowerInvariant(c));
-                continue;
-            }
-            if (word.Length > 0)
-                yield return word.ToString();
-            word.Clear();
-        }
-        if (word.Length > 0)
-            yield return word.ToString();
     }
 }

@@ -25,12 +25,13 @@ public sealed class MemorySnapshot
     public Guid StoreId { get; }
     public long StoreRevision { get; }
 
-    /// <summary>Every fact of the copy, oldest first, as <see cref="MemoryStore.InspectAsync"/> lists them. A fact may have
-    /// expired since the copy was taken; <see cref="Live"/> leaves those out.</summary>
+    /// <summary>Every fact of the copy, oldest first, as <see cref="MemoryStore.InspectAsync"/> lists them (history too). A fact
+    /// may have expired since the copy was taken; <see cref="Live"/> leaves those out.</summary>
     public IReadOnlyList<MemoryFact> Facts { get; }
 
-    /// <summary>The facts that have not expired at <paramref name="now"/>.</summary>
-    public IEnumerable<MemoryFact> Live(DateTimeOffset now) => Facts.Where(fact => !fact.Retention.IsExpired(now));
+    /// <summary>The current facts that have not expired at <paramref name="now"/> (history, <see cref="MemoryFact.IsHistory"/>,
+    /// is left out).</summary>
+    public IEnumerable<MemoryFact> Live(DateTimeOffset now) => Facts.Where(fact => !fact.IsHistory && !fact.Retention.IsExpired(now));
 
     /// <summary>The best lexical matches for <paramref name="query"/>, ranked as <see cref="MemoryStore.RetrieveAsync"/> ranks
     /// them; facts that expired at <paramref name="now"/> are left out before ranking.</summary>

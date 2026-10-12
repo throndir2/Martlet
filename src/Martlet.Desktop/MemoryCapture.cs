@@ -11,8 +11,10 @@ namespace Martlet.Desktop;
 internal enum MemoryCaptureKind { Remember, Update, Forget }
 
 /// <summary>One change the model asked for. A new fact (Remember) belongs to <paramref name="VoiceId"/>: the voice the model named
-/// (REMEMBER V2: ...) or else the speaker's; null for no one in particular.</summary>
-internal sealed record MemoryCaptureOperation(MemoryCaptureKind Kind, int? Index = null, string? Content = null, string? VoiceId = null)
+/// (REMEMBER V2: ...) or else the speaker's; null for no one in particular. <paramref name="SearchWords"/> are the hidden search
+/// words of the WORDS line after a REMEMBER or UPDATE line, or null.</summary>
+internal sealed record MemoryCaptureOperation(MemoryCaptureKind Kind, int? Index = null, string? Content = null, string? VoiceId = null,
+    string? SearchWords = null)
 {
     public override string ToString() => $"{nameof(MemoryCaptureOperation)} {{ Kind = {Kind}, Index = {Index} }}";
 }
@@ -114,26 +116,44 @@ internal static partial class MemoryCapture
         var operations = new List<MemoryCaptureOperation>();
         if (string.IsNullOrWhiteSpace(text))
             return operations;
+        // The operation a WORDS line belongs to: the one the line just before it added.
+        var described = -1;
         foreach (var raw in text.Split('\n'))
         {
-            if (operations.Count == MaximumOperations)
-                break;
             var line = raw.Replace("**", "", StringComparison.Ordinal).Replace("`", "", StringComparison.Ordinal)
                 .Trim().TrimStart('-', '*', '\u2022', '>', ' ', '\t').Trim();
+            if (line.Length == 0)
+                continue;
             Match match;
+            if ((match = WordsLine().Match(line)).Success)
+            {
+                if (described >= 0 && MemorySearchWords.Normalize(match.Groups["words"].Value) is { } words)
+                    operations[described] = operations[described] with { SearchWords = words };
+                described = -1;
+                continue;
+            }
+            described = -1;
+            if (operations.Count == MaximumOperations)
+                break;
             if ((match = RememberLine().Match(line)).Success)
             {
                 var voice = match.Groups["v"].Success && voices?.TryGetValue("V" + match.Groups["v"].Value, out var named) == true
                     ? named : speaker;
                 if (Fact(match.Groups["fact"].Value) is { } fact &&
                     !operations.Any(operation => operation.Content is { } other && operation.VoiceId == voice && SameFact(other, fact)))
+                {
                     operations.Add(new(MemoryCaptureKind.Remember, null, fact, voice));
+                    described = operations.Count - 1;
+                }
             }
             else if ((match = UpdateLine().Match(line)).Success)
             {
                 if (Index(match, shownFacts) is { } index && Fact(match.Groups["fact"].Value) is { } fact &&
                     !operations.Any(operation => operation.Index == index))
+                {
                     operations.Add(new(MemoryCaptureKind.Update, index, fact));
+                    described = operations.Count - 1;
+                }
             }
             else if ((match = ForgetLine().Match(line)).Success)
             {
@@ -226,4 +246,7 @@ internal static partial class MemoryCapture
 
     [GeneratedRegex(@"^(?:FORGET|DELETE|REMOVE)\s*#?\s*(?<n>\d{1,3})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ForgetLine();
+
+    [GeneratedRegex(@"^(?:WORDS|SEARCH\s*WORDS|KEYWORDS)\s*[:\-\u2013]\s*(?<words>.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex WordsLine();
 }

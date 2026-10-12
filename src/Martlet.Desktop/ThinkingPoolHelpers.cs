@@ -10,7 +10,7 @@ internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobP
 {
     internal static ThinkingJobKind Kind(HelperJobKind kind) => kind switch
     {
-        HelperJobKind.Memory or HelperJobKind.MemoryBrief => ThinkingJobKind.Memory,
+        HelperJobKind.Memory or HelperJobKind.MemoryUpkeep or HelperJobKind.MemoryBrief => ThinkingJobKind.Memory,
         HelperJobKind.ActionNaming or HelperJobKind.Temperament => ThinkingJobKind.Naming,
         _ => ThinkingJobKind.TouchZones
     };
@@ -45,7 +45,7 @@ internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobP
             // The owner waits for touch zones and a vision model reads a picture first; memory and naming wait in line.
             Timeout = job.Kind == HelperJobKind.TouchZones ? TimeSpan.FromMinutes(3) : TimeSpan.FromMinutes(5),
             DropWhenStale = true,
-            MaxOutputTokens = job.Kind is HelperJobKind.Memory or HelperJobKind.MemoryBrief ? 1_024 : 4_096
+            MaxOutputTokens = job.Kind switch { HelperJobKind.Memory or HelperJobKind.MemoryBrief => 1_024, HelperJobKind.MemoryUpkeep => 2_048, _ => 4_096 }
         }, token).ConfigureAwait(false);
         if (result.Succeeded) return new(result.Model is { } model ? $"{result.Member} ({model})" : result.Member ?? "a pool member", result.Text, null);
         if (result.Outcome != ThinkingJobOutcome.NoMember)

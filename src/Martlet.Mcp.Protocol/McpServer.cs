@@ -158,7 +158,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             window = new { type = "string" },
             stepMs = new { type = "integer", minimum = 0, maximum = DesktopAutomation.MaximumTypeStepMs }
         }),
-        Tool("ui_toggle", "Toggle an enabled checkbox (requires --allow-ui-effects).", new
+        Tool("ui_toggle", "Toggle an enabled checkbox (requires --allow-ui-effects, except a checkbox that only changes what a " +
+            "window shows: the Memory window's MemoryShowHistory).", new
         {
             id = new { type = "string" }
         }, ["id"]),
@@ -1086,12 +1087,15 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             dataDirectory = new { type = "string" }
         }),
         Tool("memory_status", "Read what Martlet remembers, and whose, from a data directory: whether memory is on and where it is kept " +
-            "(settings.json), then the memory store's facts counted by where they came from (typed, conversation), how many expire, and " +
+            "(settings.json), then the memory store's facts counted by where they came from (typed, conversation), how many expire, how " +
+            "many are replaced facts kept as history (replaced) and how many have hidden search words (withSearchWords), and " +
             "whose they are: everyone's, each voice they belong to by its tag from voices.json (V3, whether it is named or the owner's) " +
             "and those of forgotten voices; then spaces: each memory space kept in the data folder (an account's own space in " +
             "accounts\\<id>\\memory, household and character spaces in memory-spaces\\<space>) with its space ID and the same counts. The " +
             "top-level counts are the store in the memory setting's folder (memories from before accounts until they move to the owner's " +
-            "space, or a custom folder). Never a fact's text, a name, a voice ID or a path. Read-only (it never opens or locks a " +
+            "space, or a custom folder). upkeep: what tidying memory last did (memory-upkeep.json: how many stores it checked for " +
+            "duplicates, and the last pass's space, outcome, counts and pool member). Never a fact's text, a name, a voice ID or a " +
+            "path. Read-only (it never opens or locks a " +
             "store); contacts nothing. limits: the most facts a store holds, characters per fact and store bytes.", new
         {
             dataDirectory = new { type = "string" }
@@ -1149,6 +1153,16 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "the owner's space through the give route without reading it, and a character's space follows the owner's household sharing " +
             "entry: open to the household while shared together, the owner's only once private again) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
+        Tool("conversation_sync_selftest", "Rehearse one record of conversations on every computer end to end with the production code: " +
+            "two real gateways on 127.0.0.1 (pinned TLS, signed requests, the hosts' account directory, in-memory conversation storage) and " +
+            "three simulated desktops, each with a real record of conversations (Martlet.Conversation.ConversationHistory) in a temporary " +
+            "folder, the desktop's paired client (HostConversationPeer) and the real record sync (ConversationRecordSync). Walks recording " +
+            "on one computer and recalling and searching it on another (PastConversations), an edit, a deleted message and a deleted " +
+            "conversation reaching every computer (and never coming back), offline edits of one message on two computers (the later wins), " +
+            "a host that missed changes, a new computer taking the whole record, deleting everything, an exchange from a newer Martlet " +
+            "passing through untouched, another account's device refused the record (conversations.account_denied), the hosts keeping " +
+            "copies over a restart, no conversation text in the sync state files and an unsigned request refused. Synthetic conversations " +
+            "only; loopback only; the folder is deleted.", new { }),
         Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
             "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +
             "network, two member desktops and one outside computer with real network keys and the desktop's paired client " +
@@ -2603,6 +2617,15 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             query = new { type = "string" },
             facts = new { type = "array", items = new { type = "string" }, minItems = 1, maxItems = Martlet.Memory.MemoryLimits.MaximumFacts }
         }),
+        Tool("memory_upkeep_check", "Rehearse search words, replaced facts kept as history and tidying memory with the production " +
+            "code (Martlet.Memory's store and recall, and the desktop's own upkeep: the plan, the pool member's fact list, parsing " +
+            "its answer and the store request) on synthetic facts in a disposable store: a question in other words (\"What should " +
+            "I cook tonight?\") finding \"The user is vegetarian.\" only once the fact has search words; the WORDS, SAME and " +
+            "OUTDATED lines of fixture answers (NOT AI) giving words, merging duplicates and keeping an outdated fact as history " +
+            "with the date it stopped being true; lines across groups or about unknown numbers left out; history never recalled " +
+            "and left out of a snapshot's current facts; a correction keeping the earlier version; the new fields travelling as " +
+            "JSON while a fact without them is written as before; and forgetting a fact forgetting its earlier versions. Never " +
+            "opens your memory; no model, network or credentials.", new { }),
         Tool("search_engine_check", "Show and check the shared search engine that memory, app guides and past conversations use " +
             "(Martlet.Core.Search; docs/SEARCH.md): each source's search profile (fields with their BM25F weights and length " +
             "normalization, k1, positions, candidates, the reranker's weights, cutoff and selection), and on synthetic documents: the " +
@@ -2828,6 +2851,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "memory_forget" => await MemoryForgetAsync(arguments, cancellation),
                 "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
+                "conversation_sync_selftest" => await NodeLinkCheckAsync(cancellation, "conversations"),
                 "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
@@ -2976,6 +3000,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "app_guides_status" => await AppGuidesCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
                 "memory_recall_check" => await MemoryRecallCheck.RunAsync(OptionalString(arguments, "query"), MemoryRecallCheck.Facts(arguments), cancellation),
+                "memory_upkeep_check" => await MemoryUpkeepCheck.RunAsync(cancellation),
                 "search_engine_check" => SearchEngineCheck.Run(cancellation),
                 "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "song_playback_check" => await SongsCheck.RunAsync(
@@ -4589,7 +4614,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
                 if (setting.Key is "memory" or "appearance" or "appearance-custom" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
-                    "model-abilities" or "work-sharing" or Martlet.Core.Motion.MotionSettings.SharedKey || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
+                    "model-abilities" or "work-sharing" or "conversation-history" or Martlet.Core.Motion.MotionSettings.SharedKey || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();
@@ -4715,18 +4740,45 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             facts = Martlet.Memory.MemoryLimits.MaximumFacts, factCharacters = Martlet.Memory.MemoryLimits.MaximumContentCharacters,
             storeBytes = Martlet.Memory.MemoryLimits.MaximumStoreBytes
         };
-        return here is null ? new { memory, storage, state = "none", voiceList, spaces = (object)spaces, limits }
-            : here.State == "unreadable" ? new { memory, storage, state = "unreadable", voiceList, spaces = (object)spaces, limits }
+        var upkeep = MemoryUpkeepStatus(directory);
+        return here is null ? new { memory, storage, state = "none", voiceList, spaces = (object)spaces, upkeep, limits }
+            : here.State == "unreadable" ? new { memory, storage, state = "unreadable", voiceList, spaces = (object)spaces, upkeep, limits }
             : (object)new { memory, storage, state = "loaded", voiceList, facts = here.Facts, typed = here.Typed,
-                fromConversation = here.FromConversation, expiring = here.Expiring, whose = here.Whose, spaces, limits };
+                fromConversation = here.FromConversation, expiring = here.Expiring, replaced = here.Replaced,
+                withSearchWords = here.WithSearchWords, whose = here.Whose, spaces, upkeep, limits };
     }
 
-    private sealed record MemoryCounts(string State, int Facts = 0, int Typed = 0, int FromConversation = 0, int Expiring = 0, object? Whose = null);
+    /// <summary>What tidying memory last did, from the desktop's memory-upkeep.json (counts, times and the pool member only).</summary>
+    private static object MemoryUpkeepStatus(string directory)
+    {
+        var path = Path.Combine(directory, "memory-upkeep.json");
+        try
+        {
+            if (!File.Exists(path)) return new { state = "none" };
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            var root = document.RootElement;
+            return new
+            {
+                state = "loaded",
+                storesChecked = root.TryGetProperty("stores", out var stores) && stores.ValueKind == JsonValueKind.Object
+                    ? stores.EnumerateObject().Count() : 0,
+                last = root.TryGetProperty("last", out var last) && last.ValueKind == JsonValueKind.Object
+                    ? last.Clone() : (JsonElement?)null
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable" };
+        }
+    }
+
+    private sealed record MemoryCounts(string State, int Facts = 0, int Typed = 0, int FromConversation = 0, int Expiring = 0, object? Whose = null,
+        int Replaced = 0, int WithSearchWords = 0);
 
     private static object? Shaped(MemoryCounts? counts) => counts is null ? null : new
     {
         state = counts.State, facts = counts.Facts, typed = counts.Typed, fromConversation = counts.FromConversation,
-        expiring = counts.Expiring, whose = counts.Whose
+        expiring = counts.Expiring, replaced = counts.Replaced, withSearchWords = counts.WithSearchWords, whose = counts.Whose
     };
 
     /// <summary>The counts of one memory store's authoritative file (".martlet-memory.v1.json", the name Martlet.Memory's
@@ -4736,7 +4788,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
     {
         var path = Path.Combine(folder, ".martlet-memory.v1.json");
         if (!File.Exists(path)) return null;
-        List<(string? Voice, string? Source, string? Retention)> facts = [];
+        List<(string? Voice, string? Source, string? Retention, bool Replaced, bool Words)> facts = [];
         try
         {
             byte[] bytes;
@@ -4756,7 +4808,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element)) return null;
                     return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
                 }
-                facts.Add((Text("voice_id"), Text("created_from", "source_kind"), Text("retention", "kind")));
+                facts.Add((Text("voice_id"), Text("created_from", "source_kind"), Text("retention", "kind"),
+                    Text("replaced_at_utc") is not null, Text("search_words") is not null));
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
@@ -4776,7 +4829,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     .OrderBy(g => g.First().Number)
                     .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, linked = g.First().Account is not null, facts = g.Count() }).ToArray(),
                 forgottenVoices = owned.Count(v => v is null)
-            });
+            }, facts.Count(f => f.Replaced), facts.Count(f => f.Words));
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the

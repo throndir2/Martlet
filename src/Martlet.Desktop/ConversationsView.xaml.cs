@@ -60,6 +60,9 @@ public partial class ConversationsView : UserControl
         record.Platforms.Changed -= PlatformsChanged;
     }
 
+    /// <summary>Shows how the record is kept the same on the other computers (the record sync's line; counts only).</summary>
+    internal void ShowSync(string text) => SyncText.Text = text;
+
     /// <summary>The page shows: reads the record the first time, then shows what changed while it was hidden.</summary>
     internal async Task EnterAsync()
     {

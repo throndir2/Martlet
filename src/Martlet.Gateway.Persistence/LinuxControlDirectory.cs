@@ -78,6 +78,10 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>One account's settings (each person's, apart; no API keys): account-settings-&lt;32 hex&gt;.json.</summary>
     internal const string AccountSettingsPrefix = "account-settings-", AccountSettingsSuffix = ".json",
         AccountSettingsStaging = "account-settings.staging";
+    /// <summary>One month of one account's record of conversations: conversations-&lt;32 hex&gt;-&lt;yyyy-MM&gt;.json.</summary>
+    internal const string ConversationRecordPrefix = "conversations-", ConversationRecordSuffix = ".json",
+        ConversationRecordStaging = "conversations.staging";
+    internal const int MaximumConversationRecordBytes = Martlet.Core.Sync.SharedConversations.MaximumBytes;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -140,7 +144,8 @@ internal sealed class LinuxControlDirectory : IDisposable
         if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             name != Accounts &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name) && MemorySpaceOf(name) is null &&
-            AccountSettingsOf(name) is null && CreationAccountOf(name) is null) throw Error(GatewayPersistenceFailure.InvalidPath);
+            AccountSettingsOf(name) is null && CreationAccountOf(name) is null && ConversationRecordOf(name) is null)
+            throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -428,6 +433,33 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>Atomically replaces one account's settings file (0600, service owner).</summary>
     internal void WriteAccountSettings(string account, byte[] bytes) =>
         ReplaceRecovering(AccountSettingsFile(account), AccountSettingsStaging, bytes, MaximumSharedSettingsBytes);
+
+    private static bool IsConversationRecordKey(string? key) =>
+        key is { Length: 40 } && key[32] == '-' && IsAccountId(key[..32]) && Martlet.Core.Sync.SharedConversations.IsMonth(key[33..]);
+
+    /// <summary>The file name of one month of an account's record of conversations; <paramref name="key"/> is
+    /// <c>&lt;32 lowercase hex&gt;-&lt;yyyy-MM&gt;</c>.</summary>
+    internal static string ConversationRecord(string key) =>
+        IsConversationRecordKey(key)
+            ? ConversationRecordPrefix + key + ConversationRecordSuffix
+            : throw Error(GatewayPersistenceFailure.InvalidPath);
+
+    /// <summary>The key (<c>&lt;32 hex&gt;-&lt;yyyy-MM&gt;</c>) a conversations file name holds; null for any other name.</summary>
+    internal static string? ConversationRecordOf(string name) =>
+        name.Length == ConversationRecordPrefix.Length + 40 + ConversationRecordSuffix.Length &&
+        name.StartsWith(ConversationRecordPrefix, StringComparison.Ordinal) && name.EndsWith(ConversationRecordSuffix, StringComparison.Ordinal) &&
+        name[ConversationRecordPrefix.Length..^ConversationRecordSuffix.Length] is var key && IsConversationRecordKey(key) ? key : null;
+
+    /// <summary>The keys of the months of conversations kept here.</summary>
+    internal string[] ListConversationRecords()
+    {
+        Validate();
+        return [.. fs.Enumerate(DirectoryFd).Select(ConversationRecordOf).OfType<string>().Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>Atomically replaces one month of an account's record of conversations (0600, service owner).</summary>
+    internal void WriteConversationRecord(string key, byte[] bytes) =>
+        ReplaceRecovering(ConversationRecord(key), ConversationRecordStaging, bytes, MaximumConversationRecordBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()

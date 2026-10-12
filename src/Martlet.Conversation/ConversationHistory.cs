@@ -260,6 +260,7 @@ public sealed partial class ConversationHistory
                 try
                 {
                     await WriteLineAsync(path, line).ConfigureAwait(false);
+                    Wrote(path);
                     break;
                 }
                 catch (IOException) when (attempt < AppendAttempts && File.Exists(path))
@@ -458,9 +459,13 @@ public sealed partial class ConversationHistory
             var named = "\"conversation\":\"" + conversation.ToString("D") + "\"";
             var removed = 0;
             foreach (var path in MonthFiles(Directory))
-                removed += Rewrite(path, (exchange, line) =>
+            {
+                var gone = Rewrite(path, (exchange, line) =>
                     (exchange is not null ? exchange.ConversationId == conversation : line.Contains(named, StringComparison.OrdinalIgnoreCase))
                         ? null : line);
+                if (gone > 0) Wrote(path);
+                removed += gone;
+            }
             var rebuilt = Index.Of(kept);
             lock (gate) index = rebuilt;
             return removed;
@@ -503,9 +508,14 @@ public sealed partial class ConversationHistory
             string? Map(HistoryExchange? exchange, string text) => exchange?.Id == id ? line : text;
             // Its own month's file first; another file only when a copied line put it there.
             var own = Path.Combine(Directory, FileName(before.At));
-            if (Rewrite(own, Map) == 0)
+            if (Rewrite(own, Map) > 0) Wrote(own);
+            else
                 foreach (var path in MonthFiles(Directory).Where(path => !string.Equals(path, own, StringComparison.OrdinalIgnoreCase)))
-                    if (Rewrite(path, Map) > 0) break;
+                    if (Rewrite(path, Map) > 0)
+                    {
+                        Wrote(path);
+                        break;
+                    }
             List<HistoryExchange>? rebuild = null;
             lock (gate)
             {
@@ -543,6 +553,7 @@ public sealed partial class ConversationHistory
             foreach (var path in MonthFiles(Directory))
             {
                 File.Delete(path);
+                Wrote(path);
                 deleted++;
             }
             lock (gate)

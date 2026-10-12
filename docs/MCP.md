@@ -1652,7 +1652,9 @@ user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
 `on (default)` for settings from before memory, `not set up`), `storage`
 (`Martlet folder` or `custom folder`), `state` (`none` without a store file,
 `loaded` or `unreadable`), `voiceList` (`voices.json`: `none`, `loaded` or
-`unreadable`), `facts`, `typed`, `fromConversation`, `expiring` and `whose`:
+`unreadable`), `facts`, `typed`, `fromConversation`, `expiring`, `replaced`
+(facts kept as history, [Search words, history and tidying](MEMORY.md#search-words-history-and-tidying)),
+`withSearchWords` (facts with hidden search words) and `whose`:
 `everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
 by its tag such as `V3`, with `named`, `owner`, `linked` (to a person's
 account) and `facts`) and
@@ -1662,7 +1664,12 @@ owner's space; then `state` is `none`) or a custom folder. `spaces` lists each
 [memory space](MEMORY.md#memory-spaces-on-the-desktop) kept in the data folder
 (an account's own space in `accounts\<32 hex>\memory`, the household and
 character spaces in `memory-spaces\<space>`): `space` (its ID) and `store` with
-the same `state`, `facts`, `typed`, `fromConversation`, `expiring` and `whose`.
+the same `state`, `facts`, `typed`, `fromConversation`, `expiring`, `replaced`,
+`withSearchWords` and `whose`. `upkeep` reads the desktop's `memory-upkeep.json`
+(`state` `none`, `loaded` or `unreadable`; `storesChecked`, how many stores
+tidying has checked for duplicates; `last`, the last pass's `at`, `space`,
+`outcome`, `listed`, `groups`, `need_words`, `retired`, `merged`, `worded` and
+`member`).
 It reads each store's file as JSON without opening or locking a store (the
 desktop can keep running), and never returns a fact's text, a name, a voice ID
 or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
@@ -1738,6 +1745,26 @@ facts, or from `facts` when given (a later fact counts as newer), and
 `query.words` shows the words recall looked for. It never opens the owner's
 memory and contacts nothing.
 
+`memory_upkeep_check` (no arguments) rehearses [search words, history and
+tidying](MEMORY.md#search-words-history-and-tidying) with the production code
+(`MemoryStore` in `src\Martlet.Memory` and the desktop's own
+`src\Martlet.Desktop\MemoryUpkeep.cs`, linked into the server) on synthetic facts
+in a disposable store, and returns `{passed, failures, steps, note}`. The steps:
+*What should I cook tonight?* doesn't find *The user is vegetarian.* without
+search words; a pass asks words for every fact without them and lists them
+numbered with their dates; fixture `WORDS` lines (NOT AI) give words without
+changing when a fact last changed; the question then finds the fact; the next
+pass groups *vegetarian* with *doesn't eat meat* and *lives in Portland* with
+*moved to Seattle*; lines across groups, about unknown numbers or calling the
+newer fact outdated by the older are left out; a fixture `SAME` line merges the
+duplicates (the kept fact gets the words of both); a fixture `OUTDATED` line
+keeps the older fact as history, dated when the newer one was learned; history
+is never recalled and a snapshot's current facts (`MemorySnapshot.Live`) leave it
+out; a correction keeps the earlier version; the new fields travel as JSON while
+a fact without them is written as before; forgetting a fact forgets its earlier
+versions; and search words from a model line are cleaned up. It never opens the
+owner's memory and contacts nothing.
+
 `search_engine_check` (no arguments) shows and checks the shared
 [search engine](SEARCH.md) that memory, app guides and past conversations use,
 and returns `{passed, failures, steps, profiles, note}`. `profiles` has each
@@ -1765,10 +1792,15 @@ does function calling, and the tool exactly as the model gets it with its
 `utf8Bytes` and `estimatedTokens`), `prompt` (Companion > Prompts > *Past
 conversations* as sent), `record` (`files`, `bytes`, `conversations`,
 `exchanges`, `skippedLines`, `notIndexed`, `oldest`, `newest` and `apps`, the
-exchanges per app: `pc`, `telegram`, `discord`, `whatsapp`) and
+exchanges per app: `pc`, `telegram`, `discord`, `whatsapp`),
 `platformChanges` (`conversations\platform-changes.json`: `pending`,
-`pendingByApp`, `done`, `refused`, `gaveUp`, `lastProblem`). Never what was
-said; it contacts nothing.
+`pendingByApp`, `done`, `refused`, `gaveUp`, `lastProblem`) and `sync` (the
+last [record sync](MEMORY.md#one-record-on-every-computer) of the owner's
+record, from `conversations\sync\status.json`, or null when it never synced:
+`at`, `months`, `exchanges`, `hosts`, `same`, `down`, `old`, `denied`,
+`taken`, `deleted`, `recorded`, `unreadable`, `problem`). The choices are the
+`conversation-history` shared setting, so `settings_sync_status` shows its
+value too. Never what was said; it contacts nothing.
 
 `conversation_history_check` (optional `bulkExchanges`, 1,000-100,000, default
 20,000) rehearses the record with the production code (`ConversationHistory`,
@@ -1798,6 +1830,32 @@ exchanges with the time recall takes (`recallMedianMs`, `recallMaxMs`) and the
 time an ordinary message's check takes (`ordinaryMessageCheckMs`). It is not a
 real conversation or Thinking model; the desktop's tests and `ui_*` tools cover
 the talk window.
+
+`conversation_sync_selftest` (no arguments) rehearses
+[one record of conversations on every computer](MEMORY.md#one-record-on-every-computer)
+end to end with the production code (`src\Martlet.NodeLinkCheck`, mode
+`conversations`, `ConversationRehearsal.cs`; returns `{exitCode, report}`): two
+real gateways (`lab-record-1`, `lab-record-2`; Kestrel, pinned TLS, signed
+requests, the household's account directory and in-memory conversation
+storage) and four simulated desktops (`lab-desktop-a..c` signed in as Sam,
+`lab-desktop-d` as Alex), each with a real record of conversations
+(`ConversationHistory`) in a temporary folder, the desktop's paired client
+(`HostConversationPeer`) and the real record sync (`ConversationRecordSync`).
+Its steps: A records a trip conversation and a joke and both hosts keep the
+month; B takes them, recalls the trip when asked (*Do you remember what we said
+about Kyoto?*) and `search_conversations` finds the ryokan; B edits a reply and
+A takes it; A blanks a message with a PIN and deletes the joke conversation, B
+does the same and they never come back after more syncs, with no PIN left on
+the hosts; offline edits of one reply on A and B end as B's later edit
+everywhere; a host that was stopped while A recorded an exchange restarts with
+its saved copies and gets it on A's next sync; new computer C takes the whole
+record; an exchange a newer Martlet changed passes through B untouched and B
+never writes its older line over it; D, where only Alex is signed in, is
+refused Sam's record (`conversations.account_denied`); C deletes everything and
+A and B do too; and the sync state keeps no conversation text while an unsigned
+request is refused. Synthetic conversations; loopback only; the folder is
+deleted. The desktop window and its 30-second sync, the Linux host's files and
+two real computers are not covered.
 
 `memory_sync_selftest` (no arguments) rehearses shared memories end to end with
 the production code (`src\Martlet.NodeLinkCheck`, mode `memories`,
@@ -4367,9 +4425,10 @@ has the automation ID `ConversationsPage` and is hidden on a host PC);
 `HistorySearchRun` and `HistoryShowAll` only filter what it lists, and
 `HistoryEditMessage` only opens the editor (`HistoryEditCancel` closes it). Its
 `HistoryWindowStatus` reads as text (counts per app, or what a search or the
-last change did) and `HistoryPlatformStatus` reads the changes waiting for
+last change did), `HistoryPlatformStatus` reads the changes waiting for
 Telegram and Discord (*2 changes waiting for Discord (not connected; they go
-once it is).*). `HistorySearchText` and `HistoryEditText` take text through
+once it is).*) and `HistorySyncStatus` reads the record sync's line (*Conversations:
+42 exchanges kept the same on 2 of 2 hosts; checked 9:41 PM.*; counts only). `HistorySearchText` and `HistoryEditText` take text through
 `ui_set_text`; `HistoryAppFilter` (*All apps*, *This PC*, *Telegram*,
 *Discord*, *WhatsApp*), `HistoryConversations` (items named *Conversation 2
 (Telegram)*) and `HistoryMessages` (items named *Message 3: Martlet ·
@@ -4386,9 +4445,12 @@ character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 `MemoryFactStatus` reads how many facts it remembers, how many belong to how
 many people Martlet knows by voice and how many to forgotten voices, how many
 are kept in each [memory space](MEMORY.md#memory-spaces-on-the-desktop)
-besides yours (*3 in Household*), how many
-its *Show* choice (`MemoryPersonFilter`) and search (`MemorySearch`, set with
-`ui_set_text`; it only filters the list) list (*Showing N.*) and what the last
+besides yours (*3 in Household*), how many replaced facts it keeps as history
+(*1 replaced kept as history*), how many
+its *Show* choice (`MemoryPersonFilter`), *Show replaced facts*
+(`MemoryShowHistory`, a check box `ui_toggle` turns without
+`--allow-ui-effects` because it only changes the list) and search (`MemorySearch`, set with
+`ui_set_text`; it only filters the list and also matches hidden search words) list (*Showing N.*) and what the last
 action did, never a fact or a name; `MemoryStatus` (its bottom line) reads
 whether memory is on, is saving or why it can't be (*Memory is on.*, *Saved.
 Memory is off: ...*), never a fact or a folder. The window reads its facts the
@@ -6185,7 +6247,9 @@ low priority, the memory brief as a Memory job at the lowest priority);
 `helper_jobs_check` (no arguments) rehearses the desktop's production router
 (`HelperJobs`) with a fixture pool and fixture answers (NOT AI): memory and
 naming go to a free text member, touch zones wait for a running reply and fall
-back while no member can see, then go to a vision member, and memory falls back
+back while no member can see, then go to a vision member, tidying memory
+(`memory_upkeep`) runs on a free text member and, when none is free, waits
+instead of falling back, and memory falls back
 when no member is free. It returns each step with `passed` and the status file
 it wrote. See [helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool).
 

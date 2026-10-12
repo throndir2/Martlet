@@ -89,7 +89,7 @@ internal static class MemoryTools
             case "find":
                 return await service.UseSpaceAsync(configurationRevision, null, false, async (set, _, store, operationToken) =>
                 {
-                    var here = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                    var here = Current((await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts);
                     var elsewhere = service.OtherFacts(set);
                     return Find([.. here, .. elsewhere.Select(f => f.Fact)], Text(arguments, "query"), person is not null, voice, roster,
                         elsewhere.ToDictionary(f => f.Fact.Id, f => MemorySpaces.Label(f.Space, service.Account)));
@@ -100,11 +100,12 @@ internal static class MemoryTools
                 if (person is null) voice = speaker?.Id;
                 return await service.UseSpaceAsync(configurationRevision, null, true, async (set, _, store, operationToken) =>
                 {
-                    var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                    var all = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                    var facts = Current(all);
                     if (facts.Concat(service.OtherFacts(set).Select(f => f.Fact))
                         .FirstOrDefault(f => MemoryCapture.SameFact(f.Content, content) && Same(f.VoiceId, voice, roster)) is { } known)
                         return new MemoryToolOutcome(new($"Already remembered as {ShortId(known)}: {known.Content}"), "already remembered", []);
-                    if (facts.Count >= MemoryLimits.MaximumFacts)
+                    if (all.Count >= MemoryLimits.MaximumFacts)
                         return Refused($"Memory is full ({MemoryLimits.MaximumFacts:N0} facts). Tell the user to delete some on the Memory page.");
                     var saved = await store.SaveAsync(new()
                     {
@@ -125,6 +126,7 @@ internal static class MemoryTools
                 return await ChangeAsync(service, configurationRevision, ids, async (store, targets, operationToken) =>
                 {
                     var target = targets[0];
+                    // A correction keeps the earlier version as history, dated when it stopped being true.
                     var edited = await store.EditAsync(new()
                     {
                         Id = target.Id,
@@ -132,7 +134,8 @@ internal static class MemoryTools
                         Content = text ?? target.Content,
                         Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), service.UtcNow),
                         Retention = target.Retention,
-                        VoiceId = person is null ? target.VoiceId : voice
+                        VoiceId = person is null ? target.VoiceId : voice,
+                        KeepHistory = true
                     }, operationToken).ConfigureAwait(false);
                     return new MemoryToolOutcome(new($"Updated {ShortId(edited.Fact)}: {edited.Fact.Content}{Whose(edited.Fact.VoiceId, roster)}."),
                         "updated", [new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId)]);
@@ -163,7 +166,7 @@ internal static class MemoryTools
         string? elsewhere = null;
         var outcome = await service.UseSpaceAsync<MemoryToolOutcome?>(configurationRevision, null, true, async (set, _, store, operationToken) =>
         {
-            var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+            var facts = Current((await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts);
             var targets = new List<MemoryFact>();
             foreach (var id in ids)
             {
@@ -189,7 +192,7 @@ internal static class MemoryTools
         {
             return await service.UseSpaceAsync(configurationRevision, elsewhere, true, async (_, _, store, operationToken) =>
             {
-                var facts = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+                var facts = Current((await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts);
                 var targets = new List<MemoryFact>();
                 foreach (var id in ids)
                 {
@@ -206,15 +209,17 @@ internal static class MemoryTools
         }
     }
 
-    /// <summary>The facts that match (every query word, or the most words when none match them all), newest first, as JSON.
-    /// <paramref name="kept"/> names where a fact from another memory space than the active one is kept.</summary>
+    /// <summary>The facts that match (every query word, or the most words when none match them all), newest first, as JSON. A
+    /// word matches a fact's text, whose it is or its hidden search words (which are never shown). History (replaced facts) is
+    /// never listed. <paramref name="kept"/> names where a fact from another memory space than the active one is kept.</summary>
     internal static MemoryToolOutcome Find(IReadOnlyList<MemoryFact> facts, string? query, bool byPerson, string? voice, VoiceRoster? roster,
         IReadOnlyDictionary<Guid, string>? kept = null)
     {
         var words = Words(query);
         var matches = facts
-            .Where(f => !byPerson || Same(f.VoiceId, voice, roster, exact: true))
+            .Where(f => !f.IsHistory && (!byPerson || Same(f.VoiceId, voice, roster, exact: true)))
             .Select(f => (Fact: f, Score: words.Count(w => f.Content.Contains(w, StringComparison.OrdinalIgnoreCase) ||
+                f.SearchWords?.Contains(w, StringComparison.OrdinalIgnoreCase) == true ||
                 MemoryPeople.Label(f.VoiceId, roster)?.Contains(w, StringComparison.OrdinalIgnoreCase) == true)))
             .Where(m => words.Length == 0 || m.Score > 0)
             .OrderByDescending(m => m.Score).ThenByDescending(m => m.Fact.UpdatedAtUtc)
@@ -263,6 +268,9 @@ internal static class MemoryTools
     }
 
     internal static string ShortId(MemoryFact fact) => fact.Id.ToString("N")[..IdLength];
+
+    /// <summary>The current facts: history (replaced facts) can't be found, corrected or forgotten by id here.</summary>
+    private static IReadOnlyList<MemoryFact> Current(IReadOnlyList<MemoryFact> facts) => [.. facts.Where(f => !f.IsHistory)];
 
     private static string Whose(string? voice, VoiceRoster? roster) =>
         MemoryPeople.Label(voice, roster) is { } label ? $" (belongs to {label})" : " (about no one in particular)";

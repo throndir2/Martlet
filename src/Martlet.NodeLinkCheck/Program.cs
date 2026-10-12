@@ -116,6 +116,14 @@ if (args is ["memories"])
     Console.WriteLine(JsonSerializer.Serialize(memoriesReport));
     return memoriesOk ? 0 : 1;
 }
+// With "conversations" it rehearses one record of conversations on every computer: real records kept the same through the hosts
+// (ConversationRehearsal).
+if (args is ["conversations"])
+{
+    var (conversationsOk, conversationsReport) = await Martlet.NodeLinkCheck.ConversationRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(conversationsReport));
+    return conversationsOk ? 0 : 1;
+}
 // With "accounts" it rehearses the household's account directory kept the same through the hosts (AccountRehearsal).
 if (args is ["accounts"])
 {

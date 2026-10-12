@@ -32,8 +32,9 @@ public partial class MemoryWindow : ThemedWindow
     internal sealed record FactItem(MemoryFact Fact, string? Person, string? Space = null, string? SpaceName = null)
     {
         /// <summary>The line under the fact: whose it is, where it came from, when it last changed and, for a fact kept in another
-        /// memory space than yours, that space.</summary>
-        public string Caption => $"{Person ?? EveryoneLabel} · {MemoryPromptContext.Source(Fact.LastModifiedBy.SourceKind)} · " +
+        /// memory space than yours, that space. A replaced fact starts with when it stopped being true.</summary>
+        public string Caption => (Fact.ReplacedAtUtc is { } replaced ? $"Replaced {When(replaced)} · " : "") +
+            $"{Person ?? EveryoneLabel} · {MemoryPromptContext.Source(Fact.LastModifiedBy.SourceKind)} · " +
             When(Fact.UpdatedAtUtc) + (Fact.Retention.Kind == MemoryRetentionKind.ExpiresAt ? " · " + RetentionText(Fact.Retention) : "") +
             (SpaceName is null ? "" : " · " + SpaceName);
 
@@ -382,7 +383,8 @@ public partial class MemoryWindow : ThemedWindow
     {
         var filter = PersonFilter.SelectedItem as PersonOption;
         var words = (SearchBox?.Text ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        var shown = facts.Where(fact => filter?.Kind switch
+        var history = ShowHistoryChoice?.IsChecked == true;
+        var shown = facts.Where(fact => (history || !fact.IsHistory) && filter?.Kind switch
             {
                 PersonKind.Everyone => fact.VoiceId is null,
                 PersonKind.Voice => MemoryPeople.Canonical(fact.VoiceId, roster) == filter.VoiceId,
@@ -390,7 +392,9 @@ public partial class MemoryWindow : ThemedWindow
                 _ => true
             })
             .Select(fact => new FactItem(fact, PersonName(fact.VoiceId), SpaceOf(fact), SpaceName(fact)))
+            // A word finds a fact by its text, whose it is or its hidden search words.
             .Where(item => words.All(word => item.Fact.Content.Contains(word, StringComparison.CurrentCultureIgnoreCase) ||
+                item.Fact.SearchWords?.Contains(word, StringComparison.CurrentCultureIgnoreCase) == true ||
                 (item.Person ?? EveryoneLabel).Contains(word, StringComparison.CurrentCultureIgnoreCase)))
             .OrderByDescending(item => item.Fact.UpdatedAtUtc).ToArray();
         // Keep what was selected (an edited fact stays selected with its new revision).
@@ -400,7 +404,7 @@ public partial class MemoryWindow : ThemedWindow
         foreach (var item in shown.Where(item => keep.Contains(item.Fact.Id)))
             FactsList.SelectedItems.Add(item);
         rendering = false;
-        var all = filter?.Kind is null or PersonKind.All && words.Length == 0;
+        var all = filter?.Kind is null or PersonKind.All && words.Length == 0 && !history;
         FactStatus.Text = factsLine = Summary(shown.Length, all);
         DeleteShownButton.Visibility = all ? Visibility.Collapsed : Visibility.Visible;
         DeleteShownButton.Content = (words.Length > 0 ? shown.Length == 1 ? "Delete the 1 found" : $"Delete all {shown.Length} found"
@@ -408,9 +412,17 @@ public partial class MemoryWindow : ThemedWindow
             {
                 PersonKind.Voice => $"Delete all of {ShortName(filter.VoiceId!)}'s facts ({shown.Length})",
                 PersonKind.Everyone => $"Delete all facts not tied to a voice ({shown.Length})",
-                _ => $"Delete forgotten voices' facts ({shown.Length})"
+                PersonKind.Forgotten => $"Delete forgotten voices' facts ({shown.Length})",
+                _ => $"Delete all {shown.Length} shown"
             }).Replace("_", "__", StringComparison.Ordinal);
         ShowSelection();
+    }
+
+    private void ShowHistory_Changed(object sender, RoutedEventArgs e)
+    {
+        if (rendering || closed) return;
+        RenderFacts();
+        RenderActions();
     }
 
     private string ShortName(string voiceId) =>
@@ -423,18 +435,21 @@ public partial class MemoryWindow : ThemedWindow
         RenderActions();
     }
 
-    /// <summary>How many facts and whose (counts only, never a name or a fact).</summary>
+    /// <summary>How many facts and whose (counts only, never a name or a fact). Replaced facts (history) are counted apart.</summary>
     private string Summary(int shown, bool all)
     {
-        var text = facts.Count == 1 ? "1 fact remembered" : $"{facts.Count} facts remembered";
-        var people = facts.Select(f => f.VoiceId is { } id ? roster.Resolve(id)?.Id : null).OfType<string>().Distinct().Count();
-        var owned = facts.Count(f => f.VoiceId is { } id && roster.Resolve(id) is not null);
-        var forgotten = facts.Count(f => f.VoiceId is { } id && roster.Resolve(id) is null);
+        var current = facts.Where(f => !f.IsHistory).ToArray();
+        var text = current.Length == 1 ? "1 fact remembered" : $"{current.Length} facts remembered";
+        var people = current.Select(f => f.VoiceId is { } id ? roster.Resolve(id)?.Id : null).OfType<string>().Distinct().Count();
+        var owned = current.Count(f => f.VoiceId is { } id && roster.Resolve(id) is not null);
+        var forgotten = current.Count(f => f.VoiceId is { } id && roster.Resolve(id) is null);
         if (owned > 0) text += $": {owned} belong{(owned == 1 ? "s" : "")} to {(people == 1 ? "1 person" : $"{people} people")} Martlet knows by voice";
         if (forgotten > 0) text += $"{(owned > 0 ? "," : ":")} {forgotten} to a forgotten voice";
         // How many are kept in each space besides yours (counts only).
-        foreach (var space in facts.Where(f => elsewhere.ContainsKey(f.Id)).GroupBy(SpaceName))
+        foreach (var space in current.Where(f => elsewhere.ContainsKey(f.Id)).GroupBy(SpaceName))
             text += $"; {space.Count()} in {space.Key}";
+        var replaced = facts.Count - current.Length;
+        if (replaced > 0) text += $"; {replaced} replaced kept as history";
         return text + (all ? "." : $". Showing {shown}.");
     }
 
@@ -704,13 +719,21 @@ public partial class MemoryWindow : ThemedWindow
                 new RetentionOption("Keep current retention", null, KeepCurrent: true));
             RetentionChoice.SelectedIndex = NewRetentionOptions.Length;
         }
+        var earlier = facts.Count(f => f.ReplacedBy == fact.Id);
         FactDetails.Text =
             $"Belongs to: {PersonName(fact.VoiceId) ?? "everyone (not tied to a voice)"}\n" +
             (service.Account is null ? "" : $"Kept in: {SpaceName(fact) ?? MemorySpaces.Label(activeSpace ?? service.Account.Space, service.Account)}" +
                 (Changeable(fact) ? "" : " (only the person who shares it can change it)") + "\n") +
             $"Created: {When(fact.CreatedAtUtc)} ({MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)})\n" +
             $"Updated: {When(fact.UpdatedAtUtc)} ({MemoryPromptContext.Source(fact.LastModifiedBy.SourceKind)})\n" +
-            $"Retention: {RetentionText(fact.Retention)}";
+            $"Retention: {RetentionText(fact.Retention)}" +
+            (fact.ReplacedAtUtc is { } replaced
+                ? $"\nReplaced: {When(replaced)} (kept as history; never recalled)" +
+                    (fact.ReplacedBy is { } by ? "\nReplaced by: " + (facts.FirstOrDefault(f => f.Id == by) is { } newer
+                        ? PreviewFact(newer.Content) : "a fact that was deleted") : "")
+                : "") +
+            (earlier > 0 ? $"\nEarlier versions: {earlier} (Show replaced facts)" : "") +
+            (fact.SearchWords is { } searchWords ? $"\nSearch words: {searchWords}" : "");
         RenderActions();
     }
 
@@ -877,7 +900,8 @@ public partial class MemoryWindow : ThemedWindow
         SaveFactButton.Content = selected == 1 ? "_Add as new fact" : "_Add fact";
         EditFactButton.Visibility = selected == 1 ? Visibility.Visible : Visibility.Collapsed;
         var changeable = SelectedFacts().All(Changeable);
-        EditFactButton.IsEnabled = enabled && !busy && selected == 1 && changeable;
+        // History stays as it was: a replaced fact can be deleted, not changed.
+        EditFactButton.IsEnabled = enabled && !busy && selected == 1 && changeable && SingleSelected() is { IsHistory: false };
         NewFactButton.Visibility = selected > 0 ? Visibility.Visible : Visibility.Collapsed;
         DeleteFactButton.IsEnabled = enabled && !busy && selected > 0 && changeable;
         DeleteFactButton.Content = selected > 1 ? $"_Delete {selected} selected" : "_Delete selected";

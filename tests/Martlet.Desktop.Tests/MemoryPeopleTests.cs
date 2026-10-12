@@ -188,7 +188,9 @@ public sealed class MemoryPeopleTests
         // An update keeps whose the fact is.
         Assert.Equal((MemoryCaptureKind.Update, merged), (Assert.Single(update).Kind, update[0].VoiceId));
         var facts = (await memory.InspectAsync(settings.ConfigurationRevision)).Facts;
-        Assert.Equal(5, facts.Count);
+        Assert.Equal(5, facts.Count(f => !f.IsHistory));
+        // The update kept the earlier version as history, still Sam's.
+        Assert.Equal(("Sam likes coffee.", merged), facts.Where(f => f.IsHistory).Select(f => (f.Content, f.VoiceId)).Single());
         Assert.Equal(merged, facts.Single(f => f.Content == "Sam likes espresso.").VoiceId);
         Assert.Equal(sam.Id, facts.Single(f => f.Content == "Alex likes green tea." && f.VoiceId != other.Id).VoiceId);
     }
@@ -529,9 +531,11 @@ public sealed class MemoryPeopleTests
         Assert.Equal(other.Id, updated.VoiceId);
         Assert.Equal(MemorySourceKind.Conversation, updated.LastModifiedBy.SourceKind);
 
-        // forget: several ids at once; an unknown id is refused without deleting anything.
+        // forget: several ids at once; an unknown id is refused without deleting anything. The cello fact's earlier version (kept
+        // as history by the correction) goes with it.
         Assert.True((await Run("""{"action":"forget","ids":["ffffffff"]}""")).Result.IsError);
-        Assert.Equal(3, (await memory.InspectAsync(revision)).Facts.Count);
+        Assert.Equal(4, (await memory.InspectAsync(revision)).Facts.Count);
+        Assert.Equal("Plays the cello.", (await memory.InspectAsync(revision)).Facts.Single(f => f.IsHistory).Content);
         var ids = Found(await Run($$"""{"action":"find","person":"{{other.Tag}}"}""")).Select(f => f.GetProperty("id").GetString()).ToArray();
         Assert.Equal(2, ids.Length);
         var forgot = await Run(JsonSerializer.Serialize(new { action = "forget", ids }));
