@@ -90,6 +90,25 @@ public partial class MainWindow
 
     private static int AdultIndex(bool? adult) => GenerationSettings.Adult(new() { AdultContent = adult }) ? 1 : 0;
 
+    /// <summary>Companion › Replies › Personal content: each choice and what it saves as
+    /// <see cref="GenerationSettings.PersonalContent"/>. Keep private is the default: it saves nothing (null).</summary>
+    private static readonly IReadOnlyList<(string Name, PersonalContent? Value)> PersonalChoices =
+        [("Keep private", null), ("Read my messages", PersonalContent.Messages), ("Everything", PersonalContent.Everything)];
+    private const string PersonalRange = "Keep private (default), Read my messages or Everything";
+    private const string PersonalHelp = "What Martlet may do with personal things it sees on your screen or camera. Keep private: " +
+        "it never reads out messages, chats, emails or numbers, and says only who a message is from. Read my messages: it may " +
+        "read, quote and talk about your messages, chats, chat history, emails and notifications. Everything: also lets it " +
+        "see password managers, private browsing, authenticator and banking windows, which it otherwise greys out. What it sees " +
+        "goes to your Thinking or image model. The words it is given are the Personal content prompts on Prompts.";
+
+    private static int PersonalIndex(PersonalContent? personal) =>
+        GenerationSettings.Personal(new() { PersonalContent = personal }) switch
+        {
+            PersonalContent.Messages => 1,
+            PersonalContent.Everything => 2,
+            _ => 0
+        };
+
     private void RenderRepliesTab(Panel page)
     {
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
@@ -140,8 +159,16 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(adult, "RepliesAdultContent");
         AutomationProperties.SetHelpText(adult, AdultRange + ". " + AdultHelp);
+        var personal = new ComboBox
+        {
+            Width = 140, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 6, 0, 0), ItemsSource = PersonalChoices.Select(c => c.Name).ToArray(),
+            SelectedIndex = PersonalIndex(saved?.PersonalContent)
+        };
+        AutomationProperties.SetAutomationId(personal, "RepliesPersonalContent");
+        AutomationProperties.SetHelpText(personal, PersonalRange + ". " + PersonalHelp);
         // There is no Save button: a valid change saves a moment after typing stops, into the newest saved settings.
-        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, shortFirst, adult, generation =>
+        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, shortFirst, adult, personal, generation =>
         {
             described.Text = DescribeGeneration(generation, route);
             showContextStatus?.Invoke();
@@ -161,6 +188,9 @@ public partial class MainWindow
         adult.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
         AddRepliesRow(grid, new Label { Content = "_Adult content", Target = adult, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
             adult, AdultRange, AdultHelp, null);
+        personal.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
+        AddRepliesRow(grid, new Label { Content = "_Personal content", Target = personal, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
+            personal, PersonalRange, PersonalHelp, null);
         foreach (var setting in ReplySettings)
         {
             var use = route is null ? GenerationSettingUse.Used : GenerationSupport.Use(route.RouteType, route.Origin, setting.Setting);
@@ -320,6 +350,12 @@ public partial class MainWindow
         thinking += GenerationSettings.StartsShort(settings) ? "Spoken replies start with a short first sentence. "
             : "Spoken replies don't start with a short first sentence. ";
         if (GenerationSettings.Adult(settings)) thinking += "Adult content is on. ";
+        thinking += GenerationSettings.Personal(settings) switch
+        {
+            PersonalContent.Messages => "Martlet may read your messages. ",
+            PersonalContent.Everything => "Martlet may read your messages and see private windows. ",
+            _ => ""
+        };
         if (settings is null)
             return $"{brief}. {stop}. {thinking}Other settings use the model default.";
         var parts = new List<string>();
@@ -334,7 +370,7 @@ public partial class MainWindow
     /// newest saved settings. A field that isn't a number in range says so (on the status line) and nothing is saved until it is
     /// fixed. Returns false to be tried again shortly while another change holds the settings.</summary>
     private async Task<bool> SaveRepliesFromAsync(IReadOnlyDictionary<GenerationSetting, TextBox> boxes, ComboBox thinking,
-        ComboBox shortFirst, ComboBox adult, Action<GenerationSettings?> saved)
+        ComboBox shortFirst, ComboBox adult, ComboBox personal, Action<GenerationSettings?> saved)
     {
         var values = new Dictionary<GenerationSetting, double?>();
         foreach (var setting in ReplySettings)
@@ -366,7 +402,8 @@ public partial class MainWindow
             ContextTokens = Whole(GenerationSetting.ContextTokens),
             Reasoning = ThinkingChoices[Math.Max(0, thinking.SelectedIndex)].Value,
             ShortFirstSentence = ShortFirstChoices[Math.Max(0, shortFirst.SelectedIndex)].Value,
-            AdultContent = AdultChoices[Math.Max(0, adult.SelectedIndex)].Value
+            AdultContent = AdultChoices[Math.Max(0, adult.SelectedIndex)].Value,
+            PersonalContent = PersonalChoices[Math.Max(0, personal.SelectedIndex)].Value
         };
         try { generation.Validate(); }
         catch (ContractException error)

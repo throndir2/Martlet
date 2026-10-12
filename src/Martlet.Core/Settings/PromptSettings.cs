@@ -52,6 +52,8 @@ public static class PromptCatalog
     public const string DescribePicture = "describe_picture";
     public const string ReadOnScreen = "read_on_screen";
     public const string ScreenDigest = "screen_digest";
+    public const string PersonalPrivate = "personal_private";
+    public const string PersonalShared = "personal_shared";
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
@@ -178,11 +180,19 @@ public static class PromptCatalog
         "or watching. Then write up to 6 short lines with the details that matter for that: what happens in the active app that " +
         "the message names (the game, video, stream, document, code or chat), and the names, numbers and short text on screen " +
         "that show what is going on. Use what was said lately to pick what matters. Skip the UI, menus, icons, the taskbar and " +
-        "the user's setup unless they are what matters. Never copy private details (messages, emails, names in them, account or " +
-        "phone numbers, passwords). For a notification, say who or which app it is from and, in a few words, what it is " +
-        "about, unless it looks personal or could get someone in trouble: then say only that it is personal. For a camera picture, never try " +
+        "the user's setup unless they are what matters. {private} For a camera picture, never try " +
         "to identify anyone, never guess anyone's age, health or identity, and don't describe bodies, looks or clothes. Plain " +
         "text only, no markdown, at most 120 words.";
+
+    public const string DefaultPersonalPrivateInstructions =
+        NotificationContentRule + " Never read out, quote, copy or note other private details you can see (messages, chats, " +
+        "emails, the names in them, account or phone numbers, passwords) unless the user asks about them.";
+
+    public const string DefaultPersonalSharedInstructions =
+        "The user chose to share their personal things with you: you may read, quote, note and talk about the messages, chats, " +
+        "chat history, emails, notifications and documents you can see, like a close friend looking over their shoulder " +
+        "(\"Ha, Sam says the pizza is on its way!\"). For a message or notification, you may say what it says. Never read out " +
+        "passwords, one-time codes or card numbers.";
 
     public const string DefaultSaidLatelyInstructions =
         "What you said lately, oldest first (it is {time} now):\n{said}\nBefore you speak, check what you're about to say " +
@@ -668,8 +678,8 @@ public static class PromptCatalog
             "Goes in the notes of a reply that takes the look Martlet was about to take at something that wants your attention " +
             "(a notification popped up or a taskbar button flashes while it watches your whole screen). {what} says which.",
             "On the picture with this message, {what}. If it is a message, call or reminder the user would want to know about, " +
-            "give a quick heads-up in the same reply. " + NotificationContentRule,
-            ["what"]),
+            "give a quick heads-up in the same reply. {private}",
+            ["what", "private"]),
         new(HeardVoice, ConversationGroup, "Your recorded voice",
             "Added to replies when your recording is sent with the transcript (Companion › Listening › Let Thinking hear my voice).",
             "The user's message was spoken. Their recording is attached along with an automatic transcript, which can contain " +
@@ -922,10 +932,9 @@ public static class PromptCatalog
             "server or channel lists and anything else that is just there are never worth a remark. If you can't tie a remark to " +
             "what they are doing or what just happened, reply [{silent}].\n" +
             "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
-            "and never ask them to answer. " + NotificationContentRule + " Never read out other private details you can see " +
-            "(messages, emails, numbers).\n" +
+            "and never ask them to answer. {private}\n" +
             "If you do speak: one short, natural spoken sentence of at most 20 words, plain text, no markdown, lists or emoji.",
-            ["silent"]),
+            ["silent", "private"]),
         new(CommentaryCamera, VisionGroup, "Camera look instructions",
             "Instructions for a look through a camera. The chattiness line follows.",
             "You can see through a camera the user chose to share with you: the attached image is what it shows right now (maybe them, " +
@@ -936,9 +945,9 @@ public static class PromptCatalog
             "never worth a remark. If you can't tie a remark to something that just changed or that they just did, reply [{silent}].\n" +
             "Never describe or narrate what the camera sees, never mention images, cameras or pictures, never repeat or paraphrase something you said recently, " +
             "and never ask them to answer. Never try to identify anyone, never guess anyone's age, health or identity, and never comment on anyone's body, " +
-            "looks or clothes. Do not read out private details you can see (documents, screens, messages, numbers).\n" +
+            "looks or clothes. {private}\n" +
             "If you do speak: one short, natural spoken sentence of at most 20 words, plain text, no markdown, lists or emoji.",
-            ["silent"]),
+            ["silent", "private"]),
         new(ChattinessQuiet, VisionGroup, "Chattiness: quiet", "Closes the glance instructions when vision is quiet.",
             "Be very selective: answer [{silent}] unless it is clearly remarkable.", ["silent"]),
         new(ChattinessNormal, VisionGroup, "Chattiness: normal", "Closes the glance instructions when vision is normal.",
@@ -973,9 +982,8 @@ public static class PromptCatalog
             "while it watches your whole screen. {what} says which; {app} is the program in front (as in the Screen glance " +
             "message); {title} is the active window's title. What Martlet said lately goes in its notes (What you said lately).",
             "(Screen glance: {what}. Active app: {app}. Active window: \"{title}\". If it is a message, call or reminder " +
-            "they would want to know about, give a quick heads-up. " + NotificationContentRule + " " +
-            "Otherwise reply [{silent}].)",
-            ["what", "app", "title", "silent"]),
+            "they would want to know about, give a quick heads-up. {private} Otherwise reply [{silent}].)",
+            ["what", "app", "title", "silent", "private"]),
         new(GlanceLook, VisionGroup, "Where the character looks",
             "Added to screen glances while Companion › Vision › Glances at your screen is Martlet decides and the character " +
             "shows, so the Thinking model can turn the character's eyes to a part of the picture. {tags} lists the nine look tags, " +
@@ -991,9 +999,9 @@ public static class PromptCatalog
             "is the one Martlet's notes name, or, without such a note, the one in the latest [Screen] line. Use the picture when " +
             "it helps your answer, especially when they refer to something on it (\"this\", \"look at that\", \"who messaged " +
             "me?\"), and then talk about what they are doing or watching in the active app, never about the UI or their setup " +
-            "unless they ask; otherwise answer normally. Never describe it unprompted, never mention images or screenshots, and " +
-            "never read out private details from it (messages, emails, numbers) unless they ask about them.",
-            ["source"]),
+            "unless they ask; otherwise answer normally. Never describe it unprompted and never mention images or screenshots. " +
+            "{private}",
+            ["source", "private"]),
         new(SeenApp, VisionGroup, "Active app with your message",
             "Goes with your message when its picture shows your screen and the program in front or its window changed since " +
             "the conversation's latest [Screen] line, in the notes that are sent but not kept (the conversation keeps the " +
@@ -1012,9 +1020,8 @@ public static class PromptCatalog
             "When you get a picture, end your answer (also after [{silent}]) with [seen: a few words on what is going on right " +
             "now, mainly what the user is doing or watching, not the UI or their setup], like [seen: they're racing, final lap, " +
             "in first]: at most 12 plain words, once, at the very end. It is " +
-            "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
-            "names in them, numbers).",
-            ["silent"]),
+            "never shown or spoken; it only helps you remember what you saw. {private}",
+            ["silent", "private"]),
         new(SeenDescribed, VisionGroup, "Pictures as words",
             "Added to every reply and look while an image model of its own describes pictures for the Thinking model (Companion " +
             "› Vision › Image model), in place of Screen with your message and What you saw. It never changes, so the model's " +
@@ -1025,9 +1032,9 @@ public static class PromptCatalog
             "wherever your instructions mention the picture or the image, use it. Use it when it helps your answer, especially " +
             "when they refer to something on it (\"this\", \"look at that\", \"who messaged me?\"), and then talk about what they " +
             "are doing or watching, never about the UI or their setup unless they ask. Never mention the note, the description or " +
-            "an image model, never describe it unprompted, and never read out private details from it (messages, emails, numbers) " +
-            "unless they ask about them. Without such a note you don't know what is on their screen right now: don't guess.",
-            []),
+            "an image model, and never describe it unprompted. {private} " +
+            "Without such a note you don't know what is on their screen right now: don't guess.",
+            ["private"]),
         new(SeenDescribedNote, VisionGroup, "What the image model saw",
             "The image model's description of the newest picture: in the notes of your message (sent but not kept; the " +
             "conversation keeps a [Screen] line made from its first line instead), or in a look's message. {source} says what " +
@@ -1039,8 +1046,8 @@ public static class PromptCatalog
             "The instructions an image model of its own (Companion › Vision › Image model) gets with each picture it describes " +
             "for the Thinking model: while you talk or type, and for each look. Martlet's message with the picture says what it " +
             "shows, the program in front and its window's title, and the last few lines of the conversation. The first line of " +
-            "the answer stays in the conversation as what Martlet saw.",
-            DefaultDescribePictureInstructions, []),
+            "the answer stays in the conversation as what Martlet saw. {private} is the Personal content prompt.",
+            DefaultDescribePictureInstructions, ["private"]),
         new(ReadOnScreen, VisionGroup, "Text on screen",
             "Added at the end of a screen glance, and of a reply that takes a look, while Companion › Reading reads the text on " +
             "your screen. {text} is the text read from that screenshot, one line each, top to bottom. It never goes with what " +
@@ -1056,10 +1063,18 @@ public static class PromptCatalog
             "This picture holds {count} small screenshots of the user's screen from the last {seconds} seconds, oldest first: " +
             "{panels}. In one or two short lines, say what the user did and what changed over that time, like a note to " +
             "yourself: \"They switched from VS Code to a boss fight; health dropped to 20%.\" Name the apps, games, places and " +
-            "numbers that show what they are doing or watching; skip the UI, their setup and what only sits on screen. Never " +
-            "copy private details (messages, emails, names in them, account numbers). If nothing worth noting changed, answer " +
+            "numbers that show what they are doing or watching; skip the UI, their setup and what only sits on screen. " +
+            "{private} If nothing worth noting changed, answer " +
             "exactly [{silent}]. Answer with the note only.",
-            ["count", "seconds", "panels", "silent"]),
+            ["count", "seconds", "panels", "silent", "private"]),
+        new(PersonalPrivate, VisionGroup, "Personal content: private",
+            "Fills {private} in the screen and camera prompts while Companion › Replies › Personal content is Keep private (the " +
+            "default), so Martlet keeps messages, emails and numbers it sees to itself.",
+            DefaultPersonalPrivateInstructions, []),
+        new(PersonalShared, VisionGroup, "Personal content: shared",
+            "Fills {private} in the screen and camera prompts while Companion › Replies › Personal content is Read my messages " +
+            "or Everything, so Martlet may read and talk about the messages, chats and emails it sees.",
+            DefaultPersonalSharedInstructions, []),
 
         new(MemoryCapture, BackgroundGroup, "Remembering",
             "Asks the Thinking model what to remember after each reply. Martlet reads the REMEMBER, UPDATE and FORGET lines it answers; " +
@@ -1312,6 +1327,26 @@ public sealed partial record PromptSettings : IContract
     [JsonIgnore]
     public bool IsDefault => Overrides.Count == 0;
 
+    /// <summary>Companion › Replies › Personal content for these prompts, never saved: <see cref="Fill"/> fills {private} with
+    /// the Personal content: private prompt while it is Private, else with Personal content: shared. Set it with
+    /// <see cref="ForPersonal"/>.</summary>
+    [JsonIgnore]
+    public PersonalContent Personal { get; init; }
+
+    /// <summary><paramref name="prompts"/> as a conversation uses them with <paramref name="generation"/>'s Personal content.
+    /// Null stays null while it is Private, so unedited prompts keep their usual shape.</summary>
+    public static PromptSettings? ForPersonal(PromptSettings? prompts, GenerationSettings? generation)
+    {
+        var personal = GenerationSettings.Personal(generation);
+        if (personal == PersonalContent.Private && prompts is null) return null;
+        return (prompts ?? new PromptSettings { Overrides = new Dictionary<string, string>(StringComparer.Ordinal) }) with { Personal = personal };
+    }
+
+    /// <summary>What {private} says with <paramref name="settings"/> (empty when the owner emptied that prompt).</summary>
+    public static string PersonalText(PromptSettings? settings) =>
+        Text(settings, (settings?.Personal ?? PersonalContent.Private) == PersonalContent.Private
+            ? PromptCatalog.PersonalPrivate : PromptCatalog.PersonalShared).Trim();
+
     public void Validate()
     {
         ContractRules.Require(Overrides is not null, "Prompt edits are required.");
@@ -1350,11 +1385,15 @@ public sealed partial record PromptSettings : IContract
         settings?.Overrides.TryGetValue(id, out var text) == true ? text : PromptCatalog.Default(id);
 
     /// <summary>The prompt's text with its placeholders filled in, or null when the user emptied it (nothing is sent). Values are
-    /// inserted in one pass, so a placeholder inside a value (such as persona text) stays as written.</summary>
+    /// inserted in one pass, so a placeholder inside a value (such as persona text) stays as written. {private} is filled with
+    /// <see cref="PersonalText"/> unless a value for it is given.</summary>
     public static string? Fill(PromptSettings? settings, string id, params (string Name, string Value)[] values)
     {
         var text = Text(settings, id);
-        return string.IsNullOrWhiteSpace(text) ? null : FillText(text, values);
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        if (text.Contains("{private}", StringComparison.Ordinal) && values.All(v => v.Name != "private"))
+            values = [.. values, ("private", PersonalText(settings))];
+        return FillText(text, values);
     }
 
     /// <summary><paramref name="text"/> with its placeholders filled in, in one pass; unknown placeholders stay as written.</summary>

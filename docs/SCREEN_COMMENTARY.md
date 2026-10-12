@@ -343,7 +343,8 @@ didn't look (*Noticed a notification at 10:17 PM but didn't look: you seem
 away.*).
 
 Never captured: minimized windows, and a password manager or private/incognito
-browser window in front (by window title). When a Martlet window is in front
+browser window in front (by window title), unless [Personal content](#personal-content)
+is *Everything*. When a Martlet window is in front
 (say, you clicked the talk window to read it), Martlet looks at the window you
 were using behind it instead. Martlet's own windows, and password managers and
 private browser windows anywhere in the picture, are painted grey wherever they
@@ -351,6 +352,27 @@ show (working down the z-order, so a window on top of them stays visible; a
 picture that is almost all Martlet is skipped), so the model never reads its
 own conversation. Protected video reads back black and is skipped. Screenshots
 are never saved, logged, put in local memory or support bundles.
+
+### Personal content
+
+Companion › Replies › **Personal content** decides what Martlet may do with
+personal things it sees on your screen or camera. The choice is the same on all
+your computers.
+
+- **Keep private** (the default): Martlet never reads out, quotes or keeps
+  messages, chats, emails, names in them or numbers. For a message or
+  notification it says only who or which app it is from.
+- **Read my messages**: Martlet may read, quote and talk about your messages,
+  chats, chat history, emails and notifications.
+- **Everything**: as *Read my messages*, and screen looks also see password
+  managers, private browsing, authenticator and banking windows. Martlet does
+  not grey them out or skip them.
+
+The screen and camera prompts (and the image model's and the screen summary's)
+have a `{private}` placeholder. Martlet fills it with the *Personal content:
+private* or *Personal content: shared* prompt (Companion › Prompts), so both
+texts can be edited. A prompt you edited before this choice existed has no
+`{private}`, so it keeps its own words.
 
 ## Where the character looks
 

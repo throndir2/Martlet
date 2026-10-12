@@ -1290,7 +1290,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "(the saved edit or the built-in text) exactly as Martlet uses it. shortFirstSentence: Companion > Replies > Short " +
             "first sentence (on by default) and what closes a spoken and an unspoken reply's instructions with it, exactly as the " +
             "desktop sends them. adultContent: Companion > Replies > Adult content (off by default), its prompt's state and, while " +
-            "on, the instructions it adds to every reply and remark. Read-only.", new
+            "on, the instructions it adds to every reply and remark. personalContent: Companion > Replies > Personal content " +
+            "(Private by default), the prompt that fills {private} in the screen and camera prompts with its text, and whether " +
+            "screen looks see password managers and private windows. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
@@ -4993,6 +4995,17 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 prompt = Of(Martlet.Core.Settings.PromptCatalog.AdultContent),
                 instructions = Martlet.Core.Settings.GenerationSettings.Adult(generation)
                     ? Martlet.Core.Settings.PromptSettings.Fill(prompts, Martlet.Core.Settings.PromptCatalog.AdultContent) : null
+            },
+            // Companion › Replies › Personal content (Private by default): the level, the prompt that fills {private} and its
+            // text, and whether screen looks see password managers and private windows, exactly as the desktop uses them.
+            personalContent = new
+            {
+                level = Martlet.Core.Settings.GenerationSettings.Personal(generation).ToString(),
+                prompt = Martlet.Core.Settings.GenerationSettings.Personal(generation) == Martlet.Core.Settings.PersonalContent.Private
+                    ? Martlet.Core.Settings.PromptCatalog.PersonalPrivate : Martlet.Core.Settings.PromptCatalog.PersonalShared,
+                instructions = Martlet.Core.Settings.PromptSettings.PersonalText(
+                    Martlet.Core.Settings.PromptSettings.ForPersonal(prompts, generation)),
+                seesPrivateWindows = Martlet.Core.Settings.GenerationSettings.Personal(generation) == Martlet.Core.Settings.PersonalContent.Everything
             }
         };
     }

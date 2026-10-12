@@ -124,7 +124,7 @@ internal sealed class ScreenAttention : IScreenAttention
         GetWindowThreadProcessId(window, out var process);
         if (process == (uint)Environment.ProcessId || window == GetForegroundWindow()) return;
         var title = ScreenGlancer.WindowTitle(window);
-        if (ScreenGlancer.IsPrivateTitle(title)) return;
+        if (ScreenGlancer.Hides(title)) return;
         var now = clock.GetTimestamp();
         foreach (var stale in flashed.Where(f => clock.GetElapsedTime(f.Value, now) >= Repeat).Select(f => f.Key).ToArray())
             flashed.Remove(stale);

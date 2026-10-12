@@ -4111,6 +4111,17 @@ remark (never in a Discord call), exactly as the desktop sends them.
 `RepliesAdultContent` reads the chosen option (*Off* or *On (18+)*; choosing
 one with `ui_select` saves it, so it needs `--allow-ui-effects`), and
 `RepliesNow` adds *Adult content is on.* while it is.
+`personalContent` is Companion › Replies › *Personal content*: the `level`
+(`Private` by default, `Messages` or `Everything`), the `prompt` that fills
+`{private}` in the screen and camera prompts (*Personal content: private* or
+*Personal content: shared*) with its `instructions`, and `seesPrivateWindows`
+(true only with *Everything*: screen looks then also see password managers and
+private windows). `settings_set` with path `generation.personal_content` and
+value `"private"`, `"messages"` or `"everything"` changes it.
+`RepliesPersonalContent` reads the chosen option (*Keep private*, *Read my
+messages* or *Everything*; choosing one with `ui_select` saves it, so it needs
+`--allow-ui-effects`), and `RepliesNow` adds *Martlet may read your messages.*
+(and *see private windows* with *Everything*).
 On the page, `PromptsNow` reads how many prompts are edited or emptied,
 `PromptsTokens` the estimated tokens of all prompts together as typed
 (*All prompts together: about 3,456 tokens. ...*) and

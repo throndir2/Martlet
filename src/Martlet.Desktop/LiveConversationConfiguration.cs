@@ -160,7 +160,7 @@ internal sealed class LiveConversationConfiguration
         companionNames = new(() => Martlet.Core.Speakers.CompanionNames.From(personas?.Select(p => p.Name), personas?.Select(p => p.Text)));
         Memory = settings.Memory;
         Generation = settings.Generation;
-        Prompts = settings.Prompts;
+        Prompts = PromptSettings.ForPersonal(settings.Prompts, settings.Generation);
         Fallback = settings.ThinkingFallback is { } fallback &&
             !fallback.Same(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)) ? fallback : null;
         var thinking = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
@@ -937,7 +937,7 @@ internal sealed class LiveConversationConfiguration
             withMessages +
             "Screenshots include the window title, the name of the program in front and whether it is full screen, persona, " +
             "matching lorebooks and recent conversation. " +
-            "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. " +
+            ScreenGlancer.HiddenText +
             "Screenshots are never saved or added to Memory. " +
             "Provider requests may use quota or cost money. " + WhenItWatches;
     }
@@ -969,7 +969,7 @@ internal sealed class LiveConversationConfiguration
             $"the last few lines of your conversation. Only its words go to {thinking} (or to the fallback for Thinking, if Thinking " +
             "fails), and a reply never waits for them. " +
             (source.Kind == WatchKind.Camera ? "The camera light may turn on. " : "") +
-            (source.IsScreen ? "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. "
+            (source.IsScreen ? ScreenGlancer.HiddenText
                 : "Anyone in view may be seen; tell them. ") +
             "Pictures and their descriptions are never saved or added to Memory. Provider requests may use quota or cost money. " +
             (source.Kind == WatchKind.Url ? "Passwords in camera addresses are never saved. " : "") + WhenItWatches;
