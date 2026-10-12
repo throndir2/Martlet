@@ -90,6 +90,13 @@ public sealed record GenerationSettings : IContract
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? AdultContent { get; init; }
 
+    /// <summary>Companion › Replies › Personal content: how much of the user's personal things Martlet may see and talk about
+    /// on their screen and camera. Null (nothing chosen) is <see cref="Settings.PersonalContent.Private"/>, the default.
+    /// Never sent to a provider: it picks the prompt that fills {private} (<see cref="PromptSettings.ForPersonal"/>), and
+    /// <see cref="Settings.PersonalContent.Everything"/> also lets screen looks see password managers and private windows.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PersonalContent? PersonalContent { get; init; }
+
     /// <summary>How hard a request with <see cref="Reasoning"/> On thinks, for routes that take an effort (OpenAI's
     /// <c>reasoning_effort</c>, OpenRouter's <c>reasoning.effort</c>): "medium" or "high". Only a background think sets it
     /// (<see cref="ThinkLongerSettings.Effort"/>); never saved, and null sends the route's usual On.</summary>
@@ -105,7 +112,7 @@ public sealed record GenerationSettings : IContract
     [JsonIgnore]
     public bool IsDefault => Temperature is null && TopP is null && TopK is null && MinP is null && RepeatPenalty is null &&
         FrequencyPenalty is null && PresencePenalty is null && MaxReplyTokens is null && ContextTokens is null && Reasoning is null &&
-        ThinkLonger is null && ShortFirstSentence is null && AdultContent is null;
+        ThinkLonger is null && ShortFirstSentence is null && AdultContent is null && PersonalContent is null;
 
     /// <summary>The reply token budget requested from the model (the default when unset).</summary>
     [JsonIgnore]
@@ -119,6 +126,10 @@ public sealed record GenerationSettings : IContract
 
     /// <summary>Whether adult content is on with <paramref name="settings"/> (unset is Off).</summary>
     public static bool Adult(GenerationSettings? settings) => settings?.AdultContent ?? false;
+
+    /// <summary>How much personal content Martlet may see and talk about with <paramref name="settings"/> (unset is Private).</summary>
+    public static PersonalContent Personal(GenerationSettings? settings) =>
+        settings?.PersonalContent is { } chosen && Enum.IsDefined(chosen) ? chosen : Settings.PersonalContent.Private;
 
     /// <summary>The settings a request sends: <paramref name="settings"/> with Thinking steps resolved (unset is Off).</summary>
     public static GenerationSettings WithReasoning(GenerationSettings? settings) =>
@@ -160,10 +171,27 @@ public sealed record GenerationSettings : IContract
         ContractRules.Require(ThinkLonger is null || !ThinkLonger.IsDefault,
             "Thinking longer is saved as absent while every value is the default.");
         ThinkLonger?.Validate();
+        ContractRules.Require(PersonalContent is null || Enum.IsDefined(PersonalContent.Value),
+            "Personal content must be private, messages or everything.");
     }
 
     private static bool InRange(double value, double minimum, double maximum) =>
         double.IsFinite(value) && value >= minimum && value <= maximum;
+}
+
+/// <summary>Companion › Replies › Personal content (<see cref="GenerationSettings.PersonalContent"/>).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<PersonalContent>))]
+public enum PersonalContent
+{
+    /// <summary>The default: Martlet never reads out or keeps messages, emails, chats and numbers it sees, and never looks
+    /// at password managers, private browsing, authenticator or banking windows.</summary>
+    Private,
+    /// <summary>Martlet may read, quote and talk about the messages, chats, emails and notifications it sees. Password
+    /// managers and private windows stay hidden.</summary>
+    Messages,
+    /// <summary>As <see cref="Messages"/>, and screen looks also see password managers, private browsing, authenticator and
+    /// banking windows.</summary>
+    Everything
 }
 
 /// <summary>Which generation settings a Thinking route sends, so the Replies page can mark the others as unused.</summary>

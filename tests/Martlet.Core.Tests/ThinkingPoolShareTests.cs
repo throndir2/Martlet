@@ -150,6 +150,29 @@ public sealed class ThinkingPoolShareTests : IDisposable
     }
 
     [Fact]
+    public async Task Personal_content_chosen_on_one_companion_pc_reaches_the_next_one()
+    {
+        var imouto = new Pc(Path.Combine(root, "imouto"), "desktop-imouto");
+        var lumine = new Pc(Path.Combine(root, "lumine"), "desktop-lumine");
+        await imouto.ProfileAsync();
+        await lumine.ProfileAsync();
+        await imouto.Node.SyncAsync([], true, Start, CancellationToken.None);
+        await lumine.Node.SyncAsync([imouto.Node.Document], true, Start, CancellationToken.None);
+
+        // On IMOUTO the owner lets Martlet read their messages (Companion › Replies › Personal content).
+        var loaded = await imouto.Setup.LoadAsync();
+        var saved = await imouto.Setup.SaveAsync(loaded.Settings! with { Generation = new() { PersonalContent = PersonalContent.Messages } },
+            loaded.Revision);
+        Assert.True(saved.Save.Saved, saved.Summary);
+        var recorded = await imouto.Node.SyncAsync([], true, Start.AddMinutes(1), CancellationToken.None);
+        Assert.Contains(AppSettingsSections.Replies, recorded.Recorded);
+
+        var followed = await lumine.Node.SyncAsync([imouto.Node.Document], true, Start.AddMinutes(2), CancellationToken.None);
+        Assert.Contains(followed.Applied, a => a.Key == AppSettingsSections.Replies);
+        Assert.Equal(PersonalContent.Messages, GenerationSettings.Personal((await lumine.Setup.LoadAsync()).Settings?.Generation));
+    }
+
+    [Fact]
     public async Task NVIDIA_models_and_their_key_added_on_one_companion_pc_reach_the_next_one_and_leave_with_it()
     {
         var imouto = new Pc(Path.Combine(root, "imouto"), "desktop-imouto");

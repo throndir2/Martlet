@@ -145,6 +145,25 @@ internal sealed class ScreenGlancer : IScreenGlancer
         return PrivateTitles.Any(lower.Contains);
     }
 
+    private static volatile bool seesPrivateWindows;
+
+    /// <summary>Companion › Replies › Personal content is Everything: looks also see password managers and private windows.
+    /// The desktop sets it whenever its settings change.</summary>
+    internal static bool SeesPrivateWindows
+    {
+        get => seesPrivateWindows;
+        set => seesPrivateWindows = value;
+    }
+
+    /// <summary>Whether a window with <paramref name="title"/> is hidden from looks now (<see cref="IsPrivateTitle"/>, unless
+    /// <see cref="SeesPrivateWindows"/>).</summary>
+    internal static bool Hides(string title) => !SeesPrivateWindows && IsPrivateTitle(title);
+
+    /// <summary>What a look hides, for the Vision disclosures.</summary>
+    internal static string HiddenText => SeesPrivateWindows
+        ? "Martlet greys out its own windows and skips minimized windows and protected video. Personal content is Everything, so it also sees password managers and private windows. "
+        : "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. ";
+
     public GlanceResult Capture(ScreenScope scope) => Capture(scope, text: false);
 
     public GlanceResult CaptureText(ScreenScope scope) => Capture(scope, text: true);
@@ -186,7 +205,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
         if (IsIconic(window)) return new(null, GlanceSkip.Minimized);
         if (Cloaked(window)) return new(null, GlanceSkip.NoWindow);
         var title = WindowTitle(window);
-        if (IsPrivateTitle(title)) return new(null, GlanceSkip.Private, BehindMartlet: behind);
+        if (Hides(title)) return new(null, GlanceSkip.Private, BehindMartlet: behind);
         var monitorHandle = MonitorFromWindow(window, MonitorDefaultToNearest);
         var monitor = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
         if (!GetMonitorInfo(monitorHandle, ref monitor) || !Bounds(window, out var bounds))
@@ -208,7 +227,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
     {
         var title = window == 0 ? "" : WindowTitle(window);
         // A private window in front (or behind Martlet) means you are busy with something private: no look at all.
-        if (window != 0 && IsPrivateTitle(title)) return new(null, GlanceSkip.Private, BehindMartlet: behind);
+        if (window != 0 && Hides(title)) return new(null, GlanceSkip.Private, BehindMartlet: behind);
         var monitors = Monitors();
         if (monitors.Count == 0) return new(null, GlanceSkip.CaptureFailed);
         var area = monitors[0].Area;
@@ -369,7 +388,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
             if ((style & ExTransparent) != 0 || !Bounds(window, out var bounds) || bounds.Width <= 0 || bounds.Height <= 0) continue;
             GetWindowThreadProcessId(window, out var process);
             var mine = process == own;
-            var hide = mine || IsPrivateTitle(WindowTitle(window));
+            var hide = mine || Hides(WindowTitle(window));
             if (!hide && window != target && (style & ExLayered) != 0) continue;
             windows.Add((bounds, hide, mine));
             if (hide) last = windows.Count - 1;

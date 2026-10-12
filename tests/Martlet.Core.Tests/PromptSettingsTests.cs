@@ -148,6 +148,66 @@ public sealed class PromptSettingsTests
     }
 
     [Fact]
+    public void PersonalContentIsPrivateUnlessChosenAndSavesItsLevel()
+    {
+        Assert.Equal(PersonalContent.Private, GenerationSettings.Personal(null));
+        Assert.Equal(PersonalContent.Private, GenerationSettings.Personal(new()));
+        foreach (var level in new[] { PersonalContent.Messages, PersonalContent.Everything })
+        {
+            var chosen = new GenerationSettings { PersonalContent = level };
+            Assert.False(chosen.IsDefault);
+            Assert.Equal(level, GenerationSettings.Personal(chosen));
+            var settings = CompanionSettings.Begin(null) with { Generation = chosen };
+            settings.Validate();
+            var json = System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(settings));
+            Assert.Contains($"\"personal_content\": \"{level.ToString().ToLowerInvariant()}\"", json);
+            Assert.Equal(chosen, SettingsJson.Read(System.Text.Encoding.UTF8.GetBytes(json)).Generation);
+        }
+        Assert.DoesNotContain("personal_content",
+            System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(CompanionSettings.Begin(null))));
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() =>
+            new GenerationSettings { PersonalContent = (PersonalContent)7 }.Validate());
+    }
+
+    [Fact]
+    public void ScreenAndCameraPromptsFollowPersonalContent()
+    {
+        string[] ids =
+        [
+            PromptCatalog.CommentaryScreen, PromptCatalog.CommentaryCamera, PromptCatalog.SeenWithMessage, PromptCatalog.SeenTag,
+            PromptCatalog.SeenDescribed, PromptCatalog.DescribePicture, PromptCatalog.ScreenDigest, PromptCatalog.GlanceAttention,
+            PromptCatalog.MomentAttention
+        ];
+        var kept = PromptCatalog.Default(PromptCatalog.PersonalPrivate);
+        var shared = PromptCatalog.Default(PromptCatalog.PersonalShared);
+        Assert.Contains("Never read out, quote", kept);
+        Assert.Contains("say nothing about what it says", kept);
+        Assert.Contains("may read, quote", shared);
+        Assert.Contains("Never read out passwords", shared);
+        Assert.Null(PromptSettings.ForPersonal(null, null));
+        var messages = PromptSettings.ForPersonal(null, new() { PersonalContent = PersonalContent.Messages });
+        var everything = PromptSettings.ForPersonal(null, new() { PersonalContent = PersonalContent.Everything });
+        foreach (var id in ids)
+        {
+            Assert.Contains("private", PromptCatalog.Find(id)!.Placeholders);
+            Assert.Contains("{private}", PromptCatalog.Default(id));
+            // Unedited prompts keep personal things private; the choice switches every one of them, nothing else.
+            var plain = PromptSettings.Fill(null, id)!;
+            Assert.Contains(kept, plain);
+            Assert.DoesNotContain("{private}", plain);
+            Assert.Equal(plain.Replace(kept, shared, StringComparison.Ordinal), PromptSettings.Fill(messages, id));
+            Assert.Equal(PromptSettings.Fill(messages, id), PromptSettings.Fill(everything, id));
+        }
+        // The level is never saved with the prompts, and the owner's prompt edits are kept.
+        var edited = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.PersonalShared] = "Read it all." } };
+        var used = PromptSettings.ForPersonal(edited, new() { PersonalContent = PersonalContent.Messages })!;
+        Assert.Contains("Read it all.", PromptSettings.Fill(used, PromptCatalog.SeenTag, ("silent", "pass")));
+        Assert.DoesNotContain("Personal", System.Text.Json.JsonSerializer.Serialize(used));
+        // The notification look leaves it to the instructions, so it never forbids reading what popped up.
+        Assert.DoesNotContain("never the message itself", PromptCatalog.Default(PromptCatalog.GlanceAttention));
+    }
+
+    [Fact]
     public void ScreenGlancesReactToWhatTheUserDoesNotToTheirSetup()
     {
         var look = PromptSettings.Fill(null, PromptCatalog.CommentaryScreen, ("silent", "pass"))!;
@@ -184,8 +244,8 @@ public sealed class PromptSettingsTests
             Assert.Contains("say nothing about what it says: at most who or which app it is from", text);
             Assert.DoesNotContain("never the message itself", text);
         }
-        Assert.Contains("what it is about, unless it looks personal or could get someone in trouble",
-            PromptCatalog.DefaultDescribePictureInstructions);
+        Assert.Contains("say nothing about what it says: at most who or which app it is from",
+            PromptSettings.Fill(null, PromptCatalog.DescribePicture));
         // A message with a picture is told the same in its notes, and its instructions point the same way.
         Assert.Equal("Active app in the picture: Google Chrome (full screen). Active window: \"YouTube\".",
             PromptSettings.Fill(null, PromptCatalog.SeenApp, ("app", "Google Chrome (full screen)"), ("title", "YouTube")));

@@ -97,7 +97,7 @@ public sealed class ImageModelPipelineTests
         var eyes = Chat(fixture.Chat.Body);
         Assert.Equal("qwen2.5vl:7b", eyes.Model);
         Assert.Equal(1, eyes.Pictures);
-        Assert.Equal(PromptCatalog.DefaultDescribePictureInstructions, eyes.System);
+        Assert.Equal(PromptSettings.Fill(null, PromptCatalog.DescribePicture), eyes.System);
         Assert.StartsWith("The picture shows the user's whole screen: every monitor", eyes.User);
         Assert.Contains("Active app: ELDEN RING (full screen). Active window: \"ELDEN RING\".", eyes.User);
         Assert.Contains("Nothing was said yet.", eyes.User);

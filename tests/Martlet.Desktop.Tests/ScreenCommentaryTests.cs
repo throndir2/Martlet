@@ -114,6 +114,31 @@ public sealed class ScreenCommentaryTests
     }
 
     [Fact]
+    public void Personal_content_everything_lets_looks_see_private_windows_and_says_so()
+    {
+        Assert.True(ScreenGlancer.IsPrivateTitle("Vault - Bitwarden"));
+        Assert.False(ScreenGlancer.IsPrivateTitle("Sam - Discord"));
+        var before = ScreenGlancer.SeesPrivateWindows;
+        try
+        {
+            ScreenGlancer.SeesPrivateWindows = false;
+            Assert.True(ScreenGlancer.Hides("Video - YouTube - Google Chrome (Incognito)"));
+            Assert.Contains("greys out its own windows, password managers and private windows", LiveConversationConfiguration.ScreenDisclosure(
+                null, ChattinessChoice.Normal, new WatchSource(WatchKind.ActiveScreen)));
+            ScreenGlancer.SeesPrivateWindows = true;
+            Assert.False(ScreenGlancer.Hides("Video - YouTube - Google Chrome (Incognito)"));
+            Assert.Contains("it also sees password managers and private windows", LiveConversationConfiguration.ScreenDisclosure(
+                null, ChattinessChoice.Normal, new WatchSource(WatchKind.ActiveScreen)));
+        }
+        finally { ScreenGlancer.SeesPrivateWindows = before; }
+        // MainWindow's static styles are pack:// addresses; register the scheme in case no WPF type did yet in this run.
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        Assert.DoesNotContain("messages", MainWindow.DescribeGeneration(null));
+        Assert.Contains("Martlet may read your messages. ", MainWindow.DescribeGeneration(new() { PersonalContent = PersonalContent.Messages }));
+        Assert.Contains("see private windows", MainWindow.DescribeGeneration(new() { PersonalContent = PersonalContent.Everything }));
+    }
+
+    [Fact]
     public void The_talk_window_and_companion_say_what_martlet_decided()
     {
         Assert.Equal("", LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Quiet, false));

@@ -28,7 +28,18 @@ public partial class MainWindow
     private static readonly string Version = AppVersions.Current;
     private DeviceRole? deviceRole;
     private MachineInfo machine = MachineInfo.Unknown;
-    private AppSettings? homeSettings;
+    private AppSettings? homeSettingsValue;
+    /// <summary>The newest loaded settings. Setting them also lets screen looks follow Companion › Replies › Personal content
+    /// (<see cref="ScreenGlancer.SeesPrivateWindows"/>).</summary>
+    private AppSettings? homeSettings
+    {
+        get => homeSettingsValue;
+        set
+        {
+            homeSettingsValue = value;
+            ScreenGlancer.SeesPrivateWindows = GenerationSettings.Personal(value?.Generation) == PersonalContent.Everything;
+        }
+    }
     private AvatarProfile? homeAvatar;
     private IReadOnlyList<PairedHost> homeHosts = [];
     /// <summary>Hosts friends share with this PC (<see cref="PairedHost.Shared"/>): their engines only, kept apart from

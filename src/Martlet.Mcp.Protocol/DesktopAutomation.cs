@@ -795,6 +795,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Adult content: the chosen option (Off, the default, or On (18+); choosing one with ui_select
         // saves it, so it needs --allow-ui-effects).
         "RepliesAdultContent",
+        // Companion › Replies › Personal content: the chosen option (Keep private, the default, Read my messages or
+        // Everything; choosing one with ui_select saves it, so it needs --allow-ui-effects).
+        "RepliesPersonalContent",
         // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
         // longer's state (on by default; its own ThinkLongerOn box turns it off) or what keeps it from working, and the chosen
         // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need
