@@ -1822,9 +1822,10 @@ public partial class MainWindow
         if (conversationHistory is { } record) page.Children.Add(HistoryCard(record, on));
     }
 
-    /// <summary>Companion › Memory › Conversation history: whether Martlet keeps a record of conversations on this PC (on by
-    /// default while memory is on) and may search it on its own (search_conversations, off by default), what it holds and the
-    /// window to read, search and delete it. Each choice saves at once (conversation-history.json).</summary>
+    /// <summary>Companion › Memory › Conversation history: whether Martlet keeps a record of conversations (on by default while
+    /// memory is on; the same on all your computers) and may search it on its own (search_conversations, off by default), what it
+    /// holds and the window to read, search and delete it. Each choice saves at once (conversation-history.json, shared as
+    /// conversation-history).</summary>
     private Border HistoryCard(DesktopConversationHistory record, bool memoryOn)
     {
         var prefs = record.Preferences;
@@ -1845,6 +1846,8 @@ public partial class MainWindow
             if (next == record.Preferences) return;
             if (!record.SetPreferences(next))
                 ErrorLog.Warn("Couldn't save the conversation history choice on this PC; it applies until Martlet restarts.");
+            // Your other computers take the choice on their next check (the conversation-history shared setting).
+            QueueSettingsSync();
             search.IsEnabled = memoryOn && next.Keep;
             status.Text = record.Describe(homeSettings?.Memory);
         }
@@ -1858,7 +1861,8 @@ public partial class MainWindow
             _ = record.Store.LoadAsync().ContinueWith(_ => Dispatcher.InvokeAsync(() => status.Text = record.Describe(homeSettings?.Memory)),
                 TaskScheduler.Default);
         return Card(Heading("Conversation history"), status, keep,
-            HelpTip.Explain("Each exchange (what you typed or said and Martlet's reply) is kept on this PC. When you mention an earlier " +
+            HelpTip.Explain("Each exchange (what you typed or said and Martlet's reply) is kept in your record, the same on all your " +
+                "computers. When you mention an earlier " +
                 "conversation, like \"remember when...\" or \"what did we talk about yesterday?\", Martlet brings back what was said. " +
                 "Screen glances and what this PC plays are never recorded.", new Thickness(24, 2, 0, 0), "ConversationHistory", "conversation history"),
             search,

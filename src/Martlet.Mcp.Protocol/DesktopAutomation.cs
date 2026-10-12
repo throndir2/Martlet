@@ -471,7 +471,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the
         // window's lists (HistoryConversations, HistoryMessages, whose items are named "Conversation 2 (Telegram)" and
         // "Message 3: Martlet · Discord") and the editor are not readable values.
-        "HistoryStatus", "HistoryWindowStatus", "HistoryPlatformStatus",
+        "HistoryStatus", "HistoryWindowStatus", "HistoryPlatformStatus", "HistorySyncStatus",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it; and,
         // for a Windows computer whose voice engine shares its graphics card with other roles, the warning that it can fall

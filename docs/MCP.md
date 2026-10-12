@@ -1715,10 +1715,15 @@ does function calling, and the tool exactly as the model gets it with its
 `utf8Bytes` and `estimatedTokens`), `prompt` (Companion > Prompts > *Past
 conversations* as sent), `record` (`files`, `bytes`, `conversations`,
 `exchanges`, `skippedLines`, `notIndexed`, `oldest`, `newest` and `apps`, the
-exchanges per app: `pc`, `telegram`, `discord`, `whatsapp`) and
+exchanges per app: `pc`, `telegram`, `discord`, `whatsapp`),
 `platformChanges` (`conversations\platform-changes.json`: `pending`,
-`pendingByApp`, `done`, `refused`, `gaveUp`, `lastProblem`). Never what was
-said; it contacts nothing.
+`pendingByApp`, `done`, `refused`, `gaveUp`, `lastProblem`) and `sync` (the
+last [record sync](MEMORY.md#one-record-on-every-computer) of the owner's
+record, from `conversations\sync\status.json`, or null when it never synced:
+`at`, `months`, `exchanges`, `hosts`, `same`, `down`, `old`, `denied`,
+`taken`, `deleted`, `recorded`, `unreadable`, `problem`). The choices are the
+`conversation-history` shared setting, so `settings_sync_status` shows its
+value too. Never what was said; it contacts nothing.
 
 `conversation_history_check` (optional `bulkExchanges`, 1,000-100,000, default
 20,000) rehearses the record with the production code (`ConversationHistory`,
@@ -1748,6 +1753,32 @@ exchanges with the time recall takes (`recallMedianMs`, `recallMaxMs`) and the
 time an ordinary message's check takes (`ordinaryMessageCheckMs`). It is not a
 real conversation or Thinking model; the desktop's tests and `ui_*` tools cover
 the talk window.
+
+`conversation_sync_selftest` (no arguments) rehearses
+[one record of conversations on every computer](MEMORY.md#one-record-on-every-computer)
+end to end with the production code (`src\Martlet.NodeLinkCheck`, mode
+`conversations`, `ConversationRehearsal.cs`; returns `{exitCode, report}`): two
+real gateways (`lab-record-1`, `lab-record-2`; Kestrel, pinned TLS, signed
+requests, the household's account directory and in-memory conversation
+storage) and four simulated desktops (`lab-desktop-a..c` signed in as Sam,
+`lab-desktop-d` as Alex), each with a real record of conversations
+(`ConversationHistory`) in a temporary folder, the desktop's paired client
+(`HostConversationPeer`) and the real record sync (`ConversationRecordSync`).
+Its steps: A records a trip conversation and a joke and both hosts keep the
+month; B takes them, recalls the trip when asked (*Do you remember what we said
+about Kyoto?*) and `search_conversations` finds the ryokan; B edits a reply and
+A takes it; A blanks a message with a PIN and deletes the joke conversation, B
+does the same and they never come back after more syncs, with no PIN left on
+the hosts; offline edits of one reply on A and B end as B's later edit
+everywhere; a host that was stopped while A recorded an exchange restarts with
+its saved copies and gets it on A's next sync; new computer C takes the whole
+record; an exchange a newer Martlet changed passes through B untouched and B
+never writes its older line over it; D, where only Alex is signed in, is
+refused Sam's record (`conversations.account_denied`); C deletes everything and
+A and B do too; and the sync state keeps no conversation text while an unsigned
+request is refused. Synthetic conversations; loopback only; the folder is
+deleted. The desktop window and its 30-second sync, the Linux host's files and
+two real computers are not covered.
 
 `memory_sync_selftest` (no arguments) rehearses shared memories end to end with
 the production code (`src\Martlet.NodeLinkCheck`, mode `memories`,
@@ -4317,9 +4348,10 @@ has the automation ID `ConversationsPage` and is hidden on a host PC);
 `HistorySearchRun` and `HistoryShowAll` only filter what it lists, and
 `HistoryEditMessage` only opens the editor (`HistoryEditCancel` closes it). Its
 `HistoryWindowStatus` reads as text (counts per app, or what a search or the
-last change did) and `HistoryPlatformStatus` reads the changes waiting for
+last change did), `HistoryPlatformStatus` reads the changes waiting for
 Telegram and Discord (*2 changes waiting for Discord (not connected; they go
-once it is).*). `HistorySearchText` and `HistoryEditText` take text through
+once it is).*) and `HistorySyncStatus` reads the record sync's line (*Conversations:
+42 exchanges kept the same on 2 of 2 hosts; checked 9:41 PM.*; counts only). `HistorySearchText` and `HistoryEditText` take text through
 `ui_set_text`; `HistoryAppFilter` (*All apps*, *This PC*, *Telegram*,
 *Discord*, *WhatsApp*), `HistoryConversations` (items named *Conversation 2
 (Telegram)*) and `HistoryMessages` (items named *Message 3: Martlet ·

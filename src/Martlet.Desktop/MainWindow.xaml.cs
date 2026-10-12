@@ -211,6 +211,7 @@ public partial class MainWindow : ThemedWindow
         InitializeRecommendedSetup();
         InitializeConfiguring();
         InitializeMemorySync();
+        InitializeConversationSync();
         InitializeAccounts();
         InitializeAccountSecurity();
         InitializeNetwork();
@@ -280,6 +281,7 @@ public partial class MainWindow : ThemedWindow
         StartReminders();
         StartCheckIns();
         StartMemorySync();
+        StartConversationSync();
         StartNetwork();
         StartAccounts();
         StartApiKeys();

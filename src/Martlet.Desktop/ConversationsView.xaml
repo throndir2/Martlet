@@ -15,7 +15,9 @@
         <StackPanel DockPanel.Dock="Top">
             <TextBlock Text="Conversations" Style="{DynamicResource PageTitle}" />
             <TextBlock Margin="0,8" TextWrapping="Wrap"
-                       Text="Every conversation Martlet has had: on this PC and in Telegram, Discord and WhatsApp. It stays on this PC. Delete or edit a single message, a conversation or everything at any time." />
+                       Text="Every conversation Martlet has had with you: in the talk window and in Telegram, Discord and WhatsApp. With Keep Martlet the same on all my computers on, it is the same on every computer where you are signed in. Delete or edit a single message, a conversation or everything at any time; it changes on all of them." />
+            <TextBlock x:Name="SyncText" TextWrapping="Wrap" Margin="0,0,0,6" AutomationProperties.AutomationId="HistorySyncStatus"
+                       AutomationProperties.LiveSetting="Polite" Style="{DynamicResource Muted}" />
             <Label Target="{Binding ElementName=SearchText}" Content="_Search conversations" Padding="0,4" />
             <DockPanel>
                 <ComboBox DockPanel.Dock="Left" x:Name="AppFilter" Width="130" Margin="0,0,8,0" SelectedIndex="0"

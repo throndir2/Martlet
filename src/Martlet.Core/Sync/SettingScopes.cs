@@ -11,13 +11,15 @@ public static class SettingScopes
     public const string Household = "household", Account = "account";
 
     public const string Character = "character", Talk = "talk", SpeechDisplay = "speech-display", Appearance = "appearance",
-        AppearanceCustom = "appearance-custom", VoiceId = "voice-id", TouchTemperament = "touch-temperament";
+        AppearanceCustom = "appearance-custom", VoiceId = "voice-id", TouchTemperament = "touch-temperament",
+        ConversationHistory = "conversation-history";
 
     /// <summary>The account sections, in the order a computer applies them (the custom palette before the theme).</summary>
     public static IReadOnlyList<string> AccountKeys { get; } =
     [
         AppSettingsSections.Companion, AppSettingsSections.Replies, AppSettingsSections.Prompts, AppSettingsSections.Memory,
-        AppSettingsSections.Lorebooks, Character, Talk, SpeechDisplay, AppearanceCustom, Appearance, VoiceId, TouchTemperament
+        AppSettingsSections.Lorebooks, Character, Talk, SpeechDisplay, AppearanceCustom, Appearance, VoiceId, TouchTemperament,
+        ConversationHistory
     ];
 
     private static readonly HashSet<string> AccountSet = new(AccountKeys, StringComparer.Ordinal);
