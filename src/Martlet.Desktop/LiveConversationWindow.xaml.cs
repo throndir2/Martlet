@@ -781,6 +781,23 @@ public partial class LiveConversationWindow : ThemedWindow
         return job;
     }
 
+    /// <summary>The conversation is ready to answer at full speed: its settings loaded, Thinking is set up and, when Thinking runs
+    /// in Ollama on this PC, the model has loaded (Home adds Parakeet and the character).</summary>
+    internal bool WarmedUp => !closed && Available && Warmup.Count == 0 && warmup?.Status.State is null or LocalModelState.Ready;
+
+    /// <summary>Nothing was said in this conversation yet.</summary>
+    internal bool Fresh => controller.RecentExchanges(0).Total == 0;
+
+    /// <summary>Martlet's greeting after it starts (<paramref name="facts"/>: what it knows, <see cref="Greetings.Facts"/>): Martlet
+    /// says it on its own as soon as it is free, or with what you say first.</summary>
+    internal BackgroundJob? Greet(string facts)
+    {
+        if (closed) return null;
+        var job = controller.Greet(facts);
+        RenderActions();
+        return job;
+    }
+
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
     /// answered, no reply, look or other work owns Martlet, Martlet isn't paused or singing, and the conversation has been quiet

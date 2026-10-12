@@ -3191,6 +3191,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return start.Job;
     }
 
+    /// <summary>Brings Martlet's greeting after it starts into this conversation (<see cref="Greetings.Kind"/>, with the Greeting
+    /// prompts): <paramref name="facts"/> is what it knows (<see cref="Greetings.Facts"/>). Null when the conversation is closing.</summary>
+    internal BackgroundJob? Greet(string facts) =>
+        jobs.Start(Greetings.Kind, "Greeting", (_, _) => Task.FromResult(BackgroundJobOutcome.Done(facts))).Job;
+
     /// <summary>The newest <paramref name="count"/> exchanges of this conversation (oldest first: what the user said and the reply)
     /// and how many it has had in all, a count that only grows, for a check-in. In memory only.</summary>
     internal (IReadOnlyList<CheckInExchange> Exchanges, long Total) RecentExchanges(int count)

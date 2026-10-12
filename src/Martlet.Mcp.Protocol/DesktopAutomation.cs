@@ -927,6 +927,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
+        // Settings › Startup and closing's line under Greet me (GreetAtStart): whether Martlet greets you once it has warmed up
+        // after it starts, did, or why it didn't, with what it knew in counts only ("the time of day, your last conversation and
+        // 3 open apps"). Fixed text, a time and counts; never app names, reminders or what was said.
+        "GreetingStatus",
         "TrayOpen", "TrayTalk", "TrayStartListening", "TrayStopListening", "TrayStartWatching", "TrayStopWatching", "TrayPause",
         "TrayResume", "TrayEndTalk", "TrayCharacter", "TrayCharacterClickThrough", "TrayCharacterProfiles", "TrayCloseToTray",
         "TrayStartWithWindows", "TrayExit",

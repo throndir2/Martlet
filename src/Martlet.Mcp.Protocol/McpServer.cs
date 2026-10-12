@@ -1901,6 +1901,12 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("greeting_check", "Rehearse Martlet's greeting once it has warmed up after it starts (docs/CONVERSATION.md#greeting-when-martlet-starts) " +
+            "with the production code and fixture facts: the time of day, the end of the newest conversation on this PC from a real " +
+            "conversation record in a temporary folder (a newer messaging-app chat left out), only the reminders due in the next 12 " +
+            "hours, the open apps with the one in front first, the counts-only line for the log and Settings' GreetingStatus, and the " +
+            "greeting notice through BackgroundJobs (on its own as soon as Martlet is free, in the notes of the user's first message, " +
+            "said once, let go after waiting too long). No model, network or credentials.", new { }),
         Tool("check_ins_status", "Martlet's check-ins (Companion › Check-ins; docs/CONVERSATION.md#check-ins: short questions the " +
             "Thinking pool answers every few minutes, such as whether lingering emotes still fit), from a data directory: " +
             "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
@@ -2760,6 +2766,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
+                "greeting_check" => await GreetingCheck.RunAsync(cancellation),
                 "check_ins_status" => await CheckInsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "check_ins_check" => await CheckInsCheck.RunAsync(cancellation),
                 "said_lately_check" => await SaidLatelyCheck.RunAsync(cancellation),

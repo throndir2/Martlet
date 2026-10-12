@@ -103,7 +103,10 @@ Martlet**, which closes it completely (as does Exit Martlet in Settings).
 notification area* for a start at sign-in (the per-user Run entry `Martlet`, off
 by default; Windows' own Startup apps switch is respected, and the uninstaller
 removes the entry). It can also show the character and start listening (and
-watching) as Martlet starts. Starting Martlet again while it runs shows the
+watching) as Martlet starts. *Greet me once Martlet has warmed up after it
+starts* (on by default) has Martlet say hello on its own, once each time it
+starts (see [Greeting when Martlet starts](CONVERSATION.md#greeting-when-martlet-starts));
+the line under it says whether it greeted you. Starting Martlet again while it runs shows the
 running window instead of a second copy (per data folder). Choices live in
 `background.json`.
 

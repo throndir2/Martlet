@@ -6034,6 +6034,20 @@ let go, and the reply's read-only `list_reminders` call listing without
 changing anything while the *Reminders* set replaces `reminders`. `passed` and each step's `passed` and `detail`. No model, network or
 credentials.
 
+`greeting_check` rehearses [the greeting when Martlet
+starts](CONVERSATION.md#greeting-when-martlet-starts) with the production code
+(`Greetings`, `ConversationHistory`, `BackgroundJobs`, `UnpromptedSpeech`) and
+fixture facts: an empty record giving no last conversation, the newest
+conversation on this PC read from a real conversation record in a temporary
+folder (a newer Telegram chat left out; the folder is deleted afterwards), the
+time and part of the day, only the reminders due in the next 12 hours, the open
+apps with the one in front first and each once, the counts-only line the log
+and `GreetingStatus` use (*the time of day, your last conversation, 1 reminder
+coming up and 3 open apps*), the message when Martlet greets on its own and the
+notes when the user talks first, said once, and let go (*too_old*) after
+waiting 10 minutes. `passed` and each step's `passed` and `detail`. No model,
+network or credentials.
+
 `check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
@@ -9392,7 +9406,18 @@ directory and turn it off again afterwards), `StartInTray`, `StartCompanion`
 while vision is on)*; saves
 `background.json` and applies on every start, `--tray` included, so the
 desktop log records *Martlet started with the character and listening.*, or
-*... and listening, and watching.* with vision on) and
+*... and listening, and watching.* with vision on),
+`GreetAtStart` (*Greet me once Martlet has warmed up after it starts*; checked
+by default, saves `background.json`, so toggling it needs
+`--allow-ui-effects`) with `GreetingStatus` under it (*Martlet greets you once
+a conversation has warmed up (Start talking or Start listening on Home).*,
+*Martlet greets you once it has warmed up.*, *Martlet greets you as soon as
+it's free. It knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
+5:08 PM and greeted you. It knew the time of day, your last conversation and 3
+open apps.*, or why it didn't: the greeting was off, you were already talking,
+or it was let go; counts only, never app names, reminders or what was said;
+the talk window's task list shows the job as *Greeting* and the log says
+*Greeting: Martlet warmed up; greeting-1 waits...*) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
 when Windows' own Startup apps switch turned it off). On a PC that runs its own
