@@ -230,8 +230,9 @@ what each one is.
   under the reply what it set off (*Emotes: nod, blush.*, with any tone or
   sound the voice made). An expression shows for at least 4 seconds and until its
   sentence ends (at most 12 seconds) unless another replaces it; motions and
-  gestures play once. VRM has no motions of its own (VRMA isn't supported), so
-  it uses its expressions and the gestures.
+  gestures play once. A VRM has no motions of its own, so it uses its
+  expressions and the gestures, and plays VRMA clips that Martlet gives it
+  (see *VRMA clips on a VRM*).
 - **VRM idle pose and breathing**: a VRM model is made in a T-pose (arms
   straight out, flat open hands). While it shows, Martlet stands it in a
   relaxed pose on every model: the arms hang about 15 degrees out from the
@@ -244,8 +245,45 @@ what each one is.
   to side, less than a degree. A wave, shrug or arms-open gesture opens the
   hands it moves. The first frame (the rest pose in Martlet's touch-zone
   picture) is breathed out with no sway. Martlet's MCP `character_pose` reads
-  it. Authored VRMA clips (the official `@pixiv/three-vrm-animation` loader)
-  are not played yet.
+  it.
+- **VRMA clips on a VRM**: a VRM plays VRM Animation clips (`.vrma` files:
+  binary glTF with the `VRMC_vrm_animation` 1.0 extension), for example a
+  motion that HY-Motion made on a host (see
+  [workers/motion](../workers/motion/README.md)). The official
+  `@pixiv/three-vrm-animation` 3.5.5 loader reads the clip and retargets it to
+  the model, VRM 0.x or VRM 1.0. Martlet gives the clip to the showing
+  character as bytes, without loading the model again, and the character
+  keeps it by a name while the model stays loaded (at most 16 clips; the
+  oldest goes first). Another model, hiding the character or a renderer that
+  ends forgets the clips.
+  - A clip plays once. It blends in over the idle pose (a quarter of its
+    length, at most 0.4 seconds), then gives the body back to the idle pose,
+    breathing and sway by its end, with no snap. A new clip crossfades from
+    the one that plays.
+  - The clip has the arms, hands, fingers, hips and legs it moves. On the
+    spine, chest, shoulders, neck and head, Martlet's own motion stays on top
+    of the clip: the breath, the sway, the head following the mouse and the
+    head gestures (a nod, a shake). The eyes and the jaw are never the clip's.
+    The clip's expression and look-at tracks are not played, so lip-sync,
+    blinking, the look, expressions, held gestures and touch zones keep
+    working while it plays.
+  - The hips stay where the character stands: by default only their up and
+    down movement plays (a crouch, a bow, a small jump), so a clip that walks
+    or drifts keeps the character in its window. HY-Motion has no in-place
+    mode, so this is the default.
+  - A clip is at most 4 MB and 120 seconds, with all its data inside the file
+    (no URLs, no pictures) and LINEAR or STEP keys.
+  - In the desktop, `AvatarController` implements `ICharacterAnimations`
+    (`Martlet.Avatar.Hosting`): `LoadAnimationAsync(name, clip, play, inPlace)`
+    gives and plays a clip, `PlayAnimationAsync(name)` plays a kept one again,
+    `HasAnimation(name)` says whether the character keeps it and
+    `AnimationsForgotten` fires when the kept clips are gone.
+    `VrmAnimationClip.Inspect` checks a clip's bytes with the page's bounds.
+  - On a VRM, the action `{kind: "motion", name}` plays a kept clip again and
+    `on: false` blends it out. A Live2D character can't play a VRMA clip.
+  - Martlet's MCP `character_animation` plays a `.vrma` file on the showing
+    character, and `character_pose` reads which clip plays (`animation`: name,
+    time, length and weight) and the clips kept (`clips`).
 - **Lingering emotes**: an emote can stay on, like a VTuber's toggle hotkey.
   Its **Stays on** box in Emotes and motions sets this. In
   `character-actions.json` the mode is `lingering`; an unticked box is `brief`.
@@ -1293,7 +1331,7 @@ owns the system boundaries.
 | Shared contracts, A01a | Implemented standalone [Martlet.Avatars contracts](../contracts/avatars/README.md), locally integrated/reviewed with production-path checks. Strict v1 facial frames use Core correlation IDs, epoch/sequence and **original PCM** sample rate/offset; exact 52-name ARKit catalog plus separate typed semantic vowels/blinks/emotions. `aa` is not an ARKit name. No skeleton or general pose/body wire payload. |
 | Audio2Face, A01b | Implemented [NIM gRPC adapter](../src/Martlet.Avatar.Audio2Face/README.md) through bounded nonblocking live `GeneratedSpeechStream`. **Automatic (default)**: Desktop TCP-probes the configured loopback endpoint before each sentence, then a paired Martlet host's [gateway relay](../deploy/host/README.md) (pinned TLS, signed chunked requests), and uses the saved or built-in mouth mapping, falling back to loudness. Actual HTTP/2 fixtures and an end-to-end gateway test establish protocol behavior, not live NVIDIA inference. Speech never waits for analysis. Requires a service speaking that protocol: the `audio2face` role on a Martlet host (this PC via Docker Desktop, or another computer over SSH with Docker or natively on Linux, from Martlet > **Martlet hosts**), whose default `local` engine is NVIDIA's open-source Audio2Face-3D SDK built on the host with models from Hugging Face (NVIDIA Open Model License; no NVIDIA account, see [local Audio2Face service](../workers/audio2face/README.md)) and whose `nim` engine is NVIDIA's NIM with an NGC key; or a NIM the user runs locally. Needs a supported NVIDIA GPU. SDK MIT does not license NIM or weights. |
 | Live2D, A02a | Implemented [renderer adapter and animator](../src/Martlet.Avatar.Live2D/README.md) on official Cubism Web Framework 5-r.4 and Core **05.01.0000**, downloaded at build time from Live2D (SHA-256 pinned) and bundled with the Hiyori sample. Idle motions, eye blink, breathing, physics, pose, look-at and loudness lip-sync run; composed A2F writes apply before physics. Real Core/GPU rendering of Hiyori verified locally in browser and WebView2 overlay. Cubism 5.3 blend/offscreen features and unsupported MOC versions are rejected. |
-| VRM, A02b | Implemented/reviewed standalone [VRM importer/facial mapping/renderer adapter](../src/Martlet.Avatar.Vrm/README.md): Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 0.x and VRM 1.0 subset (VRM 0.x: blend shapes mapped to VRM 1.0 expression names, MToon material properties, `secondaryAnimation` spring bones, turned with `VRMUtils.rotateVRM0`; PNG and JPEG textures). A file with both extensions, unsupported extensions, WebP/KTX2 textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Real-loader/control and bundle checks exist; review corrections are cleared. Actual graphics/artist-rig/device-sync qualification is NOT RUN. VRMA/body playback is **unsupported in the first slice**. |
+| VRM, A02b | Implemented/reviewed standalone [VRM importer/facial mapping/renderer adapter](../src/Martlet.Avatar.Vrm/README.md): Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 0.x and VRM 1.0 subset (VRM 0.x: blend shapes mapped to VRM 1.0 expression names, MToon material properties, `secondaryAnimation` spring bones, turned with `VRMUtils.rotateVRM0`; PNG and JPEG textures). A file with both extensions, unsupported extensions, WebP/KTX2 textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Real-loader/control and bundle checks exist; review corrections are cleared. Actual graphics/artist-rig/device-sync qualification is NOT RUN. Separate VRMA clips play through `@pixiv/three-vrm-animation` 3.5.5 (see *VRMA clips on a VRM*); animations embedded in the model file are still rejected. |
 | Composition/app integration, A02c | Main-window **Show character**, simple character settings (built-in/custom model, lip-sync mode, auto-show), atomic avatar-only sidecar and private WPF/WebView2 renderer host. Automatic lip-sync tees admitted generated PCM into loudness levels and, when detected, Audio2Face; explicit Audio2Face-only activation replaces both for the session. Local package producer/current-reader integration is implemented. |
 | Rich motion, A02d | Planned capability/wire extensions and procedural/clip integration for head, body, gaze and secondary motion. A facial gaze mapping may consume actual ARKit eye-look channels; that does not create general gaze/pose support. |
 | Qualification, A03 | Planned local real-model/renderer/GPU/device trials, performance and lifecycle evidence; separately reviewed rights/release. No end-to-end avatar acceptance is passed by this guide. |
@@ -1493,7 +1531,7 @@ from `RuntimeReadiness`. Record readiness and performance independently.
 | Audio2Face + amplitude both owning mouth | Arbitrated | Automatic mode sends both; renderers apply loudness only while no Audio2Face frame arrived in the last 250 ms. Explicit Audio2Face-only activation stops loudness. |
 | Song mouth track + speech | Arbitrated | A song's mouth track (made once from its vocals stem: offline Audio2Face, visemes from the sung words, or vocal loudness; see [singing in conversation](CONVERSATION.md#singing-in-conversation)) is sent on the song's playback clock through the same composition and reset/apply frames (Automatic mode with a mouth mapping; the built-in VRM mapping also maps `mouthSmileLeft` to `ee` and `mouthStretchLeft` to `ih`), or as the loudness mouth otherwise. One playback identity owns the face at a time: a reply's Audio2Face frames take it while they play and the song resets a new identity when they stop; the song's mouth also pauses while Martlet talks over the song. |
 | Audio2Face mouth + idle non-mouth/pose | Compatible in principle only with disjoint actual targets | Mask clip/expression mouth writes and respect rig overrides. First-slice facial parts only; pose/body integration remains planned. |
-| VRMA + capable VRM | Format-compatible; first-slice playback unsupported | Implement A02d/version-aware retargeting, masks and local motion qualification before enabling. |
+| VRMA + capable VRM | Implemented: kept and played once over the idle pose | The official `@pixiv/three-vrm-animation` loader retargets the clip (VRM 0.x and 1.0); Martlet's breath, sway, look and head gestures stay on top of the spine, chest, shoulders, neck and head, the face, eyes and jaw stay Martlet's, and the hips stay in place across the ground by default (see *VRMA clips on a VRM*). Artist-rig motion quality is NOT RUN. |
 | VRMA directly + Live2D | Unsupported | Use an authored Cubism motion or implement and qualify an explicit conversion/mapping; selecting a resolver cannot make skeletal data into Live2D motion. |
 | Full A2F face requested on model lacking shapes | Unsupported for missing aspects | Author rig/mapping, select a suitable model, or explicitly omit those aspects and label reduced output. |
 | Compatible A2F rig, missing NIM/GPU/model/access | Structurally compatible but readiness blocked/unknown | Automatic mode reports "Audio2Face isn't running on this PC" and uses loudness (Home, Devices and Companion › Lip-sync say so too); the user may install it in Companion › Lip-sync (see the Desktop guide). Audio2Face-only mode shows the segment as unavailable. |

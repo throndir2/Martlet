@@ -281,9 +281,11 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "breathing isn't read), renderer, idle, breathing (phase 0 to 1 of one breath; inhale, how full the chest is, 0 to 1; " +
             "perMinute), arms (left and right: fromDown, the upper arm's angle from straight down, and elbow, its bend, in degrees " +
             "measured on the posed bones), curl (left and right: the middle finger's curl in degrees, 0 straight), sway (the " +
-            "spine's slow sideways lean, degrees) and bones (head, neck, shoulders, upper arms, hands and upper legs: x, y as " +
-            "fractions of the character overlay's drawing, +y down). summary gives whether it idled, the inhale, perMinute, arm, " +
-            "curl and sway ranges (least, most) and how far each bone moved (x, y). Reading changes nothing, so it needs no " +
+            "spine's slow sideways lean, degrees), bones (head, neck, shoulders, upper arms, hands and upper legs: x, y as " +
+            "fractions of the character overlay's drawing, +y down), animation (the VRMA clip that plays now: name, time, " +
+            "duration, weight; null when none) and clips (the clips the character keeps). summary gives whether it idled, the " +
+            "inhale, perMinute, arm, curl and sway ranges (least, most), the animations seen playing with their animationWeight " +
+            "range and how far each bone moved (x, y). Reading changes nothing, so it needs no " +
             "--allow-ui-effects.", new
         {
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },

@@ -51,6 +51,8 @@ internal sealed partial class AvatarController : ICharacterAnimations
         result = result is null ? new(false, false, request.Name, 0, [], "The character renderer didn't answer.")
             : result with { Clips = result.Clips ?? [] };
         Remember(current, result.Clips);
+        // Only a clip asked to play is an action; keeping one for later (play: false) says nothing.
+        if (!request.Play) return result;
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
         Volatile.Write(ref lastAction, result.Started
             ? $"Played the VRMA clip \"{request.Name}\" at {when}."

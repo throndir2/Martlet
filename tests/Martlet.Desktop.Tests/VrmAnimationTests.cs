@@ -181,17 +181,22 @@ public sealed class VrmAnimationTests
         await avatar.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
 
         var clip = Clip();
+        var played = 0;
+        avatar.ActionPlayed += () => played++;
         var loaded = await animations.LoadAnimationAsync("kept-1", clip, play: false);
         var sent = Assert.Single(renderer.Sent);
         Assert.Equal(("kept-1", false, true), (sent.Name, sent.Play, sent.InPlace));
         Assert.Equal(clip, Convert.FromBase64String(sent.Clip!));
         Assert.True(loaded!.Kept);
         Assert.False(loaded.Started);
+        Assert.Null(avatar.LastAction);
+        Assert.Equal(0, played);
         Assert.True(animations.HasAnimation("kept-1"));
         Assert.False(animations.HasAnimation("kept-2"));
 
-        var played = await animations.PlayAnimationAsync("kept-1");
-        Assert.True(played!.Started);
+        var replayed = await animations.PlayAnimationAsync("kept-1");
+        Assert.True(replayed!.Started);
+        Assert.Equal(1, played);
         Assert.Equal(new RendererAnimation("kept-1"), renderer.Sent.Last());
         Assert.Contains("Played the VRMA clip \"kept-1\"", avatar.LastAction);
         Assert.False((await animations.PlayAnimationAsync("nothing"))!.Started);
