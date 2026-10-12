@@ -58,6 +58,7 @@ public partial class MainWindow
     {
         if (homeAvatar is null) return "Built-in character";
         if (BundledLive2D.IsBuiltIn(homeAvatar.ModelPath)) return homeAvatar.ModelPath[BundledLive2D.Prefix.Length..] + " (built-in)";
+        if (RemoteCharacterModels.IsRemote(homeAvatar.ModelPath)) return (vroidHub?.Look(homeAvatar.ModelPath)?.Name ?? "A VRoid Hub character") + " (VRoid Hub)";
         if (store is not null && SharedCharacterModels.ForPath(store.DataDirectory, SharedCharacterModels.View(store.DataDirectory), homeAvatar.ModelPath)
             is { } shared)
             return shared.Name!;
@@ -93,6 +94,7 @@ public partial class MainWindow
         var live = library.Live;
         var status = Note($"{live.Count} character{(live.Count == 1 ? "" : "s")} of your own. " + (builtInShown ? "This PC shows the built-in character."
                 : shown is not null ? "This PC shows one of your characters."
+                : RemoteCharacterModels.IsRemote(modelPath) ? "This PC shows a VRoid Hub character (below)."
                 : SharedCharacterModels.KeyOfPath(dataDirectory ?? "", modelPath) is not null ? "This PC shows a character no longer in your list. Use another one."
                 : "This PC shows a model file that isn't in your list yet; it is added when Martlet next shares your characters."),
             new Thickness(0, 0, 0, 4));
@@ -212,6 +214,7 @@ public partial class MainWindow
     private string? ShownCharacterModelId()
     {
         if (homeAvatar is null || BundledLive2D.IsBuiltIn(homeAvatar.ModelPath)) return CharacterProfile.BuiltInModel;
+        if (RemoteCharacterModels.IsRemote(homeAvatar.ModelPath)) return homeAvatar.ModelPath;
         if (store is null) return null;
         try { return SharedCharacterModels.ForPath(store.DataDirectory, SharedCharacterModels.View(store.DataDirectory), homeAvatar.ModelPath)?.Id; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
@@ -252,7 +255,9 @@ public partial class MainWindow
     /// returned as they are; a model the list can't take is shown from its file and the note says why.</summary>
     private async Task<(AvatarProfile Profile, string? Note)> ShareCharacterAsync(AvatarProfile profile, CancellationToken token)
     {
-        if (store is null || BundledLive2D.IsBuiltIn(profile.ModelPath) || SharedCharacterModels.KeyOfPath(store.DataDirectory, profile.ModelPath) is not null)
+        // A VRoid Hub character is never saved or shared: VRoid Hub's rules forbid keeping its model files.
+        if (store is null || BundledLive2D.IsBuiltIn(profile.ModelPath) || RemoteCharacterModels.IsRemote(profile.ModelPath) ||
+            SharedCharacterModels.KeyOfPath(store.DataDirectory, profile.ModelPath) is not null)
             return (profile, null);
         try
         {

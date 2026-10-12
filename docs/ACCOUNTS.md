@@ -791,6 +791,26 @@ desktop ([MCP](MCP.md)).
   directory and switches to the account. The account W7 made at its first
   start (before it joined) stays signed in on that PC too.
 
+## Linked services
+
+Services an account links to use them, not to sign in to Martlet. The Account
+page's **Linked services** section has them. Code: `VRoidHubService.cs` and the
+Account page in the desktop, `VRoidHub.cs` in `Martlet.Avatar.Hosting`.
+
+- **VRoid Hub** (pixiv): shows VRoid Hub characters
+  ([Find a character online](AVATARS.md#find-a-character-online)). **Link VRoid
+  Hub...** runs VRoid Hub's OAuth 2.0 sign-in with PKCE in the browser and gets
+  the code on a loopback port of this PC. VRoid Hub is not an OpenID Connect
+  provider, so it is never a login of the account. The tokens are in Windows
+  Credential Manager under `Martlet/v3/vroid-hub/<account ID in hex>` (`pc` before
+  accounts exist): one link for each account on each PC, never in account
+  settings, on a host or on another computer. A refused token refresh unlinks
+  it. **Unlink VRoid Hub** revokes the tokens, deletes them and forgets the VRoid
+  Hub models in memory; an account switch forgets those models too. The desktop
+  makes every VRoid Hub request itself: VRoid Hub's rules don't let its API run
+  on a server without pixiv's permission, so hosts never do. MCP's
+  `vroid_hub_status` says whether an account is linked, never a token.
+
 ## Work plan
 
 Each workstream is one session, one branch and one PR into `main`. Merges are

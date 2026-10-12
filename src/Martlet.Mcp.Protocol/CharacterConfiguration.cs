@@ -42,6 +42,11 @@ internal static class CharacterConfiguration
                 .Concat(looks.Live.Select(m => new
                 {
                     id = m.Id, name = m.Name ?? SharedKey(m.Id), renderer = m.Renderer ?? "", ready = Martlet.Avatar.Hosting.SharedCharacterModels.IsComplete(directory, m)
+                }))
+                // VRoid Hub looks this PC used: shown from VRoid Hub with the owner's linked account (vroid_hub_status).
+                .Concat(Martlet.Avatar.Hosting.VRoidHubLooks.Load(directory).Select(l => new
+                {
+                    id = l.Path, name = $"{l.Name} by {l.Author} (VRoid Hub)", renderer = "vrm", ready = true
                 })).ToArray(),
             voices = voices.Live.Select(v => new { id = v.Id, name = v.Name ?? v.Id, chosen = voices.ChosenVoice?.Id == v.Id }).ToArray(),
             limits = new
@@ -67,7 +72,7 @@ internal static class CharacterConfiguration
             if (!read.Succeeded) throw new InvalidOperationException(read.Summary);
             card = read.Card!;
         }
-        var lookId = look is null ? null : ResolveLook(directory, look);
+        var lookId = look is null ? null : ResolveLook(directory, await CharacterLooks.PrepareAsync(directory, look, token));
         var voiceId = voice is null ? null : ResolveVoice(directory, voice);
         var makeProfile = profile ?? true;
         if (!makeProfile && (lookId is not null || voiceId is not null))
@@ -134,7 +139,7 @@ internal static class CharacterConfiguration
         if (name is null && personality is null && look is null && voice is null)
             throw new ArgumentException("Give at least one of name, personality, look or voice to change.");
         if (personality is not null) PersonaProfile.ValidateText(personality);
-        var lookId = look is null ? null : IsKeep(look) ? "" : ResolveLook(directory, look);
+        var lookId = look is null ? null : IsKeep(look) ? "" : ResolveLook(directory, await CharacterLooks.PrepareAsync(directory, look, token));
         var voiceId = voice is null ? null : IsKeep(voice) ? "" : ResolveVoice(directory, voice);
         Guid personaId = default;
         var changedProfile = false;
@@ -376,12 +381,15 @@ internal static class CharacterConfiguration
 
     private static string LookName(string modelId, CharacterModelLibrary looks) =>
         modelId == CharacterProfile.BuiltInModel ? "Martlet's built-in character"
+            : Martlet.Avatar.Hosting.RemoteCharacterModels.IsRemote(modelId) ? $"a VRoid Hub character ({modelId})"
             : looks.Live.FirstOrDefault(m => m.Id == modelId) is { } model ? model.Name ?? SharedKey(model.Id) : "missing";
 
     /// <summary>A look by "builtin", ID, key (16 hex digits) or name.</summary>
     private static string ResolveLook(string directory, string look)
     {
         var wanted = look.Trim();
+        // A VRoid Hub look is shown from VRoid Hub by the app (character_find_looks; CharacterLooks.PrepareAsync checked it).
+        if (Martlet.Avatar.Hosting.RemoteCharacterModels.VRoidHubId(wanted) is not null) return wanted;
         if (wanted.Equals(CharacterProfile.BuiltInModel, StringComparison.OrdinalIgnoreCase) ||
             wanted.Equals("built-in", StringComparison.OrdinalIgnoreCase))
             return CharacterProfile.BuiltInModel;

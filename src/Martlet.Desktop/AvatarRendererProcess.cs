@@ -122,6 +122,16 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         // No browser is initialized until this handshake; the child is already job-owned.
         try
         {
+            // A model shown from memory (a VRoid Hub character) goes through the pipe first: the renderer can't read it from disk.
+            if (RemoteCharacterModels.IsRemote(profile.ModelPath))
+            {
+                var bytes = await RemoteCharacterModels.ReadAsync(profile.ModelPath, token);
+                foreach (var piece in RendererModelPiece.Split(profile.ModelPath, bytes))
+                {
+                    var taken = await SendAsync("model", piece, token, TimeSpan.FromSeconds(30));
+                    if (taken.Kind != "ok") throw new InvalidDataException("The character renderer didn't take the model.");
+                }
+            }
             var response = await SendAsync("load", new RendererLoad(profile, revision,
                 Application.Current is App app && app.IsDarkTheme, placement is { IsValid: true } ? placement : null,
                 (Application.Current as App)?.ThemeColors, voiceMuted),

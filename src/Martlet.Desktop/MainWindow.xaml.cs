@@ -218,6 +218,7 @@ public partial class MainWindow : ThemedWindow
         InitializeVoiceLinks();
         InitializeSpeakingVoices();
         InitializeCharacterModels();
+        InitializeVRoidHub();
         InitializeCreations();
         InitializeAppGuides();
         InitializeHomeShare();

@@ -1957,9 +1957,17 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "arguments and the secret only to its role, terms recorded as accepted, the plan assignments with failover, Sharing work, " +
             "one cluster check, a failed step that doesn't stop the others, a change missing from the review skipped, and the run " +
             "record's states as every computer reads it from the shared settings. In-process; no network, model or credential.", new { }),
+        Tool("vroid_hub_status", "Whether Martlet can show VRoid Hub characters on this PC: whether this build has VRoid Hub app keys " +
+            "(never the keys), whether a VRoid Hub account is linked for the account whose settings the data directory holds (and its " +
+            "VRoid Hub user name; never a token), the VRoid Hub looks this PC used (vroid-hub-looks.json: name, creator, conditions " +
+            "of use) and whether the character shown is one. Read-only; no network.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("helper_jobs_status", "Where Martlet's helper jobs ran last, from a data directory's helper-jobs.json (written by the " +
             "desktop): for each kind (memory: remembering and learning names after a reply; action_naming: naming a character's " +
-            "emotes; touch_zones: finding its touch zones in one picture) its priority, whether it ran on a Thinking pool member " +
+            "emotes; touch_zones: finding its touch zones in one picture; character_writing: writing a character's personality in " +
+            "Find a character) its priority, whether it ran on a Thinking pool member " +
             "(route pool, with the member) or on the conversation's own Thinking model after the reply finished speaking (route " +
             "fallback, with how long it waited for the reply), how it ended and when. Never a prompt or answer. Read-only.", new
         {
@@ -2543,6 +2551,11 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "martlet_guide" => Guide(OptionalString(arguments, "topic"), OptionalString(arguments, "search"), OptionalString(arguments, "tool")),
                 "characters_list" => await CharacterConfiguration.ListAsync(DataDirectory(arguments), OptionalBool(arguments, "includeText") ?? false,
                     cancellation),
+                "character_find_looks" => await CharacterLooks.FindAsync(DataDirectory(arguments), RequiredString(arguments, "query"),
+                    OptionalInt(arguments, "count"), OptionalStrings(arguments, "sources"), cancellation),
+                "vroid_hub_status" => CharacterLooks.VRoidHubStatus(DataDirectory(arguments)),
+                "character_find_on_web" => await CharacterLooks.FindOnWebAsync(RequiredString(arguments, "query"),
+                    OptionalBool(arguments, "models") ?? true, OptionalBool(arguments, "voices") ?? true, cancellation),
                 "character_create" => await ChangingAsync(name, () => CharacterConfiguration.CreateAsync(DataDirectory(arguments),
                     OptionalString(arguments, "name"), OptionalString(arguments, "personality"), OptionalString(arguments, "cardPath"),
                     OptionalString(arguments, "look"), OptionalString(arguments, "voice"), OptionalBool(arguments, "profile"),
@@ -2833,9 +2846,12 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
             System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
             System.Windows.Automation.ElementNotAvailableException or Martlet.Core.Contracts.ContractException or
-            Martlet.Core.Settings.CharacterCardException or IOException or UnauthorizedAccessException)
+            Martlet.Core.Settings.CharacterCardException or IOException or UnauthorizedAccessException or
+            // The character finders (character_find_looks, character_find_on_web, a look key in character_create) go online.
+            System.Net.Http.HttpRequestException or Martlet.Avatar.Hosting.VRoidHubException or Martlet.Conversation.WebResearchException ||
+            ex is TaskCanceledException && !cancellation.IsCancellationRequested)
         {
-            return new { content = new[] { new { type = "text", text = ex.Message } }, isError = true };
+            return new { content = new[] { new { type = "text", text = ex is TaskCanceledException ? "A web request took too long." : ex.Message } }, isError = true };
         }
     }
 
