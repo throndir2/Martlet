@@ -1,6 +1,6 @@
 # Memory
 
-Martlet remembers lasting facts and keeps a searchable local conversation history.
+Martlet remembers lasting facts and keeps a searchable conversation history, the same on all your computers.
 
 ## Defaults
 
@@ -10,11 +10,13 @@ Open **Companion › Memory**.
 
 ## Facts
 
-The Memory window lets you turn memory on/off, choose the store location, list facts, add facts, choose retention, inspect provenance, edit/delete facts, purge expired facts and export after preview.
+The Memory window lets you turn memory on/off, choose the store location, list facts, add facts, choose retention, inspect provenance, edit/delete facts, purge expired facts and export after preview. **Show replaced facts** also lists facts that stopped being true: when a fact is corrected, Martlet keeps the old version as history with the date it was replaced, and never recalls it. Deleting a fact deletes its old versions too.
 
 ## Recall and remembering
 
 For accepted typed, push-to-talk or hands-free turns, Martlet queries a local lexical index and sends matching facts in notes. After a completed reply, the same Thinking model can make one extra text-only request to extract lasting facts. Paid providers may charge for that extra request.
+
+Each fact can have hidden search words (for "The user is vegetarian": diet, food, meat, cooking), so a question in other words still finds it. They are never sent as the fact's text. When you have a Thinking pool, a free pool member also tidies memory in the background: it adds missing search words, merges facts that say the same thing and keeps a fact a newer one made outdated as history. It never uses the model you talk to.
 
 Screen/camera glances and PC-audio notes are not remembered as facts.
 
@@ -22,9 +24,11 @@ Screen/camera glances and PC-audio notes are not remembered as facts.
 
 The **Conversations** page in the side menu lets you browse, edit or delete recorded exchanges; **Companion › Memory › Conversation history** turns the record on or off. Optional `search_conversations` lets Martlet search it during replies.
 
+Your record is the same on every computer where you are signed in. Martlet recalls what you said on any of them, and an edit or a deletion on one computer reaches the others. A deleted message never comes back.
+
 ## Sync
 
-With **Keep Martlet the same on all my computers** on, memories sync through paired hosts. There is no cloud memory service by default.
+With **Keep Martlet the same on all my computers** on, memories and your record of conversations sync through paired hosts. Each person's record goes only to the computers where that person is signed in. There is no cloud memory service by default.
 
 ## Sharing memories with your household
 

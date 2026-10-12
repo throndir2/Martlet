@@ -403,6 +403,28 @@ internal sealed class ControlMemorySpaceStorage(LinuxControlDirectory directory)
     }
 }
 
+/// <summary>Keeps each account's record of conversations, one month per file, in conversations-&lt;32 hex&gt;-&lt;yyyy-MM&gt;.json
+/// beside host.json (0600, service owner). Not part of the approved configuration.</summary>
+internal sealed class ControlConversationStorage(LinuxControlDirectory directory) : IGatewayConversationStorage
+{
+    private readonly object gate = new();
+
+    public IReadOnlyCollection<string> List()
+    {
+        lock (gate) return directory.ListConversationRecords();
+    }
+
+    public byte[]? Load(string key)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.ConversationRecord(key), LinuxControlDirectory.MaximumConversationRecordBytes);
+    }
+
+    public void Save(string key, byte[] bytes)
+    {
+        lock (gate) directory.WriteConversationRecord(key, bytes);
+    }
+}
+
 /// <summary>Keeps each account's settings (each person's, apart; no API keys) in account-settings-&lt;32 hex&gt;.json beside
 /// host.json (0600, service owner). Not part of the approved configuration.</summary>
 internal sealed class ControlAccountSettingsStorage(LinuxControlDirectory directory) : IGatewayAccountSettingsStorage
@@ -550,6 +572,7 @@ internal static class HostApplication
                     owner.AttachMemories(new ControlMemoryStorage(directory));
                     owner.AttachAccounts(new ControlAccountStorage(directory));
                     owner.AttachMemorySpaces(new ControlMemorySpaceStorage(directory));
+                    owner.AttachConversations(new ControlConversationStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
                     ApplyExposure(owner, directory, output: null);

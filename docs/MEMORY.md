@@ -683,8 +683,10 @@ actually said. While memory is ON and **Keep a record of my conversations**
 (Companion › Memory › Conversation history, on by default) is on, every
 finished exchange of a typed, push-to-talk or always-listening turn (what you
 typed or said, who said it when Martlet recognized a named voice, and Martlet's
-reply) is kept on this PC, as is a reply Martlet starts on its own to bring up
-finished background work. A conversation runs from the talk window opening, or
+reply) is kept in the record of the person signed in, as is a reply Martlet
+starts on its own to bring up finished background work. The record is the same
+on every computer where that person is signed in
+([One record on every computer](#one-record-on-every-computer)). A conversation runs from the talk window opening, or
 **Refresh context**, until the exchanges kept in mind are cleared (Refresh
 context, pause, lock, closing the talk window). Not recorded: screen and camera
 glances, what this PC plays (only the user's own words of such a message), a
@@ -692,7 +694,9 @@ glances, what this PC plays (only the user's own words of such a message), a
 refused or stopped replies, and anything while memory or the choice is off.
 Turning it off keeps what is already recorded until you delete it.
 
-**On disk.** The data folder's `conversations` folder holds one JSON Lines file
+**On disk.** The household owner's record is in the data folder's
+`conversations` folder; another person's is in their account folder,
+`accounts\<32 hex>\conversations`. It holds one JSON Lines file
 per month (`history-2026-10.jsonl`, by UTC month), one line per exchange:
 `{"v":1,"id":…,"conversation":…,"at":…,"kind":"typed|spoken|report","speaker":…,"user":…,"reply":…}`,
 plus `"source":{"app","chat","server","name","userIds","replyIds"}` for an
@@ -704,9 +708,11 @@ appending; a line cut short by a crash is skipped when the record is read again
 and the next exchange starts on its own line. Text is kept up to 8,192
 characters of what you said and 16,384 of the reply (the reply's own bound),
 with control characters other than line breaks and tabs made spaces. Like the
-fact store it is plain local data in your profile: not encrypted, not synced to
-your other computers, not uploaded and not part of configuration backup.
-`conversation-history.json` beside it holds this PC's two choices.
+fact store it is plain local data in your profile: not encrypted, not uploaded
+anywhere but your paired hosts and not part of configuration backup.
+`conversation-history.json` beside the data folder's settings holds the two
+choices, which are the same on all your computers (the `conversation-history`
+shared setting, each person's own).
 
 **Reading it.** The record is read once, in the background, when a
 conversation opens (or the Conversations page or the Memory page needs it) and
@@ -801,8 +807,9 @@ exchange keeps the other; the exchange goes once neither is left. Deleting or
 editing rewrites only that line's month file (through a temporary file and an
 atomic replace) or removes the files; facts remembered from a conversation
 stay in Memory until you delete them there, and a conversation still running
-keeps what it has in mind until it is refreshed. Deletion is not a secure wipe
-of old disk blocks.
+keeps what it has in mind until it is refreshed. Every edit and deletion
+reaches your other computers too, and a deleted message never comes back from
+one of them. Deletion is not a secure wipe of old disk blocks.
 
 **Messaging apps.** A message from a paired Telegram or WhatsApp chat is
 recorded in the talk window's conversation with its app, chat and the app's
@@ -830,16 +837,98 @@ every second): a "slow down" (429) is waited out for as long as the app asks,
 an app that can't be reached is tried again with a growing pause (given up on
 after 8 tries), a refusal (too old, already gone, missing permission) is
 dropped and said, and changes for an app that isn't connected wait until its
-bot runs. The window's last line shows what waits (`HistoryPlatformStatus`);
+bot runs. The queue belongs to the computer where you made the change (in the
+data folder's `conversations` folder, whoever is signed in): the record changes
+on every computer, but only that computer asks the app. Make such changes on
+the computer that runs your bots. The window's last line shows what waits (`HistoryPlatformStatus`);
 **Stop waiting changes** drops it.
 
 MCP: `conversation_history_status` (choices, what replies are offered, counts
-per app and the changes waiting for apps, never content) and
+per app, the changes waiting for apps and the last sync, never content),
 `conversation_history_check` (the production record, recall, search, how
 recall ranks, sources, single-message edits and deletes, what each app is asked
-and the queue with a fixture app); `HistoryStatus`, `HistoryWindowStatus` and
-`HistoryPlatformStatus` read as text and `OpenHistory` opens the window
+and the queue with a fixture app) and `conversation_sync_selftest` (below);
+`HistoryStatus`, `HistoryWindowStatus`, `HistoryPlatformStatus` and
+`HistorySyncStatus` read as text and `OpenHistory` opens the window
 ([MCP](MCP.md)).
+
+### One record on every computer
+
+Your record of conversations is the same on every computer where you are signed
+in, so recall and `search_conversations` find what you said on any of them, and
+a computer you add later gets the whole record. It travels through your paired
+hosts while **Keep Martlet the same on all my computers** is on, the same way
+as [your memories](#one-memory-on-every-computer). Each person's record is
+their own: it goes only to the computers where that person is signed in.
+
+- **The network copy** (`Martlet.Core.Sync.SharedConversations`): one copy
+  per account and UTC month, with one last-writer-wins entry per exchange: the
+  exchange's line exactly as the month file keeps it, its revision (1 when
+  recorded, +1 for each edit), the time and the computer that wrote that
+  version. A deleted exchange is a tombstone: the revision it deleted plus one.
+  Merging keeps, per exchange, the highest (revision, time, deleted, writer,
+  content), so an edit made on top of another wins by its revision, two edits
+  of the same revision made apart keep the later one, and a deletion wins over
+  the version it deleted. JSON, snake case, schema 1, at most 256 MiB, 100,000
+  exchanges and 100,000 tombstones and 256 KiB per exchange. Hosts never look
+  inside an exchange.
+- **The sync** (`Martlet.Conversation.ConversationRecordSync`, every 30
+  seconds and five seconds after an exchange is recorded, edited or deleted):
+  the desktop asks each paired host for the digests of the months it keeps.
+  A month is looked at only when its file changed here (its length, write time
+  and this run's own writes) or a host's copy differs from the last merge. For
+  such a month it reads the file once: an exchange added or changed here since
+  the last sync is a change made here, and an exchange gone from the file
+  (deleted on the Conversations page) is deleted everywhere. It merges in each
+  different host copy (one read per distinct copy), writes the newest version
+  of every exchange into the month file in one atomic replace, adds what is
+  new to the in-memory index (or builds it again when something was edited or
+  deleted), and gives every host with another copy the merged one.
+- **Never in a conversation's way**: the sync skips its turn while Martlet
+  replies or you talk, runs off the window's thread, and holds the record's
+  files only while it reads or changes one month. A reply never waits for it:
+  recall reads only what is in memory, and appending an exchange waits at most
+  for one month to be written.
+- **A newer Martlet's exchange** (a line this version can't read) is kept as it
+  came, in the month's sync state, and passes on to the hosts unchanged. This
+  computer keeps its older line of that exchange and never writes it over the
+  newer one; the status line says how many need a newer Martlet.
+- **What this PC keeps** (`sync\<yyyy-MM>.json` beside the month files): for
+  each exchange its ID, revision, a SHA-256 digest, the computer that wrote it
+  and the time, the agreed tombstones, the month file's stamp and the merged
+  copy's digest; `sync\status.json` holds the last sync's counts. No
+  conversation text is kept there (only a newer Martlet's exchanges, above).
+  Deleting the `conversations` folder by hand makes this computer a new one:
+  it takes the whole record again and deletes nothing elsewhere.
+- **Each host** keeps `conversations-<32 hex>-<yyyy-MM>.json` beside
+  `host.json` (0600, gateway service owner; at most 8,192 months in all) and
+  serves `GET /martlet/v1/conversations/accounts/<32 hex>` (the months and
+  their digests), and `GET` and `POST` (merge and return)
+  `/martlet/v1/conversations/accounts/<32 hex>/<yyyy-MM>` only to paired
+  member devices where that account is signed in, over their pinned, signed
+  connection; another device gets `conversations.account_denied`, and friends
+  and API keys may not use them. Like memories, the record is readable by
+  those devices and not encrypted end to end between desktops.
+- **The choices** *Keep a record of my conversations* and *Let Martlet search
+  the record on its own* are the `conversation-history` shared setting, each
+  person's own, so they are the same on all your computers. With *Keep a
+  record* off, nothing new is recorded anywhere; the record you have still
+  syncs, so a deletion reaches every computer.
+
+The Conversations page shows the sync's line (`HistorySyncStatus`): how many
+exchanges are kept the same on how many hosts, when it last checked, what came
+from or was deleted because of your other computers, hosts that don't answer,
+are too old or don't know you on this PC yet.
+
+Checked locally with `conversation_sync_selftest` (MCP): two real gateways and
+four simulated desktops with real records on loopback, covering recall and
+search on another computer, an edit, a deleted message and conversation that
+never come back, offline edits of one message on two computers, a host that
+missed a change and restarts with its copies, a new computer, an exchange from
+a newer Martlet, another account's device refused, deleting everything, no
+conversation text in the sync state and an unsigned request refused. The
+desktop's sync with real paired hosts, the Linux host's files and two real
+computers are **NOT RUN**.
 
 ## One memory on every computer
 

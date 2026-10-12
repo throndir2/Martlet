@@ -502,6 +502,41 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void Each_month_of_conversations_is_kept_beside_host_json_one_file_each()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        WriteConfig(fs, Config());
+        using var dir = new LinuxControlDirectory("/srv/martlet/host.json", fs);
+        var storage = new ControlConversationStorage(dir);
+        const string sam = "5a3f0c9e8b7d4e21a6c3b2f1d0e9a8b7", alex = "0b1c2d3e4f5061728394a5b6c7d8e9f0";
+        string october = sam + "-2026-10", september = sam + "-2026-09", alexs = alex + "-2026-10";
+        Assert.Empty(storage.List());
+        Assert.Null(storage.Load(october));
+        var document = Encoding.UTF8.GetBytes("{\"schema_version\":1,\"month\":\"2026-10\",\"exchanges\":[]}");
+        storage.Save(october, document);
+        storage.Save(september, document);
+        storage.Save(alexs, document);
+        new ControlMemorySpaceStorage(dir).Save("account-" + sam, document);
+        new ControlAccountSettingsStorage(dir).Save(sam, document);
+        Assert.Equal([alexs, september, october], storage.List());
+        Assert.Equal(document, storage.Load(october));
+        Assert.Equal(0x8180, fs.Parent.Children[$"conversations-{october}.json"].Identity.Mode);
+        Assert.DoesNotContain(fs.Parent.Children.Keys, name => name.EndsWith(".staging", StringComparison.Ordinal));
+        foreach (var bad in new[] { "", sam, sam + "-2026-13", sam + "-1999-10", sam.ToUpperInvariant() + "-2026-10", "../" + october[3..],
+            sam + "_2026-10", sam + "-2026-10.json" })
+        {
+            Assert.Throws<GatewayPersistenceException>(() => storage.Save(bad, document));
+            Assert.Throws<GatewayPersistenceException>(() => storage.Load(bad));
+        }
+        Assert.Equal(october, LinuxControlDirectory.ConversationRecordOf($"conversations-{october}.json"));
+        foreach (var name in new[] { "conversations.staging", "conversations-.json", $"conversations-{october}.json.staging",
+            $"memories-account-{sam}.json", $"account-settings-{sam}.json", $"creations-account-{sam}.json", $"conversations-{sam}.json" })
+            Assert.Null(LinuxControlDirectory.ConversationRecordOf(name));
+        Assert.Equal([$"account-settings-{sam}.json", $"conversations-{alexs}.json", $"conversations-{september}.json",
+            $"conversations-{october}.json", "host.json", $"memories-account-{sam}.json"], fs.Parent.Children.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void Each_accounts_settings_are_kept_beside_host_json_one_file_each()
     {
         using var fs = new FakeLinuxFileSystem();

@@ -19,7 +19,7 @@ Cloud routes may cost money and have provider retention terms.
 
 ## Storage
 
-Settings contain key references, not API keys. Keys and tokens live in Windows Credential Manager. Memories, voices, characters and creations stay on your computers and paired hosts. Logs omit keys/conversation content but can contain local paths, host names and provider error text.
+Settings contain key references, not API keys. Keys and tokens live in Windows Credential Manager. Memories, your record of conversations, voices, characters and creations stay on your computers and paired hosts. Logs omit keys/conversation content but can contain local paths, host names and provider error text.
 
 ## Safety controls
 

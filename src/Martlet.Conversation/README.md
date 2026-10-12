@@ -343,7 +343,15 @@ one JSON line per exchange in month files (`history-2026-10.jsonl`), appended
 and flushed one at a time, with a crash-cut line skipped on reading, and a
 BM25 index over the `SearchTerms` stems of what was said in memory that it
 builds once (`LoadAsync`) for `Search`, `Between` and the ranking candidates
-(`Candidates`). Only `DeleteAsync`/`DeleteAllAsync` rewrite or remove files.
+(`Candidates`). Only `DeleteAsync`/`DeleteAllAsync`, `ChangeAsync` and
+`ApplyMonthAsync` rewrite or remove files.
+`ConversationRecordSync` keeps one account's record the same on every computer
+through the paired hosts, month by month (`Martlet.Core.Sync.SharedConversations`,
+`IConversationRecordHost`): it reads a month (`ReadMonthAsync`) only when its
+file's stamp or a host's digest changed, records what was added, edited or
+deleted here, merges the hosts' copies and puts the newest version of every
+exchange into the month file (`ApplyMonthAsync`), keeping `sync\<yyyy-MM>.json`
+(IDs, revisions and digests) beside the month files.
 `PastConversations` decides when a message refers to an earlier conversation
 (`RefersToPast`, English phrasing), reads times such as *yesterday* or *3 days
 ago* in the user's days (`Window`), picks the exchanges to bring back
@@ -351,7 +359,8 @@ ago* in the user's days (`Window`), picks the exchanges to bring back
 coverage, proximity, phrases, time, speakers and near-identical exchanges),
 words the notes block (`Notes`) and the opt-in
 `search_conversations` tool (`Definition`, `Parse`, `Find`, `Result`). Neither
-has a logger, provider or network path. See
+has a logger or provider; only the record sync talks to the paired hosts, through
+the caller's `IConversationRecordHost`. See
 [Memory › Conversation history](../../docs/MEMORY.md#conversation-history).
 
 ## Offline evidence and remaining gates

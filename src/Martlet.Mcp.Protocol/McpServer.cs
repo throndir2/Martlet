@@ -1153,6 +1153,16 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "the owner's space through the give route without reading it, and a character's space follows the owner's household sharing " +
             "entry: open to the household while shared together, the owner's only once private again) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
+        Tool("conversation_sync_selftest", "Rehearse one record of conversations on every computer end to end with the production code: " +
+            "two real gateways on 127.0.0.1 (pinned TLS, signed requests, the hosts' account directory, in-memory conversation storage) and " +
+            "three simulated desktops, each with a real record of conversations (Martlet.Conversation.ConversationHistory) in a temporary " +
+            "folder, the desktop's paired client (HostConversationPeer) and the real record sync (ConversationRecordSync). Walks recording " +
+            "on one computer and recalling and searching it on another (PastConversations), an edit, a deleted message and a deleted " +
+            "conversation reaching every computer (and never coming back), offline edits of one message on two computers (the later wins), " +
+            "a host that missed changes, a new computer taking the whole record, deleting everything, an exchange from a newer Martlet " +
+            "passing through untouched, another account's device refused the record (conversations.account_denied), the hosts keeping " +
+            "copies over a restart, no conversation text in the sync state files and an unsigned request refused. Synthetic conversations " +
+            "only; loopback only; the folder is deleted.", new { }),
         Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
             "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +
             "network, two member desktops and one outside computer with real network keys and the desktop's paired client " +
@@ -2833,6 +2843,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "memory_forget" => await MemoryForgetAsync(arguments, cancellation),
                 "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
+                "conversation_sync_selftest" => await NodeLinkCheckAsync(cancellation, "conversations"),
                 "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
@@ -4594,7 +4605,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
                 if (setting.Key is "memory" or "appearance" or "appearance-custom" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
-                    "model-abilities" or "work-sharing" or Martlet.Core.Motion.MotionSettings.SharedKey || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
+                    "model-abilities" or "work-sharing" or "conversation-history" or Martlet.Core.Motion.MotionSettings.SharedKey || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();

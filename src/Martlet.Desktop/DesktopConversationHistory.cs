@@ -7,8 +7,9 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>This PC's choices for the record of conversations (Companion › Memory › Conversation history), in
-/// conversation-history.json in the data folder: whether Martlet keeps it (<see cref="Keep"/>, on by default) and whether the
+/// <summary>The choices for the record of conversations (Companion › Memory › Conversation history), in
+/// conversation-history.json in the data folder and the same on all your computers (the <c>conversation-history</c> shared
+/// setting, each person's own): whether Martlet keeps it (<see cref="Keep"/>, on by default) and whether the
 /// Thinking model may search it on its own with the search_conversations tool (<see cref="Search"/>, off by default: the tool
 /// makes every request a little longer).</summary>
 internal sealed record ConversationHistoryPreferences(bool Keep = true, bool Search = false)
@@ -54,8 +55,9 @@ internal sealed record ConversationHistoryPreferences(bool Keep = true, bool Sea
 /// stays in an app (one line each) and whether an edited reply had to be cut there.</summary>
 internal sealed record HistoryChange(int Removed, int Queued, IReadOnlyList<string> KeptThere, bool Truncated);
 
-/// <summary>Martlet's record of every conversation on this PC (<see cref="ConversationHistory"/> in the data folder's
-/// <c>conversations</c> folder) while memory is on and <see cref="ConversationHistoryPreferences.Keep"/> is chosen: each finished
+/// <summary>Martlet's record of every conversation of the person signed in (<see cref="ConversationHistory"/> in the data folder's
+/// <c>conversations</c> folder for the household's owner, else in the account's folder), the same on every computer where they
+/// are signed in through the record sync (MainWindow.ConversationSync.cs), while memory is on and <see cref="ConversationHistoryPreferences.Keep"/> is chosen: each finished
 /// exchange is appended in the background, after its reply, so the next reply never waits for the disk. A message that refers to
 /// an earlier conversation gets the best matching exchanges in its notes (<see cref="RecallNotes"/>), read from memory only, so a
 /// reply never waits for the record either; while it is still being read, the message goes without. The Thinking model may also
@@ -70,6 +72,7 @@ internal sealed class DesktopConversationHistory
     private readonly TimeProvider clock;
     private readonly TimeZoneInfo zone;
     private ConversationHistoryPreferences preferences;
+    private ConversationHistory store;
     private Task tail = Task.CompletedTask;
     private int pending;
     private bool failing;
@@ -80,11 +83,42 @@ internal sealed class DesktopConversationHistory
         this.clock = clock ?? TimeProvider.System;
         this.zone = zone ?? TimeZoneInfo.Local;
         preferences = ConversationHistoryPreferences.Load(dataDirectory);
-        Store = new(directory ?? Path.Combine(dataDirectory ?? Path.GetTempPath(), ConversationHistory.DirectoryName), this.clock);
-        Platforms = new(dataDirectory is null && directory is null ? null : Path.Combine(Store.Directory, PlatformChanges.FileName), this.clock);
+        var folder = directory ?? Path.Combine(dataDirectory ?? Path.GetTempPath(), ConversationHistory.DirectoryName);
+        store = new(folder, this.clock);
+        // The queue of changes for Telegram and Discord belongs to this PC (the one that runs the bots), whoever is signed in.
+        Platforms = new(dataDirectory is null && directory is null ? null : Path.Combine(folder, PlatformChanges.FileName), this.clock);
     }
 
-    internal ConversationHistory Store { get; }
+    /// <summary>The record of the person signed in on this PC (<see cref="UseFolder"/>).</summary>
+    internal ConversationHistory Store { get { lock (gate) return store; } }
+
+    /// <summary>Where <paramref name="account"/>'s record is kept in <paramref name="dataDirectory"/>: the household owner's (and
+    /// the record from before accounts) in <c>conversations</c>, as before; everyone else's in their account folder,
+    /// <c>accounts\&lt;32 hex&gt;\conversations</c>. Each person's record syncs only to the computers they are signed in on.</summary>
+    internal static string FolderFor(string dataDirectory, Guid account, Guid? owner) =>
+        owner is null || account == owner
+            ? Path.Combine(dataDirectory, ConversationHistory.DirectoryName)
+            : Path.Combine(dataDirectory, "accounts", account.ToString("N"), ConversationHistory.DirectoryName);
+
+    /// <summary>Keeps the record in <paramref name="directory"/> from now on (another person signed in): exchanges recorded before
+    /// stay in the record they were recorded for. Returns whether the folder changed.</summary>
+    internal bool UseFolder(string directory)
+    {
+        var full = Path.GetFullPath(directory);
+        lock (gate)
+        {
+            if (string.Equals(store.Directory, full, StringComparison.OrdinalIgnoreCase)) return false;
+            store = new(full, clock);
+        }
+        if (Preferences.Keep) Warm();
+        Changed?.Invoke();
+        // The page shows the new record once it has been read.
+        _ = Store.LoadAsync().ContinueWith(_ => Changed?.Invoke(), TaskScheduler.Default);
+        return true;
+    }
+
+    /// <summary>The record changed on another computer (the record sync took or deleted exchanges): the page follows.</summary>
+    internal void NotifyChanged() => Changed?.Invoke();
     /// <summary>Deletions and edits waiting for Telegram and Discord (made in the background once <see cref="PlatformChanges.Start"/>
     /// runs, while the app is connected).</summary>
     internal PlatformChanges Platforms { get; }
@@ -119,21 +153,23 @@ internal sealed class DesktopConversationHistory
     /// <summary>Starts reading the record in the background (once), so recall can answer from memory.</summary>
     internal void Warm()
     {
-        if (Store.Loaded) return;
-        _ = Store.LoadAsync().ContinueWith(task =>
+        var record = Store;
+        if (record.Loaded) return;
+        _ = record.LoadAsync().ContinueWith(task =>
         {
             if (task.Exception is { } error) ErrorLog.Warn("Conversation history: couldn't read the record.", error.GetBaseException());
-            else if (Store.Stats is { Skipped: > 0 } stats)
+            else if (record.Stats is { Skipped: > 0 } stats)
                 ErrorLog.Warn($"Conversation history: {stats.Skipped} line{(stats.Skipped == 1 ? "" : "s")} of the record couldn't be read and were skipped.");
         }, TaskScheduler.Default);
     }
 
     /// <summary>Records one finished exchange in the background, after the ones before it. Never waits for the disk.
-    /// <paramref name="source"/> is where it happened when it wasn't this PC's talk window.</summary>
+    /// <paramref name="source"/> is where it happened when it wasn't this PC's talk window. It goes to the record of the person
+    /// signed in now.</summary>
     internal void Record(Guid conversation, HistoryInputKind kind, string user, string reply, string? speaker, HistorySource? source = null)
     {
         Interlocked.Increment(ref pending);
-        lock (gate) tail = AppendAsync(tail, conversation, kind, user, reply, speaker, source);
+        lock (gate) tail = AppendAsync(tail, store, conversation, kind, user, reply, speaker, source);
     }
 
     /// <summary>The app's IDs of a reply that went back to a messaging chat: they join the exchange recorded for the message
@@ -143,17 +179,17 @@ internal sealed class DesktopConversationHistory
     {
         if (replies.Count == 0) return;
         Interlocked.Increment(ref pending);
-        lock (gate) tail = AttachAsync(tail, app, chat, userMessage, replies.ToArray());
+        lock (gate) tail = AttachAsync(tail, store, app, chat, userMessage, replies.ToArray());
     }
 
-    private async Task AttachAsync(Task previous, string app, string chat, string userMessage, string[] replies)
+    private async Task AttachAsync(Task previous, ConversationHistory record, string app, string chat, string userMessage, string[] replies)
     {
         await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ForceYielding);
         try
         {
-            await Store.LoadAsync().ConfigureAwait(false);
-            if (Store.FindMessage(app, chat, userMessage) is { } exchange)
-                await Store.ChangeAsync(exchange.Id, found => found with { Source = found.Source! with { ReplyMessages = replies } }).ConfigureAwait(false);
+            await record.LoadAsync().ConfigureAwait(false);
+            if (record.FindMessage(app, chat, userMessage) is { } exchange)
+                await record.ChangeAsync(exchange.Id, found => found with { Source = found.Source! with { ReplyMessages = replies } }).ConfigureAwait(false);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -165,13 +201,13 @@ internal sealed class DesktopConversationHistory
         }
     }
 
-    private async Task AppendAsync(Task previous, Guid conversation, HistoryInputKind kind, string user, string reply, string? speaker,
-        HistorySource? source)
+    private async Task AppendAsync(Task previous, ConversationHistory record, Guid conversation, HistoryInputKind kind, string user, string reply,
+        string? speaker, HistorySource? source)
     {
         await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ForceYielding);
         try
         {
-            await Store.AppendAsync(conversation, kind, user, reply, speaker, source).ConfigureAwait(false);
+            await record.AppendAsync(conversation, kind, user, reply, speaker, source).ConfigureAwait(false);
             if (failing) ErrorLog.Info("Conversation history: recording works again.");
             failing = false;
         }
@@ -343,7 +379,7 @@ internal sealed class DesktopConversationHistory
             return "Off while memory is off: nothing is recorded or recalled." + held;
         if (!Preferences.Keep)
             return "Martlet doesn't keep a record of new conversations." + held;
-        return "Martlet keeps a record of your conversations on this PC and brings up what you talked about when you mention an " +
-            "earlier conversation." + (Preferences.Search ? " It may also search the record on its own." : "") + held;
+        return "Martlet keeps a record of your conversations, the same on all your computers, and brings up what you talked about " +
+            "when you mention an earlier conversation." + (Preferences.Search ? " It may also search the record on its own." : "") + held;
     }
 }

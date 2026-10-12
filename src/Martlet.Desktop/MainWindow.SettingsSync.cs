@@ -28,7 +28,7 @@ public partial class MainWindow
     private const string CharacterKey = "character", TalkKey = "talk", SpeechDisplayKey = "speech-display", AppearanceKey = "appearance",
         AppearanceCustomKey = "appearance-custom",
         CharacterActionsKey = "character-actions", TouchTemperamentKey = "touch-temperament", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
-        SmartHomeKey = "smart-home", UpdatesKey = "updates", ModelAbilitiesKey = "model-abilities";
+        SmartHomeKey = "smart-home", UpdatesKey = "updates", ModelAbilitiesKey = "model-abilities", ConversationHistoryKey = SettingScopes.ConversationHistory;
     private static readonly JsonSerializerOptions SharedJson = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -291,6 +291,7 @@ public partial class MainWindow
         AppearanceCustomKey => "your custom palette",
         CharacterActionsKey => "emotes and motions",
         TouchTemperamentKey => "touch temperaments",
+        ConversationHistoryKey => "your conversation history choices",
         MemoryBriefFile.SharedKey => "the memory brief",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
@@ -602,6 +603,23 @@ public partial class MainWindow
             characterTemperaments.Reload();
             return SharedApply.Done;
         }, () => CharacterTouchTemperaments.Share(Path.Combine(directory, AccountWorkingCopy.DirectoryName, "no-temperaments")));
+        // Whether Martlet keeps a record of your conversations and may search it on its own: each person's, the same on every
+        // computer they are signed in on (the record itself travels as the shared record of conversations).
+        if (conversationHistory is { } history)
+            yield return new DelegateSection(ConversationHistoryKey, "Conversation history", _ =>
+            {
+                var path = Path.Combine(directory, ConversationHistoryPreferences.FileName);
+                var prefs = history.Preferences;
+                return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(new SharedConversationHistory(prefs.Keep, prefs.Search), SharedJson),
+                    null, !File.Exists(path), FileTime(path)));
+            }, (setting, _) =>
+            {
+                var value = JsonSerializer.Deserialize<SharedConversationHistory>(setting.Value, SharedJson) ?? throw new JsonException();
+                var next = new ConversationHistoryPreferences(value.Keep, value.Search);
+                if (next == history.Preferences) return Task.FromResult(SharedApply.Done);
+                if (!history.SetPreferences(next)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
+                return Task.FromResult(SharedApply.Done);
+            }, () => JsonSerializer.Serialize(new SharedConversationHistory(true, false), SharedJson));
         // The memory brief travels with each person's settings, so every computer sends the same one; a brief taken from another
         // computer (or another person's, on a switch) goes with messages at once.
         yield return MemoryBriefFile.Section(directory, () => conversation?.MemoryBrief?.Followed());
@@ -765,6 +783,7 @@ public partial class MainWindow
     }
 
     private sealed record SharedSpeechDisplay(bool SpeechBubbles, bool Subtitles);
+    private sealed record SharedConversationHistory(bool Keep, bool Search);
     private sealed record SharedSwitch(bool On);
     private sealed record SharedVoiceprint(float[] Embedding, float Threshold, float Consistency, DateTimeOffset CreatedAt, double SpeechSeconds);
     private sealed record SharedVoiceId(bool On, SharedVoiceprint? Voiceprint);
