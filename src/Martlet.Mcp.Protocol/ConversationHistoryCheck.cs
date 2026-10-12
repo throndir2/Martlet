@@ -33,6 +33,8 @@ internal static class ConversationHistoryCheck
         var stats = store.Stats;
         var tool = PastConversations.Definition;
         var platforms = new PlatformChanges(Path.Combine(store.Directory, PlatformChanges.FileName)).Status;
+        // The last record sync (sync\status.json beside the month files): counts only.
+        var synced = ConversationRecordSync.LoadStatus(store.Directory);
         return new
         {
             settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
@@ -58,6 +60,13 @@ internal static class ConversationHistoryCheck
             {
                 pending = platforms.Pending, pendingByApp = platforms.PendingByApp, done = platforms.Done, refused = platforms.Refused,
                 gaveUp = platforms.GaveUp, lastProblem = platforms.LastProblem
+            },
+            // One record on every computer: the last sync of this record with the paired hosts (null: it never synced).
+            sync = synced is null ? null : new
+            {
+                at = synced.At, months = synced.Months, exchanges = synced.Exchanges, hosts = synced.Hosts, same = synced.Same,
+                down = synced.Down, old = synced.Old, denied = synced.Denied, taken = synced.Taken, deleted = synced.Deleted,
+                recorded = synced.Recorded, unreadable = synced.Unreadable, problem = synced.Problem
             }
         };
     }

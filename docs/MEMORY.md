@@ -15,8 +15,9 @@ what was said when you mention an earlier conversation (see
 Martlet remembers the same things on every computer of yours: facts travel
 through your paired hosts ([One memory on every computer](#one-memory-on-every-computer)),
 like the rest of Martlet ([CLUSTER](CLUSTER.md)), and each computer keeps them in
-its own local store. There is no embedding, vector database, cloud copy,
-backup or background timer beyond that sync. Screen and
+its own local store. There is no embedding, vector database, cloud copy or
+backup. Besides that sync, the only background work is the
+[memory brief](#the-memory-brief): a short profile written from the facts. Screen and
 camera glances are never remembered, and neither is
 [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays): recall and
 remembering read only the user's own words. This is internal functional evidence, not
@@ -406,13 +407,13 @@ above, but only after the reply finishes speaking and while no other reply runs.
 
 <a id="helper-jobs-on-the-thinking-pool"></a>
 **Helper jobs on the Thinking pool.** Remembering, naming a character's emotes,
-deciding its touch temperament, finding its touch zones and measuring its eyes
-are helper jobs. Each one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
+deciding its touch temperament, finding its touch zones, measuring its eyes and
+writing the [memory brief](#the-memory-brief) are helper jobs. Each one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
 member that can take it (text, or vision for touch zones and the eyes), so it does not
 compete with the reply or its prompt cache. Memory, naming, temperament and the
-eyes are low priority; touch zones are higher, because you wait for them. When no member
+eyes are low priority, and the memory brief is the lowest; touch zones are higher, because you wait for them. When no member
 can take a job, or the pool can't finish it, Martlet uses the conversation's
-Thinking model, after the reply finishes speaking. A job with a picture goes to
+Thinking model, after the reply finishes speaking (the memory brief only when that model is in the cloud). A job with a picture goes to
 the image model of its own instead while pictures go to it ([Image and audio
 models](SENSE_MODELS.md#helper-jobs-with-a-picture)). The desktop log names the
 route of each job, and MCP's `helper_jobs_status` shows the last route of each
@@ -545,6 +546,78 @@ The library checks only the ID's form (1-64 ASCII letters, digits, `-` or `_`);
 it never reads the voice list. `memory_status` (MCP) counts the facts and whose
 they are from a data directory without opening the store.
 
+## The memory brief
+
+Facts are short, and a question often uses other words than the fact, so
+recall can miss a personal detail that matters. So Martlet also keeps a
+**memory brief**: a short profile of the user and the people they talk about,
+written from the remembered facts. It goes with the first message of each
+conversation, so the reply knows the important things even when recall finds
+nothing.
+
+- **What it is.** At most 1,500 characters of plain lines (the prompt asks for
+  under 200 words). First lines about the user, then one line for each other
+  person, starting with their name in brackets (`[Sam] ...`), as recall marks
+  whose a fact is. Facts of a forgotten voice are left out.
+- **How it goes with messages.** It goes in the notes of the message, after
+  the conversation's cached start, between `[MARTLET_MEMORY_BRIEF]` labels and
+  opened by Companion › Prompts › *Memory brief, with your message*. It goes
+  only when no earlier message that the request carries has it, so once a
+  conversation (again after *Refresh context*, or when the oldest messages are
+  let go). It never changes the instructions, so the start of every request
+  stays the same. The reply's path only reads the brief that is in memory:
+  nothing is read or waited for, so the first word comes no later. A Discord
+  call never gets it, because other people are in it. A message too long to
+  fit goes without it (after it lets go of earlier conversations and the app
+  guide's sections).
+- **Writing it.** A background job (`MemoryBriefService`) writes it with
+  Companion › Prompts › *Writing the memory brief*. The model gets the facts
+  the user saved first, then the newest, at most 300 facts and 9,000 bytes,
+  each with whose it is and its date, and the names the user goes by (their
+  own voices). The job is a helper job (`memory_brief`) at the Thinking pool's
+  lowest priority. Without a free pool member, it runs on the conversation's
+  Thinking model only once no reply runs or speaks and you aren't talking,
+  and only when that model is in the cloud. A Thinking model on this PC or on
+  a paired host keeps its prompt cache for the conversation, so then no brief
+  is written until a pool member can take it.
+- **When it is written.** About 30 seconds after facts change (remembering,
+  the Memory window, the memory sync), and 45 seconds after Martlet starts,
+  the job reads the facts while the conversation is quiet. It writes the
+  first brief once there are at least 3 facts. It writes it again when 3 facts
+  are new, when a person in it has a new name, or when a fact it was written
+  from is forgotten or changed. It writes at most once in 10 minutes (1 minute
+  after a forgotten fact) and 6 times an hour on each computer, and not within
+  2 minutes after it took a brief from another computer.
+- **A forgotten fact.** The brief records the facts it was written from (their
+  ID and revision). When one of them is forgotten or changed (including a fact
+  replaced by a newer one), the brief is not sent again until it is written
+  again without it. When no fact is left, the brief is cleared.
+- **Companion › Memory › Memory brief.** *Send a short profile of me with the
+  first message of each conversation* (on by default) turns it on or off: off,
+  it is neither written nor sent. The box shows the brief, and you can change
+  it: *Save my changes* keeps your own text, which Martlet never changes on
+  its own; clear the box and save to let Martlet write it again. *Write it
+  again* writes it from your memories now, also over your own text. The line
+  above says when it was written and from how many memories, or why it waits.
+- **One brief on all your computers.** The brief is kept in
+  `memory-brief.json` in the data folder and travels as each person's shared
+  setting `memory-brief` ([CLUSTER](CLUSTER.md#one-martlet-on-every-computer)):
+  the text, on or off, who wrote it and the facts it was written from. A
+  computer that takes another's brief sends it at once. With accounts, each
+  person has their own brief, and switching person gives this PC that person's
+  brief. Like the facts on the hosts, the brief is readable by every paired
+  device and is not encrypted end to end between desktops.
+- **The log** has counts and times only (`Memory brief: written from 42 facts
+  (812 characters).`, `Memory brief: went with your message`), never the
+  brief or a fact.
+
+Checked locally: `MemoryBriefTests` (Martlet.Desktop.Tests) and
+`MemoryBriefShareTests` (two simulated computers, Martlet.Core.Tests). Through
+MCP: `memory_brief_check` runs the production brief, helper-job router and
+shared setting on a disposable store with a fixture pool member (FIXTURE - NOT
+AI), and `memory_brief_status` reads `memory-brief.json` without the text. A
+brief written by a real model and two real computers are **NOT RUN**.
+
 ## Conversation history
 
 Facts are what Martlet distills; the **record of conversations** is what was
@@ -552,8 +625,10 @@ actually said. While memory is ON and **Keep a record of my conversations**
 (Companion › Memory › Conversation history, on by default) is on, every
 finished exchange of a typed, push-to-talk or always-listening turn (what you
 typed or said, who said it when Martlet recognized a named voice, and Martlet's
-reply) is kept on this PC, as is a reply Martlet starts on its own to bring up
-finished background work. A conversation runs from the talk window opening, or
+reply) is kept in the record of the person signed in, as is a reply Martlet
+starts on its own to bring up finished background work. The record is the same
+on every computer where that person is signed in
+([One record on every computer](#one-record-on-every-computer)). A conversation runs from the talk window opening, or
 **Refresh context**, until the exchanges kept in mind are cleared (Refresh
 context, pause, lock, closing the talk window). Not recorded: screen and camera
 glances, what this PC plays (only the user's own words of such a message), a
@@ -561,7 +636,9 @@ glances, what this PC plays (only the user's own words of such a message), a
 refused or stopped replies, and anything while memory or the choice is off.
 Turning it off keeps what is already recorded until you delete it.
 
-**On disk.** The data folder's `conversations` folder holds one JSON Lines file
+**On disk.** The household owner's record is in the data folder's
+`conversations` folder; another person's is in their account folder,
+`accounts\<32 hex>\conversations`. It holds one JSON Lines file
 per month (`history-2026-10.jsonl`, by UTC month), one line per exchange:
 `{"v":1,"id":…,"conversation":…,"at":…,"kind":"typed|spoken|report","speaker":…,"user":…,"reply":…}`,
 plus `"source":{"app","chat","server","name","userIds","replyIds"}` for an
@@ -573,9 +650,11 @@ appending; a line cut short by a crash is skipped when the record is read again
 and the next exchange starts on its own line. Text is kept up to 8,192
 characters of what you said and 16,384 of the reply (the reply's own bound),
 with control characters other than line breaks and tabs made spaces. Like the
-fact store it is plain local data in your profile: not encrypted, not synced to
-your other computers, not uploaded and not part of configuration backup.
-`conversation-history.json` beside it holds this PC's two choices.
+fact store it is plain local data in your profile: not encrypted, not uploaded
+anywhere but your paired hosts and not part of configuration backup.
+`conversation-history.json` beside the data folder's settings holds the two
+choices, which are the same on all your computers (the `conversation-history`
+shared setting, each person's own).
 
 **Reading it.** The record is read once, in the background, when a
 conversation opens (or the Conversations page or the Memory page needs it) and
@@ -676,8 +755,9 @@ exchange keeps the other; the exchange goes once neither is left. Deleting or
 editing rewrites only that line's month file (through a temporary file and an
 atomic replace) or removes the files; facts remembered from a conversation
 stay in Memory until you delete them there, and a conversation still running
-keeps what it has in mind until it is refreshed. Deletion is not a secure wipe
-of old disk blocks.
+keeps what it has in mind until it is refreshed. Every edit and deletion
+reaches your other computers too, and a deleted message never comes back from
+one of them. Deletion is not a secure wipe of old disk blocks.
 
 **Messaging apps.** A message from a paired Telegram or WhatsApp chat is
 recorded in the talk window's conversation with its app, chat and the app's
@@ -705,16 +785,98 @@ every second): a "slow down" (429) is waited out for as long as the app asks,
 an app that can't be reached is tried again with a growing pause (given up on
 after 8 tries), a refusal (too old, already gone, missing permission) is
 dropped and said, and changes for an app that isn't connected wait until its
-bot runs. The window's last line shows what waits (`HistoryPlatformStatus`);
+bot runs. The queue belongs to the computer where you made the change (in the
+data folder's `conversations` folder, whoever is signed in): the record changes
+on every computer, but only that computer asks the app. Make such changes on
+the computer that runs your bots. The window's last line shows what waits (`HistoryPlatformStatus`);
 **Stop waiting changes** drops it.
 
 MCP: `conversation_history_status` (choices, what replies are offered, counts
-per app and the changes waiting for apps, never content) and
+per app, the changes waiting for apps and the last sync, never content),
 `conversation_history_check` (the production record, recall, search, how
 recall ranks, sources, single-message edits and deletes, what each app is asked
-and the queue with a fixture app); `HistoryStatus`, `HistoryWindowStatus` and
-`HistoryPlatformStatus` read as text and `OpenHistory` opens the window
+and the queue with a fixture app) and `conversation_sync_selftest` (below);
+`HistoryStatus`, `HistoryWindowStatus`, `HistoryPlatformStatus` and
+`HistorySyncStatus` read as text and `OpenHistory` opens the window
 ([MCP](MCP.md)).
+
+### One record on every computer
+
+Your record of conversations is the same on every computer where you are signed
+in, so recall and `search_conversations` find what you said on any of them, and
+a computer you add later gets the whole record. It travels through your paired
+hosts while **Keep Martlet the same on all my computers** is on, the same way
+as [your memories](#one-memory-on-every-computer). Each person's record is
+their own: it goes only to the computers where that person is signed in.
+
+- **The network copy** (`Martlet.Core.Sync.SharedConversations`): one copy
+  per account and UTC month, with one last-writer-wins entry per exchange: the
+  exchange's line exactly as the month file keeps it, its revision (1 when
+  recorded, +1 for each edit), the time and the computer that wrote that
+  version. A deleted exchange is a tombstone: the revision it deleted plus one.
+  Merging keeps, per exchange, the highest (revision, time, deleted, writer,
+  content), so an edit made on top of another wins by its revision, two edits
+  of the same revision made apart keep the later one, and a deletion wins over
+  the version it deleted. JSON, snake case, schema 1, at most 256 MiB, 100,000
+  exchanges and 100,000 tombstones and 256 KiB per exchange. Hosts never look
+  inside an exchange.
+- **The sync** (`Martlet.Conversation.ConversationRecordSync`, every 30
+  seconds and five seconds after an exchange is recorded, edited or deleted):
+  the desktop asks each paired host for the digests of the months it keeps.
+  A month is looked at only when its file changed here (its length, write time
+  and this run's own writes) or a host's copy differs from the last merge. For
+  such a month it reads the file once: an exchange added or changed here since
+  the last sync is a change made here, and an exchange gone from the file
+  (deleted on the Conversations page) is deleted everywhere. It merges in each
+  different host copy (one read per distinct copy), writes the newest version
+  of every exchange into the month file in one atomic replace, adds what is
+  new to the in-memory index (or builds it again when something was edited or
+  deleted), and gives every host with another copy the merged one.
+- **Never in a conversation's way**: the sync skips its turn while Martlet
+  replies or you talk, runs off the window's thread, and holds the record's
+  files only while it reads or changes one month. A reply never waits for it:
+  recall reads only what is in memory, and appending an exchange waits at most
+  for one month to be written.
+- **A newer Martlet's exchange** (a line this version can't read) is kept as it
+  came, in the month's sync state, and passes on to the hosts unchanged. This
+  computer keeps its older line of that exchange and never writes it over the
+  newer one; the status line says how many need a newer Martlet.
+- **What this PC keeps** (`sync\<yyyy-MM>.json` beside the month files): for
+  each exchange its ID, revision, a SHA-256 digest, the computer that wrote it
+  and the time, the agreed tombstones, the month file's stamp and the merged
+  copy's digest; `sync\status.json` holds the last sync's counts. No
+  conversation text is kept there (only a newer Martlet's exchanges, above).
+  Deleting the `conversations` folder by hand makes this computer a new one:
+  it takes the whole record again and deletes nothing elsewhere.
+- **Each host** keeps `conversations-<32 hex>-<yyyy-MM>.json` beside
+  `host.json` (0600, gateway service owner; at most 8,192 months in all) and
+  serves `GET /martlet/v1/conversations/accounts/<32 hex>` (the months and
+  their digests), and `GET` and `POST` (merge and return)
+  `/martlet/v1/conversations/accounts/<32 hex>/<yyyy-MM>` only to paired
+  member devices where that account is signed in, over their pinned, signed
+  connection; another device gets `conversations.account_denied`, and friends
+  and API keys may not use them. Like memories, the record is readable by
+  those devices and not encrypted end to end between desktops.
+- **The choices** *Keep a record of my conversations* and *Let Martlet search
+  the record on its own* are the `conversation-history` shared setting, each
+  person's own, so they are the same on all your computers. With *Keep a
+  record* off, nothing new is recorded anywhere; the record you have still
+  syncs, so a deletion reaches every computer.
+
+The Conversations page shows the sync's line (`HistorySyncStatus`): how many
+exchanges are kept the same on how many hosts, when it last checked, what came
+from or was deleted because of your other computers, hosts that don't answer,
+are too old or don't know you on this PC yet.
+
+Checked locally with `conversation_sync_selftest` (MCP): two real gateways and
+four simulated desktops with real records on loopback, covering recall and
+search on another computer, an edit, a deleted message and conversation that
+never come back, offline edits of one message on two computers, a host that
+missed a change and restarts with its copies, a new computer, an exchange from
+a newer Martlet, another account's device refused, deleting everything, no
+conversation text in the sync state and an unsigned request refused. The
+desktop's sync with real paired hosts, the Linux host's files and two real
+computers are **NOT RUN**.
 
 ## One memory on every computer
 

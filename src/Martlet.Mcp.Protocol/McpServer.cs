@@ -1096,6 +1096,22 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("memory_brief_status", "Read the memory brief (Companion > Memory > Memory brief; docs/MEMORY.md, \"The memory brief\": " +
+            "a short profile of the people Martlet talks with, written by a Thinking pool member from the remembered facts and sent " +
+            "with the first message of each conversation) from a data directory's memory-brief.json: whether it is on, whether one " +
+            "is written, by whom (thinking or owner), when, from how many facts and people, its length in characters and lines, and " +
+            "the limits (longest brief, facts before the first one, new facts before it is written again, tries an hour, gaps). " +
+            "Never the brief or a fact. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("memory_brief_check", "Rehearse the memory brief end to end with the production code on a disposable memory store: two " +
+            "facts write nothing, a third has a fixture Thinking pool member (FIXTURE - NOT AI) write it through the production " +
+            "helper-job router at low priority with whose each fact is, the first message of a conversation carries it and the next " +
+            "don't, a forgotten fact holds it back until it is written again without it, your own text stays, off sends nothing, " +
+            "Write it again replaces your text, and a second simulated computer takes the same brief through the production " +
+            "shared-settings section and sends it. Returns each step and passed. No model, network or credentials; it never opens " +
+            "your memory.", new { }),
         Tool("memory_forget", "Delete remembered facts, as Companion › Memory's Delete does: every fact whose text contains contains " +
             "(any case) or whose ID is in ids, in every memory store of the data folder or only in space (a space ID from " +
             "memory_status). preview: true only counts them. A running Martlet keeps working (the tool waits up to 15 s for the store " +
@@ -1133,6 +1149,16 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "the owner's space through the give route without reading it, and a character's space follows the owner's household sharing " +
             "entry: open to the household while shared together, the owner's only once private again) and " +
             "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
+        Tool("conversation_sync_selftest", "Rehearse one record of conversations on every computer end to end with the production code: " +
+            "two real gateways on 127.0.0.1 (pinned TLS, signed requests, the hosts' account directory, in-memory conversation storage) and " +
+            "three simulated desktops, each with a real record of conversations (Martlet.Conversation.ConversationHistory) in a temporary " +
+            "folder, the desktop's paired client (HostConversationPeer) and the real record sync (ConversationRecordSync). Walks recording " +
+            "on one computer and recalling and searching it on another (PastConversations), an edit, a deleted message and a deleted " +
+            "conversation reaching every computer (and never coming back), offline edits of one message on two computers (the later wins), " +
+            "a host that missed changes, a new computer taking the whole record, deleting everything, an exchange from a newer Martlet " +
+            "passing through untouched, another account's device refused the record (conversations.account_denied), the hosts keeping " +
+            "copies over a restart, no conversation text in the sync state files and an unsigned request refused. Synthetic conversations " +
+            "only; loopback only; the folder is deleted.", new { }),
         Tool("accounts_sync_selftest", "Rehearse the household's account directory (docs/ACCOUNTS.md) end to end with the production " +
             "code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory network.json and accounts.json) bound to one lab " +
             "network, two member desktops and one outside computer with real network keys and the desktop's paired client " +
@@ -2809,9 +2835,12 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
+                "memory_brief_status" => MemoryBriefCheck.Status(DataDirectory(arguments)),
+                "memory_brief_check" => await MemoryBriefCheck.RunAsync(cancellation),
                 "memory_forget" => await MemoryForgetAsync(arguments, cancellation),
                 "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
+                "conversation_sync_selftest" => await NodeLinkCheckAsync(cancellation, "conversations"),
                 "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
@@ -4573,7 +4602,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
                 if (setting.Key is "memory" or "appearance" or "appearance-custom" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
-                    "model-abilities" or "work-sharing" or Martlet.Core.Motion.MotionSettings.SharedKey || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
+                    "model-abilities" or "work-sharing" or "conversation-history" or Martlet.Core.Motion.MotionSettings.SharedKey || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();

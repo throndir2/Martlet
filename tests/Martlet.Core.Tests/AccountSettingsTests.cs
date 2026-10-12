@@ -59,6 +59,7 @@ public sealed class AccountSettingsTests : IDisposable
     [InlineData("appearance-custom", true)]
     [InlineData("voice-id", true)]
     [InlineData("touch-temperament", true)]
+    [InlineData("conversation-history", true)]
     [InlineData("reminders.desktop-a", true)]
     [InlineData("thinking", false)]
     [InlineData("listening", false)]
@@ -99,6 +100,27 @@ public sealed class AccountSettingsTests : IDisposable
         // Merging the part back changes nothing: the entries keep their revisions and writers.
         Assert.Equal(household.Digest(), SharedSettings.Merge(household, account).Digest());
         Assert.Single(household.Only(k => k == "thinking").Secrets);
+    }
+
+    [Fact]
+    public async Task The_conversation_history_choices_are_the_same_on_two_computers()
+    {
+        const string defaults = "{\"keep\":true,\"search\":false}";
+        var onA = new FileSetting { Value = defaults };
+        var onB = new FileSetting { Value = defaults };
+        var a = new SharedSettingsNode(Path.Combine(root, "computer-a"), "desktop-a", [new Section(SettingScopes.ConversationHistory, onA, defaults)]);
+        var b = new SharedSettingsNode(Path.Combine(root, "computer-b"), "desktop-b", [new Section(SettingScopes.ConversationHistory, onB, defaults)]);
+        await a.AdoptAsync(CancellationToken.None);
+        await b.AdoptAsync(CancellationToken.None);
+
+        // Sam turns off "Keep a record of my conversations" on computer A; computer B takes it from A's copy (through a host).
+        onA.Value = "{\"keep\":false,\"search\":false}";
+        Assert.Equal([SettingScopes.ConversationHistory], (await a.SyncAsync([], true, Start.AddMinutes(1), CancellationToken.None)).Recorded);
+        var taken = await b.SyncAsync([a.Document], true, Start.AddMinutes(2), CancellationToken.None);
+
+        Assert.Equal("{\"keep\":false,\"search\":false}", onB.Value);
+        Assert.Contains(taken.Applied, change => change.Key == SettingScopes.ConversationHistory);
+        Assert.Equal(SettingScopes.Account, SettingScopes.Of(SettingScopes.ConversationHistory));
     }
 
     [Fact]

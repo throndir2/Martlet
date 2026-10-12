@@ -563,6 +563,7 @@ NVIDIA Build and its old key.
 | `thinking-pool-choices` | Companion › Thinking pool's pool-wide choices: Backup for slow replies (Backup Thinking) and its wait, Busy pool (higher priority first, more important after stops, tries again) and Use the conversation's model when the pool is empty. It is a separate setting, so a choice changed on one PC never replaces the cloud models of another | Runs on (it can name this PC's own models) and the machines' own boxes |
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
+| `memory-brief` | The [memory brief](MEMORY.md#the-memory-brief) (`memory-brief.json`): its text, on or off, whether Martlet or the owner wrote it and the facts it was written from, so every computer sends the same one and none writes it again for facts that didn't change | |
 | `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |
@@ -580,8 +581,11 @@ NVIDIA Build and its old key.
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
 | `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 | `reminders.<device ID>` | One per computer, written only by that computer: the [reminders](CONVERSATION.md#reminders) set on it and what it did about anyone's (offered to say one, took it, said it, canceled it), so any companion PC can list, cancel and say them and the one used most recently says a due one once. Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
+| `conversation-history` | Companion › Memory › Conversation history: whether Martlet keeps a record of your conversations and may search it on its own (`conversation-history.json`) | |
 
-Conversations are not shared; what Martlet makes from them is (the [shared creations](#the-shared-creations)).
+Conversations are shared too: each person's [record of conversations](MEMORY.md#one-record-on-every-computer)
+is the same on every computer where they are signed in, and what Martlet makes from them travels as the
+[shared creations](#the-shared-creations).
 
 ### Each person's settings
 
@@ -593,7 +597,7 @@ into the household's and each person's. The household keeps `thinking`,
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
-`touch-temperament` and their own `reminders.<device ID>` entries. A person's
+`touch-temperament`, `memory-brief`, `conversation-history` and their own `reminders.<device ID>` entries. A person's
 settings go only to the computers where that person is signed in, and switching
 person on a computer gives Martlet that person's settings. A computer on an
 older Martlet keeps the owner's settings in step through this document, as
@@ -612,6 +616,7 @@ These describe the computer itself, so they never travel:
 | *When Martlet starts* and closing choices, Start with Windows | How Martlet starts for this Windows user |
 | Paired hosts, SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
 | Where memory is stored | A folder on this PC (the memories travel) |
+| The queue of deletions and edits waiting for Telegram and Discord (`conversations\platform-changes.json`) | Only the computer where you made the change asks the app; the record itself travels |
 | Installed engines and models: Ollama models, Parakeet, a whisper package, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |

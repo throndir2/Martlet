@@ -111,7 +111,11 @@ through `shared-settings.staging`), and everything Martlet remembers
 ([one memory on every computer](../../docs/MEMORY.md#one-memory-on-every-computer))
 in `memories.json` (at most 512 MiB, through `memories.staging`), with each
 [memory space](../../docs/ACCOUNTS.md#memory-spaces) in `memories-<space>.json`
-(at most 512 MiB each and 64 spaces, through `memories-space.staging`). The
+(at most 512 MiB each and 64 spaces, through `memories-space.staging`). Each
+month of an account's
+[record of conversations](../../docs/MEMORY.md#one-record-on-every-computer)
+lives in `conversations-<32 hex>-<yyyy-MM>.json` (at most 256 MiB each and
+8,192 months, through `conversations.staging`). The
 household's [account directory](../../docs/ACCOUNTS.md#account-directory)
 (public facts only) lives in `accounts.json` (at most 2 MiB, through
 `accounts.staging`). All are 0600 service-owner files and none is part

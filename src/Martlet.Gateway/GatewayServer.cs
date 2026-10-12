@@ -103,6 +103,13 @@ public sealed class GatewayServer
     /// <summary>The IDs of the memory spaces this host keeps.</summary>
     public IReadOnlyList<string> MemorySpaces => application.MemorySpaces.Spaces;
 
+    /// <summary>Keeps this host's copies of each account's record of conversations (served at
+    /// /martlet/v1/conversations/accounts/{32 hex}/{yyyy-MM}) in <paramref name="storage"/> and loads the months saved there.</summary>
+    public void AttachConversationStorage(IGatewayConversationStorage storage) => application.Conversations.Attach(storage);
+
+    /// <summary>The keys (<c>&lt;32 hex account&gt;-&lt;yyyy-MM&gt;</c>) of the months of conversations this host keeps, in order.</summary>
+    public IReadOnlyList<string> ConversationRecords => application.Conversations.Keys;
+
     /// <summary>Decides which paired device may read or write which memory space (default: the account directory's rules,
     /// GatewayMemorySpaceAccess.cs).</summary>
     internal GatewayMemorySpaceAccess MemorySpaceAccess
