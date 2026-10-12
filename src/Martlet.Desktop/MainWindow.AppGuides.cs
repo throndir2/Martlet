@@ -129,7 +129,10 @@ public partial class MainWindow
         on.Checked += (_, _) => SetAppGuidesOnAsync(true).Forget();
         on.Unchecked += (_, _) => SetAppGuidesOnAsync(false).Forget();
         var disclosure = Note("On by default. When you start a game Martlet has no guide for, it reads up on it on its own: it " +
-            "sends the game's name to DuckDuckGo to find its wiki, then reads the wiki. The wiki sites see the requests and this PC's " +
+            "sends the game's name to DuckDuckGo to find its wiki, then reads up to 200 of the wiki's pages, those about the game " +
+            "first. Then, when a Thinking pool helper can take research, Martlet gives it the game's name, the titles the pages " +
+            "link to and what you do now (your screen, sounds and recent words) to choose up to 300 more pages to read. The " +
+            "wiki sites see the requests and this PC's " +
             "internet address. The guides stay on this PC. To stop a read, press Stop reading below or tell Martlet no. To stop it " +
             "from reading up on its own, turn off Read up when I start a game or app. To notice a game, Martlet looks only at the " +
             "name of the program in front and whether it fills the screen, never at window titles or the screen.",
@@ -181,7 +184,7 @@ public partial class MainWindow
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         if (reading)
         {
-            // A read has no time limit: Stop reading ends it and keeps what it read.
+            // A read stops by itself at its caps; Stop reading ends it sooner and keeps what it read.
             var stop = PageButton("Stop reading", () => StopAppGuideReading(entry), id: "AppGuideStop-" + entry.Key);
             stop.ToolTip = "Stop reading up on it now and keep what Martlet read so far.";
             buttons.Children.Add(stop);

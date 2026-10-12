@@ -20,7 +20,10 @@ internal sealed partial class LiveConversationController
     internal void StartGuideResearch(AppGuideService guides, WebAccess web)
     {
         if (guideResearch is not null) return;
-        var research = new AppGuideResearcher(guides, new PoolGuideThinker(() => ThinkingPool), web, web) { Log = ErrorLog.Info };
+        var research = new AppGuideResearcher(guides, new PoolGuideThinker(() => ThinkingPool), web, web)
+        {
+            Log = ErrorLog.Info, Context = GuideContext
+        };
         Volatile.Write(ref guideResearch, research);
         Board.Changed += ScreenForGuides;
     }
@@ -30,6 +33,28 @@ internal sealed partial class LiveConversationController
         Board.Changed -= ScreenForGuides;
         Interlocked.Exchange(ref guideResearch, null)?.Dispose();
     }
+
+    /// <summary>What the user does now, for choosing more wiki pages to read: the screen, sounds and activity notes on the board
+    /// and the last few exchanges (what the user said or wrote, and the replies). Off the reply's path; never logged.</summary>
+    internal string? GuideContext()
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (var note in Board.Snapshot(clock.GetLocalNow()).Notes)
+            if (note.Source is ContextBoard.Screen or ContextBoard.Sound or ContextBoard.Activity)
+                text.Append(note.Source switch { ContextBoard.Screen => "Screen: ", ContextBoard.Sound => "Sounds: ", _ => "Doing: " })
+                    .Append(note.Text.Replace('\n', ' ')).Append('\n');
+        foreach (var exchange in RecentExchanges(GuideContextExchanges).Exchanges)
+            text.Append("User: ").Append(Short(exchange.User)).Append("\nCompanion: ").Append(Short(exchange.Martlet)).Append('\n');
+        return text.Length == 0 ? null : text.ToString().TrimEnd();
+
+        static string Short(string? words)
+        {
+            var line = (words ?? "").Replace('\n', ' ').Trim();
+            return line.Length <= 300 ? line : line[..300] + "…";
+        }
+    }
+
+    private const int GuideContextExchanges = 4;
 
     // The board changes on a reply's path too (a sent request): this only reads the screen note when research wants one, and the
     // research itself runs on the thread pool.

@@ -103,11 +103,12 @@ internal static class AppGuidesCheck
             var tools = await ToolsAsync(again, fixture, cancellation);
             var latency = await LatencyAsync(directory, cancellation);
             var research = await ResearchAsync(Path.Combine(directory, "research"), guard, fixture, limits, cancellation);
+            var series = await SeriesAsync(Path.Combine(directory, "series"), guard, fixture, cancellation);
 
             var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
                 fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && defaults.On && defaults.ReadUpWhenStarted &&
                 migration.Ok && restarted is { loaded: >= 2, on: true, indexReady: true, indexesAtStart: 0 };
-            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok && research.Ok;
+            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok && research.Ok && series.Ok;
             return new
             {
                 ok,
@@ -131,7 +132,8 @@ internal static class AppGuidesCheck
                 indexes = loading.Report,
                 tools = tools.Report,
                 latency = latency.Report,
-                research = research.Report
+                research = research.Report,
+                series = series.Report
             };
         }
         finally
@@ -195,8 +197,8 @@ internal static class AppGuidesCheck
         return (ok, new { ok, noLibrary = none, savedOff, savedOffThenAdded, savedOn, withoutOn, unreadable });
     }
 
-    // Reading up with the default caps (docs/APP_GUIDES.md, "Caps"): no page, download or time cap, so the whole fixture wiki is
-    // read; what was read is kept while reading goes on; Stop reading ends it and keeps what was read.
+    // Reading up with the default caps (docs/APP_GUIDES.md, "Caps"): at most 200 pages, 25 MB and 15 minutes, so the 3-page
+    // fixture wiki is read whole; what was read is kept while reading goes on; Stop reading ends it and keeps what was read.
     private static async Task<(bool Ok, object Report)> ReadingAsync(string directory, LoopbackOnly guard, string baseUrl, CancellationToken cancellation)
     {
         var defaults = new GuideBuildLimits();
@@ -211,20 +213,21 @@ internal static class AppGuidesCheck
         var whole = await guides.BuildAsync(Game, [start], new Words(text =>
         {
             lock (words) words.Add(text);
-            if (text == "Reading page 3") keptWhileReading = guides.Library.Apps.FirstOrDefault()?.Pages ?? 0;
+            if (text.StartsWith("Reading page 3 ", StringComparison.Ordinal)) keptWhileReading = guides.Library.Apps.FirstOrDefault()?.Pages ?? 0;
         }), cancellation);
         var stopped = false;
         var stoppedBuild = await guides.BuildAsync(Game, [start], new Words(text =>
         {
-            if (text == "Reading page 2") stopped = guides.StopReading();
+            if (text.StartsWith("Reading page 2 ", StringComparison.Ordinal)) stopped = guides.StopReading();
         }), cancellation);
         var nothingToStop = guides.StopReading();
         string[] said;
         lock (words) said = [.. words];
-        var ok = defaults is { Pages: null, Bytes: null, Time: null, Sites: 2 } && whole is { Built: true, Pages: 3 } &&
-            said.Contains("Reading page 1") && !said.Any(w => w.Contains("at most", StringComparison.Ordinal)) &&
+        var ok = defaults is { Pages: 200, Bytes: 25_000_000, Sites: 2 } && defaults.Time == TimeSpan.FromMinutes(15) &&
+            GuideBuildLimits.More is { Pages: 300, Sites: 1 } && whole is { Built: true, Pages: 3 } &&
+            said.Contains("Reading page 1 of at most 200") &&
             said.Contains("Saving what it read so far") && keptWhileReading > 0 && stopped && stoppedBuild is { Built: true, Pages: 1 } &&
-            !nothingToStop && AppGuideTools.Kind.TimeLimit is null;
+            !nothingToStop && AppGuideTools.Kind.TimeLimit == TimeSpan.FromMinutes(20);
         return (ok, new
         {
             ok,
@@ -235,13 +238,91 @@ internal static class AppGuidesCheck
                 delayMs = defaults.Delay.TotalMilliseconds, jobTimeLimit = AppGuideTools.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none",
                 keepEveryMinutes = AppGuideService.DefaultKeepEvery.TotalMinutes
             },
+            readMoreCaps = new
+            {
+                pages = GuideBuildLimits.More.Pages, bytes = GuideBuildLimits.More.Bytes,
+                time = GuideBuildLimits.More.Time is { } more ? BackgroundJobs.Duration(more) : "none", sites = GuideBuildLimits.More.Sites
+            },
             storeBounds = new
             {
                 pages = FileAppGuideStore.MaximumSources, sections = FileAppGuideStore.MaximumChunks,
                 guideFileMegabytes = FileAppGuideStore.MaximumGuideBytes / 1_000_000
             },
-            wholeWiki = Build(whole), pagesKeptWhileReading = keptWhileReading, progress = said.Distinct().ToArray(),
+            firstRead = Build(whole), pagesKeptWhileReading = keptWhileReading, progress = said.Distinct().ToArray(),
             stopReading = new { stoppedAtPage2 = stopped, build = Build(stoppedBuild), stopWhenIdle = nothingToStop }
+        });
+    }
+
+    // Reading up on a game of a series (docs/APP_GUIDES.md, "Choosing the pages") on a MediaWiki fixture about the Starfall
+    // series: the first read reads this game's pages first (its titles, then the wiki's search for its name, then their links)
+    // and never another game's, up to its cap, with no model; then, as the desktop does it after a read, a stand-in Thinking pool
+    // member writes the brief and chooses more pages among the titles left, with notes on what the user does now, the chosen
+    // pages join the guide and the brief is written again.
+    private static async Task<(bool Ok, object Report)> SeriesAsync(string directory, LoopbackOnly guard, Fixture fixture, CancellationToken cancellation)
+    {
+        const string sequel = "Starfall Valley 2";
+        const string doing = "Screen: the player walks into an icy cave full of crystal golems.";
+        var key = AppGuideKeys.Of(sequel);
+        var thinker = new CannedThinker();
+        var log = new List<string>();
+        var pause = TimeSpan.FromMilliseconds(20);
+        using var guides = new AppGuideService(new FileAppGuideStore(directory), new WebGuideBuilder(guard, guard),
+            limits: new GuideBuildLimits { Delay = pause, Time = TimeSpan.FromSeconds(60), Pages = 3 })
+        {
+            MoreLimits = GuideBuildLimits.More with { Delay = pause, Time = TimeSpan.FromSeconds(60) }
+        };
+        await guides.LoadAsync(cancellation);
+        await guides.SetOnAsync(true, cancellation);
+        using var research = new AppGuideResearcher(guides, thinker, guard, guard, wait: (_, token) => Task.Delay(20, token))
+        {
+            Log = line => { lock (log) log.Add(line); }, Context = () => doing
+        };
+
+        var built = await guides.BuildAsync(sequel, [fixture.BaseUrl + Fixture.SeriesStart], null, cancellation);
+        var waited = Stopwatch.StartNew();
+        while ((research.Mores == 0 || research.Briefs < 2 || research.Doing is not null || guides.Building is not null) &&
+            waited.Elapsed < TimeSpan.FromSeconds(60))
+            await Task.Delay(20, cancellation);
+        var guide = await guides.Store.LoadGuideAsync(key, cancellation);
+        var titles = guide?.Sources.Select(s => s.Title).ToArray() ?? [];
+        var parsed = fixture.SeriesParsed;
+        // Reading more starts only once the first read let go: the first read's pages are the first ones asked for.
+        var firstRead = parsed.Take(built.Pages).ToArray();
+        var pageAsks = thinker.Asks.Where(a => a.Label == GuidePagePicker.Label).ToArray();
+        var entry = guides.Library.Apps.FirstOrDefault(a => a.Key == key);
+        string[] lines;
+        lock (log) lines = [.. log];
+        var private_ = new[] { "icy", "golem", "Frost", "Orla", "127.0.0.1", "http", "Starfall" };
+        var logPrivate = lines.Any(line => private_.Any(word => line.Contains(word, StringComparison.OrdinalIgnoreCase)));
+        string[] otherGames = ["Moonstone Sword (Starfall Valley 3)", "Starfall Valley 3"];
+        var ok = built is { Built: true, Pages: 3 } && built.Choice == new GuidePageChoice(8, 2, 6, 0) && built.More is { Count: 3 } &&
+            firstRead.SequenceEqual(["Moonstone Sword (Starfall Valley 2)", "Ember Mines", "Frost Caves"]) &&
+            !parsed.Any(p => otherGames.Contains(p) || p == "Voice cast") &&
+            titles.Contains("Frost Caves") && titles.Contains("Crystal Golem") && titles.Length == 5 && entry is { Pages: 5 } &&
+            pageAsks.Length >= 1 && pageAsks.All(a => a.Instructions == GuidePagePicker.Instructions) &&
+            pageAsks[0].Text.Contains("What the user does now:\n" + doing, StringComparison.Ordinal) &&
+            pageAsks[0].Text.Contains("Voice cast", StringComparison.Ordinal) &&
+            !pageAsks.Any(a => otherGames.Any(t => a.Text.Contains(t, StringComparison.Ordinal))) &&
+            research.Mores == 1 && research.Briefs >= 2 && guides.Building is null &&
+            lines.Any(l => l.Contains("read more of a wiki", StringComparison.Ordinal)) && !logPrivate;
+        return (ok, new
+        {
+            ok,
+            note = "A MediaWiki fixture on 127.0.0.1 (NOT a real wiki) and a stand-in Thinking pool member with canned answers (NOT a " +
+                "model); the reader, choice by titles, research job, store and index are Martlet's own.",
+            app = sequel,
+            firstRead = new { build = Build(built), choice = built.Choice, readInOrder = firstRead, leftToReadMore = built.More?.Count ?? 0 },
+            readMore = new
+            {
+                pagesInTheGuide = titles, asks = pageAsks.Length, firstAskCharacters = pageAsks.FirstOrDefault()?.Text.Length ?? 0,
+                firstAskHadWhatTheUserDoes = pageAsks.FirstOrDefault()?.Text.Contains(doing, StringComparison.Ordinal) == true,
+                sameInstructionsEveryTime = pageAsks.All(a => a.Instructions == GuidePagePicker.Instructions),
+                otherGamesNeverReadOrAsked = !parsed.Any(otherGames.Contains) && !pageAsks.Any(a => otherGames.Any(t => a.Text.Contains(t, StringComparison.Ordinal))),
+                leftOutByTheMember = !parsed.Contains("Voice cast")
+            },
+            pagesRead = parsed,
+            status = new { research.Mores, research.Briefs, research.Sections },
+            log = new { lines, holdsTitlesOrLinks = logPrivate }
         });
     }
 
@@ -551,7 +632,7 @@ internal static class AppGuidesCheck
             readAgain = new { built = reread.Built, researchSectionsKept = keptAfterReread, newBrief = afterReread?.BriefAt > afterRead?.BriefAt },
             updateGuideBrief = new { app, focus, problem, badArguments = badProblem, sameAreaWithinTheHour = Result(refreshed), noPoolMember = noMember, startWithoutMember = notStarted },
             saved = entry is null ? null : new { briefCharacters = entry.Brief?.Length ?? 0, areas = entry.Areas.Select(a => new { a.Name, a.Sections }) },
-            status = new { research.Briefs, research.Areas, research.WebAreas, research.Sections, research.Screens },
+            status = new { research.Briefs, research.Areas, research.WebAreas, research.Sections, research.Screens, research.Mores },
             thinkingRequests = asks.GroupBy(a => a.Label).Select(g => new { label = g.Key, count = g.Count(), maxInputCharacters = g.Max(a => a.Text.Length) }),
             sameInstructionsEveryTime = stableStart,
             log = new { lines, holdsAreaOrLinks = logPrivate },
@@ -593,6 +674,11 @@ internal static class AppGuidesCheck
                 "App guide area notes" when ask.Text.Contains("valve", StringComparison.OrdinalIgnoreCase) =>
                     "The Sunken Crypt is a flooded dungeon under the chapel.\nTurn the three bronze valves to drain it.\nDrowned knights " +
                     "are weak to fire: bring torches.\nLeave before midnight.",
+                // Every page but the voice cast, the pages about what the user does now (an icy cave) first.
+                GuidePagePicker.Label => string.Join(", ", ask.Text.Split('\n').Select(line => line.Split(". ", 2))
+                    .Where(p => p.Length == 2 && int.TryParse(p[0], out _) && !p[1].Contains("Voice", StringComparison.Ordinal))
+                    .OrderByDescending(p => ask.Text.Contains("icy cave", StringComparison.Ordinal) && p[1].Contains("Frost", StringComparison.Ordinal))
+                    .Select(p => p[0])) is { Length: > 0 } numbers ? numbers : "NONE",
                 _ => "NONE"
             };
             return Task.FromResult<(string?, string?)>((answer, null));
@@ -734,6 +820,70 @@ internal static class AppGuidesCheck
         internal string BaseUrl { get; }
         internal IReadOnlyList<string> Queries { get { lock (paths) return [.. queries]; } }
         internal IReadOnlyList<string> Paths { get { lock (paths) return [.. paths]; } }
+        /// <summary>The series wiki's pages asked for (action=parse), in order.</summary>
+        internal IReadOnlyList<string> SeriesParsed { get { lock (paths) return [.. seriesParsed]; } }
+        private readonly List<string> seriesParsed = [];
+
+        /// <summary>The series wiki's main page: it names its api.php (EditURI), like a MediaWiki page.</summary>
+        internal const string SeriesStart = "/series/wiki/Starfall_Saga_Wiki";
+        private const string SeriesMain = "Starfall Saga Wiki";
+        private static readonly string[] SeriesLinks =
+            ["Moonstone Sword (Starfall Valley 3)", "Orla", "Moonstone Sword (Starfall Valley 2)", "Starfall Valley 3", "Ember Mines"];
+        private static readonly Dictionary<string, (string Text, string[] Links)> SeriesPages = new(StringComparer.Ordinal)
+        {
+            ["Moonstone Sword (Starfall Valley 3)"] = ("In the third game the Moonstone Sword is forged from starglass at the observatory.", []),
+            ["Orla"] = ("Orla is the blacksmith of the valley; she forges swords and mends pickaxes in her smithy by the river.", []),
+            ["Moonstone Sword (Starfall Valley 2)"] = ("In Starfall Valley 2 the Moonstone Sword takes three moonstones that crystal golems drop.",
+                ["Frost Caves", "Voice cast"]),
+            ["Starfall Valley 3"] = ("Starfall Valley 3 is the third game of the series, set on a floating island far to the north.", []),
+            ["Ember Mines"] = ("The Ember Mines hold iron and gold ore below level forty; bring a steel pickaxe and some torches.", []),
+            ["Frost Caves"] = ("The Frost Caves are icy caves where crystal golems guard the moonstones deep below the glacier.", ["Crystal Golem"]),
+            ["Voice cast"] = ("The voice actors of the series recorded their lines in two studios over many long months.", []),
+            ["Crystal Golem"] = ("Crystal golems are slow but hit hard; strike the glowing core on their back with a heavy hammer.", []),
+        };
+
+        // A MediaWiki api.php answering siteinfo, the main page's links, Mostlinked (none), page info, every page and parse.
+        private string SeriesApi(string target)
+        {
+            var query = (target.Split('?', 2).ElementAtOrDefault(1) ?? "").Split('&').Select(p => p.Split('=', 2))
+                .GroupBy(p => Uri.UnescapeDataString(p[0])).ToDictionary(g => g.Key, g => g.First().Length > 1 ? Uri.UnescapeDataString(g.First()[1]) : "");
+            static object Info(string title) => SeriesPages.ContainsKey(title) ? new { ns = 0, title, length = 5_000 } : (object)new { ns = 0, title, missing = true };
+            object body = query.GetValueOrDefault("action") switch
+            {
+                "parse" when SeriesPages.TryGetValue(query.GetValueOrDefault("page") ?? "", out var page) => Parsed(query["page"], page),
+                "query" when query.ContainsKey("meta") => new
+                {
+                    query = new
+                    {
+                        general = new { mainpage = SeriesMain, sitename = SeriesMain, generator = "MediaWiki 1.43.0", server = BaseUrl, articlepath = "/series/wiki/$1" },
+                        namespaces = new Dictionary<string, object>
+                        {
+                            ["0"] = new { id = 0, name = "", content = true }, ["2"] = new { id = 2, name = "User", canonical = "User" },
+                            ["6"] = new { id = 6, name = "File", canonical = "File" }
+                        },
+                        statistics = new { articles = SeriesPages.Count }
+                    }
+                },
+                "query" when query.GetValueOrDefault("generator") == "links" => new { query = new { pages = SeriesLinks.Select(Info).ToArray() } },
+                "query" when query.GetValueOrDefault("generator") == "allpages" => new { batchcomplete = true, query = new { pages = SeriesPages.Keys.Select(Info).ToArray() } },
+                "query" when query.GetValueOrDefault("list") == "querypage" => new { query = new { querypage = new { results = Array.Empty<object>() } } },
+                "query" when query.GetValueOrDefault("list") == "search" => new
+                {
+                    query = new { search = new[] { "Moonstone Sword (Starfall Valley 2)", "Ember Mines" }.Select(t => new { ns = 0, title = t }).ToArray() }
+                },
+                "query" when query.ContainsKey("titles") => new { query = new { pages = query["titles"].Split('|').Select(Info).ToArray() } },
+                _ => new { error = new { code = "missingtitle" } }
+            };
+            return JsonSerializer.Serialize(body);
+
+            object Parsed(string title, (string Text, string[] Links) page)
+            {
+                lock (paths) seriesParsed.Add(title);
+                var links = string.Concat(page.Links.Select(l => $"<a href=\"/series/wiki/{l.Replace(' ', '_')}\">{l}</a> "));
+                var text = $"<div class=\"mw-parser-output\"><p>{page.Text} {page.Text} {page.Text}</p><p>{links}</p></div>";
+                return new { parse = new { title, pageid = 1, text } };
+            }
+        }
 
         private async Task AcceptAsync()
         {
@@ -767,6 +917,9 @@ internal static class AppGuidesCheck
                 {
                     "/robots.txt" => ("text/plain", "User-agent: *\nAllow: /\n"),
                     "/search" => ("text/html", SearchPage(query)),
+                    "/series/api.php" => ("application/json", SeriesApi(target)),
+                    SeriesStart => ("text/html", "<html><head><link rel=\"EditURI\" type=\"application/rsd+xml\" href=\"" + BaseUrl +
+                        "/series/api.php?action=rsd\"/></head><body><p>The Starfall Saga Wiki is about every Starfall game (FIXTURE).</p></body></html>"),
                     "/wiki/Sunken_Crypt" => ("text/html", Page("Sunken Crypt",
                         "<p>The Sunken Crypt is a flooded dungeon under the old chapel in Starfall Valley (FIXTURE).</p><h2>Getting in</h2>" +
                         "<p>Drain the Sunken Crypt by turning the three bronze valves in the chapel cellar; the water drops one floor with " +

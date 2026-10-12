@@ -27,11 +27,13 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
         var sites = (request.Sites ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
         if (sites.Count == 0 && WikiDiscovery.Words(request.Name).Count == 0) return new([], [], 0, 0, "it has no name to look for");
         if ((fetch as IWebDocuments ?? search as IWebDocuments) is not { } documents)
-            return await ReadPagesAsync(request.Name, sites, limits, progress, cancellationToken).ConfigureAwait(false);
+            return request.More is not null ? new([], [], 0, 0, "reading more needs the wiki's page reader")
+                : await ReadPagesAsync(request.Name, sites, limits, progress, cancellationToken).ConfigureAwait(false);
 
         using var time = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, request.Stop);
         if (limits.Time is { } most) time.CancelAfter(most);
-        var run = new GuideRun(documents, limits, progress, Wait, time.Token, request.Keep, request.KeepEvery);
+        var run = new GuideRun(documents, limits, progress, Wait, time.Token, request.Keep, request.KeepEvery, request.Name, request.Choose);
+        if (request.More is { } more) return await ReadMoreAsync(run, more, cancellationToken).ConfigureAwait(false);
         var job = new Job(run, request.Name, search);
         var late = false;
         try
@@ -48,7 +50,23 @@ public sealed class WebGuideBuilder(IWebSearch search, IWebFetch fetch) : IGuide
             : !job.Found && job.SearchProblem is not null ? "the web search didn't work (" + job.SearchProblem + ")"
             : !job.Found ? "no wiki or help pages about it were found"
             : "no page about it could be read";
-        return new(run.Pages.ToArray(), run.Hosts.ToArray(), run.Failed, run.Bytes, problem);
+        return new(run.Pages.ToArray(), run.Hosts.ToArray(), run.Failed, run.Bytes, problem, run.Choice, run.More);
+    }
+
+    // Reading more of a wiki read before: the titles its pages link to, as the request's chooser chooses them.
+    private static async Task<GuideBuildOutcome> ReadMoreAsync(GuideRun run, GuideMore more, CancellationToken cancellationToken)
+    {
+        var late = false;
+        try { await MediaWikiReader.ReadAsync(run, more.Site, [], more).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            late = true;
+        }
+        var problem = run.Pages.Count > 0 ? null
+            : late || run.TimeUp ? "reading more took too long"
+            : run.Choice is not { Asked: > 0 } ? "no Thinking pool member could choose the pages"
+            : "no more pages were worth reading";
+        return new(run.Pages.ToArray(), run.Hosts.ToArray(), run.Failed, run.Bytes, problem, run.Choice);
     }
 
     // Without IWebDocuments: the start pages, or the best search results for its wiki, read one page each.

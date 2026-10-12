@@ -8,7 +8,8 @@ namespace Martlet.Conversation.Guides;
 /// so far when that is due (<see cref="GuideBuildRequest.Keep"/>).</summary>
 internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProgress<string>? progress,
     Func<TimeSpan, CancellationToken, Task> wait, CancellationToken token,
-    Func<GuideBuildOutcome, CancellationToken, Task<bool>>? keep = null, TimeSpan keepEvery = default)
+    Func<GuideBuildOutcome, CancellationToken, Task<bool>>? keep = null, TimeSpan keepEvery = default, string? name = null,
+    Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyList<string>?>>? choose = null)
 {
     /// <summary>Requests a job may make before its first pages, to find its wiki (without a page cap).</summary>
     public const int FindingRequests = 100;
@@ -32,10 +33,19 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
     public bool TimeUp { get; private set; }
     /// <summary>The guide can hold no more pages (<see cref="GuideBuildRequest.Keep"/> said so).</summary>
     public bool GuideFull { get; private set; }
+    /// <summary>How the wiki's pages were chosen so far (<see cref="ChooseAsync"/>), or null when no title was looked at.</summary>
+    public GuidePageChoice? Choice => titles == 0 ? null : new(titles, otherGames, chosen, asked);
+    /// <summary>The chooser can't choose any more: reading ends with the pages chosen so far.</summary>
+    public bool ChoiceEnded { get; private set; }
+    /// <summary>What the MediaWiki site read first leaves to read more (<see cref="GuideBuildRequest.More"/>).</summary>
+    public GuideMore? More { get; set; }
 
-    /// <summary>The most requests one job makes: 3 a page (every page may need a few requests to find it), plus 30 with a page
-    /// cap, else plus <see cref="FindingRequests"/> for the pages read so far, so a site whose pages can't be read ends the job.</summary>
-    public int MaxRequests => Limits.Pages is { } cap ? cap * 3 + 30 : Pages.Count * 3 + FindingRequests;
+    private int titles, otherGames, chosen, asked;
+
+    /// <summary>The most requests one job makes: 3 a page (every page may need a few requests to find it) plus
+    /// <see cref="FindingRequests"/>, so a site whose pages can't be read ends the job; with a page cap, also at most 3 a page of
+    /// the cap plus 30.</summary>
+    public int MaxRequests => Limits.Pages is { } cap ? Math.Min(cap * 3 + 30, Pages.Count * 3 + FindingRequests) : Pages.Count * 3 + FindingRequests;
     public bool Full => Limits.Pages is { } cap && Pages.Count >= cap || Limits.Bytes is { } bytes && Bytes >= bytes || TimeUp || GuideFull ||
         Requests >= MaxRequests;
 
@@ -46,6 +56,48 @@ internal sealed class GuideRun(IWebDocuments web, GuideBuildLimits limits, IProg
         cap is { } most ? $"Reading page {Math.Min(read + 1, most)} of at most {most}" : $"Reading page {read + 1}";
 
     public void Report(string words) => progress?.Report(words);
+
+    /// <summary>Whether a chooser (a Thinking pool member) chooses the pages.</summary>
+    public bool Choosing => choose is not null;
+
+    /// <summary>The name of the app read up on, or null.</summary>
+    public string? Name => name;
+
+    /// <summary>Whether a title names this game (+1), another game of its series (-1) or neither (0): <see cref="GuidePagePicker.About"/>.</summary>
+    public int About(string title) => name is null ? 0 : GuidePagePicker.About(title, name);
+
+    /// <summary>The wiki page titles worth reading, from their titles alone (<see cref="GuidePagePicker"/>): titles whose brackets
+    /// name another game of the series are left out, those that name this game come first, and then the chooser (a Thinking pool
+    /// member), when there is one, keeps the ones worth reading, <see cref="GuidePagePicker.MaximumTitles"/> at a time. A chooser
+    /// that can't choose any more ends the choice (<see cref="ChoiceEnded"/>).</summary>
+    public async Task<IReadOnlyList<string>> ChooseAsync(IReadOnlyList<string> candidates)
+    {
+        if (candidates.Count == 0 || ChoiceEnded) return [];
+        titles += candidates.Count;
+        var ranked = name is null ? [.. candidates]
+            : candidates.Select((title, index) => (Title: title, Index: index, About: About(title)))
+                .Where(c => c.About >= 0).OrderByDescending(c => c.About).ThenBy(c => c.Index).Select(c => c.Title).ToList();
+        otherGames += candidates.Count - ranked.Count;
+        if (choose is null)
+        {
+            chosen += ranked.Count;
+            return ranked;
+        }
+        var kept = new List<string>();
+        foreach (var batch in ranked.Chunk(GuidePagePicker.MaximumTitles))
+        {
+            Report("Choosing the pages worth reading");
+            if (await choose(batch, Token).ConfigureAwait(false) is not { } picked)
+            {
+                ChoiceEnded = true;
+                break;
+            }
+            asked++;
+            kept.AddRange(picked);
+        }
+        chosen += kept.Count;
+        return kept;
+    }
 
     /// <summary>Whether a page at <paramref name="url"/> was read already.</summary>
     public bool Has(string url) => read.Contains(url);

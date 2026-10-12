@@ -438,8 +438,8 @@ public static class PromptCatalog
         "to show it.";
 
     public const string DefaultAppGuidesInstructions =
-        "read_up_on reads up on a game or app on the web in the background: its whole fan wiki or help pages, kept on this PC " +
-        "as a guide that grows as you read. Use it, never research or think_longer, when the user asks you to read up on a game " +
+        "read_up_on reads up on a game or app on the web in the background: the most useful pages of its fan wiki or help pages, " +
+        "kept on this PC as a guide that grows as you read. Use it, never research or think_longer, when the user asks you to read up on a game " +
         "or app; say in a few words in character that you will, and call it in the same reply. When the user starts a game, you " +
         "read up on it on your own and a note tells you. Never say you've read up on something, or that you're ready, before a " +
         "note says its guide is ready. When the user doesn't want you to read up on an app, call skip_guide: you stop, and never " +

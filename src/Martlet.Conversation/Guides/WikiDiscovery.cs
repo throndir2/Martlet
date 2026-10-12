@@ -13,7 +13,7 @@ internal static class WikiDiscovery
     /// <summary>The lowest search score a result needs (a wiki or help sign besides naming the app).</summary>
     public const int MinimumScore = 2;
 
-    private static readonly HashSet<string> StopWords = ["the", "a", "an", "of", "and", "or", "for", "to", "in", "on", "at", "by", "with"];
+    internal static readonly HashSet<string> StopWords = ["the", "a", "an", "of", "and", "or", "for", "to", "in", "on", "at", "by", "with"];
     private static readonly string[] RejectedSites =
     [
         "youtube.com", "youtu.be", "twitch.tv", "vimeo.com", "tiktok.com", "dailymotion.com", "reddit.com", "redd.it", "twitter.com",

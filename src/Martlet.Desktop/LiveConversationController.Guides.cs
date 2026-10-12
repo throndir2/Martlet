@@ -81,12 +81,17 @@ internal sealed partial class LiveConversationController
 
     /// <summary>The desktop log's line for one try to read up: counts and time only, never the app, a link or what was read.</summary>
     internal static void LogBuild(string by, AppGuideBuild built) =>
-        ErrorLog.Info(built.Built
+        ErrorLog.Info((built.Built
             ? $"App guides: {by} read {built.Pages} pages from {built.Sites.Count} site{(built.Sites.Count == 1 ? "" : "s")} " +
               $"({built.Failed} unreadable, {built.Downloaded / 1024} KiB downloaded) into {built.Chunks} sections, " +
               $"{built.Bytes / 1024} KiB kept, in {BackgroundJobs.Duration(built.Took)}."
             : $"App guides: {by} couldn't make a guide after {BackgroundJobs.Duration(built.Took)} ({(built.Busy ? "busy" : built.Problem)}; " +
-              $"{built.Failed} pages unreadable).");
+              $"{built.Failed} pages unreadable).") + Choice(built.Choice));
+
+    // How the wiki's pages were chosen, from their titles: counts only.
+    internal static string Choice(GuidePageChoice? choice) => choice is not { Titles: > 0 } c ? ""
+        : $" Of {c.Titles} wiki page titles it looked at, {c.OtherGames} were about another game of the series and were left out" +
+          (c.Asked > 0 ? $"; a Thinking pool helper chose from {c.Asked} batch{(c.Asked == 1 ? "" : "es")}." : ".");
 
     /// <summary>search_guide: the best sections of a guide, at once (an index still loading is waited for briefly).</summary>
     private async ValueTask<ConversationToolResult> SearchGuideAsync(TextToolCall call, CancellationToken token)

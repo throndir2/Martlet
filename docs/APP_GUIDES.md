@@ -40,10 +40,15 @@ apps and wiki pages, and that ranks what it finds well (a reranker).
    asks is searched in its guide. The best matching sections go with the
    message as reference notes, and the reply uses them. A message that isn't
    about the app gets nothing.
-5. Martlet reads the whole wiki it finds, so a big wiki takes a while (about
-   one page a second). It keeps what it read every few minutes, so questions
-   get answers from the guide while it is still reading. When Martlet is done,
-   it says so in character (*"I've read up on Elden Ring: 2,400 pages."*).
+5. Martlet first reads up to 200 pages of the wiki it finds (about 5 minutes
+   on a big wiki), the pages about the game first. It never reads pages about
+   other games of the same series. It keeps what it read every few minutes,
+   so questions get answers from the guide while it is still reading. When
+   Martlet is done, it says so in character (*"I've read up on Elden Ring:
+   200 pages."*). Then, when a Thinking pool helper can take research, Martlet
+   reads more in the background: the helper chooses up to 300 more pages from
+   the links of what was read, with what you do now (see
+   [Choosing the pages](#choosing-the-pages)).
 6. The App guides page lists every app: its pages, size, when it was read, the
    pages it reads from, its program names, the last problem and whether the
    user said no. Each app has **Read up now** (or **Read again**), **Delete**
@@ -63,6 +68,8 @@ flowchart LR
     D --> E[Chunk pages by heading]
     E --> F[Guide on this PC: guides\\key.guide.json]
     F --> G[Index in memory: BM25F + reranker]
+    F -.->|after the first read| M[Read more: a Thinking pool helper chooses linked pages with what the user does now]
+    M -.-> F
     Q[User asks a question while the app is in front] --> G
     G -->|sure matches only| N[Notes on the user's message]
     G --> T[search_guide tool for a deeper look]
@@ -70,8 +77,8 @@ flowchart LR
 
 ### Finding and reading the wiki (no model needed)
 
-Reading up needs no Thinking or Deep thinking model, so it never competes with
-the conversation for a graphics card. The reader is `WebGuideBuilder` and the
+The first read needs no Thinking or Deep thinking model, so it never competes
+with the conversation for a graphics card. The reader is `WebGuideBuilder` and the
 files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
 `MediaWikiReader`, `SiteCrawler`, `RobotsRules`, `GuideRun`, `HtmlOutline`).
 
@@ -102,9 +109,11 @@ files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
   pages are left out. Each page picked from a category lowers the score of the
   others in that category, so the first pages cover the game's different parts
   (fish, cooking, minerals), not one navigation box (every villager). Then come
-  the pages that the pages read link to most, and then every other content
-  page of the wiki (`generator=allpages`, 500 titles a request, in title
-  order), so Martlet reads the whole wiki. Each page comes from
+  the pages that the pages read link to most, and then the other content
+  pages of the wiki (`generator=allpages`, 500 titles a request, in title
+  order), until the caps. In each batch, titles about the game come first and
+  titles about another game of the series are left out
+  ([Choosing the pages](#choosing-the-pages)). Each page comes from
   `action=parse` with redirects followed and edit links and the table of
   contents off.
 - **Other sites** are read breadth first through links on the same site and
@@ -137,23 +146,78 @@ files next to it in `src\Martlet.Conversation\Guides` (`WikiDiscovery`,
   the same safe web client as web research (`WebAccess`: public internet
   addresses only, every redirect checked, size and time caps, at most 2 MB a
   document).
-- **Caps**: by default (`GuideBuildLimits`) there is no cap on pages, bytes
-  downloaded or time: Martlet reads the whole wiki it finds, from at most 2
-  sites. Reading ends when the wiki has no more pages, when the guide store
-  can hold no more (below), when the owner stops it (**Stop reading**, or
-  **Cancel** in the talk window) or when Martlet closes. A guard ends a job
+- **Caps**: by default (`GuideBuildLimits`) the first read takes at most 200
+  pages, 25 MB and 15 minutes, from at most 2 sites. On a big wiki a page
+  takes about 1.4 s and 52 KB, so 200 pages take about 5 minutes and 10 MB
+  and keep about 1 MB of text. Reading also ends when the wiki has no more
+  pages, when the guide store can hold no more (below), when the owner stops
+  it (**Stop reading**, or **Cancel** in the talk window) or when Martlet
+  closes. Reading more after it (`GuideBuildLimits.More`) takes at most 300
+  pages, 25 MB and 20 minutes from the same wiki. Before these caps (0.70.1 to
+  0.74.0) Martlet read the whole wiki: on the Borderlands Wiki (10,700
+  articles about every Borderlands game) one read of Borderlands 4 took 72
+  minutes and 166 MB for 3,195 pages before it was stopped, and most of them
+  were about other games. A guard ends a job
   whose requests give no pages: at most 3 requests a page read, plus 100 to
-  find the wiki. Checks pass small caps (pages, bytes, time); then the guard
-  is 3 requests a page of the cap, plus 30, and a pause that would pass the
-  time cap ends the job. Cancelling stops it at once.
+  find the wiki (and at most 3 a page of the cap, plus 30). Checks pass small
+  caps (pages, bytes, time); a pause that would pass the time cap ends the
+  job. Cancelling stops it at once.
 - **Kept while reading**: every 3 minutes (`AppGuideService.KeepEvery`) the
   read keeps the pages read so far as the app's guide and makes its index
   again. So a long read can be searched as it grows, and a read that ends
   early (cancelled, or Martlet closed) keeps what it read until the last
   keep. **Stop reading** keeps everything read up to that moment.
 - **Progress** is a few plain words ("Looking for its wiki", "Reading the
-  wiki's page list", "Reading page 3", "Saving what it read so far"), never a
-  link.
+  wiki's page list", "Reading page 3 of at most 200", "Saving what it read so
+  far"), never a link.
+
+### Choosing the pages
+
+A wiki can be about a whole series. The Borderlands Wiki has about 10,700
+articles about every Borderlands game, and titles such as "Sidewinder
+(Borderlands 2)" and "Legendary (Borderlands 4)" tell the games apart. Martlet
+chooses pages from their titles before it downloads them
+(`GuidePagePicker`, `src\Martlet.Conversation\Guides\GuidePagePicker.cs`).
+
+1. **The first read** uses no model. A title whose brackets name this game,
+   or that holds the game's whole name ("Borderlands 4 Weapons"), comes first
+   in each batch. A title about another game of the series is left out: its
+   brackets or its name have another number ("Sidewinder (Borderlands 2)",
+   "Borderlands 2", "Fallout 76" for Fallout 4), or its brackets share the
+   name but miss its number ("Power armor (Fallout: New Vegas)" for
+   Fallout 4). Other titles ("Moxxi", "Whiterun (Skyrim)") are read in the
+   usual order. Roman numerals count as numbers ("Dark Souls III" is "Dark
+   Souls 3"). On a wiki whose name isn't the game's ("Borderlands Wiki" for
+   Borderlands 4), Martlet reads the game's own pages first: the main page's
+   titles that name the game, then the wiki's own search for the game's name
+   (`list=search`, 50 titles), then the pages those link to. The main page's
+   other pages ("Borderlands (film)") come only after those links. On the
+   real Borderlands Wiki, all of the first 25 pages were Borderlands 4 pages.
+   The read ends at 200 pages, and the job tells the user that the guide is
+   ready.
+2. **Reading more** starts after the brief, as research on the Thinking pool
+   (`AppGuideResearcher`), only when a pool member can take research. It
+   collects the titles that the first read chose but didn't reach and the
+   titles its pages link to that Martlet didn't read (`GuideMore`), the most
+   linked first. A pool member
+   (`GuidePageChooser`) gets 150 titles at a time with the game's name and
+   notes on what the user does now: the screen, sound and activity notes on
+   the context board and the last 4 exchanges (what the user said or wrote,
+   and the replies), at most 3,000 characters. It answers with the numbers of
+   the pages worth reading, best first, or NONE. Martlet reads the chosen
+   pages, then asks about their links, until 300 pages, 25 MB or 20 minutes.
+   It never reads a page that no one chose: a batch the member can't answer
+   is left out, and after 3 failed asks in a row (or 80 asks) reading more
+   ends. The pages join the guide (the research sections stay last), and the
+   brief is written again. The page shows it as *Reading more*, and **Stop
+   reading** ends it and keeps what it read.
+3. The model work goes only to a Thinking pool member as a Research job (the
+   lowest priority), never to the conversation's own route, so it never adds
+   latency or pushes the conversation out of a local model's cache. The ask's
+   instructions are the same every time. The desktop log has counts only
+   (*read more of a wiki in 4 minutes: 1,240 linked titles, 9 of 9 asks
+   answered with what you do now, 180 pages added ...*), never titles,
+   notes or links.
 
 ### Searching a guide (on the reply's path, with no added wait)
 
@@ -237,9 +301,10 @@ The store keeps at most 200 apps, and a guide of at most 25,000 pages and
 100,000 chunks of at most 4,000 characters each, in a file of at most 200 MB.
 These bounds are what one guide needs to work: a guide is loaded whole and its
 index is kept in memory (about 4.5 KB a chunk with its index, so about 440 MB
-at 100,000 chunks), and a search over 100,000 chunks takes about 0.7 ms. That
-holds the whole wiki of most games (a few thousand pages make 10,000 to 30,000
-chunks). When a read has more, the guide keeps the pages read first (the
+at 100,000 chunks), and a search over 100,000 chunks takes about 0.7 ms. A
+guide of 500 pages (200 read first and 300 read more) makes about 3,000 to
+5,000 chunks, far below these bounds; guides read whole before 0.75.0 can be
+much larger, and **Read again** makes them small. When a read has more, the guide keeps the pages read first (the
 best ones on a MediaWiki site), and the read ends. A file that would pass
 200 MB is refused with an `AppGuideTooLargeException` before it replaces the
 earlier file; reading up then keeps four fifths of the pages and tries again.
@@ -436,7 +501,7 @@ the limits above.
   game you started* prompts; without one, the main window reads up by itself.
   The setting is kept as `askWhenStarted` in `library.json`, so a no to asking
   stays a no to reading.
-- **The job** (`guide`: one at a time, 4 an hour, no time limit, *Reading up
+- **The job** (`guide`: one at a time, 4 an hour, a 20 minute time limit, *Reading up
   on*) runs the wiki reader, the chunker and the store; no model is asked. The
   app is on the list from the start. Its result tells the reply how many pages
   it read, or why it failed. Reading up from the page runs in the conversation
@@ -456,7 +521,7 @@ the limits above.
 
 **Latency.** On a guide of 2,000 sections the notes step takes about 0.2 ms
 (median) for a message about the app, and nothing while App guides are off.
-On a whole-wiki-size guide of 25,000 sections it takes about 0.6 ms (median;
+On a guide of 25,000 sections it takes about 0.6 ms (median;
 0.35 ms for an unrelated message), and its index takes about 1.2 s to build,
 off the reply's path. The first search in a new process takes about 3 ms,
 because building an index also loads the search code. While on, the three
@@ -520,6 +585,11 @@ misses the cache (the first one after a start) reads them again.
   turns App guides off with one box.
 - Detection reads only the program's name and whether it fills the screen
   (`ActiveApp`, `PcActivity`), never window titles or the screen.
+- Reading more gives a Thinking pool member (the owner's own pool, as a
+  Research job) the game's name, wiki page titles and notes on what the user
+  does now: the screen, sound and activity notes and the last 4 exchanges.
+  These notes are used only to choose pages and are never kept in the guide.
+  The page says so.
 - Guides hold public web pages only, never the conversation. The desktop log
   notes counts (pages, chunks, bytes, time), never questions, links or text.
 
