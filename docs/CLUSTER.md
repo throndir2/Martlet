@@ -575,6 +575,7 @@ NVIDIA Build and its old key.
 | `updates` | Looking for updates, how often, installing them as soon as they're downloaded, keeping hosts on the newest version | |
 | `model-abilities` | What Thinking models hear (recordings) and see (pictures), as Martlet found out: from the server's own model metadata when a model is chosen, tested or checked, from Companion › Listening › **Test hearing**, or from a model refusing a recording (`model-abilities.json`). Found out once, on any computer, for all of them; a computer checking its own Ollama later replaces it | |
 | `work-sharing` | Devices › [Sharing work](#sharing-work-between-your-computers): which jobs go to another computer when theirs is busy, in what order, which computers never do a job and which are kept for one companion PC (`work-sharing.json`) | |
+| `motion` | Where Martlet makes body motions for VRM characters (`motion.json`): automatically on the first computer that runs the [Motion role](MOTION_HOST.md), on one chosen computer, or off. A computer not paired with the chosen one keeps the choice and says why it can't make motions there | |
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
 | `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 | `reminders.<device ID>` | One per computer, written only by that computer: the [reminders](CONVERSATION.md#reminders) set on it and what it did about anyone's (offered to say one, took it, said it, canceled it), so any companion PC can list, cancel and say them and the one used most recently says a due one once. Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
@@ -587,7 +588,7 @@ With [accounts](ACCOUNTS.md#account-settings), the settings above are split
 into the household's and each person's. The household keeps `thinking`,
 `listening`, `speaking` with their API keys, `thinking-fallback`, `thinking-pool`,
 `character-actions`, `voice-recognition`, `smart-home`, `updates`,
-`model-abilities`, `work-sharing`, `pools` and the `pc.*`, `role.*` and
+`model-abilities`, `work-sharing`, `motion`, `pools` and the `pc.*`, `role.*` and
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,

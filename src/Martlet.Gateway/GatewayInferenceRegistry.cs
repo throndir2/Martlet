@@ -303,6 +303,8 @@ public sealed partial class GatewayInferenceRouteRegistry
                 worker is IPictureGatewayInferenceWorker,
             GatewayInferenceKind.Ocr =>
                 worker is IOcrGatewayInferenceWorker,
+            GatewayInferenceKind.Motion =>
+                worker is IMotionGatewayInferenceWorker,
             _ => false
         }, "worker.invalid");
 

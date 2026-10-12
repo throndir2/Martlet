@@ -1099,6 +1099,45 @@ OpenRouter or NVIDIA Build and Draw a test picture save, install or draw, so
 they need `--allow-ui-effects`; the Creations page shows a picture as
 `CreationPicture`.
 
+### Motion
+
+Martlet's optional `motion` host role makes body motions for VRM characters
+with HY-Motion 1.0 and returns VRMA clips ([Motion host](MOTION_HOST.md)).
+
+`motion_status` (with `dataDirectory`; files only, read-only) returns
+`settings` (motion.json, the shared `motion` setting: `file` state, `place`
+`Automatic`, `Off` or `Host`, `hostId`, `on`, `isDefault`, `describe`),
+`planHosts` (the computers the shared plan, `cluster.json`, last saw running
+the motion role, with their model and whether this PC is paired with them),
+`paired` (this PC's pairings in `hosts.json`, without hosts a friend shares),
+`motionHost` (the computer a motion goes to now, or null), `fixtureVariable`
+(`MARTLET_MOTION_FIXTURE`), `route` (`martlet.gateway.motion.v1`, its path and
+the longest a request may take), `role` (the two models and their graphics
+memory minimums) and `bounds` (the request bounds of `MotionRequest`).
+
+`motion_check` makes one motion from `prompt` (default *A person waves with
+the right hand, then bows.*), `seconds` (1-12, default 3) and `seed` (default 7)
+and returns `ok`, `place`, `where`, `fixture`, `engine`, `model`, `frames`,
+`fps`, `seconds`, `seed`, `bytes`, `sha256`, `vrma` (`specVersion`,
+`humanBones`, `channels`, `keyframes`, `lastKeySeconds` from the clip's glTF),
+`took`, `status` and `freed`. `place`:
+
+- `fixture` (default): the FIXTURE - NOT AI wave maker (`FixtureMotionMaker`).
+- `worker` with `endpoint` (a numeric loopback address, such as
+  `http://127.0.0.1:50090/`): the Motion role's worker itself (`GET /status`,
+  then `POST /generate`). A worker started with `martlet-motion serve --listen
+  0.0.0.0 --random-weights 2` (for example `docker run -p
+  127.0.0.1:50090:50090 martlet-motion:1 serve --listen 0.0.0.0
+  --random-weights 2`) runs HY-Motion's real code with RANDOM weights on the
+  processor (FIXTURE - NOT AI: `fixture` is true and the motion is noise).
+- `host` with `dataDirectory` (and `hostId`, or the computer `motion_status`
+  names): through that paired computer's gateway route, as the desktop asks it
+  (`status`, then `generate`).
+
+`free` unloads the model afterwards (`POST /free`, or the route's `free`).
+`saveDirectory` (absolute) writes `motion.vrma` there. An invalid prompt or
+seconds is a tool error. A real motion needs an NVIDIA GPU with 24 GB or more.
+
 ### Reminders
 
 On a PC that keeps reminders (any with a data folder), every reply on a route
@@ -3448,7 +3487,15 @@ after it stopped at `up -d` (as a failed build or download would, with `.env`
 already naming `beta`) still stops `alpha` before `beta` starts
 (`variant-retry-stops-the-other`); and that `alpha` refuses
 `beta`'s model, then runs on the CPU with its suggested model on this GPU-less
-fixture (`variant-gpu-and-suggestion`). With `uname -m` answering `aarch64`
+fixture (`variant-gpu-and-suggestion`). With a fake 8192 MiB NVIDIA card (fake
+`nvidia-smi` and `nvidia-ctk`), a fixture role whose two models need at least
+4000 and 26000 MiB (`min_vram=<MiB>|<why>` in each model's section, as the
+`motion` role's HY-Motion models do) is listed by `describe` with
+`role.min_vram_when=` lines, and with `role.unavailable=` once its smallest
+model needs more than the card has (`min-vram-describe`); an add of the 26000
+MiB model stops with *needs an NVIDIA graphics card with at least 26000 MiB*
+before its terms or any compose call, while the 4000 MiB model goes on to its
+terms and `up -d` (`min-vram-refuses-before-terms`). With `uname -m` answering `aarch64`
 (a shim), an ARM64 host refuses an add of a role marked `requires=x86_64` (the
 NVIDIA CUDA roles) with *built only for 64-bit Intel or AMD (x86_64)* and
 `describe` prints `role.unavailable=` (`arm64-refuses-x86-only-role`), and a role

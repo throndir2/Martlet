@@ -213,6 +213,8 @@ public static class PlatformCatalog
     private static readonly PlatformRequirement Nvidia4 = new() { NvidiaGb = 4, X64 = true };
     private static readonly PlatformRequirement Nvidia6 = new() { NvidiaGb = 6, X64 = true };
     private static readonly PlatformRequirement Nvidia8 = new() { NvidiaGb = 8, X64 = true };
+    // HY-Motion 1.0 Lite's minimum (Tencent's README); the standard model needs 26 GB.
+    private static readonly PlatformRequirement Nvidia24 = new() { NvidiaGb = 24, X64 = true };
     // A role whose image pins x86_64 CUDA wheels but also runs on the CPU (Chatterbox Nano).
     private static readonly PlatformRequirement X64Only = new() { X64 = true };
     private static readonly PlatformRequirement AppleSilicon = new() { AppleSilicon = true };
@@ -409,6 +411,13 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "pictures need an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "pictures need an NVIDIA GPU; phones and tablets have none")
         ]),
+        new("motion", Feature, "Motion: HY-Motion 1.0 makes body motions for VRM characters (optional)",
+        [
+            Works(Linux, Host, "", Nvidia24), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia24),
+            Impossible(Mac, Host, "the motion worker is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "motion needs an NVIDIA GPU with 24 GB+; iPhones and iPads have none"),
+            Impossible(Android, Host, "motion needs an NVIDIA GPU with 24 GB+; phones and tablets have none")
+        ]),
         new("ocr", Feature, "Reading: RapidOCR or PP-OCRv5 reads the text on your screen (on the processor, or PP-OCRv5 server on an NVIDIA card)",
         [
             Works(Linux, Host, "on the CPU (x86_64 or ARM64); no graphics card needed"),
@@ -544,6 +553,7 @@ public static class PlatformCatalog
         "dia" => "dia",
         "singing" => "singing",
         "pictures" => "pictures",
+        "motion" => "motion",
         "ocr" => "ocr",
         "audio2face" => "audio2face",
         _ => null

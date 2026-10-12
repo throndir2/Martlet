@@ -296,6 +296,7 @@ public partial class MainWindow
         UpdatesKey => "app updates",
         ModelAbilitiesKey => "what Thinking models hear and see",
         WorkSharingSettings.SharedKey => "sharing work between your computers",
+        Martlet.Core.Motion.MotionSettings.SharedKey => "where Martlet makes motions",
         Martlet.Core.Planning.RecommendationPreferences.SharedKey => "your recommended setup preferences",
         _ when SharedPc.IsKey(key) || SharedPc.IsRoleKey(key) => "whether this PC is a companion or a host",
         _ => key
@@ -701,6 +702,18 @@ public partial class MainWindow
             WorkSharingRoster.Forget();
             if (DevicesPage.IsVisible) RenderWorkSharing();
             return Task.FromResult(SharedApply.Done);
+        });
+        // Where Martlet makes motions (motion.json: automatic, off or one computer's Motion role), the same on all computers.
+        yield return new DelegateSection(Martlet.Core.Motion.MotionSettings.SharedKey, "Motion", _ =>
+        {
+            var path = Path.Combine(directory, Martlet.Core.Motion.MotionSettings.FileName);
+            var saved = Martlet.Core.Motion.MotionSettings.Load(directory);
+            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
+        }, (setting, _) =>
+        {
+            if (Martlet.Core.Motion.MotionSettings.Parse(setting.Value) is not { } shared)
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+            return Task.FromResult(shared.Save(directory) ? SharedApply.Done : SharedApply.Waiting("It couldn't be saved on this PC."));
         });
         // The recommendation preferences (Recommended setup's Your preferences, Settings): the reply quality, online services,
         // hearing, the host card share and the two model choices are the same on all computers; each computer's games answer

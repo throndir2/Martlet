@@ -61,6 +61,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 "singing" => new Martlet.Gateway.Singing.SongRelayWorker(role.Endpoint, role.Model),
                 "pictures" => new Martlet.Gateway.Pictures.PictureRelayWorker(role.Endpoint, role.Model),
                 "ocr" => new Martlet.Gateway.Ocr.OcrRelayWorker(role.Endpoint, role.Model),
+                "motion" => new Martlet.Gateway.Motion.MotionRelayWorker(role.Endpoint, role.Model),
                 _ => throw new HostInputException()
             };
             IReadOnlyList<string> gpus = role.Gpus ??

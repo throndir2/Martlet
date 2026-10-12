@@ -99,6 +99,8 @@ internal static class GatewayInferenceJson
                     ParsePicture(fields["payload"], route),
                 GatewayInferenceKind.Ocr =>
                     ParseOcr(fields["payload"], route),
+                GatewayInferenceKind.Motion =>
+                    ParseMotion(fields["payload"], route),
                 _ => throw new GatewayProtocolException("request.invalid")
             };
             return new(
@@ -836,6 +838,38 @@ internal static class GatewayInferenceJson
                     image[3] == 0x47 && image[4] == 0x0D && image[5] == 0x0A && image[6] == 0x1A && image[7] == 0x0A,
                 _ => false
             };
+    }
+
+    // One operation on the host's HY-Motion relay. A generate carries only an English prompt, its length in seconds and an
+    // optional seed; no path, URL or model choice is accepted (the host serves the model its role installed).
+    private static GatewayMotionPayload ParseMotion(JsonElement element, GatewayInferenceRoute route)
+    {
+        GatewayRules.Require(element.ValueKind == JsonValueKind.Object, "request.invalid");
+        var operation = element.TryGetProperty("operation", out var operationElement) &&
+            operationElement.ValueKind == JsonValueKind.String ? operationElement.GetString() : null;
+        switch (operation)
+        {
+            case "status":
+                _ = Object(element, ["operation"], []);
+                return new(GatewayMotionOperation.Status);
+            case "free":
+                _ = Object(element, ["operation"], []);
+                return new(GatewayMotionOperation.Free);
+            case "generate":
+            {
+                var fields = Object(element, ["operation", "prompt", "seconds"], ["seed"]);
+                var prompt = Text(fields, "prompt", route.MaximumInputBytes);
+                GatewayRules.Require(StrictUtf8.GetByteCount(prompt) <= route.MaximumInputBytes && prompt.Trim().Length >= 3,
+                    "request.invalid");
+                var seconds = Number(fields, "seconds");
+                GatewayRules.Require(double.IsFinite(seconds) && seconds >= GatewayInferenceRoute.MotionMinimumSeconds &&
+                    seconds <= GatewayInferenceRoute.MotionMaximumSeconds, "request.invalid");
+                long? seed = fields.ContainsKey("seed") ? Integer(fields, "seed", 0, GatewayInferenceRoute.MotionMaximumSeed) : null;
+                return new(GatewayMotionOperation.Generate, prompt, seconds, seed);
+            }
+            default:
+                throw new GatewayProtocolException("request.invalid");
+        }
     }
 
     // A mono PCM16 WAV within the reference store's bounds (1-30 s, 4 MB); whether the engine can clone it is checked apart.
