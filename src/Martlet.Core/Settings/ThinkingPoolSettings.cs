@@ -4,8 +4,9 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
-/// <summary>Companion › Thinking pool, on this PC (thinking-pool.json in the data folder; never shared, because which machine
-/// is free depends on the computer you talk to). The pool is one shared set of Thinking models for background work: thinking
+/// <summary>Companion › Thinking pool, on this PC (thinking-pool.json in the data folder). Its cloud providers and servers on
+/// your network, with their keys and choices, are the same on all your computers (<see cref="SharedThinkingPool"/>); paired
+/// computers join each PC's pool by themselves and models in Ollama on this PC stay this PC's own. The pool is one shared set of Thinking models for background work: thinking
 /// longer, research, screen and sound summaries, judges and helpers. Each member is one place (<see cref="DeepThinkingSettings"/>,
 /// a single place without its own pool): a paired Martlet host with a Thinking model, which joins by itself
 /// (<see cref="ThinkingPoolAutoJoin"/>; its Thinking pool role, or its Ollama) unless the owner took it out

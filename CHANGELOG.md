@@ -11,14 +11,20 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - **Martlet learns more about your game**: after it reads a game's wiki, a Thinking pool helper writes a short brief (what the game is, how it plays, early tips and common mistakes) that Martlet keeps in mind when you talk about the game. With screen digests on, Martlet also notices where you are in the game, and when its guide has little about that place, it looks it up on wikis, Reddit search results and the web in the background. Martlet can also refresh the brief when you ask. ([#809](https://github.com/throndir2/Martlet/pull/809))
+- **Share your hosts with a friend through one link**: Devices › Friends › **Make a share link** makes a link for a friend that covers the hosts you choose, or all of them (also the ones you add later). Your friend clicks it, or pastes it into their Martlet, and their Martlet can use those hosts' engines. They never get your API keys, settings or memories, your own work always comes first, and **Stop link** ends it on every host at once. ([#807](https://github.com/throndir2/Martlet/pull/807))
+- **Martlet can open a port on your router**: Outside access for this PC's host service can ask your router to forward a port (UPnP), so a friend or your laptop can reach it from outside your home. Martlet first checks that your internet address can be reached, and tells you to use Tailscale when your internet provider shares it with other homes. ([#807](https://github.com/throndir2/Martlet/pull/807))
 
 ### Changed
+
+- **Notification heads-ups that know what's going on**: when a notification pops up while Martlet watches your screen, it now reads the whole notification and words its heads-up around it ("Sam wants to know if you're still up for dinner"). If it looks personal or could get someone in trouble, Martlet says nothing about what it says, at most who it's from. ([#808](https://github.com/throndir2/Martlet/pull/808))
 
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))
 - **A greeting that knows you and stays in character**: Martlet's hello when it starts now calls you by your name when your account, your voice on People or Windows has a real name (never a user name or handle). It can also mention a weekend or a holiday, your newer Telegram or WhatsApp chat, a reminder it missed while it wasn't running, or a Martlet update. Your character greets you only the way it would, and one that wouldn't greet you stays quiet. ([#801](https://github.com/throndir2/Martlet/pull/801))
 
 ### Fixed
 
+- **Martlet sings when its Thinking model runs on one of your computers**: ask it for a song and it says it'll write one, makes it in the background and tells you when it's ready, then sings it when you say yes. Before, a Thinking model on a paired computer had no way to start a song. ([#806](https://github.com/throndir2/Martlet/pull/806))
+- Cloud models you add to Companion › Thinking pool (such as NVIDIA Build or OpenRouter models), with their API keys and choices, now reach all your computers, including a companion PC you set up later. Paired computers and models in Ollama on a PC stay that PC's own. ([#804](https://github.com/throndir2/Martlet/pull/804))
 - In App guides › *Add an app*, the labels line up with the rest of the card, and the grey hint in each empty box starts where your typing starts. ([#803](https://github.com/throndir2/Martlet/pull/803))
 
 ## [0.72.0] - 2026-10-11

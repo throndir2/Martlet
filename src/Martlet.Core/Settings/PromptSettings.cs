@@ -88,6 +88,7 @@ public static class PromptCatalog
     public const string CutOff = "cut_off";
     public const string AdultContent = "adult_content";
     public const string Singing = "singing";
+    public const string SingingTags = "singing_tags";
     public const string WhileSinging = "while_singing";
     public const string SongLyrics = "song_lyrics";
     public const string WebResearch = "web_research";
@@ -163,6 +164,14 @@ public static class PromptCatalog
         "when the message holds none of their words and nothing in it is worth saying anything about, reply with exactly " +
         "[{silent}].";
 
+    /// <summary>How a reply may use a notification it sees: its content shapes the heads-up, unless it looks personal.</summary>
+    public const string NotificationContentRule =
+        "For a message or notification, read all of it to understand it and let it shape how you announce it, like \"Sam " +
+        "wants to know if you're still up for dinner\" or \"Your build just failed\"; say it in your own words, never word " +
+        "for word. If it looks personal or private, or could embarrass them or get anyone in trouble if someone nearby heard " +
+        "it (romance, health, money, family or work trouble, secrets, codes or passwords), say nothing about what it says: at " +
+        "most who or which app it is from, like \"Sam just messaged you\".";
+
     public const string DefaultDescribePictureInstructions =
         "You are the eyes of a companion app that talks with the user but can't see. Describe the attached picture of what the " +
         "user sees right now, for the companion. Start with one short line, at most 15 words, that says what the user is doing " +
@@ -170,7 +179,8 @@ public static class PromptCatalog
         "the message names (the game, video, stream, document, code or chat), and the names, numbers and short text on screen " +
         "that show what is going on. Use what was said lately to pick what matters. Skip the UI, menus, icons, the taskbar and " +
         "the user's setup unless they are what matters. Never copy private details (messages, emails, names in them, account or " +
-        "phone numbers, passwords); for a notification, say only who or which app it is from. For a camera picture, never try " +
+        "phone numbers, passwords). For a notification, say who or which app it is from and, in a few words, what it is " +
+        "about, unless it looks personal or could get someone in trouble: then say only that it is personal. For a camera picture, never try " +
         "to identify anyone, never guess anyone's age, health or identity, and don't describe bodies, looks or clothes. Plain " +
         "text only, no markdown, at most 120 words.";
 
@@ -384,6 +394,17 @@ public static class PromptCatalog
         "play_song's from: start, a section (chorus, verse 2), line:N, a time (1:05) or resume (the line where you stopped). Say at " +
         "most a few words before you sing. While you sing, answer only when talked to, otherwise reply [{silent}]; when asked to " +
         "stop, call stop_singing. A note tells you where you stopped and why.";
+
+    public const string DefaultSingingTagsInstructions =
+        "You can sing: writing [sing: what the song is about] in a reply makes a song in your own voice in the background (a few " +
+        "minutes). When the user asks you to sing or make a song, say in a few words in character that you'll work out the words " +
+        "and the beat, and end that reply with the tag, like: Give me a few minutes to write it! [sing: a cheerful song about " +
+        "the user's cat Biscuit]. If they didn't say what it's about, choose something fitting yourself; don't ask. Only the tag " +
+        "makes the song: never say you'll sing without writing it, and don't write lyrics or sing in your reply. A note tells you " +
+        "when it's ready, with its ID and map; offer it, and only once they say yes write [play_song: ID], or [play_song: ID from " +
+        "chorus] (from: start, a section, line:N, a time like 1:05 or resume). Where a note says play_song or stop_singing, write " +
+        "these tags instead. Say at most a few words before you sing. While you sing, answer only when talked to, otherwise reply " +
+        "[{silent}]; when asked to stop, write [stop_singing]. The tags are never shown or spoken.";
 
     public const string DefaultWhileSingingInstructions =
         "(You are singing \"{song}\" right now ({where}) and the user said this while you sang. The song keeps going: reply with " +
@@ -647,7 +668,7 @@ public static class PromptCatalog
             "Goes in the notes of a reply that takes the look Martlet was about to take at something that wants your attention " +
             "(a notification popped up or a taskbar button flashes while it watches your whole screen). {what} says which.",
             "On the picture with this message, {what}. If it is a message, call or reminder the user would want to know about, " +
-            "give a quick heads-up in the same reply: who or which app it is from, never the message itself.",
+            "give a quick heads-up in the same reply. " + NotificationContentRule,
             ["what"]),
         new(HeardVoice, ConversationGroup, "Your recorded voice",
             "Added to replies when your recording is sent with the transcript (Companion › Listening › Let Thinking hear my voice).",
@@ -754,6 +775,13 @@ public static class PromptCatalog
             "Singing and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from " +
             "reply to reply. {silent} is the word the model answers to stay quiet.",
             DefaultSingingInstructions, ["silent"]),
+        new(SingingTags, ConversationGroup, "Singing without tools",
+            "Added to every reply while singing is set up in Companion › Voice › Singing and the Thinking route does no function " +
+            "calling (a model on one of your computers, or a model that refused tools). The reply writes [sing: ...], " +
+            "[play_song: ...] and [stop_singing] in place of the song tools; they are never shown or spoken. It stays the same " +
+            "from reply to reply. {silent} is the word the model answers to stay quiet. Empty it and Martlet doesn't sing on " +
+            "such a route.",
+            DefaultSingingTagsInstructions, ["silent"]),
         new(WebResearch, ConversationGroup, "Web research",
             "Added to every reply offered research (while Companion › Deep thinking › Web research is on, with Thinking longer, " +
             "and Deep thinking can think), after the Thinking longer prompt. It stays the same from reply to reply.",
@@ -894,8 +922,8 @@ public static class PromptCatalog
             "server or channel lists and anything else that is just there are never worth a remark. If you can't tie a remark to " +
             "what they are doing or what just happened, reply [{silent}].\n" +
             "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
-            "and never ask them to answer. For a message or notification, say only who or which app it is from, like \"Sam just messaged " +
-            "you\"; never read out the message itself or other private details you can see (messages, emails, numbers).\n" +
+            "and never ask them to answer. " + NotificationContentRule + " Never read out other private details you can see " +
+            "(messages, emails, numbers).\n" +
             "If you do speak: one short, natural spoken sentence of at most 20 words, plain text, no markdown, lists or emoji.",
             ["silent"]),
         new(CommentaryCamera, VisionGroup, "Camera look instructions",
@@ -945,7 +973,7 @@ public static class PromptCatalog
             "while it watches your whole screen. {what} says which; {app} is the program in front (as in the Screen glance " +
             "message); {title} is the active window's title. What Martlet said lately goes in its notes (What you said lately).",
             "(Screen glance: {what}. Active app: {app}. Active window: \"{title}\". If it is a message, call or reminder " +
-            "they would want to know about, give a quick heads-up: who or which app it is from, never the message itself. " +
+            "they would want to know about, give a quick heads-up. " + NotificationContentRule + " " +
             "Otherwise reply [{silent}].)",
             ["what", "app", "title", "silent"]),
         new(GlanceLook, VisionGroup, "Where the character looks",

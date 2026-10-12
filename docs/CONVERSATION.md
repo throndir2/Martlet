@@ -465,9 +465,14 @@ RUN**.
 
 ## The Thinking pool
 
-The **Thinking pool** (Companion › Thinking pool; this PC's own choice,
-`thinking-pool.json` in the data folder, never shared) is one shared set of
-Thinking models for background work. It replaces the older *Deep thinking*
+The **Thinking pool** (Companion › Thinking pool, `thinking-pool.json` in the
+data folder) is one shared set of Thinking models for background work. Its
+cloud providers and servers on your network (an NVIDIA Build or OpenRouter
+model, for example), with their API keys and their choices, are the same on all
+your computers ([shared setting `thinking-pool`](CLUSTER.md#one-martlet-on-every-computer)):
+add one on any computer and the others get it at their next settings sync.
+Paired computers join each PC's pool by themselves, and models in Ollama on
+this PC stay this PC's own. It replaces the older *Deep thinking*
 places. The live conversation keeps its own Thinking route and prompt cache;
 pool jobs never use that route, except the empty-pool fallback below.
 
@@ -1051,9 +1056,9 @@ spoken. Its message continues a reply's request (Companion › Prompts ›
 *Thinking longer: the task*); the picture or recording the message went with
 isn't sent again.
 
-**Where it thinks** (the machine list on Companion › Thinking pool; this PC's own choice,
-`thinking-pool.json` in the data folder, never shared, because which machine
-is free to think depends on the computer you talk to). A think runs on a pool
+**Where it thinks** (the machine list on Companion › Thinking pool,
+`thinking-pool.json` in the data folder; its cloud providers and servers are
+the same on all your computers, see [The Thinking pool](#the-thinking-pool)). A think runs on a pool
 member ticked for *Long jobs*:
 
 - *The conversation's own model*: only when no member takes long jobs and *Do
@@ -2320,6 +2325,22 @@ function calling; replies then always get the same three tools after Martlet's
 other own tools (`think_longer` and `cancel_thinking` while Deep thinking can
 think), with the *Singing* prompt (Companion › Prompts), so the start of every
 request stays the same. Without singing set up, requests are exactly as before.
+
+**Singing without tools.** Where the Thinking route does no function calling (a
+model on a paired computer through its gateway, or a model that rejected tools),
+replies sing through control tags in place of the three tools, with the
+*Singing without tools* prompt (Companion › Prompts). The reply says in a few
+words that it will write the song and ends with `[sing: what it's about]`; it
+writes `[play_song: ID]` or `[play_song: ID from chorus]` once the user says yes
+to a ready song, and `[stop_singing]` to stop. The tags are never shown or
+spoken (`SongTags`, offered with the other control tags). Martlet does what they
+ask once the reply is done, exactly as the tools would, so the time to the first
+word doesn't change. The conversation keeps the tags after the reply's words, so
+later replies see that a song was started. A song that can't start (no Deep
+thinking to write the words, busy, the hourly limit) is brought up by Martlet on
+its own. The mode depends only on settings and on whether the model rejected
+tools, so the start of every request stays the same. MCP's `songs_status` shows
+it under `withoutTools`.
 
 **`sing_song(about, lyrics?, style?, duration?)`** starts a `song` job (one at a
 time, 4 an hour, 15 minutes at most; `Offer`, *Making a song*) and returns at

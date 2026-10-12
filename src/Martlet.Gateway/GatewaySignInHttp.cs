@@ -33,6 +33,8 @@ internal sealed partial class GatewayHttpApplication
     internal const string SignInCompletePath = "/martlet/v1/signin/complete";
     internal const string SignInProvePath = "/martlet/v1/signin/prove";
     internal const string SignInSettingsPath = "/martlet/v1/signin/settings";
+    /// <summary>A friend's computer that signed in with a share link reads which of the owner's hosts the link covers.</summary>
+    internal const string SignInSharedPath = "/martlet/v1/signin/shared";
     internal const string SignInRouteClass = "signin";
     private const int MaximumSignInRequestBytes = 16_384;
 
@@ -59,10 +61,15 @@ internal sealed partial class GatewayHttpApplication
     }
 
     private static bool IsSignInTarget(string rawTarget) =>
-        rawTarget is SignInPath or SignInBeginPath or SignInCompletePath or SignInProvePath or SignInSettingsPath;
+        rawTarget is SignInPath or SignInBeginPath or SignInCompletePath or SignInProvePath or SignInSettingsPath or SignInSharedPath;
 
     private async ValueTask InvokeSignInAsync(HttpContext context, string rawTarget)
     {
+        if (rawTarget == SignInSharedPath)
+        {
+            await InvokeSignInSharedAsync(context).ConfigureAwait(false);
+            return;
+        }
         if (rawTarget == SignInSettingsPath)
         {
             await InvokeSignInSettingsAsync(context).ConfigureAwait(false);
@@ -81,7 +88,7 @@ internal sealed partial class GatewayHttpApplication
             await WriteJsonAsync(context, StatusCodes.Status200OK, new SignInProvidersDocument
             {
                 ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, Providers = providers,
-                MartletSignIn = SignIn.MartletAvailable()
+                MartletSignIn = SignIn.MartletAvailable(), ShareLinks = SignIn.LinksAvailable()
             }).ConfigureAwait(false);
             return;
         }
@@ -135,8 +142,35 @@ internal sealed partial class GatewayHttpApplication
     }
 
     private static string? Claimed(JsonElement proof) =>
-        proof.ValueKind == JsonValueKind.Object && proof.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.String
-            ? "owner:" + user.GetString()?.Trim().ToLowerInvariant() : null;
+        proof.ValueKind != JsonValueKind.Object ? null
+        : proof.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.String ? "owner:" + user.GetString()?.Trim().ToLowerInvariant()
+        // Wrong secrets for one share link count toward its lockout from every address.
+        : proof.TryGetProperty("link", out var link) && link.ValueKind == JsonValueKind.String && link.GetString() is { Length: <= 32 } id
+            ? GatewaySignInService.LinkProvider + ":" + id
+            : null;
+
+    /// <summary>For a friend's computer that signed in with a share link: the hosts of the owner's network the link covers
+    /// (ID, name, home origin, TLS pin and outside addresses, from the roster this host accepted), so it can sign in to hosts
+    /// added after the link was made. Nothing else of the owner's.</summary>
+    private async ValueTask InvokeSignInSharedAsync(HttpContext context)
+    {
+        GatewayRules.Require(context.Request.Method == HttpMethods.Get, "request.invalid");
+        EnsureEmptyRequest(context.Request);
+        var caller = authenticator.Authenticate(context.Request, friends: true);
+        GatewayRules.Require(caller.Access == GatewayAccess.Friend, "request.invalid");
+        var link = SignIn.LinkOf(caller.CredentialId);
+        var roster = Network.State == "bound" ? Network.Roster : null;
+        var hosts = link is null || roster is null ? [] : roster.ActiveHosts
+            .Where(h => h.Origin is not null && h.Spki is not null && (link.Hosts is null || link.Hosts.Contains(h.Id, StringComparer.Ordinal)))
+            .Take(Martlet.Core.Network.ShareLink.MaximumHosts * 4)
+            .Select(h => new SharedHostDocument { HostId = h.Id, Name = h.Name, Origin = h.Origin!, Spki = h.Spki!, Addresses = h.Addresses ?? [] })
+            .ToArray();
+        await WriteJsonAsync(context, StatusCodes.Status200OK, new SharedHostsDocument
+        {
+            ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, LinkId = link?.Id, Label = link?.Label,
+            NetworkId = roster?.NetworkId, AllHosts = link is { Hosts: null }, Hosts = hosts
+        }).ConfigureAwait(false);
+    }
 
     /// <summary>A Prove sign-in by a paired computer that is already in (not a friend's): verifies the attempt's proof and
     /// answers the host's signed statement that the account proved itself on that computer.</summary>
@@ -275,6 +309,8 @@ internal sealed partial class GatewayHttpApplication
             {
                 DeviceId = r.DeviceId, Provider = r.Identity.Provider, Subject = r.Identity.Subject, Label = r.Identity.Label, EnrolledAt = r.At
             }).ToArray(),
+            Links = current.Links.Select(l => new SignInLinkDocument { Id = l.Id, Label = l.Label, AddedAt = l.AddedAt, Hosts = l.Hosts }).ToArray(),
+            RemovedLinks = current.RemovedLinks.ToArray(),
             RecoveryCodes = codes
         }).ConfigureAwait(false);
     }
@@ -358,6 +394,39 @@ internal sealed partial class GatewayHttpApplication
         public required SignInProviderDocument[] Providers { get; init; }
         /// <summary>Whether household accounts sign in here with a Martlet password (provider "martlet", not in the list).</summary>
         public bool MartletSignIn { get; init; }
+        /// <summary>Whether share links sign in here (provider "link", not in the list).</summary>
+        public bool ShareLinks { get; init; }
+    }
+
+    private sealed record SharedHostsDocument
+    {
+        public required GatewayProtocolVersion ProtocolVersion { get; init; }
+        public required string HostId { get; init; }
+        /// <summary>The share link the caller signed in with (null: it signed in another way, and gets no hosts).</summary>
+        public string? LinkId { get; init; }
+        public string? Label { get; init; }
+        public string? NetworkId { get; init; }
+        /// <summary>The link covers every host of the owner's network, also those added later.</summary>
+        public bool AllHosts { get; init; }
+        public required SharedHostDocument[] Hosts { get; init; }
+    }
+
+    private sealed record SharedHostDocument
+    {
+        public required string HostId { get; init; }
+        public required string Name { get; init; }
+        public required string Origin { get; init; }
+        public required string Spki { get; init; }
+        public required IReadOnlyList<string> Addresses { get; init; }
+    }
+
+    private sealed record SignInLinkDocument
+    {
+        public required string Id { get; init; }
+        public string? Label { get; init; }
+        public DateTimeOffset AddedAt { get; init; }
+        /// <summary>The hosts the link covers; absent for all of the owner's hosts.</summary>
+        public IReadOnlyList<string>? Hosts { get; init; }
     }
 
     private sealed record SignInProviderDocument
@@ -427,6 +496,10 @@ internal sealed partial class GatewayHttpApplication
         /// <summary>Computers whose sign-in is no longer allowed and that your member desktops still have to remove from the
         /// network (they do on their next sync); <c>enrolled_at</c> is when the sign-in was removed.</summary>
         public required SignInEnrolledDocument[] RemovedFromNetwork { get; init; }
+        /// <summary>Share links kept here (never a verifier); present on hosts that take share links.</summary>
+        public required SignInLinkDocument[] Links { get; init; }
+        /// <summary>IDs of share links the owner stopped; the host refuses to add them again (signin.link_removed).</summary>
+        public required string[] RemovedLinks { get; init; }
         /// <summary>Only in the answer to the change that made them; shown once to the owner, kept here only as verifiers.</summary>
         public IReadOnlyList<string>? RecoveryCodes { get; init; }
     }

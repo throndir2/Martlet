@@ -70,7 +70,8 @@ public sealed record SharedRoute
 public sealed class AppSettingsSections
 {
     public const string Thinking = "thinking", Listening = "listening", Speaking = "speaking", ThinkingFallback = "thinking-fallback",
-        Companion = "companion", Replies = "replies", Prompts = "prompts", Memory = "memory", Lorebooks = "lorebooks";
+        Companion = "companion", Replies = "replies", Prompts = "prompts", Memory = "memory", Lorebooks = "lorebooks",
+        ThinkingPool = SharedThinkingPool.Key;
 
     internal static readonly JsonSerializerOptions Json = CreateJson();
     private static readonly JsonSerializerOptions LoreJson = CreateLoreJson();
@@ -103,6 +104,7 @@ public sealed class AppSettingsSections
             new Section(Listening, "Listening", t => ReadRouteAsync(SetupRole.Stt, t), (s, k, t) => ApplyRouteAsync(SetupRole.Stt, "Listening", s, k, t)),
             new Section(Speaking, "Speaking", t => ReadRouteAsync(SetupRole.Tts, t), (s, k, t) => ApplyRouteAsync(SetupRole.Tts, "Speaking", s, k, t)),
             new Section(ThinkingFallback, "Thinking fallback", ReadFallbackAsync, ApplyFallbackAsync),
+            new Section(ThinkingPool, "Thinking pool cloud models", ReadThinkingPoolAsync, ApplyThinkingPoolAsync),
             new Section(Companion, "Personality", ReadCompanionAsync, ApplyCompanionAsync, () => Write(CompanionSettings.Create())),
             new Section(Replies, "Replies", ReadRepliesAsync, ApplyRepliesAsync, () => "null"),
             new Section(Prompts, "Prompts", ReadPromptsAsync, ApplyPromptsAsync, () => "null"),
@@ -318,6 +320,90 @@ public sealed class AppSettingsSections
         if (kept.Settings?.Setup is { } latest)
             ids.IntersectWith(latest.Routes.Select(r => r.CredentialId).Concat(latest.PendingRemovals.Select(p => (Guid?)p.CredentialId)).OfType<Guid>());
         SaveSyncedKeys(ids);
+    }
+
+    // ---------- Thinking pool: cloud providers and servers ----------
+
+    private async Task<SharedLocal?> ReadThinkingPoolAsync(CancellationToken token)
+    {
+        var (pool, state) = ThinkingPoolSettings.Read(dataDirectory, save: false);
+        if (state == "unreadable") return null;
+        var path = Path.Combine(dataDirectory, ThinkingPoolSettings.FileName);
+        var changed = FileTime(path);
+        if (!pool.All.Any(ThinkingPoolShare.IsShared)) return new(ThinkingPoolShare.Write(new()), null, true, changed);
+        var profile = Guid.Empty;
+        if (pool.All.Any(m => ThinkingPoolShare.IsShared(m) && m.CredentialId is not null))
+        {
+            if ((await LoadAsync(token).ConfigureAwait(false)).Settings is not { } settings) return null;
+            profile = settings.Profile.Id;
+        }
+        var (shared, own) = ThinkingPoolShare.From(pool, member =>
+        {
+            var binding = member.Binding(profile, member.CredentialId!.Value);
+            var key = ReadKey(binding);
+            if (key is not null && (vault as ICredentialTimes)?.WrittenAt(binding) is { } written && (changed is null || written > changed))
+                changed = written;
+            return key;
+        });
+        return new(ThinkingPoolShare.Write(shared), ThinkingPoolShare.Bundle(own), false, changed);
+    }
+
+    /// <summary>Makes this PC's Thinking pool use the shared cloud providers and servers with their keys. A key this PC already
+    /// holds for the same address is used again; a new one is saved in the credential store first and removed again if the pool
+    /// can't be saved. A key no member uses any more is removed after.</summary>
+    private async Task<SharedApply> ApplyThinkingPoolAsync(SharedSetting setting, string? secret, CancellationToken token)
+    {
+        if (ThinkingPoolShare.Parse(setting.Value) is not { } shared)
+            return SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it.");
+        var bundle = ThinkingPoolShare.Unbundle(secret);
+        if (shared.Members.Any(m => m.Key is { } index && index >= bundle.Count))
+            return SharedApply.Waiting("Its API keys haven't reached this PC yet.");
+        var (local, state) = ThinkingPoolSettings.Read(dataDirectory);
+        if (state == "unreadable")
+            return SharedApply.Waiting("This PC's Thinking pool file can't be read. Open Companion › Thinking pool to set it up again.");
+        var profile = Guid.Empty;
+        if (bundle.Count > 0 || local.All.Any(m => ThinkingPoolShare.IsShared(m) && m.CredentialId is not null))
+        {
+            if ((await LoadAsync(token).ConfigureAwait(false)).Settings is not { } settings)
+                return SharedApply.Waiting("Set up Martlet on this PC first.");
+            profile = settings.Profile.Id;
+        }
+        var written = new List<CredentialBinding>();
+        var made = new Dictionary<(string Origin, int Key), Guid>();
+        var saved = false;
+        try
+        {
+            Guid? Credential(SharedPoolEndpoint member)
+            {
+                if (member.Key is not { } index) return null;
+                var key = bundle[index];
+                foreach (var own in local.All.Where(m => m.Place == DeepThinkingPlace.Endpoint && m.Origin == member.Origin && m.CredentialId is not null))
+                    if (KeyIs(own.Binding(profile, own.CredentialId!.Value), key)) return own.CredentialId;
+                if (made.TryGetValue((member.Origin, index), out var again)) return again;
+                var id = Guid.NewGuid();
+                var binding = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = member.Origin }.Binding(profile, id);
+                using (var lease = new SecretLease(key))
+                    if (vault.Write(binding, lease) is var error && error != CredentialError.None)
+                        throw new ContractException(ErrorCode.InvalidContract, CredentialMessages.Describe(error));
+                written.Add(binding);
+                keys[id] = key;
+                made[(member.Origin, index)] = id;
+                return id;
+            }
+            var next = ThinkingPoolShare.Apply(local, shared, Credential, DateTimeOffset.Now);
+            if (!next.Save(dataDirectory)) return SharedApply.Waiting("This PC's Thinking pool couldn't be saved. Check access to Martlet's data folder.");
+            saved = true;
+            foreach (var old in local.All.Where(m => m.Place == DeepThinkingPlace.Endpoint && m.CredentialId is { } id && next.All.All(n => n.CredentialId != id)))
+            {
+                vault.Delete(old.Binding(profile, old.CredentialId!.Value));
+                keys.Remove(old.CredentialId!.Value);
+            }
+            return SharedApply.Done;
+        }
+        finally
+        {
+            if (!saved) foreach (var binding in written) vault.Delete(binding);
+        }
     }
 
     // ---------- Thinking fallback ----------

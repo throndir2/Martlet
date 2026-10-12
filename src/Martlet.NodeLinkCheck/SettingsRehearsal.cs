@@ -32,6 +32,7 @@ internal static class SettingsRehearsal
     private const string RotatedKey = "sk-or-v1-lab-desktop-a-rotated-fedcba987654";
     private const string NvidiaKey = "nvapi-lab-desktop-b-0123456789";
     private const string FallbackKey = "sk-lab-fallback-key-0123456789";
+    private const string PoolKey = "nvapi-lab-thinking-pool-key-0123456789";
     private const string Parakeet = LocalSpeechSetup.ParakeetV2EnglishModelId;
     private static readonly Guid SamAccount = Guid.Parse("5a3f0c9e-8b7d-4e21-a6c3-b2f1d0e9a8b7");
     private static readonly Guid AlexAccount = Guid.Parse("0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0");
@@ -295,6 +296,27 @@ internal static class SettingsRehearsal
                     $"B's fallback: {on?.Origin} with its key: {had}; after A turned it off: {(off is null ? "off" : off.Origin)}, key kept: {b.Vault.Has(FallbackKey)}");
             });
 
+            await Run("NVIDIA Build models in the Thinking pool follow with their key, beside B's own model; removing them removes B's copy of the key", async () =>
+            {
+                var profile = (await a.SettingsAsync()).Profile.Id;
+                var id = Guid.NewGuid();
+                DeepThinkingSettings Nvidia(string model) => new() { Place = DeepThinkingPlace.Endpoint, Origin = NvidiaBuild, ModelId = model, CredentialId = id };
+                using (var lease = new SecretLease(PoolKey)) a.Vault.Write(Nvidia("x").Binding(profile, id), lease);
+                new ThinkingPoolSettings { Members = [Nvidia(ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId), Nvidia("meta/llama-4-maverick-17b-128e-instruct")] }
+                    .Save(a.Data);
+                new ThinkingPoolSettings { Members = [new() { Place = DeepThinkingPlace.Endpoint, Origin = "http://127.0.0.1:11434/v1", ModelId = "qwen3:4b" }] }.Save(b.Data);
+                await a.SyncAsync(hosts, token);
+                await b.SyncAsync(hosts, token);
+                var on = ThinkingPoolSettings.Load(b.Data).Members.Select(m => m.ModelId).ToArray();
+                var had = b.Vault.Has(PoolKey);
+                new ThinkingPoolSettings().Save(a.Data);
+                await a.SyncAsync(hosts, token);
+                await b.SyncAsync(hosts, token);
+                var off = ThinkingPoolSettings.Load(b.Data).Members.Select(m => m.ModelId).ToArray();
+                return (on.Length == 3 && on[0] == "qwen3:4b" && had && off is ["qwen3:4b"] && !b.Vault.Has(PoolKey) && !b.FileContains(PoolKey),
+                    $"B's pool: {string.Join(", ", on)} with the key: {had}; after A removed them: {string.Join(", ", off)}, key kept: {b.Vault.Has(PoolKey)}");
+            });
+
             await Run("Lorebooks follow", async () =>
             {
                 var saved = await a.Lore.UpdateAsync(library => library with
@@ -471,6 +493,7 @@ internal static class SettingsRehearsal
         private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly string directory;
         internal string DeviceId { get; }
+        internal string Data => directory;
         internal LabVault Vault { get; } = new();
         internal SetupService Setup { get; }
         internal LorebookStore Lore { get; }

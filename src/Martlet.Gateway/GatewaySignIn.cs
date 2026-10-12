@@ -53,6 +53,9 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     internal const string OwnerProvider = "owner";
     /// <summary>Any Martlet password login on this host (the owner's or another household account's), by user name.</summary>
     internal const string MartletProvider = AccountLoginKinds.MartletProvider;
+    /// <summary>A share link (docs/NETWORK.md, "Sharing with a link"): the friend proves the link's secret; the subject is the
+    /// link's ID. Always a friend's access.</summary>
+    internal const string LinkProvider = "link";
     internal static readonly TimeSpan AttemptLifetime = TimeSpan.FromMinutes(10);
     internal const int MaximumAttempts = 32;
     internal const int MaximumEnrolled = 64;
@@ -142,6 +145,23 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
         lock (gate) return storage is not null && document.PasswordLogins().Any();
     }
 
+    /// <summary>Whether share links sign in here (provider "link", not in <see cref="Available"/>).</summary>
+    internal bool LinksAvailable()
+    {
+        lock (gate) return storage is not null && document.Links.Count > 0;
+    }
+
+    /// <summary>The share link a friend's credential signed in with here, or null (another sign-in, or the link is gone).</summary>
+    internal GatewayShareLink? LinkOf(string credentialId)
+    {
+        lock (gate)
+        {
+            if (storage is null) return null;
+            var enrolled = document.Enrolled.LastOrDefault(e => e.CredentialId == credentialId);
+            return enrolled is { Provider: LinkProvider } ? document.Links.FirstOrDefault(l => l.Id == enrolled.Subject) : null;
+        }
+    }
+
     internal async ValueTask<(GatewaySignInAttempt Attempt, string? AuthorizeUrl)> BeginAsync(string provider, string? codeChallenge,
         string? redirectUri, CancellationToken cancellationToken)
     {
@@ -153,6 +173,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             var current = document = LoadLocked();
             if (provider == OwnerProvider) GatewayRules.Require(current.Owner is not null, "signin.unavailable");
             else if (provider == MartletProvider) GatewayRules.Require(current.PasswordLogins().Any(), "signin.unavailable");
+            else if (provider == LinkProvider) GatewayRules.Require(current.Links.Count > 0, "signin.unavailable");
             else
             {
                 var config = current.Providers.FirstOrDefault(p => p.Id == provider);
@@ -292,6 +313,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             current = document = LoadLocked();
         }
         if (attempt!.Provider is OwnerProvider or MartletProvider) return VerifyPassword(current, proof, attempt.Provider, enroll);
+        if (attempt.Provider == LinkProvider) return VerifyLink(current, proof);
         var config = current.Providers.FirstOrDefault(p => p.Id == attempt.Provider);
         var provider = config is null ? null : Providers(config);
         GatewayRules.Require(provider is not null, "signin.unavailable");
@@ -304,7 +326,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     // allow list, and one that isn't is remembered under Refused so the owner can allow it.
     private void RequireAllowedLocked(GatewaySignInDocument current, GatewaySignInIdentity who, string deviceId)
     {
-        if (who.Provider is OwnerProvider or MartletProvider)
+        if (who.Provider is OwnerProvider or MartletProvider or LinkProvider)
         {
             GatewayRules.Require(current.Allows(who.Provider, who.Subject), "signin.invalid");
             return;
@@ -360,6 +382,20 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             else GatewayRules.Require(!enroll, "signin.needs_authenticator");
         }
         return owner ? new(OwnerProvider, login!.User, login.User) : new(MartletProvider, GatewaySignInDocument.MartletSubject(login!.User), login.User);
+    }
+
+    /// <summary>Checks a share link's proof (<c>{"link": "&lt;id&gt;", "secret": "&lt;secret&gt;"}</c>) against the verifier kept
+    /// here; signs in as "link:&lt;id&gt;" with the label the owner gave the friend.</summary>
+    private static GatewaySignInIdentity VerifyLink(GatewaySignInDocument current, JsonElement proof)
+    {
+        string? Text(string name) => proof.ValueKind == JsonValueKind.Object && proof.TryGetProperty(name, out var value) &&
+            value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        var id = Text("link");
+        var link = id is null ? null : current.Links.FirstOrDefault(l => l.Id == id);
+        // An unknown link costs the same hash as a known one.
+        var matches = Martlet.Core.Network.ShareLink.Matches(id ?? "", Text("secret"), link?.Verifier ?? new string('A', 43));
+        GatewayRules.Require(link is not null && matches, "signin.invalid");
+        return new(LinkProvider, link!.Id, link.Label);
     }
 
     /// <summary>A Prove sign-in on an already paired computer (<paramref name="deviceId"/>, the signed caller): checks the proof
@@ -569,8 +605,9 @@ internal static class GatewaySignInSettings
     /// nothing, so martlet-host can ask it of signin.json while the service is stopped.</summary>
     internal static string? BlockedReason(GatewaySignInDocument? document)
     {
-        if (document is null || document.Owner is null && document.Providers.Count == 0) return "signin.not_set_up";
-        if (document.Owner is not null) return null;
+        if (document is null || document.Owner is null && document.Providers.Count == 0 && document.Links.Count == 0) return "signin.not_set_up";
+        // A share link is a usable sign-in: its 256-bit secret can't be guessed, and it gives a friend's access only.
+        if (document.Owner is not null || document.Links.Count > 0) return null;
         return document.Providers.Any(p => p.Kind is "oidc" or "discord" or "steam" && document.Allowed.Any(a => a.Provider == p.Id))
             ? null : "signin.no_allowed_identity";
     }
@@ -671,7 +708,7 @@ internal static class GatewaySignInSettings
             case "allow":
             {
                 GatewayRules.Require(change.Provider is { Length: > 0 and <= 32 } && change.Provider != GatewaySignInService.OwnerProvider &&
-                    change.Provider != GatewaySignInService.MartletProvider &&
+                    change.Provider != GatewaySignInService.MartletProvider && change.Provider != GatewaySignInService.LinkProvider &&
                     change.Subject is { Length: > 0 and <= 256 } && change.Subject.All(c => !char.IsControl(c)) &&
                     (change.Label is null || change.Label.Length <= 128 && change.Label.All(c => !char.IsControl(c))) &&
                     change.Access is null or "member" or GatewaySignInDocument.FriendAccess, "request.invalid");
@@ -748,6 +785,39 @@ internal static class GatewaySignInSettings
                 next.Allowed.RemoveAll(a => a.Provider == change.Id);
                 return null;
             }
+            case "share-link":
+            {
+                // A share link (docs/NETWORK.md): its ID, the friend's name and the secret's verifier (never the secret), and the
+                // hosts of the owner's network it covers (absent: all of them, also those added later).
+                GatewayRules.Require(Martlet.Core.Network.ShareLink.IsToken(change.Id, 16) &&
+                    Martlet.Core.Network.ShareLink.IsToken(change.Verifier, 32) &&
+                    (change.Label is null || change.Label.Length <= 64 && change.Label.All(c => !char.IsControl(c))) &&
+                    (change.Hosts is null || change.Hosts.Count is > 0 and <= Martlet.Core.Network.NetworkRoster.MaximumMembers &&
+                        change.Hosts.All(h => h is { Length: > 0 and <= 64 } && h.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.'))),
+                    "request.invalid");
+                var existing = next.Links.FirstOrDefault(l => l.Id == change.Id);
+                // The same link keeps its secret: a change with another verifier would sign its friend out everywhere.
+                GatewayRules.Require(existing is null || existing.Verifier == change.Verifier, "request.invalid");
+                // A stopped link stays stopped, whichever of the owner's computers still has it.
+                GatewayRules.Require(!next.RemovedLinks.Contains(change.Id!, StringComparer.Ordinal), "signin.link_removed");
+                next.Links.RemoveAll(l => l.Id == change.Id);
+                GatewayRules.Require(next.Links.Count < MaximumLinks, "request.invalid");
+                next.Links.Add(new()
+                {
+                    Id = change.Id!, Label = change.Label, Verifier = change.Verifier!, AddedAt = existing?.AddedAt ?? now,
+                    Hosts = change.Hosts?.Distinct(StringComparer.Ordinal).ToList()
+                });
+                return null;
+            }
+            case "remove-share-link":
+            {
+                GatewayRules.Require(Martlet.Core.Network.ShareLink.IsToken(change.Id, 16), "request.invalid");
+                next.Links.RemoveAll(l => l.Id == change.Id);
+                next.RemovedLinks.Remove(change.Id!);
+                next.RemovedLinks.Add(change.Id!);
+                if (next.RemovedLinks.Count > MaximumRemovedLinks) next.RemovedLinks.RemoveRange(0, next.RemovedLinks.Count - MaximumRemovedLinks);
+                return null;
+            }
             default:
                 throw new GatewayProtocolException("request.invalid");
         }
@@ -755,6 +825,10 @@ internal static class GatewaySignInSettings
 
     /// <summary>Martlet password logins of household accounts besides the owner's.</summary>
     internal const int MaximumAccounts = 16;
+    /// <summary>Share links a host keeps.</summary>
+    internal const int MaximumLinks = 32;
+    /// <summary>Stopped share link IDs a host remembers, so no computer adds them again.</summary>
+    internal const int MaximumRemovedLinks = 128;
 
     private static string RequireUser(string? value)
     {
@@ -807,6 +881,10 @@ internal sealed record GatewaySignInChange
     /// <summary>For <c>link-login</c> (W13): another host's <see cref="AccountAttestation"/> that a provider identity proves an
     /// account on the calling computer.</summary>
     public JsonElement? Attestation { get; init; }
+    /// <summary>For <c>share-link</c>: the verifier of the link's secret (<see cref="Martlet.Core.Network.ShareLink.Verifier"/>).</summary>
+    public string? Verifier { get; init; }
+    /// <summary>For <c>share-link</c>: the host IDs the link covers; absent for every host of the owner's network.</summary>
+    public List<string>? Hosts { get; init; }
 }
 
 /// <summary>A configured sign-in provider. <see cref="Kind"/> is "oidc" (any OpenID Connect issuer: Authentik, Authelia,
@@ -828,6 +906,7 @@ internal sealed record GatewaySignInProviderConfig
     {
         GatewayRules.Require(RedirectPort is null or (>= 1024 and <= 65535), "request.invalid");
         GatewayRules.Require(Id is { Length: > 0 and <= 32 } && Id != GatewaySignInService.OwnerProvider && Id != GatewaySignInService.MartletProvider &&
+            Id != GatewaySignInService.LinkProvider &&
             Id.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-'), "request.invalid");
         GatewayRules.Require(Kind is "oidc" or "discord" or "steam", "request.invalid");
         GatewayRules.Require(Name is { Length: > 0 and <= 64 } && Name.All(c => !char.IsControl(c)), "request.invalid");
@@ -891,6 +970,18 @@ internal sealed record GatewayAllowedSignIn
     public Guid? AccountId { get; init; }
 }
 
+/// <summary>A share link the owner made (docs/NETWORK.md, "Sharing with a link"): whoever has the link signs in as a friend
+/// ("link:&lt;id&gt;"). Only the verifier of its secret is kept. <see cref="Hosts"/>: the hosts of the owner's network it covers
+/// (null: every host, also those added later), which a friend's computer reads to find the others.</summary>
+internal sealed record GatewayShareLink
+{
+    public required string Id { get; init; }
+    public string? Label { get; init; }
+    public required string Verifier { get; init; }
+    public DateTimeOffset AddedAt { get; init; }
+    public List<string>? Hosts { get; init; }
+}
+
 internal sealed record GatewaySignInEnrollment
 {
     public required string DeviceId { get; init; }
@@ -943,6 +1034,10 @@ internal sealed class GatewaySignInDocument
     public List<GatewayAllowedSignIn> Allowed { get; set; } = [];
     public List<GatewaySignInEnrollment> Enrolled { get; set; } = [];
     public List<GatewaySignInRemoval> Removed { get; set; } = [];
+    /// <summary>Share links (friends' access by link), with verifiers only.</summary>
+    public List<GatewayShareLink> Links { get; set; } = [];
+    /// <summary>IDs of share links the owner stopped: never added again (the newest <see cref="GatewaySignInSettings.MaximumRemovedLinks"/>).</summary>
+    public List<string> RemovedLinks { get; set; } = [];
     internal const int MaximumRemoved = 32;
 
     internal byte[] Write()
@@ -962,6 +1057,8 @@ internal sealed class GatewaySignInDocument
         parsed.Allowed ??= [];
         parsed.Enrolled ??= [];
         parsed.Removed ??= [];
+        parsed.Links ??= [];
+        parsed.RemovedLinks ??= [];
         foreach (var provider in parsed.Providers) provider.Validate();
         return parsed;
     }
@@ -977,13 +1074,18 @@ internal sealed class GatewaySignInDocument
     {
         GatewaySignInService.OwnerProvider => Owner?.User == subject,
         GatewaySignInService.MartletProvider => Accounts.Any(a => MartletSubject(a.User) == subject),
+        GatewaySignInService.LinkProvider => Links.Any(l => l.Id == subject),
         _ => Allowed.Any(a => a.Provider == provider && a.Subject == subject)
     };
 
-    /// <summary>What an allowed identity gets: null for the owner's computers (the owner account always), "friend" for a friend.</summary>
-    internal string? AccessOf(string provider, string subject) => provider is GatewaySignInService.OwnerProvider or GatewaySignInService.MartletProvider
-        ? null
-        : Allowed.LastOrDefault(a => a.Provider == provider && a.Subject == subject)?.Access;
+    /// <summary>What an allowed identity gets: null for the owner's computers (the owner account always), "friend" for a friend
+    /// (a share link always).</summary>
+    internal string? AccessOf(string provider, string subject) => provider switch
+    {
+        GatewaySignInService.OwnerProvider or GatewaySignInService.MartletProvider => null,
+        GatewaySignInService.LinkProvider => FriendAccess,
+        _ => Allowed.LastOrDefault(a => a.Provider == provider && a.Subject == subject)?.Access
+    };
 
     /// <summary>The account an allowed identity signs in as: the owner login's and member identities' without their own is
     /// <see cref="OwnerAccountId"/> (or <paramref name="defaultOwner"/>, the owner account derived from the host's network, when

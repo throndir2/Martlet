@@ -391,7 +391,17 @@ otherwise it replaces that earlier sign-in's credential. Failures: `signin.unava
 `signin.invalid` (401), `signin.not_allowed` (403), `signin.expired` (400),
 `signin.device_taken` (409), `signin.friends_full` (409), `signin.provider` (502); each sign-in outcome is recorded with the request
 guard under route class `signin` and the claimed or verified account as
-subject, and `TryAdmit` adds the per-account lockout. The member-only
+subject, and `TryAdmit` adds the per-account lockout. A share link
+([sharing with a link](../../docs/NETWORK.md#sharing-with-a-link)) signs in with
+provider `link` (not in the list; `GET /martlet/v1/signin` says
+`share_links: true` while the host keeps one) and proof `{link, secret}`: the
+host checks the secret against the link's verifier (`ShareLink.Matches`, fixed
+time) and signs in as `link:<id>` with a friend's credential; a wrong secret is
+`signin.invalid` and counts toward that link's lockout. A friend's credential
+from a link reads `GET /martlet/v1/signin/shared` (signed; `request.invalid` for
+any other caller): `link_id`, `label`, `network_id`, `all_hosts` and `hosts`
+(each roster host the link covers: `host_id`, `name`, `origin`, `spki`,
+`addresses`). The member-only
 `GET`/`POST /martlet/v1/signin/settings` (signed; `signin.denied` for a
 non-member while the host is bound) read and change the owner account
 (`owner`: `user`, `password` of 12+ characters, `totp_secret` Base32, `code`
@@ -402,7 +412,11 @@ also takes `access`: `member`, the default, for the owner's own computers, or
 `provider` (`provider_config`: `id`, `kind` `oidc`|`discord`|`steam`, `name`,
 `issuer`, `client_id`, `client_secret`, `scopes`, `redirect_port` for a
 provider that only takes registered redirects; an omitted secret keeps the
-saved one) and `remove-provider`; and (W13, provider logins of household
+saved one) and `remove-provider`; share links (`share-link`: `id`, `label`,
+`verifier`, optional `hosts`; the same link keeps its verifier, and a stopped
+link is refused with `signin.link_removed` (409); and `remove-share-link`: `id`,
+which revokes the computers that signed in with it and remembers the ID; the
+answer lists `links` without verifiers and `removed_links`); and (W13, provider logins of household
 accounts) `link-login` (`attestation`: another host's account attestation that
 a provider identity proved an account on the calling computer, checked against
 this host's roster, `signin.invalid` when it doesn't check or names another
@@ -508,7 +522,7 @@ never without sign-in).
 
 | Friends may use | Everything else answers `access.friend` before anything is read |
 | --- | --- |
-| `GET version` (with `access` `friend`), `GET capabilities` (only the routes friends may use), `GET status`, the inference routes of their role whose every operation serves only the request that asks (`GatewayInferenceRouteRegistry.FriendsMayUse`: chat, speaking, lip-sync, transcription, reading, perception), `POST inference/cancel` (their own requests) | the picture and song routes (they keep the whole host's queues, histories, results and models), pairing, `network*`, `machine`, `cluster`, `voices`, `speaking-voices`, `character-models`, `creations`, `home-assistant`, `settings`, `memories`, `api-keys`, `commands`, `logs`, `priority`, `security/audit`, `signin/settings` |
+| `GET version` (with `access` `friend`), `GET capabilities` (only the routes friends may use), `GET status`, the inference routes of their role whose every operation serves only the request that asks (`GatewayInferenceRouteRegistry.FriendsMayUse`: chat, speaking, lip-sync, transcription, reading, perception), `POST inference/cancel` (their own requests), `GET signin/shared` (a share link's hosts) | the picture and song routes (they keep the whole host's queues, histories, results and models), pairing, `network*`, `machine`, `cluster`, `voices`, `speaking-voices`, `character-models`, `creations`, `home-assistant`, `settings`, `memories`, `api-keys`, `commands`, `logs`, `priority`, `security/audit`, `signin/settings` |
 
 A friend keeps at most three computers on a host
 (`GatewaySignInService.MaximumFriendDevices`; a sign-in on another revokes their

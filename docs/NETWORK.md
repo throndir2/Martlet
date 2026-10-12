@@ -240,7 +240,8 @@ before: remove it from the network and every host revokes it.
    that host's outside address. Turn on the host's *reachable from outside*
    protection (it is on whenever a host has outside addresses). Use a dynamic
    DNS name if your public IP changes. Forward only the gateway port, never a
-   role service.
+   role service. For this PC's host service, Martlet can open the port for you
+   ([opening a port on your router](#opening-a-port-on-your-router)).
 3. **Not supported:** HTTP tunnels and reverse proxies that end TLS themselves
    (Cloudflare Tunnel's HTTP mode, ngrok HTTP, nginx `proxy_pass https://`).
    They present their own certificate, so the host key pin fails by design.
@@ -418,8 +419,9 @@ TCP relay that hides the real source, such as a gateway Docker publishes).
 **Sign-in comes first.** Sign-in stays optional: a host with no outside addresses
 (and typed codes kept at home) works exactly as before and needs no sign-in. A
 host becomes a public endpoint only once sign-in is set up on it, meaning at
-least one usable method: an owner account with an authenticator (TOTP), or a
-configured provider with at least one allowed identity (a friend counts). Sign-in owns that rule
+least one usable method: an owner account with an authenticator (TOTP), a
+configured provider with at least one allowed identity (a friend counts), or a
+[share link](#sharing-with-a-link). Sign-in owns that rule
 (`GatewaySignInSettings.BlockedReason`: `signin.not_set_up` or
 `signin.no_allowed_identity`); outside access only reads it
 (`GatewayOutsideAccess`).
@@ -795,6 +797,135 @@ nothing (`signin.no_network`); an identity with no account gets
   any of them can check a Prove sign-in. Each host makes its own recovery
   codes.
 
+## Sharing with a link
+
+The simplest way to share your hosts with a friend is a share link. You make one
+link for each friend. Your friend clicks it (or pastes it into their Martlet),
+and their Martlet can then use the engines of the hosts you chose. Nobody needs
+an account at Google, Discord or another identity provider, and nobody hosts a
+website.
+
+| You do | Where |
+| --- | --- |
+| Make a link: type your friend's name and choose **All my hosts, also the ones I add later**, or clear it and choose hosts | **Devices › Friends › Make a share link** |
+| Send the link (`martlet://share/...`) to your friend in a private message | **Copy link** in the window that shows it, or **Copy link** on the friend's row later |
+| Your friend clicks the link, or pastes it | Their Martlet: the link opens Martlet, or **Devices › Hosts shared with this PC › Accept a share link** (or **Add a computer › Join with an invite**) |
+| See who uses what | **Devices › Friends**: the friend shows as *Ana (share link)* with the hosts that keep the link and their computers |
+| Share one more host, or one less (a link that names its hosts) | **Share** *host* or **Stop sharing** *host* on the friend's row |
+| Stop the link | **Stop link** on the friend's row: every host removes it and revokes their computers at once |
+
+How it works:
+
+- **One secret per link.** The link carries a random ID and a 256-bit secret.
+  Each host keeps only the secret's verifier (SHA-256 of
+  `martlet-share-link-v1\n<id>\n<secret>`; `ShareLink.Verifier`), never the
+  secret. Your PC keeps the secret in Windows Credential Manager, so you can copy
+  the link again and add it to hosts you add later. Anyone who has the link can
+  use what it shares, so send it privately and stop it when you want.
+- **A friend's access only.** Signing in with a link (provider `link`, the
+  link's ID as subject) always gives a friend's credential, exactly as
+  [sharing a host with friends](#sharing-a-host-with-friends) describes: the
+  engines only, your own work first, never your network, settings, memories,
+  voices, logs or other computers. At most three computers per link on each
+  host, and 32 friends' computers on a host in total.
+- **Your API keys stay yours.** A link shares the engines that run on your hosts
+  (thinking with the host's local model, listening, speaking, lip-sync and
+  reading). The cloud API keys you set in Martlet stay on your own computers and
+  never go to a host for a friend; your friend's Martlet uses its own keys for
+  anything online.
+- **All hosts, also later ones.** A link for all hosts covers every host of your
+  Martlet network. Each time **Devices › Friends** reads your hosts (when the
+  Devices page shows, at most every two minutes, or on **Check now**), your PC
+  adds the link to hosts that miss it, so a host you add later gets it too. Your
+  friend's Martlet asks a host it already uses which hosts the link covers now
+  (`GET /martlet/v1/signin/shared`, from the network roster: host ID, name, home
+  address, TLS pin and outside addresses) every time it checks its shared hosts,
+  and signs in to the new ones. A host your friend forgot there stays forgotten.
+- **Reaching your hosts.** The link names each host's TLS pin, home address and
+  outside addresses as they are when you copy it. A friend outside your home can
+  reach only hosts with an outside address: open a port on your router
+  ([below](#opening-a-port-on-your-router)) or use an overlay network such as
+  Tailscale. The link window says which hosts have none. If your internet
+  address changes later, the hosts' new outside addresses reach your friend
+  through any host their Martlet can still reach; if it reaches none, copy the
+  link again and send it.
+- **Clicking a link.** Martlet registers the `martlet:` link type for your
+  Windows user each time it starts normally (`HKCU\Software\Classes\martlet`,
+  no administrator rights), so a clicked `martlet://share/...` link starts
+  Martlet with it. When Martlet already runs, the new start leaves the link in
+  the data folder (`pending-share-link.txt`) and asks the running Martlet to show
+  itself; that one takes the link. Martlet always asks before it signs in with a
+  link. Many chat apps make only `http` links clickable; then copy the link and
+  paste it into Martlet. Uninstalling Martlet leaves the registry key; it points
+  to a Martlet that is gone and does nothing.
+- **Older hosts.** A host that runs a Martlet older than share links can't take
+  one: the friend's row says to update it.
+
+The settings changes (from a member desktop, `POST /martlet/v1/signin/settings`):
+`share-link` with `id` (16 bytes, base64url), `label`, `verifier` (32 bytes,
+base64url) and optional `hosts` (absent: all of your hosts), and
+`remove-share-link` with `id`. The same link keeps its verifier: a change with
+another one is refused. A host remembers the IDs of stopped links
+(`removed_links`, the newest 128) and refuses to add one again
+(`signin.link_removed`), so a link stopped on one of your computers stays
+stopped, even when another of your computers still had it; that computer marks
+it stopped too on its next read. Your PC also keeps the stopped IDs
+(`share-links.json`, `stopped`) and tells each host that still keeps one to
+remove it, also a host that didn't answer when you stopped it. `GET /martlet/v1/signin` says `share_links: true` when
+the host takes links, and the settings list `links` (ID, label, when added and
+hosts; never the verifier). A wrong secret counts toward the lockout for that
+link from every address.
+
+## Opening a port on your router
+
+For a friend (or your own laptop) outside your home, your host needs an address
+on the internet. Most people don't run a website, so Martlet uses your home
+router: it asks the router to forward one port to this PC's host service.
+
+1. On the Devices map, select this PC and choose **Outside access for this PC's
+   host service**.
+2. Set **Let Martlet open a port on my router for it (UPnP)** and choose **Save
+   and restart gateway**.
+3. Agree to Windows' prompt. It lets connections from outside your home through
+   Windows Firewall to the gateway port only (rule `Martlet-Host-Gateway-Outside`).
+
+What Martlet does:
+
+- It finds the router on your home network with UPnP (Universal Plug and Play,
+  Internet Gateway Device: an SSDP search, then the router's description). UPnP
+  must be on in the router's settings; many routers have it on. Martlet takes
+  only an answer from a private home address, and sends requests only to a
+  private home address (never this PC itself or the internet).
+- It asks the router for its internet address. If the address is shared by your
+  internet provider with other homes (carrier-grade NAT, `100.64.0.0/10`) or is a
+  private address (another router is in front of yours), a forwarded port can't
+  be reached from the internet. Martlet stops and tells you to use Tailscale.
+- It forwards the gateway's own port (9443) when it is free on the router,
+  otherwise the next free one up to ten above, to this PC, for seven days (or
+  permanently on routers that take only that). It adds `<internet
+  address>:<port>` to the host's outside addresses and turns on *treat every
+  connection as coming from outside home* (Docker hides where a connection
+  comes from, so the gateway's limits must apply to every connection). The port
+  stays open only when the host took these settings; otherwise Martlet closes
+  it again.
+- While Martlet runs, it renews the port a minute after start and every six
+  hours, to this PC's home address of that moment (an old forward to an
+  address this PC no longer has is removed). When the router's internet address changed, it updates the host's
+  outside addresses (the gateway restarts) and your network learns them on its
+  next sync.
+- Clearing the box closes the port on the router, removes the address and
+  removes the firewall rule.
+- From inside your home Martlet tries to connect to the address once. Many
+  routers don't loop back to themselves, so a failure here doesn't mean a friend
+  can't reach it.
+
+Every request through the port still needs a pairing, a sign-in or a share link,
+and the gateway's guard (lockouts, budgets, the audit) applies to every source.
+Martlet opens a port only when you set the box. A port on another host (a Linux
+host, or another Windows PC) is forwarded by hand: the Outside access dialog
+names the host's home address to forward to. Martlet keeps what it opened in
+`router-port.json` (no address is shown by MCP).
+
 ## Sharing a host with friends
 
 A friend with their own Martlet can use one of your hosts for its thinking,
@@ -924,6 +1055,8 @@ to join through it.
 | MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
 | Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`, household account logins), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/prove`, `/settings`); `Martlet.Core` `Access/Totp.cs`, `Accounts/AccountAttestation.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs` (`ProveAsync`, `ProveWithPasswordAsync`, `ProveInBrowserAsync`), `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest`, `signin_lab` mode `account` |
 | Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Devices › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
+| Share links | `Martlet.Core` `Network/ShareLink.cs` (format, `Verifier`); gateway `GatewaySignIn.cs` (provider `link`, `GatewayShareLink`, `share-link` and `remove-share-link`) and `GatewaySignInHttp.cs` (`/martlet/v1/signin/shared`); desktop `Remote/HostSignIn.cs` (`SignInWithShareLinkAsync`, `ReadSharedHostsAsync`, `HostSignInSettings.Links`), `ShareLinks.cs` (share-links.json, `Plan`), `MainWindow.ShareLinks.cs`, `ShareLinkWindow.cs`, `ShareLinkProtocol.cs` (martlet: links) and `WindowsCredentialStore` (`*ShareLinkSecret`); MCP `network_status` (`shareLinks`) and `signin_selftest` |
+| Router port | `Martlet.Core` `Network/RouterPorts.cs` (UPnP IGD); desktop `RouterPort.cs` (router-port.json), `MainWindow.RouterPort.cs` (renewal), the Outside access dialog in `MainWindow.Outside.cs` and `WindowsFirewall` (`Martlet-Host-Gateway-Outside`); MCP `network_status` (`routerPort`) |
 | Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit), `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`) and `GatewayOverlayListeners.cs` (listening on overlay addresses); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`); Docker holder publishing in `deploy/host/martlet-host` (`ensure_holder`) and `LocalHostService.ParseHolder` |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
