@@ -161,6 +161,12 @@ public sealed class ConfigurationTests
         Assert.IsType<Martlet.Gateway.Ocr.OcrRelayWorker>(NativeHostPlatform.RoleWorker(ocr));
         Assert.Equal(Martlet.Gateway.GatewayInferenceRoute.OcrRouteId,
             ((Martlet.Gateway.Ocr.OcrRelayWorker)NativeHostPlatform.RoleWorker(ocr)).Route.RouteId);
+        var motion = Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"motion\",\"endpoint\":\"http://127.0.0.1:50090/\",\"model\":\"hy-motion-1.0\"}]")).Roles);
+        var motionWorker = Assert.IsType<Martlet.Gateway.Motion.MotionRelayWorker>(NativeHostPlatform.RoleWorker(motion));
+        Assert.Equal((Martlet.Gateway.GatewayInferenceRoute.MotionRouteId, "hy-motion-1.0"), (motionWorker.Route.RouteId, motionWorker.Route.ModelId));
+        Assert.Throws<HostInputException>(() => NativeHostPlatform.RoleWorker(Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"motion\",\"endpoint\":\"http://127.0.0.1:50090/\",\"model\":\"hy-motion-2\"}]")).Roles)));
         Assert.Empty(HostConfiguration.Parse(Config()).Roles);
         Assert.Empty(HostConfiguration.Parse(RoleConfig("[]")).Roles);
         foreach (var endpoint in new[] { "http://192.168.1.5:52000/", "http://localhost:52000/", "https://127.0.0.1:52000/",

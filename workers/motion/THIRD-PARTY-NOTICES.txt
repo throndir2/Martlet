@@ -1,0 +1,42 @@
+Third-party notices for the Martlet motion host role (workers/motion)
+
+Martlet does not ship any of the components below. "martlet-host add motion" shows the terms first; after the owner accepts
+them, the host fetches each component from its publisher at a pinned version and checks it. The code in workers/motion is
+Martlet's own and does not modify any HY-Motion file.
+
+------------------------------------------------------------------------------------------------------------------------
+Tencent HY-Motion 1.0 (code and models)
+  Code:   https://github.com/Tencent-Hunyuan/HY-Motion-1.0 at commit 4e426f5a1021cbcf7f375458c37b840ee7225229, with its Git
+          LFS files stats/Mean.npy, stats/Std.npy and scripts/gradio/static/assets/dump_wooden/*.bin
+  Models: https://huggingface.co/tencent/HY-Motion-1.0 at revision 620dd559f8d964aac2f82f1204fe6a35ad8ad14d
+          (HY-Motion-1.0-Lite/ or HY-Motion-1.0/: config.yml and latest.ckpt)
+  License: TENCENT HY-MOTION 1.0 COMMUNITY LICENSE AGREEMENT (LICENSE.txt in both repositories, SHA-256
+           03e846e8bcaae503dbb878cb5b125b9810d8cac8bfc38b0275c4886759afd81b), with its Acceptable Use Policy (Exhibit A).
+
+  Tencent HY-MOTION 1.0 is licensed under the Tencent HY-MOTION 1.0 Community License Agreement, Copyright (c) 2025 Tencent.
+  All Rights Reserved. The trademark rights of "Tencent HY" are owned by Tencent or its affiliate.
+
+  The agreement does not apply in the European Union, the United Kingdom and South Korea, and use there is not licensed.
+  Licensees whose products or services had more than 1 million monthly active users on the release date must request a
+  license from Tencent. Use must follow the Acceptable Use Policy, and neither the works nor their output may be used to
+  improve any other AI model (sections 5(a) and 5(b) of the agreement). Read the full agreement in LICENSE.txt.
+
+------------------------------------------------------------------------------------------------------------------------
+Qwen3-8B (text encoder)
+  https://huggingface.co/Qwen/Qwen3-8B at revision b968826d9c46dd6066d109eabc6255188de91218
+  License: Apache License 2.0 (LICENSE in the repository). Copyright (c) Alibaba Cloud.
+
+------------------------------------------------------------------------------------------------------------------------
+CLIP ViT-L/14 (text encoder)
+  https://huggingface.co/openai/clip-vit-large-patch14 at revision 32bd64288804d66eefd0ccbe215aa642df71cc41
+  The Hugging Face repository names no license. OpenAI publishes CLIP under the MIT License
+  (https://github.com/openai/CLIP/blob/main/LICENSE). Copyright (c) 2021 OpenAI.
+
+------------------------------------------------------------------------------------------------------------------------
+Python packages installed in the image (from PyPI and download.pytorch.org, pinned in host/requirements.txt and
+host/Dockerfile): PyTorch 2.10.0 with NVIDIA CUDA 12.8 libraries (BSD-3-Clause; NVIDIA's CUDA libraries under NVIDIA's
+license), transformers 4.53.3, tokenizers 0.21.4, huggingface-hub 0.34.4, safetensors 0.5.3 and accelerate 1.10.1
+(Apache-2.0), numpy 1.26.4 and scipy 1.13.1 (BSD-3-Clause), torchdiffeq 0.2.5 (MIT), einops 0.8.1 (MIT), PyYAML 6.0.2 (MIT).
+
+Not used: the Autodesk FBX SDK (HY-Motion's FBX export), the Text2MotionPrompter model and any SMPL, SMPL-H or MANO body
+model files.

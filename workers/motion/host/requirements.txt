@@ -1,0 +1,14 @@
+# Python packages of the motion host role image (HY-Motion 1.0's dict-output inference path), installed after PyTorch
+# 2.10.0 (CUDA 12.8, from download.pytorch.org). HY-Motion's own requirements.txt pins torch 2.5.1 and also lists the FBX SDK,
+# the prompt rewriter's openai client, diffusers and bitsandbytes; the path Martlet runs needs none of those, and torch 2.10
+# with CUDA 12.8 also runs RTX 50 series cards. numpy stays below 2 as HY-Motion asks.
+numpy==1.26.4
+scipy==1.13.1
+transformers==4.53.3
+tokenizers==0.21.4
+huggingface-hub==0.34.4
+safetensors==0.5.3
+accelerate==1.10.1
+torchdiffeq==0.2.5
+einops==0.8.1
+PyYAML==6.0.2

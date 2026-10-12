@@ -519,6 +519,25 @@ ask_choice() {
 
 installed_file() { printf '%s' "${CONF}/roles/$1.role"; }
 
+# role.conf min_vram=<MiB>|<why> (inside a [VAR=value] section it applies to that choice only): the least memory one NVIDIA
+# card needs for role $2's model. Prints why the role can't run on a card with $3 MiB (0: none found), or nothing when it can
+# or has no minimum; returns 1 when the entry is invalid.
+min_vram_refusal() {
+  local conf="$1" role="$2" mib="$3" entry need why
+  entry="$(conf_value "${conf}" min_vram)"
+  [[ -n "${entry}" ]] || return 0
+  need="${entry%%|*}"; why=""; [[ "${entry}" == *"|"* ]] && why="${entry#*|}"
+  [[ "${need}" =~ ^[0-9]+$ ]] || return 1
+  (( mib >= need )) && return 0
+  if (( mib > 0 )); then
+    printf '%s needs an NVIDIA graphics card with at least %s MiB of memory%s; this host'"'"'s card has %s MiB.' \
+      "${role}" "${need}" "${why:+ (${why})}" "${mib}"
+  else
+    printf '%s needs an NVIDIA graphics card with at least %s MiB of memory%s; no NVIDIA card usable by containers was found.' \
+      "${role}" "${need}" "${why:+ (${why})}"
+  fi
+}
+
 # The variants (Compose profiles) of the role whose role.conf is $1, one per line: the options of its profile_from choice
 # (the stt role's whisper and parakeet). Each of the role's services belongs to one of them.
 role_variants() {
@@ -566,7 +585,7 @@ cmd_roles() {
 # role.suggested_when, role.gpu_when) so Martlet asks for them, and shows their terms, only when that choice is made.
 cmd_describe() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host describe <role>"
-  local dir conf line name state requires network feature condition
+  local dir conf line name state requires network feature condition min_vram="" least_vram=""
   dir="$(role_dir "${role}")"; conf="${dir}/role.conf"
   requires="$(conf_value "${conf}" requires)"; network="$(conf_value "${conf}" network)"; feature="$(conf_value "${conf}" feature)"
   printf 'role.title=%s\n' "$(conf_value "${conf}" title)"
@@ -602,6 +621,11 @@ cmd_describe() {
         [[ "${condition}" == "*" ]] || printf 'role.suggested_when=%s|%s\n' "${condition}" "${line%%|*}" ;;
       gpu)
         [[ "${condition}" == "*" ]] || printf 'role.gpu_when=%s\n' "${condition}" ;;
+      # The least memory one card needs, for the role or for one of its choices (its model).
+      min_vram)
+        if [[ "${condition}" == "*" ]]; then printf 'role.min_vram=%s\n' "${line#*=}"; else printf 'role.min_vram_when=%s|%s\n' "${condition}" "${line#*=}"; fi
+        min_vram="${line#*=}"; min_vram="${min_vram%%|*}"
+        if [[ "${min_vram}" =~ ^[0-9]+$ ]] && [[ -z "${least_vram}" || ${min_vram} -lt ${least_vram} ]]; then least_vram=${min_vram}; fi ;;
     esac
   done < <(conf_lines "${conf}")
   while IFS= read -r line; do
@@ -625,6 +649,10 @@ cmd_describe() {
   # and the card it runs on now (role.gpu_current, "all" when it uses every card).
   if [[ -n "$(conf_any_value "${conf}" gpu)" ]]; then
     detect_nvidia
+    # A card smaller than the least any of its models needs: the role can't run here (martlet-host add refuses it too).
+    if [[ -n "${least_vram}" ]] && (( NVIDIA_MB > 0 && NVIDIA_MB < least_vram )); then
+      printf 'role.unavailable=%s\n' "${role} needs an NVIDIA graphics card with at least ${least_vram} MiB of memory; this host's largest has ${NVIDIA_MB} MiB."
+    fi
     if (( ${#NVIDIA_IDS[@]} > 1 )); then
       local i current
       for i in "${!NVIDIA_IDS[@]}"; do
@@ -2426,6 +2454,13 @@ cmd_add() {
     [[ "${profiles}" =~ ^[a-z0-9_-]+$ ]] || fail "Invalid profile_from in role.conf."
     env_lines+=("COMPOSE_PROFILES=${profiles}")
   fi
+
+  # A role whose model must fit on one card (role.conf min_vram=<MiB>|<why>, in a [VAR=value] section for one model): it stops
+  # here, before terms, downloads or containers, on a card with less memory. "all" cards still load the model on the first.
+  local card_mib=${vram} refusal
+  if [[ "${gpu_choice}" == all ]] && (( ${#NVIDIA_MBS[@]} > 0 )); then card_mib=${NVIDIA_MBS[0]}; fi
+  refusal="$(min_vram_refusal "${conf}" "${role}" "${card_mib}")" || fail "Invalid min_vram in role.conf."
+  [[ -z "${refusal}" ]] || fail "${refusal}"
 
   # Terms for the chosen variant (shown in Martlet before Install, whose click confirms them).
   local terms

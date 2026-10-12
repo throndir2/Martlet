@@ -1,0 +1,24 @@
+# Martlet motion host service (Martlet makes body motions for VRM characters with HY-Motion 1.0), loopback-only behind the
+# Martlet gateway. The image is built on this host from Martlet's workers/motion sources (workers/motion/host/Dockerfile:
+# HY-Motion 1.0 at pinned commit 4e426f5 and pinned PyTorch 2.10 CUDA 12.8). "martlet-host add motion" adds compose.gpu.yaml,
+# then runs "martlet-motion provision" (downloads and verifies the pinned model files into the martlet-motion-models volume).
+# The service listens only on 127.0.0.1:50090 in the gateway's network namespace; the Martlet gateway is the single LAN entry
+# point.
+
+services:
+  motion:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/motion
+      dockerfile: host/Dockerfile
+    image: martlet-motion:1
+    pull_policy: build
+    environment:
+      MOTION_MODEL: ${MOTION_MODEL:-hy-motion-1.0-lite}
+      MARTLET_MOTION_IDLE_MINUTES: "5"
+    volumes:
+      - models:/opt/martlet-motion/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-motion-models

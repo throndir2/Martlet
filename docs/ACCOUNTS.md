@@ -88,7 +88,7 @@ Today's shared-settings sections:
 
 | Household | Account |
 | --- | --- |
-| `thinking`, `listening`, `speaking`, `thinking-fallback`, `character-actions`, `voice-recognition`, `smart-home`, `updates`, `model-abilities`, `work-sharing`, `pools`, `pc.*`, `role.*`, `setup-run.*`, any other key (for example `sharing.*`), the voice list, speaking voices, character models, the cluster plan | `companion` (personalities and character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`, `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`, `touch-temperament`, `reminders.*` (in each account's own document, one entry per device), creations |
+| `thinking`, `listening`, `speaking`, `thinking-fallback`, `character-actions`, `voice-recognition`, `smart-home`, `updates`, `model-abilities`, `work-sharing`, `motion`, `pools`, `pc.*`, `role.*`, `setup-run.*`, any other key (for example `sharing.*`), the voice list, speaking voices, character models, the cluster plan | `companion` (personalities and character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`, `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`, `touch-temperament`, `reminders.*` (in each account's own document, one entry per device), creations |
 
 `Martlet.Core.Sync.SettingScopes` is the list in code. See
 [Account settings](#account-settings).

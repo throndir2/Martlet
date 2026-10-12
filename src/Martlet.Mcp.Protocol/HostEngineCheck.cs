@@ -82,7 +82,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 38;
+        const int expected = 40;
         if (steps.Count < expected)
         {
             passed = false;
@@ -472,6 +472,36 @@ internal static class HostEngineCheck
         [[ $refused == 1 && "$(venv)" == "FX_ENGINE=alpha MARTLET_ACCELERATOR=cpu FX_MODEL=a1 COMPOSE_PROFILES=alpha " ]] &&
           [[ "$(calls)" == "alpha|run --rm --no-deps -T -e MARTLET_PREPARE=1 alpha;alpha|up --no-start;beta|down;alpha|up -d;" ]] && ok=1 || ok=0
         step variant-gpu-and-suggestion "$ok" "a beta model for alpha refused: $refused; alpha automatic on this GPU-less host: $(venv); $(calls)"
+
+        # A model that must fit on one card (role.conf min_vram=<MiB>|<why> in its choice's section, like the motion role's
+        # HY-Motion models): describe says the role can't run on a card smaller than its smallest model, and add stops before
+        # the terms, downloads or containers when the chosen model doesn't fit, while a model that fits goes on. A fake 8 GB card.
+        mkdir -p /tmp/vram "${E%/*}/roles/fixture-vram"
+        printf '%s\n' '#!/bin/sh' 'echo "GPU-11111111-2222-3333-4444-555555555555, NVIDIA GeForce RTX 2070 SUPER, 8192, 300"' > /tmp/vram/nvidia-smi
+        printf '%s\n' '#!/bin/sh' 'exit 0' > /tmp/vram/nvidia-ctk
+        chmod 755 /tmp/vram/nvidia-smi /tmp/vram/nvidia-ctk
+        printf '%s\n' 'title=Fixture VRAM (FIXTURE, installs nothing)' requires=docker port=50994 'gpu=optional|compose.gpu.yaml' \
+          'terms=Fixture terms.' 'choice=FV_MODEL|Model|small big|small' 'choice_by_vram=FV_MODEL|0@small 26000@big' model_from=FV_MODEL \
+          '[FV_MODEL=small]' 'min_vram=4000|small needs 4 GB' '[end]' '[FV_MODEL=big]' 'min_vram=26000|big needs 26 GB' '[end]' \
+          > "${E%/*}/roles/fixture-vram/role.conf"
+        printf 'services: {}\n' > "${E%/*}/roles/fixture-vram/compose.yaml"
+        printf 'services: {}\n' > "${E%/*}/roles/fixture-vram/compose.gpu.yaml"
+        PATH="/tmp/vram:/tmp/variant:$PATH" timeout 15 "$E" describe fixture-vram </dev/null >/tmp/vram/describe 2>&1
+        has /tmp/vram/describe 'role.min_vram_when=FV_MODEL=small|4000|small needs 4 GB' &&
+          has /tmp/vram/describe 'role.min_vram_when=FV_MODEL=big|26000|big needs 26 GB' && ! grep -q '^role.unavailable=' /tmp/vram/describe &&
+          ok=1 || ok=0
+        sed -i 's/min_vram=4000|/min_vram=12000|/' "${E%/*}/roles/fixture-vram/role.conf"
+        PATH="/tmp/vram:/tmp/variant:$PATH" timeout 15 "$E" describe fixture-vram </dev/null >/tmp/vram/describe2 2>&1
+        has /tmp/vram/describe2 "role.unavailable=fixture-vram needs an NVIDIA graphics card with at least 12000 MiB of memory; this host's largest has 8192 MiB." || ok=0
+        step min-vram-describe "$ok" "describe on an 8192 MiB card: $(grep -c '^role.min_vram_when=' /tmp/vram/describe) min_vram_when lines; with 12000 MiB as the least: $(grep -m1 -oE '^role.unavailable=.{0,60}' /tmp/vram/describe2 || echo 'no unavailable line')"
+        sed -i 's/min_vram=12000|/min_vram=4000|/' "${E%/*}/roles/fixture-vram/role.conf"
+        : > /tmp/variant/calls
+        printf '%s\n' choice.accelerator=gpu choice.FV_MODEL=big end | PATH="/tmp/vram:/tmp/variant:$PATH" timeout 30 "$E" --yes add fixture-vram >/tmp/vram/big 2>&1; rc=$?
+        bigcalls="$(tr '\n' ';' < /tmp/variant/calls)"
+        printf '%s\n' choice.accelerator=gpu choice.FV_MODEL=small end | PATH="/tmp/vram:/tmp/variant:$PATH" timeout 30 "$E" --yes add fixture-vram >/tmp/vram/small 2>&1
+        [[ $rc == 1 && -z "$bigcalls" ]] && has /tmp/vram/big "Stopped: fixture-vram needs an NVIDIA graphics card with at least 26000 MiB of memory (big needs 26 GB); this host's card has 8192 MiB." &&
+          ! has /tmp/vram/big "Fixture terms." && has /tmp/vram/small "Fixture terms." && grep -q 'up -d' /tmp/variant/calls && ok=1 || ok=0
+        step min-vram-refuses-before-terms "$ok" "big (26000 MiB) on 8192 MiB: exit $rc, $(grep -m1 -oE 'Stopped: [^(]*' /tmp/vram/big || tail -n1 /tmp/vram/big), compose calls '${bigcalls}'; small (4000 MiB) went on to: $(tr '\n' ';' < /tmp/variant/calls)"
 
         # ARM64 hosts (uname -m answers aarch64 through a shim): a role whose containers are x86_64-only (requires=x86_64, the
         # NVIDIA CUDA roles) is refused with the reason and describe says so; a role with an ARM64 build (arm64=<overlay>,
