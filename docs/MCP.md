@@ -1716,8 +1716,8 @@ folder while the hosts' copy holds them; and an unsigned request refused (HTTP
 `accounts_sync_selftest` (no arguments) rehearses the household's
 [account directory](ACCOUNTS.md#account-directory) end to end with the
 production code (`src\Martlet.NodeLinkCheck`, mode `accounts`,
-`AccountRehearsal.cs`; returns `{exitCode, report}`): two real gateways
-(`lab-accounts-1`, `lab-accounts-2`; Kestrel, pinned TLS, signed requests, an
+`AccountRehearsal.cs`; returns `{exitCode, report}`): three real gateways
+(`lab-accounts-1`, `lab-accounts-2`, `lab-accounts-3`; Kestrel, pinned TLS, signed requests, an
 in-memory `network.json` and `accounts.json`) bound to one lab network, two
 member desktops (`lab-desktop-a`, `lab-desktop-b`) and one outside computer
 (`lab-intruder`) with real network keys and the desktop's paired client
@@ -1727,7 +1727,9 @@ its Windows login signed in on A) and both hosts keep it, signed by A, with
 digests that match A's copy; B checks every entry against its roster and takes
 it; B adds a person through one host only and every copy ends the same; offline
 renames on A and B (the later wins, the creator stays); an offline edit can't
-undo a removal; the outside computer's own entry and a forged change of the
+undo a removal; after B binds itself to the owner account and A writes it
+last, a third host (`lab-accounts-3`) that never saw it takes it with both
+bindings (`rejected` 0); the outside computer's own entry and a forged change of the
 owner account are refused (`rejected` 2, the host copy unchanged); a restarted
 host serves the same directory from its saved `accounts.json`; and an unsigned
 request is refused (HTTP 401). Synthetic accounts, loopback only. A friend's
@@ -1869,7 +1871,12 @@ returns keys, signatures or host addresses and contacts nothing.
 `current` and each `signedIn` account (`id` as 32 hex digits, `name`, `role`,
 `pending` while the household's directory doesn't have it, `removed`,
 `current`, `folder`: whether `accounts\<id>` exists), how many are `pending`,
-the household's `owner`, and this PC's copy of the account directory:
+the household's `owner`, `householdOwner` (the household's owner account
+that every desktop can bind to: the network's own owner account or the
+founder's), `ownerJoin` (`null`, or `{owner, own, ownWritten}` while this PC,
+let in with the owner's approval, still has to sign in to the household's
+owner account and fold the account it made before it joined), and this PC's
+copy of the account directory:
 `directory` (`none`, `loaded` or `unreadable`: `accounts.json`), how many
 `accounts`, `removed` and `owners`, its `revision` and each of its `entries`
 (`id`, `name`, `role`, `removed`, the `logins` kinds, how many `devices` it is

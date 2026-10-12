@@ -38,6 +38,10 @@ internal static class AccountsStatus
 
         var owner = directory?.Live.Where(a => a.Role == AccountRoles.Owner).OrderBy(a => a.Key, StringComparer.Ordinal).FirstOrDefault()?.Key
             ?? session?.Pending.FirstOrDefault(p => p.Role == AccountRoles.Owner)?.Id.ToString("N");
+        var roster = ReadRoster(dataDirectory);
+        var householdOwner = directory is not null && roster is not null ? OwnerJoin.HouseholdOwner(directory, roster)?.Key : null;
+        var join = directory is not null && roster is not null && session is not null && device is not null
+            ? OwnerJoin.Plan(directory, session, roster, device, File.Exists(Path.Combine(dataDirectory, JoinedAccountFile))) : null;
         return new
         {
             device,
@@ -47,6 +51,8 @@ internal static class AccountsStatus
             signedIn = session?.SignedIn.Select(View).ToArray(),
             pending = session?.Pending.Count ?? 0,
             owner,
+            householdOwner,
+            ownerJoin = join is null ? null : new { owner = join.Owner.ToString("N"), own = join.Own.ToString("N"), ownWritten = join.OwnWritten },
             directory = directoryState,
             accounts = directory?.Live.Count() ?? 0,
             removed = directory?.Accounts.Count(a => a.Removed) ?? 0,
@@ -64,6 +70,16 @@ internal static class AccountsStatus
     }
 
     private static string Folder(string dataDirectory, Guid id) => Path.Combine(dataDirectory, AccountSessionState.Folder, id.ToString("N"));
+
+    /// <summary>Martlet.Desktop's JoinedAccount.FileName: this PC joined the network by signing in to an account.</summary>
+    private const string JoinedAccountFile = "joined-account.json";
+
+    private static NetworkRoster? ReadRoster(string dataDirectory)
+    {
+        var path = Path.Combine(dataDirectory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
+        try { return File.Exists(path) ? Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster : null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException) { return null; }
+    }
 
     private static (string State, AccountDirectory? Directory) ReadDirectory(string dataDirectory)
     {

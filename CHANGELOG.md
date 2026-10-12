@@ -24,6 +24,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- A computer you add to your network with your approval now signs in to the household owner's account and uses its settings, and folds the account it made before it joined into yours. Hosts no longer refuse the owner's account (*Refused 1 account entry*) after another computer changed it. ([#811](https://github.com/throndir2/Martlet/pull/811))
 - **Martlet sings when its Thinking model runs on one of your computers**: ask it for a song and it says it'll write one, makes it in the background and tells you when it's ready, then sings it when you say yes. Before, a Thinking model on a paired computer had no way to start a song. ([#806](https://github.com/throndir2/Martlet/pull/806))
 - Cloud models you add to Companion › Thinking pool (such as NVIDIA Build or OpenRouter models), with their API keys and choices, now reach all your computers, including a companion PC you set up later. Paired computers and models in Ollama on a PC stay that PC's own. ([#804](https://github.com/throndir2/Martlet/pull/804))
 - In App guides › *Add an app*, the labels line up with the rest of the card, and the grey hint in each empty box starts where your typing starts. ([#803](https://github.com/throndir2/Martlet/pull/803))
