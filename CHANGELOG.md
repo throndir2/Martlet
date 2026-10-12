@@ -16,6 +16,7 @@ Each release's section here is also its notes on GitHub.
 ### Fixed
 
 - **Martlet sings when its Thinking model runs on one of your computers**: ask it for a song and it says it'll write one, makes it in the background and tells you when it's ready, then sings it when you say yes. Before, a Thinking model on a paired computer had no way to start a song. ([#806](https://github.com/throndir2/Martlet/pull/806))
+- Cloud models you add to Companion › Thinking pool (such as NVIDIA Build or OpenRouter models), with their API keys and choices, now reach all your computers, including a companion PC you set up later. Paired computers and models in Ollama on a PC stay that PC's own. ([#804](https://github.com/throndir2/Martlet/pull/804))
 - In App guides › *Add an app*, the labels line up with the rest of the card, and the grey hint in each empty box starts where your typing starts. ([#803](https://github.com/throndir2/Martlet/pull/803))
 
 ## [0.72.0] - 2026-10-11
