@@ -180,6 +180,8 @@ public partial class MainWindow : ThemedWindow
             FollowCharacterActions();
             FollowCharacterTheme();
             TickCharacterEyes();
+            FollowGreeting();
+            RenderGreeting();
         };
         characterTimer.Start();
         var processor = Martlet.Core.Platforms.MachineArchitecture.Current;

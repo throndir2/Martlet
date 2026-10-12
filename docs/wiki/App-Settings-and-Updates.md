@@ -22,7 +22,7 @@ Paired hosts report their version. **Update host** rebuilds that host's gateway 
 
 Closing the window can keep Martlet running in the notification area. Right-click the icon to open Martlet, talk, pause/resume, end the conversation, show/hide character, toggle startup/closing choices or exit.
 
-Open **Settings › Startup and closing** for **Start with Windows**, **Start in the notification area**, **Keep running when closed**, and startup character/listening/watching choices.
+Open **Settings › Startup and closing** for **Start with Windows**, **Start in the notification area**, **Keep running when closed**, startup character/listening/watching choices, and **Greet me once Martlet has warmed up after it starts** (on by default: Martlet says hello on its own once it is ready, fitting the time of day and maybe your last conversation, a reminder coming up or what you have open).
 
 ## Appearance
 

@@ -1097,6 +1097,13 @@
                                       AutomationProperties.AutomationId="StartCompanion">
                                 <TextBlock TextWrapping="Wrap" Text="When Martlet starts, show the character and start listening (and watching, while vision is on)"/>
                             </CheckBox>
+                            <CheckBox x:Name="GreetAtStartCheck" Margin="0,4,0,6" Checked="GreetAtStart_Changed" Unchecked="GreetAtStart_Changed"
+                                      AutomationProperties.AutomationId="GreetAtStart"
+                                      ToolTip="Once Martlet has warmed up after it starts, it says hello on its own. It may mention the time of day, your last conversation, reminders coming up and the apps you have open, which go to your Thinking model with the greeting.">
+                                <TextBlock TextWrapping="Wrap" Text="Greet me once Martlet has warmed up after it starts"/>
+                            </CheckBox>
+                            <TextBlock x:Name="GreetingStatusText" Style="{DynamicResource Muted}" Margin="24,0,0,6" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="GreetingStatus"/>
                             <TextBlock x:Name="BackgroundStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="BackgroundStatus"/>
                             <TextBlock x:Name="StayAwakeText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"
