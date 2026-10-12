@@ -10,7 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
-- **Martlet learns more about your game**: after it reads a game's wiki, a Thinking pool helper writes a short brief (what the game is, how it plays, early tips and common mistakes) that Martlet keeps in mind when you talk about the game. With screen digests on, Martlet also notices where you are in the game, and when its guide has little about that place, it looks it up on wikis, Reddit search results and the web in the background. Martlet can also refresh the brief when you ask. ([#PR](https://github.com/throndir2/Martlet/pulls))
+- **Martlet learns more about your game**: after it reads a game's wiki, a Thinking pool helper writes a short brief (what the game is, how it plays, early tips and common mistakes) that Martlet keeps in mind when you talk about the game. With screen digests on, Martlet also notices where you are in the game, and when its guide has little about that place, it looks it up on wikis, Reddit search results and the web in the background. Martlet can also refresh the brief when you ask. ([#809](https://github.com/throndir2/Martlet/pull/809))
 
 ### Changed
 
