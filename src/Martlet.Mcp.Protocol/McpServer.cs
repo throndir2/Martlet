@@ -509,7 +509,12 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "label, provider and how many of their computers signed in, and how many asked; friends.json); and the household's sign-in " +
             "providers as the desktop last read them from its hosts (householdSignIn: each provider's ID, kind and name, the hosts that " +
             "have it, miss it, have other settings or lack its client secret, and whether that desktop keeps its secret to add it to " +
-            "new hosts; household-signin.json). Also this PC's device " +
+            "new hosts; household-signin.json); the share links this PC made and accepted (shareLinks: each made link's friend name " +
+            "and whether it covers all hosts or which, each accepted link's sender and the hosts it signed in to or you forgot, whether " +
+            "martlet:// links open Martlet for this Windows user, and whether a clicked link waits for the running Martlet; " +
+            "share-links.json, never a link ID or secret); and the port Martlet opened on the router for this PC's host service " +
+            "(routerPort: host, router name, external and internal port, when it was opened and renewed, the last problem; " +
+            "router-port.json, never an address). Also this PC's device " +
             "ID (device: id and source, saved in device.json, one per Windows user; source pairings or legacy is the ID the desktop " +
             "keeps on its next start, new means it picks desktop-<pc name>-<6 characters>) and the Windows login it runs under " +
             "(windowsLogin: kind microsoft, work or local, and whether it has an e-mail hint; never the e-mail, name or SID). " +
@@ -625,7 +630,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "assertion is confirmed by the host; the home PC shares the host with a friend (that identity allowed as a friend): the " +
             "friend's computer signs in and lists the host's engines, every other route refuses it (access.friend) and it never " +
             "joins the network, a sign-in under HOME-PC's ID is refused (signin.device_taken), and stopping sharing revokes it at " +
-            "once with no network removal; a non-member can't change sign-in and removing the owner account revokes the " +
+            "once with no network removal; the home PC makes a share link for all of its hosts (each host keeps only its verifier), a " +
+            "friend's computer pastes it, is refused with a wrong secret, signs in as a friend on the host the link names, asks that " +
+            "host which hosts the link covers and signs in to the other one, and stopping the link revokes it on both; a non-member can't change sign-in and removing the owner account revokes the " +
             "laptop. Reports " +
             "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
@@ -4627,11 +4634,13 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
         var pairedHosts = PairedHostsSummary(directory);
         var friends = FriendsSummary(directory);
+        var shareLinks = ShareLinksSummary(directory);
+        var routerPort = RouterPortSummary(directory);
         var householdSignIn = HouseholdSignInSummary(directory);
         var device = DeviceSummary(directory);
         var login = Martlet.Mcp.Shared.WindowsLogin.Current;
         var windowsLogin = new { kind = login.Kind, hasEmailHint = login.HasEmailHint, hasSid = login.Sid.Length > 0 };
-        if (!File.Exists(path)) return new { state = "none", key, device, windowsLogin, pairedHosts, friends, householdSignIn };
+        if (!File.Exists(path)) return new { state = "none", key, device, windowsLogin, pairedHosts, friends, shareLinks, routerPort, householdSignIn };
         Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
         try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
@@ -4656,8 +4665,80 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             removedFrom = local.RemovedFrom,
             pairedHosts,
             friends,
+            shareLinks,
+            routerPort,
             householdSignIn
         };
+    }
+
+    /// <summary>share-links.json in short (docs/NETWORK.md, "Sharing with a link"): the share links this PC made (the friend's
+    /// name, whether it covers all hosts or which, when it was made) and the ones it accepted (who sent it, the hosts it signed in
+    /// to and those you forgot), whether martlet:// links open Martlet for this Windows user, and whether another start left a
+    /// clicked link for the running Martlet. Never a link ID or secret.</summary>
+    private static object ShareLinksSummary(string directory)
+    {
+        string? protocol = null;
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\martlet\shell\open\command");
+                protocol = key?.GetValue(null) as string;
+            }
+            catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { }
+        }
+        var pending = File.Exists(Path.Combine(directory, "pending-share-link.txt"));
+        try
+        {
+            var path = Path.Combine(directory, "share-links.json");
+            if (!File.Exists(path)) return new { made = Array.Empty<object>(), accepted = Array.Empty<object>(), protocolRegistered = protocol is not null, pendingHandOver = pending };
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            var root = document.RootElement;
+            static string? Text(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            static string[]? List(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array
+                ? v.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : null;
+            return new
+            {
+                made = root.TryGetProperty("made", out var made) && made.ValueKind == JsonValueKind.Array
+                    ? made.EnumerateArray().Select(l => (object)new { label = Text(l, "label"), allHosts = List(l, "hosts") is null, hosts = List(l, "hosts"), createdAt = Text(l, "created_at") }).ToArray()
+                    : [],
+                accepted = root.TryGetProperty("accepted", out var accepted) && accepted.ValueKind == JsonValueKind.Array
+                    ? accepted.EnumerateArray().Select(l => (object)new
+                    {
+                        from = Text(l, "from"), label = Text(l, "label"), hosts = List(l, "host_ids") ?? [], forgotten = List(l, "skipped") ?? [],
+                        acceptedAt = Text(l, "accepted_at")
+                    }).ToArray()
+                    : [],
+                protocolRegistered = protocol is not null,
+                pendingHandOver = pending
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
+    }
+
+    /// <summary>router-port.json in short (docs/NETWORK.md, "Opening a port on your router"): the port Martlet opened on the router
+    /// for this PC's host service (which host, the router's name, the external and internal port, when it was opened and last
+    /// renewed, the last problem and whether this PC reached it from inside). Never an address. Null when none is open.</summary>
+    private static object? RouterPortSummary(string directory)
+    {
+        try
+        {
+            var path = Path.Combine(directory, "router-port.json");
+            if (!File.Exists(path)) return null;
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            var root = document.RootElement;
+            static string? Text(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            static int? Number(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.TryGetInt32(out var n) ? n : null;
+            return new
+            {
+                hostId = Text(root, "host_id"), router = Text(root, "router_name"), externalPort = Number(root, "external_port"),
+                internalPort = Number(root, "internal_port"), openedAt = Text(root, "opened_at"), renewedAt = Text(root, "renewed_at"),
+                problem = Text(root, "problem"),
+                answeredFromInside = root.TryGetProperty("answered_from_inside", out var answered) && answered.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? answered.GetBoolean() : (bool?)null
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
     }
 
     /// <summary>household-signin.json: the household's sign-in providers as the desktop last read them from its hosts (each

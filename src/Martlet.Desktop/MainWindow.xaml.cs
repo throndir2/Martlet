@@ -280,6 +280,7 @@ public partial class MainWindow : ThemedWindow
         StartAccounts();
         StartApiKeys();
         StartFriends();
+        StartRouterPort();
         StartVoiceSync();
         StartSpeakingVoices();
         StartCharacterModels();

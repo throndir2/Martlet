@@ -168,6 +168,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ProblemClose",
         // Outside access's "Set up sign-in first" only opens the sign-in window for that host; it changes nothing by itself.
         "OutsideAccessSetUpSignIn",
+        // Sharing with a link (docs/NETWORK.md): Devices › Friends' Make a share link only opens the form (nothing is made until
+        // Make link, HostInputOk), Hosts shared with this PC's Accept a share link only opens the paste form (nothing signs in
+        // until Continue and the confirmation), and the share link window's Close closes it. Copy link on a friend's row
+        // (ShareLinkCopy-<key>) shows the link, the window's Copy link (ShareLinkCopy) puts it on the clipboard, and Stop link
+        // (ShareLinkStop-<key>) removes it from every host, so they need --allow-ui-effects.
+        "FriendsMakeShareLink", "AcceptShareLink", "ShareLinkClose",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
         "CharacterModelAddCancel",
         // Character profiles: Home's Manage profiles, the Character and Personality pages' Open profiles and the Profiles page's
@@ -341,7 +347,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // need --allow-ui-effects.
         "AccountProviderLogins",
         // Devices › Friends: how many hosts are shared with how many friends and who asked ("You share 1 host with 1 friend. ...
-        // Checked 14:02."), and Hosts shared with this PC: how many hosts friends share with this PC. Counts and fixed wording.
+        // Checked 14:02."), and Hosts shared with this PC: how many hosts friends share with this PC (or, with none, how to accept
+        // a share link). Counts and fixed wording.
         "FriendsStatus", "SharedHostsStatus",
         // Companion › Discord's voice line: where Martlet is in Discord voice, counts of speakers heard, utterances transcribed
         // and replies spoken (never what was said), whether DAVE is on, whether libdave loaded, and the last problem.
@@ -469,6 +476,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the reason code is the outsideAccessBlockedReason. Its "Set up sign-in first" button (OutsideAccessSetUpSignIn) only opens
         // the sign-in window, which changes nothing until its own buttons are used.
         "OutsideAccessBlockedReason",
+        // The Outside access dialog's router port note for this PC's host service ("Your router (Home router) forwards port 9444
+        // to this PC (since ..., renewed ...)." or what opening one does): router name, port and times, never the address.
+        "OutsideAccessRouterPort",
+        // The share link window (MainWindow.ShareLinks.cs): its heading ("Share link for Ana"), what it shares and the hosts it
+        // can't reach from outside yet. Never the link itself (ShareLinkText), which is a secret.
+        "ShareLinkHeading", "ShareLinkMessage", "ShareLinkWarning", "ShareLinkStatus",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "F5VoicesStatus",
         // Companion › Thinking's free API key tip (fixed text, or why the browser couldn't open) and its buttons' labels.
         "FreeKeyTip-Thinking", "FreeKeyAdd-Thinking", "FreeKeyGet-Thinking", "SetupCloudGetKey-Thinking",

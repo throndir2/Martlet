@@ -317,4 +317,41 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
         id is { Length: > 0 and <= 32 } && id.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-');
 
     private static string SignInProviderTarget(string providerId) => $"Martlet/v3/signin-provider/{providerId}";
+
+    // A share link's secret (docs/NETWORK.md, "Sharing with a link"): on the owner's PC so the link can be copied again and its
+    // verifier added to hosts added later; on a friend's PC so Martlet can sign in to hosts the link covers later.
+    public CredentialError WriteShareLinkSecret(string linkId, string secret)
+    {
+        if (!ShareLinkId(linkId) || !ShareLinkId(secret) || secret.Length > 64) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var chars = secret.ToCharArray();
+        try { return Map(native.Write(ShareLinkTarget(linkId), chars)); }
+        finally { Array.Clear(chars); }
+    }
+
+    public CredentialError ReadShareLinkSecret(string linkId, out string? secret)
+    {
+        secret = null;
+        if (!ShareLinkId(linkId)) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var result = Map(native.Read(ShareLinkTarget(linkId), out var stored));
+        using (stored)
+        {
+            if (result != CredentialError.None) return result;
+            if (stored is null) return CredentialError.Unavailable;
+            string? text = null;
+            stored.Use(chars => text = new string(chars));
+            secret = text is not null && ShareLinkId(text) ? text : null;
+            return secret is null ? CredentialError.Unavailable : CredentialError.None;
+        }
+    }
+
+    public CredentialError DeleteShareLinkSecret(string linkId) =>
+        !ShareLinkId(linkId) ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(ShareLinkTarget(linkId))) : CredentialError.UnsupportedPlatform;
+
+    private static bool ShareLinkId(string value) =>
+        value is { Length: > 0 and <= 64 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    private static string ShareLinkTarget(string linkId) => $"Martlet/v3/share-link/{linkId}";
 }
