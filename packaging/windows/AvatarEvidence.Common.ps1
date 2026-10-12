@@ -140,10 +140,11 @@ function Test-BuildArchiveEvidence($Provenance) {
 }
 
 function Get-ReviewedBrowserPackages {
-    foreach ($name in @('three-vrm', 'three-vrm-core', 'three-vrm-materials-hdr-emissive-multiplier',
+    foreach ($name in @('three-vrm', 'three-vrm-animation', 'three-vrm-core', 'three-vrm-materials-hdr-emissive-multiplier',
             'three-vrm-materials-mtoon', 'three-vrm-materials-v0compat', 'three-vrm-node-constraint', 'three-vrm-springbone',
             'types-vrm-0.0', 'types-vrmc-materials-hdr-emissive-multiplier-1.0', 'types-vrmc-materials-mtoon-1.0',
-            'types-vrmc-node-constraint-1.0', 'types-vrmc-springbone-1.0', 'types-vrmc-springbone-extended-collider-1.0', 'types-vrmc-vrm-1.0')) {
+            'types-vrmc-node-constraint-1.0', 'types-vrmc-springbone-1.0', 'types-vrmc-springbone-extended-collider-1.0', 'types-vrmc-vrm-1.0',
+            'types-vrmc-vrm-animation-1.0')) {
         [ordered]@{ key = "node_modules/@pixiv/$name"; name = "@pixiv/$name"; version = '3.5.5'; scope = 'runtime' }
     }
     [ordered]@{ key = 'node_modules/three'; name = 'three'; version = '0.180.0'; scope = 'runtime' }
