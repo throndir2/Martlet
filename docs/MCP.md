@@ -1798,7 +1798,9 @@ Parakeet model a new computer lacks (it waits, records nothing, then follows); a
 new computer taking everything without its defaults overriding anything; the
 Thinking fallback with its own key, turned off again (the key removed); two
 NVIDIA Build models in A's Thinking pool with one key, which reach B beside B's
-own model in Ollama and leave again with B's copy of the key; lorebooks;
+own model in Ollama and leave again with B's copy of the key; A's Thinking pool
+choices (Backup for slow replies and its wait, Busy pool) reaching B while B
+keeps its own model; lorebooks;
 no key in any desktop file while the hosts' private copy holds them and every
 copy ends the same; and an unsigned request refused (HTTP 401). Then a fourth
 simulated desktop on this Martlet (`lab-desktop-d`) keeps each person's
@@ -5011,8 +5013,17 @@ game, Companion › Prompts › *Screen glance message* (`glance`) and *Active a
 with your message* (`withMessage`) as the data directory's settings.json fills
 them (`state` `none`, `loaded` or `unreadable`; optional absolute
 `dataDirectory`, a disposable one through `scripts\Invoke-MartletMcp.ps1`), and
-the `[Screen]` line the conversation keeps (`kept`). In a running
-conversation, the talk window's `LiveVisionStatus` `help` shows it as *Active
+the `[Screen]` line the conversation keeps (`kept`). `sinceLook` runs the
+desktop's production `LookChange` on FIXTURE thumbnails of that game: each
+`scenario` gets `since` (`First`, `Same`, `Little` or `Changed`), `looks`
+(false while nothing changed since the last look: Martlet doesn't look at
+all), `picture` (how much the thumbnail changed, 0 to 1) and `changed`, the
+words a look's message gets (*It changed since your last look 3 min ago.
+Nobody has used the keyboard or mouse for 6 min.*). A clock that ticks counts
+as `Same`; a pop-up or a new window title is `Little`; new words on the
+screen, a new scene or another program is `Changed`. In a running
+conversation, the talk window's `LiveVisionStatus` shows *Nothing changed
+since the last look.* while it holds off, and its `help` shows *Active
 app: Google Chrome (full screen).* It reads no credentials and contacts
 nothing.
 
@@ -8254,13 +8265,56 @@ in degrees measured on the posed bones), `curl` (`left` and `right`: the
 middle finger's curl in degrees, 0 straight as in the T-pose), `sway` (the
 spine's sideways lean, degrees) and `bones` (`head`, `neck`, the shoulders,
 upper arms, hands and upper legs: `x`, `y` as fractions of the overlay's
-drawing, +y down). `summary` gives `found`, whether it stayed `idle`, the
-`inhale`, `perMinute`, `arms`, `curl` and `sway` ranges (`least`, `most`) and
-how far each bone `moved` (`x`, `y`). Over 20 readings 250 ms apart, a VRM
-breathes in from 0 to about 1 at 13 to 16 breaths a minute, with its arms 15
+drawing, +y down), `animation` (the VRMA clip that plays now: `name`, `time`
+and `duration` in seconds and `weight`, how much of the body it has, 0 to 1;
+null when none) and `clips` (the names of the clips the character keeps).
+`summary` gives `found`, whether it stayed `idle`, the
+`inhale`, `perMinute`, `arms`, `curl` and `sway` ranges (`least`, `most`),
+the `animations` seen playing with their `animationWeight` range, and how far
+each bone `moved` (`x`, `y`). Over 20 readings 250 ms apart, a VRM breathes
+in from 0 to about 1 at 13 to 16 breaths a minute, with its arms 15
 to 18 degrees from straight down, its elbows bent about 16 degrees and its
 fingers curled about 60 degrees. `MoveAvatar`'s value in `ui_snapshot` shows
 the last reading as `pose`.
+
+**VRMA clips on the character**: a VRM plays VRM Animation clips (`.vrma`; see
+*VRMA clips on a VRM* in [Emotes and motions](AVATARS.md#emotes-and-motions)).
+`character_animation` gives the showing character a clip from a file on this
+PC through UI Automation (`MoveAvatar`'s value `"animation:{...}"` with
+`path`, `name`, `play` and `inPlace`) and waits up to 10 seconds for the
+answer. It changes the character, so it needs `--allow-ui-effects`. Its
+arguments:
+
+- `path`: the full path of a `.vrma` file (at most 4 MB and 120 seconds). The
+  renderer reads it, checks it and keeps it as `name` while the model stays
+  loaded (at most 16 clips; the oldest goes first).
+- `name`: the clip's name, 1 to 128 characters (default: the file's name).
+  Without `path`, the tool plays the clip the character keeps by that name.
+- `play` (default true): play the clip once. It blends in over the idle pose
+  and gives the body back to the idle pose, breathing and sway by its end.
+- `inPlace` (default true): the hips stay at rest across the ground and keep
+  only their up and down movement, so a clip that walks or drifts keeps the
+  character in its window.
+- `samples` (1 to 60) and `gapMs` (default 250): afterwards, read the pose as
+  `character_pose` does (`pose`), to see the clip play.
+
+It returns `played`: `n`, `name`, `kept`, `started`, `duration` (seconds),
+`clips` (every clip kept), `file` (the file's name, never its folder) and
+`reason` when it didn't start (the character isn't a VRM, no clip has that
+name, or the file isn't a usable clip, such as a `.vrm` model). A file that
+can't be used never stops the character. `MoveAvatar`'s value in
+`ui_snapshot` shows the last answer as `animation`. For example, on a VRM:
+
+1. Call `character_animation` with the `path` of a 10-second clip and
+   `samples` 8, `gapMs` 0.
+2. Check that the readings show `animation.name` and a rising `time` at
+   `weight` 1, and that the arms follow the clip.
+3. Check that, after the clip's length, `animation` is null and the arms hang
+   15 to 18 degrees from straight down again.
+4. Call it again with only `name`: the kept clip plays again.
+
+On this PC, each pose reading takes about 2 seconds, so sample a clip that is
+longer than 2 seconds to see it play.
 
 **Who moves the character's mouth**: while Martlet speaks, its voice has the
 character's mouth, and an emote's mouth comes back about a second after the

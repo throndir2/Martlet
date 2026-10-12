@@ -11,7 +11,7 @@ namespace Martlet.Avatar.RendererHost;
 /// is refused while its place is locked, tap it through its value ("x,y"), which then reads the last tap's hit test, read
 /// where Martlet draws over its face ("face"), take a picture of it as it shows ("picture"), read what its idle body does
 /// ("pose"), who moves its mouth ("mouth"), where it looks ("look") and where each area of its touch zones is now ("zones"),
-/// and move its mouth as Martlet's voice does ("voice:ms;level;...").
+/// move its mouth as Martlet's voice does ("voice:ms;level;...") and play a VRMA clip from a file ("animation:{json}").
 /// </summary>
 internal sealed class CharacterViewport : Grid
 {
@@ -89,15 +89,25 @@ internal sealed class CharacterViewport : Grid
     /// surface's value.</summary>
     internal string LastZones { get; set; } = "";
 
+    /// <summary>Gives the character a VRMA clip from a file on this PC (its full path, or null to play the clip kept by the name),
+    /// keeps it by a name (null: the file's name) and plays it once when asked, the hips in place or not; the answer arrives as
+    /// <see cref="LastAnimation"/>.</summary>
+    internal Action<string?, string?, bool, bool>? PlayAnimation { get; set; }
+
+    /// <summary>The last answer about a VRMA clip as JSON (see CharacterAnimationReading), or empty. Read as the "animation" field
+    /// of this surface's value.</summary>
+    internal string LastAnimation { get; set; } = "";
+
     /// <summary>The most levels one "voice:" value plays (20 seconds at 50 ms).</summary>
     internal const int MaximumVoiceLevels = 400;
 
     /// <summary>The value UI Automation reads: the last tap's hit test with the last stroke, physical change, face reading,
-    /// picture, pose reading, mouth reading, look reading and touch zones reading added.</summary>
+    /// picture, pose reading, mouth reading, look reading, touch zones reading and clip answer added.</summary>
     internal string Reading()
     {
         if (LastStroke.Length == 0 && LastPhysical.Length == 0 && LastFace.Length == 0 && LastPicture.Length == 0 &&
-            LastPose.Length == 0 && LastMouth.Length == 0 && LastLook.Length == 0 && LastZones.Length == 0) return LastTouch;
+            LastPose.Length == 0 && LastMouth.Length == 0 && LastLook.Length == 0 && LastZones.Length == 0 &&
+            LastAnimation.Length == 0) return LastTouch;
         var node = (LastTouch.Length > 0 ? System.Text.Json.Nodes.JsonNode.Parse(LastTouch) as System.Text.Json.Nodes.JsonObject : null) ?? [];
         if (LastStroke.Length > 0) node["stroke"] = System.Text.Json.Nodes.JsonNode.Parse(LastStroke);
         if (LastPhysical.Length > 0) node["physical"] = System.Text.Json.Nodes.JsonNode.Parse(LastPhysical);
@@ -107,7 +117,30 @@ internal sealed class CharacterViewport : Grid
         if (LastMouth.Length > 0) node["mouth"] = System.Text.Json.Nodes.JsonNode.Parse(LastMouth);
         if (LastLook.Length > 0) node["look"] = System.Text.Json.Nodes.JsonNode.Parse(LastLook);
         if (LastZones.Length > 0) node["zones"] = System.Text.Json.Nodes.JsonNode.Parse(LastZones);
+        if (LastAnimation.Length > 0) node["animation"] = System.Text.Json.Nodes.JsonNode.Parse(LastAnimation);
         return node.ToJsonString();
+    }
+
+    /// <summary>Parses an "animation:{json}" value: <c>path</c> (the full path of a .vrma file on this PC, or none to play a kept
+    /// clip), <c>name</c> (needed without a path), <c>play</c> and <c>inPlace</c> (both true when left out).</summary>
+    internal static (string? Name, string? Path, bool Play, bool InPlace) AnimationRequest(string value)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(value["animation:".Length..]);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) throw Invalid();
+            string? Text(string property) => root.TryGetProperty(property, out var text) && text.ValueKind == System.Text.Json.JsonValueKind.String
+                ? text.GetString() : null;
+            bool Flag(string property) => !root.TryGetProperty(property, out var flag) || flag.ValueKind != System.Text.Json.JsonValueKind.False;
+            var (name, path) = (Text("name"), Text("path"));
+            if ((path is null && name is null) || (path is not null && !System.IO.Path.IsPathFullyQualified(path))) throw Invalid();
+            return (name, path, Flag("play"), Flag("inPlace"));
+        }
+        catch (System.Text.Json.JsonException) { throw Invalid(); }
+
+        static ArgumentException Invalid() => new(
+            "Give a clip with \"animation:{\\\"path\\\": full path of a .vrma file}\" or play a kept one with \"animation:{\\\"name\\\": ...}\".", nameof(value));
     }
 
     /// <summary>Parses a "voice:ms;level;level;..." value: 10 to 1000 ms a step and 1 to <see cref="MaximumVoiceLevels"/> levels
@@ -181,6 +214,13 @@ internal sealed class CharacterViewport : Grid
             if (value == "zones")
             {
                 (owner.ReadZones ?? throw new InvalidOperationException("The character's touch zones can't be read yet."))();
+                return;
+            }
+            if (value?.StartsWith("animation:", StringComparison.Ordinal) == true)
+            {
+                if (owner.PlayAnimation is not { } play) throw new InvalidOperationException("The character can't play a clip yet.");
+                var (name, path, now, inPlace) = AnimationRequest(value);
+                play(name, path, now, inPlace);
                 return;
             }
             if (value?.StartsWith("voice:", StringComparison.Ordinal) == true)

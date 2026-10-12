@@ -1,7 +1,7 @@
 Martlet VRM adapter runtime dependencies
 
-@pixiv/three-vrm 3.5.5 and its @pixiv/three-vrm-* / @pixiv/types-vrm*
-dependencies 3.5.5
+@pixiv/three-vrm 3.5.5, @pixiv/three-vrm-animation 3.5.5 and their
+@pixiv/three-vrm-* / @pixiv/types-vrm* dependencies 3.5.5
 Source: https://github.com/pixiv/three-vrm
 
 Copyright (c) 2019-2026 pixiv Inc.

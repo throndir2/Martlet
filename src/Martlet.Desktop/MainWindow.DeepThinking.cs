@@ -86,7 +86,7 @@ public partial class MainWindow
                 "interrupt) and the screen and sound summaries. Long jobs are thinking longer, research, a song's lyrics and the " +
                 "other helpers. Each job goes to a free machine that takes it, the one that shares least with the conversation " +
                 "first. Tick what each machine may do. Cloud providers and servers on your network, with their API keys and " +
-                "choices, are the same on all your computers; paired computers join each PC's pool by themselves, and models in " +
+                "choices, are the same on all your computers, and so are Backup for slow replies and Busy pool; paired computers join each PC's pool by themselves, and models in " +
                 "Ollama on this PC stay this PC's own.", new Thickness(0, 0, 0, 8), "ThinkingPool", "the Thinking pool")
         };
 

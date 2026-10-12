@@ -167,15 +167,32 @@ function playVoice(now) {
   }
 }
 // What a VRM's idle body does now, for Martlet's MCP (character_pose): its breath, each arm's hang and elbow bend, how far the
-// fingers curl and the sway (the runtime's idleReading), and where its head, shoulders, hands and hips are, as fractions of the
-// canvas (+y down). A Live2D model's own breathing isn't read.
+// fingers curl and the sway (the runtime's idleReading), where its head, shoulders, hands and hips are, as fractions of the
+// canvas (+y down), the VRMA clip that plays now (its name, seconds into it, its length and how much of the body it has; null
+// when none) and the clips kept for the model. A Live2D model's own breathing isn't read.
 function poseReading(id) {
   const idle = renderer === "Vrm" ? adapter?.idleReading : undefined;
   if (!idle) return { id, found: false, renderer: renderer ?? null };
   const round = value => Math.round(value * 10000) / 10000;
   const bones = Object.fromEntries(adapter.bonePoints().filter(b => POSE_BONES.has(b.bone))
     .map(b => [b.bone, { x: round(b.x), y: round(b.y) }]));
-  return { id, found: true, renderer, ...idle, bones };
+  return { id, found: true, renderer, ...idle, bones, animation: adapter.animationReading ?? null, clips: clipNames() };
+}
+// The names of the VRMA clips the showing VRM keeps, oldest first.
+const clipNames = () => { try { return renderer === "Vrm" ? (adapter?.animations ?? []).map(a => a.name) : []; } catch { return []; } };
+// Keeps a VRMA clip (`clip`, the .vrma file's bytes in base64) as `name` on a showing VRM and, with `play`, plays it once
+// (see the adapter's loadAnimation and playAnimation: it blends in over the idle pose and gives the body back by its end;
+// `inPlace` keeps the hips at rest across the ground). Without a clip it plays the one kept by that name. Says whether the
+// clip is kept and started, its length, every clip kept, and why it didn't start.
+async function animate(name, clip, play, inPlace) {
+  if (!(active && !failed && renderer === "Vrm" && adapter?.loadAnimation))
+    return { kept: false, started: false, name, duration: 0, clips: [],
+      reason: renderer === "Live2D" ? "The character is a Live2D model; VRMA clips play on VRM characters." : "No character shows." };
+  if (typeof clip === "string" && clip.length > 0) await adapter.loadAnimation(name, Uint8Array.from(atob(clip), c => c.charCodeAt(0)).buffer, inPlace);
+  const kept = adapter.animations.find(a => a.name === name);
+  const started = !!kept && play && adapter.playAnimation(name);
+  return { kept: !!kept, started, name, duration: kept?.duration ?? 0, clips: clipNames(),
+    ...(!kept ? { reason: "No clip has that name now; give the clip again." } : play && !started ? { reason: "The character isn't moving now." } : {}) };
 }
 // A picture of the whole character for touch zones, drawn on the canvas and read back in the same task, so it never shows on
 // screen: `width` by `height` pixels in the framing `zoom`, `x`, `y` of a frame `frame` of its width (see setView), in the
@@ -323,6 +340,18 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     voiceStart = undefined;
     return;
   }
+  if (message.kind === "animation") {
+    // A VRMA clip for the showing VRM, kept and played (see animate). Answered as a command reply, or unprompted with
+    // {animationPlayed} when it carries an id (Martlet's MCP, through UI Automation). A clip that can't be used is only "not
+    // started", with the reason, and never fails the renderer.
+    const { id, name, clip, play, inPlace } = message.data ?? {};
+    const named = typeof name === "string" ? name : "";
+    let reply;
+    try { reply = await animate(named, clip, play !== false, inPlace !== false); }
+    catch (error) { reply = { kept: false, started: false, name: named, duration: 0, clips: clipNames(), reason: reason(error) }; }
+    post(id === undefined ? reply : { animationPlayed: { id, ...reply } });
+    return;
+  }
   if (message.kind === "eyes") {
     // The eyes measured by vision ({left, right}, see the adapters' setEyeHint) or null to clear them. Answered with where the
     // eyes come from now ({eyesFrom}; null while no model shows); a hint the adapter can't use is ignored and never fails the
@@ -415,9 +444,11 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       adapter.setLipSync(level);
       post({});
     } else if (message.kind === "motion") {
-      post({ started: renderer === "Live2D" ? adapter.playMotion(String(data.group)) : false });
+      const group = String(data.group);
+      post({ started: renderer === "Live2D" ? adapter.playMotion(group) : adapter.playAnimation?.(group) ?? false });
     } else if (message.kind === "action") {
-      // An emote (expression, held until ended or replaced), a motion (played once) or a gesture (played once, or with
+      // An emote (expression, held until ended or replaced), a motion (played once: a Live2D motion group, or a VRMA clip a VRM
+      // keeps, which `on: false` blends back to the idle pose) or a gesture (played once, or with
       // `hold` a holdable one kept until ended; drawn over the face when the model can't show it, see actGesture). Ending
       // an expression that isn't the one showing changes nothing. A gesture's reply also says which gesture now plays once
       // and every one held (`gesture: {playing, held: [...]}`). A held (lingering) expression stays on, layered with the
@@ -425,7 +456,8 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       const kind = String(data.kind), name = String(data.name), on = data.on !== false, hold = data.hold === true;
       let started = false;
       if (kind === "gesture") { post({ ...actGesture(name, on, hold), gesture: gestureState() }); return; }
-      else if (kind === "motion") started = on && renderer === "Live2D" ? adapter.playMotion(name) : false;
+      else if (kind === "motion") started = renderer === "Live2D" ? on && adapter.playMotion(name)
+        : on ? adapter.playAnimation?.(name) ?? false : adapter.stopAnimation?.(name) ?? false;
       else if (kind === "expression") {
         if (renderer === "Live2D") {
           if (hold) started = adapter.holdExpression(name, on);

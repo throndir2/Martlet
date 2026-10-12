@@ -1103,6 +1103,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
             renderer = next;
             ForgetEyes();
             ForgetZoneView();
+            ForgetAnimations();
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.
             if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
@@ -1466,6 +1467,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
             await renderer.DisposeAsync();
             renderer = null;
         }
+        // A clip belongs to the model the renderer showed.
+        ForgetAnimations();
         if (worker is { } running)
         {
             // A worker that already ended (even with an error) is finished; only a still-running one blocks cleanup.

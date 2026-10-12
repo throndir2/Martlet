@@ -559,7 +559,8 @@ NVIDIA Build and its old key.
 | --- | --- | --- |
 | `thinking`, `listening`, `speaking` | The route a job uses when no paired host does it: provider (OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, Ollama on the computer itself, Windows speech, Parakeet), model, voice and **the API key** | Host routes and pairings (the plan above); a local whisper package |
 | `thinking-fallback` | The *If Thinking fails* endpoint, model and its own key (or none) | |
-| `thinking-pool` | Companion › Thinking pool's cloud providers and servers on your network (for example NVIDIA Build or OpenRouter models): each one's address, model, order, on or off, slots, Quick jobs, Long jobs, pictures and recordings, Backup for slow replies, Smarts and **its API key** (the distinct keys travel together as one secret). A key this PC already holds for the same address is used again; a member removed elsewhere is removed here with its key | Paired computers in the pool (each PC's own pairing; they join by themselves) and models in Ollama on this PC; Runs on, Backup Thinking and Busy pool |
+| `thinking-pool` | Companion › Thinking pool's cloud providers and servers on your network (for example NVIDIA Build or OpenRouter models): each one's address, model, order, on or off, slots, Quick jobs, Long jobs, pictures and recordings, Backup for slow replies, Smarts and **its API key** (the distinct keys travel together as one secret). A key this PC already holds for the same address is used again; a member removed elsewhere is removed here with its key | Paired computers in the pool (each PC's own pairing; they join by themselves) and models in Ollama on this PC; Runs on |
+| `thinking-pool-choices` | Companion › Thinking pool's pool-wide choices: Backup for slow replies (Backup Thinking) and its wait, Busy pool (higher priority first, more important after stops, tries again) and Use the conversation's model when the pool is empty. It is a separate setting, so a choice changed on one PC never replaces the cloud models of another | Runs on (it can name this PC's own models) and the machines' own boxes |
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
 | `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
@@ -587,7 +588,7 @@ Conversations are not shared; what Martlet makes from them is (the [shared creat
 With [accounts](ACCOUNTS.md#account-settings), the settings above are split
 into the household's and each person's. The household keeps `thinking`,
 `listening`, `speaking` with their API keys, `thinking-fallback`, `thinking-pool`,
-`character-actions`, `voice-recognition`, `smart-home`, `updates`,
+`thinking-pool-choices`, `character-actions`, `voice-recognition`, `smart-home`, `updates`,
 `model-abilities`, `work-sharing`, `motion`, `pools` and the `pc.*`, `role.*` and
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,

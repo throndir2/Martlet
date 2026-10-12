@@ -183,8 +183,30 @@ above); a composed turn's own mapped expressions keep it.
 Bone gaze also honors look-at override amounts. Automatic blinking or additional
 mouth controllers are not started. Gaze needs both usable eye bones or all four
 directional morph expressions plus lookAt. Head is a local normalized humanoid
-rotation. Secondary physics is opt-in. **Body/VRMA playback and general FBX/GLB
-rigs are not implemented.**
+rotation. Secondary physics is opt-in. **General FBX/GLB rigs are not
+implemented.**
+
+## VRMA clips
+
+`VrmRuntime.loadAnimation(name, buffer, inPlace = true)` reads a VRM Animation
+clip (`.vrma`, `VRMC_vrm_animation` 1.0) with the official
+`@pixiv/three-vrm-animation` 3.5.5 loader (`src/animation.ts`). A preflight
+checks it first: at most 4 MB and 120 seconds, binary glTF 2.0, the extension
+present, no URLs, no pictures, no cubic-spline keys. The clip is retargeted to
+the loaded model (VRM 0.x or 1.0, with `createVRMAnimationHumanoidTracks`) and
+kept by its name while the model stays loaded (at most 16). `playAnimation(name)`
+plays it once over the idle pose (`VrmClipPlayer`): it blends in, then back to
+the idle pose by its end, and a new clip crossfades from the one playing.
+`stopAnimation(name?)` blends it out; `animationReading` and `animations` read
+it.
+
+Each frame, the bones a clip turned go back to rest, the idle pose and the
+gestures turn theirs, and the clips blend over them. The arms, hands, fingers,
+hips and legs show the clip. The spine, chest, shoulders, neck and head show
+the clip with Martlet's own turn (breath, sway, look, nods) after it. The eyes
+and jaw are never the clip's, and its expression and look-at tracks are not
+played. With `inPlace` the hips keep only the clip's up and down movement;
+without it they move from where the clip starts.
 
 ## VRM 0.x models
 
@@ -287,8 +309,8 @@ extensions, unknown plugins and all other extensions reject explicitly.
 Supported geometry is triangle primitives with known attributes, POSITION/NORMAL
 morphs (tangent morphs reject), nonsparse
 embedded accessors, positive TRS node transforms (no matrix nodes), unique
-acyclic node ownership, and bounded skins/morphs. Embedded animations reject:
-VRMA requires separate future integration. Reachable spring joints must be
+acyclic node ownership, and bounded skins/morphs. Embedded animations reject: separate VRMA clips play
+through `loadAnimation` (see *VRMA clips*). Reachable spring joints must be
 unique and separate from standardized humanoid controls. This intentionally
 rejects some otherwise compliant rigs; re-export to this subset or wait for
 qualified support, never silently discard unsupported controls.

@@ -617,7 +617,11 @@ support on Three.js with GLTFLoader.
 **Consequence:** require per-model capability inspection and authored detailed
 ARKit mapping. A basic vowel-only rig is reduced, not full face fidelity.
 VRMA body/gaze applies to a supported VRM implementation, not directly to
-Live2D. First Martlet VRM slice is facial only; VRMA playback is unsupported.
+Live2D. Martlet plays VRMA clips on VRM 0.x and 1.0 characters with the
+official `@pixiv/three-vrm-animation` loader: humanoid bones only (the clip's
+expression and look-at tracks are not played), blended over the idle pose, with
+the hips kept in place across the ground by default (see
+[VRMA clips on a VRM](AVATARS.md#emotes-and-motions)).
 Do not adopt upstream CDN examples into a no-remote-assets renderer or assume
 library code terms cover model/texture/motion assets.
 

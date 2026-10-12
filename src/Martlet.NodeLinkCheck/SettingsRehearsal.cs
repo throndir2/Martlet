@@ -317,6 +317,19 @@ internal static class SettingsRehearsal
                     $"B's pool: {string.Join(", ", on)} with the key: {had}; after A removed them: {string.Join(", ", off)}, key kept: {b.Vault.Has(PoolKey)}");
             });
 
+            await Run("Thinking pool choices (Backup for slow replies, Busy pool) follow and keep B's own models", async () =>
+            {
+                (ThinkingPoolSettings.Load(a.Data) with { BackupThinking = true, BackupDelayMs = 1200, RetriesOnFailure = 3, PreemptLowerPriority = false })
+                    .Save(a.Data);
+                await a.SyncAsync(hosts, token);
+                await b.SyncAsync(hosts, token);
+                var pool = ThinkingPoolSettings.Load(b.Data);
+                var members = pool.Members.Select(m => m.ModelId).ToArray();
+                return (pool is { BackupThinking: true, BackupDelayMs: 1200, RetriesOnFailure: 3, PreemptLowerPriority: false } && members is ["qwen3:4b"],
+                    $"B's pool: Backup {pool.BackupThinking} after {pool.BackupDelayMs} ms, retries {pool.RetriesOnFailure}, " +
+                    $"higher priority first {pool.PreemptLowerPriority}; models {string.Join(", ", members)}");
+            });
+
             await Run("Lorebooks follow", async () =>
             {
                 var saved = await a.Lore.UpdateAsync(library => library with
