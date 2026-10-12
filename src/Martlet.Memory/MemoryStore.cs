@@ -280,6 +280,7 @@ public sealed class MemoryStore : IDisposable
             var now = CurrentUtc();
             ValidateWrite(request?.Content, request?.Provenance, request?.Retention, now);
             MemoryFact.ValidateVoiceId(request!.VoiceId);
+            MemoryFact.ValidateSearchWords(request.SearchWords);
             StoreState current;
             lock (gate)
             {
@@ -297,7 +298,8 @@ public sealed class MemoryStore : IDisposable
                 CreatedFrom = request.Provenance,
                 LastModifiedBy = request.Provenance,
                 Retention = request.Retention,
-                VoiceId = request.VoiceId
+                VoiceId = request.VoiceId,
+                SearchWords = request.SearchWords
             };
             var facts = current.Facts.Values.Append(fact).ToArray();
             var committed = await CommitFactsAsync(current, facts, now, cancellationToken);
@@ -321,6 +323,7 @@ public sealed class MemoryStore : IDisposable
             var now = CurrentUtc();
             ValidateWrite(request!.Content, request.Provenance, request.Retention, now);
             MemoryFact.ValidateVoiceId(request.VoiceId);
+            MemoryFact.ValidateSearchWords(request.SearchWords);
             StoreState current;
             MemoryFact existing;
             lock (gate)
@@ -331,6 +334,9 @@ public sealed class MemoryStore : IDisposable
                 MemoryGuard.Require(existing.Revision == request.ExpectedRevision, MemoryFailure.Conflict);
                 MemoryGuard.Require(existing.Revision < MemoryLimits.MaximumRevision, MemoryFailure.LimitExceeded);
             }
+            // History is kept as it was: only a current fact is corrected.
+            MemoryGuard.Require(!existing.IsHistory);
+            var changed = !string.Equals(existing.Content, request.Content, StringComparison.Ordinal);
             var updated = existing with
             {
                 Revision = existing.Revision + 1,
@@ -339,10 +345,22 @@ public sealed class MemoryStore : IDisposable
                 UpdatedAtUtc = now > existing.UpdatedAtUtc ? now : existing.UpdatedAtUtc,
                 LastModifiedBy = request.Provenance,
                 Retention = request.Retention,
-                VoiceId = request.VoiceId
+                VoiceId = request.VoiceId,
+                // Words describe the content: new content drops them unless new ones come with it.
+                SearchWords = request.SearchWords ?? (changed ? null : existing.SearchWords)
             };
-            var facts = current.Facts.Values.Select(fact => fact.Id == updated.Id ? updated : fact).ToArray();
-            var committed = await CommitFactsAsync(current, facts, now, cancellationToken);
+            var facts = current.Facts.Values.Select(fact => fact.Id == updated.Id ? updated : fact).ToList();
+            if (request.KeepHistory && changed && facts.Count < MemoryLimits.MaximumFacts)
+                facts.Add(existing with
+                {
+                    Id = Guid.NewGuid(),
+                    Revision = 1,
+                    UpdatedAtUtc = updated.UpdatedAtUtc,
+                    LastModifiedBy = request.Provenance,
+                    ReplacedAtUtc = updated.UpdatedAtUtc,
+                    ReplacedBy = existing.Id
+                });
+            var committed = await CommitFactsAsync(current, [.. facts], now, cancellationToken);
             return new(committed.Revision, updated);
         }
         finally
@@ -371,7 +389,8 @@ public sealed class MemoryStore : IDisposable
                 MemoryGuard.Require(current.Facts.TryGetValue(request!.Id, out existing!), MemoryFailure.NotFound);
                 MemoryGuard.Require(existing.Revision == request.ExpectedRevision, MemoryFailure.Conflict);
             }
-            var facts = current.Facts.Values.Where(fact => fact.Id != request!.Id).ToArray();
+            var facts = current.Facts.Values.Where(fact => fact.Id != request!.Id &&
+                (request.KeepEarlierVersions || fact.ReplacedBy != request.Id)).ToArray();
             var committed = await CommitFactsAsync(current, facts, now, cancellationToken);
             return new(existing.Id, existing.Revision, committed.Revision, request!.ConsentId);
         }
@@ -402,6 +421,7 @@ public sealed class MemoryStore : IDisposable
             }
             var facts = new Dictionary<Guid, MemoryFact>(current.Facts);
             var deleted = 0;
+            var withHistory = new HashSet<Guid>();
             foreach (var request in requests!)
             {
                 if (!facts.TryGetValue(request.Id, out var existing))
@@ -409,11 +429,125 @@ public sealed class MemoryStore : IDisposable
                 MemoryGuard.Require(existing.Revision == request.ExpectedRevision, MemoryFailure.Conflict);
                 facts.Remove(request.Id);
                 deleted++;
+                if (!request.KeepEarlierVersions) withHistory.Add(request.Id);
             }
             if (deleted == 0)
                 return new(0, current.Revision);
+            // A forgotten fact's earlier versions go with it.
+            foreach (var earlier in facts.Values.Where(fact => fact.ReplacedBy is { } by && withHistory.Contains(by)).ToArray())
+                facts.Remove(earlier.Id);
             var committed = await CommitFactsAsync(current, facts.Values.ToArray(), now, cancellationToken);
             return new(deleted, committed.Revision);
+        }
+        finally
+        {
+            writeGate.Release();
+        }
+    }
+
+    /// <summary>Tidies the store in one commit (the background upkeep, docs/MEMORY.md): each retirement makes a current fact
+    /// history replaced by a newer current fact; each merge forgets duplicates of a kept fact (their history moves to it) and
+    /// can give the kept fact new content and search words; each words item gives a current fact search words. An item whose
+    /// fact (or kept or replacing fact) is gone, is history or changed since it was read is skipped. Facts keep who they belong
+    /// to and where they came from; giving words never changes when a fact was last changed.</summary>
+    public async Task<MemoryTidyReceipt> TidyAsync(MemoryTidyRequest request, CancellationToken cancellationToken = default)
+    {
+        using var operation = BeginOperation();
+        MemoryGuard.Require(request is { Retirements: not null, Merges: not null, Words: not null });
+        var retirements = request!.Retirements!;
+        var merges = request.Merges!;
+        var wordsItems = request.Words!;
+        foreach (var words in wordsItems)
+            MemoryFact.ValidateSearchWords(words?.SearchWords ?? throw new MemoryException(MemoryFailure.InvalidData));
+        foreach (var merge in merges)
+        {
+            MemoryGuard.Require(merge is { Others: not null });
+            if (merge.Content is not null) MemoryFact.ValidateContent(merge.Content);
+            MemoryFact.ValidateSearchWords(merge.SearchWords);
+        }
+        MemoryGuard.Require(retirements.All(retire => retire is not null));
+        await writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
+            var now = CurrentUtc();
+            StoreState current;
+            lock (gate)
+            {
+                EnsureWritable();
+                current = state;
+            }
+            var facts = new Dictionary<Guid, MemoryFact>(current.Facts);
+            MemoryFact? Current(Guid id, long revision) =>
+                facts.TryGetValue(id, out var fact) && !fact.IsHistory && fact.Revision == revision &&
+                fact.Revision < MemoryLimits.MaximumRevision ? fact : null;
+            DateTimeOffset Later(DateTimeOffset at) => now > at ? now : at;
+            // The history of a fact that is forgotten or replaced belongs to what took its place.
+            void MoveHistory(Guid from, Guid to)
+            {
+                foreach (var earlier in facts.Values.Where(fact => fact.ReplacedBy == from && fact.Id != to).ToArray())
+                    if (earlier.Revision < MemoryLimits.MaximumRevision)
+                        facts[earlier.Id] = earlier with { Revision = earlier.Revision + 1, ReplacedBy = to };
+            }
+
+            var retired = 0;
+            foreach (var retire in retirements)
+            {
+                if (retire.Id == retire.ReplacedBy || Current(retire.Id, retire.ExpectedRevision) is not { } fact ||
+                    !facts.TryGetValue(retire.ReplacedBy, out var newer) || newer.IsHistory)
+                    continue;
+                var updatedAt = Later(fact.UpdatedAtUtc);
+                var replacedAt = newer.UpdatedAtUtc < fact.CreatedAtUtc ? fact.CreatedAtUtc
+                    : newer.UpdatedAtUtc > updatedAt ? updatedAt : newer.UpdatedAtUtc;
+                facts[fact.Id] = fact with
+                {
+                    Revision = fact.Revision + 1, UpdatedAtUtc = updatedAt, ReplacedAtUtc = replacedAt, ReplacedBy = newer.Id
+                };
+                MoveHistory(fact.Id, newer.Id);
+                retired++;
+            }
+
+            var merged = 0;
+            foreach (var merge in merges)
+            {
+                if (Current(merge.KeepId, merge.KeepRevision) is not { } keep)
+                    continue;
+                var others = merge.Others.Where(other => other.Id != keep.Id).Select(other => Current(other.Id, other.Revision))
+                    .OfType<MemoryFact>().DistinctBy(fact => fact.Id).ToArray();
+                if (others.Length == 0)
+                    continue;
+                foreach (var other in others)
+                {
+                    facts.Remove(other.Id);
+                    MoveHistory(other.Id, keep.Id);
+                }
+                merged += others.Length;
+                var content = merge.Content ?? keep.Content;
+                var changed = !string.Equals(content, keep.Content, StringComparison.Ordinal);
+                var words = merge.SearchWords ?? (changed ? null : keep.SearchWords);
+                if (changed || words != keep.SearchWords)
+                    facts[keep.Id] = keep with
+                    {
+                        Revision = keep.Revision + 1,
+                        Content = content,
+                        UpdatedAtUtc = changed ? Later(keep.UpdatedAtUtc) : keep.UpdatedAtUtc,
+                        SearchWords = words
+                    };
+            }
+
+            var worded = 0;
+            foreach (var item in wordsItems)
+            {
+                if (Current(item.Id, item.ExpectedRevision) is not { } fact || fact.SearchWords == item.SearchWords)
+                    continue;
+                facts[fact.Id] = fact with { Revision = fact.Revision + 1, SearchWords = item.SearchWords };
+                worded++;
+            }
+
+            if (retired + merged + worded == 0)
+                return new(0, 0, 0, current.Revision);
+            var committed = await CommitFactsAsync(current, facts.Values.ToArray(), now, cancellationToken);
+            return new(retired, merged, worded, committed.Revision);
         }
         finally
         {

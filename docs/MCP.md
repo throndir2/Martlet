@@ -1652,7 +1652,9 @@ user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
 `on (default)` for settings from before memory, `not set up`), `storage`
 (`Martlet folder` or `custom folder`), `state` (`none` without a store file,
 `loaded` or `unreadable`), `voiceList` (`voices.json`: `none`, `loaded` or
-`unreadable`), `facts`, `typed`, `fromConversation`, `expiring` and `whose`:
+`unreadable`), `facts`, `typed`, `fromConversation`, `expiring`, `replaced`
+(facts kept as history, [Search words, history and tidying](MEMORY.md#search-words-history-and-tidying)),
+`withSearchWords` (facts with hidden search words) and `whose`:
 `everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
 by its tag such as `V3`, with `named`, `owner`, `linked` (to a person's
 account) and `facts`) and
@@ -1662,7 +1664,12 @@ owner's space; then `state` is `none`) or a custom folder. `spaces` lists each
 [memory space](MEMORY.md#memory-spaces-on-the-desktop) kept in the data folder
 (an account's own space in `accounts\<32 hex>\memory`, the household and
 character spaces in `memory-spaces\<space>`): `space` (its ID) and `store` with
-the same `state`, `facts`, `typed`, `fromConversation`, `expiring` and `whose`.
+the same `state`, `facts`, `typed`, `fromConversation`, `expiring`, `replaced`,
+`withSearchWords` and `whose`. `upkeep` reads the desktop's `memory-upkeep.json`
+(`state` `none`, `loaded` or `unreadable`; `storesChecked`, how many stores
+tidying has checked for duplicates; `last`, the last pass's `at`, `space`,
+`outcome`, `listed`, `groups`, `need_words`, `retired`, `merged`, `worded` and
+`member`).
 It reads each store's file as JSON without opening or locking a store (the
 desktop can keep running), and never returns a fact's text, a name, a voice ID
 or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
@@ -1704,6 +1711,26 @@ query recalls (`fact`, `score`, `matchedTerms`, best first) from the sample
 facts, or from `facts` when given (a later fact counts as newer), and
 `query.words` shows the words recall looked for. It never opens the owner's
 memory and contacts nothing.
+
+`memory_upkeep_check` (no arguments) rehearses [search words, history and
+tidying](MEMORY.md#search-words-history-and-tidying) with the production code
+(`MemoryStore` in `src\Martlet.Memory` and the desktop's own
+`src\Martlet.Desktop\MemoryUpkeep.cs`, linked into the server) on synthetic facts
+in a disposable store, and returns `{passed, failures, steps, note}`. The steps:
+*What should I cook tonight?* doesn't find *The user is vegetarian.* without
+search words; a pass asks words for every fact without them and lists them
+numbered with their dates; fixture `WORDS` lines (NOT AI) give words without
+changing when a fact last changed; the question then finds the fact; the next
+pass groups *vegetarian* with *doesn't eat meat* and *lives in Portland* with
+*moved to Seattle*; lines across groups, about unknown numbers or calling the
+newer fact outdated by the older are left out; a fixture `SAME` line merges the
+duplicates (the kept fact gets the words of both); a fixture `OUTDATED` line
+keeps the older fact as history, dated when the newer one was learned; history
+is never recalled and a snapshot's current facts (`MemorySnapshot.Live`) leave it
+out; a correction keeps the earlier version; the new fields travel as JSON while
+a fact without them is written as before; forgetting a fact forgets its earlier
+versions; and search words from a model line are cleaned up. It never opens the
+owner's memory and contacts nothing.
 
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in
@@ -4336,9 +4363,12 @@ character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 `MemoryFactStatus` reads how many facts it remembers, how many belong to how
 many people Martlet knows by voice and how many to forgotten voices, how many
 are kept in each [memory space](MEMORY.md#memory-spaces-on-the-desktop)
-besides yours (*3 in Household*), how many
-its *Show* choice (`MemoryPersonFilter`) and search (`MemorySearch`, set with
-`ui_set_text`; it only filters the list) list (*Showing N.*) and what the last
+besides yours (*3 in Household*), how many replaced facts it keeps as history
+(*1 replaced kept as history*), how many
+its *Show* choice (`MemoryPersonFilter`), *Show replaced facts*
+(`MemoryShowHistory`, a check box `ui_toggle` turns without
+`--allow-ui-effects` because it only changes the list) and search (`MemorySearch`, set with
+`ui_set_text`; it only filters the list and also matches hidden search words) list (*Showing N.*) and what the last
 action did, never a fact or a name; `MemoryStatus` (its bottom line) reads
 whether memory is on, is saving or why it can't be (*Memory is on.*, *Saved.
 Memory is off: ...*), never a fact or a folder. The window reads its facts the
@@ -6133,7 +6163,9 @@ low priority); `thinking_pool_status` shows the pool itself.
 `helper_jobs_check` (no arguments) rehearses the desktop's production router
 (`HelperJobs`) with a fixture pool and fixture answers (NOT AI): memory and
 naming go to a free text member, touch zones wait for a running reply and fall
-back while no member can see, then go to a vision member, and memory falls back
+back while no member can see, then go to a vision member, tidying memory
+(`memory_upkeep`) runs on a free text member and, when none is free, waits
+instead of falling back, and memory falls back
 when no member is free. It returns each step with `passed` and the status file
 it wrote. See [helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool).
 

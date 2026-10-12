@@ -29,7 +29,10 @@ internal enum HelperJobKind
     /// <summary>Measuring a character's eyes in one close-up of its face (vision, low priority).</summary>
     Eyes,
     /// <summary>Writing the personality of a character the owner named in Find a character (the owner waits).</summary>
-    CharacterWriting
+    CharacterWriting,
+    /// <summary>Tidying memory: search words for facts, duplicates merged and outdated facts kept as history (Thinking pool only,
+    /// low priority).</summary>
+    MemoryUpkeep
 }
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
@@ -101,6 +104,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         HelperJobKind.Temperament => "temperament",
         HelperJobKind.Eyes => "eyes",
         HelperJobKind.CharacterWriting => "character_writing",
+        HelperJobKind.MemoryUpkeep => "memory_upkeep",
         _ => "touch_zones"
     };
 
@@ -112,6 +116,26 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
 
     /// <summary>Whether the pool has a member for <paramref name="capability"/> now.</summary>
     internal bool PoolHas(HelperCapability capability) => pool() is { } current && current.Has(capability);
+
+    /// <summary>Runs one helper job only on a free Thinking pool member, never on the conversation's own model (tidying memory):
+    /// null when the pool has no member that can take it or none was free, so the caller tries again later.</summary>
+    internal async Task<HelperResult?> TryPoolAsync(HelperJobKind kind, string purpose, HelperCapability capability,
+        Func<BoundedTextInput> poolInput, CancellationToken token)
+    {
+        if (pool() is not { } current || !current.Has(capability)) return null;
+        HelperJob job;
+        try { job = new(kind, purpose, poolInput()); }
+        catch (Exception error) when (error is not OperationCanceledException) { return null; }
+        var answer = await current.TryRunAsync(job, token).ConfigureAwait(false);
+        if (answer is null)
+        {
+            Record(new(kind, true, null, "no member was free", DateTimeOffset.UtcNow, 0));
+            return null;
+        }
+        Record(new(kind, true, answer.Member, Outcome(answer.Answer, answer.Failure), DateTimeOffset.UtcNow, 0));
+        ErrorLog.Info($"{purpose}: ran on Thinking pool member {answer.Member} ({Outcome(answer.Answer, answer.Failure)}).");
+        return new(answer.Answer, answer.Failure, true);
+    }
 
     /// <summary>Runs one helper job. <paramref name="poolInput"/> is the request a pool member gets (made only when one can
     /// take it; a request too large for it falls back); <paramref name="fallback"/> asks the conversation's own Thinking

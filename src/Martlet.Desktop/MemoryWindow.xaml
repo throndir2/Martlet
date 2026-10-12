@@ -63,6 +63,11 @@
                                               AutomationProperties.AutomationId="MemoryPersonFilter" AutomationProperties.Name="Whose facts to show" />
                                 </StackPanel>
                             </Grid>
+                            <!-- Replaced facts (earlier versions and facts a newer fact made outdated) stay as history; they are never recalled. -->
+                            <CheckBox x:Name="ShowHistoryChoice" Content="Show _replaced facts" Margin="0,8,0,0"
+                                      Checked="ShowHistory_Changed" Unchecked="ShowHistory_Changed"
+                                      AutomationProperties.AutomationId="MemoryShowHistory"
+                                      ToolTip="Facts that stopped being true. Martlet keeps them as history and never recalls them." />
                             <ListBox x:Name="FactsList" Height="340" Margin="0,8,0,6" SelectionMode="Extended"
                                      SelectionChanged="FactsList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      AutomationProperties.AutomationId="MemoryFacts" AutomationProperties.Name="Remembered facts">

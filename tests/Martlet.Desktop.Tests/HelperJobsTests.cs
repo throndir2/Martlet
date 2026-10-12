@@ -171,6 +171,36 @@ public sealed class HelperJobsTests
         Assert.Equal("fallback", route.Route);
     }
 
+    [Fact]
+    public async Task Tidying_memory_runs_only_on_a_pool_member_and_gives_facts_search_words()
+    {
+        await using var fixture = await LiveFixture.Create();
+        await fixture.EnableMemory();
+        var revision = (await fixture.Store.LoadAsync()).Settings!.Memory!.ConfigurationRevision;
+        await fixture.Memory.SaveFactAsync(revision, "The user is vegetarian.", Martlet.Memory.MemoryRetention.UntilDeleted());
+
+        // No pool member: nothing runs, and the conversation's own model is never asked.
+        fixture.Controller.HelperPool = new FixturePool { Text = false };
+        Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
+        Assert.Equal(0, fixture.Llm.Calls);
+
+        var pool = new FixturePool { Text = true, Answer = "WORDS 1: diet, food, meat, cooking" };
+        fixture.Controller.HelperPool = pool;
+        Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
+        var job = Assert.Single(pool.Jobs);
+        Assert.Equal((HelperJobKind.MemoryUpkeep, HelperJobPriority.Low), (job.Kind, job.Priority));
+        Assert.Contains("1. The user is vegetarian.", job.Input.UserText);
+        Assert.Contains("SAME <number>", job.Input.Personality);
+        Assert.Equal(0, fixture.Llm.Calls);
+        var fact = Assert.Single((await fixture.Memory.InspectAsync(revision)).Facts);
+        Assert.Equal("diet, food, meat, cooking", fact.SearchWords);
+        Assert.Equal("memory_upkeep", HelperJobs.Name(fixture.Controller.Helpers.Last.Single(r => r.Kind == HelperJobKind.MemoryUpkeep).Kind));
+
+        // Nothing is left to do: the next pass asks nothing.
+        Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
+        Assert.Single(pool.Jobs);
+    }
+
     private sealed class FixturePool : IHelperJobPool
     {
         internal bool Text { get; init; }
