@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-10-12
+
 ### Added
 
 - **VRM characters play motion clips**: a VRM character can now play VRM Animation clips (`.vrma`), such as motions made with HY-Motion. A clip blends in, plays once and gives the body back to the character's relaxed pose and breathing, while its mouth, blinking, eyes and touch keep working. The character stays in its window even when a clip walks. Martlet's MCP server can play a `.vrma` file on the shown character with `character_animation`. ([#818](https://github.com/throndir2/Martlet/pull/818))
@@ -19,13 +21,14 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- **Martlet stays quiet while nothing changes on your screen**: when your computer just sits there, Martlet no longer takes another look or says something to fill the silence. It looks again only once something changes, and even then it stays quiet unless the change is worth a word. ([#815](https://github.com/throndir2/Martlet/pull/815))
 - **Notification heads-ups that know what's going on**: when a notification pops up while Martlet watches your screen, it now reads the whole notification and words its heads-up around it ("Sam wants to know if you're still up for dinner"). If it looks personal or could get someone in trouble, Martlet says nothing about what it says, at most who it's from. ([#808](https://github.com/throndir2/Martlet/pull/808))
-
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))
 - **A greeting that knows you and stays in character**: Martlet's hello when it starts now calls you by your name when your account, your voice on People or Windows has a real name (never a user name or handle). It can also mention a weekend or a holiday, your newer Telegram or WhatsApp chat, a reminder it missed while it wasn't running, or a Martlet update. Your character greets you only the way it would, and one that wouldn't greet you stays quiet. ([#801](https://github.com/throndir2/Martlet/pull/801))
 
 ### Fixed
 
+- Companion › Thinking pool's **Backup for slow replies** (and its wait) and **Busy pool** choices are now the same on all your computers too, so a PC you set up later gets them along with the cloud models and their API keys. *Runs on* stays each PC's own. ([#816](https://github.com/throndir2/Martlet/pull/816))
 - *Measure the face* no longer accepts a vision model that copies the example boxes instead of measuring, which put the eyes, cheeks and mouth in the wrong place. A measurement like that is dropped and done again. The Eyes page now names each numbered box, and *Open the pictures and answers* shows exactly what Martlet asked and what the model answered. ([#813](https://github.com/throndir2/Martlet/pull/813))
 - A computer you add to your network with your approval now signs in to the household owner's account and uses its settings, and folds the account it made before it joined into yours. Hosts no longer refuse the owner's account (*Refused 1 account entry*) after another computer changed it. ([#811](https://github.com/throndir2/Martlet/pull/811))
 - **Martlet sings when its Thinking model runs on one of your computers**: ask it for a song and it says it'll write one, makes it in the background and tells you when it's ready, then sings it when you say yes. Before, a Thinking model on a paired computer had no way to start a song. ([#806](https://github.com/throndir2/Martlet/pull/806))

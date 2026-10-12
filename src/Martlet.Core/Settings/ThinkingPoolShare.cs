@@ -37,6 +37,27 @@ public sealed record SharedPoolEndpoint
     [JsonIgnore] public string MemberKey => $"endpoint:{Origin}|{Model}";
 }
 
+/// <summary>The Thinking pool's choices for the whole pool that are the same on all your computers (the
+/// <c>thinking-pool-choices</c> shared setting): use the conversation model while the pool is empty, Backup for slow replies
+/// and its wait, and Busy pool. They travel apart from the members, so a PC that only changed a choice never replaces the cloud
+/// models another PC added.</summary>
+public sealed record SharedThinkingPoolChoices
+{
+    public const string Key = "thinking-pool-choices";
+    public const int SchemaVersion1 = 1;
+
+    public int SchemaVersion { get; init; } = SchemaVersion1;
+    public bool UseConversationModelWhenEmpty { get; init; } = true;
+    public bool BackupThinking { get; init; }
+    public int? BackupDelayMs { get; init; }
+    public bool PreemptLowerPriority { get; init; } = true;
+    public int RaisePriorityAfterStops { get; init; } = ThinkingPoolSettings.DefaultRaiseAfterStops;
+    public int RetriesOnFailure { get; init; } = ThinkingPoolSettings.DefaultRetries;
+
+    /// <summary>Whether these are Martlet's defaults (a default never replaces a choice made on another computer).</summary>
+    [JsonIgnore] public bool IsDefault => this == new SharedThinkingPoolChoices();
+}
+
 /// <summary>Reads the shared part of a Thinking pool and makes a PC's pool follow it, keeping that PC's own members (paired
 /// computers and models in Ollama on this PC) and their choices.</summary>
 public static class ThinkingPoolShare
@@ -126,6 +147,47 @@ public static class ThinkingPoolShare
     }
 
     public static string Write(SharedThinkingPool pool) => JsonSerializer.Serialize(pool, Json);
+
+    /// <summary>The choices for the whole pool that <paramref name="pool"/> shares with your other computers.</summary>
+    public static SharedThinkingPoolChoices ChoicesOf(ThinkingPoolSettings pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        return new()
+        {
+            UseConversationModelWhenEmpty = pool.UseConversationModelWhenEmpty, BackupThinking = pool.BackupThinking,
+            BackupDelayMs = pool.BackupDelayMs, PreemptLowerPriority = pool.PreemptLowerPriority,
+            RaisePriorityAfterStops = pool.RaisePriorityAfterStops, RetriesOnFailure = pool.RetriesOnFailure
+        };
+    }
+
+    /// <summary><paramref name="local"/> with <paramref name="choices"/>; its members and their rules stay. Throws when the result
+    /// isn't a valid pool.</summary>
+    public static ThinkingPoolSettings Apply(ThinkingPoolSettings local, SharedThinkingPoolChoices choices)
+    {
+        ArgumentNullException.ThrowIfNull(local);
+        ArgumentNullException.ThrowIfNull(choices);
+        var next = local with
+        {
+            UseConversationModelWhenEmpty = choices.UseConversationModelWhenEmpty, BackupThinking = choices.BackupThinking,
+            BackupDelayMs = choices.BackupDelayMs, PreemptLowerPriority = choices.PreemptLowerPriority,
+            RaisePriorityAfterStops = choices.RaisePriorityAfterStops, RetriesOnFailure = choices.RetriesOnFailure
+        };
+        next.Validate();
+        return next;
+    }
+
+    public static string WriteChoices(SharedThinkingPoolChoices choices) => JsonSerializer.Serialize(choices, Json);
+
+    /// <summary>The choices another computer wrote, or null when a newer Martlet wrote them.</summary>
+    public static SharedThinkingPoolChoices? ParseChoices(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<SharedThinkingPoolChoices>(json, Json) is { SchemaVersion: SharedThinkingPoolChoices.SchemaVersion1 } choices
+                ? choices : null;
+        }
+        catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException) { return null; }
+    }
 
     /// <summary>The shared part another computer wrote, or null when a newer Martlet wrote it. Throws when it is invalid.</summary>
     public static SharedThinkingPool? Parse(string json)

@@ -71,7 +71,7 @@ public sealed class AppSettingsSections
 {
     public const string Thinking = "thinking", Listening = "listening", Speaking = "speaking", ThinkingFallback = "thinking-fallback",
         Companion = "companion", Replies = "replies", Prompts = "prompts", Memory = "memory", Lorebooks = "lorebooks",
-        ThinkingPool = SharedThinkingPool.Key;
+        ThinkingPool = SharedThinkingPool.Key, ThinkingPoolChoices = SharedThinkingPoolChoices.Key;
 
     internal static readonly JsonSerializerOptions Json = CreateJson();
     private static readonly JsonSerializerOptions LoreJson = CreateLoreJson();
@@ -105,6 +105,7 @@ public sealed class AppSettingsSections
             new Section(Speaking, "Speaking", t => ReadRouteAsync(SetupRole.Tts, t), (s, k, t) => ApplyRouteAsync(SetupRole.Tts, "Speaking", s, k, t)),
             new Section(ThinkingFallback, "Thinking fallback", ReadFallbackAsync, ApplyFallbackAsync),
             new Section(ThinkingPool, "Thinking pool cloud models", ReadThinkingPoolAsync, ApplyThinkingPoolAsync),
+            new Section(ThinkingPoolChoices, "Thinking pool choices", ReadThinkingPoolChoicesAsync, ApplyThinkingPoolChoicesAsync),
             new Section(Companion, "Personality", ReadCompanionAsync, ApplyCompanionAsync, () => Write(CompanionSettings.Create())),
             new Section(Replies, "Replies", ReadRepliesAsync, ApplyRepliesAsync, () => "null"),
             new Section(Prompts, "Prompts", ReadPromptsAsync, ApplyPromptsAsync, () => "null"),
@@ -404,6 +405,28 @@ public sealed class AppSettingsSections
         {
             if (!saved) foreach (var binding in written) vault.Delete(binding);
         }
+    }
+
+    // ---------- Thinking pool: choices for the whole pool ----------
+
+    private Task<SharedLocal?> ReadThinkingPoolChoicesAsync(CancellationToken token)
+    {
+        var (pool, state) = ThinkingPoolSettings.Read(dataDirectory, save: false);
+        if (state == "unreadable") return Task.FromResult<SharedLocal?>(null);
+        var choices = ThinkingPoolShare.ChoicesOf(pool);
+        return Task.FromResult<SharedLocal?>(new(ThinkingPoolShare.WriteChoices(choices), null, choices.IsDefault,
+            FileTime(Path.Combine(dataDirectory, ThinkingPoolSettings.FileName))));
+    }
+
+    private Task<SharedApply> ApplyThinkingPoolChoicesAsync(SharedSetting setting, string? secret, CancellationToken token)
+    {
+        if (ThinkingPoolShare.ParseChoices(setting.Value) is not { } choices)
+            return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+        var (local, state) = ThinkingPoolSettings.Read(dataDirectory);
+        if (state == "unreadable")
+            return Task.FromResult(SharedApply.Waiting("This PC's Thinking pool file can't be read. Open Companion › Thinking pool to set it up again."));
+        return Task.FromResult(ThinkingPoolShare.Apply(local, choices).Save(dataDirectory)
+            ? SharedApply.Done : SharedApply.Waiting("This PC's Thinking pool couldn't be saved. Check access to Martlet's data folder."));
     }
 
     // ---------- Thinking fallback ----------
