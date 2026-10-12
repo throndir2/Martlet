@@ -1264,6 +1264,30 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             free = new { type = "boolean" },
             saveDirectory = new { type = "string", maxLength = 260 }
         }),
+        Tool("kept_motions_status", "Read a VRM character's kept body motions for a data directory (docs/AVATARS.md#motions-in-conversation): " +
+            "the motion creations every VRM character can do (name, seconds, size, fixture, starter, model, where, whether the clip is on " +
+            "this PC; never the prompt's words), whether this computer saw the starter motions made, whether motion.json is saved and " +
+            "the fixture switch is on, the body_motion tool and its quiet job kind, the motion creation kind (kept out of the creation " +
+            "tools) and, with model (an absolute path to a .vrm), the kept motions as that model's emotes and motions with their reply " +
+            "tags and whether replies are offered them. Read-only.", new
+        {
+            dataDirectory = new { type = "string" },
+            model = new { type = "string", maxLength = 260 }
+        }),
+        Tool("kept_motions_check", "Make one body motion (or, with starters, Martlet's five starter motions) with the FIXTURE - NOT AI " +
+            "motion maker and check it the way Martlet keeps and plays it in conversation: the clip checked as the VRM renderer checks it " +
+            "(size, length, bones), kept as a motion creation in dataDirectory (disposable when left out) and read back, the creation " +
+            "tools' words unchanged and never listing it, and the motion listed as a VRM's motion with its reply tag (model: an absolute " +
+            "path to a .vrm; a FIXTURE VRM when left out). Returns ok, each step and the motions with their ids, clip names and the note " +
+            "the conversation gets. Never uses a motion computer (motion_check does).", new
+        {
+            name = new { type = "string", maxLength = 40 },
+            motion = new { type = "string", maxLength = Martlet.Core.Motion.MotionRequest.MaximumPromptCharacters },
+            seconds = new { type = "number", minimum = Martlet.Core.Motion.MotionRequest.MinimumSeconds, maximum = Martlet.Core.Motion.MotionRequest.MaximumSeconds },
+            starters = new { type = "boolean" },
+            dataDirectory = new { type = "string", maxLength = 260 },
+            model = new { type = "string", maxLength = 260 }
+        }),
         Tool("singing_status", "Read the singing host role: its loopback service's own status (default http://127.0.0.1:50085/: " +
             "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
             "voice matches set up (soulx, vevosing), queue, whether the worker process holds the graphics card, the card's memory " +
@@ -2799,6 +2823,11 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "hostId"),
                     OptionalString(arguments, "prompt"), OptionalDouble(arguments, "seconds"), OptionalInt(arguments, "seed"),
                     OptionalBool(arguments, "free") == true, OptionalString(arguments, "saveDirectory"), cancellation),
+                "kept_motions_status" => KeptMotionsCheck.Status(DataDirectory(arguments), OptionalString(arguments, "model")),
+                "kept_motions_check" => await KeptMotionsCheck.RunAsync(OptionalString(arguments, "name"), OptionalString(arguments, "motion"),
+                    OptionalDouble(arguments, "seconds"), OptionalBool(arguments, "starters") ?? false,
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "model"),
+                    cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),

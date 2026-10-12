@@ -1200,6 +1200,37 @@ public sealed class McpServerTests(ITestOutputHelper output)
             StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task KeptMotionsCheckKeepsAFixtureMotionThatKeptMotionsStatusListsWithItsTag()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Motions." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            string Call(int id, string name, object arguments) => JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id, method = "tools/call", @params = new { name, arguments }
+            });
+            var messages = await SendWithAsync(false, true,
+                Call(1, "kept_motions_check", new { name = "Big Cheer", motion = "A person raises both fists above the head and jumps once.", seconds = 2, dataDirectory = directory }),
+                Call(2, "kept_motions_status", new { dataDirectory = directory }));
+            var check = ToolResult(messages[0]);
+            Assert.True(check.GetProperty("ok").GetBoolean(), check.GetRawText());
+            var made = check.GetProperty("made")[0];
+            Assert.Equal("big_cheer", made.GetProperty("name").GetString());
+            Assert.StartsWith("kept-", made.GetProperty("clipName").GetString());
+            var status = ToolResult(messages[1]);
+            Assert.Equal(1, status.GetProperty("kept").GetProperty("count").GetInt32());
+            var kept = status.GetProperty("kept").GetProperty("motions")[0];
+            Assert.Equal(made.GetProperty("id").GetString(), kept.GetProperty("id").GetString());
+            Assert.True(kept.GetProperty("fixture").GetBoolean());
+            Assert.False(status.GetProperty("creationKind").GetProperty("forTools").GetBoolean());
+            Assert.True(status.GetProperty("kind").GetProperty("quiet").GetBoolean());
+            Assert.Equal("body_motion", status.GetProperty("tool").GetProperty("name").GetString());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     private static JsonElement ToolResult(JsonElement message)
     {
         var text = message.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString()!;

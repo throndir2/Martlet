@@ -231,7 +231,8 @@ what each one is.
   sound the voice made). An expression shows for at least 4 seconds and until its
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. A VRM has no motions of its own, so it uses its
-  expressions and the gestures, and plays VRMA clips that Martlet gives it
+  expressions and the gestures, the body motions Martlet made and keeps (see
+  [Kept motions](#kept-motions)), and plays VRMA clips that Martlet gives it
   (see *VRMA clips on a VRM*).
 - **VRM idle pose and breathing**: a VRM model is made in a T-pose (arms
   straight out, flat open hands). While it shows, Martlet stands it in a
@@ -284,6 +285,8 @@ what each one is.
   - Martlet's MCP `character_animation` plays a `.vrma` file on the showing
     character, and `character_pose` reads which clip plays (`animation`: name,
     time, length and weight) and the clips kept (`clips`).
+  - Martlet's own [kept motions](#kept-motions) use the clip names
+    `kept-<creation key>`.
 - **Lingering emotes**: an emote can stay on, like a VTuber's toggle hotkey.
   Its **Stays on** box in Emotes and motions sets this. In
   `character-actions.json` the mode is `lingering`; an unticked box is `brief`.
@@ -623,6 +626,98 @@ what each one is.
   watched screen or at the part of it a screen glance's Thinking model names
   with a look tag (`{look top right}`). Look tags are never emotes; see
   [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
+
+## Motions in conversation
+
+A VRM character can also move its whole body in conversation: it waves both
+arms, bows deeply, cheers or stretches. Martlet makes each new body motion on a
+paired computer with the motion role (HY-Motion 1.0, an NVIDIA GPU with about
+24 GB; see [MOTION_HOST.md](MOTION_HOST.md)) and keeps it, so the character does
+it again at once later, without that computer. This is optional. Without a
+motion computer, or for a Live2D character, nothing changes: replies get the
+same tools and instructions as before.
+
+- **When it is offered**: while motions are set up (the shared `motion`
+  choice names a paired computer that runs the motion role, or
+  `MARTLET_MOTION_FIXTURE=1` for automated checks) and the chosen character is a
+  VRM, every reply that can use tools gets one more tool, `body_motion`. It is
+  always the same and always the last of Martlet's own tools, so the start of
+  every request stays the same, and switching between a VRM and a Live2D
+  character changes only the end of the tool list. These are saved choices
+  only: the tool doesn't come and go when the motion computer is off. A
+  computer that isn't ready says so when a motion starts.
+- **How the Thinking model asks**: `body_motion` takes a `name` (one or two
+  English words, such as `cheer` or `deep_bow`, that become the motion's tag),
+  and for a new motion `motion` (what the body does, in plain English, starting
+  "A person", such as *A person raises both fists above the head and jumps
+  once.*; body movement only: no feelings, places, objects or loops, as
+  HY-Motion needs) and `seconds` (1 to 12, 3 by default). When the character
+  already has a tag of that name (a kept motion, an emote or a gesture), it does
+  it at once and no computer is used. Otherwise the motion is made in the
+  background and the tool returns at once, so speech never waits for a motion.
+  The talk window shows *Moving…* while the tool runs.
+- **The background job**: a `motion` job (one at a time, at most 20 an hour,
+  5 minutes each, *Making a motion*). It holds the motion computer away from
+  background thinks (its duty is `motions`), checks that the computer is ready,
+  makes the clip, checks it as the VRM renderer does (a VRMA of at most 4 MB),
+  keeps it and plays it on the character, when a VRM still shows and the same
+  conversation goes on. Three minutes after the last motion, Martlet frees the
+  motion computer's graphics card (the relay's free operation), as it does for
+  pictures. The job is *quiet*: Martlet never starts a reply of its own about a
+  motion; the note (made and played, or why not) reaches the Thinking model with
+  your next message.
+- **The request start stays the same**: a VRM's kept motions are reply tags
+  like its other emotes and motions, and the emotes' instructions start every
+  request. So a motion kept during a conversation (made in it, a starter
+  motion, or one that arrives from another computer) joins the tags at the next
+  conversation (after Refresh context, a pause, a lock or closing the talk
+  window). Until then, `body_motion` with its name does it at once.
+
+### Kept motions
+
+- **Every VRM character can do every kept motion**: a VRMA clip moves the
+  standard VRM humanoid bones, so it fits any VRM. Companion › Emotes and
+  motions lists the kept motions after the model's own emotes and Martlet's
+  gestures (`cheer  ·  kept motion`), the newest 64 that fit beside them, with
+  the motion's name as its tag and what the body does as its grey *When to
+  use* hint. **Try** plays it. Each model's tags, *When to use* and on or off
+  stay per model, as for every emote, so you can turn a motion off for one
+  character. Kept motions are left out of **Name them with Thinking**: they
+  already have English names.
+- **Shared with all your computers**: a kept motion is a
+  [creation](CREATIONS.md) of the kind `motion` (its clip as
+  `application/octet-stream`, so older Martlet computers and hosts copy it too),
+  copied to every Martlet computer of your account like songs and pictures.
+  Every computer's VRM characters can do it without the motion computer. The
+  Creations page lists motions too, so you can delete one everywhere. The
+  creation tools (`list_creations`, `perform_creation`) never offer motions,
+  and registering the kind changes none of their words.
+- **Playing a kept motion**: the VRM renderer keeps at most 16 clips while the
+  model stays loaded. Martlet gives it a motion's clip the first time it plays
+  (`kept-<creation key>`) and plays it by that name after that. When a VRM
+  shows, Martlet gives it up to 8 kept motions ahead of use (the starter
+  motions, then the newest), so a reply's tag rarely waits for a file.
+- **Make a motion**: for a VRM while motions are set up, Companion › Emotes
+  and motions has a **Make a motion** row: write what the body does and a name,
+  then **Make**. It uses the same motion computer, checks and keeping as
+  `body_motion`, and the motion joins the list. The line above it
+  (`CharacterMotionStatus`) says whether body motions are set up, how many are
+  kept and how the starter motions went, or how making one goes.
+
+### Starter motions
+
+When a motion computer is first ready for a VRM character that shows, Martlet
+makes five whole-body motions once, one at a time, then frees the motion
+computer: `cheer`, `clap`, `deep_bow`, `stretch` and `facepalm`. (Martlet's own
+gestures already nod, shake the head, wave, shrug and bow the head.) A
+conversation's motions take turns with them. Each computer notes in the
+account's creations folder (`motion-starters.json`) that it made them or saw
+them made on another computer, so they don't come back after you delete them
+and two computers don't both make them.
+
+Checked locally with MCP `kept_motions_check` and `kept_motions_status` (FIXTURE - NOT AI
+motions) and the desktop tests. Real HY-Motion motions on a 24 GB GPU are
+**NOT RUN** on the development PC (8 GB).
 
 ## Touch zones
 

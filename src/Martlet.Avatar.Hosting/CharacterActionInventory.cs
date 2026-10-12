@@ -36,6 +36,11 @@ public sealed record CharacterGesture(string Name, string Tag, string Use, strin
 /// ToggleExpression hotkey turns it on and off (a look meant to stay on).</summary>
 public sealed record CharacterActionSource(string Id, CharacterActionKind Kind, string Name, string Detail, bool Toggle = false);
 
+/// <summary>A body motion Martlet made and keeps (a VRMA clip, kept as a <c>motion</c> creation): its creation
+/// <see cref="Key"/>, its <see cref="Name"/> (the tag it gets by default), what the body does and how long it lasts. Every VRM
+/// character can do every kept motion, because a VRMA clip moves the standard VRM humanoid bones.</summary>
+public sealed record KeptMotion(string Key, string Name, string Description, double Seconds);
+
 /// <summary>Every emote and motion of one character model, read from its files without showing it. <see cref="ModelId"/>
 /// is the model's ID as the shared character list computes it (<see cref="CharacterModelLibrary.ModelId"/>), so a model has
 /// the same emotes and settings wherever it is shown from.</summary>
@@ -198,6 +203,33 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     private const string Live2DBlushParameter = "ParamCheek";
 
     public CharacterActionSource? Find(string id) => Sources.FirstOrDefault(s => s.Id == id);
+
+    /// <summary>The ID prefix of a kept motion's source: <c>motion:kept-</c> and its creation key.</summary>
+    public const string KeptMotionPrefix = "motion:kept-";
+    /// <summary>The most kept motions one VRM inventory lists (the newest; fewer when the model's own fill the list).</summary>
+    public const int MaximumKeptMotions = 64;
+
+    /// <summary>The creation key of a kept motion's source ID, or null for any other source.</summary>
+    public static string? KeptMotionKey(string? id) =>
+        id is not null && id.StartsWith(KeptMotionPrefix, StringComparison.Ordinal) && id.Length > KeptMotionPrefix.Length
+            ? id[KeptMotionPrefix.Length..] : null;
+
+    public static bool IsKeptMotion(string? id) => KeptMotionKey(id) is not null;
+
+    /// <summary>This inventory with Martlet's kept motions (<paramref name="motions"/>, oldest first) after the model's own
+    /// emotes and Martlet's gestures, so the reply instructions' earlier lines (and prompt caches) stay the same as motions are
+    /// added. Only a VRM gets them; a Live2D inventory is returned as it is. Any kept motions it had are replaced.</summary>
+    public CharacterActionInventory WithKeptMotions(IReadOnlyList<KeptMotion> motions)
+    {
+        ArgumentNullException.ThrowIfNull(motions);
+        if (Renderer != AvatarRenderer.Vrm) return this;
+        var own = Sources.Where(s => !IsKeptMotion(s.Id)).ToArray();
+        var room = Math.Max(0, Math.Min(MaximumKeptMotions, MaximumSources - own.Length));
+        var kept = motions.Where(m => m.Key is { Length: > 0 } && m.Name is { Length: > 0 }).DistinctBy(m => m.Key)
+            .TakeLast(room).Select(m => new CharacterActionSource(KeptMotionPrefix + m.Key, CharacterActionKind.Motion, m.Name,
+                Clip($"A body motion Martlet made ({Number(m.Seconds)} s): {m.Description}")));
+        return this with { Sources = [.. own, .. kept] };
+    }
 
     /// <summary>The model at <paramref name="modelPath"/> (a profile's model path; <c>builtin:</c> for the bundled one).</summary>
     public static async Task<CharacterActionInventory> ReadAsync(AvatarRenderer renderer, string modelPath, CancellationToken token)

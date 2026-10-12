@@ -35,6 +35,9 @@ internal sealed class CharacterActionService(string? dataDirectory)
     internal CharacterActionCatalog? For(string? modelPath) =>
         modelPath is not null && string.Equals(Path, modelPath, StringComparison.OrdinalIgnoreCase) ? Current : null;
 
+    /// <summary>The kept motions every VRM character can do (<see cref="CharacterMotions.Kept"/>), oldest first; null for none.</summary>
+    internal Func<IReadOnlyList<KeptMotion>>? KeptMotions { get; set; }
+
     /// <summary>Reads the emotes and motions of <paramref name="profile"/>'s model (the built-in character when null) unless
     /// they are already loaded.</summary>
     internal async Task<CharacterActionCatalog?> LoadAsync(AvatarProfile? profile, bool force, CancellationToken token)
@@ -50,6 +53,7 @@ internal sealed class CharacterActionService(string? dataDirectory)
             try
             {
                 var inventory = await Task.Run(() => CharacterActionInventory.ReadAsync(renderer, modelPath, token), token);
+                if (KeptMotions is { } kept) inventory = inventory.WithKeptMotions(await Task.Run(kept, token));
                 var saved = dataDirectory is null ? null : CharacterActions.Load(dataDirectory, inventory.ModelId);
                 next = new(inventory, CharacterActions.Merge(inventory, saved));
             }
@@ -65,6 +69,31 @@ internal sealed class CharacterActionService(string? dataDirectory)
         finally { loading.Release(); }
         Changed?.Invoke();
         return Current;
+    }
+
+    /// <summary>Puts the kept motions in the loaded VRM's emotes and motions again (a motion was made, arrived from another
+    /// computer or was deleted), without reading the model's files. Returns whether they changed.</summary>
+    internal async Task<bool> RefreshKeptMotionsAsync(CancellationToken token)
+    {
+        if (KeptMotions is not { } kept) return false;
+        var motions = await Task.Run(kept, token);
+        var changed = false;
+        await loading.WaitAsync(token);
+        try
+        {
+            if (Current is { Inventory.Renderer: AvatarRenderer.Vrm } current)
+            {
+                var inventory = current.Inventory.WithKeptMotions(motions);
+                if (!inventory.Sources.SequenceEqual(current.Inventory.Sources))
+                {
+                    Volatile.Write(ref catalog, new(inventory, CharacterActions.Merge(inventory, current.Settings)));
+                    changed = true;
+                }
+            }
+        }
+        finally { loading.Release(); }
+        if (changed) Changed?.Invoke();
+        return changed;
     }
 
     /// <summary>Saves the settings of one model (normally the loaded one; naming that finishes after another model was chosen

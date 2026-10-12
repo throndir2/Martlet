@@ -46,6 +46,10 @@ public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHo
     /// <summary>Its work takes the smartest free place first (Runs on: Prefer smart, <see cref="ThinkingDemand.SmartFirst"/>).</summary>
     public bool SmartFirst { get; init; }
 
+    /// <summary>Its finished jobs are only mentioned with the user's next message, never brought up by a reply of Martlet's own
+    /// (a body motion: it already played, so there is nothing to say).</summary>
+    public bool Quiet { get; init; }
+
     internal ThinkingDemand? Demand(IReadOnlyList<BackgroundPlace> pool) =>
         PoolKind is { } kind ? ThinkingDemand.For(kind, pool) with { SmartFirst = SmartFirst } : null;
 }
@@ -178,8 +182,9 @@ public sealed class BackgroundJob
     public BackgroundDeliveryState Delivery { get { lock (gate) return delivery; } }
     public bool Finished => State is BackgroundJobState.Succeeded or BackgroundJobState.Failed or BackgroundJobState.TimedOut or
         BackgroundJobState.Canceled;
-    /// <summary>A job the user or Martlet stopped is only mentioned with the user's next message, never brought up on its own.</summary>
-    public bool Quiet => State == BackgroundJobState.Canceled;
+    /// <summary>A job the user or Martlet stopped, or one of a <see cref="BackgroundJobKind.Quiet"/> kind, is only mentioned with
+    /// the user's next message, never brought up on its own.</summary>
+    public bool Quiet => Kind.Quiet || State == BackgroundJobState.Canceled;
 
     /// <summary>How long it has run (until it finished).</summary>
     public TimeSpan Elapsed

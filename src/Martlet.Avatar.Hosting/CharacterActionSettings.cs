@@ -280,9 +280,19 @@ public static partial class CharacterActions
     public static string Describe(CharacterActionSource source) => source.Kind switch
     {
         CharacterActionKind.Expression => $"the character's emote named \"{source.Name}\"",
+        CharacterActionKind.Motion when CharacterActionInventory.IsKeptMotion(source.Id) => KeptMotionHint(source),
         CharacterActionKind.Motion => $"the character's motion named \"{source.Name}\"",
         _ => CharacterActionInventory.Gesture(source.Id)?.Use ?? $"the gesture named \"{source.Name}\""
     };
+
+    // A kept motion's hint: what the body does (its Detail after "A body motion Martlet made (3 s): "), within a When to use.
+    private static string KeptMotionHint(CharacterActionSource source)
+    {
+        var at = source.Detail.IndexOf("): ", StringComparison.Ordinal);
+        var what = at >= 0 ? source.Detail[(at + 3)..].Trim() : "";
+        if (what.Length == 0) return $"the body motion named \"{source.Name}\"";
+        return what.Length <= CharacterActionCatalog.MaximumUseLength ? what : what[..(CharacterActionCatalog.MaximumUseLength - 1)].TrimEnd() + "…";
+    }
 
     /// <summary>The hint the reply prompt gives next to a tag: its When to use text, or <see cref="Describe"/> while that is
     /// empty (the grey text in an empty When to use box).</summary>
@@ -445,7 +455,7 @@ public static partial class CharacterActions
 
     /// <summary>The emotes and motions the Thinking model is asked to name: the model's own, not Martlet's gestures.</summary>
     public static IReadOnlyList<CharacterActionSource> Nameable(CharacterActionInventory inventory) =>
-        inventory.Sources.Where(s => s.Kind != CharacterActionKind.Gesture).ToArray();
+        inventory.Sources.Where(s => s.Kind != CharacterActionKind.Gesture && !CharacterActionInventory.IsKeptMotion(s.Id)).ToArray();
 
     /// <summary>The naming request: instructions (Companion › Prompts › Naming character emotes) and the numbered list.</summary>
     public static (string Instructions, string List)? NamingPrompt(CharacterActionInventory inventory, PromptSettings? prompts)

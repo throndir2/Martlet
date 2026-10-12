@@ -1138,6 +1138,49 @@ and returns `ok`, `place`, `where`, `fixture`, `engine`, `model`, `frames`,
 `saveDirectory` (absolute) writes `motion.vrma` there. An invalid prompt or
 seconds is a tool error. A real motion needs an NVIDIA GPU with 24 GB or more.
 
+### Body motions
+
+While motions are set up (the shared `motion` choice names a paired computer that
+runs the motion role, or `MARTLET_MOTION_FIXTURE=1`) and the chosen character is a
+VRM, every reply on a route that does function calling also gets `body_motion`
+(`name`, and for a new motion `motion` and `seconds`), last of Martlet's own tools.
+A tag the character has plays at once; a new motion starts a quiet `motion-N`
+background job and returns at once, and the motion is kept as a `motion` creation
+(out of the creation tools) and played on the character when it is ready. Without
+motions or a VRM, the tools are exactly as before. See [Motions in
+conversation](AVATARS.md#motions-in-conversation). The talk window's status says
+*Moving…* while it is called, and the desktop log notes `Motions:` lines (name,
+size, seconds, where; never the description).
+
+The local server's `kept_motions_status` reads a data directory's kept motions (name,
+seconds, size, fixture, starter, model, where, whether the clip is on this PC;
+never the prompt's words), whether this computer saw the starter motions made,
+whether `motion.json` is saved and the fixture switch is on, the `body_motion`
+tool, its quiet job kind and the motion creation kind (`forTools` false); with
+`model` (an absolute path to a `.vrm`) it lists the kept motions as that model's
+emotes and motions with their tags and whether replies are offered them.
+`kept_motions_check` makes one motion (`name`, `motion`, `seconds`), or with `starters`
+Martlet's five starter motions, with the FIXTURE - NOT AI motion maker and checks
+it the way Martlet keeps and plays it: the clip checked as the VRM renderer checks
+it, kept as a motion creation in `dataDirectory` (a disposable one when left out)
+and read back, the creation tools' words unchanged and never listing it, and the
+motion listed as a VRM's motion with its reply tag (`model`, or a FIXTURE VRM). It
+returns `ok`, each step and the motions with their ids, renderer clip names
+(`kept-<id>`) and the note the conversation gets. It never uses a motion computer;
+`motion_check` (above) does.
+`creations_check` also checks that a kind kept out of the creation tools leaves
+their words exactly as they were.
+
+Desktop automation: on Companion › Emotes and motions for a VRM,
+`CharacterMotionStatus` (whether body motions are set up, how many are kept and
+how the starter motions went, or how making one goes) is a safe value. Typing
+what the body does (`CharacterMotionDescription`) and a name
+(`CharacterMotionName`) is `ui_set_text`, and **Make** (`CharacterMotionMake`)
+uses the motion computer and keeps a motion, so it needs `--allow-ui-effects`. A
+kept motion is then a row (`CharacterActionName-<n>`: `cheer  ·  kept motion`)
+whose **Try** (`CharacterActionTry-<n>`) plays it; `CharacterActionsLast` says
+what played, and `character_pose`'s `animation` names the clip (`kept-<id>`).
+
 ### Reminders
 
 On a PC that keeps reminders (any with a data folder), every reply on a route

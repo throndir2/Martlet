@@ -19,12 +19,13 @@ public partial class MainWindow
     private TextBlock? characterActionsLast;
 
     /// <summary>The reply instructions and tags for the showing character's emotes and motions (null while it is hidden), with
-    /// the lingering emotes it shows now for the newest message's notes.</summary>
+    /// the lingering emotes it shows now for the newest message's notes. A VRM's kept motions are offered as they were when the
+    /// conversation began (<see cref="OfferedMotions"/>).</summary>
     private CharacterActionPrompt? CharacterActionPromptFor(SpeechEngine? engine, PromptSettings? prompts)
     {
         if (!avatar.IsShowing) return null;
         var actions = characterActions.For(avatar.InspectedProfile?.ModelPath) is { } catalog
-            ? catalog.Prompt(engine, prompts, avatar.Held.Current, DateTimeOffset.Now) : null;
+            ? OfferedMotions(catalog).Prompt(engine, prompts, avatar.Held.Current, DateTimeOffset.Now) : null;
         // Where the character looks, while it may change that: the look tags, and a note while its own choice holds the eyes.
         var gaze = avatar.Gaze.Prompt(prompts);
         return CharacterGaze.Join(actions, gaze, gaze?.Looking);
@@ -93,6 +94,7 @@ public partial class MainWindow
     private void FollowCharacterActions()
     {
         if (closing || loadingCharacterActions) return;
+        FollowCharacterMotions();
         var profile = avatar.IsShowing ? avatar.InspectedProfile : homeAvatar;
         var modelPath = profile?.ModelPath ?? BundledLive2D.Prefix + BundledLive2D.DefaultCharacter;
         if (!string.Equals(characterActions.Path, modelPath, StringComparison.OrdinalIgnoreCase))
@@ -187,6 +189,8 @@ public partial class MainWindow
         var clear = PageButton("Clear emotes", () => ClearCharacterEmotesAsync().Forget(), id: "CharacterActionsClear");
         AutomationProperties.SetHelpText(clear, "Turns off every lingering emote the character shows now.");
         stack.Add(Row(name, reset, clear));
+        // Make a motion, for a VRM while motions are set up (MainWindow.CharacterMotions.cs).
+        AddMakeMotion(stack, catalog);
 
         var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
         var rows = new List<(CharacterActionSource Source, CheckBox On, TextBox Tag, ComboBox Cue, TextBox Use, CheckBox Stays)>();
@@ -236,7 +240,10 @@ public partial class MainWindow
             var n = index++;
             var kind = source.Kind switch
             {
-                CharacterActionKind.Expression => "emote", CharacterActionKind.Motion => "motion", _ => "Martlet gesture"
+                CharacterActionKind.Expression => "emote",
+                CharacterActionKind.Motion when CharacterActionInventory.IsKeptMotion(source.Id) => "kept motion",
+                CharacterActionKind.Motion => "motion",
+                _ => "Martlet gesture"
             };
             var on = RowSwitch(action.Enabled);
             AutomationProperties.SetName(on, $"Use {source.Name}");

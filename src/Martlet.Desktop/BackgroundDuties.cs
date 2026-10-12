@@ -5,12 +5,12 @@ namespace Martlet.Desktop;
 
 /// <summary>The other work each of your computers is kept free for, by the computer's name, so the background broker
 /// (<see cref="BackgroundPlaces"/>) puts thinks on a general computer first and on these only when the general ones are busy:
-/// the computer that sings (Companion › Singing) and the one that draws pictures (Companion › Pictures, a paired
-/// computer's pictures role). Read from this PC's files without the network, so asking costs nothing. A new kind of
-/// on-demand work on a computer adds its computer here.</summary>
+/// the computer that sings (Companion › Singing), the one that draws pictures (Companion › Pictures, a paired
+/// computer's pictures role) and the one that makes body motions (a paired computer's motion role). Read from this PC's files
+/// without the network, so asking costs nothing. A new kind of on-demand work on a computer adds its computer here.</summary>
 internal static class BackgroundDuties
 {
-    internal const string Singing = "singing", Pictures = "pictures";
+    internal const string Singing = "singing", Pictures = "pictures", Motions = "motions";
 
     /// <summary>Each computer's other duties ("singing", "pictures"), by its name (a paired computer's host ID).</summary>
     internal static IReadOnlyDictionary<string, IReadOnlyList<string>> Of(string? dataDirectory)
@@ -25,6 +25,7 @@ internal static class BackgroundDuties
         }
         foreach (var host in Singers(dataDirectory)) Add(host, Singing);
         Add(PainterHost(dataDirectory), Pictures);
+        Add(MotionClient.HostId(dataDirectory), Motions);
         return kept.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value, StringComparer.Ordinal);
     }
 
@@ -51,6 +52,10 @@ internal static class BackgroundDuties
     /// <summary>Paired computer <paramref name="host"/> as the place that draws a picture now (a picture computer of the pool that
     /// took it), so the picture holds it while it is drawn.</summary>
     internal static BackgroundPlace PainterOn(string host) => Computer(host, Pictures)!;
+
+    /// <summary>Paired computer <paramref name="host"/> as the place that makes a body motion now (its motion role), so the
+    /// motion holds it while it is made.</summary>
+    internal static BackgroundPlace AnimatorOn(string host) => Computer(host, Motions)!;
 
     private static string? PainterHost(string dataDirectory) => PictureClient.Painter(dataDirectory);
 

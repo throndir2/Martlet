@@ -135,6 +135,8 @@ public partial class MainWindow : ThemedWindow
                 Martlet.Conversation.ResearchReports.Handler(store!.DataDirectory, OpenReportPage));
             // Pictures Martlet draws (draw_picture) are kept as creations too, and shown in the talk window.
             Martlet.Core.Creations.CreationRegistry.Shared.Register(Martlet.Conversation.PictureCreations.Kind);
+            // Body motions Martlet makes for VRM characters (body_motion) are kept as creations too, out of the creation tools.
+            Martlet.Core.Creations.CreationRegistry.Shared.Register(Martlet.Conversation.MotionCreations.Kind);
             var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(store.DataDirectory),
                 DesktopSongSource.Fixture ? new SilentSongOutput() : speakers is SimulatedSpeakers ? speakers : new WasapiDeviceFactory(),
                 captions.Feed, avatar, (vocals, rate, token) => avatar.AnalyzeSongAsync(vocals, rate, OwnLipSyncEndpoint(), token));
@@ -162,6 +164,7 @@ public partial class MainWindow : ThemedWindow
             discord.UseReplies(setupService, vault, conversation, memory, lorebooks);
         }
         WireCharacterActions();
+        InitializeCharacterMotions();
         WireCharacterTouchZones();
         WireVoiceSounds();
         WireCharacterReactionChanges();
