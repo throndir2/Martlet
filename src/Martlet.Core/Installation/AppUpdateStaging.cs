@@ -30,6 +30,21 @@ public static class AppUpdateStaging
         return root is not null && Directory.Exists(Path.Combine(root, UninstallFolder)) ? root : null;
     }
 
+    /// <summary>The working folder for an installed Martlet and for the programs it starts: <paramref name="directory"/>, or
+    /// <paramref name="outside"/> when <paramref name="directory"/> is in the program folder <paramref name="root"/>. A program
+    /// that works in the program folder and lives on after Martlet exits (the character renderer's WebView2 processes, Ollama,
+    /// a browser) stops Windows from renaming that folder. Then the update installed beside Martlet can't switch in, and the
+    /// whole installer runs instead. <paramref name="root"/> null (a development build) keeps <paramref name="directory"/>.</summary>
+    public static string OutsideProgramFolder(string? root, string directory, string outside)
+    {
+        if (root is null) return directory;
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        var program = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        return full.Equals(program, StringComparison.OrdinalIgnoreCase) ||
+            full.StartsWith(program + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                ? outside : directory;
+    }
+
     /// <summary>Where the next version is installed while Martlet runs.</summary>
     public static string StagedRoot(string root) => root + StagedSuffix;
 

@@ -22,7 +22,7 @@ public partial class MainWindow
     private (string Installer, Version Version, bool Relaunch, bool Unattended)? installOnExit;
     /// <summary>The program folder the installer put this Martlet in; null for a development build. Updates are installed
     /// beside it (in its ".next" folder) while Martlet runs, so switching to them takes only a restart.</summary>
-    private static readonly string? installRoot = SimulatedAppUpdate.InstallRoot ?? AppUpdateStaging.InstallRoot(AppContext.BaseDirectory);
+    private static readonly string? installRoot = AppUpdateInstaller.InstallRoot;
     /// <summary>The version installed beside this Martlet, ready to switch to with a restart of a few seconds.</summary>
     private Version? stagedVersion;
     /// <summary>A version that could not be installed beside this Martlet; it installs the classic way, with Martlet closed

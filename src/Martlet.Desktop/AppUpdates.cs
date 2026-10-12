@@ -74,6 +74,25 @@ internal static class AppVersions
 /// unsigned; its bytes are checked against GitHub's SHA-256 asset digest, which detects corruption, not the publisher.</summary>
 internal static class AppUpdateInstaller
 {
+    /// <summary>The program folder the installer put this Martlet in (or the FIXTURE's); null for a development build.</summary>
+    internal static string? InstallRoot { get; } =
+        SimulatedAppUpdate.InstallRoot ?? AppUpdateStaging.InstallRoot(AppContext.BaseDirectory);
+
+    /// <summary>Moves this Martlet's working folder out of its program folder (its shortcut and the update helper start it in
+    /// its Desktop folder), to the user's profile folder. The programs Martlet starts work where it does, and one that lives
+    /// on after Martlet exits would otherwise keep the update installed beside Martlet from switching in. Returns the folder
+    /// Martlet moved to, or null when it stays (a development build, or a working folder elsewhere).</summary>
+    internal static string? LeaveProgramFolder()
+    {
+        var current = Environment.CurrentDirectory;
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var outside = AppUpdateStaging.OutsideProgramFolder(InstallRoot, current,
+            Directory.Exists(profile) ? profile : Path.GetTempPath());
+        if (outside == current) return null;
+        Environment.CurrentDirectory = outside;
+        return outside;
+    }
+
     internal static string UpdatesDirectory(string dataDirectory) => Path.Combine(dataDirectory, "updates");
 
     /// <summary>Returns the verified installer, reusing an earlier complete download of the same asset; <paramref name="received"/>
