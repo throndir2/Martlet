@@ -6625,6 +6625,15 @@ the notes the first one wrote and only the pages read since as new pages
 says to call `perform_creation` with the report's id; the report is kept as a
 `report` creation in a temporary Creations library (`creation`) and showing it
 writes a page with its source links (`page.links`) and no scripts (`shown`).
+`flow.searchable`: the kept report is indexed for
+[finding it again](CONVERSATION.md#finding-a-report-again) (`reportsIndexed`,
+`sections`); a question about laser pointers finds its section (`hits`,
+`best` relevance) with the sources it cites (`cited`); words of its title name
+it and other words name none (`namedByTitleWords`, `namedByOtherWords`);
+deleting the creation drops it (`reportsAfterDelete` 0). `firstSearchMs` and
+`searchMs` time the first and a warm search (on this PC 22 ms and 0.16 ms), and
+`searchGuide` is `search_guide`'s text exactly as replies get it, with its
+`bytes` (639).
 `tool` and `prompt` are exactly what replies get. `limits`: a second research is
 refused as `busy` (and what the model is told) while a think runs beside it,
 Cancel ends it as `Canceled`, ten in a row all start once the one before is done

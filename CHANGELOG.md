@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Martlet remembers what its web research found**: ask about something it looked up before, and Martlet finds the part of its report that answers, with the pages it came from. It works on all your computers that have the report, and a deleted report is forgotten. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.75.0] - 2026-10-12
 
 ### Added

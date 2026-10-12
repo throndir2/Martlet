@@ -191,6 +191,9 @@ internal sealed partial class LiveConversationController
             var creation = await CreationStore.AddAsync(CreationsDirectory!, ResearchReports.Draft(report, author), Creations, clock.GetUtcNow(), token)
                 .ConfigureAwait(false);
             ErrorLog.Info($"Web research: {job.Id} kept its report as creation {creation.Key} ({creation.Bytes / 1024} KiB, {report.Sources.Count} sources).");
+            // Searchable at once (search_guide), indexed here off the reply's path.
+            try { await Reports.UpdateAsync(CreationsDirectory!, token).ConfigureAwait(false); }
+            catch (Exception error) when (CreationStore.IsFailure(error)) { }
             return creation.Key;
         }
         catch (Exception error) when (CreationStore.IsFailure(error))

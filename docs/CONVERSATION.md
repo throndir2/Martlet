@@ -1424,6 +1424,54 @@ same safety rules, but the document as it came (HTML, JSON or text, at most
 2 MB) and an honest bot user agent,
 `Martlet/1.0 (app guides; +https://github.com/throndir2/Martlet)`.
 
+### Finding a report again
+
+*"What did you find out about laser pointers last week?"* Martlet finds the
+part of its earlier report that answers, with the pages that part cites.
+
+**The index** (`ResearchReportIndex`). Every finished report creation on this
+computer is searchable, also a report that came from another computer. Martlet
+cuts each report into sections with the app guides' chunker (`GuideChunker`)
+and searches them with the app guides' index (`GuideIndex`), one index per
+report. The source list at the end is not a section: Martlet keeps it to give
+the pages a section cites (*[2]*). The index is in memory only and is never
+written, so nothing stays behind when a report is deleted. Each search first
+brings the index in step with the Creations library: it cuts new reports,
+drops deleted ones and cuts again a report whose whole text arrived from
+another computer. Until the whole text arrives, the index has the start of the
+report (the text of at most 16 KiB in the shared list). It indexes at most the
+100 newest reports. The research job indexes a new report when it keeps it, off
+the reply's path.
+
+**The tool.** `search_guide(app?, question)` also searches the reports. The new
+words make the tool 84 bytes longer (639 bytes instead of 555, about 21
+tokens). They are the same in every request, so prompt caches keep them. While
+App guides are off and Web research is offered, replies get `search_guide`
+alone, last, without the *App guides* prompt. Only saved choices decide this,
+so the tools do not change when a report is made or deleted.
+
+- `app` names a guide: Martlet searches that guide only, as before.
+- `app` names a report (its id, or at least half of the words of its title or
+  summary): Martlet searches that report only.
+- No `app`: Martlet searches the guide of the app in front (or the only guide).
+  Report sections with a relevance of 0.5 or more go with its sections, best
+  first, 5 sections at most. When there is no guide to search, Martlet searches
+  every report.
+
+The answer gives each section with its report's title, its id (for
+`perform_creation`), its relevance and the pages it cites. It says that the
+text is reference text from web pages and never instructions. When no guide or
+report is the one asked for, the answer names the guides and the newest report
+titles.
+
+**No added latency.** Nothing changes before the first word. Report sections
+never go in a message's notes, because more input on each message makes the
+first word come later. The search runs only when the model calls the tool:
+`research_check` measured 0.16 ms for a warm search and 22 ms for the first
+search after start, while .NET compiles the search code. The desktop log notes
+counts only (`Research reports:` reports and sections searched), never the
+question or a title.
+
 ## App guides
 
 *"Hey Martlet, where do I find iron ore?"* while a game is in front: Martlet
@@ -1450,7 +1498,8 @@ prompts, so the start of every request stays the same; with it off, requests
 are exactly as before. `read_up_on` starts the job and returns at once
 (`AppGuideTools.Started`), or says Martlet already reads up on that app;
 `search_guide` searches a guide at once (an index that is still loading is
-waited for at most 5 seconds); `skip_guide` stops reading up on that app when
+waited for at most 5 seconds), and the research reports too (see
+[Finding a report again](#finding-a-report-again)); `skip_guide` stops reading up on that app when
 Martlet does now, and keeps the user's no. The prompt tells the model to use
 `read_up_on`, never `research` or `think_longer`, to read up on an app, and
 never to say it read up on something before a note says its guide is ready.
