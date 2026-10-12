@@ -464,6 +464,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachMemorySpaceStorage(storage);
     }
 
+    /// <summary>Keeps each account's record of conversations (one copy per account and month), which paired desktops share
+    /// through this host, in <paramref name="storage"/>.</summary>
+    public void AttachConversations(IGatewayConversationStorage storage)
+    {
+        RequireOpen();
+        server!.AttachConversationStorage(storage);
+    }
+
     /// <summary>Keeps the network's API keys paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachApiKeys(IGatewayApiKeyStorage storage)
     {

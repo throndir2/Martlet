@@ -190,6 +190,43 @@ public sealed class ConversationHistoryDesktopTests
     }
 
     [Fact]
+    public async Task EachPersonHasTheirOwnRecordAndTheAppQueueStaysWithThisPc()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.History.Desktop." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Guid owner = Guid.NewGuid(), alex = Guid.NewGuid();
+            var history = new DesktopConversationHistory(directory, zone: TimeZoneInfo.Utc);
+            var ownerFolder = DesktopConversationHistory.FolderFor(directory, owner, owner);
+            var alexFolder = DesktopConversationHistory.FolderFor(directory, alex, owner);
+            Assert.Equal(Path.Combine(directory, ConversationHistory.DirectoryName), ownerFolder);
+            Assert.Equal(Path.Combine(directory, "accounts", alex.ToString("N"), ConversationHistory.DirectoryName), alexFolder);
+            Assert.False(history.UseFolder(ownerFolder));
+
+            history.Record(Guid.NewGuid(), HistoryInputKind.Typed, "Sam's question", "Sam's answer", null);
+            Assert.True(history.UseFolder(alexFolder));
+            history.Record(Guid.NewGuid(), HistoryInputKind.Typed, "Alex's question", "Alex's answer", null);
+            await history.Idle;
+
+            var sams = new ConversationHistory(ownerFolder);
+            await sams.LoadAsync();
+            var alexs = new ConversationHistory(alexFolder);
+            await alexs.LoadAsync();
+            Assert.Equal(["Sam's question"], sams.Where(_ => true).Select(e => e.User));
+            Assert.Equal(["Alex's question"], alexs.Where(_ => true).Select(e => e.User));
+            Assert.Equal(alexFolder, history.Store.Directory);
+            // The queue of changes for Telegram and Discord belongs to this PC, whoever is signed in.
+            history.Platforms.Enqueue([new PlatformChange(Guid.NewGuid(), HistoryApps.Telegram, "42", null, "101", PlatformChangeKind.Delete, false,
+                null, DateTimeOffset.UtcNow)]);
+            Assert.True(File.Exists(Path.Combine(ownerFolder, PlatformChanges.FileName)));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task SearchingTheRecordTellsTheModelWhatWasFoundOrWhatWasWrong()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.History.Desktop." + Guid.NewGuid().ToString("N"));

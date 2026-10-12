@@ -471,7 +471,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the
         // window's lists (HistoryConversations, HistoryMessages, whose items are named "Conversation 2 (Telegram)" and
         // "Message 3: Martlet · Discord") and the editor are not readable values.
-        "HistoryStatus", "HistoryWindowStatus", "HistoryPlatformStatus",
+        "HistoryStatus", "HistoryWindowStatus", "HistoryPlatformStatus", "HistorySyncStatus",
         // Companion › Memory › Memory brief: its line (on or off, not written yet, written how long ago from how many memories,
         // your own text, held back because a memory it used changed, or why it couldn't be written; counts and fixed wording,
         // never the brief) and its box's state. Ticking the box saves memory-brief.json, and the brief's text box
