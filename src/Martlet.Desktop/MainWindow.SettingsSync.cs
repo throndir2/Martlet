@@ -291,6 +291,7 @@ public partial class MainWindow
         AppearanceCustomKey => "your custom palette",
         CharacterActionsKey => "emotes and motions",
         TouchTemperamentKey => "touch temperaments",
+        MemoryBriefFile.SharedKey => "the memory brief",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",
@@ -601,6 +602,9 @@ public partial class MainWindow
             characterTemperaments.Reload();
             return SharedApply.Done;
         }, () => CharacterTouchTemperaments.Share(Path.Combine(directory, AccountWorkingCopy.DirectoryName, "no-temperaments")));
+        // The memory brief travels with each person's settings, so every computer sends the same one; a brief taken from another
+        // computer (or another person's, on a switch) goes with messages at once.
+        yield return MemoryBriefFile.Section(directory, () => conversation?.MemoryBrief?.Followed());
         yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
             Task.FromResult<SharedLocal?>(localVoices.Available
                 ? new(JsonSerializer.Serialize(new SharedSwitch(localVoices.Enabled), SharedJson), null, localVoices.EnabledChangedAt is null,

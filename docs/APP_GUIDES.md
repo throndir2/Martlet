@@ -382,7 +382,10 @@ stays the same:
   returns at once; it says so when Martlet already reads up on that app.
 - `search_guide(app?, question)`: searches a guide for more than the notes
   carried (the app in front when `app` is left out) and returns the sections
-  with their page titles, links and relevance.
+  with their page titles, links and relevance. It also searches the web
+  research reports Martlet wrote, with the same chunker and index; `app` can
+  name a report (see
+  [Finding a report again](CONVERSATION.md#finding-a-report-again)).
 - `skip_guide(app)`: the user doesn't want Martlet to read up on the app; it
   stops reading up on it when it does now, and never reads up on it on its own
   again.

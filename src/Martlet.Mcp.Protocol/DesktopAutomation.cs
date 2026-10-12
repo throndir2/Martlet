@@ -472,6 +472,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // window's lists (HistoryConversations, HistoryMessages, whose items are named "Conversation 2 (Telegram)" and
         // "Message 3: Martlet · Discord") and the editor are not readable values.
         "HistoryStatus", "HistoryWindowStatus", "HistoryPlatformStatus",
+        // Companion › Memory › Memory brief: its line (on or off, not written yet, written how long ago from how many memories,
+        // your own text, held back because a memory it used changed, or why it couldn't be written; counts and fixed wording,
+        // never the brief) and its box's state. Ticking the box saves memory-brief.json, and the brief's text box
+        // (MemoryBriefText, never readable), Save my changes and Write it again (which asks a model) need --allow-ui-effects.
+        "MemoryBriefStatus", "MemoryBriefOn",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it; and,
         // for a Windows computer whose voice engine shares its graphics card with other roles, the warning that it can fall
