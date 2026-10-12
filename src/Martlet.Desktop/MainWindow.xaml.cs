@@ -377,9 +377,7 @@ public partial class MainWindow : ThemedWindow
     private void Conversation_Click(object sender, RoutedEventArgs e)
     {
         if (ConversationSession() is not { } window) return;
-        if (!window.IsVisible) window.Show();
-        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
-        window.Activate();
+        window.ShowInFront();
         UpdateTray();
     }
 

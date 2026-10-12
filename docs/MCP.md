@@ -6916,8 +6916,11 @@ than `textBounds` (room for the caret), even under a longer caption or note.
 whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
 `minimized`, whether it is the `foreground` window (has the focus) and whether
 it is `clickThrough` (the mouse passes through it to the window under it,
-`WS_EX_TRANSPARENT`: the character overlay while click-through is on); with
-`layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
+`WS_EX_TRANSPARENT`: the character overlay while click-through is on), and
+`ownedBy`: the name of the Martlet window it belongs to and always stays in
+front of (a dialog over its window), or null for a window of its own that
+other Martlet windows can cover. `windows` (and `windowStates`) list the windows
+front first, in the order Windows stacks them; with `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
 shrink to fit), centered over the window it belongs to (or the main window),
@@ -9091,7 +9094,14 @@ it again; the log records *Turned off the speculative-decoding draft model*
 and the test run's output says so.
 The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
 with `enabled` (false while a modal dialog such as Audio setup blocks it), and
-the main window stays enabled while the talk window is open. Opening the talk
+the main window stays enabled while the talk window is open. It is also a
+window of its own (`ownedBy` null, with its own taskbar button): the main
+window can come in front of it, so you can watch the conversation while you
+change settings. Focus a main-window control (for example `ui_click` on
+`NavSettings` with `focus` true) and `windows` lists *Martlet* before the talk
+window; `OpenLiveConversation` (*Show conversation*) brings the talk window
+back in front, also when Windows doesn't let Martlet take the focus.
+Opening the talk
 window never opens the microphone or looks at the screen; `LiveMic` does the
 first with always listening on, `LiveVision` the second with vision on. For
 verification, save a fixed microphone that does not exist in the disposable

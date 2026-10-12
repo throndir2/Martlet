@@ -21,10 +21,11 @@ public partial class MainWindow
     {
         if (openConversation is { } open) return open;
         if (conversation is null || closing || model?.IsRunning == true || Role == DeviceRole.Host) return null;
+        // A window of its own (not owned by Martlet's window), so Martlet's window can come in front of it: you can watch the
+        // conversation and change settings at the same time. It has its own taskbar button and still opens centered over Martlet.
         var window = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
             preferences: Talk, videoAddress: visionAddress)
-            { Owner = this, Support = support, Gaze = avatar.Gaze, Calls = discordCalls };
-        if (!IsVisible) window.UseOwnTaskbarButton();
+            { Support = support, Gaze = avatar.Gaze, Calls = discordCalls };
         window.TouchStatusChanged += characterTouchZones.SetNoticed;
         // Its warming-up banner also shows Parakeet and the character loading; a conversation after Free up this PC loads
         // Parakeet again now rather than on the first thing said.

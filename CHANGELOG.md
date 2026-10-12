@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.71.0] - 2026-10-11
 
 ### Added
