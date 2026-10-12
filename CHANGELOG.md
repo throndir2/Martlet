@@ -14,6 +14,10 @@ Each release's section here is also its notes on GitHub.
 - **Body motions for VRM characters on your own graphics card**: a new optional host role, **Motion**, runs Tencent's HY-Motion 1.0 on one of your computers with an NVIDIA graphics card of 24 GB or more. It turns a short English description such as "a person waves, then bows" into an animation clip for a VRM character. Martlet shows Tencent's license terms first; they don't apply in the EU, the UK or South Korea. ([#819](https://github.com/throndir2/Martlet/pull/819))
 - **VRM characters play motion clips**: a VRM character can now play VRM Animation clips (`.vrma`), such as motions made with HY-Motion. A clip blends in, plays once and gives the body back to the character's relaxed pose and breathing, while its mouth, blinking, eyes and touch keep working. The character stays in its window even when a clip walks. Martlet's MCP server can play a `.vrma` file on the shown character with `character_animation`. ([#818](https://github.com/throndir2/Martlet/pull/818))
 
+### Fixed
+
+- **Updates installed in the background restart in seconds again with the character on screen**: when you restarted into an update that Martlet had already installed while you kept using it, the full installer could still run with its progress window. That happened when a program Martlet had started (such as the character's renderer) was still closing. Martlet and the programs it starts no longer work inside Martlet's program folder, so the restart only switches folders. ([#820](https://github.com/throndir2/Martlet/pull/820))
+
 ## [0.73.0] - 2026-10-12
 
 ### Added
