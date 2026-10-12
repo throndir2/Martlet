@@ -7,9 +7,11 @@ using Martlet.Providers;
 namespace Martlet.Conversation;
 
 /// <summary>list_creations and perform_creation: Martlet finds and performs, shows or activates what it made (docs/CREATIONS.md).
-/// They are offered to every tool-capable reply while at least one kind of creation is registered, always the same two in the
-/// same order with the same texts (built only from the registered kinds, never from the creations), so the start of every
-/// request stays the same for prompt caches. The owner never presses Play: Martlet performs its creations itself.</summary>
+/// They are offered to every tool-capable reply while at least one kind of creation for the tools is registered
+/// (<see cref="CreationRegistry.ToolKinds"/>), always the same two in the
+/// same order with the same texts (built only from those kinds, never from the creations), so the start of every
+/// request stays the same for prompt caches. Creations of a kind kept out of the tools (<see cref="CreationKind.ForTools"/>)
+/// are never listed or performed here. The owner never presses Play: Martlet performs its creations itself.</summary>
 public static class CreationTools
 {
     public const string ListName = "list_creations";
@@ -55,7 +57,8 @@ public static class CreationTools
         var kind = Text(arguments, "kind")?.ToLowerInvariant();
         var query = Text(arguments, "query");
         var words = (query ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        var matches = library.Live.Where(c => kind is null || string.Equals(c.Kind, kind, StringComparison.Ordinal) ||
+        var matches = library.Live.Where(c => !registry.KeepsOutOfTools(c.Kind))
+            .Where(c => kind is null || string.Equals(c.Kind, kind, StringComparison.Ordinal) ||
                 registry.Find(c.Kind) is { } k && (k.Noun == kind || k.Plural == kind))
             .Where(c => words.All(w => Contains(c.Title, w) || Contains(c.Summary, w) || Contains(c.Text, w)))
             .ToArray();
@@ -95,7 +98,7 @@ public static class CreationTools
         var id = arguments is null ? null : Text(arguments, "id");
         if (id is null) return new("Pass one JSON object with the id from list_creations, like {\"id\": \"3f2a9c1b7d04\"}.", true);
         var creation = library.Resolve(id);
-        if (creation is null)
+        if (creation is null || registry.KeepsOutOfTools(creation.Kind))
             return new($"There is no creation with id {Cut(id, 40)}. Call list_creations for the ids; don't guess.", true);
         var kind = registry.Find(creation.Kind);
         if (kind is null)

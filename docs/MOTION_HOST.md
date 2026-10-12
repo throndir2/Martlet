@@ -7,8 +7,8 @@ The container listens only on `127.0.0.1:50090` in the gateway's network namespa
 
 A motion is made from a short English description of body movement, its length in seconds and an optional seed. The host
 returns a VRMA clip (VRM Animation: a binary glTF file with the `VRMC_vrm_animation` 1.0 extension) that a VRM character can
-play. This role only makes the clips. The conversation that asks for a motion and the playback on the character are
-separate features.
+play. This role only makes the clips. Playback on the character is a separate feature, and the conversation asks for
+motions as described in [Motions in conversation](#motions-in-conversation).
 
 The role is optional. It needs a large graphics card, and its license does not apply in some countries (see
 [Licenses and use](#licenses-and-use)).
@@ -156,6 +156,17 @@ the FIXTURE - NOT AI wave maker.
 
 MCP: `motion_status` reads the choice and the motion computer from a data directory, and `motion_check` makes one motion
 (fixture, a worker on loopback, or a paired host's route) and saves the `.vrma` file ([MCP](MCP.md#motion)).
+
+## Motions in conversation
+
+Martlet uses this role in conversation for a VRM character
+([Motions in conversation](AVATARS.md#motions-in-conversation)). While motions are set up and the character shown is a VRM,
+replies get `body_motion`: a motion the character has plays at once, and a new one is made here in the background, kept as
+a shared `motion` creation and played on the character when it is ready. A motion job holds this computer away from
+background thinks (its duty is `motions`), and Martlet frees the graphics card three minutes after the last motion. Every VRM
+character on every computer of the account then does a kept motion again by its tag, without this role. Martlet also makes
+five starter motions once (`cheer`, `clap`, `deep_bow`, `stretch` and `facepalm`) when this role is first ready. MCP
+`kept_motions_status` and `kept_motions_check` check that part ([MCP](MCP.md#body-motions)).
 
 ## Licenses and use
 

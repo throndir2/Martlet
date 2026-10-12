@@ -1442,7 +1442,9 @@ off *Read up when I start a game or app*.
 
 **The tools.** While it is on and the Thinking route does function calling,
 every reply gets `read_up_on(app, sites?)`, `search_guide(app?, question)` and
-`skip_guide(app)` last, after `set_camera_background`, always worded the same,
+`skip_guide(app)` last, after `set_camera_background` (only `body_motion`, for a
+VRM character with [motions](AVATARS.md#motions-in-conversation) set up, comes
+after them), always worded the same,
 with the *App guides* prompt (Companion › Prompts) after the other tool
 prompts, so the start of every request stays the same; with it off, requests
 are exactly as before. `read_up_on` starts the job and returns at once

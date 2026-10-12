@@ -2982,9 +2982,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
     /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
     /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
-    /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
+    /// off by default), then list_creations and perform_creation while any kind of creation for the tools is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on, then reminders, call_on_discord and set_camera_background
-    /// while they apply. Last, the tools a check-in that runs after each exchange takes over (<see cref="HandedOffReplyTools"/>)
+    /// while they apply, then the App guides tools, and body_motion last while motions are set up and the character is a VRM. Last, the tools a check-in that runs after each exchange takes over (<see cref="HandedOffReplyTools"/>)
     /// are left out, and the Things done after the reply prompt says so. Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
@@ -3035,7 +3035,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
             own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, configured.CharacterName, token)));
-        var kinds = Creations.Kinds;
+        var kinds = Creations.ToolKinds;
         if (kinds.Count > 0 && configured.SupportsTools && dataDirectory is not null)
         {
             var definitions = CreationTools.Definitions(kinds);
@@ -3085,6 +3085,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // read_up_on, search_guide and skip_guide after them while App guides are on (Companion › App guides, on by default), so
         // the tools before them start every request the same as before App guides existed.
         AddGuideTools(own, ref guidance, operation, configured);
+        // body_motion last, while motions are set up and the chosen character is a VRM (saved choices only), so switching between
+        // a VRM and a Live2D character changes only the end of the tools, and nothing changes without motions.
+        if (configured.SupportsTools && Motions is { Offered: true })
+            own.Add((MotionTools.Definition, (call, token) => BodyMotionAsync(call, token)));
         // The tools a check-in that runs after each exchange takes over go to it instead, with one line that says so.
         var handed = HandOffs(configured);
         return WithoutHandedOff(new(own, guidance), handed, CheckIns.HandOffGuidance(handed, configured.Prompts));
@@ -4002,6 +4006,94 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return new(PictureTools.Shown(title));
     }
 
+    // ---------- body motions (body_motion) ----------
+
+    /// <summary>The VRM character's body motions (docs/AVATARS.md#motions-in-conversation); null while they aren't wired.</summary>
+    internal CharacterMotions? Motions { get; set; }
+
+    /// <summary>body_motion: a tag the character has plays at once; a new motion is made in the background on the motion
+    /// computer (one at a time), kept, and played when it is ready. It returns at once, so speech never waits for a motion.</summary>
+    private async ValueTask<ConversationToolResult> BodyMotionAsync(TextToolCall call, CancellationToken token)
+    {
+        const string server = "Martlet";
+        var (arguments, problem) = MotionTools.Parse(call.ArgumentsJson);
+        if (arguments is null)
+        {
+            tools?.Record(server, MotionTools.Name, "invalid arguments", "", true);
+            return new(problem!, true);
+        }
+        if (Motions is not { } motions)
+        {
+            tools?.Record(server, MotionTools.Name, "not started: motions off", arguments.Name, false);
+            return new(MotionTools.Unavailable("motions aren't set up"), true);
+        }
+        if (await motions.Player.PlayTagAsync(arguments.Name, "body_motion", token).ConfigureAwait(false) is { } played)
+        {
+            tools?.Record(server, MotionTools.Name, "played " + arguments.Name, arguments.Name, false);
+            return new(played);
+        }
+        if (arguments.Motion is null)
+        {
+            tools?.Record(server, MotionTools.Name, "needs a motion", arguments.Name, true);
+            return new(MotionTools.NeedsMotion(arguments.Name), true);
+        }
+        return StartMotion(motions, arguments);
+    }
+
+    /// <summary>Starts a motion job: made on the motion computer, kept as a creation and played on the character when it is
+    /// ready, if the same conversation goes on. Quiet: the conversation hears of it with the user's next message.</summary>
+    private ConversationToolResult StartMotion(CharacterMotions motions, MotionArguments arguments)
+    {
+        const string server = "Martlet";
+        if (motions.Studio() is not { } studio)
+        {
+            tools?.Record(server, MotionTools.Name, "not started: motions off", arguments.Name, false);
+            return new(MotionTools.Unavailable("motions aren't set up"), true);
+        }
+        var conversation = ConversationId;
+        var start = jobs.Start(MotionTools.Kind, arguments.Name, (job, token) => MakeMotionAsync(job, motions, arguments, studio, conversation, token));
+        if (start.Job is not { } started)
+        {
+            studio.Dispose();
+            tools?.Record(server, MotionTools.Name, "not started: " + start.Refusal, arguments.Name, false);
+            ErrorLog.Info($"Motions: a new motion wasn't started ({start.Refusal}).");
+            return new(MotionTools.Refused(start), true);
+        }
+        tools?.Record(server, MotionTools.Name, "started " + started.Id, arguments.Name, false);
+        ErrorLog.Info($"Motions: started {started.Id} ({arguments.Name}, {MotionCreations.Number(arguments.Seconds)} s, {arguments.Motion!.Length} characters) " +
+            $"on {studio.Where}; {jobs.StartedWithinHour(MotionTools.KindName)} of {MotionTools.PerHour} this hour.");
+        return new(MotionTools.Started(started, studio.Where, arguments.Name));
+    }
+
+    // The motion job: holds the motion computer away from background thinks, makes and keeps the motion, plays it if the same
+    // conversation goes on, and frees the motion computer's GPU a while after the last motion.
+    private async Task<BackgroundJobOutcome> MakeMotionAsync(BackgroundJob job, CharacterMotions motions, MotionArguments arguments,
+        IMotionStudio studio, Guid conversation, CancellationToken token)
+    {
+        using var hold = studio.HostId is { } host ? jobs.Places.Hold(BackgroundDuties.AnimatorOn(host), job.Id) : null;
+        try
+        {
+            var (creation, made) = await motions.MakeAndKeepAsync(arguments, studio, step => job.Report(BackgroundJobState.Running, step), token)
+                .ConfigureAwait(false);
+            var notPlayed = ConversationId != conversation ? "the conversation it was for ended"
+                : await motions.Player.PlayKeptAsync(creation.Key, "body_motion", token).ConfigureAwait(false);
+            ErrorLog.Info($"Motions: {job.Id} made {creation.Key} ({arguments.Name}, {made.Clip.Length / 1024} KiB, {MotionCreations.Number(made.Seconds)} s, " +
+                $"{made.Model}{(made.Fixture ? ", FIXTURE - NOT AI" : "")}) on {made.Where} in {made.Took.TotalSeconds:0.0} s; " +
+                (notPlayed is null ? "played it." : $"didn't play it ({notPlayed})."));
+            return BackgroundJobOutcome.Done(MotionTools.Ready(creation.Key, arguments.Name, made, notPlayed));
+        }
+        catch (MotionStudioException error)
+        {
+            ErrorLog.Warn($"Motions: {job.Id} failed on {studio.Where} ({error.Message}).");
+            return BackgroundJobOutcome.Failed(error.Message);
+        }
+        finally
+        {
+            studio.FreeLater();
+            studio.Dispose();
+        }
+    }
+
     // ---------- after the reply: the Songs, pictures and creations check-in tool set ----------
 
     // The newest finished reply, which a check-in's sing_song continues to write lyrics, as the reply's own call would.
@@ -4028,8 +4120,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             SongTools.PlayName => sings ? await PlaySongAsync(configured, call, token).ConfigureAwait(false)
                 : new(SongTools.Unavailable("singing isn't set up."), true),
             PictureTools.DrawName => DrawAfterReply(configured, call),
-            CreationTools.ListName => Creations.Kinds.Count > 0 ? ListCreations(call) : new("Martlet keeps no creations here.", true),
-            CreationTools.PerformName => Creations.Kinds.Count > 0 ? await PerformCreationAsync(call, token).ConfigureAwait(false)
+            CreationTools.ListName => Creations.ToolKinds.Count > 0 ? ListCreations(call) : new("Martlet keeps no creations here.", true),
+            CreationTools.PerformName => Creations.ToolKinds.Count > 0 ? await PerformCreationAsync(call, token).ConfigureAwait(false)
                 : new("Martlet keeps no creations here.", true),
             _ => new ConversationToolResult($"This set has no tool called {call.Name}.", true)
         };

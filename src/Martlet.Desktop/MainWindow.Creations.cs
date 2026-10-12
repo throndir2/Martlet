@@ -65,6 +65,8 @@ public partial class MainWindow
         if (closing) return;
         if (conversation is not null) conversation.CreationsDirectory = CreationsFolder;
         selectedCreation = null;
+        // Another account's kept motions are the VRM character's motions now.
+        characterActions.RefreshKeptMotionsAsync(lifetime.Token).Forget();
         creationStatus = "Checking your creations on your other computers…";
         if (CreationsPage.IsVisible) RenderCreations();
         QueueCreationSync();

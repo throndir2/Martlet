@@ -616,6 +616,7 @@ These describe the computer itself, so they never travel:
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 | Memory local models took in Ollama (`model-memory.json`) | Measured on this PC |
+| That this computer made or saw Martlet's [starter motions](AVATARS.md#starter-motions) made (`motion-starters.json` in the account's creations folder) | What this computer saw, so it never makes them again after you delete them; the motions themselves are shared creations |
 
 ### Conflicts and offline changes
 
@@ -942,7 +943,8 @@ are **NOT RUN**.
 
 ## The shared creations
 
-Everything Martlet makes (songs now, other kinds later) is a
+Everything Martlet makes (songs, reports, pictures and a VRM character's kept
+[body motions](AVATARS.md#kept-motions)) is a
 [creation](CREATIONS.md), kept the same on every Martlet computer the way the
 character models are: one last-writer-wins entry per creation with tombstones
 (`Martlet.Core.Creations.CreationLibrary`, the same hybrid revisions and merge

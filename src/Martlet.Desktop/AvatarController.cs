@@ -223,6 +223,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
         bool hold = false)
     {
         if (renderer is not { HasExited: false } current || profile is null) return false;
+        // A kept motion (a VRM's, docs/AVATARS.md#kept-motions) plays its VRMA clip once.
+        if (source.Kind == CharacterActionKind.Motion && CharacterActionInventory.KeptMotionKey(source.Id) is { } key)
+            return await PlayKeptMotionAsync(source, key, reason, token).ConfigureAwait(false);
         var kind = KindOf(source);
         if (hold && Held.Holds(source.Id)) return true;
         var reply = await current.SendAsync("action", new RendererAction(kind, source.Name, true, hold), token).ConfigureAwait(false);

@@ -152,13 +152,19 @@ internal static class CreationsCheck
                 $"kinds registered: {registry.Kinds.Count}");
             registry.Register(FixtureCreations.Kind);
             registry.Register(FixtureCreations.Kind);
-            var first = CreationTools.Definitions(registry.Kinds);
-            var second = CreationTools.Definitions(registry.Kinds);
+            var first = CreationTools.Definitions(registry.ToolKinds);
+            var second = CreationTools.Definitions(registry.ToolKinds);
             var stable = first.Zip(second).All(p => p.First.Name == p.Second.Name && p.First.Description == p.Second.Description &&
                 p.First.ParametersJson == p.Second.ParametersJson);
             Step("The tools are the same two, in the same order and words, every time (the request start stays the same)",
                 stable && first.Select(d => d.Name).SequenceEqual([CreationTools.ListName, CreationTools.PerformName]),
                 $"{string.Join(", ", first.Select(d => $"{d.Name} ({d.Utf8Bytes} bytes)"))}; identical on every build: {stable}");
+            // A kind Martlet reaches another way (a VRM character's kept motions) changes none of the tools' words.
+            registry.Register(FixtureCreations.Kind with { Name = "fixture-aside", Noun = "aside", Plural = "asides", ForTools = false });
+            var aside = CreationTools.Definitions(registry.ToolKinds);
+            Step("A kind kept out of the tools (kept motions) leaves their words exactly as they were",
+                aside.Count == first.Count && aside.Zip(first).All(p => p.First.Description == p.Second.Description),
+                $"kinds registered: {registry.Kinds.Count}, offered to the tools: {registry.ToolKinds.Count}");
 
             var author = new CreationAuthor { Device = "lab-desktop", Computer = "LAB-DESKTOP" };
             var tone = await CreationStore.AddAsync(root, FixtureCreations.Draft(author, "Morning tone", 2, 440), registry,

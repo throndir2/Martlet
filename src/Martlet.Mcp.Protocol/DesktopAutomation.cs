@@ -634,6 +634,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the character shows, so they need --allow-ui-effects.
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         "CharacterActionsHeld",
+        // Emotes and motions › Make a motion (a VRM, docs/AVATARS.md#motions-in-conversation): whether body motions are set up,
+        // how many are kept and the starter motions' state, or how making one goes ("Making cheer...", "Kept cheer (3f9a0c1b2d4e),
+        // a FIXTURE test motion (NOT AI), ..."). Typing what the body does (CharacterMotionDescription) and its name
+        // (CharacterMotionName) is ui_set_text, and Make (CharacterMotionMake) uses the motion computer and keeps a motion, so it
+        // needs --allow-ui-effects. A kept motion is then a row ("cheer  ·  kept motion") whose Try plays it.
+        "CharacterMotionStatus",
         // Emotes and motions › Combos: how many combos the model has and the combo tags replies get ("2 combos. Replies can use 1:
         // {flustered}." or "No combos yet."). Each combo's title (CharacterComboName-<n>: "{flustered}  ·  combo", or "New combo"),
         // what it sets off (CharacterComboState-<n>: "Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.", or why

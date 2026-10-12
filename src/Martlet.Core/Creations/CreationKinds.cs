@@ -40,6 +40,9 @@ public sealed record CreationKind
     public Func<Creation, string>? Describe { get; init; }
     /// <summary>Its readable text in blocks for the Creations page; the creation's <see cref="Creation.Text"/> when null.</summary>
     public Func<Creation, IReadOnlyList<CreationSection>>? Details { get; init; }
+    /// <summary>Whether <c>list_creations</c> and <c>perform_creation</c> offer it. False for a kind Martlet reaches another way
+    /// (a VRM character's kept motions are its emotes and motions), so registering it changes no request's tools.</summary>
+    public bool ForTools { get; init; } = true;
 
     public string DescribeFor(Creation creation)
     {
@@ -133,6 +136,13 @@ public sealed class CreationRegistry
     {
         get { lock (gate) return kinds.Count > 0; }
     }
+
+    /// <summary>The kinds Martlet's creation tools offer (<see cref="CreationKind.ForTools"/>), by name.</summary>
+    public IReadOnlyList<CreationKind> ToolKinds => [.. Kinds.Where(k => k.ForTools)];
+
+    /// <summary>Whether creations of <paramref name="kind"/> are left out of Martlet's creation tools: a registered kind that
+    /// isn't <see cref="CreationKind.ForTools"/>. An unknown kind stays in (the tools say it may need an update).</summary>
+    public bool KeepsOutOfTools(string? kind) => Find(kind) is { ForTools: false };
 
     /// <summary>Registers a kind. Registering the same kind again does nothing; another kind with the same name throws.</summary>
     public void Register(CreationKind kind)

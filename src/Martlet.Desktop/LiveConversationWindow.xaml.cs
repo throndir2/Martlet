@@ -2639,7 +2639,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 ? $"Allow {ask.Label}? Answer above." : tool == Martlet.Mcp.Client.TerminalTool.Name ? "Running a command…"
                 : tool == ThinkLonger.Name ? "Starting to think it over in the background…"
                 : tool == SongTools.SingName ? "Starting a song in the background…"
-                : tool == PictureTools.DrawName ? "Starting a picture in the background…" : $"Using {tool}…";
+                : tool == PictureTools.DrawName ? "Starting a picture in the background…"
+                : tool == MotionTools.Name ? "Moving…" : $"Using {tool}…";
         if (live.Report && snapshot?.State != ConversationState.Playing) return "Martlet is bringing up what it worked on…";
         return snapshot?.State == ConversationState.Playing ? "Martlet is speaking." : LocalModelNote(false, replying: true) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");

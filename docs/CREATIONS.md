@@ -1,6 +1,6 @@
 # Creations
 
-Martlet makes things: songs and pictures now, other kinds later. Everything it makes is a
+Martlet makes things: songs, pictures and a VRM character's body motions now, other kinds later. Everything it makes is a
 **creation**, kept the same on all your Martlet computers, and Martlet performs,
 shows or activates any of them itself when you ask in conversation ("sing the rain
 song again", "start from the chorus"). There is no Play button anywhere: the
@@ -72,6 +72,18 @@ was drawn from and its summary what you asked for; metadata with its shape, size
 engine, model, where it was drawn, seed and seconds. Martlet *shows* a picture: the
 conversation's handler puts it in the talk window (no options), and the Creations
 page shows it with its details ([Pictures](PICTURES.md)).
+
+**Motions** (`MotionCreations.Kind`, registered by the desktop at startup): body
+motions Martlet made for VRM characters ([motions in
+conversation](AVATARS.md#motions-in-conversation)). One asset, `clip` (a VRMA
+clip as `application/octet-stream`, at most 4 MiB, so older Martlet computers and
+hosts copy it too); its title is the motion's name (`cheer`), its text and
+summary what the body does, its length the clip's; metadata with its name,
+seconds, seed, model, where it was made, whether it is a FIXTURE test motion, the
+character it was first made for and whether it is a starter motion. Martlet may
+clean old ones up. It is the one kind kept out of Martlet's creation tools
+(`CreationKind.ForTools` false): every VRM character lists the kept motions as its
+own emotes and motions, so replies do them by their tags, or with `body_motion`.
 
 ### Audio
 
@@ -187,11 +199,13 @@ IDs only.
 
 ## Martlet's tools
 
-While at least one kind is registered, every reply on a Thinking route that does
+While at least one kind for the tools is registered (`CreationRegistry.ToolKinds`:
+every kind except one with `ForTools` false, such as motions), every reply on a Thinking route that does
 function calling gets two of Martlet's own tools, after `think_longer`,
 `cancel_thinking` and `search_conversations`, always the same two in the same order with the same texts
-(built from the registered kinds, never from the creations), so the start of
-every request stays the same for prompt caches:
+(built from those kinds, never from the creations), so the start of
+every request stays the same for prompt caches. Registering a kind kept out of the
+tools changes none of their words, and they never list or perform its creations:
 
 - `list_creations(kind?, query?)`: the creations newest first (at most 30): short
   id, kind, title, the kind's description, length, the day it was made, whether
