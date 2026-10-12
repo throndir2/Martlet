@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-10-11
+
 ### Added
 
 - **Martlet says hello when it starts**: once Martlet has warmed up after it starts, it greets you on its own, in character and fit to the time of day. It may bring up your last conversation, a reminder coming up soon or what you have open. Turn it off in Settings › Startup and closing › *Greet me once Martlet has warmed up after it starts*. ([#796](https://github.com/throndir2/Martlet/pull/796))
