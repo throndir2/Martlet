@@ -58,12 +58,13 @@ internal static class AccountLinks
     /// hints of <paramref name="from"/>, which is removed with <c>merged_into</c>, both signed by <paramref name="by"/>. The
     /// caller proved both accounts on this PC first, and this PC must be bound to <paramref name="into"/> by a proof of its own
     /// (the binding rule refuses the moved bindings otherwise). The household owner's account can't be merged into another.</summary>
-    internal static AccountDirectory Merge(AccountDirectory directory, INetworkSigner by, Guid into, Guid from, DateTimeOffset now)
+    internal static AccountDirectory Merge(AccountDirectory directory, INetworkSigner by, Guid into, Guid from, DateTimeOffset now, bool foldOwner = false)
     {
         var target = directory.Find(into) is { Removed: false } t ? t : throw new InvalidOperationException("The account to keep is not in the directory.");
         var merged = directory.Find(from) is { Removed: false } m ? m : throw new InvalidOperationException("The account to merge is not in the directory.");
         if (into == from) throw new InvalidOperationException("An account can't be merged into itself.");
-        if (merged.Role == AccountRoles.Owner)
+        // foldOwner: joining with the owner's approval folds this PC's own owner account into the household's (OwnerJoin).
+        if (merged.Role == AccountRoles.Owner && !(foldOwner && target.Role == AccountRoles.Owner))
             throw new InvalidOperationException($"{merged.Name} is the household owner's account. Merge the other account into it instead.");
         if (target.Device(by.DeviceId) is null) throw new InvalidOperationException($"Sign in as {target.Name} on this PC first.");
         var result = target;

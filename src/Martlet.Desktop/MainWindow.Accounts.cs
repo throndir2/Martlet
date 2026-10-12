@@ -250,6 +250,8 @@ public partial class MainWindow
             // never written.
             if (reads.Any(r => r.Ok))
             {
+                // Joining with the owner's approval: sign in to the household's owner account first, so Reconcile binds it.
+                if (OwnerJoinPlanFor(merged, roster) is { } join && !accounts.State.SignedIn.Contains(join.Owner)) accounts.SignInOwner(join.Owner);
                 using var key = NetworkIdentity.LoadOrCreate(store.DataDirectory, NetworkIdentity.DeviceId(homeHosts));
                 (merged, written) = AccountSession.Reconcile(merged, accounts.State, roster, key, accounts.DeviceId, DateTimeOffset.UtcNow);
             }
@@ -295,6 +297,7 @@ public partial class MainWindow
             accountsSyncBusy = false;
             if (!closing) ShowAccountsSyncStatus();
         }
+        if (!closing) _ = Dispatcher.BeginInvoke(() => FoldIntoHouseholdOwnerAsync().Forget(), DispatcherPriority.Background);
     }
 
     /// <summary>A host's copy of the account directory: read again only when its digest changed. Hosts older than accounts answer

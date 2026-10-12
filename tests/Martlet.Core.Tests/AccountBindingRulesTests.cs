@@ -150,13 +150,54 @@ public sealed class AccountBindingRulesTests : IDisposable
         var migrated = directory.Put(b, accepted.WithDevice(self), Now.AddMinutes(1)).Find(owner.Id)!;
         Assert.Null(Refusal(accepted, migrated));
         Assert.Equal("migration", AccountBindingRules.Proof(accepted, migrated, migrated.Device("desktop-b")!, roster));
-        // Written by another desktop, or with another device's Windows login, it is no migration.
-        Assert.Equal(AccountBindingRules.Refused, Refusal(accepted, directory.Put(a, accepted.WithDevice(self), Now.AddMinutes(1)).Find(owner.Id)!));
+        // With another device's Windows login, it is no migration.
         var foreign = AccountDevice.For("desktop-b", AccountLoginKey.ForWindows("desktop-a", SidA), Now.AddMinutes(1));
         Assert.Equal(AccountBindingRules.Refused, Refusal(accepted, directory.Put(b, accepted.WithDevice(foreign), Now.AddMinutes(1)).Find(owner.Id)!));
         // A member desktop binding itself to someone else's account is refused.
         var sam = Sam();
         Assert.Equal(AccountBindingRules.Refused, Refusal(sam, AccountDirectory.Empty.Put(b, sam.WithDevice(self), Now.AddMinutes(1)).Accounts[0]));
+    }
+
+    [Fact]
+    public void Migration_bindings_stay_valid_after_another_desktop_writes_the_owner_account()
+    {
+        using var c = NetworkKey.Create("desktop-c");
+        var three = roster.AddDesktop(a, c.DeviceId, "C", c.PublicKey, Now.AddDays(-1));
+        AccountDevice Self(string device, string sid) => AccountDevice.For(device, AccountLoginKey.ForWindows(device, sid), Now);
+        var owner = OwnerAccount.Create(three, "Owner");
+        // desktop-a made the owner account, desktop-b bound itself, then desktop-c bound itself and wrote the entry last.
+        var directory = AccountDirectory.Empty.Put(a, owner.WithDevice(Self("desktop-a", SidA)), Now);
+        directory = directory.Put(b, directory.Find(owner.Id)!.WithDevice(Self("desktop-b", SidB)), Now.AddMinutes(1));
+        directory = directory.Put(c, directory.Find(owner.Id)!.WithDevice(Self("desktop-c", SidA)), Now.AddMinutes(2));
+        var latest = directory.Find(owner.Id)!;
+
+        // A computer that sees the entry for the first time (a new desktop or host) accepts every binding.
+        Assert.Null(AccountDirectory.Refusal(null, latest, three));
+        Assert.Equal("migration", AccountBindingRules.Proof(null, latest, latest.Device("desktop-b")!, three));
+        Assert.Equal(0, AccountDirectory.Accept(AccountDirectory.Empty, directory, three).Rejected);
+
+        // A desktop removed from the network loses its binding.
+        var withoutB = three.Remove(a, "desktop", "desktop-b", Now.AddMinutes(3));
+        Assert.Equal(AccountBindingRules.Refused, AccountDirectory.Refusal(null, latest, withoutB));
+    }
+
+    [Fact]
+    public void The_founders_owner_account_is_the_household_owner_but_other_owner_accounts_are_not()
+    {
+        var self = AccountDevice.For("desktop-b", AccountLoginKey.ForWindows("desktop-b", SidB), Now.AddMinutes(1));
+        // An owner account that desktop-a (the founder) made after accounts came: a random ID, not OwnerAccount.IdFor.
+        var founders = AccountDirectory.Empty.Put(a, Account.Create("Owner", AccountRoles.Owner), Now).Accounts[0];
+        Assert.True(AccountBindingRules.IsHouseholdOwner(founders, roster));
+        var joined = AccountDirectory.Empty.Put(b, founders.WithDevice(self), Now.AddMinutes(1)).Accounts[0];
+        Assert.Null(Refusal(null, joined));
+        Assert.Equal("migration", AccountBindingRules.Proof(null, joined, self, roster));
+
+        // An owner account another desktop made, or a member account the founder made, gives no migration.
+        var others = AccountDirectory.Empty.Put(b, Account.Create("Other", AccountRoles.Owner), Now).Accounts[0];
+        Assert.False(AccountBindingRules.IsHouseholdOwner(others, roster));
+        var member = Sam();
+        Assert.False(AccountBindingRules.IsHouseholdOwner(member, roster));
+        Assert.Equal(AccountBindingRules.Refused, Refusal(null, AccountDirectory.Empty.Put(b, member.WithDevice(self), Now.AddMinutes(1)).Accounts[0]));
     }
 
     [Fact]

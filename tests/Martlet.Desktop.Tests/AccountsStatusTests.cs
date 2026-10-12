@@ -56,6 +56,41 @@ public sealed class AccountsStatusTests
         }
     }
 
+    [Fact]
+    public async Task AccountsStatusShowsTheHouseholdOwnerAndAnApprovedJoinThatStillHasToFold()
+    {
+        var data = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Accounts." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(data);
+            var device = DeviceIds.Ensure(data).Id;
+            using var founder = NetworkKey.Create("desktop-founder");
+            using var key = NetworkKey.Create(device);
+            var roster = NetworkRoster.Found(founder, "FOUNDER", Now).AddDesktop(founder, device, "DESK", key.PublicKey, Now);
+            var owner = Account.Create("Robin", AccountRoles.Owner);
+            var session = AccountSession.Open(data, Sid, () => "Sam Doe", device, Now);
+            // The roster and the household's directory arrive after this PC made its own account.
+            File.WriteAllBytes(Path.Combine(data, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName),
+                new Martlet.Avatar.Audio2Face.Remote.NetworkLocalState { Roster = roster }.Write());
+            AccountSession.SaveDirectory(data, AccountDirectory.Empty.Put(founder, owner, Now));
+
+            var status = await StatusAsync(data);
+
+            Assert.Equal(owner.Key, status.GetProperty("householdOwner").GetString());
+            var join = status.GetProperty("ownerJoin");
+            Assert.Equal(owner.Key, join.GetProperty("owner").GetString());
+            Assert.Equal(session.AccountId.ToString("N"), join.GetProperty("own").GetString());
+            Assert.False(join.GetProperty("ownWritten").GetBoolean());
+
+            File.WriteAllText(Path.Combine(data, "joined-account.json"), "{}");
+            Assert.Equal(JsonValueKind.Null, (await StatusAsync(data)).GetProperty("ownerJoin").ValueKind);
+        }
+        finally
+        {
+            if (Directory.Exists(data)) Directory.Delete(data, recursive: true);
+        }
+    }
+
     private static async Task<JsonElement> StatusAsync(string data)
     {
         var request = JsonSerializer.Serialize(new
