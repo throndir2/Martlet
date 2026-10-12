@@ -365,7 +365,10 @@ public partial class MainWindow
         StartInTrayCheck.IsEnabled = state == StartupState.On;
         StartCompanionCheck.IsChecked = background.StartCompanion;
         StartCompanionCheck.IsEnabled = !host;
+        GreetAtStartCheck.IsChecked = background.GreetAtStart;
+        GreetAtStartCheck.IsEnabled = !host;
         changingBackgroundChoice = false;
+        RenderGreeting();
         var closeText = tray is { Added: false }
             ? "Martlet's notification-area icon isn't available, so closing the window exits Martlet."
             : background.CloseToTray

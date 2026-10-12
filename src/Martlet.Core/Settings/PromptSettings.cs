@@ -80,6 +80,8 @@ public static class PromptCatalog
     public const string BackgroundDoneNotes = "background_done_notes";
     public const string ReminderDue = "reminder_due";
     public const string ReminderDueNotes = "reminder_due_notes";
+    public const string Greeting = "greeting";
+    public const string GreetingNotes = "greeting_notes";
     public const string Touched = "touched";
     public const string TouchedNotes = "touched_notes";
     public const string TouchedCutIn = "touched_cut_in";
@@ -190,6 +192,17 @@ public static class PromptCatalog
     public const string DefaultReminderDueNotesInstructions =
         "A reminder the user asked you for is due now:\n{reminders}\nAnswer what the user just said first; then, in the same reply, " +
         "remind them naturally and in character (\"...oh, and by the way, ...\"), without mentioning notes or tools.";
+
+    public const string DefaultGreetingInstructions =
+        "(Martlet's note, not said by the user: Martlet just started on the user's PC and is ready to talk. This is your first " +
+        "moment together since then.)\n{facts}\n\nGreet the user now, on your own, in character: one or two short, warm " +
+        "sentences, like a friend saying hi when they sit down. Fit it to the time of day. Pick at most one or two of the facts " +
+        "above that are worth a word (a reminder coming up soon, what you talked about last time, what they have open) and " +
+        "never list them. Don't mention notes, tools or that Martlet just started.";
+
+    public const string DefaultGreetingNotesInstructions =
+        "Martlet just started on the user's PC, and this is your first moment together since then:\n{facts}\nAnswer what the " +
+        "user just said first; greet them briefly in the same reply where it fits, in character, without mentioning notes.";
 
     public const string DefaultCheckInInstructions =
         "You help Martlet, a desktop companion app, in the background. Each message is one check about its companion character, " +
@@ -686,6 +699,16 @@ public static class PromptCatalog
             "Goes in the notes of your next message instead, when you talk before Martlet brought a due reminder up, so it fits it " +
             "into its answer. {reminders} lists each due reminder.",
             DefaultReminderDueNotesInstructions, ["reminders"]),
+        new(Greeting, ConversationGroup, "Greeting",
+            "The message of the reply Martlet starts on its own once it has warmed up after it starts (Settings › Startup and " +
+            "closing › Greet me), once each time Martlet starts. It stays in the conversation like a message. {facts} lists what " +
+            "Martlet knows then: the day and time, the end of your last conversation on this PC (while Memory keeps conversations), " +
+            "reminders due in the next 12 hours and the apps open on this PC.",
+            DefaultGreetingInstructions, ["facts"]),
+        new(GreetingNotes, ConversationGroup, "Greeting, with your message",
+            "Goes in the notes of your first message instead, when you talk before Martlet greeted you. {facts} lists the same " +
+            "facts.",
+            DefaultGreetingNotesInstructions, ["facts"]),
         new(Touched, ConversationGroup, "Touched",
             "The message of the short reply Martlet starts on its own when you touch or stroke the desktop character (on zones " +
             "with Martlet notices on, Companion › Touch › Touch zones) or move it around, and say nothing: about 1.2 seconds " +
@@ -1206,7 +1229,7 @@ public static class PromptCatalog
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
-        SongLyrics or ResearchStep or CheckInDue or DescribePicture or AppGuideOffer;
+            Greeting or SongLyrics or ResearchStep or CheckInDue or DescribePicture or AppGuideOffer;
 
     public static string Default(string id) =>
         Find(id)?.Default ?? throw new ContractException(ErrorCode.InvalidContract, $"Unknown prompt '{id}'.");

@@ -77,7 +77,8 @@ public partial class MainWindow
                 text += (audit.OutsideAccessPaused ? "; Outside access paused: sign-in is off" : "") +
                     (audit.OutsideAccessBlockedReason is { } reason ? $"; sign-in needed first ({reason})" : "") + $"; pairing codes from outside home {(audit.AllowPairingOutsideHome ? "allowed" : "refused")}" +
                     (audit.TreatAllAsOutside ? "; every connection treated as outside home" : "") +
-                    (audit.InternetReachable ? "; limits apply to every address" : "");
+                    (audit.InternetReachable ? "; limits apply to every address" : "") +
+                    (audit.OutsideListeners.Count > 0 ? $"; also listening on {string.Join(", ", audit.OutsideListeners)} (overlay network)" : "");
             facts[host.HostId] = text + ".";
         }
         return facts;
@@ -143,7 +144,9 @@ public partial class MainWindow
             "WireGuard; recommended) or your router's public name with a forwarded port. Desktops try the home address first and " +
             "these only when it doesn't answer, always checking the same host key, so a proxy that ends TLS won't work. Separate " +
             "up to four with commas; leave empty to remove them. Saving restarts the host's gateway; your network learns the " +
-            "addresses on its next sync." + (docker ? " Docker publishes the gateway's port, so the host can't tell a connection " +
+            "addresses on its next sync. With outside addresses the host also listens on its own Tailscale address (and on any " +
+            "of its addresses you name here)." + (docker ? " Docker publishes the gateway's port: with outside addresses, on every " +
+            "address of the host, so an overlay network reaches it; without them, on its home address only. The host can't tell a connection " +
             "from home apart from one from outside: keep \"Treat every connection as coming from outside home\" on when the " +
             "port is reachable from outside. Typed pairing codes then need \"Allow typed pairing codes from outside home\", even " +
             "at home; Martlet pairing with its own host service doesn't." : ""), "Save and restart gateway");

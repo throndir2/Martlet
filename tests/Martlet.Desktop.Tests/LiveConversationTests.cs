@@ -3344,6 +3344,36 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task TheGreetingComesUpOnItsOwnOnceTheConversationHasWarmedUp() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("Evening! Ready for round two?");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Assert.True(window.WarmedUp);
+            Assert.True(window.Fresh);
+            var facts = Greetings.Facts(new GreetingFacts
+            {
+                Now = new(2026, 10, 11, 17, 8, 0, TimeSpan.Zero), Zone = TimeZoneInfo.Utc, Apps = [new("Steam", true)]
+            });
+            var job = window.Greet(facts)!;
+            Assert.Equal(Greetings.KindName, job.Kind.Name);
+            Assert.Equal("Greeting", LiveConversationWindow.KindTitle(job.Kind));
+            await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
+            Assert.Equal(1, fixture.Llm.Calls);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("and is ready to talk. This is your first moment together since then.", body);
+            Assert.Contains("Apps open on this PC: Steam (in front).", body);
+            Assert.False(window.Fresh);
+            Click(window, "TasksChip");
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet brought it up.");
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void TheTaskChipCountsRunningReadyAndDoneTasks()
     {
         Assert.Equal("2 running", LiveConversationWindow.TasksChipLine(2, 0, 3));

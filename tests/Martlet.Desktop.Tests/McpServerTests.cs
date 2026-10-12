@@ -366,6 +366,17 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task GreetingRehearsalPassesWithTheProductionCode()
+    {
+        var result = ToolResult((await SendAsync("""{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"greeting_check"}}"""))[0]);
+        Assert.True(result.GetProperty("passed").GetBoolean(), result.GetRawText());
+        var steps = result.GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("name").GetString()).ToArray();
+        Assert.Contains("the newest conversation on this PC", steps);
+        Assert.Contains("said on its own as soon as Martlet is free", steps);
+        Assert.Contains("let go after waiting too long", steps);
+    }
+
+    [Fact]
     public async Task DeniesUnapprovedUiEffectsAndUnrelatedProcesses()
     {
         var messages = await SendAsync(

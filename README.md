@@ -156,13 +156,11 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.70.1
+## 🆕 What's new in 0.71.0
 
-- 🗣️ **Talk as long as you like**: one turn of talking can last up to 10 minutes, and long replies are said aloud to the end instead of stopping after about 80 seconds.
-- 📏 **Longer replies and messages**: replies can be up to 32,768 tokens when you want them, and you can type a message of up to 262,144 characters.
-- 🧠 **Much more room**: Martlet remembers up to 100,000 facts and keeps up to 1,000 characters, personalities, lorebooks and voices. When memory is full, it tells you instead of forgetting your oldest facts.
-- 🎮 **App guides on their own**: App guides are now on by default. When you start a new game, Martlet reads its whole wiki by itself and tells you, in character.
-- 🔎 **Web research that digs deeper**: web research is on by default, reads up to 60 pages each time you ask and shows the model much more of each page.
+- 👋 **Martlet says hello when it starts**: once it has warmed up, Martlet greets you on its own, in character and fit to the time of day. Turn it off in Settings › Startup and closing.
+- 🌐 **Your laptop reaches your hosts through Tailscale**: away from home, a laptop now connects to your hosts at their Tailscale addresses, with the same pairing. At home it still uses the home address first.
+- 🔁 **Hosts follow Tailscale by themselves**: a Linux or Mac host listens on its Tailscale address even when Tailscale starts late or gets a new address. A Windows host opens its port on all of its addresses once you set outside addresses in *Outside access*.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

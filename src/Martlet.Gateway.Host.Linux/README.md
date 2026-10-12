@@ -162,7 +162,11 @@ Private-LAN configuration must explicitly select `"mode":"privateIp"`
 and one canonical HTTPS RFC1918/ULA literal origin, for example
 `https://192.168.10.20:9443`. No public/wildcard/unspecified address, hostname,
 discovery, link-local scope, automatic interface selection or fallback exists.
-The selected address must actually exist on the host when starting.
+The selected address must actually exist on the host when starting. While the
+host has outside addresses (`exposure.json` or its roster entry), `privateIp`
+also listens on the computer's own Tailscale addresses and on any of its
+addresses an outside address names, followed every 10 seconds
+(`GatewayOverlayListeners`, [NETWORK](../../docs/NETWORK.md#reaching-your-network-from-outside-home)).
 Inside a container (`/.dockerenv` or `/run/.containerenv` present) the
 `martlet-host` Docker method selects `"mode":"published"` instead: the same
 private origin names the Docker host's published address for the certificate and

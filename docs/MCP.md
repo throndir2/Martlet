@@ -2000,8 +2000,19 @@ host itself are signed into the roster by a member desktop's network sync; the
 reachability probe behind `outside_reachability_check` tells an answering, a
 closed and a wrong-key address apart; and a
 different computer with another key at the home address is skipped for the
-outside address. Not covered: a real internet source, a router port forward or
-an overlay.
+outside address. When this PC has a Tailscale address (100.64.0.0/10), a last
+step starts a second gateway (`lab-overlay`) on this PC's private home address
+and pairs a laptop there; nothing answers on this PC's Tailscale address at
+the gateway's port; the host gets an outside address (a MagicDNS name it can't
+resolve) and listens on its Tailscale address too
+(`GatewayOverlayListeners`); a pinned probe through that address is answered
+`403` (`outside.paused`: a Tailscale source is outside home and sign-in is off);
+the laptop sets up an owner account and the probe answers `200`; the audit's
+`outside_listeners` and the host log line `Listening on <address> too (overlay
+network) ...` name the address; and once the outside address is removed the
+host stops listening there. Without a Tailscale or a private address that step
+is skipped and the report's `notRun` says why. Not covered: a real internet
+source, a router port forward or another computer on the overlay network.
 
 `signin_selftest` (no arguments) rehearses [joining from outside home by
 signing in](NETWORK.md#joining-from-outside-home-by-signing-in) with the
@@ -3873,7 +3884,11 @@ Desktop (the one the host dashboard sets up) with the same production code as
 the dashboard (`LocalHostService` in `Martlet.Core`): `stage` (`DockerMissing`,
 `DockerNotRunning`, `NotSetUp`, `Stopped` or `Running`), `ready` (running,
 answering and still at one of this PC's addresses), `version` (the
-`martlet-host:x.y.z` image), `hostId`, `published`, `addressOnThisPc` (false
+`martlet-host:x.y.z` image), `hostId`, `published`, `publishedEverywhere`
+(true once the owner set outside addresses in *Outside access*: the network
+holder then publishes the gateway on every address of this PC, so an overlay
+network such as Tailscale reaches it; the home address comes from the holder's
+`martlet.home` label), `addressOnThisPc` (false
 once the network gave this PC another address than the one set up),
 `answering` (a TCP connect to the published port), `roles` (the installed role
 records, for example `["audio2face","f5","stt"]`; null until the gateway runs),
@@ -6068,6 +6083,20 @@ let go, and the reply's read-only `list_reminders` call listing without
 changing anything while the *Reminders* set replaces `reminders`. `passed` and each step's `passed` and `detail`. No model, network or
 credentials.
 
+`greeting_check` rehearses [the greeting when Martlet
+starts](CONVERSATION.md#greeting-when-martlet-starts) with the production code
+(`Greetings`, `ConversationHistory`, `BackgroundJobs`, `UnpromptedSpeech`) and
+fixture facts: an empty record giving no last conversation, the newest
+conversation on this PC read from a real conversation record in a temporary
+folder (a newer Telegram chat left out; the folder is deleted afterwards), the
+time and part of the day, only the reminders due in the next 12 hours, the open
+apps with the one in front first and each once, the counts-only line the log
+and `GreetingStatus` use (*the time of day, your last conversation, 1 reminder
+coming up and 3 open apps*), the message when Martlet greets on its own and the
+notes when the user talks first, said once, and let go (*too_old*) after
+waiting 10 minutes. `passed` and each step's `passed` and `detail`. No model,
+network or credentials.
+
 `check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
@@ -7169,7 +7198,8 @@ own Martlet runs its commands), `SelectedDeviceOutside`
 (in *Details*) returns its outside access in counts and choices only (*2 outside
 addresses; pairing codes from outside home refused; every connection treated as
 outside home.*, with *Outside access paused: sign-in is off; sign-in needed first
-(signin.not_set_up)* while it is), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
+(signin.not_set_up)* while it is, and *also listening on 100.101.102.103:9443
+(overlay network)* once a native host listens on its Tailscale address), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
 (`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
 default for Docker hosts; while sign-in isn't usable on the host its note
 `OutsideAccessBlockedReason` returns why, starting *Outside access paused: sign-in
@@ -9426,7 +9456,18 @@ directory and turn it off again afterwards), `StartInTray`, `StartCompanion`
 while vision is on)*; saves
 `background.json` and applies on every start, `--tray` included, so the
 desktop log records *Martlet started with the character and listening.*, or
-*... and listening, and watching.* with vision on) and
+*... and listening, and watching.* with vision on),
+`GreetAtStart` (*Greet me once Martlet has warmed up after it starts*; checked
+by default, saves `background.json`, so toggling it needs
+`--allow-ui-effects`) with `GreetingStatus` under it (*Martlet greets you once
+a conversation has warmed up (Start talking or Start listening on Home).*,
+*Martlet greets you once it has warmed up.*, *Martlet greets you as soon as
+it's free. It knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
+5:08 PM and greeted you. It knew the time of day, your last conversation and 3
+open apps.*, or why it didn't: the greeting was off, you were already talking,
+or it was let go; counts only, never app names, reminders or what was said;
+the talk window's task list shows the job as *Greeting* and the log says
+*Greeting: Martlet warmed up; greeting-1 waits...*) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
 when Windows' own Startup apps switch turned it off). On a PC that runs its own

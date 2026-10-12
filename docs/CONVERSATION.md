@@ -1560,6 +1560,62 @@ started without the window and, with no Thinking set up, shown as a
 notification and marked said (`reminders_status`). A real model setting and
 saying one, and two real companion PCs through a real host, are **NOT RUN**.
 
+## Greeting when Martlet starts
+
+Once each time Martlet starts, it says hello on its own as soon as it is ready:
+*"Evening! Ready for round two with that boss? Oh, and mom's call is in an
+hour."* Settings › Startup and closing › *Greet me once Martlet has warmed up
+after it starts* (`GreetAtStart`, on by default, saved in `background.json`)
+turns it off.
+
+**When.** On a companion PC, Martlet waits for the first conversation of this
+start (Settings' *When Martlet starts, show the character and start listening*,
+Start talking or Start listening) to warm up: its settings are loaded, Thinking
+is set up, Thinking's model in Ollama on this PC has loaded (Ready), and
+Parakeet and the character have loaded. Then it greets you once. It doesn't
+greet you when you already had an exchange in that conversation, and it never
+starts a conversation only to greet you. Free up this PC and a new conversation
+later in the same start don't greet you again.
+
+**What it knows** (`Greetings.Facts`, gathered once off the UI thread, never
+on a reply's path):
+
+- the day, the time and the part of the day (morning, afternoon, evening,
+  night or late at night);
+- the end of the last conversation on this PC (its last 3 exchanges, how long
+  ago), only while Companion › Memory keeps conversations; messaging-app chats
+  are left out, and an empty record says this may be your first talk;
+- the [reminders](#reminders) due in the next 12 hours (at most 5); due ones
+  are said by the reminders themselves;
+- the apps open on this PC: each program with a window on the taskbar, by its
+  name (*Google Chrome*, *Discord*), the one in front first, at most 8, never
+  window titles and never Martlet itself.
+
+**How it is said.** The greeting is a notice in the conversation, like a due
+reminder (`Greetings.Kind`, job `greeting-1`): Martlet brings it up on its own
+as soon as it is free, with Companion › Prompts › *Greeting* (one or two short
+sentences in character, fit to the time of day, at most one or two of the
+facts). When you talk first, it goes in the notes of your message with
+*Greeting, with your message*. Martlet treats it like a check-in's notice
+(`UnpromptedSpeech`): it waits while you talk and is let go after waiting 10
+minutes. It
+shows in the talk window's task list as *Greeting*, and the reply stays in the
+conversation like any exchange. The request starts the same way as every
+reply, so it warms the prompt cache for your first message instead of adding
+latency to it; talking over the greeting stops it.
+
+**Seeing it.** Settings' `GreetingStatus` line says whether Martlet greets you,
+did (*Martlet warmed up at 5:08 PM and greeted you. It knew the time of day,
+your last conversation and 3 open apps.*) or why it didn't. The desktop log
+records *Greeting: Martlet warmed up; greeting-1 waits...* with counts only;
+neither ever names an app, a reminder or what was said.
+
+Checked locally: the facts, the counts-only line and the notice's wording with
+`GreetingsTests`, and MCP `greeting_check` (a real conversation record in a
+temporary folder, reminders, apps, the message on its own and with your first
+message, said once, let go when too old). A real model saying the greeting is
+**NOT RUN**.
+
 ## Check-ins
 
 A small conversation model forgets what it left on. It writes `{blush}` and
@@ -2631,8 +2687,9 @@ voice pipeline never waits for a whole reply:
   rehearses a pause and resume through the production runtime.
 - **What Martlet says on its own yields to you.** Martlet speaks without being
   asked in four ways (`UnpromptedSpeech`, `LiveConversationOperation.Unprompted`):
-  a due reminder, finished background work, a check-in's notice (`checkin-N`)
-  and a screen or camera remark. A reply to you, to what this PC played or to a
+  a due reminder, finished background work, a check-in's notice (`checkin-N`;
+  the greeting when Martlet starts, `greeting-1`, counts as one) and a screen
+  or camera remark. A reply to you, to what this PC played or to a
   touch is never one of them, and nothing here runs before a reply to you.
   With *Pause and decide*, real words over one of them work as over a reply,
   with these changes. A screen or camera remark is not paused for the judge: it

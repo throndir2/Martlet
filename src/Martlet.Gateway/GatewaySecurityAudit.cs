@@ -22,6 +22,7 @@ internal sealed partial class GatewayHttpApplication
             GeneratedAt = clock.GetUtcNow(),
             InternetReachable = Guard.InternetReachable,
             OutsideAddresses = Network.OwnAddresses,
+            OutsideListeners = OutsideListeners(),
             OutsideAccessBlockedReason = Guard.OutsideAccessBlockedReason,
             OutsideAccessPaused = Guard.OutsideAccessPaused,
             AllowPairingOutsideHome = exposure.AllowPairingOutsideHome,
@@ -41,6 +42,8 @@ internal sealed partial class GatewayHttpApplication
         public required DateTimeOffset GeneratedAt { get; init; }
         public required bool InternetReachable { get; init; }
         public required IReadOnlyList<string> OutsideAddresses { get; init; }
+        /// <summary>The overlay network addresses ("ip:port") this host listens on besides its home origin.</summary>
+        public required IReadOnlyList<string> OutsideListeners { get; init; }
         /// <summary>Why outside access can't be served: sign-in has no usable method (null: it has).</summary>
         public string? OutsideAccessBlockedReason { get; init; }
         /// <summary>Outside addresses (or typed codes outside) while sign-in has no usable method: outside requests are refused.</summary>

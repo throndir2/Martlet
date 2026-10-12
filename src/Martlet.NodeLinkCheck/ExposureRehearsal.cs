@@ -262,6 +262,52 @@ internal static class ExposureRehearsal
                 $"first request {firstOutcome} (wrong key at the home address); then route {route?.Route} via {route?.Address}, {routes.Count} route(s) read");
         });
 
+        string? overlayNotRun = null;
+        var (lanAddress, overlayAddress) = OverlayAddresses();
+        if (lanAddress is null || overlayAddress is null)
+            overlayNotRun = $"NOT RUN: this PC has no {(lanAddress is null ? "private home address" : "Tailscale address (100.64.0.0/10)")} to rehearse an overlay network with.";
+        else
+            await Run($"A real overlay network: with an outside address the host also listens on this PC's Tailscale address {overlayAddress}", async () =>
+            {
+                await using var lanHost = await LabHost.StartAsync("lab-overlay", lanAddress);
+                var spki = lanHost.Identity.SpkiFingerprint;
+                var lanPort = new Uri(lanHost.Origin).Port;
+                var outside = $"{overlayAddress}:{lanPort}";
+                // The laptop pairs at home, on the host's home address.
+                var card = lanHost.Server.Pairing.OpenWindow(new() { DeviceId = "lab-laptop", DisplayName = "LAB-LAPTOP", Roles = [GatewayRole.Voice] });
+                var (pairing, secret) = await Audio2FaceHostClient.PairAsync(lanHost.Origin, lanHost.HostId, spki, "lab-laptop",
+                    card.PairingId, card.Token.Reveal(), token);
+                using var laptop = new Audio2FaceHostConnection(pairing, secret);
+                var before = await HostRoutes.ProbeAsync(lanHost.Origin, spki, outside, TimeSpan.FromSeconds(3), token);
+                // A MagicDNS name the host can't resolve: the host still listens on its own Tailscale address.
+                lanHost.Server.Exposure = new() { OutsideAddresses = [$"lab-overlay.tailnet.ts.net:{lanPort}"], OutsideAddressesSetAt = DateTimeOffset.UtcNow };
+                var listening = await Until(() => lanHost.Server.OutsideListeners, l => l.Contains(outside));
+                // A connection through Tailscale comes from outside home: refused while sign-in isn't set up on the host.
+                var paused = await HostRoutes.ProbeAsync(lanHost.Origin, spki, outside, TimeSpan.FromSeconds(4), token);
+                var totp = Totp.NewSecret();
+                var signIn = await laptop.ChangeSignInSettingsAsync(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["action"] = "owner", ["user"] = "owner", ["password"] = "a long owner passphrase", ["totp_secret"] = totp,
+                    ["code"] = Totp.Code(totp, DateTimeOffset.UtcNow)
+                }, token);
+                await Task.Delay(TimeSpan.FromSeconds(5.5), token); // the guard reads sign-in at most every five seconds
+                var reached = await HostRoutes.ProbeAsync(lanHost.Origin, spki, outside, TimeSpan.FromSeconds(4), token);
+                var audit = await laptop.ReadSecurityAuditAsync(token);
+                var log = (await laptop.ReadOwnLogsAsync(0, 200, token)).Entries.Select(e => e.Message)
+                    .FirstOrDefault(m => m.StartsWith($"Listening on {outside} too", StringComparison.Ordinal));
+                lanHost.Server.Exposure = new();
+                var stopped = await Until(() => lanHost.Server.OutsideListeners, l => l.Count == 0);
+                var after = await HostRoutes.ProbeAsync(lanHost.Origin, spki, outside, TimeSpan.FromSeconds(3), token);
+                return (!before.Reachable && listening.Contains(outside) && paused.Problem?.StartsWith("answered 403", StringComparison.Ordinal) == true &&
+                        signIn.Usable && reached is { Reachable: true, Problem: null } && audit.OutsideListeners.Contains(outside) && log is not null &&
+                        stopped.Count == 0 && !after.Reachable,
+                    $"home {lanHost.Origin}; before outside addresses {outside}: {before.Problem ?? "reachable"}; with one: listening on " +
+                    $"{string.Join(", ", listening)}; without sign-in the pinned probe through Tailscale is {paused.Problem ?? "answered 200"} " +
+                    $"(outside home, paused); with sign-in: {(reached.Reachable ? $"reachable in {reached.Milliseconds} ms" : reached.Problem)}" +
+                    $"{(reached.Problem is null ? "" : $" ({reached.Problem})")}; audit outside_listeners {string.Join(", ", audit.OutsideListeners)}; " +
+                    $"host log \"{log}\"; outside addresses removed: listening on {stopped.Count} overlay address(es), probe {after.Problem ?? "reachable"}");
+            });
+
         var ok = steps.All(s => s.Ok);
         return (ok, new
         {
@@ -271,10 +317,36 @@ internal static class ExposureRehearsal
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
             scope = "One real gateway on 127.0.0.1 (Kestrel, pinned TLS) told to treat every connection as outside home, a desktop " +
                 "using the desktop's paired client and network sync, a stranger's pinned HTTPS client, and outside addresses played by " +
-                "other loopback ports. Not covered: a real internet source address, a router port forward, an overlay network and the " +
-                "desktop window.",
+                "other loopback ports; and, when this PC has Tailscale, a second gateway on this PC's home address reached through " +
+                "this PC's own Tailscale address. Not covered: a real internet source address, a router port forward, another " +
+                "computer on the overlay network and the desktop window.",
+            notRun = overlayNotRun,
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
+
+        async Task<IReadOnlyList<string>> Until(Func<IReadOnlyList<string>> read, Func<IReadOnlyList<string>, bool> done)
+        {
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+            var value = read();
+            while (!done(value) && DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(200, token);
+                value = read();
+            }
+            return value;
+        }
+    }
+
+    /// <summary>This PC's first private home IPv4 address and its first Tailscale IPv4 address (100.64.0.0/10), if it has them.</summary>
+    private static (IPAddress? Lan, IPAddress? Overlay) OverlayAddresses()
+    {
+        var addresses = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus is System.Net.NetworkInformation.OperationalStatus.Up or System.Net.NetworkInformation.OperationalStatus.Unknown)
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address)
+            .Where(a => a.AddressFamily == AddressFamily.InterNetwork).ToArray();
+        static bool Private(byte[] b) => b[0] == 10 || b[0] == 172 && b[1] is >= 16 and <= 31 || b[0] == 192 && b[1] == 168;
+        return (addresses.FirstOrDefault(a => Private(a.GetAddressBytes())),
+            addresses.FirstOrDefault(a => a.GetAddressBytes() is [100, var second, _, _] && (second & 0xC0) == 64));
     }
 
     private sealed class LabHost : IAsyncDisposable, IGatewayAuditSink, IGatewaySignInStorage
@@ -286,13 +358,13 @@ internal static class ExposureRehearsal
         internal string HostId { get; private init; } = "";
         internal string Origin { get; private set; } = "";
 
-        internal static async Task<LabHost> StartAsync(string hostId)
+        internal static async Task<LabHost> StartAsync(string hostId, IPAddress? address = null)
         {
-            var host = new LabHost { HostId = hostId, certificate = Certificate() };
+            var host = new LabHost { HostId = hostId, certificate = Certificate(address) };
             host.Identity = GatewayHostIdentity.FromCertificate(hostId, host.certificate);
             try
             {
-                host.Origin = $"https://127.0.0.1:{FreePort()}";
+                host.Origin = $"https://{address ?? IPAddress.Loopback}:{FreePort(address)}";
                 var origin = new GatewayOrigin(host.Origin);
                 host.Server = new GatewayServer(host.Identity, origin, [], host);
                 host.Server.AttachSignInStorage(host);
@@ -320,15 +392,15 @@ internal static class ExposureRehearsal
             certificate?.Dispose();
         }
 
-        internal static int FreePort()
+        internal static int FreePort(IPAddress? address = null)
         {
-            var probe = new TcpListener(IPAddress.Loopback, 0);
+            var probe = new TcpListener(address ?? IPAddress.Loopback, 0);
             probe.Start();
             try { return ((IPEndPoint)probe.LocalEndpoint).Port; }
             finally { probe.Stop(); }
         }
 
-        private static X509Certificate2 Certificate()
+        private static X509Certificate2 Certificate(IPAddress? address = null)
         {
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var request = new CertificateRequest("CN=Martlet exposure rehearsal (fixture)", key, HashAlgorithmName.SHA256);
@@ -336,7 +408,7 @@ internal static class ExposureRehearsal
             request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
             request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
             var names = new SubjectAlternativeNameBuilder();
-            names.AddIpAddress(IPAddress.Loopback);
+            names.AddIpAddress(address ?? IPAddress.Loopback);
             request.CertificateExtensions.Add(names.Build());
             var now = DateTimeOffset.UtcNow;
             using var ephemeral = request.CreateSelfSigned(now.AddDays(-1), now.AddDays(1));

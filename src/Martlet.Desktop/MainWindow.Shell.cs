@@ -613,7 +613,8 @@ public partial class MainWindow
         if (Role != DeviceRole.Host) return;
         var state = hostState;
         var lan = machine.LanAddress ?? HostSetupCommands.ThisPcAddress();
-        HostAddressText.Text = state?.Address is { } published ? $"https://{published}"
+        HostAddressText.Text = state?.Address is { } published
+            ? $"https://{published}" + (state.PublishedEverywhere == true ? " (and this PC's other addresses, for outside home)" : "")
             : lan is not null ? $"https://{lan}:{WindowsFirewall.Port}" : "No home network address found yet";
         HostStatusText.Text = HostHeadline(state);
         if (state?.Ready == true) Motion.PulseRing(HostPulse, to: 1.35);

@@ -736,8 +736,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "on 127.0.0.1 (pinned TLS) told to treat every connection as outside home, a desktop paired at home through its paired " +
             "client, and a stranger's pinned HTTPS client. Checks that pairing from outside is refused until the owner allows it, " +
             "guessing is locked out with a doubling Retry-After, routes anyone may call have a per-address budget, and the paired " +
-            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. Loopback only; " +
-            "writes nothing to disk.", new { }),
+            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. When this PC has " +
+            "a Tailscale address, a second gateway on this PC's home address gets an outside address and is reached through this " +
+            "PC's own Tailscale address (refused as outside home until sign-in is set up, then answering; it stops listening there " +
+            "when the outside address is removed); otherwise that step is reported in notRun. Writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
             "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI) on its own graphics card, and a " +
@@ -1901,6 +1903,12 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("greeting_check", "Rehearse Martlet's greeting once it has warmed up after it starts (docs/CONVERSATION.md#greeting-when-martlet-starts) " +
+            "with the production code and fixture facts: the time of day, the end of the newest conversation on this PC from a real " +
+            "conversation record in a temporary folder (a newer messaging-app chat left out), only the reminders due in the next 12 " +
+            "hours, the open apps with the one in front first, the counts-only line for the log and Settings' GreetingStatus, and the " +
+            "greeting notice through BackgroundJobs (on its own as soon as Martlet is free, in the notes of the user's first message, " +
+            "said once, let go after waiting too long). No model, network or credentials.", new { }),
         Tool("check_ins_status", "Martlet's check-ins (Companion › Check-ins; docs/CONVERSATION.md#check-ins: short questions the " +
             "Thinking pool answers every few minutes, such as whether lingering emotes still fit), from a data directory: " +
             "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
@@ -2773,6 +2781,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
+                "greeting_check" => await GreetingCheck.RunAsync(cancellation),
                 "check_ins_status" => await CheckInsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "check_ins_check" => await CheckInsCheck.RunAsync(cancellation),
                 "said_lately_check" => await SaidLatelyCheck.RunAsync(cancellation),
@@ -3669,7 +3678,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         return new
         {
             stage = state.Stage.ToString(), ready = state.Ready, version = state.Version, hostId = state.HostId,
-            published = state.Address is not null, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
+            published = state.Address is not null, publishedEverywhere = state.PublishedEverywhere, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
             roles = state.Roles, network = state.Network,
             desktops = state.Desktops.Select(d => new { id = d.Id, name = d.Name }).ToArray(),
             // The warning Companion › Voice and Devices show when this PC's voice engine shares the card with other roles.
