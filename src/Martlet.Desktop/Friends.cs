@@ -19,9 +19,13 @@ internal sealed record FriendHostView(string HostId, FriendHostState State, IRea
 internal sealed record FriendView(string Provider, string Subject, string? Label, IReadOnlyList<FriendHostView> Hosts)
 {
     public string Key => FriendsOverview.Key(Provider, Subject);
-    public string Name => Label ?? Subject;
+    public string Name => Label ?? (IsLink ? "A friend with a share link" : Subject);
     public IEnumerable<string> SharedOn => Hosts.Where(h => h.State == FriendHostState.Shared).Select(h => h.HostId);
     public bool Asking => Hosts.Any(h => h.State == FriendHostState.Asked);
+    /// <summary>A friend you share with a share link (provider "link", the link's ID as subject).</summary>
+    public bool IsLink => Provider == ShareLinks.Provider;
+    /// <summary>How the friend signs in, for people: "share link" or the provider's ID.</summary>
+    public string Way => IsLink ? "share link" : Provider;
 }
 
 /// <summary>Devices › Friends: the people your hosts are shared with, built from each host's sign-in settings (read by a member
@@ -41,7 +45,7 @@ internal static class FriendsOverview
         return new string(text.Take(96).Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '_').ToArray());
     }
 
-    internal static IReadOnlyList<FriendView> Build(IReadOnlyDictionary<string, HostSignInSettings> hosts)
+    internal static IReadOnlyList<FriendView> Build(IReadOnlyDictionary<string, HostSignInSettings> hosts, IReadOnlyList<MadeShareLink>? made = null)
     {
         var members = hosts.Values.SelectMany(s => s.Allowed.Where(a => !a.Friend)).Select(a => (a.Provider, a.Subject)).ToHashSet();
         var people = new Dictionary<(string Provider, string Subject), string?>();
@@ -50,14 +54,20 @@ internal static class FriendsOverview
         {
             foreach (var friend in settings.Allowed.Where(a => a.Friend)) Note(friend.Provider, friend.Subject, friend.Label);
             foreach (var asked in settings.Refused.Where(r => !members.Contains((r.Provider, r.Subject)))) Note(asked.Provider, asked.Subject, asked.Label);
+            foreach (var link in settings.Links ?? []) Note(ShareLinks.Provider, link.Id, link.Label);
         }
+        // A link this PC made shows even before any host keeps it (none answered yet, or every host is too old for links).
+        foreach (var link in made ?? []) Note(ShareLinks.Provider, link.Id, link.Label);
         return people.Select(person =>
         {
             var (provider, subject) = person.Key;
+            var link = provider == ShareLinks.Provider;
             var views = hosts.OrderBy(h => h.Key, StringComparer.Ordinal).Select(h =>
             {
                 var settings = h.Value;
-                var allowed = settings.Allowed.FirstOrDefault(a => a.Provider == provider && a.Subject == subject);
+                var allowed = link
+                    ? settings.Links?.Any(l => l.Id == subject) == true ? new HostSignInAllowed(provider, subject, null) { Access = HostSignInAccess.Friend } : null
+                    : settings.Allowed.FirstOrDefault(a => a.Provider == provider && a.Subject == subject);
                 var asked = settings.Refused.Where(r => r.Provider == provider && r.Subject == subject)
                     .OrderByDescending(r => r.EnrolledAt).FirstOrDefault();
                 var state = allowed is { Friend: true } ? FriendHostState.Shared
@@ -65,7 +75,7 @@ internal static class FriendsOverview
                     : asked is not null ? FriendHostState.Asked
                     : FriendHostState.NotShared;
                 var computers = settings.Enrolled.Where(e => e.Provider == provider && e.Subject == subject && e.Friend).ToArray();
-                return new FriendHostView(h.Key, state, computers, settings.Providers.Any(p => p.Id == provider),
+                return new FriendHostView(h.Key, state, computers, link ? settings.SupportsLinks : settings.Providers.Any(p => p.Id == provider),
                     state == FriendHostState.Asked ? asked!.EnrolledAt : null);
             }).ToArray();
             return new FriendView(provider, subject, person.Value, views);
@@ -84,10 +94,11 @@ internal static class FriendsOverview
         var shared = friends.Count(f => f.SharedOn.Any());
         var asking = friends.Count(f => !f.SharedOn.Any() && f.Asking);
         var unread = hostsTotal - hostsRead;
-        var limits = " Friends use only those hosts' engines, never join your Martlet network, and your own work always goes first.";
+        var limits = " Friends use only those hosts' engines, never join your Martlet network, never get your API keys, and your own work always goes first.";
         var text = shared == 0 && asking == 0
-            ? "You share no host with a friend yet. To share one: open its Sign-in from outside, set up a sign-in provider your friend has an " +
-              "account with, make an invite and send it to them. Once they sign in, they show here and you share the host with them."
+            ? "You share no host with a friend yet. The easy way: Make a share link, choose your hosts (or all of them) and send the link " +
+              "to your friend. Their Martlet signs in with it and uses only those hosts' engines. A friend outside your home also needs " +
+              "a way to reach your hosts: Outside access on the Devices map (open a port on your router, or Tailscale)."
             : shared == 0
                 ? $"{Count(asking, "person", "people")} asked to use one of your hosts: share it with them below." + limits
                 : $"You share {Count(friends.Sum(f => f.SharedOn.Count()), "host")} with {Count(shared, "friend")}" +
@@ -112,12 +123,13 @@ internal static class FriendsOverview
                 read = read.ContainsKey(id),
                 problem = problems.GetValueOrDefault(id),
                 friends = read.TryGetValue(id, out var settings)
-                    ? settings.Friends.Select(f => new
-                    {
-                        label = f.Label ?? f.Subject, provider = f.Provider,
-                        computers = settings.Enrolled.Count(e => e.Provider == f.Provider && e.Subject == f.Subject && e.Friend)
-                    }).ToArray()
+                    ? settings.Friends.Select(f => new FriendSummary(f.Label ?? f.Subject, f.Provider,
+                            settings.Enrolled.Count(e => e.Provider == f.Provider && e.Subject == f.Subject && e.Friend)))
+                        .Concat((settings.Links ?? []).Select(l => new FriendSummary(l.Label ?? "share link", ShareLinks.Provider,
+                            settings.Enrolled.Count(e => e.Provider == ShareLinks.Provider && e.Subject == l.Id && e.Friend))))
+                        .ToArray()
                     : [],
+                shareLinks = read.TryGetValue(id, out var linked) ? linked.Links?.Count : null,
                 asking = read.TryGetValue(id, out var asked) ? asked.Refused.Count : 0
             }).ToArray()
         };
@@ -134,4 +146,10 @@ internal static class FriendsOverview
             if (File.Exists(temporary)) File.Delete(temporary);
         }
     }
+
+    // One friend in friends.json (camel case, as before).
+    private sealed record FriendSummary(
+        [property: System.Text.Json.Serialization.JsonPropertyName("label")] string Label,
+        [property: System.Text.Json.Serialization.JsonPropertyName("provider")] string Provider,
+        [property: System.Text.Json.Serialization.JsonPropertyName("computers")] int Computers);
 }

@@ -38,7 +38,7 @@ public sealed class AppGuidesDesktopTests
         var asked = fixture.Start("Where can I mine iron ore?");
         await fixture.Finish(asked);
         var tools = ToolNames(fixture.Llm.Body);
-        Assert.Equal([.. before, AppGuideTools.ReadUpName, AppGuideTools.SearchName, AppGuideTools.SkipName], tools);
+        Assert.Equal([.. before, AppGuideTools.ReadUpName, AppGuideTools.SearchName, AppGuideTools.SkipName, AppGuideTools.BriefName], tools);
         Assert.True(asked.GuideSections >= 1);
         var notes = Notes(fixture.Llm.Body)!;
         Assert.Contains(GuideRecall.Label, notes);
@@ -55,6 +55,35 @@ public sealed class AppGuidesDesktopTests
         Assert.DoesNotContain(GuideRecall.Label, Notes(fixture.Llm.Body) ?? "");
         Assert.Equal(instructions, Instructions(fixture.Llm.Body));
         Assert.Equal(tools, ToolNames(fixture.Llm.Body));
+    }
+
+    [Fact]
+    public async Task TheAppsBriefGoesWithTheFirstMessageAboutItOnly()
+    {
+        await using var fixture = await LiveFixture.Create(tools: true);
+        using var guides = new AppGuideService(new FileAppGuideStore(Path.Combine(fixture.DirectoryPath, "guides")), new FixtureBuilder());
+        await guides.LoadAsync();
+        await guides.SetOnAsync(true);
+        fixture.Controller.Guides = guides;
+        Assert.True((await guides.BuildAsync("Skyrim", [], null)).Built);
+        var key = guides.Library.Apps.Single().Key;
+        Assert.True(await guides.KeepBriefAsync(key, "What it is: an open-world fantasy game.\nEarly tips: Mine iron ore in the Ember Mines."));
+        guides.See("SKYRIM\u2122", "TESV", game: true, fullScreen: true);
+
+        fixture.Answer("In the Ember Mines.");
+        var first = fixture.Start("Where can I mine iron ore?");
+        await fixture.Finish(first);
+        var notes = Notes(fixture.Llm.Body)!;
+        Assert.Contains(GuideBrief.Label, notes);
+        Assert.Contains("open-world fantasy game", notes);
+        var instructions = Instructions(fixture.Llm.Body);
+        Assert.DoesNotContain("open-world fantasy game", instructions);
+
+        fixture.Answer("At a smelter.");
+        var second = fixture.Start("And where do I smelt the iron ore?");
+        await fixture.Finish(second);
+        Assert.DoesNotContain(GuideBrief.Label, Notes(fixture.Llm.Body) ?? "");
+        Assert.Equal(instructions, Instructions(fixture.Llm.Body));
     }
 
     [Fact]

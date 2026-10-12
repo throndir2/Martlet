@@ -14,8 +14,9 @@ public sealed record ReadUpArguments(string App, IReadOnlyList<string> Sites);
 public sealed record GuideQuestion(string? App, string Question);
 
 /// <summary>App guides in the conversation (docs/APP_GUIDES.md): the reply's tools while Companion › App guides is on, always the
-/// same three in the same order so the start of every request stays the same (read_up_on starts a <see cref="KindName"/> job and
-/// returns at once, search_guide searches a guide at once, skip_guide stops reading up on an app and remembers the user's no), the
+/// same four in the same order so the start of every request stays the same (read_up_on starts a <see cref="KindName"/> job and
+/// returns at once, search_guide searches a guide at once, skip_guide stops reading up on an app and remembers the user's no,
+/// update_guide_brief starts research on the app or a part of it on a Thinking pool member and returns at once), the
 /// job kinds (reading up, and the notice that Martlet started reading up on its own on a game that came to the front) and every
 /// text the model gets.</summary>
 public static partial class AppGuideTools
@@ -23,6 +24,7 @@ public static partial class AppGuideTools
     public const string ReadUpName = "read_up_on";
     public const string SearchName = "search_guide";
     public const string SkipName = "skip_guide";
+    public const string BriefName = "update_guide_brief";
     /// <summary>The reading-up job kind: guide-1, guide-2...</summary>
     public const string KindName = "guide";
     /// <summary>The notice kind that Martlet started reading up on a game in front on its own: guideoffer-1...</summary>
@@ -71,8 +73,16 @@ public static partial class AppGuideTools
         "The user doesn't want you to read up on a game or app: you stop reading up on it, and never read up on it on your own " +
         "again. Only after they say so.", SkipParametersJson);
 
-    /// <summary>The three tools, in the order every request offers them.</summary>
-    public static IReadOnlyList<TextToolDefinition> Definitions { get; } = [ReadUpDefinition, SearchDefinition, SkipDefinition];
+    public const string BriefParametersJson =
+        """{"type":"object","properties":{"app":{"type":"string","description":"The game or app whose brief to update. Leave it out for the one in front."},"focus":{"type":"string","description":"Optional: the part to research, such as an area, level, quest, boss, menu or feature."}},"additionalProperties":false}""";
+
+    public static TextToolDefinition BriefDefinition { get; } = new(BriefName,
+        "Update what you know about a game or app you have a guide for, in the background: research the focus (an area, quest, " +
+        "boss, menu or feature) on the web (wikis, Reddit, guides) and write its brief again. Returns at once; later notes bring " +
+        "what it found. Use it when the user needs more about a part of it, or the brief is out of date.", BriefParametersJson);
+
+    /// <summary>The four tools, in the order every request offers them.</summary>
+    public static IReadOnlyList<TextToolDefinition> Definitions { get; } = [ReadUpDefinition, SearchDefinition, SkipDefinition, BriefDefinition];
 
     /// <summary>The prompt added to a reply's instructions while the tools are offered (Companion › Prompts › App guides).</summary>
     public static string? Instructions(PromptSettings? prompts) => PromptSettings.Fill(prompts, PromptCatalog.AppGuides);
@@ -107,6 +117,28 @@ public static partial class AppGuideTools
         var app = Text(Object(argumentsJson), "app", MaxAppCharacters);
         return app is null ? (null, "Pass one JSON object like {\"app\": \"Elden Ring\"}.") : (app, null);
     }
+
+    /// <summary>update_guide_brief's arguments: the app (null: the one in front) and the focus (null: the whole app).</summary>
+    public static (string? App, string? Focus, string? Problem) ParseBrief(string argumentsJson)
+    {
+        var arguments = Object(string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson);
+        return arguments is null
+            ? (null, null, "Pass one JSON object like {\"app\": \"Elden Ring\", \"focus\": \"Stormveil Castle\"}, or {}.")
+            : (Text(arguments, "app", MaxAppCharacters), GuideBrief.CleanFocus(Text(arguments, "focus", GuideBrief.MaxFocusCharacters)), null);
+    }
+
+    /// <summary>update_guide_brief's answer when the research started (or another was already running).</summary>
+    public static string BriefStarted(string app, string? focus, bool busy) =>
+        JsonSerializer.Serialize(new { status = busy ? "busy" : "started" }) + "\n" +
+        (busy
+            ? $"You're already researching {app} in the background. "
+            : $"You're researching {(focus is null ? app : focus + " in " + app)} in the background now. ") +
+        "Answer from what you know meanwhile, saying so if you aren't sure; later notes bring what you find. Don't make it up.";
+
+    /// <summary>update_guide_brief's answer when it can't start now (no pool member, hourly cap, App guides off...).</summary>
+    public static string BriefRefused(string why) =>
+        JsonSerializer.Serialize(new { status = "not_started" }) + "\n" +
+        $"Not started: {why}. Answer from what you know, saying so if you aren't sure.";
 
     /// <summary>An address the owner gave: an absolute http or https link (https:// is added to a bare host), else null.</summary>
     public static string? Site(string? text)

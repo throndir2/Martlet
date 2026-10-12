@@ -319,6 +319,15 @@ stays the same:
   stops reading up on it when it does now, and never reads up on it on its own
   again.
 
+A fourth tool comes with the same three, also always worded the same:
+
+- `update_guide_brief(app?, focus?)`: starts a background job that writes the
+  app's brief again (see [The brief](#the-brief)). With a `focus` (for example
+  the area the player is in), the job first researches that area (see
+  [Researching where you are](#researching-where-you-are)) and then writes the
+  brief about it. It returns at once. It refuses when no Thinking pool member
+  can take the job.
+
 The prompt tells the model to use `read_up_on`, never `research` or
 `think_longer`, to read up on an app, and never to say it read up on something
 before a note says its guide is ready. When the reply can't call `read_up_on`
@@ -326,6 +335,56 @@ before a note says its guide is ready. When the reply can't call `read_up_on`
 user's own words *read up on X* start the job instead
 (`AppGuideTools.AskedToReadUp`: *it* or *this game* is the app in front, and
 *don't read up on…* is never a request), and the notes tell the model.
+
+### The brief
+
+Reading the wiki uses no model. After each read (and after *Read again*), a
+background job asks a Thinking pool member to write a short **brief** about
+the app: what it is, its core loop, its main mechanics, early tips and common
+mistakes (`GuideBrief`). The job gives the member the guide's best sections for
+these topics and the first sections of the guide, at most 9,000 characters.
+The brief is at most 2,000 characters of plain lines.
+
+- The brief is kept on the app's entry in `library.json` (`brief`, `briefAt`).
+  The old brief stays until a new one is written.
+- The brief goes with the first message about the app in a conversation,
+  between `[MARTLET_APP_BRIEF]` labels, after the conversation's cached start.
+  It is not sent again while the conversation carries it.
+- The job is a `Research` job (the lowest priority) on the Thinking pool only.
+  It never uses the conversation's own Thinking model, so it never pushes the
+  conversation out of a local model's cache. With no pool member that can take
+  it, no brief is written.
+- At most 6 briefs are written in an hour.
+
+### Researching where you are
+
+Martlet uses what is on the screen to find where the player is (an area, a
+level, a quest or a menu) and reads more about that place. It uses the screen
+digests that are already on the context board; it adds no new screen capture.
+
+1. When a screen digest changes while a game or app with a guide is in front,
+   a pool member names the area (`AREA: <name>` or `AREA: NONE`). This happens
+   at most once in 5 minutes.
+2. Martlet searches the guide for the area first. When the guide has enough
+   on it, nothing is read on the web.
+3. Else Martlet searches the web (`<app> <area> wiki`, `... reddit`,
+   `... guide`), through the same polite web reader as the wiki read
+   (`WebAccess`: honest user agent, `robots.txt`, a pause between requests).
+   It reads at most 3 pages. Of Reddit, YouTube and other video sites it keeps
+   only the search result's short text, and never reads the page.
+4. A pool member writes a short summary from what was found.
+5. The summary and the best parts of the pages are added to the guide as
+   *Researched:* sections. A guide keeps at most 400 such sections and 40
+   areas. *Read again* keeps them.
+
+Limits: at most 4 areas an hour, and the same area again only after 24 hours.
+`update_guide_brief` with a `focus` researches an area again after 1 hour. The
+log has counts and times only, never area names, questions, links or text.
+
+Research needs App guides on, *Read up when I start a game or app* on, screen
+digests on (they give the clues) and a Thinking pool member. It costs nothing
+when the pool members are local. On a paid cloud pool member it is bounded by
+the limits above.
 
 ## On the desktop
 

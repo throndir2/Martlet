@@ -127,6 +127,12 @@ internal static class WikiDiscovery
         RejectedHosts.Contains(host) || RejectedSites.Any(site => Is(host, site)) || host.Split('.').Any(label => RejectedLabels.Contains(label)) ||
         ForumHosts.Any(f => host.StartsWith(f, StringComparison.Ordinal)) || RejectedPaths.Any(p => path.Contains(p, StringComparison.Ordinal));
 
+    /// <summary>Whether a page is on a shop, video, social, forum or encyclopedia site (one reading up leaves out).</summary>
+    internal static bool IsRejected(Uri url) => Rejected(url.Host.ToLowerInvariant(), url.AbsolutePath.ToLowerInvariant());
+
+    /// <summary>Whether a host is one of Reddit's (its robots.txt doesn't let Martlet read its pages: only search results are used).</summary>
+    internal static bool IsReddit(string host) => Is(host.ToLowerInvariant(), "reddit.com") || Is(host.ToLowerInvariant(), "redd.it");
+
     private static bool Is(string host, string site) => host == site || host.EndsWith("." + site, StringComparison.Ordinal);
 
     /// <summary>A name's words: lower case, accents and apostrophes dropped, split at anything but a letter or digit.</summary>

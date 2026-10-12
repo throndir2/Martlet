@@ -373,7 +373,11 @@ public sealed class AppGuideServiceTests : IDisposable
     [Fact]
     public void TheToolsReadTheirArgumentsAndWordTheirAnswers()
     {
-        Assert.Equal(["read_up_on", "search_guide", "skip_guide"], AppGuideTools.Definitions.Select(d => d.Name));
+        Assert.Equal(["read_up_on", "search_guide", "skip_guide", "update_guide_brief"], AppGuideTools.Definitions.Select(d => d.Name));
+        Assert.Equal(("Elden Ring", "Stormveil Castle", (string?)null), AppGuideTools.ParseBrief("{\"app\":\"Elden Ring\",\"focus\":\" Stormveil\\nCastle \"}"));
+        Assert.Equal((null, null, (string?)null), AppGuideTools.ParseBrief(""));
+        Assert.NotNull(AppGuideTools.ParseBrief("[1]").Problem);
+        Assert.Contains("update_guide_brief", AppGuideTools.Instructions(null));
         var (readUp, _) = AppGuideTools.ParseReadUp("{\"app\":\" Elden\\nRing \",\"sites\":[\"eldenring.wiki.fextralife.com\",\"ftp://x\",\"\",5]}");
         Assert.Equal("Elden Ring", readUp!.App);
         Assert.Equal(["https://eldenring.wiki.fextralife.com/"], readUp.Sites);

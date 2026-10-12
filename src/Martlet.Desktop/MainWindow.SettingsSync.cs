@@ -277,6 +277,7 @@ public partial class MainWindow
         AppSettingsSections.Listening => "Listening",
         AppSettingsSections.Speaking => "Speaking",
         AppSettingsSections.ThinkingFallback => "the Thinking fallback",
+        AppSettingsSections.ThinkingPool => "the Thinking pool's cloud models",
         AppSettingsSections.Companion => "the personality",
         AppSettingsSections.Replies => "reply settings",
         AppSettingsSections.Prompts => "prompts",
@@ -416,6 +417,7 @@ public partial class MainWindow
             ActionText.Text = settingsLastChange;
         }
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
+        if (applied.Any(a => a.Key == AppSettingsSections.ThinkingPool)) conversation?.ReloadThinkingPool();
         await RefreshHomeAsync();
         // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
         if (applied.Any(a => a.Key is AppSettingsSections.Thinking or AppSettingsSections.Listening or AppSettingsSections.Speaking))
