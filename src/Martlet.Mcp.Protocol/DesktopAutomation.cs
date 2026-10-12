@@ -154,7 +154,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AvatarAdvanced", "RemoteHostSection",
         // Memory: New only clears the fact editor (nothing is saved), and its Where memory is stored and Export to a file sections
         // only expand. Typing a search (MemorySearch) is ui_set_text; Add, Save changes and every Delete button change facts (Delete
-        // asks first), so they need --allow-ui-effects.
+        // asks first), so they need --allow-ui-effects. Show replaced facts is a checkbox (ui_toggle, SafeToggles).
         "MemoryNewFact", "MemoryStorageSection", "MemoryExportSection",
         // Companion › Memory's Open conversations goes to the Conversations page (NavConversations), and Search and Show all
         // only filter what it lists (from memory; nothing is written). Edit message only opens the editor with the selected
@@ -457,7 +457,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects. MemorySyncStatus:
         // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
         // forgotten on other computers (never a fact). MemoryFactStatus (the Memory window): how many facts it remembers, how
-        // many belong to people Martlet knows by voice or to forgotten voices, how many the Show choice lists, and what the
+        // many belong to people Martlet knows by voice or to forgotten voices, how many replaced facts it keeps as history, how
+        // many the Show choice lists, and what the
         // last action did (never a fact or a name). MemoryStatus (the Memory window's bottom line): whether memory is on, saving
         // or why it can't be (fixed text, never a fact or a folder).
         "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus", "MemoryStatus",
@@ -1659,9 +1660,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static bool Focused(AutomationElement element) =>
         element.Current.HasKeyboardFocus && element.Current.FrameworkId != "Win32";
 
+    /// <summary>Checkboxes that only change what a window shows (nothing is saved or sent), so ui_toggle turns them without
+    /// --allow-ui-effects. The Memory window's Show replaced facts lists the facts kept as history too.</summary>
+    private static readonly HashSet<string> SafeToggles = new(StringComparer.Ordinal) { "MemoryShowHistory" };
+
     internal object Toggle(string id)
     {
-        if (!allowEffects) throw new InvalidOperationException("Checkbox changes require --allow-ui-effects.");
+        if (!allowEffects && !SafeToggles.Contains(id)) throw new InvalidOperationException("Checkbox changes require --allow-ui-effects.");
         var element = Find(id);
         if (!element.Current.IsEnabled || !element.TryGetCurrentPattern(TogglePattern.Pattern, out var pattern))
             throw new InvalidOperationException($"Control '{id}' is not an enabled checkbox.");

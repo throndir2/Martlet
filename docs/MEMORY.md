@@ -396,18 +396,23 @@ member that can take it (text, or vision for touch zones and the eyes), so it do
 compete with the reply or its prompt cache. Memory, naming, temperament and the
 eyes are low priority, and the memory brief is the lowest; touch zones are higher, because you wait for them. When no member
 can take a job, or the pool can't finish it, Martlet uses the conversation's
-Thinking model, after the reply finishes speaking (the memory brief only when that model is in the cloud). A job with a picture goes to
+Thinking model, after the reply finishes speaking (the memory brief only when that model is in the cloud). Tidying
+memory is the exception: it runs only on the pool, and without a free member it waits
+([Search words, history and tidying](#search-words-history-and-tidying)). A job with a picture goes to
 the image model of its own instead while pictures go to it ([Image and audio
 models](SENSE_MODELS.md#helper-jobs-with-a-picture)). The desktop log names the
 route of each job, and MCP's `helper_jobs_status` shows the last route of each
 kind (`helper-jobs.json`).
 The model answers in a strict line format: `REMEMBER: <fact>`,
 `REMEMBER V<n>: <fact>` (a fact about another voice heard), `UPDATE <n>: <fact>`,
-`FORGET <n>` or `NOTHING`, at most three lines. Desktop
+`FORGET <n>` or `NOTHING`, at most three of them. A `WORDS: <words>` line after a
+`REMEMBER` or `UPDATE` line gives that fact its hidden search words
+([Search words, history and tidying](#search-words-history-and-tidying)). Desktop
 validates every line (single line, <=300 characters, real words, in-range
 numbers, no memory labels), skips near-duplicates of the same person's facts,
 applies updates/forgets only
-to the exact fact revisions it showed, and saves new facts with `conversation`
+to the exact fact revisions it showed, keeps the fact an update replaces as
+history, and saves new facts with `conversation`
 provenance until deleted. A full store (100,000 facts) saves no new fact and
 deletes nothing to make room: the conversation window says *Couldn't update
 memory. Memory is full. Delete some facts in Companion › Memory.* and the log
@@ -438,8 +443,10 @@ remember, correct, reassign or forget something:
   provenance, as the speaker's unless `person` says otherwise; a near-duplicate
   of the same person's fact is not saved twice.
 - `update` (one id, a new `fact` and/or `person`) corrects a fact or gives it to
-  someone else, keeping its retention.
-- `forget` (up to 50 ids) deletes those facts in one commit.
+  someone else, keeping its retention. A corrected fact's earlier version stays
+  as history ([Search words, history and tidying](#search-words-history-and-tidying)).
+- `forget` (up to 50 ids) deletes those facts and their earlier versions in one
+  commit.
 
 `person` is a name or alias of a voice Martlet knows, its tag (`V3`), `me` (the
 one speaking, else your own voice: one linked to the account signed in here) or `everyone` (about no one in particular).
@@ -464,6 +471,69 @@ show in the conversation and the Tools log as before
 the check-in's card and `check-ins-status.json` show, is the outcome only
 (*Memory: forgot 1.*), never a fact or a name. Automatic recall and
 remembering after a reply do not change.
+
+### Search words, history and tidying
+
+Facts are short, and a question often uses other words than the fact: "What
+should I cook?" does not hold a word of *The user is vegetarian.* The same
+problem lets an old fact stay: *I moved to Seattle* possibly does not find
+*The user lives in Portland*. Three changes help, all made away from the reply,
+so the time to the first spoken word does not change.
+
+- **Hidden search words** (`search_words`, document expansion as in
+  [doc2query](https://arxiv.org/abs/1904.08375)). Each fact can carry up to 16
+  topics, synonyms and related words, such as *diet, food, meat, cooking*.
+  Recall indexes them with the fact, so the question finds it. They are never
+  sent to the reply as the fact's text, and near-duplicate checks compare only
+  what the fact says. Remembering writes them in the same request (the
+  `WORDS:` line). A fact without them (one you typed, an older fact, a
+  corrected fact) gets them from tidying. `manage_memories` `find` and the
+  Memory window's *Search* also match them. Giving a fact words never changes
+  when it last changed.
+- **Replaced facts stay as history** (`replaced_at_utc`, `replaced_by`, as in
+  [Zep](https://arxiv.org/abs/2501.13956)). A correction (remembering's
+  `UPDATE`, `manage_memories` `update`, `memory_update`) keeps the earlier
+  version as a fact of its own, dated when it stopped being true, and the fact
+  keeps its ID. Tidying can also mark a fact a newer fact made outdated. History
+  is never recalled, shown to remembering or listed by `find`, and it can't be
+  changed. Forgetting a fact forgets its earlier versions too. A full store
+  keeps the correction and skips the history copy. Corrections typed in the
+  Memory window keep no history (they are usually typing mistakes).
+- **Tidying memory** (a helper job, `memory_upkeep`, Companion › Prompts ›
+  *Tidying memory*; cleanup in a separate background step, as in
+  [Letta](https://arxiv.org/abs/2504.13171), and add, update or no change
+  decisions, as in [Mem0](https://arxiv.org/abs/2504.19413)). About 30 seconds
+  after facts change, and again while work is left, each store this device may
+  change gets one pass: the facts changed since the last pass are looked up with
+  the store's own search (search words included), and facts of one person that
+  share a good part of their words form a group (at most 6 groups of 5). Facts
+  without search words are listed too (at most 16, newest first). A free
+  Thinking pool member that reads text answers `SAME <n> <m>: <fact>` (merge
+  duplicates into the first; their history moves to it), `OUTDATED <n> BY <m>`
+  (keep the older fact as history) and `WORDS <n>: <words>`. Lines across
+  groups, about unknown numbers or calling the newer fact outdated by the older
+  are left out. One commit (`MemoryStore.TidyAsync`) applies the rest, only to
+  the exact revisions listed. Tidying runs **only on the Thinking pool** at low
+  priority, never on the conversation's own model, and touches a store only
+  while no reply runs and nobody else holds it. Without a free member it waits
+  for a later pass. `memory-upkeep.json` in the data folder keeps how far each
+  store is checked for duplicates and what the last pass did (counts, times and
+  the member; never a fact).
+
+**Sync and compatibility.** The new fields travel inside the fact like
+`voice_id`, so every computer has the same words and history. A fact without
+them is written exactly as before (no new keys). An older Martlet can't read a
+fact that has one: its sync passes the fact through untouched (like any newer
+fact, counted as needing a newer Martlet), so it never drops the fields, and it
+keeps its own earlier version of that fact. Giving words to a fact is a new
+revision with the same last-changed time, so an edit made at the same revision
+on another computer wins over it.
+
+Checked locally: `memory_upkeep_check` (MCP; fixture answers, NOT AI),
+`Martlet.Memory.Tests` (`SearchWordsAndHistoryTests`) and the desktop's
+`MemoryUpkeepTests`, `HelperJobsTests` and `MemoryWindowTests`. A real Thinking
+pool member tidying a real store, and an older Martlet syncing with a newer one
+between two real computers, are **NOT RUN**.
 
 ## Whose memories
 
@@ -494,9 +564,12 @@ everyone's (about no one in particular), as every fact was before voices.
   block that has such a fact, in that message's notes, so it never changes the
   start of a request.
 - **Memory window.** Facts are listed newest first, each with whose it is, where
-  it came from and when it changed. *Search* finds facts by their words or whose
-  they are, and *Show* lists all facts, everyone's, one voice's or those of
-  forgotten voices. Select one fact to change it on the right (*Save changes*),
+  it came from and when it changed. *Search* finds facts by their words, their
+  hidden search words or whose they are, and *Show* lists all facts, everyone's, one voice's or those of
+  forgotten voices. *Show replaced facts* (`MemoryShowHistory`) lists the facts
+  kept as history too, each starting with when it was replaced; their details
+  say what replaced them, and a current fact's details count its earlier
+  versions and show its search words. History can be deleted, not changed. Select one fact to change it on the right (*Save changes*),
   or several (Ctrl or Shift) to delete them together. *Delete all shown* deletes
   every fact listed now (one person's facts, or what the search found), and
   *Delete everything* forgets all facts; each asks first. Storage and export
@@ -511,7 +584,7 @@ everyone's (about no one in particular), as every fact was before voices.
   it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice linked
   to your account with *This voice is ...* on People) unless *Show* lists one voice's facts; then it is
   that voice's. The details say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
-  many belong to how many people and how many to forgotten voices, never a
+  many belong to how many people, how many to forgotten voices and how many replaced facts it keeps as history, never a
   name or a fact.
 - **People.** *Memories* (what Martlet remembers about them) on each voice opens Memory
   showing that voice's facts. Merging voices keeps every fact of both (a merged
@@ -572,9 +645,11 @@ nothing.
   after a forgotten fact) and 6 times an hour on each computer, and not within
   2 minutes after it took a brief from another computer.
 - **A forgotten fact.** The brief records the facts it was written from (their
-  ID and revision). When one of them is forgotten or changed (including a fact
-  replaced by a newer one), the brief is not sent again until it is written
-  again without it. When no fact is left, the brief is cleared.
+  ID and a digest of their words and whose they are, so search words that
+  tidying adds change nothing). When one of them is forgotten or changed
+  (including a fact replaced by a newer one, which becomes history), the brief
+  is not sent again until it is written again without it. When no fact is left,
+  the brief is cleared.
 - **Companion › Memory › Memory brief.** *Send a short profile of me with the
   first message of each conversation* (on by default) turns it on or off: off,
   it is neither written nor sent. The box shows the brief, and you can change

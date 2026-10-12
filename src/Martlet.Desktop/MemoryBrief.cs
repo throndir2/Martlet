@@ -47,8 +47,8 @@ internal static class MemoryBriefWriter
     internal const int MinimumCharacters = 40;
     internal const string Purpose = "Writing the memory brief";
 
-    /// <summary>Whether a fact may go in a brief now: it hasn't expired. A fact another fact replaced never does.</summary>
-    internal static bool Current(MemoryFact fact, DateTimeOffset now) => !fact.Retention.HasExpired(now);
+    /// <summary>Whether a fact may go in a brief now: it hasn't expired. A fact another fact replaced (history) never does.</summary>
+    internal static bool Current(MemoryFact fact, DateTimeOffset now) => !fact.IsHistory && !fact.Retention.HasExpired(now);
 
     /// <summary>Every fact a brief may use, each once: current, about no one in particular or about a person named in
     /// <see cref="MemoryBriefFacts.People"/> (a forgotten voice's facts are left out).</summary>
@@ -99,14 +99,17 @@ internal static class MemoryBriefWriter
         return text.ToString().TrimEnd();
     }
 
-    /// <summary>What a brief written from <paramref name="selected"/> is based on: each fact's ID and revision, and the name of
+    /// <summary>What a brief written from <paramref name="selected"/> is based on: each fact's <see cref="Key"/>, and the name of
     /// each person it names, in one order.</summary>
     internal static IReadOnlyList<string> Basis(IReadOnlyList<MemoryFact> selected, IReadOnlyDictionary<string, string> people) =>
         [.. selected.Select(Key).Order(StringComparer.Ordinal),
          .. selected.Select(f => f.VoiceId).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
              .Take(MaximumPeople).Select(id => Person(id, people.GetValueOrDefault(id) ?? ""))];
 
-    internal static string Key(MemoryFact fact) => fact.Id.ToString("N") + ":" + fact.Revision.ToString(CultureInfo.InvariantCulture);
+    /// <summary>A fact as a brief knows it: its ID and a digest of what the brief reads (its words and whose it is), so a change
+    /// that leaves those alone (search words from tidying memory, a new revision with the same text) keeps the brief.</summary>
+    internal static string Key(MemoryFact fact) => fact.Id.ToString("N") + ":" + Convert.ToHexStringLower(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(fact.Content + "\n" + fact.VoiceId)))[..16];
 
     private static string Person(string id, string name)
     {

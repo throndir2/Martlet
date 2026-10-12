@@ -33,6 +33,8 @@ public static class MemoryLimits
     /// character escaped (\uXXXX) and its fields.</summary>
     public const int MaximumFactJsonBytes = 256 * 1024;
     public const int MaximumVoiceIdCharacters = 64;
+    /// <summary>A fact's hidden search words (<see cref="MemoryFact.SearchWords"/>): one line of at most this many characters.</summary>
+    public const int MaximumSearchWordsCharacters = 512;
     public const int MaximumQueryCharacters = 256;
     public const int MaximumQueryUtf8Bytes = 512;
     public const int MaximumQueryTerms = 24;
@@ -126,6 +128,24 @@ public sealed record MemoryFact
     /// as before voices existed.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? VoiceId { get; init; }
+    /// <summary>Hidden search words (topics, synonyms and related words, comma separated) that recall indexes with the content, so
+    /// a question in other words finds the fact ("cook" finds "The user is vegetarian." through "diet, food, meat, cooking"). They
+    /// are never sent as the fact's text. Made in the background; null when the fact has none yet. Like
+    /// <see cref="VoiceId"/>, a fact without them is written exactly as before.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SearchWords { get; init; }
+    /// <summary>When the fact stopped being true: set on an earlier version kept as history after a correction, or on a fact a
+    /// newer fact made outdated. A replaced fact is never recalled as current; null for a current fact.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? ReplacedAtUtc { get; init; }
+    /// <summary>The fact that replaced this one (it may have been deleted since), or null.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? ReplacedBy { get; init; }
+
+    /// <summary>Whether this is history: a fact that stopped being true (<see cref="ReplacedAtUtc"/>), kept but never recalled as
+    /// current.</summary>
+    [JsonIgnore]
+    public bool IsHistory => ReplacedAtUtc is not null;
 
     internal void ValidatePersisted()
     {
@@ -134,9 +154,16 @@ public sealed record MemoryFact
             MemoryFailure.CorruptStore);
         ValidateContent(Content);
         ValidateVoiceId(VoiceId);
+        ValidateSearchWords(SearchWords);
         MemoryGuard.Utc(CreatedAtUtc);
         MemoryGuard.Utc(UpdatedAtUtc);
         MemoryGuard.Require(UpdatedAtUtc >= CreatedAtUtc);
+        if (ReplacedAtUtc is { } replaced)
+        {
+            MemoryGuard.Utc(replaced);
+            MemoryGuard.Require(replaced >= CreatedAtUtc && replaced <= UpdatedAtUtc + TimeSpan.FromMinutes(5));
+        }
+        MemoryGuard.Require(ReplacedBy is null || ReplacedAtUtc is not null && ReplacedBy != Guid.Empty && ReplacedBy != Id);
         MemoryGuard.Require(CreatedFrom is not null && LastModifiedBy is not null && Retention is not null);
         CreatedFrom!.Validate();
         LastModifiedBy!.Validate();
@@ -168,8 +195,14 @@ public sealed record MemoryFact
         MemoryGuard.Require(voiceId is null || voiceId.Length is > 0 and <= MemoryLimits.MaximumVoiceIdCharacters &&
             voiceId.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_'));
 
+    /// <summary>Null, or one line (no control characters) of 1-512 characters with a letter or digit.</summary>
+    internal static void ValidateSearchWords(string? words) =>
+        MemoryGuard.Require(words is null || words.Length is > 0 and <= MemoryLimits.MaximumSearchWordsCharacters &&
+            !words.Any(char.IsControl) && words.Any(char.IsLetterOrDigit) && !char.IsSurrogate(words[^1]) &&
+            !char.IsWhiteSpace(words[0]) && !char.IsWhiteSpace(words[^1]));
+
     public override string ToString() =>
-        $"MemoryFact {{ Id = {Id}, Revision = {Revision}, Content = [redacted], CreatedAtUtc = {CreatedAtUtc:O}, UpdatedAtUtc = {UpdatedAtUtc:O} }}";
+        $"MemoryFact {{ Id = {Id}, Revision = {Revision}, Content = [redacted], CreatedAtUtc = {CreatedAtUtc:O}, UpdatedAtUtc = {UpdatedAtUtc:O}, History = {IsHistory} }}";
 }
 
 public sealed record SaveFactRequest
@@ -179,6 +212,8 @@ public sealed record SaveFactRequest
     public required MemoryRetention Retention { get; init; }
     /// <summary>Whose fact it is (<see cref="MemoryFact.VoiceId"/>); null for no one in particular.</summary>
     public string? VoiceId { get; init; }
+    /// <summary>Hidden search words for the fact (<see cref="MemoryFact.SearchWords"/>), or null.</summary>
+    public string? SearchWords { get; init; }
 
     public override string ToString() => "Explicit memory fact save request (content omitted)";
 }
@@ -193,9 +228,16 @@ public sealed record EditFactRequest
     /// <summary>Whose fact it is after the edit (<see cref="MemoryFact.VoiceId"/>); null for no one in particular. Required, so an
     /// edit never drops who a fact belongs to by accident: pass the fact's own to keep it.</summary>
     public required string? VoiceId { get; init; }
+    /// <summary>New search words for the fact. Null keeps its words when the content stays the same and drops them when the
+    /// content changes (they described the old words; the background upkeep makes new ones).</summary>
+    public string? SearchWords { get; init; }
+    /// <summary>A correction: when the content changes, the earlier version stays as history (a new fact with the old content,
+    /// <see cref="MemoryFact.ReplacedAtUtc"/> now and <see cref="MemoryFact.ReplacedBy"/> this fact). A full store skips the
+    /// history copy rather than the correction.</summary>
+    public bool KeepHistory { get; init; }
 
     public override string ToString() =>
-        $"Explicit memory fact edit request {{ Id = {Id}, ExpectedRevision = {ExpectedRevision}, Content = [redacted] }}";
+        $"Explicit memory fact edit request {{ Id = {Id}, ExpectedRevision = {ExpectedRevision}, Content = [redacted], KeepHistory = {KeepHistory} }}";
 }
 
 public sealed record DeleteFactRequest
@@ -203,7 +245,40 @@ public sealed record DeleteFactRequest
     public required Guid Id { get; init; }
     public required long ExpectedRevision { get; init; }
     public required Guid ConsentId { get; init; }
+    /// <summary>Keep the fact's earlier versions (history facts it replaced). By default deleting a fact deletes them too, so a
+    /// forgotten fact leaves nothing behind.</summary>
+    public bool KeepEarlierVersions { get; init; }
 }
+
+/// <summary>Hidden search words for one fact (<see cref="MemoryStore.TidyAsync"/>), applied only to that exact revision.</summary>
+public sealed record MemoryFactWords(Guid Id, long ExpectedRevision, string SearchWords)
+{
+    public override string ToString() => $"{nameof(MemoryFactWords)} {{ Id = {Id}, ExpectedRevision = {ExpectedRevision} }}";
+}
+
+/// <summary>A current fact a newer current fact (<paramref name="ReplacedBy"/>) made outdated: it becomes history.</summary>
+public sealed record MemoryFactRetirement(Guid Id, long ExpectedRevision, Guid ReplacedBy);
+
+/// <summary>Duplicates folded into one fact: <paramref name="Others"/> (exact revisions) are forgotten, their history moves to
+/// the kept fact, and the kept fact takes <paramref name="Content"/> and <paramref name="SearchWords"/> when given.</summary>
+public sealed record MemoryFactMerge(Guid KeepId, long KeepRevision, IReadOnlyList<(Guid Id, long Revision)> Others,
+    string? Content = null, string? SearchWords = null)
+{
+    public override string ToString() => $"{nameof(MemoryFactMerge)} {{ KeepId = {KeepId}, Others = {Others?.Count} }}";
+}
+
+/// <summary>Background tidying of the store in one commit (docs/MEMORY.md, "Search words, history and tidying"): outdated
+/// facts become history, duplicates are merged and facts get search words. An item whose fact changed since it was read is
+/// skipped; the rest still apply.</summary>
+public sealed record MemoryTidyRequest
+{
+    public IReadOnlyList<MemoryFactRetirement> Retirements { get; init; } = [];
+    public IReadOnlyList<MemoryFactMerge> Merges { get; init; } = [];
+    public IReadOnlyList<MemoryFactWords> Words { get; init; } = [];
+}
+
+/// <summary>What <see cref="MemoryStore.TidyAsync"/> changed: facts made history, duplicates forgotten, facts given search words.</summary>
+public sealed record MemoryTidyReceipt(int Retired, int Merged, int Worded, long StoreRevision);
 
 public sealed record MemoryMutationReceipt(long StoreRevision, MemoryFact Fact);
 

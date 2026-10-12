@@ -76,7 +76,10 @@ public sealed class MemorySpaceServiceTests
         var spaces = await memory.InspectSpacesAsync(revision);
         Assert.Equal([sam.Space, MemorySpaceId.Household], spaces.Select(s => s.Space.Id));
         Assert.Equal(["Sam's cat is called Miso.", "Sam drinks green tea."], spaces[0].Inspection.Facts.Select(f => f.Content));
-        Assert.Equal("The guest Wi-Fi password is written on the fridge door.", Assert.Single(spaces[1].Inspection.Facts).Content);
+        Assert.Equal("The guest Wi-Fi password is written on the fridge door.",
+            Assert.Single(spaces[1].Inspection.Facts, f => !f.IsHistory).Content);
+        // The update kept the household's earlier fact there as history.
+        Assert.Equal(wifi.Id, Assert.Single(spaces[1].Inspection.Facts, f => f.IsHistory).ReplacedBy);
 
         // Another account on this device has its own space and reads the same household.
         var alex = scope.Account(Guid.NewGuid());

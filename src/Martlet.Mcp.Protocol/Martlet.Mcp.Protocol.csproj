@@ -61,6 +61,8 @@
     <Compile Include="..\Martlet.Desktop\CpuSoundJudge.cs" Link="Shared\CpuSoundJudge.cs" />
     <!-- helper_jobs_check: the desktop's own router for memory, emote naming and touch zones (Thinking pool or fallback). -->
     <Compile Include="..\Martlet.Desktop\HelperJobs.cs" Link="Shared\HelperJobs.cs" />
+    <!-- memory_upkeep_check: the desktop's own tidying of memory (search words, merged duplicates, replaced facts as history). -->
+    <Compile Include="..\Martlet.Desktop\MemoryUpkeep.cs" Link="Shared\MemoryUpkeep.cs" />
     <!-- memory_brief_check: the desktop's own memory brief (which facts, the notes, when it is written again). -->
     <Compile Include="..\Martlet.Desktop\MemoryBrief.cs" Link="Shared\MemoryBrief.cs" />
     <!-- character_touch_zones detect: the desktop's own snapshot decoding and the pictures the vision model is sent. -->

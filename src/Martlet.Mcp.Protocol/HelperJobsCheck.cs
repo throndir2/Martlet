@@ -73,7 +73,23 @@ internal static class HelperJobsCheck
             pool.Vision = true;
             await Step("touch zones on a free vision member", HelperJobKind.TouchZones,
                 Picture(), expectPool: true);
+            // Tidying memory runs only on the pool: with no member free it waits for a later pass, never the conversation's model.
+            async Task PoolOnly(string name, bool expectRun)
+            {
+                var result = await helpers.TryPoolAsync(HelperJobKind.MemoryUpkeep, "Helper jobs check: " + name, HelperCapability.Text,
+                    () => new BoundedTextInput("fixture text", "fixture instructions"), cancellation);
+                var route = helpers.Last.First(r => r.Kind == HelperJobKind.MemoryUpkeep);
+                steps.Add(new
+                {
+                    step = name, kind = HelperJobs.Name(HelperJobKind.MemoryUpkeep),
+                    priority = HelperJobs.PriorityOf(HelperJobKind.MemoryUpkeep).ToString(), route = route.Route, member = route.Member,
+                    outcome = route.Outcome, waitedMs = route.WaitedMs, answer = result?.Answer,
+                    passed = (result is not null) == expectRun && route.Pooled
+                });
+            }
+            await PoolOnly("memory upkeep on a free text member", expectRun: true);
             pool.Free = false;
+            await PoolOnly("memory upkeep when no member is free waits for a later pass (never the conversation's model)", expectRun: false);
             await Step("memory when no member is free falls back", HelperJobKind.Memory, null, expectPool: false);
             var file = Status(directory);
             return new

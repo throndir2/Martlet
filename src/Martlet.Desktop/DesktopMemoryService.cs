@@ -398,8 +398,8 @@ internal sealed class DesktopMemoryService : IDisposable
         }
         var inspection = await store.InspectAsync(token).ConfigureAwait(false);
         // Someone else's facts come after the speaker's own and those about no one in particular (all by recency when nobody
-        // was recognized); the best matches above already include anyone's.
-        var pool = inspection.Facts.Select(fact => (Fact: fact, Space: (string?)null))
+        // was recognized); the best matches above already include anyone's. History (replaced facts) is never recalled.
+        var pool = inspection.Facts.Where(fact => !fact.IsHistory).Select(fact => (Fact: fact, Space: (string?)null))
             .Concat(others.SelectMany(other => other.Snapshot.Live(now).Select(fact => (Fact: fact, Space: (string?)other.Space))));
         foreach (var (fact, space) in pool
             .OrderByDescending(f => speaker is null || f.Fact.VoiceId is null || speaker.Contains(f.Fact.VoiceId))
@@ -484,7 +484,10 @@ internal sealed class DesktopMemoryService : IDisposable
     {
         var changes = new List<MemoryCaptureChange>();
         var full = 0;
-        var current = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts.ToList();
+        var all = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts;
+        var stored = all.Count;
+        // Only current facts are compared and changed; history (replaced facts) stays as it is.
+        var current = all.Where(fact => !fact.IsHistory).ToList();
         foreach (var operation in operations)
         {
             var target = operation.Index is { } index && index >= 1 && index <= shown.Count &&
@@ -496,7 +499,7 @@ internal sealed class DesktopMemoryService : IDisposable
                     if (current.Concat(elsewhere).Any(fact => MemoryCapture.SameFact(fact.Content, content) &&
                         samePerson(fact.VoiceId, operation.VoiceId)))
                         continue;
-                    if (current.Count >= MemoryLimits.MaximumFacts)
+                    if (stored >= MemoryLimits.MaximumFacts)
                     {
                         // A full store never makes room by itself: the owner decides what goes (Companion › Memory).
                         full++;
@@ -507,9 +510,11 @@ internal sealed class DesktopMemoryService : IDisposable
                         Content = content,
                         Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), CurrentUtc()),
                         Retention = MemoryRetention.UntilDeleted(),
-                        VoiceId = operation.VoiceId
+                        VoiceId = operation.VoiceId,
+                        SearchWords = operation.SearchWords
                     }, operationToken).ConfigureAwait(false);
                     current.Add(saved.Fact);
+                    stored++;
                     changes.Add(new(MemoryCaptureKind.Remember, saved.Fact.Content, saved.Fact.VoiceId));
                     break;
                 case MemoryCaptureKind.Update when target is not null && operation.Content is { } content:
@@ -517,13 +522,15 @@ internal sealed class DesktopMemoryService : IDisposable
                         current.Concat(elsewhere).Any(fact => fact.Id != target.Id && MemoryCapture.SameFact(fact.Content, content) &&
                             samePerson(fact.VoiceId, target.VoiceId)))
                         continue;
+                    // The earlier version stays as history, dated when it stopped being true.
                     var edited = await store.EditAsync(new()
                     {
                         Id = target.Id, ExpectedRevision = target.Revision, Content = content,
                         Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), CurrentUtc()),
-                        Retention = target.Retention, VoiceId = target.VoiceId
+                        Retention = target.Retention, VoiceId = target.VoiceId, SearchWords = operation.SearchWords, KeepHistory = true
                     }, operationToken).ConfigureAwait(false);
                     current[current.IndexOf(target)] = edited.Fact;
+                    stored = Math.Min(stored + 1, MemoryLimits.MaximumFacts);
                     changes.Add(new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId));
                     break;
                 case MemoryCaptureKind.Forget when target is not null:
@@ -532,6 +539,7 @@ internal sealed class DesktopMemoryService : IDisposable
                         Id = target.Id, ExpectedRevision = target.Revision, ConsentId = Guid.NewGuid()
                     }, operationToken).ConfigureAwait(false);
                     current.Remove(target);
+                    stored--;
                     changes.Add(new(MemoryCaptureKind.Forget, target.Content, target.VoiceId));
                     break;
             }
@@ -551,9 +559,10 @@ internal sealed class DesktopMemoryService : IDisposable
 
     /// <summary>Runs the memory sync's local step with the store of <paramref name="space"/> (a space of the account signed in
     /// now, or of the account signed in before a switch), only while memory is on and nobody else holds that store right now
-    /// (a conversation's recall or remembering never waits for it). Ran is false, with why, when it didn't run.</summary>
+    /// (a conversation's recall or remembering never waits for it). Ran is false, with why, when it didn't run. Pass
+    /// <paramref name="changes"/> false for an action that only reads, so nothing reads the facts again because of it.</summary>
     internal async Task<(bool Ran, string? Why, T? Result)> TryWithFreeStoreAsync<T>(MemorySpace space,
-        Func<MemoryStore, CancellationToken, Task<T>> action, CancellationToken token = default)
+        Func<MemoryStore, CancellationToken, Task<T>> action, CancellationToken token = default, bool changes = true)
     {
         ArgumentNullException.ThrowIfNull(space);
         EnsureOpen();
@@ -564,7 +573,7 @@ internal sealed class DesktopMemoryService : IDisposable
         try
         {
             return (true, null, await OpenSpaceAsync(space, memory, (_, store, operationToken) => action(store, operationToken),
-                token, TimeSpan.Zero, changes: true).ConfigureAwait(false));
+                token, TimeSpan.Zero, changes: changes).ConfigureAwait(false));
         }
         catch (DesktopMemoryException error) when (error.Code is "memory.busy")
         {

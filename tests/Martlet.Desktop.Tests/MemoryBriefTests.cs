@@ -20,7 +20,13 @@ public sealed class MemoryBriefTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        // Another process (a virus scanner) can hold the brief file a moment after it is written: try again, then leave it.
+        for (var attempt = 0; Directory.Exists(directory); attempt++)
+        {
+            try { Directory.Delete(directory, recursive: true); }
+            catch (IOException) when (attempt < 20) { Thread.Sleep(50); }
+            catch (IOException) { return; }
+        }
     }
 
     private sealed class Clock(DateTimeOffset now) : TimeProvider
@@ -109,6 +115,32 @@ public sealed class MemoryBriefTests : IDisposable
         Assert.DoesNotContain("surprise", inputs[^1]);
         Assert.True(brief.Usable);
         Assert.Contains("lives in Oslo", brief.Notes([], prompts));
+    }
+
+    [Fact]
+    public async Task Search_words_keep_the_brief_and_a_replaced_fact_never_goes_in_it()
+    {
+        Add("Likes tea.", "v1");
+        var home = Add("Lives in Portland.");
+        Add("Plays the cello.", "v2");
+        using var brief = Service();
+        Assert.Equal("written", await brief.CheckAsync(false, CancellationToken.None));
+
+        // Tidying memory gives the facts search words: a new revision, the same words, so the brief stays as it is.
+        for (var i = 0; i < facts.Count; i++)
+            facts[i] = facts[i] with { Revision = facts[i].Revision + 1, SearchWords = "words, for, search" };
+        Assert.Equal("up to date", await brief.CheckAsync(false, CancellationToken.None));
+        Assert.True(brief.Usable);
+
+        // A correction keeps the old version as history: the brief it was written from waits, and history never goes in it.
+        var index = facts.FindIndex(f => f.Id == home.Id);
+        facts[index] = facts[index] with { Revision = 3, Content = "Lives in Seattle.", SearchWords = null };
+        facts.Add(home with { Id = Guid.NewGuid(), ReplacedAtUtc = clock.Now, ReplacedBy = home.Id });
+        Assert.Equal("waiting", await brief.CheckAsync(false, CancellationToken.None));
+        clock.Now += MemoryBriefService.GapAfterLoss;
+        Assert.Equal("written", await brief.CheckAsync(false, CancellationToken.None));
+        Assert.Contains("- Lives in Seattle.", inputs[^1]);
+        Assert.DoesNotContain("Portland", inputs[^1]);
     }
 
     [Fact]

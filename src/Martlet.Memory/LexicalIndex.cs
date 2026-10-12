@@ -96,10 +96,16 @@ internal sealed class LexicalIndex
         var lists = new List<List<Posting>>();
         var documents = new List<Document>();
         var positions = new Dictionary<int, List<int>>();
+        var said = new List<int>();
         foreach (var fact in facts)
         {
+            // History is never recalled as current.
+            if (fact.IsHistory)
+                continue;
             MemoryGuard.Require(fact.Content.Length <= MemoryLimits.MaximumContentCharacters);
-            var terms = MemoryTerms.Of(fact.Content);
+            // A fact is found by its words and by its hidden search words; near-duplicates compare only what it says.
+            var content = MemoryTerms.Of(fact.Content);
+            IReadOnlyList<string> terms = fact.SearchWords is { } words ? [.. content, .. MemoryTerms.Of(words)] : content;
             positions.Clear();
             for (var i = 0; i < terms.Count; i++)
             {
@@ -116,11 +122,15 @@ internal sealed class LexicalIndex
             }
             foreach (var (id, at) in positions)
                 lists[id].Add(new(documents.Count, [.. at]));
-            var sketch = positions.Keys.Select(id => hashes[id]).Order().Take(SketchSize).ToArray();
+            said.Clear();
+            foreach (var (id, at) in positions)
+                if (at[0] < content.Count)
+                    said.Add(id);
+            var sketch = said.Select(id => hashes[id]).Order().Take(SketchSize).ToArray();
             var signature = new ulong[SignatureWords];
-            foreach (var id in positions.Keys)
+            foreach (var id in said)
                 signature[(int)((hashes[id] >> 6) % SignatureWords)] |= 1UL << (int)(hashes[id] & 63);
-            documents.Add(new(fact.Id, fact.UpdatedAtUtc, fact.VoiceId, terms.Count, positions.Count, sketch, signature));
+            documents.Add(new(fact.Id, fact.UpdatedAtUtc, fact.VoiceId, terms.Count, said.Count, sketch, signature));
         }
         return new([.. documents], termIds, [.. lists.Select(list => list.ToArray())]);
     }
