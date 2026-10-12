@@ -553,6 +553,81 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task MemoryForgetDeletesMatchingFactsOnlyWithAllowChangesAndWaitsForAHeldStore()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.MemoryForget." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new Martlet.Core.Settings.SettingsStore(directory);
+            var initial = Martlet.Core.Settings.SetupSettings.Begin(null);
+            var saved = await settings.SaveAsync(initial, null);
+            var id = Guid.NewGuid();
+            var space = Martlet.Core.Sync.MemorySpaceId.Account(id);
+            using (var memory = new DesktopMemoryService(settings))
+            {
+                memory.UseAccount(new MemoryAccount(id, Martlet.Core.Sync.MemorySpaceFolders.AccountFolder(directory, id), directory));
+                var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true,
+                    Martlet.Core.Settings.MemoryStoragePolicy.AppLocalData, null);
+                var revision = configured.Settings.Memory!.ConfigurationRevision;
+                var forever = Martlet.Memory.MemoryRetention.UntilDeleted();
+                await memory.SaveFactAsync(revision, "The user wants to be addressed as canary-name.", forever);
+                await memory.SaveFactAsync(revision, "CANARY-NAME again, in capitals.", forever);
+                await memory.SaveFactAsync(revision, "The user likes tea.", forever);
+            }
+            var folder = Path.Combine(Martlet.Core.Sync.MemorySpaceFolders.AccountFolder(directory, id),
+                Martlet.Core.Settings.MemorySettings.AppLocalDirectoryName);
+
+            var refused = (await SendAsync(Forget(new { contains = "canary-name", dataDirectory = directory })))[0];
+            Assert.True(refused.GetProperty("result").GetProperty("isError").GetBoolean());
+            Assert.Contains("--allow-changes", refused.GetRawText(), StringComparison.Ordinal);
+
+            var preview = (await SendAsync(Forget(new { contains = "canary-name", preview = true, dataDirectory = directory })))[0];
+            Assert.DoesNotContain("canary", preview.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            var previewed = ToolResult(preview);
+            Assert.Equal(2, previewed.GetProperty("matched").GetInt32());
+            Assert.Equal(0, previewed.GetProperty("deleted").GetInt32());
+            Assert.Equal(3, await FactCountAsync());
+
+            // A running Martlet holds the store only during an operation: the tool waits for it.
+            var activation = Martlet.Memory.MemoryStoreActivationPreview.Create(folder);
+            var held = Martlet.Memory.MemoryStore.Open(activation, activation.Authorize(Martlet.Memory.MemoryConsentDecision.Allow));
+            var release = Task.Delay(1000).ContinueWith(_ => held.Dispose());
+            var forgot = (await SendWithAsync(true, false, Forget(new { contains = "Canary-Name", dataDirectory = directory })))[0];
+            await release;
+            Assert.DoesNotContain("canary", forgot.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            var result = ToolResult(forgot);
+            Assert.Equal(2, result.GetProperty("deleted").GetInt32());
+            var only = result.GetProperty("spaces").EnumerateArray().Single();
+            Assert.Equal(space, only.GetProperty("space").GetString());
+            Assert.Equal(3, only.GetProperty("facts").GetInt32());
+            Assert.Equal(2, only.GetProperty("ids").GetArrayLength());
+            Assert.Equal(1, await FactCountAsync());
+
+            var unknown = (await SendWithAsync(true, false, Forget(new { contains = "tea", space = "household", dataDirectory = directory })))[0];
+            Assert.True(unknown.GetProperty("result").GetProperty("isError").GetBoolean());
+            Assert.Equal(1, await FactCountAsync());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+
+        static string Forget(object arguments) => JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "memory_forget", arguments }
+        });
+
+        async Task<int> FactCountAsync()
+        {
+            var status = ToolResult((await SendAsync(JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "memory_status", arguments = new { dataDirectory = directory } }
+            })))[0]);
+            return status.GetProperty("spaces").EnumerateArray().Single().GetProperty("store").GetProperty("facts").GetInt32();
+        }
+    }
+
+    [Fact]
     public async Task DiscordStatusReadsTheSetupWithoutTheTokenNamesOrPeople()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Discord." + Guid.NewGuid().ToString("N"));
