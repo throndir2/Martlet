@@ -66,7 +66,41 @@ internal static class SongsCheck
                 name = tool.Name, description = tool.Description, parameters = JsonNode.Parse(tool.ParametersJson)
             }).ToArray(),
             prompt = SongTools.Instructions(loaded.Settings?.Prompts),
-            afterReply = CreationsAfterReply(singing: true)
+            afterReply = CreationsAfterReply(singing: true),
+            withoutTools = WithoutTools(dataDirectory, loaded.Settings)
+        };
+    }
+
+    /// <summary>Singing on a Thinking route without function calling (<see cref="SongTags"/>): whether replies sing through tags
+    /// (the Thinking route takes no tools: a host's gateway, or a model that rejected them, and the prompt isn't empty), the tags,
+    /// the prompt, and what a sample reply's tags turn into (the words left to show and speak, and the tool calls they stand
+    /// for). The desktop also needs singing set up (Companion › Voice › Singing).</summary>
+    internal static object WithoutTools(string dataDirectory, AppSettings? settings)
+    {
+        var route = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var carriesTools = route?.RouteType is null or SetupRouteType.ChatCompletions or SetupRouteType.OpenAi;
+        var rejected = route is not null && ThinkLongerCheck.ToolsRejected(dataDirectory, $"{route.RouteType}|{route.Origin}|{route.ModelId}");
+        var prompt = SongTags.Instructions(settings?.Prompts);
+        const string sample = "Ooh, give me a few minutes to write it! [sing: a cheerful song about the user's cat Biscuit] " +
+            "[play_song: 3fa2c19b0d71 from chorus] [stop_singing]";
+        var preview = SpeechTextPreview.For(sample, null, silentWord: StayQuiet.Marker, controlTags: SongTags.All);
+        var controls = preview.Controls;
+        return new
+        {
+            routeType = route?.RouteType?.ToString(),
+            routeCarriesTools = carriesTools,
+            toolsRejected = rejected,
+            usesTags = (!carriesTools || rejected) && prompt is not null,
+            tags = SongTags.All,
+            prompt,
+            sample = new
+            {
+                reply = sample, shown = preview.Shown.Trim(), spoken = preview.Spoken, tags = controls,
+                tagsHidden = preview.Spoken.Concat([preview.Shown]).All(text => !text.Contains("[sing", StringComparison.OrdinalIgnoreCase) &&
+                    !text.Contains("[play_song", StringComparison.OrdinalIgnoreCase) && !text.Contains("[stop_singing", StringComparison.OrdinalIgnoreCase)),
+                calls = SongTags.Calls(controls).Select(call => new { name = call.Name, arguments = JsonNode.Parse(call.ArgumentsJson) }).ToArray(),
+                kept = SongTags.Kept(controls)
+            }
         };
     }
 

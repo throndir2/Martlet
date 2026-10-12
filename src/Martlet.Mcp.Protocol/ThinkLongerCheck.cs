@@ -125,7 +125,7 @@ internal static class ThinkLongerCheck
         }
     }
 
-    private static bool ToolsRejected(string dataDirectory, string key)
+    internal static bool ToolsRejected(string dataDirectory, string key)
     {
         try
         {

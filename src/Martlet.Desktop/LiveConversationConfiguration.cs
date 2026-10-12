@@ -997,12 +997,17 @@ internal sealed class LiveConversationConfiguration
     }
 
     /// <summary>The control tags a look or a reply with a picture is offered: the chattiness tags while Martlet decides
-    /// (<paramref name="decides"/>), and the seen tag when there is a <paramref name="picture"/> and Companion › Prompts ›
-    /// What you saw isn't empty. Null when none.</summary>
-    internal static IReadOnlyList<string>? ControlTags(bool decides, bool picture, PromptSettings? prompts)
+    /// (<paramref name="decides"/>), the seen tag when there is a <paramref name="picture"/> and Companion › Prompts ›
+    /// What you saw isn't empty, and the song tags (<see cref="SongTags"/>) for a reply that sings through tags
+    /// (<paramref name="sings"/>). Null when none.</summary>
+    internal static IReadOnlyList<string>? ControlTags(bool decides, bool picture, PromptSettings? prompts, bool sings = false)
     {
         var seen = picture && SeenTags.Instructions(prompts, SilentReply) is not null;
-        return decides && seen ? [.. ChattinessTags.All, .. SeenTags.All] : decides ? ChattinessTags.All : seen ? SeenTags.All : null;
+        var tags = new List<string>();
+        if (decides) tags.AddRange(ChattinessTags.All);
+        if (seen) tags.AddRange(SeenTags.All);
+        if (sings) tags.AddRange(SongTags.All);
+        return tags.Count == 0 ? null : tags;
     }
 
     /// <summary>Companion › Prompts › Chattiness: Martlet decides: the levels, when to switch and the tags that switch them.</summary>
