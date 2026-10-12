@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- **Martlet keeps a short profile of you**: in the background it writes a short memory brief from what it remembers about you and the people you talk about, and sends it with the first message of each conversation, so it knows the important things even when nothing you say matches them. See it, change it or turn it off in Companion › Memory › Memory brief; it's the same on all your computers. ([#827](https://github.com/throndir2/Martlet/pull/827))
 - **Martlet remembers what its web research found**: ask about something it looked up before, and Martlet finds the part of its report that answers, with the pages it came from. It works on all your computers that have the report, and a deleted report is forgotten. ([#826](https://github.com/throndir2/Martlet/pull/826))
 
 ## [0.75.0] - 2026-10-12

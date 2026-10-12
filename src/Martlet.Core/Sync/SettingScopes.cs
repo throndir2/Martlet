@@ -4,7 +4,7 @@ namespace Martlet.Core.Sync;
 /// keeps how Martlet thinks, listens and speaks with the paid API keys, the Thinking fallback, Home Assistant, updates and the
 /// other household sections in one document (<c>/martlet/v1/settings</c>). Each account keeps its personalities and character
 /// profiles, replies, prompts, memory on or off, lorebooks, the character shown, how you talk, speech display, the theme,
-/// Voice ID, touch temperaments and its reminders in a document of its own (<c>/martlet/v1/settings/accounts/{account}</c>).
+/// Voice ID, touch temperaments, the memory brief and its reminders in a document of its own (<c>/martlet/v1/settings/accounts/{account}</c>).
 /// Any key not listed here (for example <c>sharing.&lt;account&gt;</c>) is the household's.</summary>
 public static class SettingScopes
 {
@@ -17,7 +17,8 @@ public static class SettingScopes
     public static IReadOnlyList<string> AccountKeys { get; } =
     [
         AppSettingsSections.Companion, AppSettingsSections.Replies, AppSettingsSections.Prompts, AppSettingsSections.Memory,
-        AppSettingsSections.Lorebooks, Character, Talk, SpeechDisplay, AppearanceCustom, Appearance, VoiceId, TouchTemperament
+        AppSettingsSections.Lorebooks, Character, Talk, SpeechDisplay, AppearanceCustom, Appearance, VoiceId, TouchTemperament,
+        Martlet.Core.Settings.MemoryBriefFile.SharedKey
     ];
 
     private static readonly HashSet<string> AccountSet = new(AccountKeys, StringComparer.Ordinal);
