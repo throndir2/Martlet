@@ -156,12 +156,13 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.72.0
+## 🆕 What's new in 0.73.0
 
-- 🔍 **Find a character**: name a character in Companion › Character › *Find a character...*. Martlet writes its personality and finds 3D models of it on VRoid Hub and Open Source Avatars, with each creator's license, and one click makes the character.
-- 🔗 **Link VRoid Hub**: link your pixiv account on the Account page to use your own VRoid Hub characters and the ones their creators let anyone use.
-- 🧭 **When nothing is found**: Find a character gives you web pages that may have a model or voice recordings of the character, and you can add what you download.
-- 🧍 **VRM 0.x models**: Martlet now shows VRM 0.x characters, like most VRoid Studio and VRoid Hub models, and VRM models with JPEG textures.
+- 💬 **Let Martlet read your messages**: Companion › Replies › *Personal content* lets Martlet read and talk about your messages, chats, emails and notifications. *Keep private* stays the default.
+- 🎮 **Martlet learns more about your game**: it writes a short brief of the game you play and looks up the place you're at when its guide has little about it.
+- 🤝 **Share your hosts with a friend through one link**: Devices › Friends › *Make a share link* lets a friend's Martlet use your hosts' engines, without your keys, settings or memories.
+- 🧠 **One Thinking pool on all your computers**: cloud models in Companion › Thinking pool, with their API keys, Backup for slow replies and Busy pool, are now the same on every PC.
+- 🤫 **Quiet while nothing changes**: Martlet no longer fills the silence when your screen just sits there.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
