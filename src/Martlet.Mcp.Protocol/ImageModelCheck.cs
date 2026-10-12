@@ -147,7 +147,7 @@ internal static class ImageModelCheck
         var reused = await pictures.ForLookAsync(chatShot, chat, prompts, lately, Run, cancellation);
         var reuseRequests = eyes.Bodies.Length - requestsBefore;
         var lookPrompt = PromptSettings.Fill(prompts, PromptCatalog.GlanceScreen, ("app", ActiveApp.Describe(chatShot.App, chatShot.FullScreen)),
-            ("title", chatShot.Title), ("remarks", ""), silent)!;
+            ("title", chatShot.Title), ("changed", LookChange.Describe(SinceLook.First, null, TimeSpan.Zero)), ("remarks", ""), silent)!;
         var lookInstructions = string.Join("\n", new[]
         {
             PromptSettings.Fill(prompts, PromptCatalog.CommentaryScreen, silent), PictureDescriptions.Instructions(prompts),

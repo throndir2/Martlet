@@ -65,6 +65,57 @@ public sealed class ScreenCommentaryTests
         Assert.Equal(PacerVerdict.Look, pacer.Decide(false, ScreenCommentaryPacer.AwayAfter));
     }
 
+    [Fact]
+    public void Pacer_does_not_look_again_while_nothing_changed_since_the_last_look()
+    {
+        var clock = new Clock();
+        var pacer = new ScreenCommentaryPacer(Chattiness.Chatty, clock, () => 0.0);
+        clock.Advance(ScreenCommentaryPacer.Warmup);
+        Assert.Equal(PacerVerdict.Look, pacer.Decide(false, TimeSpan.Zero, SinceLook.First));
+        pacer.NoteLook(commented: true);
+        clock.Advance(pacer.Settings.AfterComment);
+        // The same picture, however long the quiet lasts: no look, so nothing is said.
+        Assert.Equal(PacerVerdict.Unchanged, pacer.Decide(false, TimeSpan.Zero, SinceLook.Same));
+        clock.Advance(TimeSpan.FromMinutes(30));
+        Assert.Equal(PacerVerdict.Unchanged, pacer.Decide(false, TimeSpan.FromMinutes(2), SinceLook.Same));
+        // Something changed: the usual pace goes on.
+        Assert.Equal(PacerVerdict.Look, pacer.Decide(false, TimeSpan.Zero, SinceLook.Little));
+        Assert.Equal(PacerVerdict.Look, pacer.Decide(false, TimeSpan.Zero, SinceLook.Changed));
+        // You and Martlet talking still comes first.
+        Assert.Equal(PacerVerdict.Busy, pacer.Decide(true, TimeSpan.Zero, SinceLook.Same));
+    }
+
+    [Fact]
+    public void A_still_screen_is_the_same_but_a_pop_up_a_new_scene_or_new_words_are_not()
+    {
+        static byte[] Thumbnail(int changed = 0, int by = 0) => [.. Enumerable.Range(0, 144).Select(i => (byte)(i < changed ? 90 + by : 90))];
+        var words = string.Join(" ", Enumerable.Range(1, 30).Select(i => $"note{i}"));
+        var last = new LookedPicture(Thumbnail(), "ActiveScreen|", "Notes", "Notepad", false, words + " 10:05", 0);
+        Assert.Equal(SinceLook.First, LookChange.Compare(null, last));
+        Assert.Equal(SinceLook.Same, LookChange.Compare(last, last with { At = 99 }));
+        // A clock that ticks (a cell barely changes, two words come and go) is still the same screen.
+        Assert.Equal(SinceLook.Same, LookChange.Compare(last, last with { Signature = Thumbnail(1, 12), Text = words + " 10:06" }));
+        Assert.Equal(SinceLook.Same, LookChange.Compare(last, last with { Text = null }));
+        // Small things in the same program.
+        Assert.Equal(SinceLook.Little, LookChange.Compare(last, last with { Signature = Thumbnail(4, 150) }));
+        Assert.Equal(SinceLook.Little, LookChange.Compare(last, last with { Title = "*Notes" }));
+        Assert.Equal(SinceLook.Little, LookChange.Compare(last, last with { Text = words + " 10:05 eggs milk bread butter jam" }));
+        // Everything else changed.
+        Assert.Equal(SinceLook.Changed, LookChange.Compare(last, last with { Signature = Thumbnail(144, 60) }));
+        Assert.Equal(SinceLook.Changed, LookChange.Compare(last, last with { App = "Discord" }));
+        Assert.Equal(SinceLook.Changed, LookChange.Compare(last, last with { FullScreen = true }));
+        Assert.Equal(SinceLook.Changed, LookChange.Compare(last, last with { Source = "Camera|cam" }));
+        Assert.Equal(SinceLook.Changed, LookChange.Compare(last, last with { Text = "Sam: are you still up for dinner tonight at eight" }));
+        Assert.Equal(SinceLook.Changed, LookChange.Compare(last, null));
+        Assert.True(LookChange.Holds(SinceLook.Same));
+        Assert.False(LookChange.Holds(SinceLook.Little));
+        // What a look's message says.
+        Assert.Equal("No earlier look to compare with.", LookChange.Describe(SinceLook.First, null, TimeSpan.FromSeconds(30)));
+        Assert.Equal("Only small things changed since your last look 3 min ago. Nobody has used the keyboard or mouse for 6 min.",
+            LookChange.Describe(SinceLook.Little, TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(6)));
+        Assert.Equal("It changed since your last look 45 s ago.", LookChange.Describe(SinceLook.Changed, TimeSpan.FromSeconds(45), TimeSpan.Zero));
+    }
+
     [Theory]
     [InlineData("[pass]", true)]
     [InlineData(" Pass. ", true)]

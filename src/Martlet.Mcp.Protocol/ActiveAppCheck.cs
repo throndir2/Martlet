@@ -57,13 +57,49 @@ internal static class ActiveAppCheck
                 },
                 fixture = new { app = FixtureApp, fullScreen = true, title = FixtureTitle },
                 glance = PromptSettings.Fill(prompts, PromptCatalog.GlanceScreen, ("app", told), ("title", FixtureTitle),
+                    ("changed", LookChange.Describe(SinceLook.Little, TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(6))),
                     ("remarks", ""), ("silent", StayQuiet.Marker)),
                 withMessage = PromptSettings.Fill(prompts, PromptCatalog.SeenApp, ("app", told), ("title", FixtureTitle)),
                 kept = VisionHistory.Look(false, VisionHistory.Screen(true, FixtureTitle, ActiveApp.Label(FixtureApp, true)), null,
                     "a boss fight, low health")
-            }
+            },
+            sinceLook = SinceLookScenarios()
         };
     }
+
+    // What changed since the last look, on FIXTURE thumbnails of the same full-screen game, with the production rule: whether
+    // Martlet looks at all and the {changed} words a look's message gets.
+    private static object[] SinceLookScenarios()
+    {
+        const string source = "ActiveScreen|";
+        var last = new LookedPicture(Thumbnail(), source, FixtureTitle, FixtureApp, true, "HP 120 Stamina 80 Margit 10:05", 0);
+        var cases = new (string Name, LookedPicture? Last, LookedPicture Now)[]
+        {
+            ("first look since watching started", null, last),
+            ("nothing moved", last, last with { }),
+            ("a clock ticked", last, last with { Signature = Thumbnail(changed: 1, by: 12), Text = "HP 120 Stamina 80 Margit 10:06" }),
+            ("a pop-up in the same game", last, last with { Signature = Thumbnail(changed: 4, by: 150) }),
+            ("the window's title changed", last, last with { Title = FixtureTitle + " (paused)" }),
+            ("new words on the screen", last, last with { Text = "HP 120 Stamina 80 Margit 10:05 ENEMY FELLED the Fell Omen" }),
+            ("a new scene", last, last with { Signature = Thumbnail(changed: 144, by: 60) }),
+            ("another program", last, last with { App = "Discord", FullScreen = false })
+        };
+        return [.. cases.Select(c =>
+        {
+            var since = LookChange.Compare(c.Last, c.Now);
+            return new
+            {
+                scenario = c.Name, since = since.ToString(), looks = !LookChange.Holds(since),
+                picture = c.Last is null ? (double?)null : Math.Round(LookChange.Difference(c.Last.Signature, c.Now.Signature), 4),
+                changed = LookChange.Holds(since) ? null : LookChange.Describe(since, c.Last is null ? null : TimeSpan.FromMinutes(3),
+                    TimeSpan.FromMinutes(6))
+            };
+        })];
+    }
+
+    // A FIXTURE 16x9 grey thumbnail: mid grey, with the first cells changed by some steps.
+    private static byte[] Thumbnail(int changed = 0, int by = 0) =>
+        [.. Enumerable.Range(0, 144).Select(i => (byte)(i < changed ? 90 + by : 90))];
 
     private static object Rule(string window, (int, int, int, int) bounds, (int, int, int, int) monitor, bool maximized, bool titleBar) =>
         new { window, maximized, titleBar, fullScreen = ActiveApp.Fills(bounds, monitor, maximized, titleBar) };

@@ -118,7 +118,7 @@ internal sealed class VideoInput : IVideoInput
                 }
                 var change = previous is null ? 1.0 : signature.Zip(previous, (a, b) => Math.Abs(a - b)).Average() / 255.0;
                 previous = signature;
-                return new(new(pixels, width, height, source.Name, change), GlanceSkip.None);
+                return new(new(pixels, width, height, source.Name, change, signature: signature), GlanceSkip.None);
             }
             catch (VideoSourceException error)
             {

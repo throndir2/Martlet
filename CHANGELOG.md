@@ -18,6 +18,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- **Martlet stays quiet while nothing changes on your screen**: when your computer just sits there, Martlet no longer takes another look or says something to fill the silence. It looks again only once something changes, and even then it stays quiet unless the change is worth a word. ([#815](https://github.com/throndir2/Martlet/pull/815))
 - **Notification heads-ups that know what's going on**: when a notification pops up while Martlet watches your screen, it now reads the whole notification and words its heads-up around it ("Sam wants to know if you're still up for dinner"). If it looks personal or could get someone in trouble, Martlet says nothing about what it says, at most who it's from. ([#808](https://github.com/throndir2/Martlet/pull/808))
 
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))

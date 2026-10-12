@@ -208,6 +208,30 @@ public sealed class PromptSettingsTests
     }
 
     [Fact]
+    public void LooksStayQuietWhileNothingReallyChanged()
+    {
+        foreach (var id in new[] { PromptCatalog.CommentaryScreen, PromptCatalog.CommentaryCamera })
+        {
+            var look = PromptSettings.Fill(null, id, ("silent", "pass"))!;
+            Assert.Contains("Nothing new, nothing to say.", look);
+            Assert.Contains("Martlet's message says how much changed since your last look.", look);
+            Assert.Contains("When nothing really changed", look);
+            Assert.Contains("reply [pass], however long it has been quiet", look);
+            Assert.Contains("Never speak just to break a silence, because time passed or to check on them", look);
+            Assert.Contains("never ask if they're still there", look);
+        }
+        // An idle computer: nobody at the keyboard or mouse and little on screen changes means they are away.
+        Assert.Contains("When nobody has used the keyboard or mouse for a while and little changes, they are away",
+            PromptCatalog.Default(PromptCatalog.CommentaryScreen));
+        foreach (var id in new[] { PromptCatalog.GlanceScreen, PromptCatalog.GlanceCamera })
+        {
+            Assert.Contains("{changed}", PromptCatalog.Default(id), StringComparison.Ordinal);
+            Assert.Contains("changed", PromptCatalog.Find(id)!.Placeholders);
+            Assert.Contains("doesn't look at all", PromptCatalog.Find(id)!.Help, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void ScreenGlancesReactToWhatTheUserDoesNotToTheirSetup()
     {
         var look = PromptSettings.Fill(null, PromptCatalog.CommentaryScreen, ("silent", "pass"))!;
@@ -229,10 +253,12 @@ public sealed class PromptSettingsTests
         Assert.Contains("can't tie a remark to what they are doing or what just happened, reply [pass]", look);
         Assert.DoesNotContain("{", look);
 
-        // The look's message names the app in front, and whether it is full screen, beside the window's title.
-        Assert.Equal("(Screen glance. Active app: Steam (full screen). Active window: \"Boss fight\". Reply [pass] or one short " +
-            "remark on what they're doing.)", PromptSettings.Fill(null, PromptCatalog.GlanceScreen,
-            ("app", "Steam (full screen)"), ("title", "Boss fight"), ("remarks", ""), ("silent", "pass")));
+        // The look's message names the app in front, and whether it is full screen, beside the window's title, then how much
+        // changed since the last look.
+        Assert.Equal("(Screen glance. Active app: Steam (full screen). Active window: \"Boss fight\". Only small things changed " +
+            "since your last look 3 min ago. Reply [pass] or one short remark on what they're doing.)", PromptSettings.Fill(null,
+            PromptCatalog.GlanceScreen, ("app", "Steam (full screen)"), ("title", "Boss fight"),
+            ("changed", "Only small things changed since your last look 3 min ago."), ("remarks", ""), ("silent", "pass")));
         Assert.Contains("Active app: Discord. Active window: \"Sam - Chat\".", PromptSettings.Fill(null, PromptCatalog.GlanceAttention,
             ("what", "a notification popped up"), ("app", "Discord"), ("title", "Sam - Chat"), ("remarks", ""), ("silent", "pass")));
         // A notification's content may shape the heads-up, but nothing personal or risky is said, in every prompt that sees one.

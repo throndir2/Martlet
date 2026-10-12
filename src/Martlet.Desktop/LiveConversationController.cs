@@ -1742,11 +1742,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// that turns the character's eyes to part of the picture. When the image model describes pictures (the Described path) the
     /// look has two stages: the image model describes the picture (<paramref name="picture"/> is its picture version and
     /// <paramref name="takenAt"/> when it was taken, so a description of the same picture is used again), then Thinking gets the
-    /// glance message with the description instead of the picture.</summary>
+    /// glance message with the description instead of the picture. <paramref name="changed"/> is the look message's {changed}
+    /// words (how much changed since the last look, <see cref="LookChange.Describe"/>); null: there is no earlier look.</summary>
     internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, ChattinessChoice chattiness, bool voice,
         bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null,
         bool look = false, string? screenText = null, string? app = null, bool fullScreen = false, long picture = 0,
-        DateTimeOffset? takenAt = null)
+        DateTimeOffset? takenAt = null, string? changed = null)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -1771,7 +1772,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var camera = source is { IsScreen: false };
             var looked = new SeenScreen(image, windowTitle, source ?? new(WatchKind.ActiveWindow), camera ? "" : app ?? "", !camera && fullScreen,
                 picture, takenAt);
-            var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention, looked);
+            var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention, looked, changed);
             var read = camera ? null : ReadOnScreen(selected.Prompts, screenText);
             var worker = operations.TryStart(async token =>
             {
@@ -1792,7 +1793,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     }
 
     private string CommentaryPromptLocked(string windowTitle, bool camera = false, PromptSettings? prompts = null,
-        AttentionSignal? attention = null, SeenScreen? looked = null)
+        AttentionSignal? attention = null, SeenScreen? looked = null, string? changed = null)
     {
         var title = new string(windowTitle.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
         // What Martlet said lately goes in the look's notes (What you said lately); a glance prompt an older Martlet saved with
@@ -1801,6 +1802,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 : camera ? PromptCatalog.GlanceCamera : PromptCatalog.GlanceScreen,
             ("title", title.Length > 0 ? title : "unknown"), ("remarks", ""),
             ("app", ActiveApp.Describe(ActiveApp.Clean(looked?.App), looked?.FullScreen == true)),
+            ("changed", changed ?? LookChange.Describe(SinceLook.First, null, TimeSpan.Zero)),
             ("what", attention?.Describe() ?? ""), ("silent", LiveConversationConfiguration.SilentReply))!;
     }
 
