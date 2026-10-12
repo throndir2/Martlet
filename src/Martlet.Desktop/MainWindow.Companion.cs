@@ -1819,6 +1819,7 @@ public partial class MainWindow
                 : "Martlet doesn't remember or recall anything between conversations. Turn memory on in Manage memory.",
                 new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
+        if (conversation?.MemoryBrief is { } brief) page.Children.Add(MemoryBriefCard(brief, on));
         if (conversationHistory is { } record) page.Children.Add(HistoryCard(record, on));
     }
 

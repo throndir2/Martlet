@@ -29,7 +29,9 @@ internal enum HelperJobKind
     /// <summary>Measuring a character's eyes in one close-up of its face (vision, low priority).</summary>
     Eyes,
     /// <summary>Writing the personality of a character the owner named in Find a character (the owner waits).</summary>
-    CharacterWriting
+    CharacterWriting,
+    /// <summary>Writing the memory brief from the remembered facts (lowest priority).</summary>
+    MemoryBrief
 }
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
@@ -101,6 +103,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         HelperJobKind.Temperament => "temperament",
         HelperJobKind.Eyes => "eyes",
         HelperJobKind.CharacterWriting => "character_writing",
+        HelperJobKind.MemoryBrief => "memory_brief",
         _ => "touch_zones"
     };
 

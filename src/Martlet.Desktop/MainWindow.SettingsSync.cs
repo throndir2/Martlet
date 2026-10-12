@@ -292,6 +292,7 @@ public partial class MainWindow
         CharacterActionsKey => "emotes and motions",
         TouchTemperamentKey => "touch temperaments",
         ConversationHistoryKey => "your conversation history choices",
+        MemoryBriefFile.SharedKey => "the memory brief",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",
@@ -619,6 +620,9 @@ public partial class MainWindow
                 if (!history.SetPreferences(next)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
                 return Task.FromResult(SharedApply.Done);
             }, () => JsonSerializer.Serialize(new SharedConversationHistory(true, false), SharedJson));
+        // The memory brief travels with each person's settings, so every computer sends the same one; a brief taken from another
+        // computer (or another person's, on a switch) goes with messages at once.
+        yield return MemoryBriefFile.Section(directory, () => conversation?.MemoryBrief?.Followed());
         yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
             Task.FromResult<SharedLocal?>(localVoices.Available
                 ? new(JsonSerializer.Serialize(new SharedSwitch(localVoices.Enabled), SharedJson), null, localVoices.EnabledChangedAt is null,

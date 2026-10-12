@@ -1096,6 +1096,22 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("memory_brief_status", "Read the memory brief (Companion > Memory > Memory brief; docs/MEMORY.md, \"The memory brief\": " +
+            "a short profile of the people Martlet talks with, written by a Thinking pool member from the remembered facts and sent " +
+            "with the first message of each conversation) from a data directory's memory-brief.json: whether it is on, whether one " +
+            "is written, by whom (thinking or owner), when, from how many facts and people, its length in characters and lines, and " +
+            "the limits (longest brief, facts before the first one, new facts before it is written again, tries an hour, gaps). " +
+            "Never the brief or a fact. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("memory_brief_check", "Rehearse the memory brief end to end with the production code on a disposable memory store: two " +
+            "facts write nothing, a third has a fixture Thinking pool member (FIXTURE - NOT AI) write it through the production " +
+            "helper-job router at low priority with whose each fact is, the first message of a conversation carries it and the next " +
+            "don't, a forgotten fact holds it back until it is written again without it, your own text stays, off sends nothing, " +
+            "Write it again replaces your text, and a second simulated computer takes the same brief through the production " +
+            "shared-settings section and sends it. Returns each step and passed. No model, network or credentials; it never opens " +
+            "your memory.", new { }),
         Tool("memory_forget", "Delete remembered facts, as Companion › Memory's Delete does: every fact whose text contains contains " +
             "(any case) or whose ID is in ids, in every memory store of the data folder or only in space (a space ID from " +
             "memory_status). preview: true only counts them. A running Martlet keeps working (the tool waits up to 15 s for the store " +
@@ -2809,6 +2825,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
+                "memory_brief_status" => MemoryBriefCheck.Status(DataDirectory(arguments)),
+                "memory_brief_check" => await MemoryBriefCheck.RunAsync(cancellation),
                 "memory_forget" => await MemoryForgetAsync(arguments, cancellation),
                 "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
