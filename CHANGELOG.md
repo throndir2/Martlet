@@ -8,6 +8,12 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Martlet finds what it remembers even when you ask in other words**: each remembered fact gets hidden search words (for "The user is vegetarian": diet, food, meat, cooking), so "What should I cook tonight?" brings it back. Remembering adds them as it saves a fact, and a free Thinking pool member adds them to facts you typed and to older facts. ([#829](https://github.com/throndir2/Martlet/pull/829))
+- **Martlet keeps what used to be true**: when a fact is corrected (you moved, a pet's name changed), the old version stays as history with the date it stopped being true, and Martlet never recalls it as current. Companion › Memory's **Show replaced facts** lists them. Forgetting a fact forgets its earlier versions too. ([#829](https://github.com/throndir2/Martlet/pull/829))
+- **Martlet tidies its memory in the background**: a free Thinking pool member merges facts that say the same thing and marks a fact a newer one made outdated, never while you wait and never on the model you talk to. ([#829](https://github.com/throndir2/Martlet/pull/829))
+
 ## [0.75.0] - 2026-10-12
 
 ### Added
