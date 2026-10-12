@@ -65,6 +65,10 @@ jobs:
 
       - name: Restore, compile and package
         shell: pwsh
+        env:
+          # Martlet's VRoid Hub app keys (Martlet.Avatar.Hosting, VRoidHubApp); without them linking VRoid Hub is off.
+          VROID_HUB_CLIENT_ID: ${{ secrets.VROID_HUB_CLIENT_ID }}
+          VROID_HUB_CLIENT_SECRET: ${{ secrets.VROID_HUB_CLIENT_SECRET }}
         run: |
           .\packaging\windows\Build-PublicRelease.ps1 -Version $env:RELEASE_VERSION -DotnetPath (Get-Command dotnet).Source `
             -NodePath (Get-Command node).Source -OutputDirectory (Join-Path $env:GITHUB_WORKSPACE 'artifacts\windows-release')

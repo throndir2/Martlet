@@ -280,6 +280,13 @@ public static class CharacterColors
                 vrm.TryGetProperty("meta", out var meta) && meta.TryGetProperty("thumbnailImage", out var thumbnail) &&
                 Image(thumbnail.GetInt32()) is { } picture)
                 images.Add(new("thumbnail", picture, true));
+            // VRM 0.x: meta.texture names a texture, whose source is the picture.
+            else if (root.TryGetProperty("extensions", out var old) && old.TryGetProperty("VRM", out var vrm0) &&
+                vrm0.TryGetProperty("meta", out var meta0) && meta0.TryGetProperty("texture", out var texture0) &&
+                texture0.ValueKind == JsonValueKind.Number && texture0.GetInt32() is var t0 && t0 >= 0 &&
+                root.TryGetProperty("textures", out var allTextures) && t0 < allTextures.GetArrayLength() &&
+                allTextures[t0].TryGetProperty("source", out var source0) && Image(source0.GetInt32()) is { } picture0)
+                images.Add(new("thumbnail", picture0, true));
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or IndexOutOfRangeException or
             FormatException or ArgumentException) { }

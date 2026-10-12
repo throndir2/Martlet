@@ -825,6 +825,13 @@ public partial class MainWindow
                 return SharedApply.Waiting($"'{model.Name}' is still being copied to this PC.");
             path = SharedCharacterModels.EntryPath(directory, model);
         }
+        else if (RemoteCharacterModels.IsRemote(path))
+        {
+            // A VRoid Hub character is shown from VRoid Hub on each computer with that computer's own link; never copied.
+            if (RemoteCharacterModels.VRoidHubId(path) is null) throw new JsonException();
+            if (vroidHub?.Tokens() is null)
+                return SharedApply.Waiting("That character is from VRoid Hub. Link VRoid Hub on this PC (Account › Linked services) to show it here.");
+        }
         else if (!BundledLive2D.IsBuiltIn(path) && !File.Exists(path))
             return SharedApply.Waiting($"Its model file isn't on this PC ({Path.GetFileName(path)}). Add it in Companion › Character › Your " +
                 "characters on the computer that has it, so it is copied here.");

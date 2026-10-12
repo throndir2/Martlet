@@ -1604,6 +1604,7 @@ public partial class MainWindow
             ZoomCharacterAsync("status").Forget();
         }
         page.Children.Add(CharacterModelsCard());
+        page.Children.Add(VRoidHubCard());
         page.Children.Add(ProfilesLinkCard());
     }
 

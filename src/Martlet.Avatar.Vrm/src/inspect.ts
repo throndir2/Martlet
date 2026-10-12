@@ -33,7 +33,7 @@ export function finite(value: unknown, min: number, max: number, label: string):
     `${label} must be finite in ${min}..${max}.`);
   return value;
 }
-function at(values: unknown[], index: unknown, label: string): JsonObject {
+function at(values: readonly unknown[], index: unknown, label: string): JsonObject {
   return object(values[integer(index, 0, values.length - 1, label)], label);
 }
 function vector(value: unknown, length: number, label: string, max = 10000): number[] {
@@ -52,10 +52,34 @@ export const LIMITS = Object.freeze({
   texturePixels: 16 * 1024 * 1024,
   expressions: 128,
 });
+/** The extensions a VRM 1.0 model (VRMC_vrm) may use. */
 const allowedExtensions = new Set([
   "VRMC_vrm", "VRMC_materials_mtoon", "VRMC_springBone",
   "KHR_materials_unlit", "KHR_texture_transform", "KHR_materials_emissive_strength",
 ]);
+/** The extensions a VRM 0.x model (the VRM extension: meta, humanoid, blend shapes, first person, secondary animation and
+ *  MToon material properties) may use. */
+const allowedExtensionsV0 = new Set(["VRM", "KHR_materials_unlit", "KHR_texture_transform", "KHR_materials_emissive_strength"]);
+/** Names some VRM 0.x exporters (the Blender VRM add-on) list in extensionsUsed without using them; the importer ignores them. */
+const declaredOnlyV0 = new Set(["VRMC_materials_mtoon", "VRMC_springBone"]);
+/** VRM 0.x blend shape preset names and the VRM 1.0 expression names three-vrm gives them; any other preset ("unknown") keeps
+ *  the group's own name. */
+export const VRM0_PRESET_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  a: "aa", i: "ih", u: "ou", e: "ee", o: "oh", blink: "blink", blink_l: "blinkLeft", blink_r: "blinkRight",
+  joy: "happy", angry: "angry", sorrow: "sad", fun: "relaxed",
+  lookup: "lookUp", lookdown: "lookDown", lookleft: "lookLeft", lookright: "lookRight", neutral: "neutral",
+});
+/** VRM 0.x thumb bones and the VRM 1.0 names three-vrm gives them. */
+const vrm0Thumbs: Readonly<Record<string, string>> = Object.freeze({
+  leftThumbProximal: "leftThumbMetacarpal", leftThumbIntermediate: "leftThumbProximal",
+  rightThumbProximal: "rightThumbMetacarpal", rightThumbIntermediate: "rightThumbProximal",
+});
+/** VRM 0.x material color properties a blend shape can set, and the VRM 1.0 binding type three-vrm makes of them. */
+const vrm0MaterialColors: Readonly<Record<string, string>> = Object.freeze({
+  _Color: "color", _EmissionColor: "emissionColor", _ShadeColor: "shadeColor", _RimColor: "rimColor", _OutlineColor: "outlineColor",
+});
+/** A name an object's prototype already has (constructor, toString, __proto__...): never a usable key in a plain object. */
+const inherited = (name: string) => name in Object.prototype || name === "prototype";
 export const mouthPresets = ["aa", "ih", "ou", "ee", "oh"] as const;
 export const blinkPresets = ["blink", "blinkLeft", "blinkRight"] as const;
 export const gazePresets = ["lookUp", "lookDown", "lookLeft", "lookRight"] as const;
@@ -71,8 +95,38 @@ export interface ExpressionCapability {
   readonly overrideBlink: string;
   readonly overrideLookAt: string;
 }
+/** The model's metadata, the same shape for VRM 1.0 and VRM 0.x. Format checks only, never consent or usage rights. */
+export interface VrmMetaSummary {
+  /** "1" for VRM 1.0, "0" for VRM 0.x (three-vrm's `meta.metaVersion`). */
+  readonly metaVersion: "0" | "1";
+  /** VRM 1.0 `name`; VRM 0.x `title` (empty when the model has none). */
+  readonly name: string;
+  readonly version?: string;
+  /** VRM 1.0 `authors`; VRM 0.x `author` (none when empty). */
+  readonly authors: readonly string[];
+  /** VRM 1.0 `licenseUrl` (the VRM Public License); VRM 0.x has none. */
+  readonly licenseUrl?: string;
+  /** VRM 0.x `licenseName` (CC0, CC_BY, Redistribution_Prohibited, Other...); VRM 1.0 has none. */
+  readonly licenseName?: string;
+  readonly otherLicenseUrl?: string;
+  /** Who may use the model as an avatar: VRM 1.0 `avatarPermission`; VRM 0.x `allowedUserName` (OnlyAuthor,
+   *  ExplicitlyLicensedPerson, Everyone). */
+  readonly avatarPermission?: "onlyAuthor" | "onlySeparatelyLicensedPerson" | "everyone";
+  /** VRM 1.0 `allowExcessivelyViolentUsage`; VRM 0.x `violentUssageName` Allow or Disallow. */
+  readonly allowExcessivelyViolentUsage?: boolean;
+  /** VRM 1.0 `allowExcessivelySexualUsage`; VRM 0.x `sexualUssageName` Allow or Disallow. */
+  readonly allowExcessivelySexualUsage?: boolean;
+  /** VRM 1.0 `commercialUsage` other than personalNonProfit; VRM 0.x `commercialUssageName` Allow or Disallow. */
+  readonly allowCommercialUsage?: boolean;
+  /** The glTF image of the thumbnail: VRM 1.0 `thumbnailImage`; the source image of VRM 0.x `texture`. */
+  readonly thumbnailImage?: number;
+}
 export interface VrmCapabilities {
-  readonly format: "VRM1";
+  /** "VRM1" for a VRMC_vrm model, "VRM0" for a VRM 0.x (VRM extension) model; three-vrm turns a VRM 0.x model to face +Z. */
+  readonly format: "VRM0" | "VRM1";
+  /** The model's own spec version: "1.0" for VRM 1.0, the VRM extension's specVersion (usually "0.0") for VRM 0.x. */
+  readonly specVersion: string;
+  readonly meta: VrmMetaSummary;
   readonly expressions: readonly ExpressionCapability[];
   readonly humanoidBones: readonly string[];
   readonly gaze: "bone" | "expression" | "absent";
@@ -122,7 +176,10 @@ function parse(buffer: ArrayBuffer): Parsed {
   return { json, bin };
 }
 
-function checkTree(json: JsonObject): void {
+/** Checks the JSON's size, depth, numbers, strings and forbidden keys, and that every extension is one of `allowed` and
+ *  declared consistently. `declaredOnly` names may also be listed in extensionsUsed; with `lenient` (VRM 0.x, whose exporters
+ *  often list extensions they don't use) an allowed extension in extensionsUsed need not be used. */
+function checkTree(json: JsonObject, allowed: ReadonlySet<string>, declaredOnly: ReadonlySet<string> = new Set(), lenient = false): void {
   let entries = 0;
   const declared = new Set(optionalArray(json.extensionsUsed, "extensionsUsed", 16));
   const present = new Set<string>();
@@ -137,7 +194,7 @@ function checkTree(json: JsonObject): void {
           `Forbidden field ${key}: external/data/file resources and prototype keys are not accepted.`);
         if (key === "extensions") {
           for (const name of Object.keys(object(child, "extensions"))) {
-            requireValid(allowedExtensions.has(name), `Unsupported extension ${name}; re-export without it.`);
+            requireValid(allowed.has(name), `Unsupported extension ${name}; re-export without it.`);
             requireValid(declared.has(name), `Extension ${name} is missing from extensionsUsed; re-export consistent declarations.`);
             present.add(name);
           }
@@ -148,25 +205,64 @@ function checkTree(json: JsonObject): void {
   };
   visit(json, 0);
   for (const key of ["extensionsUsed", "extensionsRequired"]) {
+    const unused = key === "extensionsUsed";
     for (const name of optionalArray(json[key], key, 16)) {
-      requireValid(typeof name === "string" && allowedExtensions.has(name), `Unsupported ${key} entry ${String(name)}.`);
-      requireValid(declared.has(name) && present.has(name), `${key} contains undeclared or absent extension ${name}.`);
+      requireValid(typeof name === "string" && (allowed.has(name) || unused && declaredOnly.has(name)), `Unsupported ${key} entry ${String(name)}.`);
+      requireValid(declared.has(name) && (present.has(name) || unused && (lenient || declaredOnly.has(name))),
+        `${key} contains undeclared or absent extension ${name}.`);
     }
   }
 }
 
-/** Conservative preflight, not a complete glTF conformance validator. No GPU or URI loading. */
+/** A JPEG's width and height from its frame header (SOF0 baseline, SOF1 extended or SOF2 progressive), read before the
+ *  browser decodes it. Other JPEG kinds (lossless, arithmetic, hierarchical) are rejected. */
+function jpegSize(bytes: DataView): { width: number; height: number } {
+  requireValid(bytes.byteLength >= 4 && bytes.getUint16(0) === 0xffd8, "Invalid JPEG signature.");
+  let offset = 2;
+  while (offset + 4 <= bytes.byteLength) {
+    requireValid(bytes.getUint8(offset) === 0xff, "Invalid JPEG marker.");
+    const marker = bytes.getUint8(offset + 1);
+    // A marker may follow fill bytes (more 0xFF).
+    if (marker === 0xff) { offset++; continue; }
+    offset += 2;
+    if (marker === 0x01 || marker >= 0xd0 && marker <= 0xd7) continue;
+    requireValid(marker !== 0xd9 && marker !== 0xda, "JPEG has no frame header before its image data.");
+    const length = bytes.getUint16(offset);
+    requireValid(length >= 2 && offset + length <= bytes.byteLength, "Truncated JPEG segment.");
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      requireValid(marker <= 0xc2, "Only baseline, extended or progressive JPEG textures are supported; re-export as PNG.");
+      requireValid(length >= 8, "Truncated JPEG frame header.");
+      return { height: integer(bytes.getUint16(offset + 3), 1, 4096, "JPEG height"), width: integer(bytes.getUint16(offset + 5), 1, 4096, "JPEG width") };
+    }
+    offset += length;
+  }
+  throw new VrmError("invalid-input", "JPEG frame header not found.");
+}
+
+/** Conservative preflight, not a complete glTF conformance validator. No GPU or URI loading. Accepts a VRM 1.0 model
+ *  (VRMC_vrm) or a VRM 0.x model (the VRM extension), never both. */
 export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
   const { json, bin } = parse(buffer);
-  checkTree(json);
+  const roots = json.extensions === undefined ? {} : object(json.extensions, "extensions");
+  const v1 = Object.hasOwn(roots, "VRMC_vrm"), v0 = Object.hasOwn(roots, "VRM");
+  requireValid(!(v1 && v0), "The model has both VRMC_vrm (VRM 1.0) and VRM (VRM 0.x) extensions; re-export it as one VRM version.");
+  requireValid(v1 || v0, "Missing the VRMC_vrm (VRM 1.0) or VRM (VRM 0.x) extension; this is not a VRM model.");
+  if (v0) checkTree(json, allowedExtensionsV0, declaredOnlyV0, true);
+  else checkTree(json, allowedExtensions);
   requireValid(object(json.asset, "asset").version === "2.0", "glTF asset.version must be 2.0.");
-  const extension = object(object(json.extensions, "extensions").VRMC_vrm, "VRMC_vrm");
-  requireValid(extension.specVersion === "1.0", "Only VRM 1.0 is supported; VRM0 migration is not implemented.");
+  const extension = object(roots[v0 ? "VRM" : "VRMC_vrm"], v0 ? "VRM" : "VRMC_vrm");
+  if (v0) requireValid(extension.specVersion === undefined || typeof extension.specVersion === "string" && /^0(\.\d+){0,2}$/.test(extension.specVersion),
+    "Unknown VRM 0.x specVersion; expected 0.0.");
+  else requireValid(extension.specVersion === "1.0",
+    `VRMC_vrm specVersion ${String(extension.specVersion)} is not supported; VRMC_vrm must be VRM 1.0 (VRM 0.x uses the VRM extension).`);
+  const specVersion = v0 ? String(extension.specVersion ?? "0.0") : "1.0";
   const meta = object(extension.meta, "VRM meta");
-  requireValid(typeof meta.name === "string" && meta.name.length > 0, "VRM meta.name is required.");
-  requireValid(array(meta.authors, "meta.authors", 32).every(v => typeof v === "string" && v.length > 0)
-    && (meta.authors as unknown[]).length > 0, "VRM authors are required.");
-  requireValid(meta.licenseUrl === "https://vrm.dev/licenses/1.0/", "Expected VRM 1.0 licenseUrl; inspect usage terms before use.");
+  if (!v0) {
+    requireValid(typeof meta.name === "string" && meta.name.length > 0, "VRM meta.name is required.");
+    requireValid(array(meta.authors, "meta.authors", 32).every(v => typeof v === "string" && v.length > 0)
+      && (meta.authors as unknown[]).length > 0, "VRM authors are required.");
+    requireValid(meta.licenseUrl === "https://vrm.dev/licenses/1.0/", "Expected VRM 1.0 licenseUrl; inspect usage terms before use.");
+  }
   requireValid(optionalArray(json.animations, "animations").length === 0, "Embedded animation playback is outside this adapter; use a separate VRMA integration.");
   const nodes = array(json.nodes, "nodes", LIMITS.nodes);
   const meshes = optionalArray(json.meshes, "meshes", 128);
@@ -214,7 +310,10 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
     }
   }
   let renderBytes = 0;
+  // Each mesh's expanded vertex and morph bytes, counted again for each node that draws it.
+  const meshBytes: number[] = [];
   for (const m of meshes) {
+    const before = renderBytes;
     const mesh = object(m, "mesh");
     const primitives = array(mesh.primitives, "primitives", 16);
     requireValid(primitives.length > 0, "A mesh requires primitives.");
@@ -263,27 +362,36 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
       renderBytes += Number(position.count) * components * 4;
       requireValid(renderBytes <= LIMITS.decodedGeometryBytes, "Expanded primitive/morph budget exceeded.");
     }
+    meshBytes.push(renderBytes - before);
   }
   let pixels = 0;
   const imagePixels: number[] = [];
   for (const i of images) {
     const image = object(i, "image");
-    requireValid(image.mimeType === "image/png", "Only embedded PNG textures are supported; re-export JPEG/WebP/KTX as PNG.");
+    requireValid(image.mimeType === "image/png" || image.mimeType === "image/jpeg",
+      "Only embedded PNG or JPEG textures are supported; re-export WebP/KTX2 or other images as PNG.");
     const view = at(views, image.bufferView, "image.bufferView");
-    requireValid(Number(view.byteLength) >= 33, "Truncated PNG.");
     const bytes = new DataView(bin.buffer, bin.byteOffset + Number(view.byteOffset ?? 0), Number(view.byteLength));
-    requireValid(bytes.getUint32(0) === 0x89504e47 && bytes.getUint32(4) === 0x0d0a1a0a
-      && bytes.getUint32(8) === 13 && bytes.getUint32(12) === 0x49484452, "Invalid PNG signature/IHDR.");
-    const width = integer(bytes.getUint32(16), 1, 4096, "PNG width");
-    const height = integer(bytes.getUint32(20), 1, 4096, "PNG height");
+    let width: number, height: number;
+    if (image.mimeType === "image/jpeg") ({ width, height } = jpegSize(bytes));
+    else {
+      requireValid(Number(view.byteLength) >= 33, "Truncated PNG.");
+      requireValid(bytes.getUint32(0) === 0x89504e47 && bytes.getUint32(4) === 0x0d0a1a0a
+        && bytes.getUint32(8) === 13 && bytes.getUint32(12) === 0x49484452, "Invalid PNG signature/IHDR.");
+      width = integer(bytes.getUint32(16), 1, 4096, "PNG width");
+      height = integer(bytes.getUint32(20), 1, 4096, "PNG height");
+    }
     pixels += width * height;
     imagePixels.push(width * height);
     requireValid(pixels <= LIMITS.texturePixels, "Decoded texture pixel budget exceeded.");
   }
   for (const t of textures) at(images, object(t, "texture").source, "texture source");
+  // Each glTF texture (an image with its sampler) becomes its own GPU texture at most for each use of it (color or data);
+  // the materials that sample it, also through a texture transform, share it, as three.js uploads an image once for each
+  // set of texture settings. So the textures' pixels are bounded, not the materials times the textures.
   const sampledPixels = textures.reduce<number>((sum, t) => sum + imagePixels[Number(object(t, "texture").source)]!, 0);
-  requireValid(sampledPixels * Math.max(1, materials.length) <= LIMITS.texturePixels,
-    "Conservative material/texture instance pixel budget exceeded; reduce texture resolution or materials.");
+  requireValid(sampledPixels <= 2 * LIMITS.texturePixels,
+    "Texture instance pixel budget exceeded: the textures sample more than 32Mi pixels; reduce texture resolution or count.");
   const checkMaterial = (value: unknown): void => {
     if (Array.isArray(value)) return;
     if (value !== null && typeof value === "object") {
@@ -299,10 +407,10 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
   };
   materials.forEach(m => checkMaterial(object(m, "material")));
   const parents = new Map<number, number>();
-  let instances = 0;
+  let instancedBytes = 0;
   nodes.forEach((n, index) => {
     const node = object(n, "node");
-    if (node.mesh !== undefined) { at(meshes, node.mesh, "node.mesh"); instances++; }
+    if (node.mesh !== undefined) { at(meshes, node.mesh, "node.mesh"); instancedBytes += meshBytes[Number(node.mesh)]!; }
     if (node.weights !== undefined) {
       const mesh = at(meshes, node.mesh, "weighted mesh");
       const first = object(array(mesh.primitives, "primitives")[0], "primitive");
@@ -323,7 +431,7 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
       parents.set(id, index);
     }
   });
-  requireValid(renderBytes * Math.max(1, instances) <= LIMITS.decodedGeometryBytes, "Instanced geometry budget exceeded.");
+  requireValid(instancedBytes <= LIMITS.decodedGeometryBytes, "Instanced geometry budget exceeded.");
   for (let i = 0; i < nodes.length; i++) {
     let current: number | undefined = i;
     const seen = new Set<number>();
@@ -358,7 +466,8 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
     if (skin.skeleton !== undefined) at(nodes, skin.skeleton, "skin skeleton");
   }
   nodes.forEach(n => { const node = object(n, "node"); if (node.skin !== undefined) at(skins, node.skin, "node.skin"); });
-  const bones = object(object(extension.humanoid, "humanoid").humanBones, "humanBones");
+  const bones = v0 ? vrm0Bones(object(extension.humanoid, "humanoid"))
+    : object(object(extension.humanoid, "humanoid").humanBones, "humanBones");
   const assigned = new Set<number>();
   for (const [name, bone] of Object.entries(bones)) {
     requireValid(Object.values(VRMHumanBoneName).includes(name as VRMHumanBoneName), `Unknown humanoid role ${name}.`);
@@ -378,7 +487,8 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
     }
   }
   const expressions: ExpressionCapability[] = [];
-  const expressionRoot = extension.expressions === undefined ? {} : object(extension.expressions, "expressions");
+  const diagnostics: string[] = [];
+  const expressionRoot = v0 || extension.expressions === undefined ? {} : object(extension.expressions, "expressions");
   for (const group of ["preset", "custom"]) {
     for (const [name, e] of Object.entries(expressionRoot[group] === undefined ? {} : object(expressionRoot[group], group))) {
       requireValid(name.length > 0 && name.length <= 128 && !expressions.some(e => e.name === name), "Invalid/repeated expression name.");
@@ -433,9 +543,11 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
       requireValid(expressions.length <= LIMITS.expressions, "Expression budget exceeded.");
     }
   }
+  const context: Vrm0Context = { nodes, meshes, materials, textures, reachable, assigned, diagnostics };
+  if (v0) expressions.push(...vrm0Expressions(extension, context));
   let gaze: VrmCapabilities["gaze"] = "absent";
-  const diagnostics: string[] = [];
-  if (extension.lookAt !== undefined) {
+  if (v0) gaze = vrm0Gaze(extension, bones, expressions, diagnostics, context);
+  else if (extension.lookAt !== undefined) {
     const lookAt = object(extension.lookAt, "lookAt");
     requireValid(lookAt.type === "bone" || lookAt.type === "expression", "Unknown lookAt type.");
     for (const key of ["rangeMapHorizontalInner", "rangeMapHorizontalOuter", "rangeMapVerticalDown", "rangeMapVerticalUp"]) {
@@ -448,8 +560,8 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
       gazePresets.every(p => expressions.some(e => e.name === p && e.usable))) gaze = lookAt.type;
     else diagnostics.push("Gaze unavailable: author both eye bones or all four directional expressions and re-export lookAt.");
   } else diagnostics.push("Gaze unavailable: author VRM1 lookAt with usable eye controls.");
-  const spring = object(json.extensions, "extensions").VRMC_springBone;
-  let secondaryMotion = false;
+  const spring = v0 ? undefined : roots.VRMC_springBone;
+  let secondaryMotion = v0 && vrm0Springs(extension, context);
   if (spring !== undefined) {
     const s = object(spring, "springBone");
     requireValid(s.specVersion === "1.0", "Only springBone 1.0 is supported.");
@@ -482,15 +594,258 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
       if (joints.length >= 2) secondaryMotion = true;
     }
   }
-  if (!secondaryMotion) diagnostics.push("Secondary motion unavailable: author a supported VRMC_springBone chain.");
+  if (!secondaryMotion) diagnostics.push(v0 ? "Secondary motion unavailable: author a VRM 0.x secondaryAnimation bone group whose root has a child."
+    : "Secondary motion unavailable: author a supported VRMC_springBone chain.");
+  if (v0) {
+    vrm0Materials(extension, context);
+    diagnostics.push("VRM 0.x model: three-vrm migrates it to VRM 1.0 expressions and bones on load and turns it 180 degrees to face +Z.");
+  }
   const usable = expressions.filter(e => e.usable);
   if (!usable.some(e => mouthPresets.includes(e.name as typeof mouthPresets[number])))
     diagnostics.push("No usable vowel presets: supply an explicit mapping to authored facial expressions, choose another supported source, or omit mouth.");
   diagnostics.push("ARKit detail is never inferred from names or vowel presets; author and review each explicit coefficient mapping.");
   diagnostics.push("Body/VRMA playback is not implemented in this slice.");
   return Object.freeze({
-    format: "VRM1", expressions: Object.freeze(expressions), humanoidBones: Object.freeze(Object.keys(bones)), gaze,
+    format: v0 ? "VRM0" : "VRM1", specVersion, meta: v0 ? vrm0Meta(meta, textures, diagnostics) : vrm1Meta(meta, images),
+    expressions: Object.freeze(expressions), humanoidBones: Object.freeze(Object.keys(bones)), gaze,
     secondaryMotion, bodyPlayback: false, facialDetail: usable.some(e => !e.preset) ? "explicit-mapping-required" : usable.length ? "preset-only" : "absent",
     diagnostics: Object.freeze(diagnostics),
   });
+}
+
+/** What the VRM 0.x checks need of the glTF already checked. */
+interface Vrm0Context {
+  readonly nodes: readonly unknown[];
+  readonly meshes: readonly unknown[];
+  readonly materials: readonly unknown[];
+  readonly textures: readonly unknown[];
+  readonly reachable: ReadonlySet<number>;
+  /** The humanoid bones' nodes. */
+  readonly assigned: ReadonlySet<number>;
+  readonly diagnostics: string[];
+}
+
+function text(value: unknown, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  requireValid(typeof value === "string", `${label} must be text.`);
+  return value;
+}
+
+/** A VRM 0.x {x, y, z} object, each finite within `max`. */
+function xyz(value: unknown, label: string, max: number): void {
+  const v = object(value, label);
+  for (const key of ["x", "y", "z"]) if (v[key] !== undefined) finite(v[key], -max, max, `${label}.${key}`);
+}
+
+/** Text, or undefined for anything else: optional meta fields the importer doesn't read never reject a model. */
+const str = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
+
+function vrm1Meta(meta: JsonObject, images: readonly unknown[]): VrmMetaSummary {
+  const permission = str(meta.avatarPermission) ?? "onlyAuthor";
+  const commercial = str(meta.commercialUsage) ?? "personalNonProfit";
+  const thumbnail = meta.thumbnailImage;
+  const version = str(meta.version), other = str(meta.otherLicenseUrl);
+  return Object.freeze({
+    metaVersion: "1", name: meta.name as string, authors: Object.freeze([...meta.authors as string[]]), licenseUrl: meta.licenseUrl as string,
+    ...(version !== undefined ? { version } : {}), ...(other ? { otherLicenseUrl: other } : {}),
+    ...(permission === "onlyAuthor" || permission === "onlySeparatelyLicensedPerson" || permission === "everyone" ? { avatarPermission: permission } : {}),
+    allowExcessivelyViolentUsage: meta.allowExcessivelyViolentUsage === true,
+    allowExcessivelySexualUsage: meta.allowExcessivelySexualUsage === true,
+    allowCommercialUsage: commercial !== "personalNonProfit",
+    ...(Number.isSafeInteger(thumbnail) && Number(thumbnail) >= 0 && Number(thumbnail) < images.length ? { thumbnailImage: Number(thumbnail) } : {}),
+  });
+}
+
+/** VRM 0.x meta in the shape of VRM 1.0's (see VrmMetaSummary). Every field is optional in VRM 0.x. */
+function vrm0Meta(meta: JsonObject, textures: readonly unknown[], diagnostics: string[]): VrmMetaSummary {
+  const name = str(meta.title) ?? "", author = str(meta.author);
+  if (!name) diagnostics.push("VRM 0.x meta.title is empty.");
+  const usage = (spelled: unknown, misspelled: unknown): boolean | undefined => {
+    const value = (str(misspelled) ?? str(spelled))?.toLowerCase();
+    return value === "allow" ? true : value === "disallow" ? false : undefined;
+  };
+  const user = str(meta.allowedUserName);
+  const permission = user === "OnlyAuthor" ? "onlyAuthor" : user === "ExplicitlyLicensedPerson" ? "onlySeparatelyLicensedPerson"
+    : user === "Everyone" ? "everyone" : undefined;
+  const texture = meta.texture;
+  const thumbnail = Number.isSafeInteger(texture) && Number(texture) >= 0 && Number(texture) < textures.length
+    ? object(textures[Number(texture)], "thumbnail texture").source : undefined;
+  const version = str(meta.version), license = str(meta.licenseName), other = str(meta.otherLicenseUrl);
+  const violent = usage(meta.violentUsageName, meta.violentUssageName);
+  const sexual = usage(meta.sexualUsageName, meta.sexualUssageName);
+  const commercial = usage(meta.commercialUsageName, meta.commercialUssageName);
+  return Object.freeze({
+    metaVersion: "0", name, authors: Object.freeze(author ? [author] : []),
+    ...(version ? { version } : {}), ...(license ? { licenseName: license } : {}), ...(other ? { otherLicenseUrl: other } : {}),
+    ...(permission ? { avatarPermission: permission } : {}),
+    ...(violent !== undefined ? { allowExcessivelyViolentUsage: violent } : {}),
+    ...(sexual !== undefined ? { allowExcessivelySexualUsage: sexual } : {}),
+    ...(commercial !== undefined ? { allowCommercialUsage: commercial } : {}),
+    ...(typeof thumbnail === "number" ? { thumbnailImage: thumbnail } : {}),
+  });
+}
+
+/** VRM 0.x `humanoid.humanBones` (a list of {bone, node}) as VRM 1.0's map of roles to {node}, with the thumbs renamed as
+ *  three-vrm renames them (thumbProximal is VRM 1.0's thumbMetacarpal, thumbIntermediate its thumbProximal). */
+function vrm0Bones(humanoid: JsonObject): JsonObject {
+  const bones: JsonObject = {};
+  for (const entry of array(humanoid.humanBones, "humanoid.humanBones", 128)) {
+    const bone = object(entry, "humanBone");
+    requireValid(typeof bone.bone === "string", "VRM 0.x humanBone.bone must be a bone name.");
+    const name = Object.hasOwn(vrm0Thumbs, bone.bone) ? vrm0Thumbs[bone.bone]! : bone.bone;
+    requireValid(Object.values(VRMHumanBoneName).includes(name as VRMHumanBoneName), `Unknown humanoid role ${bone.bone}.`);
+    requireValid(!Object.hasOwn(bones, name), `Humanoid bone ${bone.bone} is listed twice.`);
+    bones[name] = { node: bone.node };
+  }
+  return bones;
+}
+
+/** VRM 0.x blend shape groups as expressions under the VRM 1.0 names three-vrm gives them (see VRM0_PRESET_NAMES); an
+ *  "unknown" preset keeps its own name. Like three-vrm, a group whose name is already taken is skipped, and so is one with
+ *  no name. A bind (a mesh's morph target, weight 0 to 100) drives that morph on every node that draws the mesh. */
+function vrm0Expressions(extension: JsonObject, { nodes, meshes, materials, reachable, diagnostics }: Vrm0Context): ExpressionCapability[] {
+  if (extension.blendShapeMaster === undefined) return [];
+  const master = object(extension.blendShapeMaster, "blendShapeMaster");
+  const expressions: ExpressionCapability[] = [];
+  for (const g of optionalArray(master.blendShapeGroups, "blendShapeGroups", 256)) {
+    const group = object(g, "blendShapeGroup");
+    const preset = text(group.presetName, "blendShapeGroup.presetName"), own = text(group.name, "blendShapeGroup.name");
+    requireValid(preset === undefined || !inherited(preset), `Invalid VRM 0.x presetName ${String(preset)}.`);
+    const mapped = preset !== undefined && Object.hasOwn(VRM0_PRESET_NAMES, preset) ? VRM0_PRESET_NAMES[preset]! : undefined;
+    const name = mapped ?? own;
+    if (!name) { diagnostics.push("A VRM 0.x blend shape group without a name is ignored."); continue; }
+    requireValid(name.length <= 128 && !inherited(name), `Invalid VRM 0.x blend shape name ${name.slice(0, 64)}.`);
+    if (expressions.some(e => e.name === name)) { diagnostics.push(`A repeated VRM 0.x blend shape ${name} is ignored, as three-vrm ignores it.`); continue; }
+    const targets: string[] = [];
+    const authoredTargets = new Set<string>();
+    for (const b of optionalArray(group.binds, "blendShape binds", 128)) {
+      const bind = object(b, "blendShape bind");
+      const meshIndex = integer(bind.mesh, 0, meshes.length - 1, "blendShape bind mesh");
+      for (const p of array(object(meshes[meshIndex], "morph mesh").primitives, "primitives")) {
+        const primitive = object(p, "primitive");
+        integer(bind.index, 0, optionalArray(primitive.targets, "targets").length - 1, "morph target index");
+      }
+      const weight = finite(bind.weight ?? 100, 0, 100, "blendShape bind weight");
+      nodes.forEach((n, node) => {
+        if (object(n, "node").mesh !== meshIndex || !reachable.has(node)) return;
+        const target = `${node}:${Number(bind.index)}`;
+        requireValid(!authoredTargets.has(target), `Duplicate morph target ${target} within expression ${name}; merge or remove the duplicate binding.`);
+        authoredTargets.add(target);
+        if (weight > 0) targets.push(target);
+      });
+    }
+    const materialTargets: string[] = [];
+    for (const v of optionalArray(group.materialValues, "materialValues", 32)) {
+      const value = object(v, "materialValue");
+      const material = text(value.materialName, "materialValue.materialName"), property = text(value.propertyName, "materialValue.propertyName");
+      requireValid(material !== undefined && property !== undefined, "A VRM 0.x materialValue needs a materialName and propertyName.");
+      vector(value.targetValue, 4, "materialValue targetValue", 100);
+      const type = property === "_MainTex_ST" ? "texture-transform" : Object.hasOwn(vrm0MaterialColors, property) ? vrm0MaterialColors[property] : undefined;
+      if (!type) { diagnostics.push(`The VRM 0.x material property ${property.slice(0, 64)} in ${name} is ignored, as three-vrm ignores it.`); continue; }
+      materials.forEach((m, index) => {
+        const named = object(m, "material").name;
+        if (named === material || named === `${material} (Outline)`) materialTargets.push(`${index}:${type}`);
+      });
+    }
+    requireValid(group.isBinary === undefined || typeof group.isBinary === "boolean", "Invalid isBinary.");
+    expressions.push(Object.freeze({
+      name, preset: mapped !== undefined, usable: targets.length > 0, morphTargets: Object.freeze(targets),
+      materialTargets: Object.freeze(materialTargets), overrideMouth: "none", overrideBlink: "none", overrideLookAt: "none",
+    }));
+    requireValid(expressions.length <= LIMITS.expressions, "Expression budget exceeded.");
+  }
+  return expressions;
+}
+
+/** VRM 0.x look-at (`firstPerson`): eye bones ("Bone") or the four look expressions ("BlendShape"). */
+function vrm0Gaze(extension: JsonObject, bones: JsonObject, expressions: readonly ExpressionCapability[], diagnostics: string[],
+  { nodes, meshes }: Vrm0Context): VrmCapabilities["gaze"] {
+  if (extension.firstPerson === undefined) {
+    diagnostics.push("Gaze unavailable: author VRM 0.x firstPerson lookAt with usable eye controls.");
+    return "absent";
+  }
+  const person = object(extension.firstPerson, "firstPerson");
+  if (person.firstPersonBone !== undefined) integer(person.firstPersonBone, -1, nodes.length - 1, "firstPersonBone");
+  if (person.firstPersonBoneOffset !== undefined) xyz(person.firstPersonBoneOffset, "firstPersonBoneOffset", 10);
+  for (const a of optionalArray(person.meshAnnotations, "meshAnnotations", 128)) {
+    const annotation = object(a, "meshAnnotation");
+    if (annotation.mesh !== undefined) integer(annotation.mesh, -1, meshes.length - 1, "meshAnnotation.mesh");
+    text(annotation.firstPersonFlag, "meshAnnotation.firstPersonFlag");
+  }
+  const type = text(person.lookAtTypeName, "lookAtTypeName") ?? "Bone";
+  requireValid(type === "Bone" || type === "BlendShape", "Unknown VRM 0.x lookAtTypeName; expected Bone or BlendShape.");
+  for (const key of ["lookAtHorizontalInner", "lookAtHorizontalOuter", "lookAtVerticalDown", "lookAtVerticalUp"]) {
+    if (person[key] === undefined) continue;
+    const map = object(person[key], key);
+    optionalArray(map.curve, `${key}.curve`, 64).forEach(v => finite(v, -1000, 1000, `${key}.curve`));
+    if (map.xRange !== undefined) finite(map.xRange, 0, 180, `${key}.xRange`);
+    if (map.yRange !== undefined) finite(map.yRange, 0, 180, `${key}.yRange`);
+  }
+  if (type === "Bone" ? bones.leftEye && bones.rightEye : gazePresets.every(p => expressions.some(e => e.name === p && e.usable)))
+    return type === "Bone" ? "bone" : "expression";
+  diagnostics.push("Gaze unavailable: author both eye bones or all four look blend shapes and re-export firstPerson lookAt.");
+  return "absent";
+}
+
+/** VRM 0.x spring bones (`secondaryAnimation`). Each bone group lists root nodes; the importer makes a joint of every node
+ *  under a root (the root too), whose child is the node's first child. So each chain runs from a root, or from a node that is
+ *  not its parent's first child, along first children to a tip. Joints must be unique, in the scene and apart from the
+ *  humanoid bones. True when some joint has a child (a chain that can swing). */
+function vrm0Springs(extension: JsonObject, { nodes, reachable, assigned }: Vrm0Context): boolean {
+  if (extension.secondaryAnimation === undefined) return false;
+  const secondary = object(extension.secondaryAnimation, "secondaryAnimation");
+  const colliderGroups = optionalArray(secondary.colliderGroups, "colliderGroups", 128);
+  for (const g of colliderGroups) {
+    const group = object(g, "colliderGroup");
+    at(nodes, group.node, "colliderGroup node");
+    for (const c of optionalArray(group.colliders, "colliders", 128)) {
+      const collider = object(c, "collider");
+      if (collider.offset !== undefined) xyz(collider.offset, "collider offset", 10);
+      finite(collider.radius ?? 0, 0, 10, "collider radius");
+    }
+  }
+  const used = new Set<number>();
+  let swings = false;
+  const visit = (id: number): void => {
+    requireValid(reachable.has(id) && !used.has(id) && !assigned.has(id),
+      "VRM 0.x spring bones (every node under a boneGroup root) must be unique, reachable, and separate from humanoid controls.");
+    used.add(id);
+    const children = optionalArray(object(nodes[id], "node").children, "children");
+    if (children.length) swings = true;
+    for (const child of children) visit(Number(child));
+  };
+  for (const entry of optionalArray(secondary.boneGroups, "boneGroups", 128)) {
+    const group = object(entry, "boneGroup");
+    text(group.comment, "boneGroup.comment");
+    finite(group.stiffiness ?? 1, 0, 100, "stiffiness"); finite(group.gravityPower ?? 0, 0, 100, "gravityPower");
+    finite(group.dragForce ?? 0.5, 0, 1, "dragForce"); finite(group.hitRadius ?? 0, 0, 10, "hitRadius");
+    if (group.gravityDir !== undefined) xyz(group.gravityDir, "gravityDir", 1);
+    if (group.center !== undefined) integer(group.center, -1, nodes.length - 1, "boneGroup center");
+    for (const c of optionalArray(group.colliderGroups, "boneGroup colliderGroups", 128)) at(colliderGroups, c, "boneGroup colliderGroup");
+    for (const root of optionalArray(group.bones, "boneGroup bones", 128)) visit(integer(root, 0, nodes.length - 1, "boneGroup bone"));
+  }
+  return swings;
+}
+
+/** VRM 0.x MToon material properties (`materialProperties`), which three-vrm turns into MToon materials: bounded values and
+ *  texture indices that exist. */
+function vrm0Materials(extension: JsonObject, { textures }: Vrm0Context): void {
+  const entries = (value: unknown, label: string): [string, unknown][] => {
+    if (value === undefined) return [];
+    const map = Object.entries(object(value, label));
+    requireValid(map.length <= 128, `${label} has too many entries.`);
+    return map;
+  };
+  for (const p of optionalArray(extension.materialProperties, "materialProperties", 128)) {
+    const properties = object(p, "materialProperties");
+    text(properties.name, "materialProperties.name"); text(properties.shader, "materialProperties.shader");
+    if (properties.renderQueue !== undefined) integer(properties.renderQueue, -1, 10000, "materialProperties.renderQueue");
+    for (const [key, value] of entries(properties.floatProperties, "floatProperties")) finite(value, -1e6, 1e6, `floatProperties.${key}`);
+    for (const [key, value] of entries(properties.vectorProperties, "vectorProperties"))
+      array(value, `vectorProperties.${key}`, 4).forEach(v => finite(v, -1e6, 1e6, `vectorProperties.${key}`));
+    for (const [key, value] of entries(properties.textureProperties, "textureProperties")) at(textures, value, `textureProperties.${key}`);
+    for (const [key, value] of entries(properties.keywordMap, "keywordMap"))
+      requireValid(typeof value === "boolean", `keywordMap.${key} must be true or false.`);
+    for (const [key, value] of entries(properties.tagMap, "tagMap")) text(value, `tagMap.${key}`);
+  }
 }

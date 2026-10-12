@@ -10,7 +10,8 @@ Audio2Face service when one is running on the PC, else a paired Martlet host tha
 runs Audio2Face on its NVIDIA GPU (host role installed with [`martlet-host add audio2face`](../deploy/host/README.md)),
 else the loudness of Martlet's own voice; no microphone or upload is used. Users can switch
 to their own Live2D `.model3.json` (including VTube Studio model folders, with
-names in any script and textures up to 8192 pixels) or VRM `.vrm` model in **Character settings**
+names in any script and textures up to 8192 pixels) or VRM `.vrm` model (VRM 0.x or 1.0) in **Character settings**, or
+[find one online](#find-a-character-online)
 and optionally show the character automatically at launch. See the
 [Desktop integration guide](../src/Martlet.Avatar.Hosting/README.md) and the
 [Live2D module](../src/Martlet.Avatar.Live2D/README.md#bundled-runtime-and-default-character).
@@ -64,6 +65,93 @@ keeps until you switch to it. Removing a profile removes what it kept. The other
 parts of a character already follow its look or personality on their own: the
 emotes and motions, combos, touch zones and eye measurements are kept for each
 model, and the touch temperament and quick sounds for each persona and voice.
+
+## Find a character online
+
+**Companion › Character › Find a character...** makes a whole character from a
+name. Type who Martlet should be (for example a character from a game or an
+anime, or a short description), add notes if you like, and press **Search**.
+
+1. Martlet asks your Thinking model to write the personality (Companion ›
+   Prompts › *Writing a character's personality*). It runs as a helper job, on a
+   free Thinking pool member or after the reply, like naming emotes. You can
+   change the text, or write your own.
+2. At the same time Martlet looks for 3D models (VRM) of the character:
+   - **Your VRoid Hub models**: your own and the ones you hearted, when VRoid Hub
+     is linked.
+   - **VRoid Hub**: models whose creators let anyone download them and use them
+     as a character, for all ages. The search needs no account.
+   - **Open Source Avatars**: the free CC0 and CC-BY models of the
+     [Open Source Avatars](https://github.com/ToxSam/open-source-avatars) registry.
+3. Each look shows its picture, creator, source, license, size, VRM version and
+   **every condition of use** the creator set. A look the creator doesn't let
+   others use can't be chosen.
+4. **Use this look** makes the personality and a character profile with that
+   look, and Martlet becomes the character. **Use without a new look** keeps the
+   look Martlet shows now.
+
+How each kind of look is kept:
+
+- **An Open Source Avatars model** is downloaded once and joins Companion ›
+  Character › *Your characters*, so it is shared with your Martlet computers
+  like a model you add yourself. A CC-BY model keeps its creator's name in its
+  name (for example *Hero (by VIPE, CC-BY)*), so the credit goes with it.
+- **A VRoid Hub model is never saved.** VRoid Hub's rules for linked apps
+  forbid saving model files, with or without encryption. Martlet downloads the
+  model into memory with your linked account each time it shows it, and the
+  character renderer gets it through its private pipe (`model` messages before
+  `load`). The look is named `vroidhub:<model ID>` in `avatar.json` and in
+  character profiles; it is never added to your characters or copied to other
+  computers. Each computer shows it with its own VRoid Hub link. Companion ›
+  Character › *Find a character online* lists the VRoid Hub looks this PC used,
+  with the creator and the conditions of use (`vroid-hub-looks.json` keeps only
+  these words), each with **Use** and **Remove**.
+
+### Link VRoid Hub
+
+**Account › Linked services › Link VRoid Hub...** (or **Link VRoid Hub...** in
+Find a character) opens VRoid Hub's own sign-in page in your browser. Sign in
+with your pixiv account and allow Martlet. Martlet gets the one-time code on a
+loopback address only this PC can reach (OAuth 2.0 with PKCE), and keeps the
+tokens in Windows Credential Manager (`Martlet/v3/vroid-hub/<account>`). The
+link belongs to the Martlet account signed in now, on this PC only; it is never
+in settings or on another computer. **Unlink VRoid Hub** tells VRoid Hub, deletes
+the tokens and forgets every VRoid Hub model in memory. Switching accounts also
+forgets them.
+
+Martlet's VRoid Hub app asks only for the `default` scope. Its model settings
+say that Martlet uses models as avatars and shows the credit, and doesn't change,
+pass on or sell them. Until pixiv approves the app, VRoid Hub shows an
+"unapproved" note when you link it, and Martlet can show only your own models and
+models whose creators allow downloads. Official builds carry the app's keys
+(the `VROID_HUB_CLIENT_ID` and `VROID_HUB_CLIENT_SECRET` build variables); a
+build without them can search VRoid Hub but not link it.
+
+### When nothing is found
+
+Martlet can't find every character, and it never finds voices by itself. Find a
+character then gives links instead (`CharacterWebFinder`):
+
+- **Look for a model on the web**: when no look can be used, Martlet searches
+  the web (DuckDuckGo) for pages that may have a model of the character (VRM,
+  Live2D, MMD or VRChat, on Booth, VRoid Hub, nizima, Sketchfab, DeviantArt and
+  similar sites) and gives searches on those sites. **Search the web for
+  models** does it any time.
+- **Voice**: Martlet always searches for pages with recordings of the
+  character's voice (voice lines on wikis, clips on YouTube and similar sites).
+
+Martlet downloads nothing from these pages. Open a page, check the creator's
+terms, and download only what you may use. Then:
+
+1. For a model, unzip it if necessary and press **Add a model you
+   downloaded...**: choose the `.vrm` file or the Live2D `.model3.json`.
+2. For a voice, keep a clean clip of the character speaking (5 to 30 seconds,
+   one voice, no music). Press **Add a voice clip you downloaded...**: it opens
+   Companion › Voice, where **Add a voice...** takes the clip. A voice needs a
+   voice engine that copies voices.
+
+A character's voice belongs to its voice actor and studio. Use a copy of it only
+for yourself, and only where their terms allow it.
 
 ## Emotes and motions
 
@@ -1198,7 +1286,7 @@ owns the system boundaries.
 | Shared contracts, A01a | Implemented standalone [Martlet.Avatars contracts](../contracts/avatars/README.md), locally integrated/reviewed with production-path checks. Strict v1 facial frames use Core correlation IDs, epoch/sequence and **original PCM** sample rate/offset; exact 52-name ARKit catalog plus separate typed semantic vowels/blinks/emotions. `aa` is not an ARKit name. No skeleton or general pose/body wire payload. |
 | Audio2Face, A01b | Implemented [NIM gRPC adapter](../src/Martlet.Avatar.Audio2Face/README.md) through bounded nonblocking live `GeneratedSpeechStream`. **Automatic (default)**: Desktop TCP-probes the configured loopback endpoint before each sentence, then a paired Martlet host's [gateway relay](../deploy/host/README.md) (pinned TLS, signed chunked requests), and uses the saved or built-in mouth mapping, falling back to loudness. Actual HTTP/2 fixtures and an end-to-end gateway test establish protocol behavior, not live NVIDIA inference. Speech never waits for analysis. Requires a service speaking that protocol: the `audio2face` role on a Martlet host (this PC via Docker Desktop, or another computer over SSH with Docker or natively on Linux, from Martlet > **Martlet hosts**), whose default `local` engine is NVIDIA's open-source Audio2Face-3D SDK built on the host with models from Hugging Face (NVIDIA Open Model License; no NVIDIA account, see [local Audio2Face service](../workers/audio2face/README.md)) and whose `nim` engine is NVIDIA's NIM with an NGC key; or a NIM the user runs locally. Needs a supported NVIDIA GPU. SDK MIT does not license NIM or weights. |
 | Live2D, A02a | Implemented [renderer adapter and animator](../src/Martlet.Avatar.Live2D/README.md) on official Cubism Web Framework 5-r.4 and Core **05.01.0000**, downloaded at build time from Live2D (SHA-256 pinned) and bundled with the Hiyori sample. Idle motions, eye blink, breathing, physics, pose, look-at and loudness lip-sync run; composed A2F writes apply before physics. Real Core/GPU rendering of Hiyori verified locally in browser and WebView2 overlay. Cubism 5.3 blend/offscreen features and unsupported MOC versions are rejected. |
-| VRM, A02b | Implemented/reviewed standalone [VRM importer/facial mapping/renderer adapter](../src/Martlet.Avatar.Vrm/README.md): Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 1 subset. VRM 0, unsupported extensions, non-PNG textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Real-loader/control and bundle checks exist; review corrections are cleared. Actual graphics/artist-rig/device-sync qualification is NOT RUN. VRMA/body playback is **unsupported in the first slice**. |
+| VRM, A02b | Implemented/reviewed standalone [VRM importer/facial mapping/renderer adapter](../src/Martlet.Avatar.Vrm/README.md): Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 0.x and VRM 1.0 subset (VRM 0.x: blend shapes mapped to VRM 1.0 expression names, MToon material properties, `secondaryAnimation` spring bones, turned with `VRMUtils.rotateVRM0`; PNG and JPEG textures). A file with both extensions, unsupported extensions, WebP/KTX2 textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Real-loader/control and bundle checks exist; review corrections are cleared. Actual graphics/artist-rig/device-sync qualification is NOT RUN. VRMA/body playback is **unsupported in the first slice**. |
 | Composition/app integration, A02c | Main-window **Show character**, simple character settings (built-in/custom model, lip-sync mode, auto-show), atomic avatar-only sidecar and private WPF/WebView2 renderer host. Automatic lip-sync tees admitted generated PCM into loudness levels and, when detected, Audio2Face; explicit Audio2Face-only activation replaces both for the session. Local package producer/current-reader integration is implemented. |
 | Rich motion, A02d | Planned capability/wire extensions and procedural/clip integration for head, body, gaze and secondary motion. A facial gaze mapping may consume actual ARKit eye-look channels; that does not create general gaze/pose support. |
 | Qualification, A03 | Planned local real-model/renderer/GPU/device trials, performance and lifecycle evidence; separately reviewed rights/release. No end-to-end avatar acceptance is passed by this guide. |

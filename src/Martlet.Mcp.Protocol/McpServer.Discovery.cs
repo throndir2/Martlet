@@ -43,9 +43,35 @@ internal sealed partial class McpServer
             includeText = new { type = "boolean" },
             dataDirectory = new { type = "string" }
         }),
+        Tool("character_find_looks", "Find looks (3D VRM character models) online for a character you name: the VRoid Hub models " +
+            "their creators let anyone download and use as a character, the linked VRoid Hub account's own and hearted models, and " +
+            "the free (CC0 and CC-BY) models of the Open Source Avatars registry. Each look has its creator, source, license, every " +
+            "condition of use, whether Martlet may use it, a picture and page address, and its look key: give that key as look to " +
+            "character_create or character_update. vroidhub:<id> looks are shown from VRoid Hub with the owner's linked account and " +
+            "never saved; osa:<project>/<avatar> looks are downloaded once and join the owner's characters. Only the query goes to " +
+            "VRoid Hub and GitHub. sources: vroidhub, osa or both (default). " + DataDirectoryNote + " Read-only.", new
+        {
+            query = new { type = "string", maxLength = 100 },
+            count = new { type = "integer", minimum = 1, maximum = 50 },
+            sources = new { type = "array", items = new { type = "string", @enum = new[] { "vroidhub", "osa" } } },
+            dataDirectory = new { type = "string" }
+        }, ["query"]),
+        Tool("character_find_on_web", "The backup finder for a character's look or voice, when character_find_looks finds no model " +
+            "Martlet can use or the character needs a voice: searches the web (DuckDuckGo) for pages that may have a model of it " +
+            "(VRM, Live2D, MMD or VRChat; Booth, VRoid Hub, nizima, Sketchfab...) and pages with recordings of its voice (voice " +
+            "lines on wikis, clips), plus searches on those sites to open. Martlet downloads nothing from them: the owner opens " +
+            "them, checks the terms, downloads what they may use and adds it in the app (Companion › Character › Add a character; " +
+            "Companion › Voice › Add a voice). models and voices choose what to look for (both by default). Only the query leaves " +
+            "this PC. Read-only.", new
+        {
+            query = new { type = "string", maxLength = 100 },
+            models = new { type = "boolean" },
+            voices = new { type = "boolean" }
+        }, ["query"]),
         Tool("character_create", "Make a new character in Martlet: a personality (name and personality, the instructions that say who " +
             "the character is and how it talks, up to 8,192 characters) and a character profile that gives it a look and a voice " +
-            "(look: 'builtin' or a look's name or ID from characters_list; voice: a voice's name or ID; both optional, profile " +
+            "(look: 'builtin', a look's name or ID from characters_list, or a look key from character_find_looks; voice: a voice's " +
+            "name or ID; both optional, profile " +
             "false makes only the personality). Or import a SillyTavern, Chub or other Tavern character card with cardPath (an " +
             "absolute path to a PNG, JSON or CHARX card; name and personality then override the card's), which also keeps the card's " +
             "keyword lorebook entries for it. Martlet becomes the new character at once unless use is false; a running Martlet " +
@@ -61,7 +87,8 @@ internal sealed partial class McpServer
             dataDirectory = new { type = "string" }
         }),
         Tool("character_update", "Change a character: character is its name, ID or profile key (from characters_list); name renames " +
-            "it, personality replaces its instructions, look and voice change its profile's look and voice ('keep' keeps whatever " +
+            "it, personality replaces its instructions, look and voice change its profile's look and voice (look may also be a look " +
+            "key from character_find_looks; 'keep' keeps whatever " +
             "Martlet uses now; a character without a profile gets one). Needs --allow-changes. " + DataDirectoryNote, new
         {
             character = new { type = "string", maxLength = 128 },
@@ -122,6 +149,8 @@ internal sealed partial class McpServer
         ("martlet_guide", "Start here: what Martlet's MCP server can do", true, null, true),
         ("martlet_call", "Run any Martlet tool by name", null, null, null),
         ("characters_list", "List Martlet's characters", true, null, true),
+        ("character_find_looks", "Find looks for a character online", true, null, true),
+        ("character_find_on_web", "Find a character's model or voice on the web", true, null, true),
         ("character_create", "Make a character", false, false, false),
         ("character_update", "Change a character", false, true, true),
         ("character_use", "Switch Martlet to a character", false, false, true),
@@ -161,8 +190,10 @@ internal sealed partial class McpServer
         if (entry.ReadOnly is { } readOnly) hints["readOnlyHint"] = readOnly;
         if (entry.Destructive is { } destructive) hints["destructiveHint"] = destructive;
         if (entry.Idempotent is { } idempotent) hints["idempotentHint"] = idempotent;
-        // The listed tools stay on this PC: they read and write Martlet's own files and windows.
-        if (entry.Name != "martlet_call") hints["openWorldHint"] = false;
+        // The listed tools stay on this PC (they read and write Martlet's own files and windows), except the two finders, which
+        // send the query to VRoid Hub, GitHub and DuckDuckGo.
+        if (entry.Name is "character_find_looks" or "character_find_on_web") hints["openWorldHint"] = true;
+        else if (entry.Name != "martlet_call") hints["openWorldHint"] = false;
         tool["annotations"] = hints;
         return tool;
     }
@@ -183,7 +214,8 @@ internal sealed partial class McpServer
         "Martlet is a desktop AI companion for Windows: a character with a personality, a look (a Live2D or VRM model) and a voice " +
         "that you talk with. This server (\"martlet\") reads and changes the Martlet on this PC and runs its diagnostics.\n" +
         "Start with martlet_guide: it gives the common tasks step by step and lists every tool.\n" +
-        "- Characters: characters_list, character_create (from a description or a SillyTavern/Chub character card), character_update, " +
+        "- Characters: characters_list, character_find_looks (models online for a character you name), character_create (from a " +
+        "description or a SillyTavern/Chub character card), character_update, " +
         "character_use, character_delete.\n" +
         "- Settings: settings_get, settings_schema, settings_set (personalities, replies, prompts, memory).\n" +
         "- The running app: ui_connect, ui_snapshot, ui_click and the other ui_* tools.\n" +
@@ -291,6 +323,16 @@ internal sealed partial class McpServer
             "Or give cardPath: an absolute path to a SillyTavern or Chub character card (PNG, JSON or CHARX).",
             "Add look and voice from characters_list to give it a body and a voice. Martlet becomes the new character at once unless use is false.",
             "New looks (Live2D or VRM models) and new voices (from a recording) are added in the app: Companion › Character and Companion › Voice."
+        ]),
+        new("characters", "Make a character from a name, with a look found online", [
+            "Ask the owner which character they want (for example a character from a game or an anime, or an original one they describe).",
+            "Call character_find_looks with that name. Show the owner the looks: name, creator, source, license and the conditions of use.",
+            "Write the personality yourself: who the character is, how it talks and how it treats the owner (120 to 250 words, \"You are ...\").",
+            "Call character_create with name, personality and look: the key of the look the owner chose (vroidhub:<id> or osa:<project>/<avatar>).",
+            "A vroidhub: look needs the owner's VRoid Hub account linked in the app (Account › Linked services); vroid_hub_status says whether it is.",
+            "Nothing usable found, or the character needs a voice? Call character_find_on_web: it gives web pages and site searches. The owner " +
+                "downloads a model or a voice clip they may use and adds it in the app (Companion › Character › Add a character; Companion › Voice › Add a voice).",
+            "Or let the owner do it all in the app: Companion › Character › Find a character."
         ]),
         new("characters", "Change, switch or delete a character", [
             "character_update changes a character's name, personality, look or voice.",

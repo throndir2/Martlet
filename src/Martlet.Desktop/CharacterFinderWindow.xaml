@@ -1,0 +1,88 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.CharacterFinderWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}" Title="Martlet - Find a character"
+        Width="760" MinWidth="520" Height="820" WindowStartupLocation="CenterOwner"
+        AutomationProperties.AutomationId="CharacterFinderWindow">
+    <DockPanel Margin="26,20">
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="CharacterFinderStatus"/>
+            <Button Content="_Close" IsCancel="True" Click="Close_Click" HorizontalAlignment="Right" MinWidth="100" Margin="0,10,0,0"
+                    AutomationProperties.AutomationId="CharacterFinderClose"/>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Find a character" Style="{DynamicResource SectionHeading}"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,4,0,0"
+                           Text="Name a character. Martlet writes its personality with your Thinking model and looks for a 3D model of it on VRoid Hub and Open Source Avatars. Choose a look, check the creator's conditions, then use it."/>
+                <Label Content="_Who should Martlet be?" Target="{Binding ElementName=QueryText}" Padding="0,12,0,4"/>
+                <DockPanel>
+                    <Button x:Name="SearchButton" Content="_Search" Click="Search_Click" IsDefault="True" Style="{DynamicResource PrimaryButton}"
+                            DockPanel.Dock="Right" MinWidth="100" Margin="8,0,0,0" AutomationProperties.AutomationId="CharacterFinderSearch"/>
+                    <TextBox x:Name="QueryText" MaxLength="100" AutomationProperties.AutomationId="CharacterFinderQuery"
+                             AutomationProperties.Name="Who should Martlet be?"/>
+                </DockPanel>
+                <Label Content="_Notes (optional): where they are from, how they talk" Target="{Binding ElementName=NotesText}" Padding="0,10,0,4"/>
+                <TextBox x:Name="NotesText" MaxLength="400" TextWrapping="Wrap" AutomationProperties.AutomationId="CharacterFinderNotes"
+                         AutomationProperties.Name="Notes"/>
+
+                <TextBlock Text="VRoid Hub" FontWeight="SemiBold" FontSize="15" Margin="0,16,0,4"/>
+                <DockPanel>
+                    <Button x:Name="LinkButton" Content="_Link VRoid Hub..." Click="Link_Click" DockPanel.Dock="Right" Margin="8,0,0,0"
+                            AutomationProperties.AutomationId="CharacterFinderLink"/>
+                    <TextBlock x:Name="VRoidHubText" TextWrapping="Wrap" VerticalAlignment="Center" Style="{DynamicResource Muted}"
+                               AutomationProperties.AutomationId="CharacterFinderVRoidHub"/>
+                </DockPanel>
+
+                <DockPanel Margin="0,16,0,4">
+                    <Button x:Name="WriteButton" Content="_Write again" Click="Write_Click" DockPanel.Dock="Right" Margin="8,0,0,0"
+                            AutomationProperties.AutomationId="CharacterFinderWrite"/>
+                    <Label Content="_Personality" Target="{Binding ElementName=PersonalityText}" FontWeight="SemiBold" FontSize="15" Padding="0"
+                           VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBox x:Name="PersonalityText" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" MaxHeight="260"
+                         VerticalScrollBarVisibility="Auto" MaxLength="100000" AutomationProperties.AutomationId="CharacterFinderPersonality"
+                         AutomationProperties.Name="Personality"/>
+                <TextBlock x:Name="PersonalityStateText" TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,4,0,0"
+                           AutomationProperties.AutomationId="CharacterFinderPersonalityState"/>
+
+                <TextBlock Text="Looks" FontWeight="SemiBold" FontSize="15" Margin="0,16,0,4"/>
+                <TextBlock x:Name="ResultsText" TextWrapping="Wrap" Style="{DynamicResource Muted}"
+                           AutomationProperties.AutomationId="CharacterFinderResults" Text="Search to see looks."/>
+                <StackPanel x:Name="ResultRows" Margin="0,8,0,0"/>
+                <Button x:Name="NoLookButton" Content="Use without a new _look" Click="NoLook_Click" HorizontalAlignment="Left" Margin="0,8,0,0"
+                        AutomationProperties.AutomationId="CharacterFinderNoLook"/>
+
+                <TextBlock Text="Not found? Look for a model on the web" FontWeight="SemiBold" FontSize="15" Margin="0,20,0,4"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
+                           Text="These pages may have a model of the character (VRM, Live2D, MMD or VRChat). Martlet doesn't download them: open a page, check the creator's terms, download a model you may use (unzip it if needed), then add its .vrm file or Live2D .model3.json."/>
+                <TextBlock x:Name="WebModelsText" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.AutomationId="CharacterFinderWebModels"
+                           Text="Martlet looks on the web by itself when it finds no look it can use."/>
+                <StackPanel x:Name="WebModelRows" Margin="0,6,0,0"/>
+                <WrapPanel x:Name="ModelSearchLinks" Margin="0,4,0,0"/>
+                <WrapPanel Margin="0,6,0,0">
+                    <Button x:Name="WebModelsButton" Content="Search the web for _models" Click="WebModels_Click" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CharacterFinderWebModelsSearch"/>
+                    <Button x:Name="AddModelButton" Content="_Add a model you downloaded..." Click="AddModel_Click"
+                            AutomationProperties.AutomationId="CharacterFinderAddModel"/>
+                </WrapPanel>
+
+                <TextBlock Text="Voice" FontWeight="SemiBold" FontSize="15" Margin="0,20,0,4"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
+                           Text="Martlet can speak in a character's voice from a short recording, with a voice engine that copies voices (Companion › Voice). It doesn't find voices by itself: these pages may have recordings of the character. Download a clean clip of the character speaking (5 to 30 seconds, one voice, no music), then add it. A character's voice belongs to its voice actor and studio: use it only for yourself, and only where their terms allow it."/>
+                <TextBlock x:Name="WebVoicesText" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.AutomationId="CharacterFinderWebVoices"
+                           Text="Search to see pages with recordings."/>
+                <StackPanel x:Name="WebVoiceRows" Margin="0,6,0,0"/>
+                <WrapPanel x:Name="VoiceSearchLinks" Margin="0,4,0,0"/>
+                <WrapPanel Margin="0,6,0,0">
+                    <Button x:Name="WebVoicesButton" Content="Search the web for _voice clips" Click="WebVoices_Click" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CharacterFinderWebVoicesSearch"/>
+                    <Button x:Name="AddVoiceButton" Content="Add a voice clip you _downloaded..." Click="AddVoice_Click"
+                            AutomationProperties.AutomationId="CharacterFinderAddVoice"/>
+                </WrapPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</local:ThemedWindow>
