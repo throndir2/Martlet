@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **VRM characters play motion clips**: a VRM character can now play VRM Animation clips (`.vrma`), such as motions made with HY-Motion. A clip blends in, plays once and gives the body back to the character's relaxed pose and breathing, while its mouth, blinking, eyes and touch keep working. The character stays in its window even when a clip walks. Martlet's MCP server can play a `.vrma` file on the shown character with `character_animation`. ([#818](https://github.com/throndir2/Martlet/pull/818))
+
 ## [0.73.0] - 2026-10-12
 
 ### Added

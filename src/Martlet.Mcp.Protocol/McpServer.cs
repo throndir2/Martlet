@@ -281,11 +281,33 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "breathing isn't read), renderer, idle, breathing (phase 0 to 1 of one breath; inhale, how full the chest is, 0 to 1; " +
             "perMinute), arms (left and right: fromDown, the upper arm's angle from straight down, and elbow, its bend, in degrees " +
             "measured on the posed bones), curl (left and right: the middle finger's curl in degrees, 0 straight), sway (the " +
-            "spine's slow sideways lean, degrees) and bones (head, neck, shoulders, upper arms, hands and upper legs: x, y as " +
-            "fractions of the character overlay's drawing, +y down). summary gives whether it idled, the inhale, perMinute, arm, " +
-            "curl and sway ranges (least, most) and how far each bone moved (x, y). Reading changes nothing, so it needs no " +
+            "spine's slow sideways lean, degrees), bones (head, neck, shoulders, upper arms, hands and upper legs: x, y as " +
+            "fractions of the character overlay's drawing, +y down), animation (the VRMA clip that plays now: name, time, " +
+            "duration, weight; null when none) and clips (the clips the character keeps). summary gives whether it idled, the " +
+            "inhale, perMinute, arm, curl and sway ranges (least, most), the animations seen playing with their animationWeight " +
+            "range and how far each bone moved (x, y). Reading changes nothing, so it needs no " +
             "--allow-ui-effects.", new
         {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
+        Tool("character_animation", "Play a VRM Animation clip (.vrma: binary glTF with VRMC_vrm_animation 1.0) on the showing VRM " +
+            "character, through the character overlay's UI Automation (MoveAvatar's value \"animation:{...}\"). path is the full " +
+            "path of a .vrma file on this PC (at most 4 MB and 120 seconds); the renderer keeps the clip as name (default: the " +
+            "file's name; 1 to 128 characters) while the model stays loaded, at most 16 clips, the oldest going first. Without " +
+            "path it plays the clip kept as name. play (default true) plays it once: it blends in over the idle pose, then gives " +
+            "the body back to the idle pose, breathing and sway by its end; lip-sync, blinking, the look, expressions and touches " +
+            "keep working. inPlace (default true) keeps the hips at rest across the ground and moves them only up and down, so a " +
+            "clip that walks or drifts keeps the character in its window. Returns played (n, name, kept, started, duration in " +
+            "seconds, clips: every clip kept, file, and reason when it didn't start) and, with samples (1 to 60) gapMs apart " +
+            "(default 250), pose: character_pose's readings, whose animation says which clip plays (name, time, duration, " +
+            "weight: how much of the body it has) and clips the clips kept. It changes the character, so it needs " +
+            "--allow-ui-effects.", new
+        {
+            path = new { type = "string" },
+            name = new { type = "string", minLength = 1, maxLength = 128 },
+            play = new { type = "boolean" },
+            inPlace = new { type = "boolean" },
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
@@ -2633,6 +2655,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_animation" => await desktop.AnimateCharacterAsync(OptionalString(arguments, "path"), OptionalString(arguments, "name"),
+                    OptionalBool(arguments, "play") ?? true, OptionalBool(arguments, "inPlace") ?? true, OptionalInt(arguments, "samples"),
+                    OptionalInt(arguments, "gapMs")),
                 "character_zones" => await desktop.ZonesCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_mouth" => await desktop.MouthCharacterAsync(MouthLevels(arguments), OptionalInt(arguments, "stepMs"),
                     OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),

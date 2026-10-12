@@ -143,6 +143,7 @@ internal sealed partial class RendererWindow : Window
         viewport.PlayVoice = PlayVoice;
         viewport.ReadLook = ReadLook;
         viewport.ReadZones = ReadZones;
+        viewport.PlayAnimation = PlayAnimationFile;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -1161,6 +1162,81 @@ internal sealed partial class RendererWindow : Window
     private int zonesId;
     private int? zonesPending;
 
+    private int animationId;
+    private (int Id, string File)? animationPending;
+
+    /// <summary>Gives the page a VRMA clip from Martlet (<see cref="RendererAnimation"/>) to keep and play, and says what it did.
+    /// A name, base64 or clip that isn't valid is only "not started" with the reason; it never stops the character.</summary>
+    private async Task<RendererAnimationResult> AnimationAsync(RendererAnimation request)
+    {
+        var name = request.Name ?? "";
+        RendererAnimationResult Refused(string reason) => new(false, false, name, 0, [], reason);
+        if (!VrmAnimationClip.IsValidName(name))
+            return Refused($"A clip name is 1 to {VrmAnimationClip.MaximumNameLength} characters without control characters.");
+        if (request.Clip is { } clip)
+        {
+            if (clip.Length > (VrmAnimationClip.MaximumBytes + 2) / 3 * 4) return Refused("The clip is too large.");
+            try { VrmAnimationClip.Inspect(Convert.FromBase64String(clip)); }
+            catch (FormatException) { return Refused("The clip isn't valid base64."); }
+            catch (InvalidDataException error) { return Refused(error.Message); }
+        }
+        var answer = await BrowserAsync("animation", new { name, clip = request.Clip, play = request.Play, inPlace = request.InPlace });
+        var result = CharacterAnimationReading.From(answer, name);
+        ErrorLog.Info($"VRMA clip '{name}': {(result.Started ? "started" : result.Kept ? "kept" : "not kept")}" +
+            (result.Reason is { } reason ? $" ({reason})" : "") + ".");
+        return result;
+    }
+
+    /// <summary>Gives the page a VRMA clip from a file on this PC (Martlet's MCP character_animation, through UI Automation), or
+    /// plays the clip it keeps by <paramref name="name"/> without a file. The answer arrives unprompted (see
+    /// <see cref="AnimationAnswered"/>); a file that can't be read or isn't a usable clip is only "not started".</summary>
+    private void PlayAnimationFile(string? name, string? path, bool play, bool inPlace)
+    {
+        var id = ++animationId;
+        var file = path is null ? null : Path.GetFileName(path);
+        name ??= VrmAnimationClip.NameOf(path!);
+        void Refuse(string reason) => viewport.LastAnimation = CharacterAnimationReading.Json(new(false, false, name, 0, [], reason), id, file);
+        if (browser.CoreWebView2 is null || failure.Failed || closed) { Refuse("The character isn't showing."); return; }
+        if (!VrmAnimationClip.IsValidName(name)) { Refuse("The clip's name isn't valid."); return; }
+        string? clip = null;
+        if (path is not null)
+        {
+            try
+            {
+                var info = new FileInfo(path);
+                if (!info.Exists) { Refuse("The file doesn't exist."); return; }
+                if (info.Length > VrmAnimationClip.MaximumBytes) { Refuse("The file is too large for a VRMA clip."); return; }
+                var bytes = File.ReadAllBytes(path);
+                VrmAnimationClip.Inspect(bytes);
+                clip = Convert.ToBase64String(bytes);
+            }
+            catch (InvalidDataException error) { Refuse(error.Message); return; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            { Refuse("The file can't be read."); return; }
+        }
+        animationPending = (id, file ?? "");
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "animation", data = new { id, name, clip, play, inPlace } },
+                RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        { animationPending = null; Refuse("The character's page couldn't take the clip."); }
+    }
+
+    /// <summary>The page's answer about a clip from a file, remembered for UI Automation; a stale or malformed one is ignored and
+    /// never fails the renderer.</summary>
+    private void AnimationAnswered(JsonElement answer)
+    {
+        if (animationPending is not { } pending || answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("id", out var id) ||
+            id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) || number != pending.Id) return;
+        animationPending = null;
+        var result = CharacterAnimationReading.From(answer, "");
+        viewport.LastAnimation = CharacterAnimationReading.Json(result, number, pending.File.Length > 0 ? pending.File : null);
+        ErrorLog.Info($"VRMA clip '{result.Name}' from Martlet's MCP: {(result.Started ? "started" : result.Kept ? "kept" : "not kept")}" +
+            (result.Reason is { } reason ? $" ({reason})" : "") + ".");
+    }
+
     /// <summary>Asks the page where each area of the character's touch zones is now, as Martlet last gave them ("zoneview";
     /// Martlet's MCP character_zones, through UI Automation). Its answer arrives unprompted (see <see cref="ZonesAnswered"/>).
     /// Reading it changes nothing on the character.</summary>
@@ -1646,6 +1722,12 @@ internal sealed partial class RendererWindow : Window
                         ZonesAnswered(zonesReading);
                         return;
                     }
+                    if (document.RootElement.TryGetProperty("animationPlayed", out var animationPlayed))
+                    {
+                        // Unsolicited answer to a clip from a file (MCP's character_animation); never a command reply.
+                        AnimationAnswered(animationPlayed);
+                        return;
+                    }
                     failure.ThrowIfFailed();
                     response?.TrySetResult(document.RootElement.Clone());
                 }
@@ -1678,8 +1760,13 @@ internal sealed partial class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "place" or "camera" or "snapshot" or "zones" or "eyes" or "zoneview"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "place" or "camera" or "snapshot" or "zones" or "eyes" or "zoneview" or "animation"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                if (message.Kind == "animation")
+                {
+                    await ReplyAsync("animation", await AnimationAsync(RendererProtocol.Data<RendererAnimation>(message)));
+                    continue;
+                }
                 if (message.Kind == "eyes")
                 {
                     await ReplyAsync("eyes", await EyesAsync(message));
@@ -1814,7 +1901,7 @@ internal sealed partial class RendererWindow : Window
         failure.ThrowIfFailed();
         response = new(TaskCreationOptions.RunContinuationsAsynchronously);
         browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind, data }, RendererProtocol.Json));
-        var result = await response.Task.WaitAsync(TimeSpan.FromSeconds(kind switch { "load" => 30, "picture" => 15, _ => 2 }), lifetime.Token);
+        var result = await response.Task.WaitAsync(TimeSpan.FromSeconds(kind switch { "load" => 30, "picture" => 15, "animation" => 10, _ => 2 }), lifetime.Token);
         failure.ThrowIfFailed();
         if (result.TryGetProperty("error", out _)) throw new InvalidDataException("Browser rejected the selected resource or controls.");
         return result;

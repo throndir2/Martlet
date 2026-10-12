@@ -7,7 +7,9 @@ namespace Martlet.Avatar.RendererHost;
 /// The page's reading of what the character's idle body does (Martlet's MCP character_pose reads it): for a VRM, how far into
 /// a breath it is and how full the chest is, the breaths a minute, each arm's angle from straight down and its elbow's bend,
 /// how far each hand's middle finger curls and the sway (degrees), and where its head, shoulders, hands and hips are, as
-/// fractions of the character's surface (+y down), like a tap. Kept bounded and typed for UI Automation.
+/// fractions of the character's surface (+y down), like a tap, with the VRMA clip that plays now (its name, seconds into it, its
+/// length and how much of the body it has; null when none) and the clips kept for the model. Kept bounded and typed for UI
+/// Automation.
 /// </summary>
 internal static class CharacterPoseReading
 {
@@ -36,6 +38,22 @@ internal static class CharacterPoseReading
                 if (points.TryGetProperty(name, out var point) && point.ValueKind == JsonValueKind.Object &&
                     Numbers(point, "x", "y") is { Count: 2 } place) bones[name] = place;
         reading["bones"] = bones;
+        // The VRMA clip that plays now (null when none) and the clips kept for the model.
+        JsonObject? animation = null;
+        if (answer.TryGetProperty("animation", out var playing) && playing.ValueKind == JsonValueKind.Object &&
+            playing.TryGetProperty("name", out var clipName) && clipName.ValueKind == JsonValueKind.String &&
+            Martlet.Avatar.Hosting.VrmAnimationClip.IsValidName(clipName.GetString()))
+        {
+            animation = new JsonObject { ["name"] = clipName.GetString() };
+            foreach (var (property, measured) in Numbers(playing, "time", "duration", "weight")) animation[property] = measured?.DeepClone();
+        }
+        reading["animation"] = animation;
+        var clips = new JsonArray();
+        if (answer.TryGetProperty("clips", out var kept) && kept.ValueKind == JsonValueKind.Array)
+            foreach (var clip in kept.EnumerateArray().Take(Martlet.Avatar.Hosting.VrmAnimationClip.MaximumKept))
+                if (clip.ValueKind == JsonValueKind.String && Martlet.Avatar.Hosting.VrmAnimationClip.IsValidName(clip.GetString()))
+                    clips.Add(clip.GetString());
+        reading["clips"] = clips;
         return reading.ToJsonString();
     }
 
