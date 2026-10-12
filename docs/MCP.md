@@ -6087,15 +6087,20 @@ credentials.
 starts](CONVERSATION.md#greeting-when-martlet-starts) with the production code
 (`Greetings`, `ConversationHistory`, `BackgroundJobs`, `UnpromptedSpeech`) and
 fixture facts: an empty record giving no last conversation, the newest
-conversation on this PC read from a real conversation record in a temporary
-folder (a newer Telegram chat left out; the folder is deleted afterwards), the
-time and part of the day, only the reminders due in the next 12 hours, the open
-apps with the one in front first and each once, the counts-only line the log
-and `GreetingStatus` use (*the time of day, your last conversation, 1 reminder
-coming up and 3 open apps*), the message when Martlet greets on its own and the
-notes when the user talks first, said once, and let go (*too_old*) after
-waiting 10 minutes. `passed` and each step's `passed` and `detail`. No model,
-network or credentials.
+conversation on this PC and a newer Telegram chat (only when it is newer) read
+from a real conversation record in a temporary folder (deleted afterwards),
+which names count as a real name (*Sam Rivera* gives *Sam*; *mozar*,
+*xXDarkLordXx*, *gamer_42*, *sam@example.com*, *Admin* and *J. Smith* give
+none), the time, part of the day and weekend, a special day (*Halloween*), a
+reminder missed while Martlet wasn't running, only the reminders due in the
+next 12 hours, a Martlet update, the open apps with the one in front first and
+each once, the counts-only line the log and `GreetingStatus` use (*the time of
+day, your name, your last conversation, your last chat in a messaging app, 1
+missed reminder, 1 reminder coming up, the update and 3 open apps*), the
+message when Martlet greets on its own (in character, or `[pass]` when the
+character wouldn't greet) and the notes when the user talks first, said once,
+and let go (*too_old*) after waiting 10 minutes. `passed` and each step's
+`passed` and `detail`. No model, network or credentials.
 
 `check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a
 data directory (optional absolute `dataDirectory`): `settings` from
@@ -6950,8 +6955,11 @@ than `textBounds` (room for the caret), even under a longer caption or note.
 whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
 `minimized`, whether it is the `foreground` window (has the focus) and whether
 it is `clickThrough` (the mouse passes through it to the window under it,
-`WS_EX_TRANSPARENT`: the character overlay while click-through is on); with
-`layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
+`WS_EX_TRANSPARENT`: the character overlay while click-through is on), and
+`ownedBy`: the name of the Martlet window it belongs to and always stays in
+front of (a dialog over its window), or null for a window of its own that
+other Martlet windows can cover. `windows` (and `windowStates`) list the windows
+front first, in the order Windows stacks them; with `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
 shrink to fit), centered over the window it belongs to (or the main window),
@@ -9125,7 +9133,14 @@ it again; the log records *Turned off the speculative-decoding draft model*
 and the test run's output says so.
 The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
 with `enabled` (false while a modal dialog such as Audio setup blocks it), and
-the main window stays enabled while the talk window is open. Opening the talk
+the main window stays enabled while the talk window is open. It is also a
+window of its own (`ownedBy` null, with its own taskbar button): the main
+window can come in front of it, so you can watch the conversation while you
+change settings. Focus a main-window control (for example `ui_click` on
+`NavSettings` with `focus` true) and `windows` lists *Martlet* before the talk
+window; `OpenLiveConversation` (*Show conversation*) brings the talk window
+back in front, also when Windows doesn't let Martlet take the focus.
+Opening the talk
 window never opens the microphone or looks at the screen; `LiveMic` does the
 first with always listening on, `LiveVision` the second with vision on. For
 verification, save a fixed microphone that does not exist in the disposable
@@ -9468,11 +9483,13 @@ by default, saves `background.json`, so toggling it needs
 a conversation has warmed up (Start talking or Start listening on Home).*,
 *Martlet greets you once it has warmed up.*, *Martlet greets you as soon as
 it's free. It knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
-5:08 PM and greeted you. It knew the time of day, your last conversation and 3
-open apps.*, or why it didn't: the greeting was off, you were already talking,
-or it was let go; counts only, never app names, reminders or what was said;
+5:08 PM and greeted you. It knew the time of day, your name, the update and 3
+open apps.*, *... and stayed quiet: your character wouldn't greet you. ...*,
+or why it didn't: the greeting was off, you were already talking,
+or it was let go; counts only, never your name, app names, reminders or what was said;
 the talk window's task list shows the job as *Greeting* and the log says
-*Greeting: Martlet warmed up; greeting-1 waits...*) and
+*Greeting: Martlet warmed up; greeting-1 waits...*; seed `greeting.json` in the
+disposable data directory with an older `Version` to see *the update*) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
 when Windows' own Startup apps switch turned it off). On a PC that runs its own

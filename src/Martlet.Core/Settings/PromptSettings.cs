@@ -194,15 +194,17 @@ public static class PromptCatalog
         "remind them naturally and in character (\"...oh, and by the way, ...\"), without mentioning notes or tools.";
 
     public const string DefaultGreetingInstructions =
-        "(Martlet's note, not said by the user: Martlet just started on the user's PC and is ready to talk. This is your first " +
-        "moment together since then.)\n{facts}\n\nGreet the user now, on your own, in character: one or two short, warm " +
-        "sentences, like a friend saying hi when they sit down. Fit it to the time of day. Pick at most one or two of the facts " +
-        "above that are worth a word (a reminder coming up soon, what you talked about last time, what they have open) and " +
-        "never list them. Don't mention notes, tools or that Martlet just started.";
+        "(Martlet's note, not said by the user: Martlet just started on the user's PC and you are ready to talk. This is your " +
+        "first moment together since then.)\n{facts}\n\nIf your character would greet the user now, greet them on your own, " +
+        "briefly and fully in character: in your own voice, mood and manner, fit to the time of day. Not every character greets " +
+        "warmly: a shy, cold, grumpy or aloof one greets the way it really would, and one that wouldn't greet them at all replies " +
+        "with exactly [{silent}]. Call the user by name only if your character would. Bring up at most one or two of the facts " +
+        "above, and only ones your character would care about and would mention; never list them. Don't mention notes or tools.";
 
     public const string DefaultGreetingNotesInstructions =
         "Martlet just started on the user's PC, and this is your first moment together since then:\n{facts}\nAnswer what the " +
-        "user just said first; greet them briefly in the same reply where it fits, in character, without mentioning notes.";
+        "user just said first. Then, only if your character would, greet them briefly in the same reply, in your own manner, " +
+        "and bring up one of these facts only if your character would care about it. Don't mention notes.";
 
     public const string DefaultCheckInInstructions =
         "You help Martlet, a desktop companion app, in the background. Each message is one check about its companion character, " +
@@ -702,9 +704,12 @@ public static class PromptCatalog
         new(Greeting, ConversationGroup, "Greeting",
             "The message of the reply Martlet starts on its own once it has warmed up after it starts (Settings › Startup and " +
             "closing › Greet me), once each time Martlet starts. It stays in the conversation like a message. {facts} lists what " +
-            "Martlet knows then: the day and time, the end of your last conversation on this PC (while Memory keeps conversations), " +
-            "reminders due in the next 12 hours and the apps open on this PC.",
-            DefaultGreetingInstructions, ["facts"]),
+            "Martlet knows then: the day and time (a weekend or a special day such as Halloween), your name when it looks like a " +
+            "real name, the end of your last conversation on this PC and a newer Telegram or WhatsApp chat (while Memory keeps " +
+            "conversations), reminders that passed while Martlet wasn't running, reminders due in the next 12 hours, a Martlet " +
+            "update since it last ran and the apps open on this PC. {silent} is the word the model answers to stay quiet, when " +
+            "the character wouldn't greet you.",
+            DefaultGreetingInstructions, ["facts", "silent"]),
         new(GreetingNotes, ConversationGroup, "Greeting, with your message",
             "Goes in the notes of your first message instead, when you talk before Martlet greeted you. {facts} lists the same " +
             "facts.",

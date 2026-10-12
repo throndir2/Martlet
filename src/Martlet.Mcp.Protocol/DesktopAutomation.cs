@@ -1327,6 +1327,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new
         {
             processId,
+            // Front first (the order Windows stacks them), so it shows which window covers which.
             windows = windows.Select(window => window.Current.Name).ToArray(),
             // A window that is disabled can't take input, as when a modal dialog blocks it; the talk window never blocks Martlet.
             // Its frame shows whether it can be resized, minimized and maximized; with layout, where it is and the work area
@@ -1349,7 +1350,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["foreground"] = GetForegroundWindow() == handle,
                     // The mouse passes through the window to the one under it (WS_EX_TRANSPARENT): the character overlay while
                     // click-through is on.
-                    ["clickThrough"] = (GetWindowLongPtrW(handle, ExtendedStyleIndex) & TransparentStyle) != 0
+                    ["clickThrough"] = (GetWindowLongPtrW(handle, ExtendedStyleIndex) & TransparentStyle) != 0,
+                    // The Martlet window it belongs to and always stays in front of (a dialog over its window), or null for a
+                    // window of its own that another Martlet window can cover, such as the talk window.
+                    ["ownedBy"] = GetWindow(handle, OwnerWindow) is var owner && owner != 0
+                        ? windows.FirstOrDefault(other => other.Current.NativeWindowHandle == unchecked((int)owner))?.Current.Name
+                        : null
                 };
                 if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
                 return state;
@@ -1450,6 +1456,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     }
 
     [DllImport("user32.dll")] private static extern nint GetWindowLongPtrW(nint window, int index);
+    [DllImport("user32.dll")] private static extern nint GetWindow(nint window, uint command);
+    private const uint OwnerWindow = 4;
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetWindowRect(nint window, out NativeRect rect);
     [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint window, uint flags);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);

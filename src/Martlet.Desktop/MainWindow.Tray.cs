@@ -89,7 +89,6 @@ public partial class MainWindow
     {
         inTray = true;
         Hide();
-        openConversation?.UseOwnTaskbarButton();
         if (!background.HintShown)
         {
             tray!.ShowNotice("Martlet is still running",
@@ -226,9 +225,7 @@ public partial class MainWindow
         if (closing) return;
         if (openConversation is { } talk)
         {
-            if (!talk.IsVisible) talk.Show();
-            if (talk.WindowState == WindowState.Minimized) talk.WindowState = WindowState.Normal;
-            talk.Activate();
+            talk.ShowInFront();
             UpdateTray();
             return;
         }
