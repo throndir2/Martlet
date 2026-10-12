@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Ask your AI assistant to make Martlet forget something**: Martlet's MCP server has a new `memory_forget` tool. It deletes remembered facts that contain some text, even while Martlet is running, and your other computers forget them too. ([#PR](https://github.com/throndir2/Martlet/pulls))
+
 ### Changed
 
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))

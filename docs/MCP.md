@@ -1587,6 +1587,20 @@ or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
 characters per fact (`factCharacters`, 32,768) and store bytes (`storeBytes`,
 256 MiB). It contacts nothing.
 
+`memory_forget` deletes remembered facts the way Companion > Memory's Delete
+does (`DeleteManyAsync` in `src\Martlet.Memory`): each fact whose text contains
+`contains` (any case, at most 200 characters) or whose ID is in `ids` (at most
+1,000 GUIDs). It looks in every memory store of the data folder that
+`memory_status` lists, or only in `space` (a space ID, or `this-pc` for the
+store in the memory setting's folder). `preview: true` only counts the facts.
+Without `preview` it needs `--allow-changes`. A running desktop opens a store
+only during each operation, so the tool waits up to 15 seconds for the store to
+be free. Then the desktop's memory sync sees the facts gone and forgets them on
+the owner's other computers. It returns `preview`, `matched`, `deleted` and
+`spaces` (each with `space`, `facts`, `matched`, `deleted` and the matched fact
+`ids`), and never a fact's text. Without `dataDirectory`,
+`Invoke-MartletMcp.ps1` gives it a disposable data folder.
+
 `memory_recall_check` (optional `query`, optional `facts`: 1-100,000 strings)
 rehearses how recall ranks remembered facts
 ([Lexical retrieval and reranking](MEMORY.md#lexical-retrieval-and-reranking))
