@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Your conversation history is the same on all your computers**: what you said to Martlet on one computer is remembered on the others, and editing or deleting a message on one computer changes it everywhere. Each person's history goes only to the computers they are signed in on. ([#828](https://github.com/throndir2/Martlet/pull/828))
+
 ## [0.75.0] - 2026-10-12
 
 ### Added
