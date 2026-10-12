@@ -38,6 +38,9 @@ public sealed record LocalHostServiceState
     public string? Address { get; init; }
     /// <summary>Whether <see cref="Address"/> is still one of this PC's addresses (false after the network gave it another one).</summary>
     public bool? AddressOnThisPc { get; init; }
+    /// <summary>Whether the network holder publishes the gateway on every address of this PC, not only <see cref="Address"/>
+    /// (the owner set outside addresses in Outside access, so an overlay network such as Tailscale reaches it).</summary>
+    public bool? PublishedEverywhere { get; init; }
     public bool? Answering { get; init; }
     /// <summary>Installed roles (deploy/host/roles names), from the gateway's role records.</summary>
     public IReadOnlyList<string>? Roles { get; init; }
@@ -114,13 +117,14 @@ public static partial class LocalHostService
             System.Version.TryParse(words[1]["martlet-host:".Length..], out var parsed) ? parsed.ToString(3) : null;
 
         var holder = await DockerAsync(["container", "inspect", "-f",
-            "{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}}:{{.HostPort}} {{end}}{{end}}", Holder], token);
-        var address = holder.Exit == 0 ? holder.Output.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() : null;
-        IPEndPoint? endpoint = address is not null && IPEndPoint.TryParse(address, out var given) ? given : null;
+            "{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}}:{{.HostPort}} {{end}}{{end}}|{{index .Config.Labels \"martlet.home\"}}",
+            Holder], token);
+        var (endpoint, everywhere) = holder.Exit == 0 ? ParseHolder(holder.Output) : (null, false);
         var state = new LocalHostServiceState
         {
             Stage = running ? LocalHostServiceStage.Running : LocalHostServiceStage.Stopped, Version = version,
-            Address = endpoint?.ToString(), AddressOnThisPc = endpoint is null ? null : OnThisPc(endpoint.Address)
+            Address = endpoint?.ToString(), AddressOnThisPc = endpoint is null ? null : OnThisPc(endpoint.Address),
+            PublishedEverywhere = endpoint is null ? null : everywhere
         };
         if (!running) return state;
 
@@ -132,6 +136,23 @@ public static partial class LocalHostService
             return state with { Answering = answering, Problem = FirstLine(files.Error) ?? "The host service's files couldn't be read." };
         var (roles, hostId, network, desktops) = ParseFiles(files.Output);
         return state with { Answering = answering, Roles = roles, HostId = hostId, Network = network, Desktops = desktops };
+    }
+
+    /// <summary>The home address (ip:port) and whether the network holder publishes the gateway on every address of this PC
+    /// (once the owner set outside addresses, so an overlay network such as Tailscale reaches it), from the holder's port
+    /// bindings and its martlet.home label as ProbeAsync's inspect prints them ("192.168.1.20:9443 |" or ":9443 |192.168.1.20:9443").
+    /// A holder that publishes everywhere without the label has no known home address.</summary>
+    public static (IPEndPoint? Home, bool Everywhere) ParseHolder(string output)
+    {
+        var parts = output.Trim().Split('|', 2);
+        var binding = parts[0].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (binding is null) return (null, false);
+        if (binding.StartsWith(':') || binding.StartsWith("0.0.0.0:", StringComparison.Ordinal))
+        {
+            var label = parts.Length == 2 ? parts[1].Trim() : "";
+            return (IPEndPoint.TryParse(label, out var home) && home.Port > 0 ? home : null, true);
+        }
+        return (IPEndPoint.TryParse(binding, out var given) ? given : null, false);
     }
 
     /// <summary>The role records, host ID and network roster from the gateway's configuration, as ProbeAsync's one docker exec

@@ -736,8 +736,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "on 127.0.0.1 (pinned TLS) told to treat every connection as outside home, a desktop paired at home through its paired " +
             "client, and a stranger's pinned HTTPS client. Checks that pairing from outside is refused until the owner allows it, " +
             "guessing is locked out with a doubling Retry-After, routes anyone may call have a per-address budget, and the paired " +
-            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. Loopback only; " +
-            "writes nothing to disk.", new { }),
+            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. When this PC has " +
+            "a Tailscale address, a second gateway on this PC's home address gets an outside address and is reached through this " +
+            "PC's own Tailscale address (refused as outside home until sign-in is set up, then answering; it stops listening there " +
+            "when the outside address is removed); otherwise that step is reported in notRun. Writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
             "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI) on its own graphics card, and a " +
@@ -3660,7 +3662,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         return new
         {
             stage = state.Stage.ToString(), ready = state.Ready, version = state.Version, hostId = state.HostId,
-            published = state.Address is not null, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
+            published = state.Address is not null, publishedEverywhere = state.PublishedEverywhere, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
             roles = state.Roles, network = state.Network,
             desktops = state.Desktops.Select(d => new { id = d.Id, name = d.Name }).ToArray(),
             // The warning Companion › Voice and Devices show when this PC's voice engine shares the card with other roles.

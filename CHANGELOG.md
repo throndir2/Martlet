@@ -12,6 +12,10 @@ Each release's section here is also its notes on GitHub.
 
 - **Martlet says hello when it starts**: once Martlet has warmed up after it starts, it greets you on its own, in character and fit to the time of day. It may bring up your last conversation, a reminder coming up soon or what you have open. Turn it off in Settings › Startup and closing › *Greet me once Martlet has warmed up after it starts*. ([#796](https://github.com/throndir2/Martlet/pull/796))
 
+### Fixed
+
+- **Your laptop reaches your hosts through Tailscale away from home**: a host with outside addresses now also answers on its Tailscale address. Before, it answered only on its home address, so an overlay address such as `100.x.y.z:9443` never connected. A Linux or Mac host listens on its own Tailscale address and follows it if Tailscale starts late or changes. A Windows host (Docker Desktop) publishes its port on all of its addresses once you set outside addresses in Devices › the host › *Outside access*. At home the laptop still uses the home address first. Update Martlet on your hosts and set up sign-in on each one to use it. ([#797](https://github.com/throndir2/Martlet/pull/797))
+
 ## [0.70.1] - 2026-10-11
 
 ### Changed

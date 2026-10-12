@@ -1966,8 +1966,19 @@ host itself are signed into the roster by a member desktop's network sync; the
 reachability probe behind `outside_reachability_check` tells an answering, a
 closed and a wrong-key address apart; and a
 different computer with another key at the home address is skipped for the
-outside address. Not covered: a real internet source, a router port forward or
-an overlay.
+outside address. When this PC has a Tailscale address (100.64.0.0/10), a last
+step starts a second gateway (`lab-overlay`) on this PC's private home address
+and pairs a laptop there; nothing answers on this PC's Tailscale address at
+the gateway's port; the host gets an outside address (a MagicDNS name it can't
+resolve) and listens on its Tailscale address too
+(`GatewayOverlayListeners`); a pinned probe through that address is answered
+`403` (`outside.paused`: a Tailscale source is outside home and sign-in is off);
+the laptop sets up an owner account and the probe answers `200`; the audit's
+`outside_listeners` and the host log line `Listening on <address> too (overlay
+network) ...` name the address; and once the outside address is removed the
+host stops listening there. Without a Tailscale or a private address that step
+is skipped and the report's `notRun` says why. Not covered: a real internet
+source, a router port forward or another computer on the overlay network.
 
 `signin_selftest` (no arguments) rehearses [joining from outside home by
 signing in](NETWORK.md#joining-from-outside-home-by-signing-in) with the
@@ -3839,7 +3850,11 @@ Desktop (the one the host dashboard sets up) with the same production code as
 the dashboard (`LocalHostService` in `Martlet.Core`): `stage` (`DockerMissing`,
 `DockerNotRunning`, `NotSetUp`, `Stopped` or `Running`), `ready` (running,
 answering and still at one of this PC's addresses), `version` (the
-`martlet-host:x.y.z` image), `hostId`, `published`, `addressOnThisPc` (false
+`martlet-host:x.y.z` image), `hostId`, `published`, `publishedEverywhere`
+(true once the owner set outside addresses in *Outside access*: the network
+holder then publishes the gateway on every address of this PC, so an overlay
+network such as Tailscale reaches it; the home address comes from the holder's
+`martlet.home` label), `addressOnThisPc` (false
 once the network gave this PC another address than the one set up),
 `answering` (a TCP connect to the published port), `roles` (the installed role
 records, for example `["audio2face","f5","stt"]`; null until the gateway runs),
@@ -7149,7 +7164,8 @@ own Martlet runs its commands), `SelectedDeviceOutside`
 (in *Details*) returns its outside access in counts and choices only (*2 outside
 addresses; pairing codes from outside home refused; every connection treated as
 outside home.*, with *Outside access paused: sign-in is off; sign-in needed first
-(signin.not_set_up)* while it is), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
+(signin.not_set_up)* while it is, and *also listening on 100.101.102.103:9443
+(overlay network)* once a native host listens on its Tailscale address), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
 (`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
 default for Docker hosts; while sign-in isn't usable on the host its note
 `OutsideAccessBlockedReason` returns why, starting *Outside access paused: sign-in
