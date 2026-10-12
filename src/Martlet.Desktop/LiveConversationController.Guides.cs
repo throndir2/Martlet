@@ -27,6 +27,7 @@ internal sealed partial class LiveConversationController
         own.Add((AppGuideTools.ReadUpDefinition, (call, token) => ValueTask.FromResult(ReadUpOn(operation, call))));
         own.Add((AppGuideTools.SearchDefinition, SearchGuideAsync));
         own.Add((AppGuideTools.SkipDefinition, SkipGuideAsync));
+        own.Add((AppGuideTools.BriefDefinition, (call, token) => ValueTask.FromResult(UpdateGuideBrief(call))));
         guidance = Join(guidance, AppGuideTools.Instructions(configured.Prompts));
     }
 
@@ -202,18 +203,21 @@ internal sealed partial class LiveConversationController
         used = 0;
         if (Guides is not { On: true } guides || !guides.Library.Apps.Any(a => a.BuiltAt is not null)) return null;
         var earlier = string.Join("\n", sent.Where(message => message.Role == TextHistoryRole.User &&
-            message.Text.Contains(GuideRecall.Label, StringComparison.Ordinal)).Select(message => message.Text));
+            (message.Text.Contains(GuideRecall.Label, StringComparison.Ordinal) || message.Text.Contains(GuideBrief.Label, StringComparison.Ordinal)))
+            .Select(message => message.Text));
         if (guides.Recall(words, earlier.Length == 0 ? null : earlier, prompts) is not { } found) return null;
+        var brief = GuideRecall.BriefNotes(found.App, found.Brief, prompts);
         // Off the reply's path: the line is written after the request has gone.
-        ErrorLog.InfoLater(!found.Ready
+        ErrorLog.InfoLater((!found.Ready
             ? "App guides: the app's guide is still loading, so your message went without it."
             : found.Notes is null
                 ? $"App guides: nothing in the guide matched well enough ({found.Matched} weak matches, best relevance {found.Best:0.00}, " +
                   $"{found.Took.TotalMilliseconds:0.##} ms)."
                 : $"App guides: {found.Used} section{(found.Used == 1 ? "" : "s")} went with your message ({found.Matched} matched, best " +
-                  $"relevance {found.Best:0.00}, {found.Took.TotalMilliseconds:0.##} ms).");
+                  $"relevance {found.Best:0.00}, {found.Took.TotalMilliseconds:0.##} ms).") +
+            (brief is null ? "" : " The app's brief went with it."));
         used = found.Used;
-        return found.Notes;
+        return brief is null ? found.Notes : found.Notes is null ? brief : brief + "\n" + found.Notes;
     }
 
     private sealed class GuideProgress(Action<string> report) : IProgress<string>

@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Martlet learns more about your game**: after it reads a game's wiki, a Thinking pool helper writes a short brief (what the game is, how it plays, early tips and common mistakes) that Martlet keeps in mind when you talk about the game. With screen digests on, Martlet also notices where you are in the game, and when its guide has little about that place, it looks it up on wikis, Reddit search results and the web in the background. Martlet can also refresh the brief when you ask. ([#PR](https://github.com/throndir2/Martlet/pulls))
+
 ### Changed
 
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))

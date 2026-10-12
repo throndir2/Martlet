@@ -26,7 +26,7 @@ public sealed record AppGuideOfferCandidate(string Name, string Key, bool Game, 
 /// <summary>What a guide had for one message: the app, the notes (null when no section matched well enough), how many sections
 /// matched at all and went, the best relevance, how long the search took and whether the guide's index was ready (it is never
 /// waited for).</summary>
-public sealed record AppGuideRecall(string App, string? Notes, int Matched, int Used, double Best, TimeSpan Took, bool Ready);
+public sealed record AppGuideRecall(string App, string? Notes, int Matched, int Used, double Best, TimeSpan Took, bool Ready, string? Brief = null);
 
 /// <summary>The guide library of this PC (Companion › App guides, docs/APP_GUIDES.md): the store's library kept in memory, a
 /// searchable index only for the guides that can be used now (the app in front, an app named in the conversation, the guide
@@ -76,6 +76,9 @@ public sealed class AppGuideService : IDisposable
 
     /// <summary>Raised on any thread when the library, the app in front, reading up or an index changes.</summary>
     public event Action? Changed;
+
+    /// <summary>A guide was read and kept (reading up or Read again). Raised on the build's thread; handlers must return quickly.</summary>
+    public event Action<AppGuideBuild>? Built;
 
     /// <summary>The library as last read or saved (an empty one, with App guides off, until <see cref="LoadAsync"/>).</summary>
     public AppGuideLibrary Library { get { lock (gate) return library; } }
@@ -468,6 +471,17 @@ public sealed class AppGuideService : IDisposable
                 progress?.Report(text);
                 Changed?.Invoke();
             });
+            // What research added to the old guide (GuideAreaResearch) is kept when the wiki is read again.
+            IReadOnlyList<GuideChunk> researched = [];
+            if (entry.BuiltAt is not null)
+            {
+                try
+                {
+                    researched = [.. ((await Store.LoadGuideAsync(key, cancellationToken).ConfigureAwait(false))?.Chunks ?? [])
+                        .Where(GuideAreaResearch.IsResearched)];
+                }
+                catch (Exception error) when (error is not OperationCanceledException && error is not OutOfMemoryException) { }
+            }
             using var stop = new CancellationTokenSource();
             lock (gate) stopping = stop;
             // A long read keeps what it read every few minutes: the guide can be searched as it grows, and an end before the last
@@ -475,7 +489,7 @@ public sealed class AppGuideService : IDisposable
             async Task<bool> KeepSoFarAsync(GuideBuildOutcome sofar, CancellationToken token)
             {
                 said.Report("Saving what it read so far");
-                var kept = await KeepGuideAsync(key, shown, sofar, token).ConfigureAwait(false);
+                var kept = await KeepGuideAsync(key, shown, sofar, researched, token).ConfigureAwait(false);
                 return kept.Refused is null && !kept.Full;
             }
             GuideBuildOutcome outcome;
@@ -498,7 +512,7 @@ public sealed class AppGuideService : IDisposable
             if (problem is null)
             {
                 said.Report("Saving the guide");
-                saved = await KeepGuideAsync(key, shown, outcome, cancellationToken).ConfigureAwait(false);
+                saved = await KeepGuideAsync(key, shown, outcome, researched, cancellationToken).ConfigureAwait(false);
                 problem = saved.Refused ?? (saved.Guide is not { Chunks.Count: > 0 } ? "the pages it read had no text to keep" : null);
             }
             if (problem is not null)
@@ -507,8 +521,11 @@ public sealed class AppGuideService : IDisposable
                 return new(key, shown, 0, 0, 0, outcome.Sites, outcome.Failed, outcome.Bytes, clock.GetElapsedTime(started), problem);
             }
             var guide = saved.Guide!;
-            return new(key, shown, guide.Sources.Count, guide.Chunks.Count, saved.Entry?.Bytes ?? 0, guide.Sites, outcome.Failed, outcome.Bytes,
-                clock.GetElapsedTime(started), null);
+            var built = new AppGuideBuild(key, shown, guide.Sources.Count, guide.Chunks.Count, saved.Entry?.Bytes ?? 0, guide.Sites, outcome.Failed,
+                outcome.Bytes, clock.GetElapsedTime(started), null);
+            try { Built?.Invoke(built); }
+            catch (Exception error) when (error is not OutOfMemoryException) { }
+            return built;
         }
         finally
         {
@@ -544,14 +561,15 @@ public sealed class AppGuideService : IDisposable
     // Keeps what was read as the app's guide, the pages read first as far as the store holds them (Full: pages were left out),
     // and makes its index. Refused: why the store didn't keep it. A guide with no chunks isn't kept.
     private async Task<(AppGuide? Guide, AppGuideEntry? Entry, bool Full, string? Refused)> KeepGuideAsync(string key, string name,
-        GuideBuildOutcome outcome, CancellationToken token)
+        GuideBuildOutcome outcome, IReadOnlyList<GuideChunk> researched, CancellationToken token)
     {
         var pages = FileAppGuideStore.MaximumSources;
         while (true)
         {
-            var guide = GuideChunker.Guide(key, name, outcome, clock.GetUtcNow(), pages, FileAppGuideStore.MaximumChunks);
+            var guide = GuideChunker.Guide(key, name, outcome, clock.GetUtcNow(), pages, FileAppGuideStore.MaximumChunks - researched.Count);
             var full = guide.Sources.Count < outcome.Pages.Count;
             if (guide.Chunks.Count == 0) return (guide, null, full, null);
+            if (researched.Count > 0) guide = guide with { Chunks = [.. guide.Chunks, .. researched] };
             AppGuideLibrary read;
             await saving.WaitAsync(token).ConfigureAwait(false);
             try
@@ -622,6 +640,11 @@ public sealed class AppGuideService : IDisposable
         return null;
     }
 
+    /// <summary>The first <paramref name="max"/> sections of <paramref name="key"/>'s guide in page order (empty while its index
+    /// isn't ready).</summary>
+    public IReadOnlyList<GuideChunk> First(string key, int max) =>
+        indexes.TryGetValue(key, out var index) && index is LexicalGuideIndex lexical ? [.. lexical.Chunks.Take(Math.Max(0, max))] : [];
+
     /// <summary>The guide notes for the user's <paramref name="words"/>, from memory only: the guide of an app the words name, else
     /// of the app in front. Null when App guides are off or neither has a guide; <see cref="AppGuideRecall.Ready"/> false (and no
     /// notes) while its index is still being built. Sections already in <paramref name="earlier"/> (the notes the conversation
@@ -637,16 +660,94 @@ public sealed class AppGuideService : IDisposable
         if (entry is not { BuiltAt: not null } || unreadable.ContainsKey(entry.Key)) return null;
         var started = Stopwatch.GetTimestamp();
         Touch(entry.Key);
+        // The brief goes once per conversation: not when the notes the conversation carries have it already.
+        var brief = entry.Brief is { Length: > 0 } b && (earlier is null || !earlier.Contains(GuideRecall.BriefOpening(b), StringComparison.Ordinal)) ? b : null;
         if (!indexes.TryGetValue(entry.Key, out var index))
         {
             Warm(entry.Key);
-            return new(entry.Name, null, 0, 0, 0, Stopwatch.GetElapsedTime(started), false);
+            return new(entry.Name, null, 0, 0, 0, Stopwatch.GetElapsedTime(started), false, brief);
         }
         var hits = index.Search(words, GuideRecall.MaximumChunks * 3);
         var fresh = hits.Where(h => earlier is null || !earlier.Contains(Opening(h.Chunk.Text), StringComparison.Ordinal)).ToArray();
         var notes = GuideRecall.Notes(entry.Name, fresh, prompts: prompts);
         var used = notes is null ? 0 : Math.Min(GuideRecall.MaximumChunks, fresh.Count(h => h.Relevance >= GuideRecall.MinimumRelevance));
-        return new(entry.Name, notes, hits.Count, used, hits.Count == 0 ? 0 : hits.Max(h => h.Relevance), Stopwatch.GetElapsedTime(started), true);
+        return new(entry.Name, notes, hits.Count, used, hits.Count == 0 ? 0 : hits.Max(h => h.Relevance), Stopwatch.GetElapsedTime(started), true,
+            brief);
+    }
+
+    /// <summary>Keeps <paramref name="brief"/> as the brief of <paramref name="key"/>'s app (when it still has a guide); false when
+    /// it has none or the store refused it.</summary>
+    public async Task<bool> KeepBriefAsync(string key, string brief, CancellationToken cancellationToken = default)
+    {
+        var clean = GuideBrief.Clean(brief);
+        if (clean is null) return false;
+        var now = clock.GetUtcNow();
+        try
+        {
+            var next = await UpdateAsync(l => l with
+            {
+                Apps = [.. l.Apps.Select(a => a.Key == key && a.BuiltAt is not null ? a with { Brief = clean, BriefAt = now } : a)]
+            }, cancellationToken).ConfigureAwait(false);
+            return next.Apps.Any(a => a.Key == key && a.Brief == clean);
+        }
+        catch (Exception error) when (Refusal(error) is not null) { return false; }
+    }
+
+    /// <summary>Notes that <paramref name="area"/> of <paramref name="key"/>'s app was looked into now, with the
+    /// <paramref name="sections"/> research added (0: the guide had enough on it), newest last.</summary>
+    public async Task<bool> KeepAreaAsync(string key, string area, int sections, CancellationToken cancellationToken = default)
+    {
+        var now = clock.GetUtcNow();
+        try
+        {
+            await UpdateAsync(l => l with
+            {
+                Apps = [.. l.Apps.Select(a => a.Key == key ? a with { Areas = WithArea(a.Areas, new(area, now, sections)) } : a)]
+            }, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception error) when (Refusal(error) is not null) { return false; }
+    }
+
+    private static IReadOnlyList<GuideArea> WithArea(IReadOnlyList<GuideArea> areas, GuideArea area)
+    {
+        var kept = areas.Where(a => !a.Name.Equals(area.Name, StringComparison.OrdinalIgnoreCase)).Append(area).ToList();
+        return kept.Count <= GuideAreaResearch.MaximumAreas ? kept : kept[^GuideAreaResearch.MaximumAreas..];
+    }
+
+    /// <summary>Adds what research found on <paramref name="area"/> to <paramref name="key"/>'s guide as sections (replacing what an
+    /// earlier research on that area added; the oldest research goes first past <see cref="GuideAreaResearch.MaximumSections"/>),
+    /// notes the area and builds the guide's index again. Null when it was kept, else why not in a few plain words (Martlet is
+    /// reading up, the app has no guide, the store refused it).</summary>
+    public async Task<string?> AddResearchAsync(string key, string area, IReadOnlyList<GuideChunk> sections, CancellationToken cancellationToken = default)
+    {
+        if (!await reading.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return "Martlet is reading up";
+        try
+        {
+            AppGuide? guide;
+            try { guide = await Store.LoadGuideAsync(key, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (Refusal(error) is { } why) { return why; }
+            if (guide is null) return "it has no guide";
+            var page = GuideAreaResearch.Page(area);
+            var wiki = guide.Chunks.Where(c => !GuideAreaResearch.IsResearched(c)).ToList();
+            var research = guide.Chunks.Where(c => GuideAreaResearch.IsResearched(c) && c.Page != page).ToList();
+            research.AddRange(sections);
+            // The oldest research (first in the guide) goes first.
+            var room = Math.Min(GuideAreaResearch.MaximumSections, FileAppGuideStore.MaximumChunks - wiki.Count);
+            if (research.Count > room) research = research[^Math.Max(0, room)..];
+            var next = guide with { Chunks = [.. wiki, .. research] };
+            await saving.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try { await Store.SaveGuideAsync(next, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (Refusal(error) is { } why) { return why; }
+            finally { saving.Release(); }
+            await KeepAreaAsync(key, area, sections.Count, cancellationToken).ConfigureAwait(false);
+            var programs = Library.Apps.FirstOrDefault(a => a.Key == key)?.Programs ?? [];
+            indexes[key] = GuideIndex.Build(next.Chunks, [next.Name, .. programs]);
+            Touch(key);
+            Changed?.Invoke();
+            return null;
+        }
+        finally { reading.Release(); }
     }
 
     // Keeps why reading up failed on the app's entry; when even that can't be saved, the build's result still says it.
