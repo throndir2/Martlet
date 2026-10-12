@@ -323,6 +323,23 @@ public sealed class McpServerTests(ITestOutputHelper output)
                 prompts.GetProperty("withMessage").GetString());
             Assert.Equal("[Screen] You looked at the user's whole screen (active window \"ELDEN RING\" in ELDEN RING, full screen): " +
                 "a boss fight, low health.", prompts.GetProperty("kept").GetString());
+            Assert.Contains("\". Only small things changed since your last look 3 min ago. Nobody has used the keyboard or mouse for 6 min. " +
+                "Reply [pass]", prompts.GetProperty("glance").GetString());
+            // No look while nothing changed since the last one; every other look says how much changed.
+            var since = result.GetProperty("sinceLook").EnumerateArray().ToDictionary(c => c.GetProperty("scenario").GetString()!);
+            foreach (var (name, verdict, looks) in new[]
+            {
+                ("first look since watching started", "First", true), ("nothing moved", "Same", false), ("a clock ticked", "Same", false),
+                ("a pop-up in the same game", "Little", true), ("the window's title changed", "Little", true),
+                ("new words on the screen", "Changed", true), ("a new scene", "Changed", true), ("another program", "Changed", true)
+            })
+            {
+                Assert.Equal(verdict, since[name].GetProperty("since").GetString());
+                Assert.Equal(looks, since[name].GetProperty("looks").GetBoolean());
+                Assert.Equal(looks, since[name].GetProperty("changed").ValueKind == JsonValueKind.String);
+            }
+            Assert.Equal("It changed since your last look 3 min ago. Nobody has used the keyboard or mouse for 6 min.",
+                since["a new scene"].GetProperty("changed").GetString());
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

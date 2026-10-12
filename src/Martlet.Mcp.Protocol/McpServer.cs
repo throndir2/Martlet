@@ -1830,7 +1830,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "gets), rules (the full-screen rule on FIXTURE windows: borderless, maximized with and without a title bar, smaller " +
             "than its monitor, on a second monitor) and prompts (Companion > Prompts > Screen glance message and Active app " +
             "with your message as a data directory's settings.json fills them for a FIXTURE full-screen game, and the [Screen] " +
-            "line the conversation keeps). Reads no credentials and contacts nothing.", new
+            "line the conversation keeps) and sinceLook (the desktop's production LookChange on FIXTURE thumbnails: per " +
+            "scenario, since (First, Same, Little or Changed), looks (false while nothing changed since the last look, so " +
+            "Martlet doesn't look), picture (how much the thumbnail changed) and changed (the words a look's message gets)). " +
+            "Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),

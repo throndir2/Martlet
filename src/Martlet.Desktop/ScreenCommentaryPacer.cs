@@ -2,11 +2,12 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-internal enum PacerVerdict { Look, Busy, WarmingUp, AfterConversation, AfterComment, AfterLook, HourlyLimit, UserAway, NothingNew, BackingOff }
+internal enum PacerVerdict { Look, Busy, WarmingUp, AfterConversation, AfterComment, AfterLook, HourlyLimit, UserAway, NothingNew, BackingOff, Unchanged }
 
 /// <summary>Decides when Martlet takes a look at the screen, the way a friend in the room would: not while you are
-/// talking to it, not right after it said something, more likely when the picture just changed, rarely when nothing
-/// moves, never to an empty room, and never more than an hourly budget of looks (each look is one model request).
+/// talking to it, not right after it said something, more likely when the picture just changed, rarely when little moves,
+/// never again while nothing changed since its last look (<see cref="LookChange"/>), never to an empty room, and never more
+/// than an hourly budget of looks (each look is one model request).
 /// Whether a look turns into a remark is then the model's call: it answers [pass] when nothing is worth saying. While
 /// Martlet decides how chatty it is, <see cref="Retune"/> follows the level it picks without forgetting the looks so far.</summary>
 internal sealed class ScreenCommentaryPacer
@@ -117,7 +118,9 @@ internal sealed class ScreenCommentaryPacer
     internal TimeSpan? BackoffLeft => backoffUntil is { } until && clock.GetElapsedTime(until.At) < until.Wait
         ? until.Wait - clock.GetElapsedTime(until.At) : null;
 
-    internal PacerVerdict Decide(bool busy, TimeSpan userIdle)
+    /// <summary>Whether to look now. <paramref name="since"/> is how much changed since the last look: while nothing did, Martlet
+    /// doesn't look again (Unchanged), however long the quiet lasts.</summary>
+    internal PacerVerdict Decide(bool busy, TimeSpan userIdle, SinceLook since = SinceLook.First)
     {
         if (busy) return PacerVerdict.Busy;
         if (BackoffLeft is not null) return PacerVerdict.BackingOff;
@@ -129,6 +132,7 @@ internal sealed class ScreenCommentaryPacer
         if (lastLook is { } looked && clock.GetElapsedTime(looked) < Settings.AfterLook) return PacerVerdict.AfterLook;
         if (LooksThisHour >= Settings.LooksPerHour) return PacerVerdict.HourlyLimit;
         if (userIdle >= AwayAfter && novelty < 0.05) return PacerVerdict.UserAway;
+        if (LookChange.Holds(since)) return PacerVerdict.Unchanged;
         var chance = Settings.BaseChance + 0.5 * novelty;
         if (lastLook is null) chance += 0.5;
         else if (clock.GetElapsedTime(lastLook.Value) >= Settings.Boredom) chance += 0.25;

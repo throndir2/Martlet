@@ -36,7 +36,8 @@ your setup can't.
    while a look is with the model), and a short line under the
    talk window's status says what it sees (*Watching your whole screen.*) and
    only what changes that: a look in progress, why it is holding off (you seem
-   away, the hourly budget is used, a busy provider) or a failed look. Its
+   away, the hourly budget is used, a busy provider, *Nothing changed since the
+   last look.*) or a failed look. Its
    tooltip says how the last look went (*nothing to say*, *commented*), how
    many monitors the whole screen spans and what wanted your attention but
    wasn't looked at.
@@ -48,7 +49,13 @@ your setup can't.
    - not soon after its last remark (40 s to 4 min plus jitter) or its last
      look (25-90 s);
    - more likely right after the picture changes (a new scene, a death, a
-     menu), rarely when nothing moves;
+     menu), rarely when little moves;
+   - never again while nothing changed since its last look, however long the
+     quiet lasts: the same window and program, and the 16x9 thumbnail and the
+     text read on the screen all but the same (a clock that ticks, a blinking
+     cursor or a loading icon doesn't count). The model already saw that
+     picture, so an idle computer gets no looks and no remarks
+     (`LookChange` in the desktop);
    - never to an empty room: no keyboard/mouse input for 5 minutes and a still
      screen means you are away;
    - at most 12 / 24 / 45 looks per hour (Quiet / Normal / Chatty), because each
@@ -66,7 +73,13 @@ your setup can't.
    (monitors, windows, apps, layout, wallpaper or how busy it looks). It is
    also told that real
    friends stay quiet and to answer exactly `[pass]` unless something is worth a
-   remark, never to narrate the screen, repeat itself (its notes list what it
+   remark. The look's message says how much changed since the last look and
+   how long ago it was (*Only small things changed since your last look 3 min
+   ago.*) and, after a minute or more, how long nobody used the keyboard or
+   mouse. When nothing really changed (the pointer, a clock, a game or video
+   sitting idle), the model answers `[pass]`, however long it has been quiet:
+   it never speaks only to break a silence or to ask if you're still there. It
+   is also told never to narrate the screen, repeat itself (its notes list what it
    said in the last hour, each with when:
    [What you said lately](CONVERSATION.md#what-you-said-lately)) or read out
    private details. A new message, call or

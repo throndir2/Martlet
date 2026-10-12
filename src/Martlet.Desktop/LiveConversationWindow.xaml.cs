@@ -157,6 +157,9 @@ public partial class LiveConversationWindow : ThemedWindow
     private WatchSource watchSource = new(WatchKind.ActiveWindow);
     private bool watching, watchPaused = true, glancing, lookWanted;
     private ScreenCommentaryPacer? pacer;
+    // What the model saw at Martlet's last look (lookedLast), and at the look under way until its answer comes (lookedNow): while
+    // nothing changed since, Martlet doesn't look again, and each look tells the model how much changed (LookChange).
+    private LookedPicture? lookedLast, lookedNow;
     // The newest picture (it also goes with what you type or say while it is fresh) and when it was taken; a skipped capture
     // clears it, so an old picture never stands in for what is on screen now.
     private ScreenFrame? latestFrame;
@@ -866,6 +869,8 @@ public partial class LiveConversationWindow : ThemedWindow
             try { seen = Seen(frame, shot); }
             catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
                 System.Runtime.InteropServices.ExternalException) { }
+            // The reply sees the look's picture: later pictures are compared with it.
+            if (seen is not null) lookedLast = Looked(frame) ?? lookedLast;
         }
         if (about is not null) DropAttentionFrame();
         return seen is null ? (SeenNow(), null) : (seen, about);
@@ -2687,6 +2692,7 @@ public partial class LiveConversationWindow : ThemedWindow
         watching = true;
         lookWanted = false;
         pacer = new(ChattinessNow, clock);
+        lookedLast = lookedNow = null;
         nextGlance = clock.GetTimestamp();
         sight = lookNote = waitNote = captureNote = attentionNote = null;
         seeing = lookFailed = false;
@@ -2783,8 +2789,14 @@ public partial class LiveConversationWindow : ThemedWindow
         new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource, frame.App, frame.FullScreen,
             shot?.Version ?? 0, shot?.TakenAt);
 
+    // What a look at this picture saw, to compare later pictures with; null for a picture without a thumbnail.
+    private LookedPicture? Looked(ScreenFrame frame) => frame.Signature is { } signature
+        ? new(signature, $"{watchSource.Kind}|{watchSource.Id}", frame.Title, frame.App, frame.FullScreen, ReadText(), clock.GetTimestamp())
+        : null;
+
     /// <summary>The vision line under the status, kept short: what Martlet watches, then only a look in progress, why it is
-    /// holding off (you seem away, its break, a busy provider, something that wants your attention once you're done talking)
+    /// holding off (you seem away, its break, a busy provider, nothing changed since the last look, something that wants your
+    /// attention once you're done talking)
     /// or a look that failed. Paused vision shows nothing (the button says so); a problem shows here unless the status line
     /// already says it. The rest is in <see cref="VisionDetail"/>. It never contains window titles.</summary>
     private string VisionLine()
@@ -2972,13 +2984,14 @@ public partial class LiveConversationWindow : ThemedWindow
                 attention = null;
                 DropAttentionFrame();
             }
-            var verdict = pacer.Decide(busy, idle);
+            var verdict = pacer.Decide(busy, idle, LookChange.Compare(lookedLast, Looked(frame)));
             lookWanted = verdict == PacerVerdict.Look;
             waitNote = verdict switch
             {
                 PacerVerdict.UserAway => "Waiting until you're back.",
                 PacerVerdict.HourlyLimit => "Taking a break from looking.",
                 PacerVerdict.BackingOff => "The provider is busy; waiting before the next look.",
+                PacerVerdict.Unchanged => "Nothing changed since the last look.",
                 _ => null
             };
             if (!lookWanted) return;
@@ -3020,11 +3033,17 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             var image = frame.Encode();
+            // How much changed since the last look goes in the look's message, so the model stays quiet when nothing really did.
+            var picture = Looked(frame);
+            var changed = LookChange.Describe(LookChange.Compare(lookedLast, picture),
+                lookedLast is { } before ? clock.GetElapsedTime(before.At) : null, watchSource.IsScreen ? glancer.UserIdle : TimeSpan.Zero);
             // An address's host is not useful to the model; a camera's or window's name is, and so is the program in front. The
             // picture's version lets an image model's description of the same picture be used again.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChoice,
                 Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true,
-                screenText: ReadText(), app: frame.App, fullScreen: frame.FullScreen, picture: shot?.Version ?? 0, takenAt: shot?.TakenAt);
+                screenText: ReadText(), app: frame.App, fullScreen: frame.FullScreen, picture: shot?.Version ?? 0, takenAt: shot?.TakenAt,
+                changed: changed);
+            lookedNow = picture;
             if (about is not null) pacer?.NoteAttention();
             waitNote = null;
             return true;
@@ -3059,6 +3078,10 @@ public partial class LiveConversationWindow : ThemedWindow
         var trimmed = LookTrimmed(done.LookLeftOut);
         waitNote = null;
         lookFailed = false;
+        // A look the model answered is what later pictures are compared with; a failed one leaves the look before it.
+        var looked = lookedNow;
+        lookedNow = null;
+        if (done.Passed || status.Code is "runtime.Completed" or "runtime.Refused" or "commentary.interrupted") lookedLast = looked ?? lookedLast;
         if (done.Passed)
         {
             pacer?.NoteLook(false);
