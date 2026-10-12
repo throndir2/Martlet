@@ -948,6 +948,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (dataDirectory is not null) senseSetup = LoadSenseSetup(dataDirectory, poolAbilities);
         helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
+        StartMemoryUpkeep();
         StartMemoryBrief();
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
         if (singing is not null)
@@ -6060,6 +6061,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             playing = pcListener;
         }
         owned?.Cancel("conversation.closed");
+        StopMemoryUpkeep();
         StopMemoryBrief();
         StopRequests();
         Cancel(stopListening);

@@ -10,11 +10,13 @@ Open **Companion › Memory**.
 
 ## Facts
 
-The Memory window lets you turn memory on/off, choose the store location, list facts, add facts, choose retention, inspect provenance, edit/delete facts, purge expired facts and export after preview.
+The Memory window lets you turn memory on/off, choose the store location, list facts, add facts, choose retention, inspect provenance, edit/delete facts, purge expired facts and export after preview. **Show replaced facts** also lists facts that stopped being true: when a fact is corrected, Martlet keeps the old version as history with the date it was replaced, and never recalls it. Deleting a fact deletes its old versions too.
 
 ## Recall and remembering
 
 For accepted typed, push-to-talk or hands-free turns, Martlet queries a local lexical index and sends matching facts in notes. After a completed reply, the same Thinking model can make one extra text-only request to extract lasting facts. Paid providers may charge for that extra request.
+
+Each fact can have hidden search words (for "The user is vegetarian": diet, food, meat, cooking), so a question in other words still finds it. They are never sent as the fact's text. When you have a Thinking pool, a free pool member also tidies memory in the background: it adds missing search words, merges facts that say the same thing and keeps a fact a newer one made outdated as history. It never uses the model you talk to.
 
 Screen/camera glances and PC-audio notes are not remembered as facts.
 

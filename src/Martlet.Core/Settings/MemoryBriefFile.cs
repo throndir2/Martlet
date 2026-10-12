@@ -8,7 +8,7 @@ namespace Martlet.Core.Settings;
 /// <summary>The memory brief (docs/MEMORY.md, "The memory brief"): a short profile of the people Martlet talks with, written by
 /// a Thinking pool member from the remembered facts, or by the owner. It goes with the first message of each conversation. Kept
 /// in memory-brief.json in Martlet's data folder (the account's working copy) and shared between the owner's computers as the
-/// account setting <see cref="SharedKey"/>. <see cref="Basis"/> names the facts it was written from (their ID and revision, and
+/// account setting <see cref="SharedKey"/>. <see cref="Basis"/> names the facts it was written from (their ID and a digest of their words and whose they are, and
 /// the name of each person), so every computer can tell when facts changed enough to write it again. The text is private: it
 /// never goes to logs or status files.</summary>
 public sealed record MemoryBriefFile

@@ -60,7 +60,12 @@ public sealed class MemoryCheckInToolTests
             Call(MemoryToolSet.Update, $$"""{"id":"{{id}}","fact":"The user's dog is called Pepper."}"""), "Actions", default);
         Assert.Equal("Memory: updated.", updated.Output.Split('\n')[0]);
         var revision = (await fixture.Store.LoadAsync()).Settings!.Memory!.ConfigurationRevision;
-        Assert.Equal("The user's dog is called Pepper.", Assert.Single((await fixture.Memory.InspectAsync(revision)).Facts).Content);
+        var facts = (await fixture.Memory.InspectAsync(revision)).Facts;
+        Assert.Equal("The user's dog is called Pepper.", Assert.Single(facts, f => !f.IsHistory).Content);
+        // A correction keeps the earlier version as history, which find never lists.
+        Assert.Equal("The user's dog is called Biscuit.", Assert.Single(facts, f => f.IsHistory).Content);
+        var refound = await fixture.Controller.CheckInMemoryAsync(Call(MemoryToolSet.Find, """{"query":"Biscuit"}"""), "Actions", default);
+        Assert.Equal("Memory: found 0.", refound.Output.Split('\n')[0]);
 
         var refused = await fixture.Controller.CheckInMemoryAsync(Call(MemoryToolSet.Forget, """{"ids":["nope1234"]}"""), "Actions", default);
         Assert.True(refused.IsError);
