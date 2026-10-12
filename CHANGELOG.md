@@ -16,6 +16,7 @@ Each release's section here is also its notes on GitHub.
 ### Fixed
 
 - **Updates installed in the background restart in seconds again with the character on screen**: when you restarted into an update that Martlet had already installed while you kept using it, the full installer could still run with its progress window. That happened when a program Martlet had started (such as the character's renderer) was still closing. Martlet and the programs it starts no longer work inside Martlet's program folder, so the restart only switches folders. ([#820](https://github.com/throndir2/Martlet/pull/820))
+
 ## [0.73.0] - 2026-10-12
 
 ### Added

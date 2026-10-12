@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Installation;
 using Microsoft.Win32.SafeHandles;
 
 namespace Martlet.Desktop;
