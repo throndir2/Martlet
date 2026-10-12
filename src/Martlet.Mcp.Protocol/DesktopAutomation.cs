@@ -833,9 +833,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ID is kept from when Martlet asked first); ticking them saves guides\library.json,
         // so it needs --allow-ui-effects. Each app's name and line read through AppGuideName- and AppGuideStatus- below. The Add an
         // app boxes read as what is typed in them: an app's name, its program names and wiki addresses (ui_type and ui_set_text
-        // type there).
+        // type there). Each box's grey hint (AppGuideAddNameHint and the rest, Martlet's own fixed words) shows while it is empty;
+        // with layout, its bounds start where typed text's textBounds start.
         "AppGuidesNow", "AppGuidesDisclosure", "AppGuidesFront", "AppGuidesEmpty", "AppGuidesResult", "AppGuidesOn", "AppGuidesAsk",
-        "AppGuideAddName", "AppGuideAddPrograms", "AppGuideAddSites",
+        "AppGuideAddName", "AppGuideAddPrograms", "AppGuideAddSites", "AppGuideAddNameHint", "AppGuideAddProgramsHint", "AppGuideAddSitesHint",
         // Companion › Check-ins: how many check-ins are on and the Thinking pool member that takes them first, or why they can't
         // run ("CheckInsNow"), and the last check-in that ran, when, on which member and what came of it in a few words
         // ("CheckInsLast"; never what was said or answered). Each check-in's line reads through CheckInStatus- below.
