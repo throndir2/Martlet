@@ -15,8 +15,9 @@ what was said when you mention an earlier conversation (see
 Martlet remembers the same things on every computer of yours: facts travel
 through your paired hosts ([One memory on every computer](#one-memory-on-every-computer)),
 like the rest of Martlet ([CLUSTER](CLUSTER.md)), and each computer keeps them in
-its own local store. There is no embedding, vector database, cloud copy,
-backup or background timer beyond that sync. Screen and
+its own local store. There is no embedding, vector database, cloud copy or
+backup. Besides that sync, the only background work is the
+[memory brief](#the-memory-brief): a short profile written from the facts. Screen and
 camera glances are never remembered, and neither is
 [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays): recall and
 remembering read only the user's own words. This is internal functional evidence, not
@@ -389,13 +390,13 @@ above, but only after the reply finishes speaking and while no other reply runs.
 
 <a id="helper-jobs-on-the-thinking-pool"></a>
 **Helper jobs on the Thinking pool.** Remembering, naming a character's emotes,
-deciding its touch temperament, finding its touch zones and measuring its eyes
-are helper jobs. Each one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
+deciding its touch temperament, finding its touch zones, measuring its eyes and
+writing the [memory brief](#the-memory-brief) are helper jobs. Each one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
 member that can take it (text, or vision for touch zones and the eyes), so it does not
 compete with the reply or its prompt cache. Memory, naming, temperament and the
-eyes are low priority; touch zones are higher, because you wait for them. When no member
+eyes are low priority, and the memory brief is the lowest; touch zones are higher, because you wait for them. When no member
 can take a job, or the pool can't finish it, Martlet uses the conversation's
-Thinking model, after the reply finishes speaking. A job with a picture goes to
+Thinking model, after the reply finishes speaking (the memory brief only when that model is in the cloud). A job with a picture goes to
 the image model of its own instead while pictures go to it ([Image and audio
 models](SENSE_MODELS.md#helper-jobs-with-a-picture)). The desktop log names the
 route of each job, and MCP's `helper_jobs_status` shows the last route of each
@@ -527,6 +528,78 @@ everyone's (about no one in particular), as every fact was before voices.
 The library checks only the ID's form (1-64 ASCII letters, digits, `-` or `_`);
 it never reads the voice list. `memory_status` (MCP) counts the facts and whose
 they are from a data directory without opening the store.
+
+## The memory brief
+
+Facts are short, and a question often uses other words than the fact, so
+recall can miss a personal detail that matters. So Martlet also keeps a
+**memory brief**: a short profile of the user and the people they talk about,
+written from the remembered facts. It goes with the first message of each
+conversation, so the reply knows the important things even when recall finds
+nothing.
+
+- **What it is.** At most 1,500 characters of plain lines (the prompt asks for
+  under 200 words). First lines about the user, then one line for each other
+  person, starting with their name in brackets (`[Sam] ...`), as recall marks
+  whose a fact is. Facts of a forgotten voice are left out.
+- **How it goes with messages.** It goes in the notes of the message, after
+  the conversation's cached start, between `[MARTLET_MEMORY_BRIEF]` labels and
+  opened by Companion › Prompts › *Memory brief, with your message*. It goes
+  only when no earlier message that the request carries has it, so once a
+  conversation (again after *Refresh context*, or when the oldest messages are
+  let go). It never changes the instructions, so the start of every request
+  stays the same. The reply's path only reads the brief that is in memory:
+  nothing is read or waited for, so the first word comes no later. A Discord
+  call never gets it, because other people are in it. A message too long to
+  fit goes without it (after it lets go of earlier conversations and the app
+  guide's sections).
+- **Writing it.** A background job (`MemoryBriefService`) writes it with
+  Companion › Prompts › *Writing the memory brief*. The model gets the facts
+  the user saved first, then the newest, at most 300 facts and 9,000 bytes,
+  each with whose it is and its date, and the names the user goes by (their
+  own voices). The job is a helper job (`memory_brief`) at the Thinking pool's
+  lowest priority. Without a free pool member, it runs on the conversation's
+  Thinking model only once no reply runs or speaks and you aren't talking,
+  and only when that model is in the cloud. A Thinking model on this PC or on
+  a paired host keeps its prompt cache for the conversation, so then no brief
+  is written until a pool member can take it.
+- **When it is written.** About 30 seconds after facts change (remembering,
+  the Memory window, the memory sync), and 45 seconds after Martlet starts,
+  the job reads the facts while the conversation is quiet. It writes the
+  first brief once there are at least 3 facts. It writes it again when 3 facts
+  are new, when a person in it has a new name, or when a fact it was written
+  from is forgotten or changed. It writes at most once in 10 minutes (1 minute
+  after a forgotten fact) and 6 times an hour on each computer, and not within
+  2 minutes after it took a brief from another computer.
+- **A forgotten fact.** The brief records the facts it was written from (their
+  ID and revision). When one of them is forgotten or changed (including a fact
+  replaced by a newer one), the brief is not sent again until it is written
+  again without it. When no fact is left, the brief is cleared.
+- **Companion › Memory › Memory brief.** *Send a short profile of me with the
+  first message of each conversation* (on by default) turns it on or off: off,
+  it is neither written nor sent. The box shows the brief, and you can change
+  it: *Save my changes* keeps your own text, which Martlet never changes on
+  its own; clear the box and save to let Martlet write it again. *Write it
+  again* writes it from your memories now, also over your own text. The line
+  above says when it was written and from how many memories, or why it waits.
+- **One brief on all your computers.** The brief is kept in
+  `memory-brief.json` in the data folder and travels as each person's shared
+  setting `memory-brief` ([CLUSTER](CLUSTER.md#one-martlet-on-every-computer)):
+  the text, on or off, who wrote it and the facts it was written from. A
+  computer that takes another's brief sends it at once. With accounts, each
+  person has their own brief, and switching person gives this PC that person's
+  brief. Like the facts on the hosts, the brief is readable by every paired
+  device and is not encrypted end to end between desktops.
+- **The log** has counts and times only (`Memory brief: written from 42 facts
+  (812 characters).`, `Memory brief: went with your message`), never the
+  brief or a fact.
+
+Checked locally: `MemoryBriefTests` (Martlet.Desktop.Tests) and
+`MemoryBriefShareTests` (two simulated computers, Martlet.Core.Tests). Through
+MCP: `memory_brief_check` runs the production brief, helper-job router and
+shared setting on a disposable store with a fixture pool member (FIXTURE - NOT
+AI), and `memory_brief_status` reads `memory-brief.json` without the text. A
+brief written by a real model and two real computers are **NOT RUN**.
 
 ## Conversation history
 

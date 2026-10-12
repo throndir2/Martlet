@@ -10,13 +10,19 @@ internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobP
 {
     internal static ThinkingJobKind Kind(HelperJobKind kind) => kind switch
     {
-        HelperJobKind.Memory => ThinkingJobKind.Memory,
+        HelperJobKind.Memory or HelperJobKind.MemoryBrief => ThinkingJobKind.Memory,
         HelperJobKind.ActionNaming or HelperJobKind.Temperament => ThinkingJobKind.Naming,
         _ => ThinkingJobKind.TouchZones
     };
 
-    /// <summary>The pool priority of a helper kind when it isn't its pool kind's own: the eyes wait like the other helpers.</summary>
-    internal static ThinkingPriority? Priority(HelperJobKind kind) => kind == HelperJobKind.Eyes ? ThinkingPriority.Helper : null;
+    /// <summary>The pool priority of a helper kind when it isn't its pool kind's own: the eyes wait like the other helpers, and
+    /// the memory brief waits behind everything (it is never urgent).</summary>
+    internal static ThinkingPriority? Priority(HelperJobKind kind) => kind switch
+    {
+        HelperJobKind.Eyes => ThinkingPriority.Helper,
+        HelperJobKind.MemoryBrief => ThinkingPriority.Research,
+        _ => null
+    };
 
     internal static ThinkingCapability Needs(HelperCapability capability) =>
         capability == HelperCapability.Vision ? ThinkingCapability.Text | ThinkingCapability.Vision : ThinkingCapability.Text;
@@ -39,7 +45,7 @@ internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobP
             // The owner waits for touch zones and a vision model reads a picture first; memory and naming wait in line.
             Timeout = job.Kind == HelperJobKind.TouchZones ? TimeSpan.FromMinutes(3) : TimeSpan.FromMinutes(5),
             DropWhenStale = true,
-            MaxOutputTokens = job.Kind == HelperJobKind.Memory ? 1_024 : 4_096
+            MaxOutputTokens = job.Kind is HelperJobKind.Memory or HelperJobKind.MemoryBrief ? 1_024 : 4_096
         }, token).ConfigureAwait(false);
         if (result.Succeeded) return new(result.Model is { } model ? $"{result.Member} ({model})" : result.Member ?? "a pool member", result.Text, null);
         if (result.Outcome != ThinkingJobOutcome.NoMember)

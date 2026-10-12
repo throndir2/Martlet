@@ -563,6 +563,7 @@ NVIDIA Build and its old key.
 | `thinking-pool-choices` | Companion › Thinking pool's pool-wide choices: Backup for slow replies (Backup Thinking) and its wait, Busy pool (higher priority first, more important after stops, tries again) and Use the conversation's model when the pool is empty. It is a separate setting, so a choice changed on one PC never replaces the cloud models of another | Runs on (it can name this PC's own models) and the machines' own boxes |
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
+| `memory-brief` | The [memory brief](MEMORY.md#the-memory-brief) (`memory-brief.json`): its text, on or off, whether Martlet or the owner wrote it and the facts it was written from, so every computer sends the same one and none writes it again for facts that didn't change | |
 | `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |
@@ -593,7 +594,7 @@ into the household's and each person's. The household keeps `thinking`,
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
-`touch-temperament` and their own `reminders.<device ID>` entries. A person's
+`touch-temperament`, `memory-brief` and their own `reminders.<device ID>` entries. A person's
 settings go only to the computers where that person is signed in, and switching
 person on a computer gives Martlet that person's settings. A computer on an
 older Martlet keeps the owner's settings in step through this document, as

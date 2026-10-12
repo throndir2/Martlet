@@ -150,13 +150,13 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper,
    reply length, always listening, tools, Thinking longer, who is talking,
-   lorebook, memory and past conversations introductions, notes with messages, the screen and
+   lorebook, memory, memory brief and past conversations introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines (including *Martlet decides* and *Chattiness right now*), *Screen with your message* (sent with what you type or say while
    vision is on), *What you saw* (the `[seen: ...]` tag a look or a reply with a picture ends with), the background work notes and the Thinking longer task, the
    Remembering and Learning names requests and the prompt
-   that joins them, and the smart home notes. Each
+   that joins them, writing the memory brief, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
    (settings `prompts.overrides`, by prompt ID, absent while nothing is
    edited). Words in braces such as `{name}`, `{persona}` or
@@ -255,7 +255,9 @@ reads the entire conversation again before every reply (on a 12B model, about
 - **The message** comes last and ends with Martlet's **notes** between
   `[MARTLET_NOTES]` labels, only when something is new: lorebook entries and
   remembered facts not already in the notes of an earlier message the request
-  carries, what was said in earlier conversations when the message refers to
+  carries, the [memory brief](MEMORY.md#the-memory-brief) when no earlier
+  message the request carries has it (so once a conversation), what was said
+  in earlier conversations when the message refers to
   one ([Memory › Conversation history](MEMORY.md#conversation-history)), who is
   talking when that changed, a smart home result, and the
   picked style when the persona has several and it changed. The first notes

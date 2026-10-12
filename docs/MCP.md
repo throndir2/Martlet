@@ -1669,6 +1669,39 @@ or a path. `limits` gives the most facts a store holds (`facts`, 100,000),
 characters per fact (`factCharacters`, 32,768) and store bytes (`storeBytes`,
 256 MiB). It contacts nothing.
 
+`memory_brief_status` reads the [memory brief](MEMORY.md#the-memory-brief)
+from a data directory's `memory-brief.json` (optional absolute
+`dataDirectory`, default the current user's; the disposable one in
+`Invoke-MartletMcp.ps1`): `state` (`none` before a brief was written or turned
+off, `loaded` or `unreadable`), `on`, `written`, `by` (`thinking` or `owner`),
+`writtenAt`, `characters`, `lines`, `facts` (how many facts it was written
+from) and `people` (how many people it names), and `limits`
+(`maximumCharacters`, `minimumFacts`, `newFactsToWriteAgain`, `triesPerHour`,
+`gapMinutes`, `gapAfterLossMinutes`). It never returns the brief or a fact,
+and contacts nothing.
+
+`memory_brief_check` (no arguments) rehearses the memory brief with the
+production code (`MemoryBriefService`, the `HelperJobs` router and the
+`memory-brief` shared-settings section) on a disposable memory store, with a
+fixture Thinking pool member whose answers are FIXTURE - NOT AI. Its `steps`
+show that two facts write nothing; a third has the pool member write the brief
+(route `pool`, kind `memory_brief`, priority `Low`) from each fact with whose it
+is; the first message of a conversation carries it and the next don't; a
+forgotten fact holds it back (`waiting`) until it is written again without it a
+minute later; your own text stays; off sends nothing; *Write it again*
+replaces your text; and a second simulated computer takes the same brief
+through the shared settings and sends it. `passed` is true when every step
+passed. No model, network or credentials; it never opens your memory.
+
+On the desktop, Companion > Memory's *Memory brief* card (`CompanionTab-Memory`)
+shows `MemoryBriefStatus` (text: off, not written yet, written how long ago
+from how many memories, your own text, held back because a memory it used
+changed, or why it couldn't be written; never the brief) and the check box
+`MemoryBriefOn` (its `checkedState`; toggling it saves `memory-brief.json`, so
+it needs `--allow-ui-effects`). The brief's box `MemoryBriefText` is never a
+readable value. `MemoryBriefSave` (*Save my changes*) and `MemoryBriefWrite`
+(*Write it again*, which asks a model) need `--allow-ui-effects`.
+
 `memory_forget` deletes remembered facts the way Companion > Memory's Delete
 does (`DeleteManyAsync` in `src\Martlet.Memory`): each fact whose text contains
 `contains` (any case, at most 200 characters) or whose ID is in `ids` (at most
@@ -6121,7 +6154,8 @@ $env:MARTLET_SIMULATE_SITUATION = 'gaming'
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
 (`memory`: remembering and learning names after a reply; `action_naming`:
 naming a character's emotes; `temperament`: deciding its touch temperament;
-`touch_zones`: finding its touch zones; `eyes`: measuring its eyes) the last
+`touch_zones`: finding its touch zones; `eyes`: measuring its eyes;
+`memory_brief`: writing the [memory brief](MEMORY.md#the-memory-brief)) the last
 `route` (`pool` with the `member` that ran it and its model, or `fallback`: the
 conversation's own Thinking model after the reply finished speaking),
 `priority`, `outcome` (`answered`, `no answer` or `failed: <why>`), `at` and
@@ -6129,7 +6163,8 @@ conversation's own Thinking model after the reply finished speaking),
 or an answer. `state` is `none` until the desktop runs a helper job with that
 data directory. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
 Memory, Naming and TouchZones kinds (the eyes as a TouchZones job at the helpers'
-low priority); `thinking_pool_status` shows the pool itself.
+low priority, the memory brief as a Memory job at the lowest priority);
+`thinking_pool_status` shows the pool itself.
 `helper_jobs_check` (no arguments) rehearses the desktop's production router
 (`HelperJobs`) with a fixture pool and fixture answers (NOT AI): memory and
 naming go to a free text member, touch zones wait for a running reply and fall
@@ -9967,7 +10002,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `long_talk_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `memory_brief_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
