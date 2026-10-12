@@ -105,18 +105,28 @@ public interface IGuideIndex
 }
 
 /// <summary>The caps of making one guide: pages read, bytes downloaded, sites, the wait between two requests to one site and the
-/// time it may take. By default only the sites and the wait are capped: Martlet reads the whole wiki it finds, until the guide
-/// store can hold no more (<see cref="GuideBuildRequest.Keep"/>) or reading is stopped. Checks pass small caps.</summary>
+/// time it may take. By default the first read takes the <see cref="DefaultPages"/> best pages, those whose title names this
+/// game first: on a big wiki about 5 minutes and 10 MB (a page takes about 1.4 s and 52 KB). Then a Thinking pool member chooses
+/// more pages from the links of what was read (<see cref="More"/>). A whole series wiki (Borderlands: 10,700 articles) would take
+/// hours and hundreds of MB, and fill the guide with other games. Checks pass small caps.</summary>
 public sealed record GuideBuildLimits
 {
+    public const int DefaultPages = 200;
+    public const long DefaultBytes = 25_000_000;
+    public static TimeSpan DefaultTime { get; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>The caps of reading more after the first read (<see cref="GuideBuildRequest.More"/>): at most 300 more pages that
+    /// a Thinking pool member chose, 25 MB and 20 minutes, from the same wiki.</summary>
+    public static GuideBuildLimits More { get; } = new() { Pages = 300, Bytes = 25_000_000, Time = TimeSpan.FromMinutes(20), Sites = 1 };
+
     /// <summary>The most pages to read, or null for no cap.</summary>
-    public int? Pages { get; init; }
+    public int? Pages { get; init; } = DefaultPages;
     /// <summary>The most bytes to download, or null for no cap (each document is still at most 2 MB).</summary>
-    public long? Bytes { get; init; }
+    public long? Bytes { get; init; } = DefaultBytes;
     public int Sites { get; init; } = 2;
     public TimeSpan Delay { get; init; } = TimeSpan.FromSeconds(1);
     /// <summary>The most time reading may take, or null for no cap.</summary>
-    public TimeSpan? Time { get; init; }
+    public TimeSpan? Time { get; init; } = DefaultTime;
 }
 
 /// <summary>What to read up on: the app's name and the pages to start from (empty: find the app's wiki).</summary>
@@ -128,11 +138,43 @@ public sealed record GuideBuildRequest(string Name, IReadOnlyList<string> Sites,
     public TimeSpan KeepEvery { get; init; } = TimeSpan.FromMinutes(3);
     /// <summary>Ends reading early, like a cap: the pages read so far are the outcome (Stop reading on the App guides page).</summary>
     public CancellationToken Stop { get; init; }
+    /// <summary>Chooses the wiki page titles worth reading, in the order given (<see cref="GuidePageChooser"/>: a Thinking pool
+    /// member), or null when it can't choose any more, which ends reading. Null: titles are only sorted by their brackets.</summary>
+    public Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyList<string>?>>? Choose { get; init; }
+    /// <summary>Reads more of a wiki read before instead: the pages its pages link to that weren't read, as <see cref="Choose"/>
+    /// chooses them, and the links of those, with no search and no other site.</summary>
+    public GuideMore? More { get; init; }
 }
 
+/// <summary>What a read of a MediaWiki site leaves to read more: the site, the titles its pages link to that weren't read (the
+/// most linked first) and the titles it read or left out. Only the reader uses what is inside.</summary>
+public sealed class GuideMore
+{
+    internal GuideMore(MediaWikiSite site, IReadOnlyList<(string Title, int Count)> related, IReadOnlySet<string> known)
+    {
+        Site = site;
+        Related = related;
+        Known = known;
+    }
+
+    internal MediaWikiSite Site { get; }
+    internal IReadOnlyList<(string Title, int Count)> Related { get; }
+    internal IReadOnlySet<string> Known { get; }
+
+    /// <summary>How many linked titles weren't read.</summary>
+    public int Count => Related.Count;
+}
+
+/// <summary>How a read chose its wiki pages: the titles it looked at, those left out because their brackets name another game
+/// of the series, those it chose to read (it reads the first ones, up to its caps) and the batches a Thinking pool member
+/// chose.</summary>
+public sealed record GuidePageChoice(int Titles, int OtherGames, int Chosen, int Asked);
+
 /// <summary>What reading up found: the pages read, the sites they came from, how many pages couldn't be read, the bytes
-/// downloaded and, when nothing usable was read, the problem in a few plain words.</summary>
-public sealed record GuideBuildOutcome(IReadOnlyList<GuidePage> Pages, IReadOnlyList<string> Sites, int Failed, long Bytes, string? Problem);
+/// downloaded and, when nothing usable was read, the problem in a few plain words; how a wiki's pages were chosen, and what is
+/// left to read more of it.</summary>
+public sealed record GuideBuildOutcome(IReadOnlyList<GuidePage> Pages, IReadOnlyList<string> Sites, int Failed, long Bytes, string? Problem,
+    GuidePageChoice? Choice = null, GuideMore? More = null);
 
 /// <summary>Reads up on an app on the web (<see cref="WebGuideBuilder"/>; checks use fixtures).</summary>
 public interface IGuideBuilder

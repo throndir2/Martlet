@@ -32,7 +32,7 @@ public sealed class AppGuideResearcher : IDisposable
     private DateTimeOffset lastScreen = DateTimeOffset.MinValue;
     private string? lastScreenText;
     private string? doing, lastProblem;
-    private int briefs, areas, webAreas, sections, screens;
+    private int briefs, areas, webAreas, sections, screens, mores;
     private DateTimeOffset? lastAt;
     private bool disposed;
 
@@ -71,6 +71,8 @@ public sealed class AppGuideResearcher : IDisposable
     public int Sections { get { lock (gate) return sections; } }
     /// <summary>Screen notes looked at for an area.</summary>
     public int Screens { get { lock (gate) return screens; } }
+    /// <summary>Times Martlet read more of a wiki after a read.</summary>
+    public int Mores { get { lock (gate) return mores; } }
     public string? LastProblem { get { lock (gate) return lastProblem; } }
     public DateTimeOffset? LastAt { get { lock (gate) return lastAt; } }
 
@@ -161,7 +163,9 @@ public sealed class AppGuideResearcher : IDisposable
         }
     }
 
-    // After a read (or Read again), the brief is written again in the background, when a pool member can think.
+    // After a read (or Read again), the brief is written again in the background, when a pool member can think; then a pool member
+    // chooses more pages to read from the links of what was read, with what the user does now, and the brief is written again
+    // when that added pages.
     private void OnBuilt(AppGuideBuild built)
     {
         if (disposed || !built.Built) return;
@@ -175,14 +179,59 @@ public sealed class AppGuideResearcher : IDisposable
                 await job.WaitAsync(limit.Token).ConfigureAwait(false);
                 try
                 {
-                    if (thinker.CanThink) await BriefJobAsync(built.Key, null, closing.Token).ConfigureAwait(false);
-                    else Done("brief", new(built.Key, null, false, 0, false, "no Thinking pool member can take research now", TimeSpan.Zero));
+                    if (!thinker.CanThink)
+                    {
+                        Done("brief", new(built.Key, null, false, 0, false, "no Thinking pool member can take research now", TimeSpan.Zero));
+                        return;
+                    }
+                    await BriefJobAsync(built.Key, null, closing.Token).ConfigureAwait(false);
+                    if (built.More is { Count: > 0 } more && (await MoreJobAsync(built.Key, more, closing.Token).ConfigureAwait(false)).Sections > 0 &&
+                        thinker.CanThink)
+                        await BriefJobAsync(built.Key, null, closing.Token).ConfigureAwait(false);
                 }
                 finally { Release(); }
             }
             catch (OperationCanceledException) { }
             catch (ObjectDisposedException) { }
         });
+    }
+
+    /// <summary>Reads more of <paramref name="key"/>'s wiki, waited for (checks): a pool member chooses among the titles the first
+    /// read's pages link to (<see cref="GuidePageChooser"/>, with <see cref="Context"/>), and the chosen pages join the guide.</summary>
+    public async Task<GuideResearchResult> ReadMoreAsync(string key, GuideMore more, CancellationToken cancellationToken = default)
+    {
+        await job.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await MoreJobAsync(key, more, cancellationToken).ConfigureAwait(false); }
+        finally { Release(); }
+    }
+
+    /// <summary>Notes on what the user does now for choosing more pages (the desktop: the screen, sounds and activity notes and
+    /// the last exchanges), read again for each ask; null for none. Never logged.</summary>
+    public Func<string?>? Context { get; set; }
+
+    private async Task<GuideResearchResult> MoreJobAsync(string key, GuideMore more, CancellationToken token)
+    {
+        var started = Stopwatch.GetTimestamp();
+        Begin("more");
+        GuideResearchResult result;
+        var chooser = new GuidePageChooser(thinker, guides.Library.Apps.FirstOrDefault(a => a.Key == key)?.Name ?? key, Context);
+        AppGuideBuild? read = null;
+        try
+        {
+            read = await guides.ReadMoreAsync(key, more, chooser.ChooseAsync, null, token).ConfigureAwait(false);
+            result = new(key, null, true, read.Built ? read.Chunks : 0, false, read.Problem, Stopwatch.GetElapsedTime(started));
+        }
+        catch (Exception error) when (error is not OperationCanceledException && error is not OutOfMemoryException)
+        {
+            result = new(key, null, true, 0, false, "it failed on this PC (" + error.GetType().Name + ")", Stopwatch.GetElapsedTime(started));
+        }
+        lock (gate) mores++;
+        Log?.Invoke($"App guides: read more of a wiki in {BackgroundJobs.Duration(result.Took)}: {more.Count} linked titles, " +
+            $"{chooser.Answers} of {chooser.Asks} asks answered{(chooser.HadContext ? " with what you do now" : "")}, " +
+            $"{(read?.Built == true ? read.Pages : 0)} pages added ({result.Sections} sections, {(read?.Downloaded ?? 0) / 1024} KiB downloaded)" +
+            (result.Problem is null ? "." : $"; {result.Problem}."));
+        Done("more", result);
+        return result;
     }
 
     private async Task<GuideResearchResult> RefreshCoreAsync(string key, string? focus, CancellationToken token)
@@ -332,7 +381,7 @@ public sealed class AppGuideResearcher : IDisposable
         }
         if (what == "brief")
             Log?.Invoke($"App guides: {(result.Brief ? "wrote a brief" : "wrote no brief (" + result.Problem + ")")} in {result.Took.TotalSeconds:0.0} s.");
-        else if (result.Sections == 0)
+        else if (what == "area" && result.Sections == 0)
             Log?.Invoke($"App guides: looked into an area in {result.Took.TotalSeconds:0.0} s: " +
                 (result.Problem is null ? "the guide had enough on it." : result.Problem + "."));
         Changed?.Invoke();

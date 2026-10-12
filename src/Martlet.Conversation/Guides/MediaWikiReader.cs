@@ -56,8 +56,9 @@ internal sealed class MediaWikiSite
 
 /// <summary>Reads a MediaWiki site (Fandom, wiki.gg and most game wikis) through its api.php: the pages the main page links to
 /// and the site's most linked pages first (stubs, disambiguation, version history and very large pages left out), then the
-/// pages the pages read link to most, then every other content page (<c>generator=allpages</c>), each read as clean article HTML
-/// (<c>action=parse</c>, redirects followed, edit links and the table of contents off) and turned into outline text.</summary>
+/// pages the pages read link to most, then the other content pages (<c>generator=allpages</c>), each batch chosen by its titles
+/// before a page of it is downloaded (<see cref="GuideRun.ChooseAsync"/>), until the run's caps. Each page is read as clean
+/// article HTML (<c>action=parse</c>, redirects followed, edit links and the table of contents off) and turned into outline text.</summary>
 internal static class MediaWikiReader
 {
     /// <summary>Articles shorter than this (in wiki text) are stubs; longer than <see cref="LargestPage"/> they are mostly one
@@ -127,53 +128,93 @@ internal static class MediaWikiReader
     }
 
     /// <summary>Reads the site's best pages into the run, the <paramref name="seeds"/> (pages the owner pointed at) first, and
-    /// returns how many pages it added.</summary>
-    public static async Task<int> ReadAsync(GuideRun run, MediaWikiSite site, IReadOnlyList<string> seeds)
+    /// returns how many pages it added; then leaves what is left to read more in <see cref="GuideRun.More"/>. With
+    /// <paramref name="more"/> it reads more instead: only titles the pages read before link to, and the links of those, as the
+    /// run's chooser chooses them (no main page, most linked or every-page lists).</summary>
+    public static async Task<int> ReadAsync(GuideRun run, MediaWikiSite site, IReadOnlyList<string> seeds, GuideMore? more = null)
     {
         var before = run.Pages.Count;
         var queued = new HashSet<string>(StringComparer.Ordinal);
         var queue = new List<string>();
-        foreach (var seed in seeds)
-            if (queued.Add(Key(seed))) queue.Add(seed);
-        run.Report("Reading the wiki's page list");
-        foreach (var title in await CandidatesAsync(run, site).ConfigureAwait(false))
-            if (queued.Add(Key(title))) queue.Add(title);
         var linked = new Dictionary<string, (string Title, int Count)>(StringComparer.Ordinal);
+        // Titles asked about or left out by the choice: never asked about again.
         var asked = new HashSet<string>(StringComparer.Ordinal);
+        // On a series wiki, the main page's pages that don't name this game: read after the links of the game's own pages.
+        var later = new List<string>();
+        if (more is null)
+        {
+            foreach (var seed in seeds)
+                if (queued.Add(Key(seed))) queue.Add(seed);
+            run.Report("Reading the wiki's page list");
+            var candidates = (await CandidatesAsync(run, site).ConfigureAwait(false)).Where(t => !queued.Contains(Key(t))).ToList();
+            asked.UnionWith(candidates.Select(Key));
+            var chosen = await run.ChooseAsync(candidates).ConfigureAwait(false);
+            if (run.Name is { } app && !WikiDiscovery.IsAbout(app, site.Name))
+            {
+                // A wiki about a whole series ("Borderlands Wiki" for Borderlands 4): this game's pages first (titles that name it,
+                // then the wiki's own search for its name), then their links; the main page's other pages only after those.
+                foreach (var title in chosen.Where(t => run.About(t) > 0))
+                    if (queued.Add(Key(title))) queue.Add(title);
+                later.AddRange(chosen.Where(t => run.About(t) <= 0));
+                var hits = (await SearchAsync(run, site, app).ConfigureAwait(false)).Where(t => !queued.Contains(Key(t))).ToList();
+                var found = await UsableAsync(run, site, [.. hits.Select((t, i) => KeyValuePair.Create(Key(t), (t, hits.Count - i)))], queued)
+                    .ConfigureAwait(false);
+                asked.UnionWith(found.Select(Key));
+                foreach (var title in await run.ChooseAsync(found).ConfigureAwait(false))
+                    if (queued.Add(Key(title))) queue.Add(title);
+                later.RemoveAll(t => queued.Contains(Key(t)));
+            }
+            else
+                foreach (var title in chosen)
+                    if (queued.Add(Key(title))) queue.Add(title);
+        }
+        else
+        {
+            asked.UnionWith(more.Known);
+            foreach (var (title, count) in more.Related) linked[Key(title)] = (title, count);
+        }
         var next = 0;
         var blocked = 0;
-        var everyPage = new AllPages(site);
+        var everyPage = more is null ? new AllPages(site) : null;
         while (!run.Full)
         {
             if (next >= queue.Count)
             {
-                // Out of pages: the ones the pages read so far link to most, then every other content page of the wiki.
-                var more = linked.Where(l => !queued.Contains(l.Key) && !asked.Contains(l.Key)).OrderByDescending(l => l.Value.Count)
-                    .Take(50).ToList();
-                if (more.Count == 0)
+                if (run.ChoiceEnded) break;
+                // Out of pages: the ones the pages read so far link to most (those whose title names this game first), then every
+                // other content page of the wiki, each batch chosen by its titles before a page of it is read.
+                var wanted = linked.Where(l => !queued.Contains(l.Key) && !asked.Contains(l.Key))
+                    .OrderByDescending(l => run.About(l.Value.Title) > 0).ThenByDescending(l => l.Value.Count)
+                    .Take(run.Choosing ? GuidePagePicker.MaximumTitles : TitlesARequest).ToList();
+                if (wanted.Count == 0)
                 {
-                    if (everyPage.Done) break;
-                    foreach (var title in await everyPage.NextAsync(run).ConfigureAwait(false))
+                    if (later.Count > 0)
+                    {
+                        foreach (var title in later)
+                            if (queued.Add(Key(title))) queue.Add(title);
+                        later.Clear();
+                        continue;
+                    }
+                    if (everyPage is not { Done: false }) break;
+                    var listed = (await everyPage.NextAsync(run).ConfigureAwait(false)).Where(t => !queued.Contains(Key(t)) && !asked.Contains(Key(t))).ToList();
+                    asked.UnionWith(listed.Select(Key));
+                    foreach (var title in await run.ChooseAsync(listed).ConfigureAwait(false))
                         if (queued.Add(Key(title))) queue.Add(title);
                     continue;
                 }
-                asked.UnionWith(more.Select(m => m.Key));
-                var (pages, redirects) = await PagesAsync(run, site, [("titles", string.Join('|', more.Select(m => m.Value.Title))),
-                    ("prop", "info|pageprops"), ("ppprop", "disambiguation"), ("redirects", "1")]).ConfigureAwait(false);
-                var counts = more.ToDictionary(m => m.Key, m => m.Value.Count, StringComparer.Ordinal);
-                foreach (var (from, to) in redirects)
-                    if (Key(from) != Key(to) && counts.TryGetValue(Key(from), out var count)) counts[Key(to)] = counts.GetValueOrDefault(Key(to)) + count;
-                foreach (var page in pages.Where(p => Usable(site, p)).OrderByDescending(p => counts.GetValueOrDefault(Key(p.Title)))
-                    .ThenByDescending(p => p.Length))
-                    if (queued.Add(Key(page.Title))) queue.Add(page.Title);
+                asked.UnionWith(wanted.Select(m => m.Key));
+                var usable = await UsableAsync(run, site, wanted, queued).ConfigureAwait(false);
+                asked.UnionWith(usable.Select(Key));
+                foreach (var title in await run.ChooseAsync(usable).ConfigureAwait(false))
+                    if (queued.Add(Key(title))) queue.Add(title);
                 continue;
             }
-            var wanted = queue[next++];
+            var page = queue[next++];
             run.Reading();
             WebDocument? document;
             try
             {
-                document = await run.GetAsync(Query(site.Api, ("action", "parse"), ("page", wanted), ("prop", "text"), ("redirects", "1"),
+                document = await run.GetAsync(Query(site.Api, ("action", "parse"), ("page", page), ("prop", "text"), ("redirects", "1"),
                     ("disableeditsection", "1"), ("disabletoc", "1"), ("disablelimitreport", "1"))).ConfigureAwait(false);
             }
             catch (WebResearchException error)
@@ -199,7 +240,60 @@ internal static class MediaWikiReader
                 linked[key] = (linked.TryGetValue(key, out var seen) ? seen.Title : title, seen.Count + 1);
             }
         }
+        if (more is null && run.Pages.Count > before && run.More is null)
+        {
+            // What is left to read more: the chosen pages not read yet, then the linked titles not asked about, most linked first.
+            var left = queue.Skip(next).Concat(later.Where(t => !queued.Contains(Key(t))))
+                .Select(t => (Title: t, Count: Math.Max(1, linked.GetValueOrDefault(Key(t)).Count)))
+                .Concat(linked.Where(l => !queued.Contains(l.Key) && !asked.Contains(l.Key)).OrderByDescending(l => l.Value.Count)
+                    .Select(l => (l.Value.Title, l.Value.Count)))
+                .ToList();
+            var known = new HashSet<string>(asked, StringComparer.Ordinal);
+            known.UnionWith(queued);
+            known.ExceptWith(left.Select(l => Key(l.Title)));
+            run.More = new GuideMore(site, left, known);
+        }
         return run.Pages.Count - before;
+    }
+
+    /// <summary>The most titles one page-info request asks about (MediaWiki's limit).</summary>
+    private const int TitlesARequest = 50;
+
+    // The wiki's own search for the app's name as a phrase (list=search), in its order: the pages about the app on a series wiki.
+    private static async Task<IReadOnlyList<string>> SearchAsync(GuideRun run, MediaWikiSite site, string app)
+    {
+        try
+        {
+            var document = await run.GetAsync(Query(site.Api, ("action", "query"), ("list", "search"), ("srsearch", "\"" + app.Replace("\"", "", StringComparison.Ordinal) + "\""),
+                ("srnamespace", string.Join('|', site.ContentNamespaces.Order())), ("srlimit", TitlesARequest.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("srprop", "")), 400_000).ConfigureAwait(false);
+            if (document is null) return [];
+            using var json = JsonDocument.Parse(document.Body);
+            if (!json.RootElement.TryGetProperty("query", out var query) || !query.TryGetProperty("search", out var results) ||
+                results.ValueKind != JsonValueKind.Array)
+                return [];
+            return [.. results.EnumerateArray().Select(r => String(r, "title")).OfType<string>().Where(t => t.Length > 0 && site.IsContent(t)).Distinct()];
+        }
+        catch (WebResearchException) { return []; }
+        catch (Exception error) when (Malformed(error)) { return []; }
+    }
+
+    // The usable pages among linked titles (redirects followed), the most linked first, the longer first among equals.
+    private static async Task<List<string>> UsableAsync(GuideRun run, MediaWikiSite site,
+        IReadOnlyList<KeyValuePair<string, (string Title, int Count)>> wanted, HashSet<string> queued)
+    {
+        var counts = wanted.ToDictionary(m => m.Key, m => m.Value.Count, StringComparer.Ordinal);
+        var found = new List<WikiPage>();
+        foreach (var part in wanted.Chunk(TitlesARequest))
+        {
+            var (pages, redirects) = await PagesAsync(run, site, [("titles", string.Join('|', part.Select(m => m.Value.Title))),
+                ("prop", "info|pageprops"), ("ppprop", "disambiguation"), ("redirects", "1")]).ConfigureAwait(false);
+            foreach (var (from, to) in redirects)
+                if (Key(from) != Key(to) && counts.TryGetValue(Key(from), out var count)) counts[Key(to)] = counts.GetValueOrDefault(Key(to)) + count;
+            found.AddRange(pages);
+        }
+        return found.Where(p => Usable(site, p) && !queued.Contains(Key(p.Title))).DistinctBy(p => Key(p.Title))
+            .OrderByDescending(p => counts.GetValueOrDefault(Key(p.Title))).ThenByDescending(p => p.Length).Select(p => p.Title).ToList();
     }
 
     // The pages to read first: those the main page links to and the site's most linked pages, scored by both and by size, then

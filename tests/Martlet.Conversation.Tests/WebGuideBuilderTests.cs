@@ -166,8 +166,7 @@ public sealed class WebGuideBuilderTests
         Assert.Equal(0, outcome.Failed);
         Assert.Equal(web.Bytes, outcome.Bytes);
         Assert.Equal("Looking for its wiki", progress[0]);
-        Assert.Contains("Reading page 1", progress);
-        Assert.DoesNotContain(progress, p => p.Contains("at most", StringComparison.Ordinal));
+        Assert.Contains("Reading page 1 of at most 200", progress);
         Assert.All(progress, p => Assert.DoesNotContain("http", p, StringComparison.Ordinal));
         Assert.DoesNotContain(web.Requests, r => r.Contains("Missing_Page", StringComparison.Ordinal) || r.Contains("User%3ABob", StringComparison.Ordinal));
         Assert.Equal(["Iron Valley wiki"], web.Queries);
@@ -282,13 +281,15 @@ public sealed class WebGuideBuilderTests
     }
 
     [Fact]
-    public async Task ByDefaultTheWholeWikiIsReadPastTheMainPagesLinks()
+    public async Task ByDefaultTheFirstReadStopsAt200PagesPastTheMainPagesLinksAndLeavesTheRestToReadMore()
     {
         var defaults = new GuideBuildLimits();
-        Assert.Equal((null, null, null, 2, TimeSpan.FromSeconds(1)), (defaults.Pages, defaults.Bytes, defaults.Time, defaults.Sites, defaults.Delay));
+        Assert.Equal((200, 25_000_000L, TimeSpan.FromMinutes(15), 2, TimeSpan.FromSeconds(1)),
+            (defaults.Pages, defaults.Bytes, defaults.Time, defaults.Sites, defaults.Delay));
+        Assert.Equal((300, 1), (GuideBuildLimits.More.Pages, GuideBuildLimits.More.Sites));
 
         var web = new FakeWeb();
-        var wiki = BigWiki("bigvalley.fandom.com", "Big Valley", 150);
+        var wiki = BigWiki("bigvalley.fandom.com", "Big Valley", 250);
         wiki.Add("Tiny", Article("Tiny", "Short."), 300);
         wiki.Add("Big Valley Wiki/Sub", Article("Sub", "A subpage."), 5_000);
         web.Sites.Add(wiki.Respond);
@@ -298,17 +299,181 @@ public sealed class WebGuideBuilderTests
             new Recorder(progress), default);
 
         Assert.Null(outcome.Problem);
-        Assert.Equal(150, outcome.Pages.Count);
-        Assert.Equal(150, outcome.Pages.Select(p => p.Title).Distinct().Count());
+        Assert.Equal(200, outcome.Pages.Count);
+        Assert.Equal(200, outcome.Pages.Select(p => p.Title).Distinct().Count());
         Assert.DoesNotContain(outcome.Pages, p => p.Title is "Tiny" or "Big Valley Wiki/Sub");
-        // The main page's links first, then every other page of the wiki, 40 titles a list here.
+        // The main page's links first, then other pages of the wiki, 40 titles a list here, up to the cap.
         Assert.Equal(["Page 000", "Page 001", "Page 002"], outcome.Pages.Take(3).Select(p => p.Title));
         Assert.True(web.Requests.Count(r => r.Contains("generator=allpages", StringComparison.Ordinal)) >= 4);
-        Assert.Contains("Reading page 61", progress);
-        Assert.Contains("Reading page 150", progress);
-        Assert.DoesNotContain(progress, p => p.Contains("at most", StringComparison.Ordinal));
+        Assert.Contains("Reading page 61 of at most 200", progress);
+        Assert.Contains("Reading page 200 of at most 200", progress);
+        Assert.DoesNotContain("Reading page 201", string.Join('\n', progress), StringComparison.Ordinal);
+        Assert.True(outcome.More is { Count: > 0 });
         // A wiki of 100 pages or more is the guide's: no search for another site.
         Assert.Empty(web.Queries);
+    }
+
+    [Fact]
+    public void TitlesAboutAnotherGameOfTheSeriesAreToldApartFromThisGamesAndAnswersAreReadAsNumbers()
+    {
+        Assert.Equal(1, GuidePagePicker.About("Legendary (Borderlands 4)", "Borderlands 4"));
+        Assert.Equal(1, GuidePagePicker.About("Borderlands 4 Weapons", "Borderlands® 4"));
+        Assert.Equal(1, GuidePagePicker.About("List of enhancements in Borderlands 4", "Borderlands 4"));
+        Assert.Equal(-1, GuidePagePicker.About("Sidewinder (Borderlands 2)", "Borderlands 4"));
+        Assert.Equal(-1, GuidePagePicker.About("Borderlands 2", "Borderlands 4"));
+        Assert.Equal(-1, GuidePagePicker.About("Borderlands 3 (soundtrack)", "Borderlands 4"));
+        Assert.Equal(-1, GuidePagePicker.About("Power armor (Fallout: New Vegas)", "Fallout 4"));
+        Assert.Equal(-1, GuidePagePicker.About("Fallout 76", "Fallout 4"));
+        Assert.Equal(1, GuidePagePicker.About("Estus Flask (Dark Souls III)", "Dark Souls 3"));
+        Assert.Equal(0, GuidePagePicker.About("Sidewinder (Borderlands)", "Borderlands 4"));
+        Assert.Equal(0, GuidePagePicker.About("Whiterun (Skyrim)", "The Elder Scrolls V: Skyrim"));
+        Assert.Equal(0, GuidePagePicker.About("Moxxi", "Borderlands 4"));
+        Assert.Equal(0, GuidePagePicker.About("Claptrap (character)", "Borderlands 4"));
+        Assert.Equal(1, GuidePagePicker.About("Shadow of the Erdtree (Elden Ring DLC)", "Elden Ring"));
+
+        Assert.Equal([3, 1, 5], GuidePagePicker.Parse("3, 1, 5, 3, 99", 5));
+        Assert.Equal([2, 3, 4], GuidePagePicker.Parse("2-4", 5));
+        Assert.Equal([2, 4], GuidePagePicker.Parse("2. Sidewinder (Borderlands 4)\n4. Kairos", 5));
+        Assert.Empty(GuidePagePicker.Parse("NONE", 5)!);
+        Assert.Null(GuidePagePicker.Parse("I can't tell.", 5));
+        Assert.Null(GuidePagePicker.Parse("", 5));
+        var input = GuidePagePicker.Input("Borderlands 4", ["Kairos", "Vex"], "Screen: a boss fight in the Fadefields");
+        Assert.Equal("Game or app: Borderlands 4\nWhat the user does now:\nScreen: a boss fight in the Fadefields\nPages:\n1. Kairos\n2. Vex", input);
+    }
+
+    [Fact]
+    public async Task AChooserGetsTheTitlesAndWhatTheUserDoesAndStopsAfterFailures()
+    {
+        var thinker = new ScriptedThinker("2, 1", "I don't know", "nope", "still no");
+        var chooser = new GuidePageChooser(thinker, "Iron Valley 4", () => "Screen: the Frost Caves");
+        Assert.Equal(["B", "A"], await chooser.ChooseAsync(["A", "B", "C"], default));
+        Assert.Contains("What the user does now:\nScreen: the Frost Caves", thinker.Asks[0].Text, StringComparison.Ordinal);
+        Assert.Equal(GuidePagePicker.Label, thinker.Asks[0].Label);
+        Assert.Equal(GuidePagePicker.Instructions, thinker.Asks[0].Instructions);
+        // An answer that isn't a choice leaves the batch out; three in a row stop the asking.
+        Assert.Empty((await chooser.ChooseAsync(["A"], default))!);
+        Assert.Empty((await chooser.ChooseAsync(["A"], default))!);
+        Assert.Empty((await chooser.ChooseAsync(["A"], default))!);
+        Assert.Null(await chooser.ChooseAsync(["A"], default));
+        Assert.Equal((4, 1, true), (chooser.Asks, chooser.Answers, chooser.HadContext));
+
+        var none = new GuidePageChooser(new ScriptedThinker { CanThink = false }, "Iron Valley 4");
+        Assert.Null(await none.ChooseAsync(["A"], default));
+    }
+
+    [Fact]
+    public async Task ASeriesWikiIsReadThisGameFirstAndThenMoreAsAThinkingPoolMemberChooses()
+    {
+        var web = new FakeWeb();
+        var wiki = SeriesWiki();
+        web.Sites.Add(wiki.Respond);
+        var start = "https://ironseries.fandom.com/wiki/Iron_Series_Wiki";
+
+        // The first read on a series wiki: this game's titles and the wiki's search for its name first, then their links, other
+        // games' pages never; the main page's other pages come after the links, and what is left is kept to read more.
+        var first = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(
+            new("Iron Valley 4", [start], new() { Delay = TimeSpan.Zero, Pages = 3 }), null, default);
+        Assert.Null(first.Problem);
+        Assert.Equal(["Sword (Iron Valley 4)", "Caves", "Frost Caves"], first.Pages.Select(p => p.Title));
+        Assert.DoesNotContain(web.Requests, r => r.Contains("action=parse", StringComparison.Ordinal) &&
+            (r.Contains("Valley%202", StringComparison.Ordinal) || r.Contains("Valley%203", StringComparison.Ordinal)));
+        Assert.Contains(web.Requests, r => r.Contains("list=search", StringComparison.Ordinal) && r.Contains("Iron%20Valley%204", StringComparison.Ordinal));
+        Assert.Equal(new GuidePageChoice(8, 2, 6, 0), first.Choice);
+        Assert.NotNull(first.More);
+        Assert.Equal(3, first.More!.Count);
+
+        // Reading more: only the titles left that the chooser chooses, and the links of those; never the ones it left out.
+        var before = web.Requests.Count;
+        var asked = new List<IReadOnlyList<string>>();
+        var more = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Iron Valley 4", [], new() { Delay = TimeSpan.Zero })
+        {
+            More = first.More,
+            Choose = (titles, _) =>
+            {
+                asked.Add(titles);
+                return Task.FromResult<IReadOnlyList<string>?>([.. titles.Where(t => !t.Contains("Voice", StringComparison.Ordinal))]);
+            }
+        }, null, default);
+        Assert.Null(more.Problem);
+        Assert.Equal(["Orla", "Ice Golem"], more.Pages.Select(p => p.Title));
+        Assert.Equal(["Ice Golem", "Orla", "Voice cast"], asked.Single().Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(web.Requests, r => r.Contains("Voice", StringComparison.Ordinal) && r.Contains("action=parse", StringComparison.Ordinal));
+        Assert.DoesNotContain(web.Requests.Skip(before), r => r.Contains("generator=allpages", StringComparison.Ordinal) ||
+            r.Contains("querypage", StringComparison.Ordinal) || r.Contains("list=search", StringComparison.Ordinal));
+
+        // A chooser that can't choose any more ends reading more at once.
+        var stopped = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Iron Valley 4", [], new() { Delay = TimeSpan.Zero })
+        {
+            More = first.More, Choose = (_, _) => Task.FromResult<IReadOnlyList<string>?>(null)
+        }, null, default);
+        Assert.Empty(stopped.Pages);
+        Assert.Equal("no Thinking pool member could choose the pages", stopped.Problem);
+    }
+
+    [Fact]
+    public async Task ReadingMoreAddsTheChosenPagesToTheGuide()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "martlet-guide-more-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            var web = new FakeWeb();
+            web.Sites.Add(SeriesWiki().Respond);
+            using var guides = new AppGuideService(new FileAppGuideStore(folder), new WebGuideBuilder(web, web) { Wait = NoWait },
+                limits: new() { Delay = TimeSpan.Zero, Pages = 3 }) { MoreLimits = GuideBuildLimits.More with { Delay = TimeSpan.Zero } };
+            await guides.LoadAsync(default);
+            await guides.SetOnAsync(true, default);
+            var built = await guides.BuildAsync("Iron Valley 4", ["https://ironseries.fandom.com/wiki/Iron_Series_Wiki"], null);
+            Assert.True(built.Built);
+            Assert.Equal(3, built.Pages);
+            Assert.NotNull(built.More);
+
+            var thinker = new ScriptedThinker("1", "1");
+            var chooser = new GuidePageChooser(thinker, "Iron Valley 4");
+            var more = await guides.ReadMoreAsync(built.Key, built.More!, chooser.ChooseAsync);
+
+            Assert.Null(more.Problem);
+            Assert.True(more.Pages >= 1);
+            var guide = await guides.Store.LoadGuideAsync(built.Key, default);
+            Assert.Equal(3 + more.Pages, guide!.Sources.Count);
+            Assert.Equal(3 + more.Pages, guides.Library.Apps.Single().Pages);
+            Assert.Contains(guide.Sources, s => s.Title == "Voice cast");
+            Assert.Null(guides.Building);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    // A wiki about a series: this game's page, another game's page and pages about none, the first linked to more pages.
+    private static FakeWiki SeriesWiki()
+    {
+        var wiki = new FakeWiki("ironseries.fandom.com", "Iron Series")
+        {
+            MainLinks = ["Sword (Iron Valley 2)", "Orla", "Sword (Iron Valley 4)", "Iron Valley 3", "Caves"], Articles = 50,
+            Search = ["Sword (Iron Valley 4)", "Caves"]
+        };
+        foreach (var title in new[] { "Sword (Iron Valley 2)", "Orla", "Iron Valley 3", "Caves", "Voice cast" })
+            wiki.Add(title, Article(title, title + " is described in this article."), 5_000);
+        wiki.Add("Sword (Iron Valley 4)", Article("Sword (Iron Valley 4)", "The sword of the fourth game.") +
+            "<p><a href=\"/wiki/Frost_Caves\">Frost Caves</a> <a href=\"/wiki/Voice_cast\">Voice cast</a></p>", 5_000);
+        wiki.Add("Frost Caves", Article("Frost Caves", "Cold caves with golems.") + "<p><a href=\"/wiki/Ice_Golem\">Ice Golem</a></p>", 5_000);
+        wiki.Add("Ice Golem", Article("Ice Golem", "A golem of ice."), 5_000);
+        return wiki;
+    }
+
+    private sealed class ScriptedThinker(params string?[] answers) : IGuideThinker
+    {
+        private int next;
+        public bool CanThink { get; init; } = true;
+        public List<GuideThinkingAsk> Asks { get; } = [];
+
+        public Task<(string? Text, string? Problem)> ThinkAsync(GuideThinkingAsk ask, CancellationToken cancellationToken)
+        {
+            Asks.Add(ask);
+            var answer = next < answers.Length ? answers[next++] : null;
+            return Task.FromResult<(string?, string?)>((answer, answer is null ? "no answer" : null));
+        }
     }
 
     [Fact]
@@ -363,7 +528,7 @@ public sealed class WebGuideBuilderTests
         using var stop = new CancellationTokenSource();
         web = Web();
         var stopped = await new WebGuideBuilder(web, web) { Wait = NoWait }.BuildAsync(new("Keep", [start], Fast) { Stop = stop.Token },
-            new Recorder([], words => { if (words == "Reading page 3") stop.Cancel(); }), default);
+            new Recorder([], words => { if (words.StartsWith("Reading page 3 ", StringComparison.Ordinal)) stop.Cancel(); }), default);
         Assert.Equal(2, stopped.Pages.Count);
         Assert.Null(stopped.Problem);
 
@@ -579,6 +744,8 @@ public sealed class WebGuideBuilderTests
         public List<string> MainLinks { get; init; } = [];
         public int Articles { get; init; } = 500;
         public List<string> MostLinked { get; init; } = [];
+        /// <summary>What the wiki's own search finds (list=search), in order.</summary>
+        public List<string> Search { get; init; } = [];
         public Dictionary<string, string> Redirects { get; } = [];
         public HashSet<string> Disambiguations { get; } = [];
         public Dictionary<string, string[]> Categories { get; } = [];
@@ -600,6 +767,7 @@ public sealed class WebGuideBuilderTests
                 {
                     query = new { querypage = new { results = MostLinked.Select((t, i) => new { value = 100 - i, ns = t.StartsWith("User:", StringComparison.Ordinal) ? 2 : 0, title = t }).ToArray() } }
                 },
+                "query" when query.GetValueOrDefault("list") == "search" => new { query = new { search = Search.Select(t => new { ns = 0, title = t }).ToArray() } },
                 "query" when query.ContainsKey("titles") => Titles(query["titles"].Split('|')),
                 _ => new { error = new { code = "badvalue" } },
             };

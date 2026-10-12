@@ -6699,14 +6699,32 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   in front (`matchedInFront`), its guide in the notes of a question about it
   (`notesWhileInFront`), and not read up on again (`readsAgainAfterward` null).
   `readableNames` shows `AppGuideService.Readable` on more program names.
-- `reading`: a read with the default caps (`defaultCaps`: no page, download or
-  time cap, 2 sites, a 1 second pause, no job time limit, keeping every 3
-  minutes; `storeBounds`: the most pages, sections and megabytes one guide
-  keeps). It reads the whole fixture wiki (`wholeWiki`, 3 pages), keeps what it
-  read while it reads (`pagesKeptWhileReading` above 0, *Saving what it read so
-  far* in `progress`), and its progress never says *at most*. `stopReading`:
+- `reading`: a read with the default caps (`defaultCaps`: at most 200 pages,
+  25 MB and 15 minutes, 2 sites, a 1 second pause, a 20 minute job time
+  limit, keeping every 3 minutes; `readMoreCaps`: at most 300 more pages, 25 MB
+  and 20 minutes from 1 site; `storeBounds`: the most pages, sections and
+  megabytes one guide keeps). It reads the 3-page fixture wiki (`firstRead`),
+  keeps what it read while it reads (`pagesKeptWhileReading` above 0, *Saving
+  what it read so far* in `progress`), and its progress says *Reading page 1 of
+  at most 200*. `stopReading`:
   Stop reading at page 2 ends the read and keeps the 1 page read
   (`stoppedAtPage2`), and stopping while nothing is read does nothing.
+- `series`: [choosing the pages](APP_GUIDES.md#choosing-the-pages) on a
+  MediaWiki fixture about a series (NOT a real wiki), with a stand-in Thinking
+  pool member that gives canned answers (NOT a model), for *Starfall Valley 2*.
+  `firstRead`: with a cap of 3 pages, the read takes *Moonstone Sword
+  (Starfall Valley 2)* (its title names the game), then *Ember Mines* (the
+  wiki's own search for the game's name) and then *Frost Caves* (a link of
+  the first page) (`readInOrder`). It never reads or asks about the
+  *Starfall Valley 3* pages (`choice`: 8 titles, 2 about another game, 6
+  chosen, 0 asks), and leaves 3 titles to read more (`leftToReadMore`: a
+  chosen link, a main-page link and a link of *Frost Caves*). `readMore`:
+  then, as on the desktop, the brief is written, the pool member gets those
+  titles with *What the user does now* (`firstAskHadWhatTheUserDoes`),
+  chooses *Orla* and *Crystal Golem* and leaves out *Voice cast*
+  (`leftOutByTheMember`); the chosen pages join the guide
+  (`pagesInTheGuide`, 5) and the brief is written again (`status`). The log
+  has counts only (`holdsTitlesOrLinks` false).
 - `indexes`: only the indexes that can be used now stay in memory, with three
   small guides and a clock moved forward for the idle time: none at start
   (`atStart` 0), 3 once all are used, 2 when the app in front leaves (the 2
@@ -6716,11 +6734,11 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   `otherIndexesAtMost` are the limits.
 - `tools`: `read_up_on`, `search_guide`, `skip_guide` and `update_guide_brief` exactly as replies get
   them, their arguments (sites made into `https://` links, others left out),
-  `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, no
-  time limit, 4 an hour, its result), a second job refused as `busy` and the
+  `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, a 20
+  minute time limit, 4 an hour, its result), a second job refused as `busy` and the
   fifth in an hour as `hourly_limit`, and the *App guides* prompt.
 - `latency`: what App guides add to a reply's path, on a guide of 2,000
-  sections (`sections`) and on a whole-wiki-size guide of 25,000 sections
+  sections (`sections`) and on a guide of 25,000 sections
   (`wholeWiki`): `indexBuiltOffThePathMs`, and the notes step's median and worst
   time of 200 runs for a message about the game in front, an unrelated message
   and App guides off; `everyRequestWhileOn` is the bytes the four tool
