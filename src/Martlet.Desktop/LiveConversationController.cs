@@ -949,6 +949,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
         StartMemoryUpkeep();
+        StartMemoryBrief();
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
         if (singing is not null)
             songHandler = CreationRegistry.Shared.Handle(SongCreations.KindName, new CreationHandler(SingCreationAsync));
@@ -2341,6 +2342,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 operation.LatencyTimeline?.Mark("app guide");
             }
 
+            // The memory brief goes with the first message of each conversation (not again while the conversation sent carries
+            // it), from memory only: nothing is read or waited for here.
+            var brief = MemoryBriefNotes(operation, sentHistory, configured.Prompts);
+
             lock (gate)
             {
                 operation.Authorization.Check(worker);
@@ -2424,7 +2429,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             // instead still reaches it (with tools, it follows the tools prompt).
                             toolset is null && builtIns is { Tools.Count: 0 } ? builtIns.Guidance : null),
                         voices: VoicePromptContext.Block(operation.Heard),
-                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
+                        messageNotes: Join(brief, home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null && describedNote is null ? null : noticed, recalled, guide, songNote, whileSinging, touchNote),
                         silentReply: operation.MayPass ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyClosing(operation.Authorization.Voice), audio: recording, imageOptional: true,
@@ -2449,16 +2454,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         break;
                     }
                     // A message too long to fit goes without what was said in earlier conversations first, then without the guide's
-                    // sections, then without the picture (or its description).
+                    // sections, then without the memory brief, then without the picture (or its description).
                     catch (LiveActionException error) when (error.Code == "conversation.input_limit" &&
-                        (past is not null || guide is not null || picture is not null || describedNote is not null))
+                        (past is not null || guide is not null || brief is not null || picture is not null || describedNote is not null))
                     {
                         if (past is not null) (past, pastCount) = (null, 0);
                         else if (guide is not null) (guide, operation.GuideSections) = (null, 0);
+                        else if (brief is not null) brief = null;
                         else if (picture is not null) picture = null;
                         else describedNote = null;
                     }
                 }
+                if (brief is not null) ErrorLog.InfoLater("Memory brief: went with your message (the first in this conversation).");
                 operation.PastExchanges = pastCount;
                 operation.VoiceSent = request.Input.Audio is not null;
                 operation.ScreenSent = request.Input.Image is not null;
@@ -6055,6 +6062,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         owned?.Cancel("conversation.closed");
         StopMemoryUpkeep();
+        StopMemoryBrief();
         StopRequests();
         Cancel(stopListening);
         echoReducer?.Forget();

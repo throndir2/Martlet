@@ -32,7 +32,9 @@ internal enum HelperJobKind
     CharacterWriting,
     /// <summary>Tidying memory: search words for facts, duplicates merged and outdated facts kept as history (Thinking pool only,
     /// low priority).</summary>
-    MemoryUpkeep
+    MemoryUpkeep,
+    /// <summary>Writing the memory brief from the remembered facts (lowest priority).</summary>
+    MemoryBrief
 }
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
@@ -105,6 +107,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         HelperJobKind.Eyes => "eyes",
         HelperJobKind.CharacterWriting => "character_writing",
         HelperJobKind.MemoryUpkeep => "memory_upkeep",
+        HelperJobKind.MemoryBrief => "memory_brief",
         _ => "touch_zones"
     };
 
