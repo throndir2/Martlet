@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- **A greeting that knows you and stays in character**: Martlet's hello when it starts now calls you by your name when your account, your voice on People or Windows has a real name (never a user name or handle). It can also mention a weekend or a holiday, your newer Telegram or WhatsApp chat, a reminder it missed while it wasn't running, or a Martlet update. Your character greets you only the way it would, and one that wouldn't greet you stays quiet. ([#801](https://github.com/throndir2/Martlet/pull/801))
+
 ## [0.71.0] - 2026-10-11
 
 ### Added

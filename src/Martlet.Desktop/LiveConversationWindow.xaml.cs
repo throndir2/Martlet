@@ -798,6 +798,9 @@ public partial class LiveConversationWindow : ThemedWindow
         return job;
     }
 
+    /// <summary>Whether the reply that carried <paramref name="job"/> stayed quiet ([pass]).</summary>
+    internal bool StayedQuiet(BackgroundJob job) => controller.StayedQuiet(job);
+
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
     /// answered, no reply, look or other work owns Martlet, Martlet isn't paused or singing, and the conversation has been quiet
@@ -2398,8 +2401,9 @@ public partial class LiveConversationWindow : ThemedWindow
         var content = operation.Turn?.Content;
         var text = content?.Text?.Trim() ?? "";
         var refusal = content?.Refusal?.Trim() ?? "";
-        // A reply to what always listening heard may be [pass]: nothing is shown until it clearly isn't.
-        if (operation.Spoken && LiveConversationController.MaybeSilent(text)) text = "";
+        // A reply to what always listening heard, or one Martlet started on its own, may be [pass]: nothing is shown until it
+        // clearly isn't.
+        if (operation.MayPass && LiveConversationController.MaybeSilent(text)) text = "";
         if (reply is null && (text.Length > 0 || refusal.Length > 0)) reply = lastReply = Add(ChatRole.Martlet, "", CharacterName);
         if (reply is not null) reply.Text = text.Length > 0 ? text : refusal;
         var snapshot = operation.Turn?.Snapshot;

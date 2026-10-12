@@ -52,11 +52,17 @@ public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHo
 
 /// <summary>How the conversation is told about a notice kind's jobs: the prompt of the reply Martlet starts on its own
 /// (<paramref name="Message"/>) and the one for the notes of the user's next message (<paramref name="Notes"/>), each filled
-/// with the notices, one per line, as <paramref name="Placeholder"/>.</summary>
+/// with the notices, one per line, as <paramref name="Placeholder"/>. <see cref="Silent"/>: the prompts also get {silent}, the
+/// word the model answers to stay quiet (<see cref="StayQuiet.Marker"/>).</summary>
 public sealed record NoticeWording(string Message, string Notes, string Placeholder)
 {
     /// <summary>A due reminder's: Companion › Prompts › Reminder due, and Reminder due, with your message.</summary>
     public static NoticeWording Reminder { get; } = new(PromptCatalog.ReminderDue, PromptCatalog.ReminderDueNotes, "reminders");
+
+    public bool Silent { get; init; }
+
+    internal (string Name, string Value)[] Fills(string notices) =>
+        Silent ? [(Placeholder, notices), ("silent", StayQuiet.Marker)] : [(Placeholder, notices)];
 }
 
 /// <summary>What a job produced: its <paramref name="Result"/> for the conversation (the text the model gets back), or the
@@ -667,7 +673,7 @@ public sealed class BackgroundJobs : IDisposable
         for (var limit = 10_000; ; limit /= 2)
         {
             var text = string.Join("\n\n", notices.Select(group =>
-                    PromptSettings.Fill(prompts, group.Key.Message, (group.Key.Placeholder, Notices(group, limit / notices.Length))))
+                    PromptSettings.Fill(prompts, group.Key.Message, group.Key.Fills(Notices(group, limit / notices.Length))))
                 .Append(work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDone, ("results", Results(work, limit))))
                 .OfType<string>());
             try { return new(text); }
@@ -683,7 +689,7 @@ public sealed class BackgroundJobs : IDisposable
         var notices = Wordings(finished);
         var work = finished.Where(job => !job.Kind.Notice).ToArray();
         var text = string.Join("\n\n", notices.Select(group =>
-                PromptSettings.Fill(prompts, group.Key.Notes, (group.Key.Placeholder, Notices(group, 4_000))))
+                PromptSettings.Fill(prompts, group.Key.Notes, group.Key.Fills(Notices(group, 4_000))))
             .Append(work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDoneNotes, ("results", Results(work, 6_000))))
             .Where(part => !string.IsNullOrWhiteSpace(part)));
         return text.Length == 0 ? null : text;
