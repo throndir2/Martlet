@@ -8,11 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **VRM characters play motion clips**: a VRM character can now play VRM Animation clips (`.vrma`), such as motions made with HY-Motion. A clip blends in, plays once and gives the body back to the character's relaxed pose and breathing, while its mouth, blinking, eyes and touch keep working. The character stays in its window even when a clip walks. Martlet's MCP server can play a `.vrma` file on the shown character with `character_animation`. ([#818](https://github.com/throndir2/Martlet/pull/818))
+
 ## [0.73.0] - 2026-10-12
 
 ### Added
 
-- **VRM characters play motion clips**: a VRM character can now play VRM Animation clips (`.vrma`), such as motions made with HY-Motion. A clip blends in, plays once and gives the body back to the character's relaxed pose and breathing, while its mouth, blinking, eyes and touch keep working. The character stays in its window even when a clip walks. Martlet's MCP server can play a `.vrma` file on the shown character with `character_animation`. ([#818](https://github.com/throndir2/Martlet/pull/818))
 - **Let Martlet read your messages**: Companion › Replies › **Personal content** decides what Martlet may do with personal things it sees on your screen or camera. *Keep private* (the default) works as before. *Read my messages* lets it read and talk about your messages, chats, chat history, emails and notifications. *Everything* also lets it see password managers and private browser windows. ([#812](https://github.com/throndir2/Martlet/pull/812))
 - **Ask your AI assistant to make Martlet forget something**: Martlet's MCP server has a new `memory_forget` tool. It deletes remembered facts that contain some text, even while Martlet is running, and your other computers forget them too. ([#810](https://github.com/throndir2/Martlet/pull/810))
 - **Martlet learns more about your game**: after it reads a game's wiki, a Thinking pool helper writes a short brief (what the game is, how it plays, early tips and common mistakes) that Martlet keeps in mind when you talk about the game. With screen digests on, Martlet also notices where you are in the game, and when its guide has little about that place, it looks it up on wikis, Reddit search results and the web in the background. Martlet can also refresh the brief when you ask. ([#809](https://github.com/throndir2/Martlet/pull/809))
