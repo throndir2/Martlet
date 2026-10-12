@@ -88,9 +88,11 @@ internal static partial class MemoryUpkeep
     /// <summary>The work of one pass over <paramref name="snapshot"/>: facts changed after <paramref name="checkedThrough"/> are
     /// looked at for duplicates (oldest first), and current facts without search words that <paramref name="asked"/> doesn't
     /// rule out get words (newest first). <paramref name="person"/> maps a voice ID to the person it stands for now, so only facts
-    /// of one person are grouped.</summary>
+    /// of one person are grouped. <paramref name="similar"/> (finding by meaning) gives the facts close enough in meaning to a fact
+    /// to be grouped with it even when they share few words; they are fused with the lexical matches through the search engine.</summary>
     internal static MemoryUpkeepPlan Plan(MemorySnapshot snapshot, DateTimeOffset now, (DateTimeOffset At, Guid Id)? checkedThrough,
-        Func<MemoryFact, bool>? asked = null, Func<string?, string?>? person = null, CancellationToken token = default)
+        Func<MemoryFact, bool>? asked = null, Func<string?, string?>? person = null, CancellationToken token = default,
+        Func<MemoryFact, IReadOnlyCollection<Guid>>? similar = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         person ??= id => id;
@@ -117,12 +119,15 @@ internal static partial class MemoryUpkeep
             through = (fact.UpdatedAtUtc, fact.Id);
             if (numbers.ContainsKey(fact.Id)) continue;
             var text = Clip(fact.Content, 1_000) + (fact.SearchWords is { } words ? ", " + words : "");
+            var near = similar?.Invoke(fact) ?? [];
             if (MemoryQuery.TryFromBoundedSource(text, 8) is not { } query) continue;
-            // Facts that share a good part of this one's words (its search words too), of the same person.
+            if (near.Count > 0) query = query with { Similar = [.. near] };
+            // Facts that share a good part of this one's words (its search words too), or that are close in meaning, of the same
+            // person.
             var needed = Math.Max(2, (int)Math.Ceiling(query.Text.Split(' ').Length * 0.25));
             var who = person(fact.VoiceId);
             var related = snapshot.Search(query, now, token)
-                .Where(hit => hit.Fact.Id != fact.Id && !numbers.ContainsKey(hit.Fact.Id) && hit.MatchedTerms >= needed &&
+                .Where(hit => hit.Fact.Id != fact.Id && !numbers.ContainsKey(hit.Fact.Id) && (hit.MatchedTerms >= needed || near.Contains(hit.Fact.Id)) &&
                     string.Equals(person(hit.Fact.VoiceId), who, StringComparison.Ordinal))
                 .Take(MaximumGroupSize - 1).Select(hit => hit.Fact).ToArray();
             if (related.Length == 0) continue;

@@ -328,6 +328,10 @@ public sealed record MemoryQuery
 {
     public required string Text { get; init; }
     public int MaximumResults { get; init; } = 5;
+    /// <summary>Facts an embedding search found for the same question, best first (docs/SEARCH.md, "Finding by meaning"): they are
+    /// fused with the lexical order by reciprocal rank fusion, so a fact that says the same thing in other words is found too. IDs
+    /// a store doesn't have (or whose fact expired) are left out. Null: words only.</summary>
+    public IReadOnlyList<Guid>? Similar { get; init; }
 
     public static MemoryQuery? TryFromBoundedSource(string source, int maximumResults = 5)
     {
@@ -343,7 +347,7 @@ public sealed record MemoryQuery
     }
 
     public override string ToString() =>
-        $"MemoryQuery {{ Text = [redacted], MaximumResults = {MaximumResults} }}";
+        $"MemoryQuery {{ Text = [redacted], MaximumResults = {MaximumResults}, Similar = {Similar?.Count ?? 0} }}";
 }
 
 public sealed record MemoryRetrievalHit(MemoryFact Fact, double Score, int MatchedTerms);

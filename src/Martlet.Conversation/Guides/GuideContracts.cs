@@ -102,6 +102,14 @@ public interface IGuideIndex
     /// <summary>The best chunks for <paramref name="query"/>, best first, at most <paramref name="max"/>; empty when nothing
     /// matches.</summary>
     IReadOnlyList<GuideHit> Search(string query, int max);
+
+    /// <summary>The chunks, in order (what an embedding index of the guide is made from).</summary>
+    IReadOnlyList<GuideChunk> Chunks => [];
+
+    /// <summary>Like <see cref="Search(string, int)"/>, fused with <paramref name="similar"/>: chunks an embedding search found for
+    /// the same question (their number in <see cref="Chunks"/> and their <see cref="Martlet.Core.Search.SearchNeighbor.Meaning"/>),
+    /// best first (docs/SEARCH.md, "Finding by meaning"). Without them it is the same search.</summary>
+    IReadOnlyList<GuideHit> Search(string query, int max, IReadOnlyList<(int Chunk, double Meaning)>? similar) => Search(query, max);
 }
 
 /// <summary>The caps of making one guide: pages read, bytes downloaded, sites, the wait between two requests to one site and the

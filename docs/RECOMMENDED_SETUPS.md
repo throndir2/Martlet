@@ -105,7 +105,7 @@ never to a cloud provider).
 | Text-to-speech (TTS) | OpenAI (fixed voices) | Chatterbox Nano on the processor (free, about 8 threads, needs Docker) | One Voice Studio engine (Chatterbox Turbo ~6 GB, the default, which can also laugh and sigh; F5 ~6 GB, XTTS-v2 ~4 GB, GPT-SoVITS ~4 GB or Dia ~8 GB (English only, can laugh, sigh and cough); Qwen3-TTS planned), ~2-6 GB | A custom or cloned voice requires self-hosted GPU TTS. Keep one engine resident. XTTS-v2 streams while it generates, so replies start sooner; F5 often sounds closer to the recording. The F5 and XTTS-v2 models are non-commercial only; Chatterbox and GPT-SoVITS are MIT; Dia is Apache-2.0. |
 | Lip-sync analysis | None supported | Loudness lip-sync (built in) | NVIDIA Audio2Face-3D on a Martlet host (open-source engine, no key; or NVIDIA's NIM with an NGC key), NVIDIA RTX 20+ only, 4 GB+ | Automatic mode uses local Audio2Face, then a paired host, then loudness. |
 | Screen understanding (future) | Vision-capable models on OpenRouter, NVIDIA Build or OpenAI | Tesseract OCR | Pinned unquantized LLaVA-NeXT 7B, ~16 GB+ | Bursty and heavy; keep it off the live voice GPU when possible. |
-| Memory embeddings/reranking (future) | Possible | Small models run on CPU | Optional | Current memory is lexical and fully local. |
+| Memory embeddings (finding by meaning) | Yes | A small model in Ollama on this PC's processor | Optional | Used away from the reply only (remembering, tidying, the find tools, `search_guide`); see [Finding by meaning](SEARCH.md#finding-by-meaning). |
 | Voice Studio training (future) | None | No | Often most of a 12-24 GB card for hours | Run it where it cannot stall live conversation. |
 
 **Nothing requires a GPU or an account.** The minimum working setup is the
@@ -473,7 +473,7 @@ small work inside Martlet that the footprints count as always on):
 | Web research | A search service online (a search API or your SearXNG), then Thinking or the Thinking pool | Optional, on by default | Yes | Companion › Thinking pool › Web research |
 | Tools: MCP servers and the terminal | Programs you add, on this PC or online; the terminal runs PowerShell on this PC | Optional, the terminal off by default | Yes | Companion › Tools |
 | Discord, Messaging (Telegram, WhatsApp) | The network, then Thinking, the voice and the other parts | Optional | Yes | Companion › Discord, Companion › Messaging |
-| Memory, lorebooks | Words matched on this PC's processor (no embedding model) | Memory on by default; lorebooks optional | Yes | Companion › Memory, Companion › Lorebook |
+| Memory, lorebooks | Words matched on this PC's processor; away from the reply, also an embedding model in Ollama on the processor when it is downloaded | Memory on by default; lorebooks optional | Yes | Companion › Memory, Companion › Lorebook |
 | Check-ins and reminders | Thinking or the Thinking pool | Optional | Yes | Companion › Check-ins |
 | People (voice recognition) | WeSpeaker on this PC's processor, inside Martlet (about 0.16 GB, 4 threads for 0.16 s per utterance) | On by default | Yes | Companion › People |
 | Cloud providers | Online accounts and keys for Thinking, the voice, listening, Vision and Hearing | Optional | Yes | The page of each part |

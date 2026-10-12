@@ -2643,7 +2643,26 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "field finding a document by words it doesn't say (search words), an index without positions growing while it is " +
             "searched, reciprocal rank fusion with a second ranked list, and the time of the first stage and ranking on 100,000 " +
             "documents (median and p95 in microseconds; under 10 milliseconds). Each source's ranking end to end is in " +
-            "memory_recall_check, app_guides_check and conversation_history_check. Reads and writes nothing.", new { })
+            "memory_recall_check, app_guides_check and conversation_history_check. Reads and writes nothing.", new { }),
+        Tool("meaning_search_check", "Rehearse finding by meaning (docs/SEARCH.md, \"Finding by meaning\": an embedding model used " +
+            "only away from the reply's first word, when remembering and tidying memory find related facts, in the memory find " +
+            "tools and in search_guide) with the production code on synthetic text in a disposable folder: vector sets (nearest " +
+            "first, a changed text embedded again, a forgotten fact's vector dropped, saved and read back, another model's file " +
+            "refused, 10,000 vectors searched in milliseconds), memory's fusion through the search engine (7 held-out questions in " +
+            "other words such as \"What should I cook tonight?\" for \"The user is vegetarian.\": recall in the first 3 by words " +
+            "and fused; names such as Rex still first), tidying memory grouping \"lives in Seattle\" with \"moved to Portland\", a " +
+            "guide's fusion (\"How do I make my weapons stronger?\" finding the blacksmith's upgrades) and the Ollama embedder " +
+            "against a loopback fixture (/api/embed on the processor only: num_gpu 0, keep_alive 1h, truncate, nomic-embed-text's " +
+            "search_query: start; a model that isn't downloaded told apart; held back while Ollama has 3 models loaded or one runs " +
+            "on the processor). The embeddings are a FIXTURE (NOT AI). measure: true also times the real model (model, default " +
+            "nomic-embed-text) in this PC's Ollama on the same questions (first request, median and longest question, time per " +
+            "fact, recall in the first 3) when it is downloaded and loading it holds nothing back; it never downloads. Never opens " +
+            "your data.",
+            new
+            {
+                measure = new { type = "boolean", description = "Also time the real embedding model in this PC's Ollama (loopback; never downloads)." },
+                model = new { type = "string", description = "The Ollama embedding model to time (default nomic-embed-text)." }
+            })
     ];
 
     private static object Tool(string name, string description, object properties, string[]? required = null) =>
@@ -3013,6 +3032,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "search_languages_check" => await LanguagesCheck.RunAsync(cancellation),
                 "memory_upkeep_check" => await MemoryUpkeepCheck.RunAsync(cancellation),
                 "search_engine_check" => SearchEngineCheck.Run(cancellation),
+                "meaning_search_check" => await MeaningSearchCheck.RunAsync(OptionalBool(arguments, "measure") ?? false,
+                    OptionalString(arguments, "model"), cancellation),
                 "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "song_playback_check" => await SongsCheck.RunAsync(
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "songId"),

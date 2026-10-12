@@ -355,16 +355,21 @@ the stored positions. Maximal marginal relevance (Carbonell and Goldstein,
 headings that every chunk keeps are a form of the "contextual chunk"
 technique: context added to each chunk helps lexical search find it. A
 cross-encoder reranker or an embedding model would need a model call on
-every message, so this workstream uses none (see below).
+every message, so the guide notes use none (see below).
 
-**Why no embeddings or vector database (yet).** A guide is a few thousand
-chunks, which an in-memory index searches faster than any database call.
-Dense embeddings would need an embedding model call on every message, which
-adds a wait before the first word, and on a gaming PC it can push the
-conversation's model out of the graphics card. Game questions are full of
-proper names (items, places, bosses), where lexical search is strong. A later
-step can add embeddings made while reading up and used only by the
-`search_guide` tool, where a short wait is expected.
+**Embeddings only in `search_guide`.** A guide is a few thousand chunks, which
+an in-memory index searches faster than any database call. Dense embeddings on
+the notes would need an embedding model call on every message, which adds a
+wait before the first word, and on a gaming PC it can push the conversation's
+model out of the graphics card. Game questions are full of proper names
+(items, places, bosses), where lexical search is strong. So the guide notes stay
+lexical, and only the `search_guide` tool, where a short wait is expected, also
+finds sections by meaning: its question's vector is compared with the guide's
+section vectors, made in the background on this PC's processor the first time
+the guide is searched and kept in `meaning\guides`, and the sections it finds
+are fused with the lexical order ([Finding by meaning](SEARCH.md#finding-by-meaning)).
+*How do I make my weapons stronger?* then finds the blacksmith's upgrades. The
+vectors of a deleted guide are deleted with it.
 
 ### What goes to the model, and what stays in the guide
 
@@ -386,7 +391,9 @@ stays the same:
   returns at once; it says so when Martlet already reads up on that app.
 - `search_guide(app?, question)`: searches a guide for more than the notes
   carried (the app in front when `app` is left out) and returns the sections
-  with their page titles, links and relevance. It also searches the web
+  with their page titles, links and relevance. Sections close in meaning to the
+  question join those found by its words
+  ([Finding by meaning](SEARCH.md#finding-by-meaning)). It also searches the web
   research reports Martlet wrote, with the same chunker and index; `app` can
   name a report (see
   [Finding a report again](CONVERSATION.md#finding-a-report-again)).

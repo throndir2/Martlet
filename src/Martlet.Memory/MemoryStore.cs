@@ -619,18 +619,20 @@ public sealed class MemoryStore : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         StoreState snapshot;
-        CachedHit[]? cached;
+        CachedHit[]? cached = null;
+        // A search fused with facts found by meaning isn't cached: the same words can come with other facts.
+        var cacheable = query.Similar is not { Count: > 0 };
         var key = new QueryKey(string.Join('\u001f', terms), query.MaximumResults);
         lock (gate)
         {
             EnsureOpen();
             snapshot = state;
-            queryCache.TryGetValue(key, out cached);
+            if (cacheable) queryCache.TryGetValue(key, out cached);
         }
         hooks?.Query?.Invoke(MemoryQueryPoint.AfterSnapshot, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var hits = cached ?? snapshot.Index.Search(terms, query.MaximumResults, cancellationToken)
+        var hits = cached ?? snapshot.Index.Search(terms, query.MaximumResults, cancellationToken, similar: query.Similar)
             .Select(match => new CachedHit(match.FactId, match.Score, match.MatchedTerms))
             .ToArray();
         hooks?.Query?.Invoke(MemoryQueryPoint.BeforeRevisionCheck, cancellationToken);
@@ -646,7 +648,7 @@ public sealed class MemoryStore : IDisposable
             {
                 EnsureOpen();
                 MemoryGuard.Require(state.Revision == snapshot.Revision, MemoryFailure.QueryInvalidated);
-                if (cached is null)
+                if (cached is null && cacheable)
                 {
                     if (queryCache.TryGetValue(key, out var winner))
                         hits = winner;

@@ -1820,6 +1820,7 @@ public partial class MainWindow
                 new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
         if (conversation?.MemoryBrief is { } brief) page.Children.Add(MemoryBriefCard(brief, on));
+        if (conversation?.Meaning is { } meaning) page.Children.Add(MeaningSearchCard(meaning));
         if (conversationHistory is { } record) page.Children.Add(HistoryCard(record, on));
     }
 

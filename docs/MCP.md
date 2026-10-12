@@ -1709,6 +1709,20 @@ it needs `--allow-ui-effects`). The brief's box `MemoryBriefText` is never a
 readable value. `MemoryBriefSave` (*Save my changes*) and `MemoryBriefWrite`
 (*Write it again*, which asks a model) need `--allow-ui-effects`.
 
+Companion > Memory's *Finding by meaning* card shows `MeaningSearchStatus`
+(text: off; checking; not ready because Ollama isn't installed or running on
+this PC or the model isn't downloaded; waiting because loading the model could
+unload another one; or on, with how many memories, guide sections and report
+sections it can find by meaning and what it is reading now; counts and fixed
+wording, never a fact or a text), the check box `MeaningSearchOn` (its
+`checkedState`; `ui_toggle` saves `meaning-search.json`, so it needs
+`--allow-ui-effects`) and the model's name in `MeaningSearchModel` (typing in
+it saves too). `MeaningSearchCheck` (*Check again*) only asks this PC's Ollama
+(loopback) what it has, so it is a safe click. `MeaningSearchDownload`
+(*Download*, shown only while the model isn't downloaded) asks first
+(`MeaningSearchDownloadQuestion`) and downloads a model, so it needs
+`--allow-ui-effects`.
+
 `memory_forget` deletes remembered facts the way Companion > Memory's Delete
 does (`DeleteManyAsync` in `src\Martlet.Memory`): each fact whose text contains
 `contains` (any case, at most 200 characters) or whose ID is in `ids` (at most
@@ -1807,6 +1821,34 @@ first and adds one only the second list has; and the first stage and ranking
 of a query on 100,000 documents (`medianMicroseconds`, `p95Microseconds`;
 passes under 10,000). Each source's own ranking is in `memory_recall_check`,
 `app_guides_check` and `conversation_history_check`. It reads and writes nothing.
+
+`meaning_search_check` (optional `measure`, a boolean, and `model`) rehearses
+[finding by meaning](SEARCH.md#finding-by-meaning) with the production code
+(`VectorSet` and `FixtureEmbedder` in `src\Martlet.Core\Search`, `MemoryStore`,
+the desktop's `MemoryUpkeep.cs`, `GuideIndex` and `OllamaEmbedder` in
+`src\Martlet.Providers\Ollama`) on synthetic text in a disposable folder, and
+returns `{passed, failures, steps, measured, note}`. The embeddings are
+`FixtureEmbedder`'s (FIXTURE, NOT AI). The steps: a vector set lists the
+nearest first, embeds a changed text again, drops a deleted document, is saved
+and read back and refuses another model's file; 10,000 vectors of 768 numbers
+are searched in milliseconds (`medianMilliseconds`, under 50); 7 held-out
+questions in other words (*What should I cook tonight?* for *The user is
+vegetarian.*) find their fact in the first 3 when fused but not by words
+(`lexicalRecallAt3`, `fusedRecallAt3`); a question that names *Rex* or *Ana*
+still finds that fact first; tidying groups *lives in Seattle* with *moved to
+Portland last spring* by meaning only; a forgotten fact's vector is dropped;
+`search_guide`'s index finds the blacksmith's upgrades for *How do I make my
+weapons stronger?* with its meaning as relevance; the Ollama embedder, against a
+loopback fixture, asks `/api/embed` with `num_gpu` 0, its threads,
+`keep_alive` `1h`, `truncate` and nomic-embed-text's `search_query: ` start, and
+tells a model that isn't downloaded apart; and loading is held back while
+Ollama has 3 models loaded or one runs on the processor. With `measure: true`,
+`measured` times the real model (`model`, default `nomic-embed-text`) in this
+PC's Ollama on the same questions: `firstRequestMilliseconds`,
+`queryMedianMilliseconds`, `queryMaximumMilliseconds`, `documentMilliseconds`
+(per fact), `lexicalRecallAt3` and `fusedRecallAt3`. It runs only when the model
+is downloaded and loading it holds nothing back, and otherwise says NOT RUN and
+why; it never downloads. It never opens your data.
 
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in

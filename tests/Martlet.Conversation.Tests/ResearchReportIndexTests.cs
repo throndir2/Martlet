@@ -117,6 +117,30 @@ public sealed class ResearchReportIndexTests : IDisposable
         Assert.Contains("There's no report about Elden Ring.", AppGuideTools.NoReport("Elden Ring", []), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ASectionInOtherWordsIsFoundByMeaningAndItsVectorsGoWithTheReport()
+    {
+        var cats = await AddAsync(Report("Toys cats like best", "Wand toys and crinkle balls.",
+            "## Wand toys\nMost cats prefer wand toys that move like prey [1].\n" +
+            "## Bedtime\nA kitten settles for the night after a short play session and a nap spot by the window [1].",
+            ("Wand toys - Cat Care", "https://cats.example/wand")));
+        var index = new ResearchReportIndex();
+        await index.UpdateAsync(directory, CancellationToken.None);
+        var (id, sections) = Assert.Single(index.Documents);
+        Assert.Equal(cats.Id, id);
+        const string question = "why is my pet always tired";
+        Assert.DoesNotContain(index.Search(question, null, 5).Hits, h => h.Hit.Chunk.Text.Contains("kitten", StringComparison.Ordinal));
+        // FIXTURE (NOT AI) embeddings of each section, searched as the desktop does for search_guide.
+        var vectors = new Martlet.Core.Search.VectorSet("fixture:concepts");
+        for (var i = 0; i < sections.Count; i++)
+            vectors.Put($"{id}#{i}", sections[i].Text, Martlet.Core.Search.FixtureEmbedder.Embed(sections[i].Text));
+        var near = vectors.Nearest(Martlet.Core.Search.FixtureEmbedder.Embed(question), 5).Where(n => n.Meaning >= 0.2)
+            .Select(n => (int.Parse(n.Id[(n.Id.LastIndexOf('#') + 1)..]), n.Meaning)).ToArray();
+        var found = index.Search(question, null, 5, similar: new Dictionary<string, IReadOnlyList<(int, double)>> { [id] = near });
+        Assert.Contains("kitten", found.Hits[0].Hit.Chunk.Text, StringComparison.Ordinal);
+        Assert.Equal(near[0].Meaning, found.Hits[0].Hit.Relevance, 6);
+    }
+
     private async Task<Creation> AddAsync(ResearchReport report) =>
         await CreationStore.AddAsync(directory, ResearchReports.Draft(report, new CreationAuthor { Device = "test" }), registry,
             DateTimeOffset.UtcNow, CancellationToken.None);

@@ -65,8 +65,11 @@ internal static class MemoryTools
 
     /// <param name="speaker">The voice speaking now, whose a fact is for "me" (else <paramref name="yours"/>: the signed-in
     /// person's voice).</param>
+    /// <param name="similar">Finds facts by meaning for find's query words (best first; null when it can't now): they are fused
+    /// with the facts found by their words.</param>
     internal static async Task<MemoryToolOutcome> RunAsync(DesktopMemoryService service, Guid configurationRevision, string argumentsJson,
-        VoiceRoster? roster, KnownVoice? speaker, CancellationToken token, KnownVoice? yours = null)
+        VoiceRoster? roster, KnownVoice? speaker, CancellationToken token, KnownVoice? yours = null,
+        Func<string, CancellationToken, Task<IReadOnlyList<Guid>?>>? similar = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         JsonObject? arguments;
@@ -87,12 +90,14 @@ internal static class MemoryTools
         switch (action)
         {
             case "find":
+                var query = Text(arguments, "query");
+                var near = query is not null && similar is not null ? await similar(query, token).ConfigureAwait(false) : null;
                 return await service.UseSpaceAsync(configurationRevision, null, false, async (set, _, store, operationToken) =>
                 {
                     var here = Current((await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts);
                     var elsewhere = service.OtherFacts(set);
-                    return Find([.. here, .. elsewhere.Select(f => f.Fact)], Text(arguments, "query"), person is not null, voice, roster,
-                        elsewhere.ToDictionary(f => f.Fact.Id, f => MemorySpaces.Label(f.Space, service.Account)));
+                    return Find([.. here, .. elsewhere.Select(f => f.Fact)], query, person is not null, voice, roster,
+                        elsewhere.ToDictionary(f => f.Fact.Id, f => MemorySpaces.Label(f.Space, service.Account)), near);
                 }, token).ConfigureAwait(false);
             case "remember":
                 if (Fact(fact) is not { } content)
@@ -211,19 +216,29 @@ internal static class MemoryTools
 
     /// <summary>The facts that match (every query word, or the most words when none match them all), newest first, as JSON. A
     /// word matches a fact's text, whose it is or its hidden search words (which are never shown). History (replaced facts) is
-    /// never listed. <paramref name="kept"/> names where a fact from another memory space than the active one is kept.</summary>
+    /// never listed. <paramref name="kept"/> names where a fact from another memory space than the active one is kept.
+    /// <paramref name="similar"/> (facts an embedding search found for the query, best first) is fused with that order by the
+    /// search engine's reciprocal rank fusion, so a fact that says it in other words is found too.</summary>
     internal static MemoryToolOutcome Find(IReadOnlyList<MemoryFact> facts, string? query, bool byPerson, string? voice, VoiceRoster? roster,
-        IReadOnlyDictionary<Guid, string>? kept = null)
+        IReadOnlyDictionary<Guid, string>? kept = null, IReadOnlyList<Guid>? similar = null)
     {
         var words = Words(query);
-        var matches = facts
-            .Where(f => !f.IsHistory && (!byPerson || Same(f.VoiceId, voice, roster, exact: true)))
+        var eligible = facts.Where(f => !f.IsHistory && (!byPerson || Same(f.VoiceId, voice, roster, exact: true))).ToArray();
+        var matches = eligible
             .Select(f => (Fact: f, Score: words.Count(w => f.Content.Contains(w, StringComparison.OrdinalIgnoreCase) ||
                 f.SearchWords?.Contains(w, StringComparison.OrdinalIgnoreCase) == true ||
                 MemoryPeople.Label(f.VoiceId, roster)?.Contains(w, StringComparison.OrdinalIgnoreCase) == true)))
             .Where(m => words.Length == 0 || m.Score > 0)
             .OrderByDescending(m => m.Score).ThenByDescending(m => m.Fact.UpdatedAtUtc)
             .ToArray();
+        if (words.Length > 0 && similar is { Count: > 0 })
+        {
+            var number = new Dictionary<Guid, int>();
+            for (var i = 0; i < eligible.Length; i++) number.TryAdd(eligible[i].Id, i);
+            var lexical = matches.Select(m => number[m.Fact.Id]).ToArray();
+            var meaning = similar.Where(number.ContainsKey).Select(id => number[id]).ToArray();
+            matches = [.. Martlet.Core.Search.SearchFusion.Fuse([lexical, meaning]).Select(i => (eligible[i], 0))];
+        }
         var listed = matches.Take(MaximumFound).Select(m => new
         {
             id = ShortId(m.Fact),

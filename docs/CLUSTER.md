@@ -582,6 +582,7 @@ NVIDIA Build and its old key.
 | `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 | `reminders.<device ID>` | One per computer, written only by that computer: the [reminders](CONVERSATION.md#reminders) set on it and what it did about anyone's (offered to say one, took it, said it, canceled it), so any companion PC can list, cancel and say them and the one used most recently says a due one once. Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 | `conversation-history` | Companion › Memory › Conversation history: whether Martlet keeps a record of your conversations and may search it on its own (`conversation-history.json`) | |
+| `meaning-search` | Companion › Memory › [Finding by meaning](SEARCH.md#finding-by-meaning): on or off and which embedding model in Ollama (`meaning-search.json`). A computer without that model says why and finds by words until it has it | The vectors themselves (each computer makes its own) and whether the model is downloaded in this PC's Ollama |
 
 Conversations are shared too: each person's [record of conversations](MEMORY.md#one-record-on-every-computer)
 is the same on every computer where they are signed in, and what Martlet makes from them travels as the
@@ -593,7 +594,7 @@ With [accounts](ACCOUNTS.md#account-settings), the settings above are split
 into the household's and each person's. The household keeps `thinking`,
 `listening`, `speaking` with their API keys, `thinking-fallback`, `thinking-pool`,
 `thinking-pool-choices`, `character-actions`, `voice-recognition`, `smart-home`, `updates`,
-`model-abilities`, `work-sharing`, `motion`, `pools` and the `pc.*`, `role.*` and
+`model-abilities`, `work-sharing`, `motion`, `meaning-search`, `pools` and the `pc.*`, `role.*` and
 `setup-run.*` entries. Each person keeps `companion` (their personalities and
 character profiles), `replies`, `prompts`, `memory`, `lorebooks`, `character`,
 `talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-id`,
@@ -621,6 +622,7 @@ These describe the computer itself, so they never travel:
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 | Memory local models took in Ollama (`model-memory.json`) | Measured on this PC |
+| Embedding vectors for finding by meaning (memory's and reports' in memory only; guides' in `meaning\guides`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
 | That this computer made or saw Martlet's [starter motions](AVATARS.md#starter-motions) made (`motion-starters.json` in the account's creations folder) | What this computer saw, so it never makes them again after you delete them; the motions themselves are shared creations |
 
 ### Conflicts and offline changes

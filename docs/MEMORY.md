@@ -15,9 +15,13 @@ what was said when you mention an earlier conversation (see
 Martlet remembers the same things on every computer of yours: facts travel
 through your paired hosts ([One memory on every computer](#one-memory-on-every-computer)),
 like the rest of Martlet ([CLUSTER](CLUSTER.md)), and each computer keeps them in
-its own local store. There is no embedding, vector database, cloud copy or
-backup. Besides that sync, the only background work is the
-[memory brief](#the-memory-brief): a short profile written from the facts. Screen and
+its own local store. There is no vector database, cloud copy or backup: an
+embedding model can find facts by meaning away from the reply, with vectors that
+each computer makes for itself and keeps in memory only
+([Finding by meaning](SEARCH.md#finding-by-meaning)). Besides that sync, the
+background work is the [memory brief](#the-memory-brief) (a short profile
+written from the facts), [tidying](#search-words-history-and-tidying) and those
+vectors. Screen and
 camera glances are never remembered, and neither is
 [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays): recall and
 remembering read only the user's own words. This is internal functional evidence, not
@@ -181,6 +185,8 @@ Every change builds it again. Nothing on this path calls a model, makes
 embeddings or uses a vector store: recall runs on the reply's path, and it must
 not make a reply slower (see
 [Never add conversation latency](../AGENTS.md#never-add-conversation-latency)).
+Only remembering, tidying and the find tools, away from the reply's first word,
+also find facts by meaning ([Finding by meaning](SEARCH.md#finding-by-meaning)).
 Memory uses the shared [search engine](SEARCH.md) that app guides and past
 conversations also use: `LexicalIndex` gives memory's profile (one `content`
 field, the weights below and the penalty selection) and its features.
@@ -386,7 +392,8 @@ names the problem.
 **Remembering.** After a reply completes, the exchange is queued (at most four
 pending) and handled in the background, one at a time, on a separate text-only
 runtime so it never delays the next turn. Desktop recalls up to ten related
-facts, then sends one extra request (at most the max reply length in output
+facts (by their words, and by meaning when an embedding model can be used:
+[Finding by meaning](SEARCH.md#finding-by-meaning)), then sends one extra request (at most the max reply length in output
 tokens, same Thinking route and credential binding, its own one-request
 authorization) with the latest exchange, the previous exchange as context and
 those numbered facts. When [learning names](VOICES.md) is due after the same
@@ -459,7 +466,10 @@ same). The model uses it when the user asks what it remembers or asks it to
 remember, correct, reassign or forget something:
 
 - `find` (`query` words and/or `person`) lists up to 20 facts with short ids,
-  whose each is and when it changed, best matches first.
+  whose each is and when it changed, best matches first. Facts close in meaning
+  to the query words join those found by the words
+  ([Finding by meaning](SEARCH.md#finding-by-meaning)); `memory_find` and
+  `find_memories` do the same.
 - `remember` (`fact`, optional `person`) saves a fact with `conversation`
   provenance, as the speaker's unless `person` says otherwise; a near-duplicate
   of the same person's fact is not saved twice.
@@ -527,7 +537,10 @@ so the time to the first spoken word does not change.
   after facts change, and again while work is left, each store this device may
   change gets one pass: the facts changed since the last pass are looked up with
   the store's own search (search words included), and facts of one person that
-  share a good part of their words form a group (at most 6 groups of 5). Facts
+  share a good part of their words, or that are close in meaning (a meaning of
+  at least 0.5, [Finding by meaning](SEARCH.md#finding-by-meaning)), form a
+  group (at most 6 groups of 5). The pass takes a snapshot of the store and
+  lets it go before it compares vectors. Facts
   without search words are listed too (at most 16, newest first). A free
   Thinking pool member that reads text answers `SAME <n> <m>: <fact>` (merge
   duplicates into the first; their history moves to it), `OUTDATED <n> BY <m>`
@@ -1240,8 +1253,10 @@ All validation remains local; no remote workflow was added or run.
   lifecycle tests; controlled IO interruption is not power-loss qualification.
 - Evaluate usefulness, false retrievals and privacy comprehension with consented
   held-out real-user tasks and resource budgets before G4.
-- Reassess embeddings or a model reranker only after a labeled evaluation with
-  consented real conversations demonstrates material benefit over the in-process
-  lexical reranker, and the model/license/index deletion lifecycle is reviewed.
-  Neither may run on the reply's path. No embedding/vector adapter is present in
-  this slice.
+- Measure finding by meaning with a real embedding model (`meaning_search_check`
+  with `measure: true` on a PC whose Ollama has it) and with consented real
+  conversations before it joins automatic recall; it may join the reply's path
+  only after the `Reply latency` line shows it adds no wait. Embeddings are now
+  used away from the reply only, and their vectors are derived data whose
+  deletion follows the facts ([Finding by meaning](SEARCH.md#finding-by-meaning)).
+  A model reranker is still not used.
