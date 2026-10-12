@@ -522,8 +522,13 @@
                     <Border x:Name="FriendsCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Friends" Visibility="Collapsed">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">
-                                <Button x:Name="FriendsCheckButton" DockPanel.Dock="Right" Content="Check now" Click="FriendsCheck_Click" VerticalAlignment="Top"
-                                        AutomationProperties.AutomationId="FriendsCheck" AutomationProperties.Name="Read who your hosts are shared with now"/>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                    <Button x:Name="FriendsMakeShareLinkButton" Content="Make a share link" Click="FriendsMakeShareLink_Click" Margin="0,0,8,0"
+                                            Style="{DynamicResource PrimaryButton}"
+                                            AutomationProperties.AutomationId="FriendsMakeShareLink" AutomationProperties.Name="Make a share link for a friend"/>
+                                    <Button x:Name="FriendsCheckButton" Content="Check now" Click="FriendsCheck_Click"
+                                            AutomationProperties.AutomationId="FriendsCheck" AutomationProperties.Name="Read who your hosts are shared with now"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
                                     <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
                                         <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE716;" Foreground="{DynamicResource AccentBrush}"/>
@@ -531,7 +536,7 @@
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="Friends" FontSize="18" FontWeight="SemiBold"/>
                                         <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="Share a host's engines with a friend's Martlet. They sign in with their own account and never join your network."/>
+                                                   Text="Share your hosts' engines with a friend's Martlet: send them a share link. They never join your network and never get your API keys."/>
                                     </StackPanel>
                                 </StackPanel>
                             </DockPanel>
@@ -544,8 +549,12 @@
                     <Border x:Name="SharedHostsCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Hosts shared with this PC" Visibility="Collapsed">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">
-                                <Button x:Name="SharedHostsCheckButton" DockPanel.Dock="Right" Content="Check now" Click="SharedHostsCheck_Click" VerticalAlignment="Top"
-                                        AutomationProperties.AutomationId="SharedHostsCheck" AutomationProperties.Name="Check the hosts friends share with this PC now"/>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                    <Button x:Name="AcceptShareLinkButton" Content="Accept a share link" Click="AcceptShareLink_Click" Margin="0,0,8,0"
+                                            AutomationProperties.AutomationId="AcceptShareLink" AutomationProperties.Name="Paste a share link a friend sent"/>
+                                    <Button x:Name="SharedHostsCheckButton" Content="Check now" Click="SharedHostsCheck_Click"
+                                            AutomationProperties.AutomationId="SharedHostsCheck" AutomationProperties.Name="Check the hosts friends share with this PC now"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
                                     <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
                                         <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE72D;" Foreground="{DynamicResource AccentBrush}"/>

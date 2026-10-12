@@ -258,6 +258,40 @@ public static class HostSignInClient
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Signs in to one host of a share link (docs/NETWORK.md, "Sharing with a link") with the link's secret: pins the
+    /// host's key, finds the address that answers (outside addresses first), and gets a friend's credential (that host's
+    /// engines only). Throws <c>signin.link_unknown</c> when the host doesn't keep this link (its owner hasn't added that host
+    /// yet, or stopped sharing), and <c>signin.link_unsupported</c> when the host is older than share links.</summary>
+    public static async Task<(Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInWithShareLinkAsync(NetworkInvite invite,
+        ShareLink link, string deviceId, string displayName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        var (origin, _) = await ReadProvidersAsync(invite, cancellationToken).ConfigureAwait(false);
+        HostSignInAttempt attempt;
+        try { attempt = await BeginAsync(invite, origin, "link", cancellationToken: cancellationToken).ConfigureAwait(false); }
+        catch (Audio2FaceHostException error) when (error.Code is "signin.unavailable" or "request.invalid")
+        {
+            throw new Audio2FaceHostException(error.Code == "request.invalid" ? "signin.link_unsupported" : "signin.link_unknown",
+                error.Code == "request.invalid"
+                    ? $"{invite.HostId} runs an older Martlet that can't take share links. Ask its owner to update it."
+                    : $"{invite.HostId} doesn't take this share link (yet). Its owner may still be adding it there, may need to update " +
+                      "Martlet there, or stopped sharing.");
+        }
+        try
+        {
+            var result = await CompleteAsync(invite, attempt, deviceId, displayName, new JsonObject { ["link"] = link.Id, ["secret"] = link.Secret },
+                cancellationToken).ConfigureAwait(false);
+            if (!result.Identity.Friend || result.Identity.Provider != "link")
+                throw new Audio2FaceHostException("response.invalid", $"{invite.HostId} answered the share link with another kind of sign-in.");
+            return result;
+        }
+        catch (Audio2FaceHostException error) when (error.Code == "signin.invalid")
+        {
+            throw new Audio2FaceHostException("signin.link_unknown",
+                $"{invite.HostId} doesn't take this share link: its owner stopped sharing with it, or made a new one. Ask them for a new link.");
+        }
+    }
+
     private static async Task<JsonDocument> PostAsync(NetworkInvite invite, string origin, string path, byte[] body, HttpStatusCode expected,
         CancellationToken cancellationToken)
     {
@@ -372,13 +406,20 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
     public Guid? OwnerAccountId { get; init; }
     /// <summary>Other household accounts' Martlet password logins on the host (never a secret).</summary>
     public IReadOnlyList<HostSignInAccount> Accounts { get; init; } = [];
+    /// <summary>The share links the host keeps (docs/NETWORK.md, "Sharing with a link"); null when the host is older than share
+    /// links and can't take one.</summary>
+    public IReadOnlyList<HostSignInLink>? Links { get; init; }
+    public bool SupportsLinks => Links is not null;
+    /// <summary>IDs of share links that were stopped; the host never takes them again.</summary>
+    public IReadOnlyList<string> RemovedLinks { get; init; } = [];
 
     /// <summary>Whether sign-in would still be usable after <paramref name="change"/> (a settings change as sent to the host):
-    /// an owner account, or a provider with an allowed identity, would remain.</summary>
+    /// an owner account, a provider with an allowed identity, or a share link would remain.</summary>
     public bool UsableAfter(JsonObject change)
     {
         var action = (string?)change["action"];
         var owner = action == "owner" || OwnerUser is not null && action != "remove-owner";
+        var links = action == "share-link" || (Links ?? []).Any(l => !(action == "remove-share-link" && l.Id == (string?)change["id"]));
         var removedProvider = action == "remove-provider" ? (string?)change["id"] : null;
         var providers = Providers.Select(p => p.Id).Where(id => id != removedProvider)
             .Concat(action == "provider" && change["provider_config"]?["id"] is { } added ? [(string)added!] : []).ToHashSet();
@@ -386,7 +427,7 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
                 !(action == "disallow" && a.Provider == (string?)change["provider"] && a.Subject == (string?)change["subject"]))
             .Select(a => a.Provider)
             .Concat(action == "allow" && (string?)change["provider"] is { } provider ? [provider] : []);
-        return owner || allowed.Any(providers.Contains);
+        return owner || links || allowed.Any(providers.Contains);
     }
 
     /// <summary>The identities allowed as friends (this host's engines only).</summary>
@@ -433,10 +474,30 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
                 : [],
             RemovedFromNetwork = root.TryGetProperty("removed_from_network", out var removed) && removed.ValueKind == JsonValueKind.Array
                 ? removed.EnumerateArray().Take(32).Select(Enrolled).ToArray()
+                : [],
+            Links = root.TryGetProperty("links", out var links) && links.ValueKind == JsonValueKind.Array
+                ? links.EnumerateArray().Take(64).Where(l => Text(l, "id") is not null).Select(l => new HostSignInLink(Text(l, "id")!, Text(l, "label"),
+                    l.TryGetProperty("added_at", out var at) && at.TryGetDateTimeOffset(out var added) ? added : DateTimeOffset.MinValue,
+                    l.TryGetProperty("hosts", out var hosts) && hosts.ValueKind == JsonValueKind.Array
+                        ? hosts.EnumerateArray().Take(64).Select(h => h.GetString()!).Where(h => h is not null).ToArray() : null)).ToArray()
+                : null,
+            RemovedLinks = root.TryGetProperty("removed_links", out var removedLinks) && removedLinks.ValueKind == JsonValueKind.Array
+                ? removedLinks.EnumerateArray().Take(256).Where(r => r.ValueKind == JsonValueKind.String).Select(r => r.GetString()!).ToArray()
                 : []
         };
     }
 }
+
+/// <summary>A share link a host keeps (never its verifier): its ID, the name the owner gave the friend, when it was added and
+/// the hosts it covers (null: all of the owner's hosts).</summary>
+public sealed record HostSignInLink(string Id, string? Label, DateTimeOffset AddedAt, IReadOnlyList<string>? Hosts)
+{
+    public bool AllHosts => Hosts is null;
+}
+
+/// <summary>What a host told a friend's computer about the share link it signed in with: the link, whether it covers all of the
+/// owner's hosts and each host it covers, as an invite (ID, pin, home and outside addresses).</summary>
+public sealed record HostSharedHosts(string HostId, string? LinkId, string? Label, string? NetworkId, bool AllHosts, IReadOnlyList<NetworkInvite> Hosts);
 
 public sealed record HostSignInProviderSettings(string Id, string Kind, string Name, string? Issuer, string? ClientId, string? Scopes, bool HasClientSecret)
 {
@@ -597,6 +658,55 @@ public sealed partial class Audio2FaceHostConnection
         using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + SignInSettingsPath);
         Sign(request, []);
         return await SignInSettingsAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>On a friend's computer that signed in to this host with a share link: the owner's hosts the link covers
+    /// (<c>GET /martlet/v1/signin/shared</c>), so Martlet signs in to those it doesn't use yet. A host older than share links
+    /// answers <c>signin.unsupported</c>.</summary>
+    public async Task<HostSharedHosts> ReadSharedHostsAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + "/martlet/v1/signin/shared");
+        Sign(request, []);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        using var response = await Audio2FaceHostClient.Send(http, request, timeout.Token).ConfigureAwait(false);
+        using var document = await Audio2FaceHostClient.ReadJson(response, 64 * 1024, timeout.Token).ConfigureAwait(false);
+        var root = document.RootElement;
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            var code = root.TryGetProperty("code", out var value) ? value.GetString() : null;
+            throw code is "request.invalid" or "route.not_found" or "access.friend"
+                ? new Audio2FaceHostException("signin.unsupported", $"{pairing.HostId} runs an older Martlet without share links.")
+                : Audio2FaceHostClient.Remote(root);
+        }
+        try
+        {
+            if (root.GetProperty("host_id").GetString() != pairing.HostId) throw new FormatException();
+            string? Text(JsonElement element, string name) =>
+                element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+            var networkId = Text(root, "network_id");
+            var hosts = new List<NetworkInvite>();
+            foreach (var host in root.GetProperty("hosts").EnumerateArray().Take(64))
+            {
+                var invite = new NetworkInvite
+                {
+                    HostId = host.GetProperty("host_id").GetString()!, SpkiFingerprint = host.GetProperty("spki").GetString()!,
+                    Origin = host.GetProperty("origin").GetString()!,
+                    Addresses = host.TryGetProperty("addresses", out var list) && list.ValueKind == JsonValueKind.Array
+                        ? list.EnumerateArray().Select(a => a.GetString()!).Where(NetworkInvite.IsAddress).Take(NetworkInvite.MaximumAddresses).ToArray() : [],
+                    NetworkId = networkId, Label = ShareLink.Clean(Text(host, "name"))
+                };
+                // A host entry that isn't a valid invite is skipped, not trusted.
+                try { invite.Validate(); hosts.Add(invite); }
+                catch (Martlet.Core.Contracts.ContractException) { }
+            }
+            return new(pairing.HostId, Text(root, "link_id"), HostSignInClient.Clean(Text(root, "label")), networkId,
+                root.TryGetProperty("all_hosts", out var all) && all.ValueKind == JsonValueKind.True, hosts);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new Audio2FaceHostException("response.invalid", "The host's list of shared hosts was invalid.");
+        }
     }
 
     /// <summary>Applies one change: <c>{"action":"owner","user","password","totp_secret","code"}</c>,

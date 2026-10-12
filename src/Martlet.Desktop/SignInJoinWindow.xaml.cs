@@ -18,24 +18,34 @@ public partial class SignInJoinWindow : ThemedWindow
     private readonly string deviceId;
     private readonly string dataDirectory;
     private readonly Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep;
+    private readonly Func<string, Task>? acceptShareLink;
     private readonly CancellationTokenSource lifetime = new();
     private NetworkInvite? invite;
     private string? origin;
     private HostSignInProvider? provider;
 
     internal SignInJoinWindow(string deviceId, string dataDirectory, Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, HostSignInIdentity, Task> keep,
-        string? invite = null)
+        string? invite = null, Func<string, Task>? acceptShareLink = null)
     {
         InitializeComponent();
         this.deviceId = deviceId;
         this.dataDirectory = dataDirectory;
         this.keep = keep;
+        this.acceptShareLink = acceptShareLink;
         InviteText.Text = invite ?? "";
         Closed += (_, _) => lifetime.Cancel();
     }
 
     private async void Connect_Click(object sender, RoutedEventArgs e)
     {
+        // A friend's share link (martlet://share/...) is accepted by the main window: it signs in to every host it names.
+        if (acceptShareLink is not null && ShareLink.LooksLike(InviteText.Text))
+        {
+            var text = InviteText.Text;
+            Close();
+            await acceptShareLink(text);
+            return;
+        }
         ConnectButton.IsEnabled = false;
         SignInPanel.Visibility = Visibility.Collapsed;
         try

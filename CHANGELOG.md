@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Share your hosts with a friend through one link**: Devices › Friends › **Make a share link** makes a link for a friend that covers the hosts you choose, or all of them (also the ones you add later). Your friend clicks it, or pastes it into their Martlet, and their Martlet can use those hosts' engines. They never get your API keys, settings or memories, your own work always comes first, and **Stop link** ends it on every host at once. ([#807](https://github.com/throndir2/Martlet/pull/807))
+- **Martlet can open a port on your router**: Outside access for this PC's host service can ask your router to forward a port (UPnP), so a friend or your laptop can reach it from outside your home. Martlet first checks that your internet address can be reached, and tells you to use Tailscale when your internet provider shares it with other homes. ([#807](https://github.com/throndir2/Martlet/pull/807))
+
 ### Changed
 
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))

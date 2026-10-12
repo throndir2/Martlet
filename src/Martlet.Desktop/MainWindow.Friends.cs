@@ -39,6 +39,7 @@ public partial class MainWindow
         {
             if (!closing) ActionText.Text = WorkSharingRoster.OwnerFirstText(hostId, job);
         });
+        LoadShareLinks();
         RenderFriends();
         RenderSharedHosts();
     }
@@ -104,6 +105,8 @@ public partial class MainWindow
             LogFriends();
             // The same read shows which hosts miss a household sign-in provider; add them in the background.
             SyncHouseholdSignInAsync(friendsRead, friendsProblems).Forget();
+            // ...and which hosts miss a share link this PC made (a link for all hosts reaches hosts added later).
+            SyncShareLinksAsync().Forget();
         }
         catch (OperationCanceledException) { }
         finally
@@ -128,8 +131,8 @@ public partial class MainWindow
     /// <summary>Writes who each host is shared with to the desktop log when it changes (names and counts only).</summary>
     private void LogFriends()
     {
-        var friends = FriendsOverview.Build(friendsRead);
-        var picture = string.Join("; ", friends.Select(f => $"{f.Name} ({f.Provider}): " + (f.SharedOn.Any()
+        var friends = FriendsOverview.Build(friendsRead, shareLinks.Made);
+        var picture = string.Join("; ", friends.Select(f => $"{f.Name} ({f.Way}): " + (f.SharedOn.Any()
             ? "shares " + string.Join(", ", f.SharedOn) + $", {f.Hosts.Sum(h => h.Computers.Count)} computer(s) signed in"
             : "asked to use " + string.Join(", ", f.Hosts.Where(h => h.State == FriendHostState.Asked).Select(h => h.HostId)))));
         if (picture == friendsLogged) return;
@@ -142,13 +145,14 @@ public partial class MainWindow
         var hosts = FriendsHosts();
         FriendsCard.Visibility = homeHosts.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         FriendsCheckButton.IsEnabled = hosts.Count > 0 && !friendsBusy;
+        FriendsMakeShareLinkButton.IsEnabled = hosts.Count > 0;
         FriendsPanel.Children.Clear();
         if (friendsCheckedAt is null)
         {
             FriendsStatusText.Text = hosts.Count == 0 ? FriendsOverview.Status([], 0, 0) : "Not read yet.";
             return;
         }
-        var friends = FriendsOverview.Build(friendsRead);
+        var friends = FriendsOverview.Build(friendsRead, shareLinks.Made);
         FriendsStatusText.Text = FriendsOverview.Status(friends, friendsRead.Count, friendsRead.Count + friendsProblems.Count) +
             $" Checked {friendsCheckedAt:t}.";
         foreach (var friend in friends) FriendsPanel.Children.Add(FriendRow(friend));
@@ -166,6 +170,17 @@ public partial class MainWindow
     {
         var row = NetworkRowFrame();
         var buttons = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 360 };
+        if (friend.IsLink)
+        {
+            AddShareLinkButtons(friend, buttons);
+            DockPanel.SetDock(buttons, Dock.Right);
+            row.Children.Add(buttons);
+            var linkComputers = friend.Hosts.SelectMany(h => h.Computers.Select(c => $"{c.DeviceId} on {h.HostId} (signed in {c.EnrolledAt.ToLocalTime():g})")).ToArray();
+            row.Children.Add(NetworkRowText("Friend-" + friend.Key, $"{friend.Name} (share link)", ShareLinkDetail(friend) + " " + (linkComputers.Length > 0
+                ? "Their computers: " + string.Join(", ", linkComputers) + "."
+                : "No computer of theirs has used the link yet.")));
+            return NetworkRowCard(row, warning: false);
+        }
         foreach (var place in friend.Hosts)
         {
             if (place.State == FriendHostState.Member || place.State != FriendHostState.Shared && !place.ProviderReady) continue;
@@ -261,6 +276,8 @@ public partial class MainWindow
             sharedHostsCheckedAt = DateTimeOffset.Now;
             // A model its owner changed there is followed, as for your own hosts (this PC's routes only; nothing is recorded).
             FollowHostModelsAsync(results.Where(r => r.Check.Reachable == true).Select(r => r.HostId).ToArray()).Forget();
+            // Hosts a share link covers now that this PC doesn't use yet (the owner added them after making the link).
+            DiscoverShareLinkHostsAsync().Forget();
         }
         catch (OperationCanceledException) { }
         finally
@@ -289,10 +306,16 @@ public partial class MainWindow
 
     private void RenderSharedHosts()
     {
-        SharedHostsCard.Visibility = sharedHosts.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        SharedHostsCheckButton.IsEnabled = !sharedHostsBusy;
+        // Always shown, so a friend's share link can be pasted here.
+        SharedHostsCard.Visibility = Visibility.Visible;
+        SharedHostsCheckButton.IsEnabled = !sharedHostsBusy && sharedHosts.Count > 0;
         SharedHostsPanel.Children.Clear();
-        if (sharedHosts.Count == 0) return;
+        if (sharedHosts.Count == 0)
+        {
+            SharedHostsStatusText.Text = "No friend shares a host with this PC. When a friend sends you a share link, click it, or choose " +
+                "Accept a share link and paste it.";
+            return;
+        }
         SharedHostsStatusText.Text = (sharedHosts.Count == 1 ? "1 host a friend shares with this PC." : $"{sharedHosts.Count} hosts friends share with this PC.") +
             " Martlet uses them only on this PC and only for their engines; they never join your Martlet network, and their owners' own " +
             "work comes first." + (sharedHostsCheckedAt is { } at ? $" Checked {at:t}." : "");
@@ -360,6 +383,7 @@ public partial class MainWindow
         {
             ForgetReadingHost(host.HostId);
             var stranded = await ForgetPairingAsync(host, token);
+            SkipShareLinkHost(host.HostId);
             ActionText.Text = $"Forgot {host.HostId}, the host a friend shared." +
                 (stranded.Count > 0 ? $" Nobody handles {string.Join(" or ", stranded)} now. Choose another device in Companion or Devices." : "");
             ErrorLog.Info($"Shared hosts: forgot {host.HostId}.");
