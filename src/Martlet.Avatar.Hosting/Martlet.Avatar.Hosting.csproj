@@ -1,5 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Avatars\Martlet.Avatars.csproj" />
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
+  </ItemGroup>
+  <!-- Martlet's VRoid Hub app (VRoidHubApp): release builds get its client ID and secret from the environment (repository
+       secrets in windows-release.yml); without them, linking VRoid Hub is off and searching still works. -->
+  <ItemGroup Condition="'$(VROID_HUB_CLIENT_ID)' != '' and '$(VROID_HUB_CLIENT_SECRET)' != ''">
+    <AssemblyMetadata Include="VROID_HUB_CLIENT_ID" Value="$(VROID_HUB_CLIENT_ID)" />
+    <AssemblyMetadata Include="VROID_HUB_CLIENT_SECRET" Value="$(VROID_HUB_CLIENT_SECRET)" />
   </ItemGroup>
 </Project>

@@ -42,7 +42,8 @@ public sealed record AvatarProfile : IContract
     public required int Version { get; init; }
     public required Guid ProfileId { get; init; }
     public required AvatarRenderer Renderer { get; init; }
-    /// <summary>Absolute local model path, or <c>builtin:Hiyori</c> for the bundled Live2D character.</summary>
+    /// <summary>Absolute local model path, <c>builtin:Hiyori</c> for the bundled Live2D character, or <c>vroidhub:</c> and a
+    /// VRoid Hub model ID for a VRoid Hub character shown from memory (<see cref="RemoteCharacterModels"/>).</summary>
     public required string ModelPath { get; init; }
     public string? SdkDirectory { get; init; }
     public required string Endpoint { get; init; }
@@ -74,6 +75,11 @@ public sealed record AvatarProfile : IContract
         if (BundledLive2D.IsBuiltIn(ModelPath))
             ContractRules.Require(Renderer == AvatarRenderer.Live2D && BundledLive2D.Characters.Contains(ModelPath[BundledLive2D.Prefix.Length..]),
                 "Choose a bundled Live2D character.");
+        else if (RemoteCharacterModels.IsRemote(ModelPath))
+        {
+            RemoteCharacterModels.Validate(ModelPath);
+            ContractRules.Require(Renderer == AvatarRenderer.Vrm, "A VRoid Hub character is a VRM model.");
+        }
         else LocalAvatarFiles.ValidatePath(ModelPath);
         if (SdkDirectory is not null) LocalAvatarFiles.ValidatePath(SdkDirectory);
         ContractRules.Require(Uri.TryCreate(Endpoint, UriKind.Absolute, out var endpoint) &&

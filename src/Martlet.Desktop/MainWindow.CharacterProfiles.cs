@@ -53,6 +53,7 @@ public partial class MainWindow
     {
         null => "the current look",
         CharacterProfile.BuiltInModel => BuiltInLookName,
+        _ when RemoteCharacterModels.IsRemote(modelId) => (vroidHub?.Look(modelId)?.Name ?? "a VRoid Hub character") + " (VRoid Hub)",
         _ => library.Live.FirstOrDefault(m => m.Id == modelId)?.Name ?? "a character no longer in your list"
     };
 
@@ -69,9 +70,13 @@ public partial class MainWindow
     /// It still switches what it can.</summary>
     private string? ProfileProblem(CharacterProfile profile, CharacterModelLibrary library, Martlet.Core.Voices.SpeakingVoiceLibrary voices)
     {
-        if (profile.ModelId is { } modelId && modelId != CharacterProfile.BuiltInModel)
+        if (profile.ModelId is { } modelId && RemoteCharacterModels.IsRemote(modelId))
         {
-            if (library.Live.FirstOrDefault(m => m.Id == modelId) is not { } model) return "Its look is no longer in your characters.";
+            if (vroidHub?.Tokens() is null) return "Its look is from VRoid Hub: link VRoid Hub (Account › Linked services) to show it here.";
+        }
+        else if (profile.ModelId is { } shared && shared != CharacterProfile.BuiltInModel)
+        {
+            if (library.Live.FirstOrDefault(m => m.Id == shared) is not { } model) return "Its look is no longer in your characters.";
             if (store is not null && !SharedCharacterModels.IsComplete(store.DataDirectory, model)) return "Its look is still copying to this PC.";
         }
         if (profile.VoiceId is { } voiceId && voices.Find(voiceId) is not { Removed: false }) return "Its voice is no longer in your voices.";
@@ -228,7 +233,9 @@ public partial class MainWindow
             companion is null ? Guid.Empty : personaId);
         var looks = new List<(object?, string)> { (null, "Keep the current look"), (CharacterProfile.BuiltInModel, BuiltInLookName) };
         looks.AddRange(library.Live.Select(m => ((object?)m.Id, m.Name!)));
-        if (lookId is not null && looks.All(l => !Equals(l.Item1, lookId))) looks.Add((lookId, "A character no longer in your list"));
+        looks.AddRange((vroidHub?.Looks() ?? []).Select(l => ((object?)l.Path, l.Name + " (VRoid Hub)")));
+        if (lookId is not null && looks.All(l => !Equals(l.Item1, lookId)))
+            looks.Add((lookId, RemoteCharacterModels.IsRemote(lookId) ? "A VRoid Hub character" : "A character no longer in your list"));
         profileLookChoice = Choice("CharacterProfileLook", "Look", looks, lookId);
         var voiceOptions = new List<(object?, string)> { (null, "Keep the current voice") };
         voiceOptions.AddRange(voices.Live.Select(v => ((object?)v.Id, v.Name!)));
@@ -378,6 +385,15 @@ public partial class MainWindow
             {
                 CharacterModel? model = null;
                 if (avatarWindowOpen) notes.Add("The character settings window is open, so the look stayed as it was. Close it and use the profile again.");
+                else if (RemoteCharacterModels.IsRemote(modelId))
+                {
+                    if (kept?.Placement is { } place) avatar.Placement = place;
+                    try { await SwitchRemoteLookAsync(modelId, token); }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
+                    {
+                        notes.Add("The look didn't change: " + error.Message);
+                    }
+                }
                 else if (modelId != CharacterProfile.BuiltInModel && (model = CharacterLibrary().Live.FirstOrDefault(m => m.Id == modelId)) is null)
                     notes.Add("Its look is no longer in your characters, so the look stayed as it was.");
                 else

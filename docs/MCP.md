@@ -95,6 +95,26 @@ return names and, when asked, the personality text, because they edit them.
 - `character_use`: Martlet talks with that personality from its next reply.
 - `character_delete`: removes the personality and its profiles, or only the
   profile with `profileOnly`. Martlet keeps at least one personality.
+- `character_find_looks` (`query`, `count`, `sources`: `vroidhub`, `osa`): looks
+  (VRM models) online for a character you name, as Find a character finds them
+  (see [Find a character online](AVATARS.md#find-a-character-online)): the
+  linked VRoid Hub account's own and hearted models, VRoid Hub models whose
+  creators let anyone use them, and Open Source Avatars' free models. Each has its
+  creator, source, license, every condition of use, `usable`, a picture and page
+  address, and its `look` key. Give that key as `look` to `character_create` or
+  `character_update`: `vroidhub:<id>` is checked on VRoid Hub and its credit kept
+  for the app (the app shows it from VRoid Hub, never saved); `osa:<project>/<avatar>`
+  is downloaded and joins the owner's characters. Only the query goes to VRoid Hub
+  and GitHub.
+- `character_find_on_web` (`query`, `models`, `voices`): the backup finder. Web
+  pages (from DuckDuckGo) that may have a model of the character or recordings of
+  its voice, and searches on the sites that have them, with the next steps. Martlet
+  downloads nothing from them: the owner does, and adds what they may use in the
+  app (Add a character, Add a voice).
+- `vroid_hub_status` (with `martlet_call`): whether this build can link VRoid Hub,
+  whether an account is linked for the account whose settings the data folder
+  holds (its VRoid Hub user name, never a token), the VRoid Hub looks this PC used
+  with their conditions of use, and whether the character shown is one.
 
 A profile's look and voice change on this PC when the profile is used in the
 app (they need the character window and the voice hosts). So
@@ -103,6 +123,20 @@ with the steps: Companion › Profiles › Use, or `ui_connect`, `ui_click`
 `NavCompanion`, `CompanionTab-Profiles` and `CharacterProfileUse-<key>` (with
 `--allow-ui-effects`). New looks (Live2D or VRM models) and new voices (from a
 recording) are added in the app: Companion › Character and Companion › Voice.
+Companion › Character › **Find a character...** (`CharacterFinderOpen`, a safe
+click) opens Find a character (`CharacterFinderWindow`): its status lines
+(`CharacterFinderStatus`, `CharacterFinderVRoidHub`,
+`CharacterFinderPersonalityState`, `CharacterFinderResults`,
+`CharacterFinderWebModels`, `CharacterFinderWebVoices`) and each look's
+`CharacterFinderAbout-<n>`, `CharacterFinderConditions-<n>` and
+`CharacterFinderState-<n>` and each web page's `CharacterFinderWebAbout-<model|voice>-<n>`
+are safe values (never the typed name, notes or personality). **Close**
+(`CharacterFinderClose`) and **Add a voice clip you downloaded...**
+(`CharacterFinderAddVoice`, which only opens Companion › Voice) are safe clicks;
+Search, Write again, the web searches, Link VRoid Hub, Open, Add a model and Use
+need `--allow-ui-effects`. Companion › Character's `VRoidHubState` and the Account
+page's `AccountVRoidHubState` say whether VRoid Hub is linked; the Account page's
+`AccountVRoidHubLink` and `AccountVRoidHubUnlink` need `--allow-ui-effects`.
 
 ### Settings
 

@@ -71,6 +71,19 @@
                 <WrapPanel x:Name="ProviderLinkButtons" Margin="0,6,0,0"/>
                 </StackPanel>
 
+                <StackPanel x:Name="LinkedSection">
+                <TextBlock Text="Linked services" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
+                <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
+                           Text="VRoid Hub: link your pixiv account so Martlet can show your VRoid Hub characters, and characters their creators let anyone use (Companion › Character › Find a character). The link belongs to this account on this PC; you sign in on VRoid Hub's own page."/>
+                <TextBlock x:Name="VRoidHubStateText" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.AutomationId="AccountVRoidHubState"/>
+                <WrapPanel Margin="0,6,0,0">
+                    <Button x:Name="VRoidHubLinkButton" Content="Link _VRoid Hub..." Click="VRoidHubLink_Click" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="AccountVRoidHubLink"/>
+                    <Button x:Name="VRoidHubUnlinkButton" Content="Unlink VRoid Hub" Click="VRoidHubUnlink_Click"
+                            AutomationProperties.AutomationId="AccountVRoidHubUnlink"/>
+                </WrapPanel>
+                </StackPanel>
+
                 <TextBlock Text="On this PC" FontWeight="SemiBold" FontSize="15" Margin="0,18,0,4"/>
                 <CheckBox x:Name="AskCheck" Content="Ask for my _password on this PC (this Windows login no longer unlocks me by itself)"
                           Checked="Ask_Click" Unchecked="Ask_Click" AutomationProperties.AutomationId="AccountAskPassword"/>

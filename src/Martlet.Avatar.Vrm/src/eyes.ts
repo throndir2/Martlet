@@ -133,7 +133,7 @@ export class VrmEyes {
     const l = left.getWorldPosition(new THREE.Vector3()), r = right.getWorldPosition(new THREE.Vector3());
     const apart = l.distanceTo(r);
     if (!(apart > 1e-4) || !(r.x > l.x)) return;
-    // At rest a VRM 1.0 faces +Z with the viewer's right at +X.
+    // At rest a VRM 1.0 faces +Z with the viewer's right at +X; so does a VRM 0.x one, which rotateVRM0 turned at load.
     const split = (l.x + r.x) / 2;
     const irises: [THREE.Vector3[], THREE.Vector3[]] = [[], []];
     const whites: [WhitePart[], number[]][] = [[[], []], [[], []]];
