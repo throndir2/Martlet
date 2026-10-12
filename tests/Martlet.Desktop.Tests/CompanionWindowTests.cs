@@ -263,6 +263,16 @@ public sealed class CompanionWindowTests
             await Until(() => Field<TextBlock>(window, "SaveStateText").Text == "All changes saved.");
             var saved = Assert.Single((await lore.LoadAsync()).Library.Books);
             Assert.Equal(("world", "The castle is empty now."), (saved.Name, saved.Entries[0].Content));
+
+            // Match other word forms: off, "castles" doesn't trigger the "castle" entry; on, it does, and the choice is saved.
+            Field<TextBox>(window, "TestInput").Text = "The castles are old.";
+            Click(window, "LorebookTest");
+            Assert.StartsWith("No entries would be added", Field<TextBox>(window, "TestResult").Text);
+            Field<CheckBox>(window, "WordForms").IsChecked = true;
+            await Until(() => Field<TextBlock>(window, "SaveStateText").Text == "All changes saved.");
+            Assert.True((await lore.LoadAsync()).Library.MatchWordForms);
+            Click(window, "LorebookTest");
+            Assert.Contains("Castle from world", Field<TextBox>(window, "TestResult").Text);
         }
         finally
         {

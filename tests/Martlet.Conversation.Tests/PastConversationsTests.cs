@@ -64,6 +64,85 @@ public sealed class PastConversationsTests : IDisposable
         Assert.Equal(DateTimeOffset.Parse(to), window.Value.To);
     }
 
+    [Theory]
+    [InlineData("¿Te acuerdas de lo que hablamos sobre mi perro?")]
+    [InlineData("¿Qué te dije ayer sobre el viaje?")]
+    [InlineData("Tu te souviens de mon voyage à Lisbonne ?")]
+    [InlineData("De quoi on a parlé la semaine dernière ?")]
+    [InlineData("Erinnerst du dich an mein Fahrrad?")]
+    [InlineData("Worüber haben wir gestern gesprochen?")]
+    [InlineData("Você lembra do que eu disse sobre a guitarra?")]
+    [InlineData("O que falamos ontem?")]
+    [InlineData("Ti ricordi il romanzo di cui abbiamo parlato?")]
+    [InlineData("Cosa ti ho detto tre giorni fa?")]
+    [InlineData("你还记得我们聊过的黄山吗？")]
+    [InlineData("我们上周聊了什么？")]
+    [InlineData("富士山の話、覚えてる？")]
+    [InlineData("昨日何を話した？")]
+    [InlineData("제주도 얘기 기억나?")]
+    [InlineData("어제 우리가 무슨 얘기를 했지?")]
+    public void MessagesInOtherLanguagesThatReferToAnEarlierConversation(string words) => Assert.True(PastConversations.RefersToPast(words));
+
+    [Theory]
+    [InlineData("¿Qué tiempo hace hoy?")]
+    [InlineData("Recuerda comprar leche.")]
+    [InlineData("Tu peux m'aider avec ce code ?")]
+    [InlineData("Wie spät ist es?")]
+    [InlineData("Qual é a capital da Austrália?")]
+    [InlineData("Ricordati di comprare il latte.")]
+    [InlineData("今天天气怎么样？")]
+    [InlineData("今日はいい天気ですね。")]
+    [InlineData("覚えておいてね。")]
+    [InlineData("오늘 날씨 어때?")]
+    [InlineData("이거 기억해 줘.")]
+    public void OrdinaryMessagesInOtherLanguages(string words) => Assert.False(PastConversations.RefersToPast(words));
+
+    [Theory]
+    [InlineData("ayer", "2026-10-02T00:00:00-07:00", "2026-10-03T00:00:00-07:00")]
+    [InlineData("anteayer", "2026-10-01T00:00:00-07:00", "2026-10-02T00:00:00-07:00")]
+    [InlineData("hace 3 días", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("el jueves", "2026-10-01T00:00:00-07:00", "2026-10-02T00:00:00-07:00")]
+    [InlineData("la semana pasada", "2026-09-19T00:00:00-07:00", "2026-10-03T00:00:00-07:00")]
+    [InlineData("hier soir", "2026-10-02T17:00:00-07:00", "2026-10-03T06:00:00-07:00")]
+    [InlineData("il y a trois jours", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("vor 3 Tagen", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("am Donnerstag", "2026-10-01T00:00:00-07:00", "2026-10-02T00:00:00-07:00")]
+    [InlineData("letztes Wochenende", "2026-09-26T00:00:00-07:00", "2026-09-28T00:00:00-07:00")]
+    [InlineData("há 3 dias", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("na quinta-feira", "2026-10-01T00:00:00-07:00", "2026-10-02T00:00:00-07:00")]
+    [InlineData("3 giorni fa", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("ieri", "2026-10-02T00:00:00-07:00", "2026-10-03T00:00:00-07:00")]
+    [InlineData("昨天", "2026-10-02T00:00:00-07:00", "2026-10-03T00:00:00-07:00")]
+    [InlineData("3天前", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("星期四", "2026-10-01T00:00:00-07:00", "2026-10-02T00:00:00-07:00")]
+    [InlineData("上周", "2026-09-19T00:00:00-07:00", "2026-10-03T00:00:00-07:00")]
+    [InlineData("一昨日", "2026-10-01T00:00:00-07:00", "2026-10-02T00:00:00-07:00")]
+    [InlineData("3日前", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("木曜日", "2026-10-01T00:00:00-07:00", "2026-10-02T00:00:00-07:00")]
+    [InlineData("어제", "2026-10-02T00:00:00-07:00", "2026-10-03T00:00:00-07:00")]
+    [InlineData("3일 전", "2026-09-30T00:00:00-07:00", "2026-10-01T00:00:00-07:00")]
+    [InlineData("지난 주말", "2026-09-26T00:00:00-07:00", "2026-09-28T00:00:00-07:00")]
+    public void TimesInOtherLanguagesAreReadInTheUsersDays(string text, string from, string to) => TimesAreReadInTheUsersDays(text, from, to);
+
+    [Fact]
+    public async Task RecallFindsWhatWasSaidInOtherLanguages()
+    {
+        var history = new ConversationHistory(folder, clock);
+        clock.Now = Now.AddDays(-5);
+        var tomatoes = await history.AppendAsync(Guid.NewGuid(), HistoryInputKind.Typed, "Planté tres tomateras en el huerto.", "¡Qué bien!", null);
+        clock.Now = Now.AddDays(-4);
+        var cats = await history.AppendAsync(Guid.NewGuid(), HistoryInputKind.Typed, "Meine Katzen schlafen auf der Heizung.", "Wie gemütlich!", null);
+        clock.Now = Now.AddDays(-3);
+        var huangshan = await history.AppendAsync(Guid.NewGuid(), HistoryInputKind.Typed, "我周末去爬了黄山。", "黄山的日出很美！", null);
+        clock.Now = Now;
+        await history.LoadAsync();
+        Assert.Equal(tomatoes.Id, Assert.Single(PastConversations.Recall(history, "¿Te acuerdas de lo que hablamos sobre las tomateras?", Now, Zone, null)).Id);
+        Assert.Equal(cats.Id, Assert.Single(PastConversations.Recall(history, "Weißt du noch, was ich über meine Katze gesagt habe?", Now, Zone, null)).Id);
+        Assert.Equal(huangshan.Id, Assert.Single(PastConversations.Recall(history, "你还记得我们聊过的黄山吗？", Now, Zone, null)).Id);
+        // Words about remembering, talking and time are left out in those languages too.
+        Assert.DoesNotContain("ayer", PastConversations.RecallTerms("¿Qué te dije ayer sobre el viaje?"));
+        Assert.Equal(["黄山"], PastConversations.RecallTerms("你还记得我们聊过的黄山吗？"));
+    }
     [Fact]
     public void TodayRunsUntilNowAndNoTimeIsNoWindow()
     {

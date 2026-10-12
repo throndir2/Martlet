@@ -131,6 +131,7 @@ public partial class LorebookWindow : ThemedWindow
         Recursive.IsChecked = library.Recursive;
         CaseSensitive.IsChecked = library.CaseSensitive;
         WholeWords.IsChecked = library.MatchWholeWords;
+        WordForms.IsChecked = library.MatchWordForms;
     }
 
     private void Render()
@@ -334,6 +335,7 @@ public partial class LorebookWindow : ThemedWindow
             Recursive = Recursive.IsChecked == true,
             CaseSensitive = CaseSensitive.IsChecked == true,
             MatchWholeWords = WholeWords.IsChecked == true,
+            MatchWordForms = WordForms.IsChecked == true,
             Books = books.Select(book => book.ToBook()).ToArray()
         };
         library.Validate();
@@ -419,7 +421,8 @@ public partial class LorebookWindow : ThemedWindow
         var text = new StringBuilder();
         if (result.Included.Count == 0)
             text.Append("No entries would be added. Martlet checks the last ").Append(library.ScanDepth)
-                .Append(library.ScanDepth == 1 ? " message" : " messages").Append(library.MatchWholeWords ? " as whole words" : "").Append('.');
+                .Append(library.ScanDepth == 1 ? " message" : " messages").Append(library.MatchWholeWords ? " as whole words" : "")
+                .Append(library.MatchWordForms ? ", with other word forms" : "").Append('.');
         else
         {
             text.Append($"{result.Included.Count} {(result.Included.Count == 1 ? "entry" : "entries")} would be added:\n");

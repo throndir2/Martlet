@@ -38,7 +38,7 @@ internal sealed class LorebookEntryItem : EditorItem
 {
     private string title = "", keys = "", secondaryKeys = "", content = "", order = "100", probability = "100", scanDepth = "";
     private bool enabled = true, constant, excludeRecursion, preventRecursion;
-    private bool? caseSensitive, wholeWords;
+    private bool? caseSensitive, wholeWords, wordForms;
     private int logicIndex, positionIndex = (int)LorebookPosition.AfterPersona;
 
     public int Uid { get; init; }
@@ -55,6 +55,7 @@ internal sealed class LorebookEntryItem : EditorItem
     public bool PreventRecursion { get => preventRecursion; set => Set(ref preventRecursion, value); }
     public bool? CaseSensitive { get => caseSensitive; set => Set(ref caseSensitive, value); }
     public bool? WholeWords { get => wholeWords; set => Set(ref wholeWords, value); }
+    public bool? WordForms { get => wordForms; set => Set(ref wordForms, value); }
     public int LogicIndex { get => logicIndex; set => Set(ref logicIndex, value); }
     public int PositionIndex { get => positionIndex; set => Set(ref positionIndex, value); }
 
@@ -82,6 +83,7 @@ internal sealed class LorebookEntryItem : EditorItem
         preventRecursion = entry.PreventRecursion,
         caseSensitive = entry.CaseSensitive,
         wholeWords = entry.MatchWholeWords,
+        wordForms = entry.MatchWordForms,
         logicIndex = (int)entry.SecondaryLogic,
         positionIndex = (int)entry.Position
     };
@@ -106,6 +108,7 @@ internal sealed class LorebookEntryItem : EditorItem
             Probability = Whole(Probability, where + "chance must be a whole number from 0 to 100.") ?? 100,
             CaseSensitive = CaseSensitive,
             MatchWholeWords = WholeWords,
+            MatchWordForms = WordForms,
             ScanDepth = Whole(ScanDepth, where + "scan depth must be empty or a whole number."),
             ExcludeRecursion = ExcludeRecursion,
             PreventRecursion = PreventRecursion

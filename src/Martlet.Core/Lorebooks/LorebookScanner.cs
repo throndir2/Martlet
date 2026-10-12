@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.RegularExpressions;
+using Martlet.Core.Text;
 
 namespace Martlet.Core.Lorebooks;
 
@@ -28,7 +29,10 @@ public sealed record LorebookScanResult(IReadOnlyList<LorebookHit> Included, IRe
 }
 
 /// <summary>SillyTavern-style World Info activation: keyword (or /regex/) matches in the latest messages, optional secondary-key
-/// logic, always-on entries, probability, recursion through triggered content and a byte budget.</summary>
+/// logic, always-on entries, probability, recursion through triggered content and a byte budget. With word forms on
+/// (<see cref="LorebookLibrary.MatchWordForms"/>, or an entry's own choice), a keyword also matches the other forms of its words
+/// by their <see cref="SearchTerms"/> stems ("dragon" finds "dragons", "Drache" finds "Drachen" in German text); a /regex/ key
+/// never changes.</summary>
 public static class LorebookScanner
 {
     public const int MaximumIncluded = 64;
@@ -37,11 +41,12 @@ public static class LorebookScanner
     internal const string UserName = "the user";
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(50);
     private static readonly ConcurrentDictionary<(string Pattern, RegexOptions Options), Regex?> Regexes = new();
+    private static readonly ConcurrentDictionary<(string Key, SearchLanguage Language), KeyWord[]?> KeyWords = new();
 
     // Content, its size and the filter keywords are worked out only for entries whose keywords matched, so a large lorebook
     // costs little more per reply than the keyword search itself.
     private sealed class Candidate(Lorebook book, int bookIndex, int entryIndex, LorebookEntry entry, string name,
-        bool caseSensitive, bool wholeWords, int depth)
+        bool caseSensitive, bool wholeWords, bool wordForms, int depth)
     {
         private string? content;
         private string[]? secondaryKeys;
@@ -55,6 +60,7 @@ public static class LorebookScanner
         internal int Utf8Bytes => utf8Bytes >= 0 ? utf8Bytes : utf8Bytes = Encoding.UTF8.GetByteCount(Content);
         internal bool CaseSensitive { get; } = caseSensitive;
         internal bool WholeWords { get; } = wholeWords;
+        internal bool WordForms { get; } = wordForms;
         internal int Depth { get; } = depth;
         internal bool Decided { get; set; }
         internal LorebookHit Hit(string trigger) => new(book.Id, book.Name, BookIndex, EntryIndex, Entry, Content, Utf8Bytes, trigger);
@@ -79,7 +85,8 @@ public static class LorebookScanner
                 // Expanding {{char}} and {{user}} never empties content, so blank content is blank before expanding too.
                 if (!entry.Enabled || string.IsNullOrWhiteSpace(entry.Content) || !entry.Constant && entry.Keys.Count == 0) continue;
                 candidates.Add(new(book, b, e, entry, name, entry.CaseSensitive ?? library.CaseSensitive,
-                    entry.MatchWholeWords ?? library.MatchWholeWords, entry.ScanDepth ?? library.ScanDepth));
+                    entry.MatchWholeWords ?? library.MatchWholeWords, entry.MatchWordForms ?? library.MatchWordForms,
+                    entry.ScanDepth ?? library.ScanDepth));
             }
         }
         if (candidates.Count == 0) return LorebookScanResult.Empty with { ActiveBooks = activeBooks };
@@ -104,6 +111,15 @@ public static class LorebookScanner
             return text;
         }
 
+        // The words of each text scanned, read only for entries that match word forms.
+        var read = new Dictionary<string, WordForms>(ReferenceEqualityComparer.Instance);
+        WordForms? Forms(Candidate candidate, string text)
+        {
+            if (!candidate.WordForms) return null;
+            if (!read.TryGetValue(text, out var forms)) read[text] = forms = new(text);
+            return forms;
+        }
+
         var included = new List<LorebookHit>();
         var overBudget = new List<LorebookHit>();
         var skipped = new List<LorebookHit>();
@@ -124,8 +140,9 @@ public static class LorebookScanner
                 }
                 if (pass > 0 && candidate.Entry.ExcludeRecursion) continue;
                 var text = pass == 0 ? Window(candidate.Depth) : WithRecursion(candidate.Depth);
-                if (FirstMatch(candidate.Entry.Keys, name, text, candidate.CaseSensitive, candidate.WholeWords) is not { } key) continue;
-                if (candidate.Entry.SecondaryKeys.Count > 0 && !SecondaryPasses(candidate, text)) continue;
+                var forms = Forms(candidate, text);
+                if (FirstMatch(candidate.Entry.Keys, name, text, candidate.CaseSensitive, candidate.WholeWords, forms) is not { } key) continue;
+                if (candidate.Entry.SecondaryKeys.Count > 0 && !SecondaryPasses(candidate, text, forms)) continue;
                 matched.Add((candidate, pass == 0 ? key : key + " (from another entry)"));
             }
             if (matched.Count == 0) break;
@@ -172,9 +189,10 @@ public static class LorebookScanner
             .Replace("<USER>", UserName, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool SecondaryPasses(Candidate candidate, string text)
+    private static bool SecondaryPasses(Candidate candidate, string text, WordForms? forms)
     {
-        var hits = candidate.SecondaryKeys.Count(key => Matches(key, text, candidate.CaseSensitive, candidate.WholeWords));
+        var hits = candidate.SecondaryKeys.Count(key =>
+            Matches(key, text, candidate.CaseSensitive, candidate.WholeWords) || forms?.Matches(key, candidate.CaseSensitive) == true);
         return candidate.Entry.SecondaryLogic switch
         {
             LorebookSecondaryLogic.AndAny => hits > 0,
@@ -185,15 +203,124 @@ public static class LorebookScanner
         };
     }
 
-    private static string? FirstMatch(IReadOnlyList<string> keys, string name, string text, bool caseSensitive, bool wholeWords)
+    private static string? FirstMatch(IReadOnlyList<string> keys, string name, string text, bool caseSensitive, bool wholeWords,
+        WordForms? forms)
     {
         foreach (var raw in keys)
         {
             var key = Expand(raw, name);
-            if (Matches(key, text, caseSensitive, wholeWords)) return key;
+            if (Matches(key, text, caseSensitive, wholeWords) || forms?.Matches(key, caseSensitive) == true) return key;
         }
         return null;
     }
+
+    /// <summary>Whether one key, or another form of its words, occurs in <paramref name="text"/>: the key's words in order, each
+    /// with the same <see cref="SearchTerms"/> stem as a word of the text (by English rules, and by the text's own language's
+    /// when it is in another one), so "dragon" matches "dragons" and "red dragon" matches "Red Dragons". A case-sensitive key
+    /// needs the same capital letters as well ("Rose" matches "Roses", never "rose"). A /regex/ key and a key in a script
+    /// written without spaces match only as <see cref="Matches(string, string, bool, bool)"/> does.</summary>
+    public static bool MatchesWordForms(string key, string text, bool caseSensitive) =>
+        !string.IsNullOrEmpty(text) && new WordForms(text).Matches(key, caseSensitive);
+
+    // One word of a key: its English stem, its stem by the text's language, and where it is in the key.
+    private readonly record struct KeyWord(string Stem, string Form, int Start, int Length);
+
+    // The words of a scanned text and their stems, read once for all the keys that match word forms.
+    private sealed class WordForms
+    {
+        private readonly string text;
+        private readonly SearchLanguage language;
+        private readonly IReadOnlyList<SearchWord> words;
+        private readonly string[] stems, forms;
+        private readonly Dictionary<string, List<int>> places = new(StringComparer.Ordinal);
+
+        internal WordForms(string text)
+        {
+            this.text = text;
+            words = SearchTerms.Locate(text);
+            var plain = new string[words.Count];
+            for (var i = 0; i < plain.Length; i++) plain[i] = words[i].Word;
+            language = SearchTerms.LanguageOf(plain);
+            stems = new string[plain.Length];
+            forms = new string[plain.Length];
+            for (var i = 0; i < plain.Length; i++)
+            {
+                stems[i] = SearchTerms.Stem(plain[i]);
+                forms[i] = language == SearchLanguage.English ? stems[i] : SearchTerms.Stem(plain[i], language);
+                Place(stems[i], i);
+                if (forms[i] != stems[i]) Place(forms[i], i);
+            }
+        }
+
+        private void Place(string stem, int at)
+        {
+            if (!places.TryGetValue(stem, out var list)) places[stem] = list = [];
+            if (list.Count == 0 || list[^1] != at) list.Add(at);
+        }
+
+        internal bool Matches(string key, bool caseSensitive)
+        {
+            if (Words(key, language) is not { Length: > 0 } keyWords) return false;
+            return Starting(keyWords[0].Stem, keyWords, key, caseSensitive) ||
+                keyWords[0].Form != keyWords[0].Stem && Starting(keyWords[0].Form, keyWords, key, caseSensitive);
+        }
+
+        private bool Starting(string stem, KeyWord[] keyWords, string key, bool caseSensitive)
+        {
+            if (!places.TryGetValue(stem, out var starts)) return false;
+            foreach (var start in starts)
+            {
+                if (start + keyWords.Length > words.Count) break;
+                var all = true;
+                for (var j = 0; j < keyWords.Length && all; j++) all = Same(start + j, keyWords[j], key, caseSensitive);
+                if (all) return true;
+            }
+            return false;
+        }
+
+        private bool Same(int at, KeyWord keyWord, string key, bool caseSensitive)
+        {
+            if (stems[at] != keyWord.Stem && stems[at] != keyWord.Form && forms[at] != keyWord.Stem && forms[at] != keyWord.Form) return false;
+            if (!caseSensitive) return true;
+            var word = words[at];
+            for (var i = 0; i < Math.Min(word.Length, keyWord.Length); i++)
+                if (char.IsUpper(text[word.Start + i]) != char.IsUpper(key[keyWord.Start + i])) return false;
+            return true;
+        }
+    }
+
+    // The words of a literal key in a script written with spaces, with their stems for a text in language; null for a /regex/
+    // key, a key of Chinese, Japanese, Korean or Thai-like script (no word forms to find) or a key without words.
+    private static KeyWord[]? Words(string key, SearchLanguage language)
+    {
+        if (KeyWords.TryGetValue((key, language), out var known)) return known;
+        KeyWord[]? keyWords = null;
+        if (!IsRegexKey(key) && !key.Any(Unspaced) && SearchTerms.Locate(key) is { Count: > 0 } words)
+        {
+            keyWords = new KeyWord[words.Count];
+            for (var i = 0; i < keyWords.Length; i++)
+            {
+                var stem = SearchTerms.Stem(words[i].Word);
+                keyWords[i] = new(stem, language == SearchLanguage.English ? stem : SearchTerms.Stem(words[i].Word, language),
+                    words[i].Start, words[i].Length);
+            }
+        }
+        // Every key of a large lorebook stays known between replies; a count kept here, since counting the dictionary locks it.
+        if (Interlocked.Increment(ref knownKeys) > MaximumKnownKeys)
+        {
+            KeyWords.Clear();
+            Interlocked.Exchange(ref knownKeys, 0);
+        }
+        KeyWords.TryAdd((key, language), keyWords);
+        return keyWords;
+    }
+
+    private const int MaximumKnownKeys = 65_536;
+    private static int knownKeys;
+
+    private static bool Unspaced(char c) =>
+        c is >= '\u0E00' and <= '\u0EFF' or >= '\u1000' and <= '\u11FF' or >= '\u1780' and <= '\u17FF' or >= '\u2E80' and <= '\uD7FF' ||
+        char.IsSurrogate(c) || c is >= '\uF900' and <= '\uFAFF' or >= '\uFF66' and <= '\uFF9F';
 
     /// <summary>Whether one key occurs in <paramref name="text"/>. A key written /pattern/flags is a regular expression
     /// (flags i, m and s are honored); an invalid or too slow expression never matches.</summary>

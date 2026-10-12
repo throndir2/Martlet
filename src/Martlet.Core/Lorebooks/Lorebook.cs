@@ -40,6 +40,8 @@ public sealed record LorebookEntry : IContract
     public bool? CaseSensitive { get; init; }
     /// <summary>Null uses the library setting.</summary>
     public bool? MatchWholeWords { get; init; }
+    /// <summary>Null uses the library setting. A keyword also matches the other forms of its words ("dragon" finds "dragons").</summary>
+    public bool? MatchWordForms { get; init; }
     /// <summary>Null uses the library setting.</summary>
     public int? ScanDepth { get; init; }
     /// <summary>Only the conversation can trigger this entry, never another entry's content.</summary>
@@ -141,6 +143,9 @@ public sealed record LorebookLibrary : IContract
     public bool Recursive { get; init; } = true;
     public bool CaseSensitive { get; init; }
     public bool MatchWholeWords { get; init; } = true;
+    /// <summary>Keywords also match the other forms of their words (<see cref="LorebookScanner"/>): "dragon" finds "dragons",
+    /// "Drache" finds "Drachen". Off by default, so keywords match exactly as SillyTavern's do.</summary>
+    public bool MatchWordForms { get; init; }
     public IReadOnlyList<Lorebook> Books { get; init; } = [];
 
     public static LorebookLibrary Create() => new() { SchemaVersion = CurrentSchemaVersion };
