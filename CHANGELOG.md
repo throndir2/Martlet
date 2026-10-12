@@ -13,6 +13,10 @@ Each release's section here is also its notes on GitHub.
 - **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))
 - **A greeting that knows you and stays in character**: Martlet's hello when it starts now calls you by your name when your account, your voice on People or Windows has a real name (never a user name or handle). It can also mention a weekend or a holiday, your newer Telegram or WhatsApp chat, a reminder it missed while it wasn't running, or a Martlet update. Your character greets you only the way it would, and one that wouldn't greet you stays quiet. ([#801](https://github.com/throndir2/Martlet/pull/801))
 
+### Fixed
+
+- In App guides › *Add an app*, the labels line up with the rest of the card, and the grey hint in each empty box starts where your typing starts. ([#803](https://github.com/throndir2/Martlet/pull/803))
+
 ## [0.72.0] - 2026-10-11
 
 ### Added
