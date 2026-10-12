@@ -1082,13 +1082,20 @@ and then *The blush goes on the measured cheeks.* when they were measured.
   mouth that still fail are left out (the blush then keeps its estimate), and
   good eyes from the first answer are kept when only the second answer's eyes
   fail.
+- An answer that only copies example numbers is not a measurement: when the
+  eye boxes match the old example of the instructions, the check fails and
+  Martlet asks again. A measurement saved with those boxes before is dropped
+  when Martlet starts, so the model is measured again.
 - The boxes become the face hint: each iris's middle and radius, each
   opening's middle, half width and half height, and each cheek's and the
   mouth's middle and radius, in face widths from the face anchor's middle (x
   toward the viewer's right, y down, with the face's roll taken out). It is
   saved per model in `character-eyes.json`, with the pictures sent and the
   close-up with its boxes in `character-eyes\<model>\` (shown under the
-  buttons). The renderer gets it after each model load and after each
+  buttons, with a line that names each numbered box in its color). Beside each
+  picture, `NN-step.txt` keeps the exact request (instructions and message) and
+  the model's exact answer, and the desktop log records each answer.
+  **Open the pictures and answers** opens that folder. The renderer gets it after each model load and after each
   measurement, and replies with what the eyes use.
 - With the hint, the renderer puts the cheeks (and so every blush level) and
   the mouth where vision saw them, pinned to the model like the rest of the

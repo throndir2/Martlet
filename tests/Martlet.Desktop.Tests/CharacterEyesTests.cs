@@ -408,6 +408,11 @@ public sealed class CharacterEyesTests
         Assert.Equal(CharacterEyes.Load(scope.DirectoryPath, "model-1")!.Hint, service.Current.Hint);
         var folder = CharacterEyes.PictureFolder(scope.DirectoryPath, "model-1");
         Assert.True(File.Exists(Path.Combine(folder, "01-eyes.png")));
+        // The exact request and answer are kept beside the picture.
+        var exchange = File.ReadAllText(Path.Combine(folder, "01-eyes.txt"));
+        Assert.Contains(CharacterEyes.Instructions, exchange, StringComparison.Ordinal);
+        Assert.Contains(CharacterEyes.Text, exchange, StringComparison.Ordinal);
+        Assert.Contains("--- Answer ---\n" + Answer, exchange, StringComparison.Ordinal);
         Assert.Equal(service.BoxesPicture, Path.Combine(folder, CharacterEyes.BoxesFile));
         Assert.False(service.ClaimAutomatic(), "a measured model isn't measured again on its own");
 
@@ -485,6 +490,51 @@ public sealed class CharacterEyesTests
             return Task.FromResult(RendererProtocol.Message("eyes", activation, new RendererEyesFrom(eyes.Clears ? "estimate" : "vision")));
         }
         public ValueTask DisposeAsync() { HasExited = true; exited.TrySetResult(); return ValueTask.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task AnAnswerThatCopiesTheOldExampleIsNotAMeasurement()
+    {
+        // The example the instructions gave in Martlet 0.72, which gemma4-e2b sent back unchanged.
+        const string copied = """
+            {"left":{"iris":{"left":0.33,"top":0.41,"right":0.41,"bottom":0.52},"eye":{"left":0.27,"top":0.42,"right":0.45,"bottom":0.52},"cheek":{"left":0.24,"top":0.57,"right":0.4,"bottom":0.66}},
+             "right":{"iris":{"left":0.59,"top":0.41,"right":0.67,"bottom":0.52},"eye":{"left":0.55,"top":0.42,"right":0.73,"bottom":0.52},"cheek":{"left":0.6,"top":0.57,"right":0.76,"bottom":0.66}},
+             "mouth":{"left":0.45,"top":0.7,"right":0.55,"bottom":0.75}}
+            """;
+        var close = EyeCloseUp.Standard();
+        Assert.True(CharacterEyes.CopiedExample(Boxes(copied)));
+        Assert.True(CharacterEyes.CopiedExample(Boxes(copied).Swapped));
+        Assert.False(CharacterEyes.CopiedExample(Boxes()));
+        Assert.Equal([CharacterEyes.CopiedProblem], CharacterEyes.EyeProblems(Boxes(copied), close));
+
+        // The instructions now give no numbers to copy: only L, T, R and B to replace.
+        Assert.DoesNotContain("0.33", CharacterEyes.Instructions, StringComparison.Ordinal);
+        Assert.Contains("{\"left\":L,\"top\":T,\"right\":R,\"bottom\":B}", CharacterEyes.Instructions, StringComparison.Ordinal);
+        // A model that copies the form literally gives JSON Martlet can't read, so it is asked again.
+        Assert.Equal("the answer's JSON couldn't be read", CharacterEyes.Parse("{\"left\":{\"iris\":{\"left\":L,\"top\":T}}}", 768, 768).Problem);
+
+        // Copied twice: nothing is saved. Copied, then measured: the check's answer is used.
+        var twice = await CharacterEyes.RunAsync(close, (_, _) => Task.FromResult<(string?, string?)>((copied, null)), null, default);
+        Assert.Null(twice.Hint);
+        Assert.Equal(2, twice.Requests);
+        var asks = new List<EyeAsk>();
+        var answers = new Queue<string>([copied, Answer]);
+        var fixedUp = await CharacterEyes.RunAsync(close, (ask, _) => { asks.Add(ask); return Task.FromResult<(string?, string?)>((answers.Dequeue(), null)); }, null, default);
+        Assert.NotNull(fixedUp.Hint);
+        Assert.Equal(EyeAskKind.Check, asks[1].Kind);
+        Assert.Contains(CharacterEyes.CopiedProblem, asks[1].Text, StringComparison.Ordinal);
+
+        // A measurement saved from the copied example is left out when loaded, so the model is measured again.
+        var directory = Directory.CreateTempSubdirectory("martlet-eyes-copied-").FullName;
+        try
+        {
+            var hint = CharacterEyes.Hint(Boxes(copied), close);
+            await CharacterEyes.SaveAsync(directory, CharacterEyeMeasurement.From("copied", hint) with { MeasuredAt = DateTimeOffset.Now, Boxes = Boxes(copied) });
+            await CharacterEyes.SaveAsync(directory, CharacterEyeMeasurement.From("measured", CharacterEyes.Hint(Boxes(), close)) with { MeasuredAt = DateTimeOffset.Now, Boxes = Boxes() });
+            Assert.Null(CharacterEyes.Load(directory, "copied"));
+            Assert.NotNull(CharacterEyes.Load(directory, "measured"));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     [Fact]
