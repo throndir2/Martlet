@@ -313,7 +313,9 @@ window opened on the host: a member desktop proves its network key
 
 Do not publish raw inference ports. Bind only the chosen private interface,
 allow only the intended client addresses/subnet, account for IPv4 **and** IPv6,
-and never enable router forwarding/UPnP by default. Docker published ports can
+and never enable router forwarding/UPnP by default (the owner may open one router
+port for this PC's gateway only, never a role service:
+[opening a port on your router](NETWORK.md#opening-a-port-on-your-router)). Docker published ports can
 bypass UFW rules; validate from an unauthorized LAN machine rather than trust
 a UI firewall checkbox ([S19](RESEARCH.md#s19)). No remote Docker TCP/socket
 access, privileged gateway, host-network default, or automatic SSH key

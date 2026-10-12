@@ -102,11 +102,12 @@ internal static class AppGuidesCheck
             var loading = await IndexesAsync(directory, cancellation);
             var tools = await ToolsAsync(again, fixture, cancellation);
             var latency = await LatencyAsync(directory, cancellation);
+            var research = await ResearchAsync(Path.Combine(directory, "research"), guard, fixture, limits, cancellation);
 
             var buildOk = given is { Built: true, Pages: >= 2, Chunks: > 0 } && File.Exists(file) && searched is { Built: true, Pages: > 0 } &&
                 fixture.Queries.Any(q => q.Contains(Other, StringComparison.OrdinalIgnoreCase)) && defaults.On && defaults.ReadUpWhenStarted &&
                 migration.Ok && restarted is { loaded: >= 2, on: true, indexReady: true, indexesAtStart: 0 };
-            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok;
+            var ok = buildOk && notesOk && offer.Ok && onItsOwn.Ok && reading.Ok && loading.Ok && tools.Ok && latency.Ok && research.Ok;
             return new
             {
                 ok,
@@ -129,7 +130,8 @@ internal static class AppGuidesCheck
                 reading = reading.Report,
                 indexes = loading.Report,
                 tools = tools.Report,
-                latency = latency.Report
+                latency = latency.Report,
+                research = research.Report
             };
         }
         finally
@@ -153,7 +155,10 @@ internal static class AppGuidesCheck
             {
                 key = a.Key, name = a.Name, programs = a.Programs, sites = a.Sites, declined = a.Declined, builtAt = a.BuiltAt,
                 pages = a.Pages, sections = a.Chunks, bytes = a.Bytes, problem = a.Problem,
-                file = File.Exists(Path.Combine(folder, a.Key + FileAppGuideStore.GuideSuffix))
+                file = File.Exists(Path.Combine(folder, a.Key + FileAppGuideStore.GuideSuffix)),
+                brief = a.Brief is not null, briefAt = a.BriefAt, briefCharacters = a.Brief?.Length ?? 0,
+                areas = a.Areas.Count, researchedAreas = a.Areas.Count(r => r.Sections > 0), researchedSections = a.Areas.Sum(r => r.Sections),
+                lastAreaAt = a.Areas.Count == 0 ? (DateTimeOffset?)null : a.Areas.Max(r => r.At)
             })
         };
     }
@@ -419,7 +424,7 @@ internal static class AppGuidesCheck
             .Select(_ => hourly.Start(AppGuideTools.Kind, "x", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("x"))))
             .Select(start => { Thread.Sleep(30); return start.Refusal; }).ToArray();
         var started = first.Job is { } job ? AppGuideTools.Started(job, Game, toldUser: true) : "";
-        var ok = names.SequenceEqual([AppGuideTools.ReadUpName, AppGuideTools.SearchName, AppGuideTools.SkipName]) &&
+        var ok = names.SequenceEqual([AppGuideTools.ReadUpName, AppGuideTools.SearchName, AppGuideTools.SkipName, AppGuideTools.BriefName]) &&
             readUp is { App: Game, Sites.Count: 1 } && readUp.Sites[0] == "https://starfall.example/wiki" && bad is null && badProblem is not null &&
             search is { App: null } && skip == Other && hits.Count > 0 && found.Contains("Moonstone", StringComparison.Ordinal) &&
             found.Contains(fixture.BaseUrl, StringComparison.Ordinal) && first.Job?.State == BackgroundJobState.Succeeded &&
@@ -440,6 +445,158 @@ internal static class AppGuidesCheck
             },
             secondWhileRunning = second.Refusal, hourly = refusals, prompt = AppGuideTools.Instructions(null)
         });
+    }
+
+    // Deeper research (docs/APP_GUIDES.md, "The brief" and "Researching where you are") with a stand-in Thinking pool member
+    // (canned answers, NOT a model): the brief after a read, the brief with the user's message once, an area the guide already
+    // covers, an area researched on the web (the fixture's wiki page and search snippets; Reddit's and a video's pages never
+    // read), research kept when the wiki is read again, update_guide_brief's arguments and refusals, and a log without text.
+    private static async Task<(bool Ok, object Report)> ResearchAsync(string directory, LoopbackOnly guard, Fixture fixture, GuideBuildLimits limits,
+        CancellationToken cancellation)
+    {
+        var key = AppGuideKeys.Of(Game);
+        var thinker = new CannedThinker();
+        var log = new List<string>();
+        using var guides = new AppGuideService(new FileAppGuideStore(directory), new WebGuideBuilder(guard, guard), limits: limits);
+        await guides.LoadAsync(cancellation);
+        await guides.SetOnAsync(true, cancellation);
+        using var research = new AppGuideResearcher(guides, thinker, guard, guard, wait: (_, token) => Task.Delay(20, token))
+        {
+            Log = line => { lock (log) log.Add(line); }
+        };
+
+        async Task<AppGuideEntry?> WaitForAsync(Func<AppGuideEntry, bool> done)
+        {
+            var waited = Stopwatch.StartNew();
+            while (waited.Elapsed < TimeSpan.FromSeconds(60))
+            {
+                if (guides.Library.Apps.FirstOrDefault(a => a.Key == key) is { } entry && done(entry) && research.Doing is null) return entry;
+                await Task.Delay(20, cancellation);
+            }
+            return guides.Library.Apps.FirstOrDefault(a => a.Key == key);
+        }
+
+        // A read writes the brief on its own, in the background.
+        var built = await guides.BuildAsync(Game, [fixture.BaseUrl + "/wiki/Main_Page"], null, cancellation);
+        var afterRead = await WaitForAsync(e => e.Brief is not null);
+        var briefAsks = thinker.Asks.Count(a => a.Label == "App guide brief");
+
+        // The brief goes with a message about the app, once per conversation.
+        guides.See("STARFALL VALLEY\u2122", "StarfallValley", game: true, fullScreen: true);
+        await guides.ReadyAsync(key, cancellation);
+        var first = guides.Recall(Question);
+        var briefNotes = GuideRecall.BriefNotes(first?.App ?? Game, first?.Brief, null);
+        var again = guides.Recall(Question, briefNotes);
+
+        // The screen shows an area the guide covers (no web), then one it doesn't (the web).
+        var refusedBefore = guard.Refused;
+        var searchesBefore = fixture.Queries.Count;
+        var covered = await research.ResearchScreenAsync(key, "The user fights crystal golems for moonstones in an icy cave.", cancellation);
+        var webArea = await research.ResearchScreenAsync(key, "A dark flooded crypt under a chapel; a drowned knight blocks the stairs.", cancellation);
+        var nothing = await research.ResearchScreenAsync(key, "The title screen with a Start button.", cancellation);
+        var areaQueries = fixture.Queries.Skip(searchesBefore).ToArray();
+        var researched = guides.Search(key, "how do I drain the Sunken Crypt", 5) ?? [];
+        var fromResearch = researched.Count(h => GuideAreaResearch.IsResearched(h.Chunk));
+        var snippetKept = researched.Any(h => h.Chunk.Section == "What people say on the web" && h.Chunk.Text.Contains("Reddit", StringComparison.Ordinal));
+        var redditRead = fixture.Paths.Any(p => p.Contains("reddit", StringComparison.OrdinalIgnoreCase)) || guard.Refused != refusedBefore;
+
+        // Read again: the wiki's sections are new, the research stays, and a new brief is written.
+        var briefsBefore = research.Briefs;
+        var reread = await guides.BuildAsync(Game, [fixture.BaseUrl + "/wiki/Main_Page"], null, cancellation);
+        var afterReread = await WaitForAsync(_ => research.Briefs > briefsBefore);
+        var keptAfterReread = (guides.Search(key, "how do I drain the Sunken Crypt", 5) ?? []).Count(h => GuideAreaResearch.IsResearched(h.Chunk));
+
+        // update_guide_brief: its arguments, the same area again within the hour, and no pool member.
+        var (app, focus, problem) = AppGuideTools.ParseBrief("{\"app\":\"Starfall Valley\",\"focus\":\"Sunken  Crypt\\n\"}");
+        var (_, _, badProblem) = AppGuideTools.ParseBrief("[\"Sunken Crypt\"]");
+        var refreshed = await research.RefreshAsync(key, "Sunken Crypt", cancellation);
+        thinker.CanThink = false;
+        var noMember = research.CantStart(key);
+        var notStarted = research.Start(key, null);
+        thinker.CanThink = true;
+        var entry = guides.Library.Apps.FirstOrDefault(a => a.Key == key);
+        string[] lines;
+        lock (log) lines = [.. log];
+        var private_ = new[] { "Sunken", "Crypt", "Frost", "moonstone", "drowned", "127.0.0.1", "http", "reddit" };
+        var logPrivate = lines.Any(line => private_.Any(word => line.Contains(word, StringComparison.OrdinalIgnoreCase)));
+        var asks = thinker.Asks;
+        var stableStart = asks.Where(a => a.Label == "App guide brief").All(a => a.Instructions == GuideBrief.Instructions) &&
+            asks.Where(a => a.Label == "App guide area").All(a => a.Instructions == GuideAreaResearch.ClueInstructions) &&
+            asks.Where(a => a.Label == "App guide area notes").All(a => a.Instructions == GuideAreaResearch.SummaryInstructions);
+
+        var ok = built.Built && afterRead?.Brief?.StartsWith("What it is:", StringComparison.Ordinal) == true && afterRead.BriefAt is not null &&
+            briefAsks >= 1 && first?.Brief is not null && briefNotes?.StartsWith(GuideBrief.Label, StringComparison.Ordinal) == true &&
+            again?.Brief is null &&
+            covered is { Area: "Frost Caves", Web: false, Sections: 0, Problem: null } &&
+            webArea is { Area: "Sunken Crypt", Web: true, Sections: > 0, Problem: null } && nothing.Area is null &&
+            areaQueries.Any(q => q.Contains("reddit", StringComparison.OrdinalIgnoreCase)) && areaQueries.Length <= GuideAreaResearch.Queries(Game, "x").Count &&
+            fromResearch > 0 && snippetKept && !redditRead &&
+            reread.Built && afterReread?.BriefAt > afterRead.BriefAt && keptAfterReread > 0 &&
+            app == Game && focus == "Sunken Crypt" && problem is null && badProblem is not null &&
+            refreshed is { Web: false, Brief: true } && noMember is not null && notStarted == noMember &&
+            entry is { Areas.Count: 2 } && entry.Areas.Any(a => a.Name == "Sunken Crypt" && a.Sections > 0) &&
+            !logPrivate && stableStart && asks.All(a => a.Text.Length <= Math.Max(GuideBrief.InputCharacters, GuideAreaResearch.SummaryInputCharacters) + 200);
+        return (ok, new
+        {
+            ok,
+            note = "A stand-in Thinking pool member gives canned answers (NOT a model); the guide, web reading, research, store and " +
+                "notes are Martlet's own, against the 127.0.0.1 fixture.",
+            briefAfterRead = new { written = afterRead?.Brief is not null, characters = afterRead?.Brief?.Length ?? 0, briefAt = afterRead?.BriefAt, requests = briefAsks },
+            briefWithMessage = new { first = first?.Brief is not null, notesCharacters = briefNotes?.Length ?? 0, sentAgain = again?.Brief is not null },
+            screen = new
+            {
+                areaTheGuideCovers = Result(covered), areaOnTheWeb = Result(webArea), noArea = Result(nothing),
+                searches = areaQueries, sectionsFoundForTheArea = fromResearch, redditSnippetKept = snippetKept, redditOrVideoPageRead = redditRead
+            },
+            readAgain = new { built = reread.Built, researchSectionsKept = keptAfterReread, newBrief = afterReread?.BriefAt > afterRead?.BriefAt },
+            updateGuideBrief = new { app, focus, problem, badArguments = badProblem, sameAreaWithinTheHour = Result(refreshed), noPoolMember = noMember, startWithoutMember = notStarted },
+            saved = entry is null ? null : new { briefCharacters = entry.Brief?.Length ?? 0, areas = entry.Areas.Select(a => new { a.Name, a.Sections }) },
+            status = new { research.Briefs, research.Areas, research.WebAreas, research.Sections, research.Screens },
+            thinkingRequests = asks.GroupBy(a => a.Label).Select(g => new { label = g.Key, count = g.Count(), maxInputCharacters = g.Max(a => a.Text.Length) }),
+            sameInstructionsEveryTime = stableStart,
+            log = new { lines, holdsAreaOrLinks = logPrivate },
+            caps = new
+            {
+                AppGuideResearcher.BriefsPerHour, AppGuideResearcher.AreasPerHour, screenEveryMinutes = AppGuideResearcher.DefaultScreenEvery.TotalMinutes,
+                areaAgainHours = AppGuideResearcher.AreaAgain.TotalHours, GuideAreaResearch.MaximumPages, GuideAreaResearch.MaximumSections,
+                briefCharacters = GuideBrief.MaximumCharacters
+            }
+        });
+    }
+
+    private static object Result(GuideResearchResult result) => new
+    {
+        area = result.Area, web = result.Web, sections = result.Sections, brief = result.Brief, problem = result.Problem,
+        ms = (long)result.Took.TotalMilliseconds
+    };
+
+    /// <summary>A stand-in Thinking pool member with canned answers (NOT a model): a brief, the area a screen note shows, and notes
+    /// on what was read about an area.</summary>
+    private sealed class CannedThinker : IGuideThinker
+    {
+        private readonly List<GuideThinkingAsk> asks = [];
+        public bool CanThink { get; set; } = true;
+        internal IReadOnlyList<GuideThinkingAsk> Asks { get { lock (asks) return [.. asks]; } }
+
+        public Task<(string? Text, string? Problem)> ThinkAsync(GuideThinkingAsk ask, CancellationToken cancellationToken)
+        {
+            lock (asks) asks.Add(ask);
+            string answer = ask.Label switch
+            {
+                "App guide brief" => "What it is: Starfall Valley is a farming game with mines and caves.\nCore loop: Farm by day, mine " +
+                    "ore and fight in the caves.\nMain mechanics: Seasons last 28 days; smelt ore into bars.\nEarly tips: Bring a " +
+                    "steel pickaxe to the Ember Mines.\nCommon mistakes: Crops die when the season changes." +
+                    (ask.Text.Contains("Focus:", StringComparison.Ordinal) ? "\nAbout the focus: see the research notes." : ""),
+                "App guide area" when ask.Text.Contains("crypt", StringComparison.OrdinalIgnoreCase) => "AREA: Sunken Crypt",
+                "App guide area" when ask.Text.Contains("golem", StringComparison.OrdinalIgnoreCase) => "AREA: **Frost Caves**",
+                "App guide area" => "AREA: NONE",
+                "App guide area notes" when ask.Text.Contains("valve", StringComparison.OrdinalIgnoreCase) =>
+                    "The Sunken Crypt is a flooded dungeon under the chapel.\nTurn the three bronze valves to drain it.\nDrowned knights " +
+                    "are weak to fire: bring torches.\nLeave before midnight.",
+                _ => "NONE"
+            };
+            return Task.FromResult<(string?, string?)>((answer, null));
+        }
     }
 
     // What App guides add to a reply's path (docs/APP_GUIDES.md, AGENTS.md "Never add conversation latency"): the notes step's
@@ -599,16 +756,22 @@ internal static class AppGuidesCheck
                 await using var stream = client.GetStream();
                 var target = await ReadAsync(stream);
                 var path = target.Split('?')[0];
+                var query = path == "/search"
+                    ? Uri.UnescapeDataString((target.Split("q=", 2).ElementAtOrDefault(1)?.Split('&')[0] ?? "").Replace('+', ' ')) : "";
                 lock (paths)
                 {
                     paths.Add(path);
-                    if (path == "/search")
-                        queries.Add(Uri.UnescapeDataString(target.Split("q=", 2).ElementAtOrDefault(1)?.Split('&')[0] ?? "").Replace('+', ' '));
+                    if (path == "/search") queries.Add(query);
                 }
                 var (type, body) = path switch
                 {
                     "/robots.txt" => ("text/plain", "User-agent: *\nAllow: /\n"),
-                    "/search" => ("text/html", SearchPage()),
+                    "/search" => ("text/html", SearchPage(query)),
+                    "/wiki/Sunken_Crypt" => ("text/html", Page("Sunken Crypt",
+                        "<p>The Sunken Crypt is a flooded dungeon under the old chapel in Starfall Valley (FIXTURE).</p><h2>Getting in</h2>" +
+                        "<p>Drain the Sunken Crypt by turning the three bronze valves in the chapel cellar; the water drops one floor with " +
+                        "each valve.</p><h2>Dangers</h2><p>Drowned knights guard the lowest floor of the Sunken Crypt. They are weak to " +
+                        "fire, so bring torches, and leave before midnight, when the water rises again.</p>")),
                     "/wiki/Main_Page" or "/wiki/" or "/wiki" => ("text/html", Page("Starfall Valley Wiki",
                         "<p>Welcome to the Starfall Valley Wiki, the fan wiki about the farming game Starfall Valley (FIXTURE).</p>" +
                         "<h2>Mining</h2><h3>Iron ore</h3><p>Iron ore is found in the Ember Mines below level 40. Bring a steel pickaxe; " +
@@ -649,17 +812,29 @@ internal static class AppGuidesCheck
             catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or OperationCanceledException) { }
         }
 
-        private string Link(string path) => "//duckduckgo.com/l/?uddg=" + Uri.EscapeDataString(BaseUrl + path) + "&amp;rut=fixture";
+        private string Link(string path) => Away(BaseUrl + path);
 
-        private string SearchPage() =>
+        private static string Away(string url) => "//duckduckgo.com/l/?uddg=" + Uri.EscapeDataString(url) + "&amp;rut=fixture";
+
+        // A search about the Sunken Crypt (area research) finds its wiki page, a Reddit thread (whose page Martlet never reads: its
+        // snippet only) and a video (never read); every other search finds the second wiki.
+        private string SearchPage(string query) =>
             "<html><body><div class=\"results\">" +
             "<div class=\"result result--ad\"><a rel=\"nofollow\" class=\"result__a\" href=\"//duckduckgo.com/y.js?ad=1\">Sponsored</a></div>" +
-            Result("/w/abyss/Main_Page", "Moonlit Abyss Wiki", "The fan wiki about Moonlit Abyss.") +
+            (query.Contains("Sunken Crypt", StringComparison.OrdinalIgnoreCase)
+                ? Result("/wiki/Sunken_Crypt", "Sunken Crypt - Starfall Valley Wiki", "The Sunken Crypt is a flooded dungeon in Starfall Valley.") +
+                  Result(Away(RedditThread), "Sunken Crypt is impossible : r/StarfallValley",
+                      "Starfall Valley tip: in the Sunken Crypt, turn all three valves first and bring torches for the drowned knights.", away: true) +
+                  Result(Away("https://www.youtube.com/watch?v=fixture"), "Starfall Valley Sunken Crypt walkthrough",
+                      "A video walkthrough of the Sunken Crypt in Starfall Valley, all floors.", away: true)
+                : Result("/w/abyss/Main_Page", "Moonlit Abyss Wiki", "The fan wiki about Moonlit Abyss.")) +
             "</div></body></html>";
 
-        private string Result(string path, string title, string snippet) =>
-            $"<div class=\"result\"><h2 class=\"result__title\"><a rel=\"nofollow\" class=\"result__a\" href=\"{Link(path)}\">{title}</a></h2>" +
-            $"<a class=\"result__snippet\" href=\"{Link(path)}\">{snippet}</a></div>";
+        internal const string RedditThread = "https://www.reddit.com/r/StarfallValley/comments/fixture/sunken_crypt_is_impossible/";
+
+        private string Result(string path, string title, string snippet, bool away = false) =>
+            $"<div class=\"result\"><h2 class=\"result__title\"><a rel=\"nofollow\" class=\"result__a\" href=\"{(away ? path : Link(path))}\">{title}</a></h2>" +
+            $"<a class=\"result__snippet\" href=\"{(away ? path : Link(path))}\">{snippet}</a></div>";
 
         private static string Page(string title, string content, string home = "/wiki/Main_Page") =>
             $"<html><head><title>{title} - Fixture Wiki</title><script>var tracking = 1;</script></head><body>" +

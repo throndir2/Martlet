@@ -63,6 +63,8 @@ public partial class App : Application
         // without its window (--tray).
         var args = e.Args;
         bool afterUpdate = false, toTray = false;
+        // A clicked share link (martlet://share/...) comes as the last argument.
+        (args, var shareLink) = ShareLinkProtocol.Split(args);
         while (args is [.., Martlet.Core.Installation.AppUpdateHelper.AfterUpdateArgument or WindowsStartup.TrayArgument])
         {
             if (args[^1] == WindowsStartup.TrayArgument) toTray = true;
@@ -112,7 +114,12 @@ public partial class App : Application
             if (!acquired)
             {
                 ErrorLog.Info("Martlet already runs with this data folder; showing it instead of starting again.");
-                if (!toTray) SingleInstance.ShowRunning(store.DataDirectory);
+                if (shareLink is not null)
+                {
+                    try { ShareLinkProtocol.HandOver(store.DataDirectory, shareLink); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ErrorLog.Warn("Couldn't hand the share link over", ex); }
+                }
+                if (!toTray || shareLink is not null) SingleInstance.ShowRunning(store.DataDirectory);
                 Shutdown(0);
                 return;
             }
@@ -170,7 +177,26 @@ public partial class App : Application
                 main.Show();
                 if (!toTray) main.EnableTray();
             }
-            instance?.Listen(() => Dispatcher.BeginInvoke(main.ShowFromTray));
+            instance?.Listen(() => Dispatcher.BeginInvoke(() =>
+            {
+                main.ShowFromTray();
+                // Another start handed over a clicked share link.
+                if (store is not null && ShareLinkProtocol.TakeHandedOver(store.DataDirectory) is { } handed) main.AcceptShareLinkAsync(handed).Forget();
+            }));
+            if (shareLink is not null) main.Dispatcher.BeginInvoke(() => main.AcceptShareLinkAsync(shareLink).Forget(), DispatcherPriority.ApplicationIdle);
+            // Share links open this Martlet when clicked: a normal start (not a disposable data folder) registers it for this Windows user.
+            if (DataDirectoryArgument is null && Environment.ProcessPath is { } executable)
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        if (ShareLinkProtocol.Register(executable)) ErrorLog.Info("Share links (martlet://) now open this Martlet.");
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+                    {
+                        ErrorLog.Warn("Couldn't register martlet:// share links for this Windows user", ex);
+                    }
+                });
         }
         catch (Exception ex)
         {

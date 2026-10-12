@@ -70,8 +70,11 @@ your setup can't.
    said in the last hour, each with when:
    [What you said lately](CONVERSATION.md#what-you-said-lately)) or read out
    private details. A new message, call or
-   reminder is worth a heads-up, naming only who or which app it is from (*Sam
-   just messaged you*), never the message itself. `[pass]` is never
+   reminder is worth a heads-up. Martlet reads the whole notification and lets
+   it shape the heads-up in its own words (*Sam wants to know if you're still
+   up for dinner*). When it looks personal or could get someone in trouble if
+   someone nearby heard it, Martlet says nothing about what it says: at most
+   who or which app it is from (*Sam just messaged you*). `[pass]` is never
    spoken; a remark is spoken with the selected voice like any reply. When
    lines this PC played or finished background work are waiting as a look comes
    due, the look isn't a separate glance: it is
@@ -326,7 +329,8 @@ pacer:
   full-screen app is in front.
 
 The model is asked for a quick heads-up only when it is a message, call or
-reminder you would want to know about. When lines this PC played or finished
+reminder you would want to know about. It may use what the notification says
+to word the heads-up, but keeps quiet about anything personal or risky. When lines this PC played or finished
 work wait, that look is part of one reply that takes them too, with *Something
 wants your attention, with a reply* in its notes. Such a look still waits for you to
 finish talking (up to a minute), keeps to the hourly budget, isn't taken when

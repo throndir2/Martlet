@@ -33,7 +33,7 @@ are the exception: they are always shared, so Martlet learns everyone's voice
 | The same on every computer | How it travels | Details |
 | --- | --- | --- |
 | Who does each job (thinking, listening, speaking, lip-sync) | The cluster plan | [Model](#model) |
-| How Martlet thinks, listens and speaks with the API keys, the Thinking fallback, the personality, replies, prompts, memory on or off, lorebooks, the character and its emotes and motions, how you talk, speech bubbles and subtitles, the theme, recognizing voices, Voice ID, what Martlet may do with Home Assistant, app updates | Shared settings | [One Martlet on every computer](#one-martlet-on-every-computer) |
+| How Martlet thinks, listens and speaks with the API keys, the Thinking fallback, the Thinking pool's cloud providers and servers with their keys, the personality, replies, prompts, memory on or off, lorebooks, the character and its emotes and motions, how you talk, speech bubbles and subtitles, the theme, recognizing voices, Voice ID, what Martlet may do with Home Assistant, app updates | Shared settings | [One Martlet on every computer](#one-martlet-on-every-computer) |
 | What Martlet remembers | Shared memories | [MEMORY](MEMORY.md#one-memory-on-every-computer) |
 | The people and voices Martlet recognizes | The shared voice list, always on (not changed by the switch) | [The shared voice list](#the-shared-voice-list) |
 | The voices Martlet speaks with and their recordings | Shared speaking voices | [The shared speaking voices](#the-shared-speaking-voices) |
@@ -75,7 +75,8 @@ are the exception: they are always shared, so Martlet learns everyone's voice
   computers at once (each one with a Thinking model joins by itself: its
   Thinking pool role, or its Ollama when that doesn't do this PC's Thinking;
   unticking *In the Thinking pool* keeps one out; `thinking-pool.json` on that
-  PC, never shared). The computer you talk to keeps answering; each background think goes
+  PC; its cloud providers and servers, with their keys, are the
+  [shared](#one-martlet-on-every-computer) `thinking-pool` setting). The computer you talk to keeps answering; each background think goes
   to a free one of those computers, the one sharing least with the conversation
   first (one doing none of its jobs before one that also speaks, before the
   computer doing Thinking), so with four computers one speaks and three think
@@ -558,6 +559,7 @@ NVIDIA Build and its old key.
 | --- | --- | --- |
 | `thinking`, `listening`, `speaking` | The route a job uses when no paired host does it: provider (OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, Ollama on the computer itself, Windows speech, Parakeet), model, voice and **the API key** | Host routes and pairings (the plan above); a local whisper package |
 | `thinking-fallback` | The *If Thinking fails* endpoint, model and its own key (or none) | |
+| `thinking-pool` | Companion › Thinking pool's cloud providers and servers on your network (for example NVIDIA Build or OpenRouter models): each one's address, model, order, on or off, slots, Quick jobs, Long jobs, pictures and recordings, Backup for slow replies, Smarts and **its API key** (the distinct keys travel together as one secret). A key this PC already holds for the same address is used again; a member removed elsewhere is removed here with its key | Paired computers in the pool (each PC's own pairing; they join by themselves) and models in Ollama on this PC; Runs on, Backup Thinking and Busy pool |
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
 | `lorebooks` | Every lorebook and the scan settings (up to 16 MiB; larger lorebooks stay on each PC, and sync says so) | |
@@ -583,7 +585,7 @@ Conversations are not shared; what Martlet makes from them is (the [shared creat
 
 With [accounts](ACCOUNTS.md#account-settings), the settings above are split
 into the household's and each person's. The household keeps `thinking`,
-`listening`, `speaking` with their API keys, `thinking-fallback`,
+`listening`, `speaking` with their API keys, `thinking-fallback`, `thinking-pool`,
 `character-actions`, `voice-recognition`, `smart-home`, `updates`,
 `model-abilities`, `work-sharing`, `pools` and the `pc.*`, `role.*` and
 `setup-run.*` entries. Each person keeps `companion` (their personalities and

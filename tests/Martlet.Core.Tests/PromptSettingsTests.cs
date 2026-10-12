@@ -175,6 +175,17 @@ public sealed class PromptSettingsTests
             ("app", "Steam (full screen)"), ("title", "Boss fight"), ("remarks", ""), ("silent", "pass")));
         Assert.Contains("Active app: Discord. Active window: \"Sam - Chat\".", PromptSettings.Fill(null, PromptCatalog.GlanceAttention,
             ("what", "a notification popped up"), ("app", "Discord"), ("title", "Sam - Chat"), ("remarks", ""), ("silent", "pass")));
+        // A notification's content may shape the heads-up, but nothing personal or risky is said, in every prompt that sees one.
+        foreach (var id in new[] { PromptCatalog.GlanceAttention, PromptCatalog.MomentAttention, PromptCatalog.CommentaryScreen })
+        {
+            var text = PromptSettings.Fill(null, id, ("what", "a notification just popped up"), ("app", "Discord"), ("title", "Sam - Chat"),
+                ("remarks", ""), ("silent", "pass"))!;
+            Assert.Contains("read all of it to understand it and let it shape how you announce it", text);
+            Assert.Contains("say nothing about what it says: at most who or which app it is from", text);
+            Assert.DoesNotContain("never the message itself", text);
+        }
+        Assert.Contains("what it is about, unless it looks personal or could get someone in trouble",
+            PromptCatalog.DefaultDescribePictureInstructions);
         // A message with a picture is told the same in its notes, and its instructions point the same way.
         Assert.Equal("Active app in the picture: Google Chrome (full screen). Active window: \"YouTube\".",
             PromptSettings.Fill(null, PromptCatalog.SeenApp, ("app", "Google Chrome (full screen)"), ("title", "YouTube")));

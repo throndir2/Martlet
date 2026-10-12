@@ -293,6 +293,57 @@ internal static class SignInRehearsal
             var recorded = settings.RemovedFromNetwork.Any(r => r.DeviceId == keyFriend.DeviceId);
             return (after is "auth.revoked" or "auth.invalid" && !recorded, $"friend now: {after}; listed for network removal: {recorded}");
         });
+        // Sharing with a link (docs/NETWORK.md, "Sharing with a link"): one link for all hosts, no identity provider needed.
+        using var keyLinkFriend = NetworkKey.Create("lab-link-friend");
+        var linkFriend = new LabDesktop(keyLinkFriend, "LINK-FRIEND");
+        // The link names only the first host; the second is found through it, like a host the owner adds later.
+        var link = ShareLink.Create([invite], host.Server.NetworkState.NetworkId, "Lab owner", "Bo");
+        await Run("The home PC makes a share link for all of its hosts: each host keeps only the link's verifier", async () =>
+        {
+            JsonObject Change() => new()
+            {
+                ["action"] = "share-link", ["id"] = link.Id, ["label"] = "Bo", ["verifier"] = ShareLink.Verifier(link.Id, link.Secret)
+            };
+            var first = await home.ChangeAsync(host.HostId, Change(), token);
+            var second = await home.ChangeAsync(host2.HostId, Change(), token);
+            var saved = System.Text.Encoding.UTF8.GetString(host.SignInBytes ?? []) + System.Text.Encoding.UTF8.GetString(host2.SignInBytes ?? []);
+            return (first.Links?.Any(l => l.Id == link.Id && l.AllHosts) == true && second.Links?.Any(l => l.Id == link.Id) == true && !saved.Contains(link.Secret),
+                $"{host.HostId} keeps {first.Links?.Count} link(s), {host2.HostId} {second.Links?.Count}; secret on a host: {saved.Contains(link.Secret)}; " +
+                $"link is {link.Url().Length} characters");
+        });
+        await Run("A friend's computer pastes the link: a wrong secret is refused, the right one signs in as a friend (engines only)", async () =>
+        {
+            var pasted = ShareLink.Parse(link.Url());
+            var wrong = await FailureAsync(() => HostSignInClient.SignInWithShareLinkAsync(pasted.Hosts[0], pasted with { Secret = ShareLink.NewSecret() },
+                keyLinkFriend.DeviceId, "LINK-FRIEND", token));
+            var (pairing, secret, who) = await HostSignInClient.SignInWithShareLinkAsync(pasted.Hosts[0], pasted, keyLinkFriend.DeviceId, "LINK-FRIEND", token);
+            linkFriend.Keep(pairing, secret);
+            var engines = await linkFriend.CanUseAsync(host.HostId, token);
+            var refused = (await linkFriend.RefusalsAsync(host.HostId, token)).All(c => c.Code == "access.friend");
+            return (wrong == "signin.link_unknown" && who is { Friend: true, Provider: "link", Label: "Bo" } && engines && refused,
+                $"wrong secret: {wrong}; signed in as {who} ({who.Access}); engines: {(engines ? "allowed" : "refused")}; everything else refused: {refused}");
+        });
+        await Run("The friend's computer asks the host which hosts the link covers and signs in to the one it didn't know", async () =>
+        {
+            HostSharedHosts shared;
+            using (var connection = linkFriend.Connect(host.HostId)) shared = await connection.ReadSharedHostsAsync(token);
+            var other = shared.Hosts.FirstOrDefault(h => h.HostId == host2.HostId);
+            if (other is null) return (false, $"listed: {string.Join(", ", shared.Hosts.Select(h => h.HostId))}");
+            var (pairing, secret, _) = await HostSignInClient.SignInWithShareLinkAsync(other, link, keyLinkFriend.DeviceId, "LINK-FRIEND", token);
+            linkFriend.Keep(pairing, secret);
+            var engines = await linkFriend.CanUseAsync(host2.HostId, token);
+            return (shared.AllHosts && shared.LinkId == link.Id && other.SpkiFingerprint == host2.Fingerprint && engines,
+                $"link covers all hosts: {shared.AllHosts}; listed {string.Join(", ", shared.Hosts.Select(h => h.HostId))}; {host2.HostId} pinned from the " +
+                $"roster: {other.SpkiFingerprint == host2.Fingerprint}; engines there: {(engines ? "allowed" : "refused")}");
+        });
+        await Run("Stopping the link revokes the friend's computer on every host at once", async () =>
+        {
+            await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "remove-share-link", ["id"] = link.Id }, token);
+            await home.ChangeAsync(host2.HostId, new JsonObject { ["action"] = "remove-share-link", ["id"] = link.Id }, token);
+            var first = await linkFriend.FailureCodeAsync(host.HostId, token);
+            var second = await linkFriend.FailureCodeAsync(host2.HostId, token);
+            return (first is "auth.revoked" or "auth.invalid" && second is "auth.revoked" or "auth.invalid", $"{host.HostId}: {first}; {host2.HostId}: {second}");
+        });
         await Run("Removing the owner account takes the laptop's access away", async () =>
         {
             var settings = await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "remove-owner" }, token);

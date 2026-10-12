@@ -32,4 +32,22 @@ public static class GuideRecall
         }
         return text.Append(EndLabel).ToString();
     }
+
+    /// <summary>The brief notes: <paramref name="brief"/> of <paramref name="app"/> inside <see cref="GuideBrief.Label"/> lines,
+    /// opened by Companion › Prompts › App guide brief, with your message. Null when there is no brief or the owner emptied the
+    /// prompt.</summary>
+    public static string? BriefNotes(string app, string? brief, PromptSettings? prompts = null)
+    {
+        if (string.IsNullOrWhiteSpace(brief)) return null;
+        if (PromptSettings.Fill(prompts, PromptCatalog.AppGuideBrief, ("app", app)) is not { } opening || opening.Trim().Length == 0) return null;
+        return new StringBuilder(GuideBrief.Label).Append('\n').Append(opening.Trim()).Append('\n').Append(brief.Trim()).Append('\n')
+            .Append(GuideBrief.EndLabel).ToString();
+    }
+
+    /// <summary>The start of a brief as its notes carry it, to tell one the conversation has already.</summary>
+    public static string BriefOpening(string brief)
+    {
+        var line = brief.Trim().Split('\n')[0];
+        return line.Length <= 60 ? line : line[..60];
+    }
 }

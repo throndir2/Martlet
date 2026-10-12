@@ -85,6 +85,31 @@ evict the conversation from a local model's cache. When verifying such a
 change, compare the desktop log's `Reply latency` and `Thinking input` lines
 before and after, and report the numbers.
 
+## Martlet is one app: configuration is shared
+
+The owner uses Martlet on many computers (companion PCs, host PCs and phones)
+as one app. A choice made on one computer must be the same on all of them,
+also on a computer that the owner adds later.
+
+- Share every new setting by default. This includes lists, model choices,
+  provider choices and their API keys. Add its shared section in the same change
+  (`AppSettingsSections` in `Martlet.Core`, or the desktop's
+  `DesktopSections`), as [One Martlet on every computer](docs/CLUSTER.md#one-martlet-on-every-computer)
+  tells. An API key travels as the setting's secret, never in its value.
+- Keep a setting on one computer only when it describes that computer: its
+  devices (microphone, speakers, cameras, screens), what is installed or
+  measured there, its pairings and how it starts. Add a row with the reason to
+  [What stays with each computer](docs/CLUSTER.md#what-stays-with-each-computer).
+- When one list has both kinds (for example the Thinking pool), share the
+  parts that are not about the computer and keep only the rest local.
+- A computer that cannot use a shared value yet keeps its own value, says why
+  and tries again. Its own default never replaces a choice made on another
+  computer.
+- Show it with two simulated computers: a `Martlet.Core.Tests` test, and a step
+  in MCP `settings_sync_selftest` when keys or files travel.
+- A setting that stays on one computer without such a reason is a bug. Fix it
+  in your change when it is in scope; otherwise open an issue.
+
 ## Branch and worktree ownership
 
 - Use one focused task branch per bounded change, based on freshly fetched

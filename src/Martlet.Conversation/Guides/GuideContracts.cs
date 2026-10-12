@@ -41,7 +41,19 @@ public sealed record AppGuideEntry
     public long Bytes { get; init; }
     /// <summary>Why the last try to make its guide failed, in a few plain words, or null.</summary>
     public string? Problem { get; init; }
+    /// <summary>The short brief a Thinking pool member wrote from the guide (what it is, its core loop, main mechanics, early
+    /// tips, common mistakes; <see cref="GuideBrief"/>), or null. The old brief stays until a new one replaces it.</summary>
+    public string? Brief { get; init; }
+    /// <summary>When <see cref="Brief"/> was written.</summary>
+    public DateTimeOffset? BriefAt { get; init; }
+    /// <summary>The areas of the game or app Martlet researched on the web (from what was on the screen, <see cref="GuideAreaResearch"/>),
+    /// newest last, at most <see cref="GuideAreaResearch.MaximumAreas"/>.</summary>
+    public IReadOnlyList<GuideArea> Areas { get; init; } = [];
 }
+
+/// <summary>An area of a game or app Martlet researched on the web: its name (a few words, such as "Frost Caves"), when, and how
+/// many sections it added to the guide.</summary>
+public sealed record GuideArea(string Name, DateTimeOffset At, int Sections);
 
 /// <summary>The guide library's own settings and its apps, kept with the guides (guides\library.json), like lorebooks keep
 /// theirs. App guides and Read up when I start a game or app are on by default (a library.json without "on" is on too); a saved

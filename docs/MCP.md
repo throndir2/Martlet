@@ -1755,7 +1755,9 @@ restarted with its saved copy and got the change on the next sync; a stale copy
 that can't undo newer changes; a newer Martlet's setting passed through; a
 Parakeet model a new computer lacks (it waits, records nothing, then follows); a
 new computer taking everything without its defaults overriding anything; the
-Thinking fallback with its own key, turned off again (the key removed); lorebooks;
+Thinking fallback with its own key, turned off again (the key removed); two
+NVIDIA Build models in A's Thinking pool with one key, which reach B beside B's
+own model in Ollama and leave again with B's copy of the key; lorebooks;
 no key in any desktop file while the hosts' private copy holds them and every
 copy ends the same; and an unsigned request refused (HTTP 401). Then a fourth
 simulated desktop on this Martlet (`lab-desktop-d`) keeps each person's
@@ -1837,7 +1839,19 @@ providers as the desktop last read them from its hosts
 configuration and whether it keeps the client secret, never the secret;
 `checkedAt`; `providers`, each with `id`, `kind`, `name`, the hosts it is `on`,
 `missing`, with `different` settings or `withoutSecret`, and `keptHere`; and
-`problems` per host), or null before it read anything. `device` is this data folder's device ID (`id`
+`problems` per host), or null before it read anything. `shareLinks` is
+`share-links.json` in short ([sharing with a link](NETWORK.md#sharing-with-a-link)):
+`made`, each link this PC made with its friend's `label`, `allHosts` and
+`hosts` and `createdAt`; `accepted`, each link a friend sent that this PC
+accepted with `from`, `label`, the `hosts` it signed in to and the hosts you
+`forgotten`; `protocolRegistered` (whether `martlet://` links open Martlet for
+this Windows user) and `pendingHandOver` (a clicked link another start left for
+the running Martlet). Never a link ID or secret. `routerPort` is the port
+Martlet opened on the router for this PC's host service
+([opening a port on your router](NETWORK.md#opening-a-port-on-your-router),
+`router-port.json`: `hostId`, `router`, `externalPort`, `internalPort`,
+`openedAt`, `renewedAt`, `problem` and `answeredFromInside`; never an address),
+or null. `device` is this data folder's device ID (`id`
 and `source`): `saved` in `device.json` (one per Windows user, so two Windows
 users on one PC never share one); `pairings` or `legacy` when the desktop hasn't
 saved one yet and keeps the ID its pairings use or an older Martlet's
@@ -2067,7 +2081,14 @@ Assistant, API keys, commands, GPU priority, security audit, sign-in settings)
 refuse it with `access.friend` and it never asks to join; a sign-in under
 HOME-PC's ID is refused (`signin.device_taken`) while HOME-PC keeps its
 pairing; stopping sharing revokes FRIEND-PC at once (`auth.revoked`) and records
-no network removal; removing the owner account revokes the
+no network removal; the home PC makes a [share
+link](NETWORK.md#sharing-with-a-link) for all of its hosts (both hosts keep only
+its verifier, never the secret), LINK-FRIEND pastes it, is refused with a wrong
+secret (`signin.link_unknown`), signs in as a friend on the host the link names
+(provider `link`; every other route refuses it with `access.friend`), asks that
+host which hosts the link covers (`GET /martlet/v1/signin/shared`, from the
+roster) and signs in to the second host it didn't know, and stopping the link
+revokes it on both (`auth.revoked`); removing the owner account revokes the
 laptop (`auth.revoked`); the host's security audit holds the sign-in successes
 and failures and no secret. Not covered: the desktop windows, Windows
 Credential Manager, a host reached over the internet, a real browser and a real
@@ -2099,7 +2120,9 @@ simulated owner, `lab-owner`, who started their own network with it, set up the
 provider and allowed `lab-user-42` (`me@example.net`) as a friend; it runs a
 fixture Ollama Thinking route (`fixture-model:1b`, canned text, NOT AI). The
 start answer and `status` carry the `invite` to paste in **Join with an
-invite**; the lab's simulated browser answers the desktop's sign-in (the desktop
+invite** and a `shareLink` (`martlet://share/...`, all of the owner's hosts) to
+accept with **Accept a share link** or as the desktop's last start argument;
+`status` counts `signedInWithShareLink`; the lab's simulated browser answers the desktop's sign-in (the desktop
 writes the sign-in page's address to `signin-browser.url` in the
 `MARTLET_LAB_BROWSER` folder, only in a lab run). `status` returns
 `desktopSignedInAsFriend`, `friendComputers`, `ownersRoster` (the owner's
@@ -2305,13 +2328,14 @@ else contacts a host or changes it and needs `--allow-ui-effects`.
 Sharing hosts with friends on the Devices page (`MainWindow.Friends.cs`):
 **Friends** (`FriendsCard`, shown with paired hosts; status
 `FriendsStatus`, `FriendsCheck` reads each of your hosts' sign-in settings and
-is a safe click) lists each person as `Friend-<provider>-<subject>` (*name
+is a safe click; reading them also adds the share links this PC made to hosts
+that miss them) lists each person as `Friend-<provider>-<subject>` (*name
 (provider). Shares gpu-box: their engines only. Their computers: ...*, or that
 they signed in to a host and wait) with `FriendShare-<host>-<provider>-<subject>`
 and `FriendStop-<host>-<provider>-<subject>` (both ask first and change the
 host, so they need `--allow-ui-effects`), and `FriendsHost-<host>` for a host
-it couldn't read. **Hosts shared with this PC** (`SharedHostsCard`, shown when
-a friend shares a host with this PC; status `SharedHostsStatus`; it reads what
+it couldn't read. **Hosts shared with this PC** (`SharedHostsCard`, always
+shown; status `SharedHostsStatus`; it reads what
 they offer by itself when the Devices page shows) lists each as
 `SharedHost-<host>` (who this PC signed in as, what it offers this PC, what
 this PC uses it for, or that its owner stopped sharing it) with
@@ -2325,6 +2349,32 @@ a friend and uses only that host's engines*), never `NetworkPaired-`. The job
 choices (`ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`, `LipSyncOwner`)
 and Companion's computer cards (`HostChoice-<job>-<host>`,
 `SetupUseHost-<job>-<host>`) list a shared host as *shared by a friend*.
+
+Share links ([sharing with a link](NETWORK.md#sharing-with-a-link),
+`MainWindow.ShareLinks.cs`): **Make a share link** (`FriendsMakeShareLink`, a
+safe click) opens a form (`HostInputDialog`: `HostInput-name`, `HostInput-from`,
+`HostInput-all` and `HostInput-host:<host>`); **Make link** (`HostInputOk`)
+adds the link to your hosts and needs `--allow-ui-effects`. The link window
+(`ShareLinkWindow`) shows `ShareLinkHeading`, `ShareLinkMessage`,
+`ShareLinkWarning` (hosts with no outside address) and `ShareLinkStatus` as safe
+values; the link itself (`ShareLinkText`) is a secret and is never read.
+`ShareLinkCopy` copies it and `ShareLinkClose` (a safe click) closes the
+window. A friend you share with a link is `Friend-link-<link ID>` (*Ana (share
+link). Share link for all of your hosts, also the ones you add later. Their
+computers: ...*) with `ShareLinkCopy-<key>`, `ShareLinkStop-<key>` and, for a
+link that names its hosts, `FriendShare-<host>-<key>` and
+`FriendStop-<host>-<key>`; all need `--allow-ui-effects`. **Hosts shared with
+this PC** is always shown: with none, `SharedHostsStatus` says how to accept a
+link, and **Accept a share link** (`AcceptShareLink`, a safe click) opens the
+paste form (`HostInput-link`). Starting the desktop with a link as its last
+argument (`martlet://share/...`, as Windows does when a link is clicked) asks
+to accept it (`ConfirmationDialog`); Cancel changes nothing.
+
+Opening a port on the router for this PC's host service: the Outside access
+dialog has `HostInput-router` (*Let Martlet open a port on my router*) and the
+safe value `OutsideAccessRouterPort` (router name, port and times, never the
+address). Saving with it needs `--allow-ui-effects`; it changes the router and
+Windows Firewall.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
@@ -6522,7 +6572,7 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   (`afterIdleTime`: only the app in front, `keptWhenIdle`) and 0 when App
   guides stop watching (`afterWatchStopped`). `idleMinutes` and
   `otherIndexesAtMost` are the limits.
-- `tools`: `read_up_on`, `search_guide` and `skip_guide` exactly as replies get
+- `tools`: `read_up_on`, `search_guide`, `skip_guide` and `update_guide_brief` exactly as replies get
   them, their arguments (sites made into `https://` links, others left out),
   `search_guide`'s answer, the reading-up job (`guide-1`, *Reading up on*, no
   time limit, 4 an hour, its result), a second job refused as `busy` and the
@@ -6531,11 +6581,24 @@ counts them), so nothing reaches a real site whatever the wiki reader tries.
   sections (`sections`) and on a whole-wiki-size guide of 25,000 sections
   (`wholeWiki`): `indexBuiltOffThePathMs`, and the notes step's median and worst
   time of 200 runs for a message about the game in front, an unrelated message
-  and App guides off; `everyRequestWhileOn` is the bytes the three tool
+  and App guides off; `everyRequestWhileOn` is the bytes the four tool
   definitions and the prompt add to every request (the same every time, so
   prompt caches keep them). On this PC the notes step took about 0.2 ms
   (median) on 2,000 sections, about 0.6 ms on 25,000 sections and nothing
   while off.
+- `research`: [the brief and area research](APP_GUIDES.md#the-brief) with a
+  stand-in Thinking pool member that gives canned answers (NOT a model):
+  `briefAfterRead` (a brief is written after a read), `briefWithMessage` (it
+  goes with the first message and is not `sentAgain`), `screen` (an area the
+  guide covers is not read on the web; an area it doesn't cover is searched
+  with `searches` *wiki*, *reddit* and *guide*, its page is read and sections
+  are added; `redditSnippetKept` is true and `redditOrVideoPageRead` false;
+  a screen with no area gives none), `readAgain` (the research sections stay
+  and a new brief is written), `updateGuideBrief` (the tool's result, bad
+  arguments, the same area within the hour, and no pool member: refused),
+  `saved` (the brief and areas in the library), `thinkingRequests` (each kind
+  with its count and largest input), `sameInstructionsEveryTime` and `log`
+  (counts and times only; no area names or links).
 
 Each part has an `ok`. Temporary folder, deleted afterwards; reads no
 credentials.
@@ -6547,8 +6610,11 @@ disposable one): `folder` (`<data folder>\guides`), whether it `exists`, whether
 both on), `on`,
 `readUpWhenStarted` (kept as `askWhenStarted` in the file), how many `guides`, `pages` and `bytes`, and each app on the
 list (`apps`): `key`, `name`, `programs`, `sites` (the start pages the owner
-gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem` and whether
-its guide `file` is there. Never a guide's text. Read-only.
+gave), `declined`, `builtAt`, `pages`, `sections`, `bytes`, `problem`, whether
+its guide `file` is there, whether it has a `brief` with `briefAt` and
+`briefCharacters`, how many `areas` were looked into and `researchedAreas`
+found on the web, `researchedSections` and `lastAreaAt`. Never a guide's or
+brief's text, nor area names. Read-only.
 
 `songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
 (optional absolute `dataDirectory`, default the current user's):
@@ -6578,7 +6644,13 @@ three `tools` exactly as the Thinking model gets them, the filled Singing
 `prompt` and `afterReply` (the Songs, pictures and creations
 [check-in tool set](CONVERSATION.md#check-in-tool-sets): its `set`, its
 `tools`, the reply tools it `replaces` and the `replyGuidance` line a reply gets
-in their place). Read-only.
+in their place) and `withoutTools` (singing through reply tags where the
+Thinking route carries no tools: the Thinking `routeType`, whether the route
+`routeCarriesTools`, whether the model `toolsRejected` them, whether replies
+`usesTags`, the three `tags`, the filled *Singing without tools* `prompt` and a
+`sample` reply run through the speech filter: what is `shown` and `spoken`, the
+`tags` it found, `tagsHidden`, the tool `calls` they stand for with their
+arguments and what the conversation `kept`). Read-only.
 
 `song_playback_check` runs the production playback (`SongTransport`,
 `SongMixer`, `SongPlayer` pumping a fixture output that plays ten times faster
