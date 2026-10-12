@@ -22,7 +22,8 @@ namespace Martlet.Desktop;
 /// computer's graphics card without a Thinking pool model yet, paired computers that aren't in the pool (why, and In the pool),
 /// and Add a machine (another of your computers, a model in Ollama on this PC, a cloud provider or server). Then Runs on,
 /// Thinking longer (its own on/off, shared with your computers), Web research, Backup for slow replies and Busy pool. The
-/// members are this PC's own choice (thinking-pool.json). The conversation keeps its own Thinking model, which is never a member,
+/// members are kept in thinking-pool.json; its cloud providers and servers (with their keys) travel to your other computers
+/// with the shared settings (<see cref="SharedThinkingPool"/>). The conversation keeps its own Thinking model, which is never a member,
 /// so its replies start as fast as they can (<see cref="DeepThinkingPlan"/>).</summary>
 public partial class MainWindow
 {
@@ -84,7 +85,9 @@ public partial class MainWindow
                 "keep its settings. With no machine on, the pool is off. Quick jobs are the judges (are you done talking, did you " +
                 "interrupt) and the screen and sound summaries. Long jobs are thinking longer, research, a song's lyrics and the " +
                 "other helpers. Each job goes to a free machine that takes it, the one that shares least with the conversation " +
-                "first. Tick what each machine may do.", new Thickness(0, 0, 0, 8), "ThinkingPool", "the Thinking pool")
+                "first. Tick what each machine may do. Cloud providers and servers on your network, with their API keys and " +
+                "choices, are the same on all your computers; paired computers join each PC's pool by themselves, and models in " +
+                "Ollama on this PC stay this PC's own.", new Thickness(0, 0, 0, 8), "ThinkingPool", "the Thinking pool")
         };
 
         var places = ThinkLonger.Places(plan, BackgroundDuties.Of(store?.DataDirectory), choices: pool).Where(p => p.Id != "thinking").ToArray();

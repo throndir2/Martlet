@@ -465,9 +465,14 @@ RUN**.
 
 ## The Thinking pool
 
-The **Thinking pool** (Companion › Thinking pool; this PC's own choice,
-`thinking-pool.json` in the data folder, never shared) is one shared set of
-Thinking models for background work. It replaces the older *Deep thinking*
+The **Thinking pool** (Companion › Thinking pool, `thinking-pool.json` in the
+data folder) is one shared set of Thinking models for background work. Its
+cloud providers and servers on your network (an NVIDIA Build or OpenRouter
+model, for example), with their API keys and their choices, are the same on all
+your computers ([shared setting `thinking-pool`](CLUSTER.md#one-martlet-on-every-computer)):
+add one on any computer and the others get it at their next settings sync.
+Paired computers join each PC's pool by themselves, and models in Ollama on
+this PC stay this PC's own. It replaces the older *Deep thinking*
 places. The live conversation keeps its own Thinking route and prompt cache;
 pool jobs never use that route, except the empty-pool fallback below.
 
@@ -1051,9 +1056,9 @@ spoken. Its message continues a reply's request (Companion › Prompts ›
 *Thinking longer: the task*); the picture or recording the message went with
 isn't sent again.
 
-**Where it thinks** (the machine list on Companion › Thinking pool; this PC's own choice,
-`thinking-pool.json` in the data folder, never shared, because which machine
-is free to think depends on the computer you talk to). A think runs on a pool
+**Where it thinks** (the machine list on Companion › Thinking pool,
+`thinking-pool.json` in the data folder; its cloud providers and servers are
+the same on all your computers, see [The Thinking pool](#the-thinking-pool)). A think runs on a pool
 member ticked for *Long jobs*:
 
 - *The conversation's own model*: only when no member takes long jobs and *Do
