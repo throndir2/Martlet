@@ -75,12 +75,15 @@ internal sealed class LexicalIndex
 
     private readonly SearchIndex index;
     private readonly Document[] documents;
+    private readonly Dictionary<Guid, int> numbers;
     private readonly DateTimeOffset newest;
 
     private LexicalIndex(SearchIndex index, Document[] documents)
     {
         this.index = index;
         this.documents = documents;
+        numbers = new(documents.Length);
+        for (var i = 0; i < documents.Length; i++) numbers[documents[i].Id] = i;
         newest = documents.Length == 0 ? DateTimeOffset.MinValue : documents.Max(document => document.UpdatedAtUtc);
     }
 
@@ -175,10 +178,12 @@ internal sealed class LexicalIndex
     }
 
     /// <summary>The ranked matches for <paramref name="queryTerms"/>: at most <paramref name="maximumResults"/>, best first.
-    /// <paramref name="include"/> leaves facts out before ranking (a snapshot's expired facts).</summary>
+    /// <paramref name="include"/> leaves facts out before ranking (a snapshot's expired facts). <paramref name="similar"/> (facts an
+    /// embedding search found, best first) is fused with the lexical order by the engine's reciprocal rank fusion; a fact only it
+    /// found matched no term.</summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal LexicalMatch[] Search(string[] queryTerms, int maximumResults, CancellationToken token,
-        Func<Guid, bool>? include = null)
+        Func<Guid, bool>? include = null, IReadOnlyList<Guid>? similar = null)
     {
         MemoryGuard.Require(maximumResults is >= 1 and <= MemoryLimits.MaximumResults);
         MemoryGuard.Require(queryTerms.Length <= MemoryLimits.MaximumQueryTerms, MemoryFailure.LimitExceeded);
@@ -191,7 +196,15 @@ internal sealed class LexicalIndex
             include is null ? null : [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)] (document, _) => include(documents[document].Id),
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)] (left, right) => rules.Tie(left, right),
             ordered: false, token: token);
-        var ranking = SearchRanker.Rank(candidates, Profile, rules, maximumResults, token: token);
+        List<int>? fuse = null;
+        if (similar is { Count: > 0 })
+        {
+            fuse = new(similar.Count);
+            foreach (var id in similar)
+                if (numbers.TryGetValue(id, out var number) && (include is null || include(id)))
+                    fuse.Add(number);
+        }
+        var ranking = SearchRanker.Rank(candidates, Profile, rules, maximumResults, fuse, token);
         var matches = new LexicalMatch[ranking.Hits.Length];
         for (var i = 0; i < matches.Length; i++)
         {

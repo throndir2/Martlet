@@ -118,19 +118,20 @@ internal sealed partial class LiveConversationController
             token.ThrowIfCancellationRequested();
             if (Replying || ReplySpeaking()) return UpkeepWhenBusy;
             var roster = voices?.Roster;
-            var read = await memory.TryWithFreeStoreAsync(space, async (store, t) =>
-            {
-                var snapshot = await store.SnapshotAsync(t).ConfigureAwait(false);
-                var mark = state.Stores.TryGetValue(snapshot.StoreId, out var seen) ? (seen.At, seen.Id) : ((DateTimeOffset, Guid)?)null;
-                bool Asked(MemoryFact fact) { lock (upkeepGate) return upkeepAsked.Contains((fact.Id, fact.Revision)); }
-                return (snapshot.StoreId, Plan: MemoryUpkeep.Plan(snapshot, memory.UtcNow, mark, Asked, id => MemoryPeople.Canonical(id, roster), t));
-            }, token, changes: false).ConfigureAwait(false);
+            // The snapshot is taken while holding the store; the plan (which may compare vectors) is made after letting it go.
+            var read = await memory.TryWithFreeStoreAsync(space, async (store, t) => await store.SnapshotAsync(t).ConfigureAwait(false),
+                token, changes: false).ConfigureAwait(false);
             if (!read.Ran)
             {
                 if (read.Why == "busy") again = UpkeepWhenBusy;
                 continue;
             }
-            var (storeId, plan) = read.Result;
+            var snapshot = read.Result!;
+            var storeId = snapshot.StoreId;
+            var mark = state.Stores.TryGetValue(storeId, out var seen) ? (seen.At, seen.Id) : ((DateTimeOffset, Guid)?)null;
+            bool Asked(MemoryFact fact) { lock (upkeepGate) return upkeepAsked.Contains((fact.Id, fact.Revision)); }
+            var plan = MemoryUpkeep.Plan(snapshot, memory.UtcNow, mark, Asked, id => MemoryPeople.Canonical(id, roster), token,
+                MeaningNeighbors());
             if (!plan.HasWork)
             {
                 if (plan.CheckedThrough is { } through) state = Checked(state, storeId, through);

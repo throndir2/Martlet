@@ -356,23 +356,26 @@ internal sealed class DesktopMemoryService : IDisposable
     }
 
     /// <summary>Related facts shown to the model while remembering. Unlike a turn's recall it is not invalidated by Stop;
-    /// <see cref="RememberAsync"/> rechecks every fact revision it acts on.</summary>
+    /// <see cref="RememberAsync"/> rechecks every fact revision it acts on. <paramref name="similar"/>: facts an embedding search
+    /// found for the same words (finding by meaning), fused with the lexical matches.</summary>
     internal Task<DesktopMemoryRecall> KnownFactsAsync(MemorySettings expected, string query, int maximum,
-        IReadOnlySet<string>? speaker = null, CancellationToken token = default)
+        IReadOnlySet<string>? speaker = null, CancellationToken token = default, IReadOnlyList<Guid>? similar = null)
     {
         ArgumentNullException.ThrowIfNull(expected);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 1);
         return WithSpaceAsync(expected.ConfigurationRevision, null,
             (set, _, store, operationToken) => RecallAsync(store, OtherSnapshots(set), CurrentUtc(), query, maximum, speaker,
-                operationToken), token);
+                operationToken, similar), token);
     }
 
     /// <summary>The best lexical matches of the active store and of the <paramref name="others"/>' snapshots first (by score,
     /// then the active space), then the most recently changed facts of them all: the speaker's own and those about no one in
-    /// particular before other people's. With no other space this is exactly the recall of one store.</summary>
+    /// particular before other people's. With no other space this is exactly the recall of one store. <paramref name="similar"/>
+    /// (facts found by meaning) is fused with each store's lexical order; when the words have no search term, those facts come
+    /// first.</summary>
     private static async Task<DesktopMemoryRecall> RecallAsync(MemoryStore store,
         IReadOnlyList<(string Space, MemorySnapshot Snapshot)> others, DateTimeOffset now, string query, int maximum,
-        IReadOnlySet<string>? speaker, CancellationToken token)
+        IReadOnlySet<string>? speaker, CancellationToken token, IReadOnlyList<Guid>? similar = null)
     {
         var facts = new List<MemoryFact>(maximum);
         var included = new HashSet<Guid>();
@@ -383,8 +386,10 @@ internal sealed class DesktopMemoryService : IDisposable
             facts.Add(fact);
             if (space is not null) (spaces ??= [])[fact.Id] = space;
         }
-        if (MemoryQuery.TryFromBoundedSource(query, Math.Min(maximum, MemoryLimits.MaximumResults)) is { } bounded)
+        var bounded = MemoryQuery.TryFromBoundedSource(query, Math.Min(maximum, MemoryLimits.MaximumResults));
+        if (bounded is not null)
         {
+            if (similar is { Count: > 0 }) bounded = bounded with { Similar = similar };
             IEnumerable<(MemoryRetrievalHit Hit, string? Space, int Order)> hits =
                 (await store.RetrieveAsync(bounded, token).ConfigureAwait(false)).Hits.Select(hit => (Hit: hit, Space: (string?)null, Order: 0)).ToArray();
             if (others.Count > 0)
@@ -401,6 +406,13 @@ internal sealed class DesktopMemoryService : IDisposable
         // was recognized); the best matches above already include anyone's. History (replaced facts) is never recalled.
         var pool = inspection.Facts.Where(fact => !fact.IsHistory).Select(fact => (Fact: fact, Space: (string?)null))
             .Concat(others.SelectMany(other => other.Snapshot.Live(now).Select(fact => (Fact: fact, Space: (string?)other.Space))));
+        // Words without a search term: the facts found by meaning come first.
+        if (bounded is null && similar is { Count: > 0 })
+        {
+            var byId = pool.GroupBy(f => f.Fact.Id).ToDictionary(g => g.Key, g => g.First());
+            foreach (var id in similar)
+                if (facts.Count < maximum && byId.TryGetValue(id, out var found)) Add(found.Fact, found.Space);
+        }
         foreach (var (fact, space) in pool
             .OrderByDescending(f => speaker is null || f.Fact.VoiceId is null || speaker.Contains(f.Fact.VoiceId))
             .ThenByDescending(f => f.Fact.UpdatedAtUtc).ThenBy(f => f.Fact.Id))

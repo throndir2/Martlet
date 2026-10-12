@@ -123,25 +123,32 @@ internal sealed partial class LiveConversationController
             return new(problem!, true);
         }
         var reports = await ReportsAsync(token).ConfigureAwait(false);
+        KeepMeaningGuides();
+        // Finding by meaning: the question's vector (null when no embedding model can be used now; then words only).
+        var vector = (Guides is { On: true } || reports is { Count: > 0 }) && Meaning is { } search
+            ? await search.QueryAsync(arguments.Question, token).ConfigureAwait(false) : null;
+        var reportsByMeaning = vector is not null && reports is { Count: > 0 } ? Meaning?.ReportSections(reports.Documents, vector) : null;
         if (Guides is not { On: true } guides)
-            return reports is null ? new(AppGuideTools.TurnedOff, true) : SearchReports(arguments, reports, null);
+            return reports is null ? new(AppGuideTools.TurnedOff, true) : SearchReports(arguments, reports, null, reportsByMeaning);
         var library = guides.Library;
         var built = library.Apps.Where(a => a.BuiltAt is not null).ToArray();
         var entry = arguments.App is { } named ? AppGuideService.Match(library, [named]) ?? AppGuideService.Named(library, named)
             : guides.Front?.Entry is { } inFront ? built.FirstOrDefault(a => a.Key == inFront.Key)
             : built.Length == 1 ? built[0] : null;
-        if (entry is not { BuiltAt: not null }) return SearchReports(arguments, reports, built);
+        if (entry is not { BuiltAt: not null }) return SearchReports(arguments, reports, built, reportsByMeaning);
         bool ready;
         try { ready = await guides.ReadyAsync(entry.Key, token).WaitAsync(TimeSpan.FromSeconds(5), token).ConfigureAwait(false); }
         catch (TimeoutException) { ready = false; }
-        var hits = ready ? guides.Search(entry.Key, arguments.Question, AppGuideTools.SearchResults) : null;
+        var byMeaning = ready && vector is not null && guides.Chunks(entry.Key) is { Count: > 0 } chunks
+            ? Meaning?.GuideSections(entry.Key, chunks, vector) : null;
+        var hits = ready ? guides.Search(entry.Key, arguments.Question, AppGuideTools.SearchResults, byMeaning) : null;
         if (hits is null)
         {
             tools?.Record(server, AppGuideTools.SearchName, "not ready", "", false);
             return new(AppGuideTools.NotReady(entry.Name), false);
         }
         var fromReports = arguments.App is null && reports is not null
-            ? reports.Search(arguments.Question, null, AppGuideTools.SearchResults, ResearchReportIndex.MinimumRelevance).Hits : [];
+            ? reports.Search(arguments.Question, null, AppGuideTools.SearchResults, ResearchReportIndex.MinimumRelevance, reportsByMeaning).Hits : [];
         var kept = hits.Select(h => (h.Relevance, Guide: (GuideHit?)h, Report: (ReportHit?)null))
             .Concat(fromReports.Select(h => (h.Hit.Relevance, Guide: (GuideHit?)null, Report: (ReportHit?)h)))
             .OrderByDescending(h => h.Relevance).Take(AppGuideTools.SearchResults).ToArray();
@@ -150,7 +157,8 @@ internal sealed partial class LiveConversationController
         tools?.Record(server, AppGuideTools.SearchName, $"found {guideHits.Length}" + (reportHits.Length > 0 ? $" and {reportHits.Length} in reports" : ""),
             "", false);
         ErrorLog.Info($"App guides: the Thinking model searched a guide and found {guideHits.Length} section{(guideHits.Length == 1 ? "" : "s")}" +
-            (reportHits.Length > 0 ? $", and {reportHits.Length} in research reports." : "."));
+            (reportHits.Length > 0 ? $", and {reportHits.Length} in research reports" : "") +
+            (byMeaning is null ? "" : $" ({byMeaning.Count} section{(byMeaning.Count == 1 ? "" : "s")} close in meaning fused in)") + ".");
         if (reportHits.Length == 0) return new(AppGuideTools.Found(entry.Name, hits));
         return new((guideHits.Length > 0 ? AppGuideTools.Found(entry.Name, guideHits) + "\n\n" : "") + ResearchReportIndex.Found(reportHits));
     }
@@ -169,12 +177,13 @@ internal sealed partial class LiveConversationController
     }
 
     // search_guide over the research reports: those the call names, or every report. guides: the guides there are (null while App
-    // guides are off), for the answer when no report is the one asked for.
-    private ConversationToolResult SearchReports(GuideQuestion arguments, ResearchReportIndex? reports, IReadOnlyList<AppGuideEntry>? guides)
+    // guides are off), for the answer when no report is the one asked for. byMeaning: report sections found by meaning.
+    private ConversationToolResult SearchReports(GuideQuestion arguments, ResearchReportIndex? reports, IReadOnlyList<AppGuideEntry>? guides,
+        IReadOnlyDictionary<string, IReadOnlyList<(int Chunk, double Meaning)>>? byMeaning = null)
     {
         const string server = "Martlet";
         var titles = reports?.Titles ?? [];
-        var found = reports?.Search(arguments.Question, arguments.App, AppGuideTools.SearchResults);
+        var found = reports?.Search(arguments.Question, arguments.App, AppGuideTools.SearchResults, similar: byMeaning);
         if (found is not { Searched.Count: > 0 } || found.Hits.Count == 0 && arguments.App is null && guides is { Count: > 0 })
         {
             tools?.Record(server, AppGuideTools.SearchName, "no guide", "", false);

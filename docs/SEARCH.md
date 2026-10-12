@@ -18,7 +18,8 @@ A search runs in this process, in memory and without a model. It runs on the
 reply's path, so it must stay fast (see
 [Never add conversation latency](../AGENTS.md#never-add-conversation-latency)).
 The retrieved text goes in the request's notes, after the cached start of the
-request.
+request. Away from the reply's first word, an embedding model can add a second
+ranked list ([Finding by meaning](#finding-by-meaning)).
 
 ## The parts
 
@@ -32,6 +33,7 @@ request.
 | Rules | `ISearchRules` | What a source tells the ranker: its own features, the order of equal scores, similarity, groups and skips. |
 | Measures | `SearchMeasures`, `SearchSketch` | Coverage, proximity, phrases, recency, time and similarity. |
 | Fusion | `SearchFusion` | Reciprocal rank fusion of two ranked lists. |
+| Vectors | `VectorSet`, `ITextEmbedder` | The embedding vectors of a source's documents and the nearest ones to a question ([Finding by meaning](#finding-by-meaning)). |
 
 ## The index
 
@@ -161,7 +163,96 @@ lexical search and an embedding search can fuse without tuning.
 `SearchRanker.Rank` takes an optional second ranked list (`fuse`). It fuses
 that list with the reranked order after the cutoff and before selection. A
 document that only the second list has is scored as a candidate that matched
-nothing. No source gives a second list yet.
+nothing. [Finding by meaning](#finding-by-meaning) gives that second list.
+
+## Finding by meaning
+
+An **embedding** is a list of numbers that shows what a text means. Two texts
+that mean the same thing in other words get close lists, so *What should I cook
+tonight?* finds *The user is vegetarian.*, which shares no word with it.
+Martlet uses an embedding model **only away from the reply's first word**, in
+three places:
+
+- when remembering after a reply and tidying memory find related facts
+  ([Search words, history and tidying](MEMORY.md#search-words-history-and-tidying)),
+- in the memory find tools: `manage_memories` `find`, `memory_find` and
+  `find_memories` ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)),
+- in `search_guide`, for app guides and research reports
+  ([Tools](APP_GUIDES.md#tools)).
+
+Automatic recall, guide notes and past-conversation recall on the reply's path
+do not use it, so the time to the first word does not change. The start of
+every request does not change either: the tools keep their text.
+
+**Fused, not replaced.** The embedding search gives a ranked list, and the
+engine fuses it with the lexical order (`fuse`, reciprocal rank fusion). A
+document both lists have comes first, so names and items found by their words
+stay strong (*Is Rex okay?* still finds the Rex fact first). A memory fact
+joins when it is among the 8 nearest with a meaning of at least 0.15; tidying
+groups a fact with one only close in meaning at 0.5 or more; a guide or report
+section joins when it is among the 20 nearest with a meaning of at least 0.2,
+and its relevance is at least its meaning. **Meaning** (`SearchNeighbor.Meaning`)
+is how much closer a document is than the set's average document, from 0 to 1.
+The average is the "unrelated" level of that model and that question, so the
+same thresholds work for models whose similarities have different scales.
+
+**The model.** Companion › Memory › *Finding by meaning* chooses it. It is on by
+default with `nomic-embed-text` (274 MB) in **Ollama on this PC**. Martlet
+never downloads it without asking: *Download* asks first, then pulls it in a
+run window. Without a usable model (Ollama not installed or not running, the
+model not downloaded, or held back) everything works as before, by words only,
+and the card's line says why. The choice (`meaning-search.json`: `place`
+`this-pc` or `off`, and `model`) is a household setting (`meaning-search`),
+the same on every computer of yours. Cloud embeddings and embedding models on
+other computers are not offered.
+
+**It never takes the conversation's model off the graphics card.**
+`OllamaEmbedder` (`src\Martlet.Providers\Ollama`) asks `/api/embed` with
+`num_gpu` 0, so the model runs on the processor only, with a quarter of the
+processor threads (1 to 4). Ollama runs it beside the conversation's model in a
+process of its own, so that model's prompt cache stays. Before the model loads,
+Martlet reads `/api/ps`: while Ollama has 3 models loaded (its usual limit) or a
+loaded model runs on the processor (all or in part, so memory is already
+short), loading is held back (`OllamaEmbedder.HoldBack`), because Ollama
+unloads a model to make room. Ollama keeps the embedding model loaded for an
+hour after its last use (`keep_alive`), and it takes one of Ollama's places for
+loaded models in that time. Texts too long for the model are cut by Ollama
+(`truncate`). A question waits at most 3 seconds for its vector; after that the
+search uses words only.
+
+**Vectors are derived data.** `VectorSet` (`src\Martlet.Core\Search\SearchVectors.cs`)
+keeps one vector for each document, with the SHA-256 digest of the text it was
+made from, for one model. A changed text is embedded again, and `Keep` drops the
+vectors of documents that are gone, so a deleted fact or report doesn't survive
+in a vector set. Each computer makes its own vectors:
+
+| Source | Embedded text | Where the vectors are kept |
+|---|---|---|
+| Memory facts | the fact's text | in memory only, refreshed after facts change (a forgotten fact's vector is dropped then) |
+| Guide sections | the page and headings, then the start of the text (1,500 characters) | `meaning\guides\<digest of the key>.vectors` in the data folder, deleted with the guide |
+| Research report sections | the same as a guide section | in memory only, refreshed with the reports |
+
+Turning finding by meaning off drops every vector and deletes the guides'
+files; choosing another model starts again. Documents are embedded in the
+background (`MeaningSearch` in `src\Martlet.Desktop`), one batch of 8 at a
+time, one source at a time, and wait while a reply runs or speaks or while you
+talk. A search compares the question's vector with every vector of the set in
+this process: 10,000 vectors of 768 numbers take about 2 ms.
+
+**Checked locally.** `meaning_search_check` ([MCP](MCP.md)) runs the
+production vector sets, memory store, fusion, tidying plan, guide index and
+Ollama embedder (against a loopback fixture) with `FixtureEmbedder`, a tiny
+deterministic embedder (FIXTURE, NOT AI). On 7 held-out questions in other words
+(*What should I cook tonight?*, *Who needs a walk this evening?*, *Did I book
+the flight yet?* and others) the fact is in the first 3 for 0 questions by words
+and for all 7 fused; that shows the mechanism, not the quality of a real model.
+`meaning_search_check` with `measure: true` times the real model in this PC's
+Ollama on the same questions (first request, median question, time per fact,
+recall in the first 3) and never downloads. On the developer PC, Ollama isn't
+installed, so the real model's speed and benefit are **NOT RUN**. Community tests
+say a small embedding model takes tens of milliseconds a question on a
+processor; Martlet has not measured it. Embeddings join the reply's own recall
+only after the `Reply latency` line is measured with a real model.
 
 ## Speed
 
@@ -185,6 +276,11 @@ generic collections of its own structs on the hot path for the same reason.
 - `SearchEngineTests` (`tests\Martlet.Core.Tests`): the index, BM25 and BM25F,
   the cut, the second field, an index without positions, the combinations,
   the cutoff, both selections, fusion and the measures.
+- Finding by meaning: `MeaningSearchTests` (`tests\Martlet.Core.Tests`: vector
+  sets, meaning, the file and the shared choice; `tests\Martlet.Desktop.Tests`:
+  the find tools, tidying and the desktop service), `MeaningFusionTests`
+  (`tests\Martlet.Memory.Tests`), `GuideMeaningTests` and
+  `ResearchReportIndexTests` (`tests\Martlet.Conversation.Tests`).
 - Each source's evaluation checks how well it ranks:
   `RetrievalTests` and `RerankingTests` (memory),
   `AppGuideRetrievalTests` (guides) and `PastConversationsEvaluationTests`

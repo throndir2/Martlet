@@ -117,28 +117,50 @@ internal sealed class LexicalGuideIndex : IGuideIndex
 
     public int Count => Chunks.Length;
 
-    public IReadOnlyList<GuideHit> Search(string query, int max) => Search(query, max, null);
+    IReadOnlyList<GuideChunk> IGuideIndex.Chunks => Chunks;
 
-    /// <summary>A search that tells <paramref name="explain"/> each candidate's reranking features (for tuning).</summary>
+    public IReadOnlyList<GuideHit> Search(string query, int max) => Search(query, max, null, null);
+
+    public IReadOnlyList<GuideHit> Search(string query, int max, IReadOnlyList<(int Chunk, double Meaning)>? similar) =>
+        Search(query, max, null, similar);
+
+    /// <summary>A search that tells <paramref name="explain"/> each candidate's reranking features (for tuning). Chunks of
+    /// <paramref name="similar"/> (found by meaning, best first) are fused with the reranked order by the engine's reciprocal rank
+    /// fusion before maximal marginal relevance picks; a chunk's relevance is at least its meaning.</summary>
     // Fully optimized from the first call: a user sends too few messages for the runtime's tiered compilation to optimize it.
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
-    internal IReadOnlyList<GuideHit> Search(string query, int max, Action<GuideChunk, string>? explain)
+    internal IReadOnlyList<GuideHit> Search(string query, int max, Action<GuideChunk, string>? explain,
+        IReadOnlyList<(int Chunk, double Meaning)>? similar = null)
     {
         if (max <= 0 || Chunks.Length == 0) return [];
         var parsed = GuideQuery.Parse(query, Index.Vocabulary, Index.Idf, ReferenceIdf, AppWords, Ranking);
-        if (parsed.IsEmpty) return [];
+        Dictionary<int, double>? meaning = null;
+        List<int>? fuse = null;
+        if (similar is { Count: > 0 })
+        {
+            meaning = [];
+            fuse = new(similar.Count);
+            foreach (var (chunk, value) in similar)
+                if (chunk >= 0 && chunk < Chunks.Length && meaning.TryAdd(chunk, value)) fuse.Add(chunk);
+        }
+        if (parsed.IsEmpty && fuse is not { Count: > 0 }) return [];
 
-        var terms = new SearchQueryTerm[parsed.Terms.Length];
-        for (var i = 0; i < terms.Length; i++)
-            terms[i] = new(parsed.Terms[i].Term, parsed.Terms[i].Weight, parsed.MaskOf(parsed.Terms[i].Term));
-        var candidates = Index.Search(new SearchQuery(terms), Ranking.Search.Candidates, any: parsed.ContentMask, ordered: false);
-        if (candidates.Length == 0) return [];
-        var ranking = SearchRanker.Rank(candidates, Ranking.Search, new GuideReranker(this, parsed, explain), max);
+        SearchCandidate[] candidates = [];
+        if (!parsed.IsEmpty)
+        {
+            var terms = new SearchQueryTerm[parsed.Terms.Length];
+            for (var i = 0; i < terms.Length; i++)
+                terms[i] = new(parsed.Terms[i].Term, parsed.Terms[i].Weight, parsed.MaskOf(parsed.Terms[i].Term));
+            candidates = Index.Search(new SearchQuery(terms), Ranking.Search.Candidates, any: parsed.ContentMask, ordered: false);
+        }
+        if (candidates.Length == 0 && fuse is not { Count: > 0 }) return [];
+        var ranking = SearchRanker.Rank(candidates, Ranking.Search, new GuideReranker(this, parsed, explain), max, fuse);
         var hits = new GuideHit[ranking.Hits.Length];
         for (var i = 0; i < hits.Length; i++)
         {
             var hit = ranking.Hits[i];
-            hits[i] = new(Chunks[hit.Document], hit.Score, hit.Relevance);
+            var relevance = meaning is not null && meaning.TryGetValue(hit.Document, out var near) ? Math.Max(hit.Relevance, near) : hit.Relevance;
+            hits[i] = new(Chunks[hit.Document], hit.Score, relevance);
         }
         return hits;
     }

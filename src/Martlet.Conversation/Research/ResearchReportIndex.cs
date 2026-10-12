@@ -49,6 +49,10 @@ public sealed class ResearchReportIndex
     /// <summary>The indexed reports' titles, newest first.</summary>
     public IReadOnlyList<string> Titles => Volatile.Read(ref reports).Select(r => r.Title).ToArray();
 
+    /// <summary>Each indexed report's ID and sections, in order (what an embedding index of the reports is made from).</summary>
+    public IReadOnlyList<(string Id, IReadOnlyList<GuideChunk> Sections)> Documents =>
+        [.. Volatile.Read(ref reports).Select(r => (r.Id, r.Index.Chunks))];
+
     /// <summary>Brings the index in step with the report creations in <paramref name="directory"/> (the Creations library on this
     /// computer): only new reports, renamed ones and ones whose whole text arrived since are cut and indexed again; deleted ones
     /// are dropped. Returns how many reports are indexed. A report that can't be read keeps the start in the shared list.</summary>
@@ -93,13 +97,15 @@ public sealed class ResearchReportIndex
 
     /// <summary>The best sections for <paramref name="question"/>, at most <paramref name="max"/>, with a relevance of at least
     /// <paramref name="minimum"/>: in every report, or, with <paramref name="about"/>, only in the reports it names (a report's id,
-    /// or words of its title or summary).</summary>
-    public ReportSearch Search(string question, string? about, int max, double minimum = 0)
+    /// or words of its title or summary). <paramref name="similar"/>: by report ID, the sections an embedding search found for the
+    /// question (their number and meaning, best first), fused with each report's lexical order.</summary>
+    public ReportSearch Search(string question, string? about, int max, double minimum = 0,
+        IReadOnlyDictionary<string, IReadOnlyList<(int Chunk, double Meaning)>>? similar = null)
     {
         var all = Volatile.Read(ref reports);
         var searched = string.IsNullOrWhiteSpace(about) ? all : Named(all, about);
         if (max <= 0 || string.IsNullOrWhiteSpace(question)) return new([], searched.Select(r => r.Title).ToArray());
-        var hits = searched.SelectMany(r => r.Index.Search(question, max).Where(h => h.Relevance >= minimum)
+        var hits = searched.SelectMany(r => r.Index.Search(question, max, similar?.GetValueOrDefault(r.Id)).Where(h => h.Relevance >= minimum)
                 .Select(h => new ReportHit(r.Key, r.Title, h, Cited(h.Chunk.Text, r.Sources))))
             .OrderByDescending(h => h.Hit.Relevance).ThenByDescending(h => h.Hit.Score).Take(max).ToArray();
         return new(hits, searched.Select(r => r.Title).ToArray());

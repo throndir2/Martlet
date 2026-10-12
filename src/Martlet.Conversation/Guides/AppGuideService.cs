@@ -749,14 +749,18 @@ public sealed class AppGuideService : IDisposable
     }
 
     /// <summary>The best sections of <paramref name="key"/>'s guide for <paramref name="question"/>, or null while its index isn't
-    /// ready (it starts building).</summary>
-    public IReadOnlyList<GuideHit>? Search(string key, string question, int max)
+    /// ready (it starts building). <paramref name="similar"/>: sections an embedding search found for the question (their number
+    /// in <see cref="Chunks"/> and their meaning), fused in.</summary>
+    public IReadOnlyList<GuideHit>? Search(string key, string question, int max, IReadOnlyList<(int Chunk, double Meaning)>? similar = null)
     {
         Touch(key);
-        if (indexes.TryGetValue(key, out var index)) return index.Search(question, max);
+        if (indexes.TryGetValue(key, out var index)) return index.Search(question, max, similar);
         Warm(key);
         return null;
     }
+
+    /// <summary>Every section of <paramref name="key"/>'s guide in page order, or null while its index isn't ready.</summary>
+    public IReadOnlyList<GuideChunk>? Chunks(string key) => indexes.TryGetValue(key, out var index) ? index.Chunks : null;
 
     /// <summary>The first <paramref name="max"/> sections of <paramref name="key"/>'s guide in page order (empty while its index
     /// isn't ready).</summary>

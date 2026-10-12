@@ -642,7 +642,9 @@ for them. See [Image and audio models](SENSE_MODELS.md).
 
 P03 begins with user-saved facts and lexical retrieval in SQLite, not an
 always-recording vector database. Add embedding/reranking only when a labeled
-retrieval evaluation shows benefit. Store source consent, timestamps, model
+retrieval evaluation shows benefit; embeddings are now used away from the
+reply's first word only, as derived data each computer makes for itself
+([Finding by meaning](SEARCH.md#finding-by-meaning)). Store source consent, timestamps, model
 revision, retention/expiry, and provenance with each record. Delete cascades
 to embeddings/caches, increments a memory revision to invalidate in-flight
 retrieval, and explains that previously exported/backed-up copies are outside

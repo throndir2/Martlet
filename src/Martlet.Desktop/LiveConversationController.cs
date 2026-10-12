@@ -950,6 +950,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
         StartMemoryUpkeep();
         StartMemoryBrief();
+        StartMeaningSearch();
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
         if (singing is not null)
             songHandler = CreationRegistry.Shared.Handle(SongCreations.KindName, new CreationHandler(SingCreationAsync));
@@ -3256,8 +3257,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         MemoryToolOutcome outcome;
         try
         {
-            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, argumentsJson, roster, speaker, token, yours),
-                token).ConfigureAwait(false);
+            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, argumentsJson, roster, speaker, token, yours,
+                MeaningFactsAsync), token).ConfigureAwait(false);
         }
         catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
             ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -4916,8 +4917,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             {
                 try
                 {
+                    // Facts that say related things in other words join the lexical matches (finding by meaning, after the reply).
+                    var similar = await MeaningFactsAsync(job.User, token).ConfigureAwait(false);
                     var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
-                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token), token).ConfigureAwait(false);
+                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token, similar), token).ConfigureAwait(false);
                     (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
                 }
                 catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
@@ -6063,6 +6066,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         owned?.Cancel("conversation.closed");
         StopMemoryUpkeep();
         StopMemoryBrief();
+        StopMeaningSearch();
         StopRequests();
         Cancel(stopListening);
         echoReducer?.Forget();

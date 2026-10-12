@@ -163,6 +163,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Delete message, Delete this conversation, Delete everything and Stop waiting changes write (deletes ask first; with
         // HistoryAlsoThere on they also queue changes for Telegram and Discord), so they need --allow-ui-effects.
         "OpenHistory", "HistorySearchRun", "HistoryShowAll", "HistoryEditMessage", "HistoryEditCancel",
+        // Companion › Memory › Finding by meaning's Check again only asks Ollama on this PC (loopback) whether the embedding model
+        // is there and what it has loaded; nothing is downloaded, loaded or saved. Its check box and model box save
+        // meaning-search.json and Download downloads a model (after a question), so they need --allow-ui-effects.
+        "MeaningSearchCheck",
         // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
         // --allow-ui-effects.
         "ProblemClose",
@@ -478,6 +482,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // never the brief) and its box's state. Ticking the box saves memory-brief.json, and the brief's text box
         // (MemoryBriefText, never readable), Save my changes and Write it again (which asks a model) need --allow-ui-effects.
         "MemoryBriefStatus", "MemoryBriefOn",
+        // Companion › Memory › Finding by meaning: its line (off; checking; not ready because Ollama isn't installed or running
+        // or the model isn't downloaded; waiting because loading it could unload another model; or on, with how many memories,
+        // guide sections and report sections it can find by meaning and what it is reading now; counts and fixed wording, never a
+        // fact or a text), whether it is on and the embedding model's name.
+        "MeaningSearchStatus", "MeaningSearchOn", "MeaningSearchModel",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it; and,
         // for a Windows computer whose voice engine shares its graphics card with other roles, the warning that it can fall
