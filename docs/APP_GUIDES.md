@@ -238,7 +238,11 @@ thread-safe.
    *pokemon*), common grammar words and contractions left out (*don't*,
    *dont*, *I'm*), and a light English stem: plurals, *-ing*, *-ed*, *-ied*,
    *-ly* and common irregular forms (*swords* finds *sword*, *found* finds
-   *find*, *wolves* finds *wolf*, *manually* finds *manual*).
+   *find*, *wolves* finds *wolf*, *manually* finds *manual*). A guide page in
+   Spanish, French, German, Portuguese or Italian also gets that language's
+   grammar words left out and its light stems, and Chinese, Japanese and
+   Korean text is read as pairs of characters (see
+   [Memory › Lexical retrieval](MEMORY.md#lexical-retrieval-and-reranking)).
 2. **The question** (`GuideQuery`):
    - Conversational filler is left out: *hey*, *martlet*, *wtf*, *tf*, *um*,
      *please*, *lol* and similar.

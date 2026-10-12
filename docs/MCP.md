@@ -1705,6 +1705,32 @@ facts, or from `facts` when given (a later fact counts as newer), and
 `query.words` shows the words recall looked for. It never opens the owner's
 memory and contacts nothing.
 
+`search_languages_check` (no arguments) rehearses search in languages other
+than English and lorebook word forms with the production code (`SearchTerms`
+in `src\Martlet.Core\Text`, `MemoryStore`, `ConversationHistory`,
+`PastConversations` and `LorebookScanner`) on synthetic text in disposable
+folders, and returns `{passed, failures, steps, note}`. The steps: English text
+gets the search terms it always got (also with web addresses in it, which never
+make it read as another language); Spanish, French, German, Portuguese and
+Italian sentences read as their language; their light stems join word forms
+(*gatti* and *gatto*, *Drachen* and *Drache*); Chinese and Japanese text is read
+as pairs of characters (*東京都* is *東京* and *京都*); a question in each of
+those languages and in Chinese, Japanese and Korean recalls the right memory
+fact first and brings back the right earlier exchange (*¿Te acuerdas de lo que
+hablamos sobre las tomateras?*, *你还记得我们聊过的黄山吗？*); ordinary messages
+in those languages, and *Remember to buy milk.*, don't look in the record;
+times such as *hace 3 días*, *vor 3 Tagen*, *3天前* and *어제* name the right
+days; lorebook keywords match exactly with word forms off and other forms with
+them on (*dragon* finds *dragons*, *red dragon* finds *Red Dragons*, a
+case-sensitive *Rose* finds *Roses* but not *the sun rose*, *Drache* finds
+*Drachen*, a `/regex/` key is unchanged, an entry's own choice wins); and the
+SillyTavern export is unchanged without the choice and carries an entry's
+choice back on import. It also times reading the terms of English text
+(`microsecondsPer1000Characters`, under 10), recognizing a reference to an
+earlier conversation (`microsecondsPerMessage`, under 50) and scanning 2,000
+entries with word forms on (under 50 ms). It never opens the owner's data and
+contacts nothing.
+
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in
 `Invoke-MartletMcp.ps1`): `memory` (`on`, `off` or `not chosen`), `preferences`
@@ -4371,7 +4397,9 @@ the *Where the voice pauses* check boxes
 `CompanionShortEnding` (its value reads *Never*, *1 word* or *Up to N words*),
 `CompanionPersona`, which also makes the chosen persona the one Martlet uses,
 `CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
-`AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
+`AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields
+(among them the scan setting `LorebookWordForms`, *Match other word forms*, and
+an entry's three-state `LorebookEntryWordForms`, *Other word forms*),
 `MemoryEnable` and Memory's fact fields: `MemoryFactContent`, `MemoryPerson`
 (*Belongs to*), `MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
 choosing in `MemoryPersonFilter` (it only filters the list) still goes through

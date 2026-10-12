@@ -147,6 +147,9 @@
                                               AutomationProperties.AutomationId="LorebookEntryCase"/>
                                     <CheckBox Content="Whole words only" IsThreeState="True" IsChecked="{Binding WholeWords}" Margin="0,4,16,4"
                                               AutomationProperties.AutomationId="LorebookEntryWholeWords"/>
+                                    <CheckBox Content="Other word forms" IsThreeState="True" IsChecked="{Binding WordForms}" Margin="0,4,16,4"
+                                              AutomationProperties.AutomationId="LorebookEntryWordForms"
+                                              ToolTip="Keywords also match other forms of their words: dragon finds dragons."/>
                                     <Label Content="Scan depth" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding ScanDepth, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center"
                                              AutomationProperties.AutomationId="LorebookEntryScanDepth" AutomationProperties.Name="Entry scan depth"/>
@@ -176,6 +179,9 @@
                               AutomationProperties.AutomationId="LorebookCaseSensitive"/>
                     <CheckBox x:Name="WholeWords" Content="Match whole words only" Margin="0,4,16,4"
                               AutomationProperties.AutomationId="LorebookWholeWords"/>
+                    <CheckBox x:Name="WordForms" Content="Match other word forms" Margin="0,4,16,4"
+                              AutomationProperties.AutomationId="LorebookWordForms"
+                              ToolTip="Keywords also match other forms of their words: dragon finds dragons, Drache finds Drachen. Regular expressions don't change."/>
                 </WrapPanel>
 
                 <TextBlock Text="Try it" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4"/>
