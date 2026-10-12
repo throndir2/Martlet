@@ -328,6 +328,10 @@ latency) is in [Conversation › Singing in conversation](CONVERSATION.md#singin
 - The mouth follows the vocals only, from a track made once per song: Audio2Face over the vocals when it answers, else
   visemes from `SongResult.Words`, else loudness, played on the song's own clock. Captions follow word by word.
 - MCP: `songs_status` and `song_playback_check` ([MCP](MCP.md)).
+- **Without tools.** Where the Thinking route does no function calling (a paired computer's gateway, or a model that
+  rejected tools), replies write `[sing: …]`, `[play_song: ID from …]` and `[stop_singing]` tags in place of the tools,
+  with the *Singing without tools* prompt. The tags are never shown or spoken; Martlet does what they ask after the reply
+  ([Conversation › Singing in conversation](CONVERSATION.md#singing-in-conversation)).
 - **After the reply.** While the After each exchange check-in ticks the Songs, pictures and creations
   [tool set](CONVERSATION.md#check-in-tool-sets) (`songs-pictures`) and the Thinking pool has a member that calls tools,
   the reply gets only `stop_singing` and a short line instead of `sing_song`, `play_song` and the Singing prompt: it says in

@@ -73,6 +73,29 @@ public sealed class AppGuidesPageTests
         }
     });
 
+    [Fact]
+    public Task AHintStartsWhereTypedTextStartsOnceTheBoxStyleApplies() => OnDispatcherAsync(() =>
+    {
+        // Like Compact and the theme's own text box style, the padding comes from a style found only once the box is on the page.
+        var host = new Border();
+        host.Resources["Box"] = new Style(typeof(TextBox)) { Setters = { new Setter(Control.PaddingProperty, new Thickness(20, 4, 20, 4)) } };
+        var box = new TextBox { Width = 200 };
+        box.SetResourceReference(FrameworkElement.StyleProperty, "Box");
+        var field = (Grid)typeof(MainWindow).GetMethod("WithHint", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [box, "Optional, such as StardewValley", "TestHint"])!;
+        var hint = field.Children.OfType<TextBlock>().Single();
+        host.Child = field;
+        host.Measure(new Size(400, 100));
+        host.Arrange(new Rect(0, 0, 400, 100));
+        host.UpdateLayout();
+
+        var start = box.GetRectFromCharacterIndex(0);
+        Assert.False(start.IsEmpty);
+        Assert.True(start.Left >= 20, $"Typed text starts at {start.Left}.");
+        Assert.Equal(start.Left, hint.Margin.Left, 3);
+        return Task.CompletedTask;
+    });
+
     private static async Task<T> Eventually<T>(Func<T?> find) where T : class
     {
         for (var i = 0; i < 600; i++)

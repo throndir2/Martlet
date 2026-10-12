@@ -277,6 +277,7 @@ public partial class MainWindow
         AppSettingsSections.Listening => "Listening",
         AppSettingsSections.Speaking => "Speaking",
         AppSettingsSections.ThinkingFallback => "the Thinking fallback",
+        AppSettingsSections.ThinkingPool => "the Thinking pool's cloud models",
         AppSettingsSections.Companion => "the personality",
         AppSettingsSections.Replies => "reply settings",
         AppSettingsSections.Prompts => "prompts",
@@ -416,6 +417,7 @@ public partial class MainWindow
             ActionText.Text = settingsLastChange;
         }
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
+        if (applied.Any(a => a.Key == AppSettingsSections.ThinkingPool)) conversation?.ReloadThinkingPool();
         await RefreshHomeAsync();
         // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
         if (applied.Any(a => a.Key is AppSettingsSections.Thinking or AppSettingsSections.Listening or AppSettingsSections.Speaking))
@@ -824,6 +826,13 @@ public partial class MainWindow
             if (!SharedCharacterModels.IsComplete(directory, model))
                 return SharedApply.Waiting($"'{model.Name}' is still being copied to this PC.");
             path = SharedCharacterModels.EntryPath(directory, model);
+        }
+        else if (RemoteCharacterModels.IsRemote(path))
+        {
+            // A VRoid Hub character is shown from VRoid Hub on each computer with that computer's own link; never copied.
+            if (RemoteCharacterModels.VRoidHubId(path) is null) throw new JsonException();
+            if (vroidHub?.Tokens() is null)
+                return SharedApply.Waiting("That character is from VRoid Hub. Link VRoid Hub on this PC (Account › Linked services) to show it here.");
         }
         else if (!BundledLive2D.IsBuiltIn(path) && !File.Exists(path))
             return SharedApply.Waiting($"Its model file isn't on this PC ({Path.GetFileName(path)}). Add it in Companion › Character › Your " +

@@ -10,7 +10,38 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- **Share your hosts with a friend through one link**: Devices › Friends › **Make a share link** makes a link for a friend that covers the hosts you choose, or all of them (also the ones you add later). Your friend clicks it, or pastes it into their Martlet, and their Martlet can use those hosts' engines. They never get your API keys, settings or memories, your own work always comes first, and **Stop link** ends it on every host at once. ([#807](https://github.com/throndir2/Martlet/pull/807))
+- **Martlet can open a port on your router**: Outside access for this PC's host service can ask your router to forward a port (UPnP), so a friend or your laptop can reach it from outside your home. Martlet first checks that your internet address can be reached, and tells you to use Tailscale when your internet provider shares it with other homes. ([#807](https://github.com/throndir2/Martlet/pull/807))
+
+### Changed
+
+- **Martlet's window can go in front of the conversation**: the talk window (Show conversation) is now a window of its own with its own taskbar button, so you can keep the conversation open and bring Martlet's window over it to change settings. Minimizing Martlet's window no longer hides the conversation. ([#802](https://github.com/throndir2/Martlet/pull/802))
+- **A greeting that knows you and stays in character**: Martlet's hello when it starts now calls you by your name when your account, your voice on People or Windows has a real name (never a user name or handle). It can also mention a weekend or a holiday, your newer Telegram or WhatsApp chat, a reminder it missed while it wasn't running, or a Martlet update. Your character greets you only the way it would, and one that wouldn't greet you stays quiet. ([#801](https://github.com/throndir2/Martlet/pull/801))
+
+### Fixed
+
+- **Martlet sings when its Thinking model runs on one of your computers**: ask it for a song and it says it'll write one, makes it in the background and tells you when it's ready, then sings it when you say yes. Before, a Thinking model on a paired computer had no way to start a song. ([#806](https://github.com/throndir2/Martlet/pull/806))
+- Cloud models you add to Companion › Thinking pool (such as NVIDIA Build or OpenRouter models), with their API keys and choices, now reach all your computers, including a companion PC you set up later. Paired computers and models in Ollama on a PC stay that PC's own. ([#804](https://github.com/throndir2/Martlet/pull/804))
+- In App guides › *Add an app*, the labels line up with the rest of the card, and the grey hint in each empty box starts where your typing starts. ([#803](https://github.com/throndir2/Martlet/pull/803))
+
+## [0.72.0] - 2026-10-11
+
+### Added
+
+- **Find a character**: name a character in Companion › Character › *Find a character...* and Martlet writes its personality with your Thinking model and finds 3D models of it on VRoid Hub and Open Source Avatars. Each look shows its creator, license and every condition of use before you choose it, and one click makes the character and switches to it. ([#799](https://github.com/throndir2/Martlet/pull/799))
+- **Link VRoid Hub**: link your pixiv account on the Account page (*Linked services*) to use your own VRoid Hub characters and the ones their creators let anyone use. Martlet shows them straight from VRoid Hub and never saves the model files, as VRoid Hub asks. ([#799](https://github.com/throndir2/Martlet/pull/799))
+- **When nothing is found**: Find a character gives you web pages that may have a model of the character, and pages with recordings of its voice. Download what you may use, then add it with *Add a model you downloaded* or *Add a voice clip you downloaded*. ([#799](https://github.com/throndir2/Martlet/pull/799))
+- **VRM 0.x models**: Martlet now shows VRM 0.x characters (most VRoid Studio and VRoid Hub models), and VRM models with JPEG textures, not only VRM 1.0. ([#799](https://github.com/throndir2/Martlet/pull/799))
+
+## [0.71.0] - 2026-10-11
+
+### Added
+
 - **Martlet says hello when it starts**: once Martlet has warmed up after it starts, it greets you on its own, in character and fit to the time of day. It may bring up your last conversation, a reminder coming up soon or what you have open. Turn it off in Settings › Startup and closing › *Greet me once Martlet has warmed up after it starts*. ([#796](https://github.com/throndir2/Martlet/pull/796))
+
+### Fixed
+
+- **Your laptop reaches your hosts through Tailscale away from home**: a host with outside addresses now also answers on its Tailscale address. Before, it answered only on its home address, so an overlay address such as `100.x.y.z:9443` never connected. A Linux or Mac host listens on its own Tailscale address and follows it if Tailscale starts late or changes. A Windows host (Docker Desktop) publishes its port on all of its addresses once you set outside addresses in Devices › the host › *Outside access*. At home the laptop still uses the home address first. Update Martlet on your hosts and set up sign-in on each one to use it. ([#797](https://github.com/throndir2/Martlet/pull/797))
 
 ## [0.70.1] - 2026-10-11
 

@@ -95,6 +95,26 @@ return names and, when asked, the personality text, because they edit them.
 - `character_use`: Martlet talks with that personality from its next reply.
 - `character_delete`: removes the personality and its profiles, or only the
   profile with `profileOnly`. Martlet keeps at least one personality.
+- `character_find_looks` (`query`, `count`, `sources`: `vroidhub`, `osa`): looks
+  (VRM models) online for a character you name, as Find a character finds them
+  (see [Find a character online](AVATARS.md#find-a-character-online)): the
+  linked VRoid Hub account's own and hearted models, VRoid Hub models whose
+  creators let anyone use them, and Open Source Avatars' free models. Each has its
+  creator, source, license, every condition of use, `usable`, a picture and page
+  address, and its `look` key. Give that key as `look` to `character_create` or
+  `character_update`: `vroidhub:<id>` is checked on VRoid Hub and its credit kept
+  for the app (the app shows it from VRoid Hub, never saved); `osa:<project>/<avatar>`
+  is downloaded and joins the owner's characters. Only the query goes to VRoid Hub
+  and GitHub.
+- `character_find_on_web` (`query`, `models`, `voices`): the backup finder. Web
+  pages (from DuckDuckGo) that may have a model of the character or recordings of
+  its voice, and searches on the sites that have them, with the next steps. Martlet
+  downloads nothing from them: the owner does, and adds what they may use in the
+  app (Add a character, Add a voice).
+- `vroid_hub_status` (with `martlet_call`): whether this build can link VRoid Hub,
+  whether an account is linked for the account whose settings the data folder
+  holds (its VRoid Hub user name, never a token), the VRoid Hub looks this PC used
+  with their conditions of use, and whether the character shown is one.
 
 A profile's look and voice change on this PC when the profile is used in the
 app (they need the character window and the voice hosts). So
@@ -103,6 +123,20 @@ with the steps: Companion › Profiles › Use, or `ui_connect`, `ui_click`
 `NavCompanion`, `CompanionTab-Profiles` and `CharacterProfileUse-<key>` (with
 `--allow-ui-effects`). New looks (Live2D or VRM models) and new voices (from a
 recording) are added in the app: Companion › Character and Companion › Voice.
+Companion › Character › **Find a character...** (`CharacterFinderOpen`, a safe
+click) opens Find a character (`CharacterFinderWindow`): its status lines
+(`CharacterFinderStatus`, `CharacterFinderVRoidHub`,
+`CharacterFinderPersonalityState`, `CharacterFinderResults`,
+`CharacterFinderWebModels`, `CharacterFinderWebVoices`) and each look's
+`CharacterFinderAbout-<n>`, `CharacterFinderConditions-<n>` and
+`CharacterFinderState-<n>` and each web page's `CharacterFinderWebAbout-<model|voice>-<n>`
+are safe values (never the typed name, notes or personality). **Close**
+(`CharacterFinderClose`) and **Add a voice clip you downloaded...**
+(`CharacterFinderAddVoice`, which only opens Companion › Voice) are safe clicks;
+Search, Write again, the web searches, Link VRoid Hub, Open, Add a model and Use
+need `--allow-ui-effects`. Companion › Character's `VRoidHubState` and the Account
+page's `AccountVRoidHubState` say whether VRoid Hub is linked; the Account page's
+`AccountVRoidHubLink` and `AccountVRoidHubUnlink` need `--allow-ui-effects`.
 
 ### Settings
 
@@ -1707,7 +1741,9 @@ restarted with its saved copy and got the change on the next sync; a stale copy
 that can't undo newer changes; a newer Martlet's setting passed through; a
 Parakeet model a new computer lacks (it waits, records nothing, then follows); a
 new computer taking everything without its defaults overriding anything; the
-Thinking fallback with its own key, turned off again (the key removed); lorebooks;
+Thinking fallback with its own key, turned off again (the key removed); two
+NVIDIA Build models in A's Thinking pool with one key, which reach B beside B's
+own model in Ollama and leave again with B's copy of the key; lorebooks;
 no key in any desktop file while the hosts' private copy holds them and every
 copy ends the same; and an unsigned request refused (HTTP 401). Then a fourth
 simulated desktop on this Martlet (`lab-desktop-d`) keeps each person's
@@ -1978,8 +2014,19 @@ host itself are signed into the roster by a member desktop's network sync; the
 reachability probe behind `outside_reachability_check` tells an answering, a
 closed and a wrong-key address apart; and a
 different computer with another key at the home address is skipped for the
-outside address. Not covered: a real internet source, a router port forward or
-an overlay.
+outside address. When this PC has a Tailscale address (100.64.0.0/10), a last
+step starts a second gateway (`lab-overlay`) on this PC's private home address
+and pairs a laptop there; nothing answers on this PC's Tailscale address at
+the gateway's port; the host gets an outside address (a MagicDNS name it can't
+resolve) and listens on its Tailscale address too
+(`GatewayOverlayListeners`); a pinned probe through that address is answered
+`403` (`outside.paused`: a Tailscale source is outside home and sign-in is off);
+the laptop sets up an owner account and the probe answers `200`; the audit's
+`outside_listeners` and the host log line `Listening on <address> too (overlay
+network) ...` name the address; and once the outside address is removed the
+host stops listening there. Without a Tailscale or a private address that step
+is skipped and the report's `notRun` says why. Not covered: a real internet
+source, a router port forward or another computer on the overlay network.
 
 `signin_selftest` (no arguments) rehearses [joining from outside home by
 signing in](NETWORK.md#joining-from-outside-home-by-signing-in) with the
@@ -3887,7 +3934,11 @@ Desktop (the one the host dashboard sets up) with the same production code as
 the dashboard (`LocalHostService` in `Martlet.Core`): `stage` (`DockerMissing`,
 `DockerNotRunning`, `NotSetUp`, `Stopped` or `Running`), `ready` (running,
 answering and still at one of this PC's addresses), `version` (the
-`martlet-host:x.y.z` image), `hostId`, `published`, `addressOnThisPc` (false
+`martlet-host:x.y.z` image), `hostId`, `published`, `publishedEverywhere`
+(true once the owner set outside addresses in *Outside access*: the network
+holder then publishes the gateway on every address of this PC, so an overlay
+network such as Tailscale reaches it; the home address comes from the holder's
+`martlet.home` label), `addressOnThisPc` (false
 once the network gave this PC another address than the one set up),
 `answering` (a TCP connect to the published port), `roles` (the installed role
 records, for example `["audio2face","f5","stt"]`; null until the gateway runs),
@@ -6086,15 +6137,20 @@ credentials.
 starts](CONVERSATION.md#greeting-when-martlet-starts) with the production code
 (`Greetings`, `ConversationHistory`, `BackgroundJobs`, `UnpromptedSpeech`) and
 fixture facts: an empty record giving no last conversation, the newest
-conversation on this PC read from a real conversation record in a temporary
-folder (a newer Telegram chat left out; the folder is deleted afterwards), the
-time and part of the day, only the reminders due in the next 12 hours, the open
-apps with the one in front first and each once, the counts-only line the log
-and `GreetingStatus` use (*the time of day, your last conversation, 1 reminder
-coming up and 3 open apps*), the message when Martlet greets on its own and the
-notes when the user talks first, said once, and let go (*too_old*) after
-waiting 10 minutes. `passed` and each step's `passed` and `detail`. No model,
-network or credentials.
+conversation on this PC and a newer Telegram chat (only when it is newer) read
+from a real conversation record in a temporary folder (deleted afterwards),
+which names count as a real name (*Sam Rivera* gives *Sam*; *mozar*,
+*xXDarkLordXx*, *gamer_42*, *sam@example.com*, *Admin* and *J. Smith* give
+none), the time, part of the day and weekend, a special day (*Halloween*), a
+reminder missed while Martlet wasn't running, only the reminders due in the
+next 12 hours, a Martlet update, the open apps with the one in front first and
+each once, the counts-only line the log and `GreetingStatus` use (*the time of
+day, your name, your last conversation, your last chat in a messaging app, 1
+missed reminder, 1 reminder coming up, the update and 3 open apps*), the
+message when Martlet greets on its own (in character, or `[pass]` when the
+character wouldn't greet) and the notes when the user talks first, said once,
+and let go (*too_old*) after waiting 10 minutes. `passed` and each step's
+`passed` and `detail`. No model, network or credentials.
 
 `check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a
 data directory (optional absolute `dataDirectory`): `settings` from
@@ -6558,7 +6614,13 @@ three `tools` exactly as the Thinking model gets them, the filled Singing
 `prompt` and `afterReply` (the Songs, pictures and creations
 [check-in tool set](CONVERSATION.md#check-in-tool-sets): its `set`, its
 `tools`, the reply tools it `replaces` and the `replyGuidance` line a reply gets
-in their place). Read-only.
+in their place) and `withoutTools` (singing through reply tags where the
+Thinking route carries no tools: the Thinking `routeType`, whether the route
+`routeCarriesTools`, whether the model `toolsRejected` them, whether replies
+`usesTags`, the three `tags`, the filled *Singing without tools* `prompt` and a
+`sample` reply run through the speech filter: what is `shown` and `spoken`, the
+`tags` it found, `tagsHidden`, the tool `calls` they stand for with their
+arguments and what the conversation `kept`). Read-only.
 
 `song_playback_check` runs the production playback (`SongTransport`,
 `SongMixer`, `SongPlayer` pumping a fixture output that plays ten times faster
@@ -6949,8 +7011,11 @@ than `textBounds` (room for the caret), even under a longer caption or note.
 whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
 `minimized`, whether it is the `foreground` window (has the focus) and whether
 it is `clickThrough` (the mouse passes through it to the window under it,
-`WS_EX_TRANSPARENT`: the character overlay while click-through is on); with
-`layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
+`WS_EX_TRANSPARENT`: the character overlay while click-through is on), and
+`ownedBy`: the name of the Martlet window it belongs to and always stays in
+front of (a dialog over its window), or null for a window of its own that
+other Martlet windows can cover. `windows` (and `windowStates`) list the windows
+front first, in the order Windows stacks them; with `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
 shrink to fit), centered over the window it belongs to (or the main window),
@@ -7197,7 +7262,8 @@ own Martlet runs its commands), `SelectedDeviceOutside`
 (in *Details*) returns its outside access in counts and choices only (*2 outside
 addresses; pairing codes from outside home refused; every connection treated as
 outside home.*, with *Outside access paused: sign-in is off; sign-in needed first
-(signin.not_set_up)* while it is), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
+(signin.not_set_up)* while it is, and *also listening on 100.101.102.103:9443
+(overlay network)* once a native host listens on its Tailscale address), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
 (`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
 default for Docker hosts; while sign-in isn't usable on the host its note
 `OutsideAccessBlockedReason` returns why, starting *Outside access paused: sign-in
@@ -9123,7 +9189,14 @@ it again; the log records *Turned off the speculative-decoding draft model*
 and the test run's output says so.
 The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
 with `enabled` (false while a modal dialog such as Audio setup blocks it), and
-the main window stays enabled while the talk window is open. Opening the talk
+the main window stays enabled while the talk window is open. It is also a
+window of its own (`ownedBy` null, with its own taskbar button): the main
+window can come in front of it, so you can watch the conversation while you
+change settings. Focus a main-window control (for example `ui_click` on
+`NavSettings` with `focus` true) and `windows` lists *Martlet* before the talk
+window; `OpenLiveConversation` (*Show conversation*) brings the talk window
+back in front, also when Windows doesn't let Martlet take the focus.
+Opening the talk
 window never opens the microphone or looks at the screen; `LiveMic` does the
 first with always listening on, `LiveVision` the second with vision on. For
 verification, save a fixed microphone that does not exist in the disposable
@@ -9299,7 +9372,12 @@ text, the caret and the keyboard focus. To check it, `ui_type` a letter into
 `AppGuideAddName`, change a setting with `settings_set` (Martlet reads
 `settings.json` again and draws the page again), then `ui_type` more letters and
 `backspace` without `id`: the box shows the typing and `ui_snapshot` marks it
-`focused`.
+`focused`. While a box is empty, its grey hint (`AppGuideAddNameHint`,
+`AppGuideAddProgramsHint` and `AppGuideAddSitesHint`, Martlet's own fixed
+words) shows; with `layout`, a hint's `bounds` start at the same `x` as the
+`textBounds` of text typed into its box. The box labels line up with the
+card's heading and buttons, so a box's `bounds` start one label column (110
+pixels at 100 % display scale) right of `AppGuideAddRead`'s left edge.
 
 At the end of Companion › Discord, *Martlet in your Discord calls* (see
 [DISCORD.md](DISCORD.md#martlet-in-your-own-calls)) has `DiscordCallOn` (the
@@ -9461,11 +9539,13 @@ by default, saves `background.json`, so toggling it needs
 a conversation has warmed up (Start talking or Start listening on Home).*,
 *Martlet greets you once it has warmed up.*, *Martlet greets you as soon as
 it's free. It knows ...*, *Martlet is greeting you.*, *Martlet warmed up at
-5:08 PM and greeted you. It knew the time of day, your last conversation and 3
-open apps.*, or why it didn't: the greeting was off, you were already talking,
-or it was let go; counts only, never app names, reminders or what was said;
+5:08 PM and greeted you. It knew the time of day, your name, the update and 3
+open apps.*, *... and stayed quiet: your character wouldn't greet you. ...*,
+or why it didn't: the greeting was off, you were already talking,
+or it was let go; counts only, never your name, app names, reminders or what was said;
 the talk window's task list shows the job as *Greeting* and the log says
-*Greeting: Martlet warmed up; greeting-1 waits...*) and
+*Greeting: Martlet warmed up; greeting-1 waits...*; seed `greeting.json` in the
+disposable data directory with an older `Version` to see *the update*) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
 when Windows' own Startup apps switch turned it off). On a PC that runs its own

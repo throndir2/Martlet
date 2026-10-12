@@ -1604,6 +1604,7 @@ public partial class MainWindow
             ZoomCharacterAsync("status").Forget();
         }
         page.Children.Add(CharacterModelsCard());
+        page.Children.Add(VRoidHubCard());
         page.Children.Add(ProfilesLinkCard());
     }
 
@@ -1957,7 +1958,8 @@ public partial class MainWindow
         return group;
     }
 
-    /// <summary>A text box with a grey <paramref name="hint"/> over it while it is empty.</summary>
+    /// <summary>A text box with a grey <paramref name="hint"/> over it while it is empty. The hint starts where typed text starts:
+    /// the box's style (and so its padding) applies only once it is on the page, so the caret's first place sets the hint's margin.</summary>
     private static Grid WithHint(TextBox box, string hint, string? id = null)
     {
         var shown = new TextBlock
@@ -1968,6 +1970,16 @@ public partial class MainWindow
         };
         shown.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         if (id is not null) AutomationProperties.SetAutomationId(shown, id);
+        var placed = false;
+        box.SizeChanged += (_, _) =>
+        {
+            // Text scrolled sideways moves the caret's first place, so only an empty box (or the first layout) is measured.
+            if (placed && box.Text.Length > 0) return;
+            var start = box.GetRectFromCharacterIndex(0);
+            if (start.IsEmpty) return;
+            shown.Margin = new Thickness(start.Left, 0, start.Left, 0);
+            placed = true;
+        };
         box.TextChanged += (_, _) => shown.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         var grid = new Grid { VerticalAlignment = VerticalAlignment.Center };
         grid.Children.Add(box);

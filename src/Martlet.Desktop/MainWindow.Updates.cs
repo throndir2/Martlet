@@ -239,7 +239,7 @@ public partial class MainWindow
             if (!AutoInstalling && availableUpdate is { } offered && announcedUpdate != offered.Tag)
             {
                 announcedUpdate = offered.Tag;
-                if (OwnedWindows.Count == 0 && !setupOperations.IsRunning)
+                if (OwnedWindows.Count == 0 && openConversation is null && !setupOperations.IsRunning)
                 {
                     await ConfirmAndInstallAsync(offered, prompted: true);
                     if (closing) return;

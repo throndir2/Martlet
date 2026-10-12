@@ -64,6 +64,7 @@ public sealed class AccountSettingsTests : IDisposable
     [InlineData("listening", false)]
     [InlineData("speaking", false)]
     [InlineData("thinking-fallback", false)]
+    [InlineData("thinking-pool", false)]
     [InlineData("character-actions", false)]
     [InlineData("voice-recognition", false)]
     [InlineData("smart-home", false)]

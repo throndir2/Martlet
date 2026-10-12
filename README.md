@@ -156,13 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.70.1
+## 🆕 What's new in 0.72.0
 
-- 🗣️ **Talk as long as you like**: one turn of talking can last up to 10 minutes, and long replies are said aloud to the end instead of stopping after about 80 seconds.
-- 📏 **Longer replies and messages**: replies can be up to 32,768 tokens when you want them, and you can type a message of up to 262,144 characters.
-- 🧠 **Much more room**: Martlet remembers up to 100,000 facts and keeps up to 1,000 characters, personalities, lorebooks and voices. When memory is full, it tells you instead of forgetting your oldest facts.
-- 🎮 **App guides on their own**: App guides are now on by default. When you start a new game, Martlet reads its whole wiki by itself and tells you, in character.
-- 🔎 **Web research that digs deeper**: web research is on by default, reads up to 60 pages each time you ask and shows the model much more of each page.
+- 🔍 **Find a character**: name a character in Companion › Character › *Find a character...*. Martlet writes its personality and finds 3D models of it on VRoid Hub and Open Source Avatars, with each creator's license, and one click makes the character.
+- 🔗 **Link VRoid Hub**: link your pixiv account on the Account page to use your own VRoid Hub characters and the ones their creators let anyone use.
+- 🧭 **When nothing is found**: Find a character gives you web pages that may have a model or voice recordings of the character, and you can add what you download.
+- 🧍 **VRM 0.x models**: Martlet now shows VRM 0.x characters, like most VRoid Studio and VRoid Hub models, and VRM models with JPEG textures.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

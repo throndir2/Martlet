@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { VRM, type VRMExpression, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { VRM, type VRMExpression, VRMHumanBoneList, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, LIMITS, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
 import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, readEyeHint, VrmEyes } from "./eyes.js";
@@ -354,6 +354,10 @@ function releaseResources(value: unknown, seen = new Set<unknown>()): void {
   } else if (Array.isArray(value)) value.forEach(v => releaseResources(v, seen));
   else if (value instanceof THREE.Material) {
     Object.values(value).forEach(v => { if (v instanceof THREE.Texture) releaseResources(v, seen); });
+    // MToon (a shader material, which every VRM 0.x MToon material becomes) keeps its textures in its uniforms.
+    const uniforms: unknown = (value as { uniforms?: unknown }).uniforms;
+    if (uniforms && typeof uniforms === "object")
+      Object.values(uniforms).forEach(u => { const v: unknown = (u as { value?: unknown } | null)?.value; if (v instanceof THREE.Texture) releaseResources(v, seen); });
     value.dispose();
   } else if (value instanceof THREE.Texture) {
     const image: unknown = value.source.data;
@@ -389,21 +393,22 @@ export async function loadLocalVrm(buffer: ArrayBuffer): Promise<{ vrm: VRM; cap
       if (!pending) {
         pending = (async () => {
           try {
-            requireValid(typeof createImageBitmap === "function", "Embedded PNG requires browser createImageBitmap support.");
+            requireValid(typeof createImageBitmap === "function", "Embedded images require browser createImageBitmap support.");
             const json = object(parser.json, "parser JSON");
             requireValid(Array.isArray(json.images), "Missing embedded images.");
             const image = object(json.images[sourceIndex], "embedded image");
             const bytes: unknown = await parser.getDependency("bufferView", Number(image.bufferView));
-            requireValid(bytes instanceof ArrayBuffer && image.mimeType === "image/png", "Expected validated embedded PNG bytes.");
-            const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }),
+            const type = image.mimeType;
+            requireValid(bytes instanceof ArrayBuffer && (type === "image/png" || type === "image/jpeg"), "Expected validated embedded PNG or JPEG bytes.");
+            const bitmap = await createImageBitmap(new Blob([bytes], { type }),
               { premultiplyAlpha: "none", colorSpaceConversion: "none" });
             const texture = new THREE.Texture(bitmap);
             texture.needsUpdate = true;
-            texture.userData.mimeType = "image/png";
+            texture.userData.mimeType = type;
             resources.add(texture);
             if (failed) {
               releaseResources(texture, released);
-              throw new VrmError("import-failed", "Embedded PNG completed after import failed.");
+              throw new VrmError("import-failed", "Embedded image completed after import failed.");
             }
             return texture;
           } catch (error) {
@@ -440,11 +445,12 @@ export async function loadLocalVrm(buffer: ArrayBuffer): Promise<{ vrm: VRM; cap
   const candidate: unknown = gltf.userData.vrm;
   if (!(candidate instanceof VRM)) {
     fail();
-    throw new VrmError("import-failed", "The importer did not produce a VRM1 runtime.");
+    throw new VrmError("import-failed", "The importer did not produce a VRM runtime.");
   }
   try {
     requireValid(errors.length === 0, errors.join(" "));
-    requireValid(candidate.meta.metaVersion === "1", "Importer did not produce VRM1 metadata.");
+    requireValid(candidate.meta.metaVersion === capabilities.meta.metaVersion,
+      `Importer did not produce VRM ${capabilities.meta.metaVersion === "0" ? "0.x" : "1.0"} metadata.`);
     for (const expression of capabilities.expressions.filter(e => e.usable)) {
       const imported = candidate.expressionManager?.getExpression(expression.name);
       requireValid(imported && imported.binds.length > 0, `Importer omitted usable bindings for authored expression ${expression.name}.`);
@@ -455,7 +461,13 @@ export async function loadLocalVrm(buffer: ArrayBuffer): Promise<{ vrm: VRM; cap
       "Importer did not produce usable spring joints; re-export a nonzero-length VRMC_springBone chain.");
     if (capabilities.gaze !== "absent") requireValid(candidate.lookAt, "Importer omitted the advertised gaze controller.");
     if (candidate.lookAt) candidate.lookAt.autoUpdate = false;
-    candidate.scene.updateWorldMatrix(true, true);
+    // A VRM 0.x model faces -Z; turned 180 degrees it faces +Z (the camera) like a VRM 1.0 one. Its spring bones start again
+    // from the turned pose, so they don't swing across on the first frame.
+    VRMUtils.rotateVRM0(candidate);
+    // updateMatrixWorld (not updateWorldMatrix) also renews each skinned mesh's bind inverse, as the first render does, so
+    // skinned vertices read now (the eyes, touch bounds) are where they are drawn.
+    candidate.scene.updateMatrixWorld(true);
+    if (capabilities.format === "VRM0") candidate.springBoneManager?.setInitState();
     const box = new THREE.Box3().setFromObject(candidate.scene);
     if (!box.isEmpty()) finite(box.getSize(new THREE.Vector3()).length(), 0.0001, 100, "Rendered model size");
     return { vrm: candidate, capabilities };
@@ -521,6 +533,8 @@ export class VrmRuntime {
   private measured = -1;
   /** Every node's world matrix in the rest pose (see startIdle), which touches are traced back to. */
   private rest: RestPose | undefined;
+  /** A VRM 0.x model: its normalized bones face -Z, so turns about X and Z are mirrored (see animateIdle). */
+  private mirrored = false;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -537,8 +551,9 @@ export class VrmRuntime {
   }
 
   /** The model's spring-bone chains (a tail, hair, a skirt), each its joints' nodes from the root to the tip, for touch zones.
-   *  The importer makes a joint of each node and the next one in a chain, so a node that is no joint's child starts a chain,
-   *  which goes on through each joint's child. */
+   *  The importer makes a joint of each node and the next one in a VRM 1.0 chain, and of each node under a VRM 0.x bone group's
+   *  root with its first child. So a node that is no joint's child starts a chain (in VRM 0.x also a branch that is not its
+   *  parent's first child), which goes on through each joint's child to the tip. */
   get springNodes(): readonly (readonly THREE.Object3D[])[] {
     const joints = [...this.model?.springBoneManager?.joints ?? []];
     const byBone = new Map(joints.map(joint => [joint.bone, joint] as const));
@@ -727,7 +742,9 @@ export class VrmRuntime {
     if (!model || !head) return undefined;
     head.updateWorldMatrix(true, false);
     const rotation = head.getWorldQuaternion(new THREE.Quaternion());
-    // VRM 1.0 faces +Z with the character's left (the viewer's right) at +X.
+    // VRM 1.0 faces +Z with the character's left (the viewer's right) at +X. A VRM 0.x model's normalized bones face -Z with
+    // the character's left at -X (rotateVRM0 turns its root), so its head is read half a turn around.
+    if (this.mirrored) rotation.multiply(new THREE.Quaternion(0, 1, 0, 0));
     const side = new THREE.Vector3(1, 0, 0).applyQuaternion(rotation), up = new THREE.Vector3(0, 1, 0).applyQuaternion(rotation);
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(rotation);
     const at = (node: THREE.Object3D | null | undefined) => {
@@ -818,6 +835,10 @@ export class VrmRuntime {
     const follow = Math.min(1, deltaSeconds * 5);
     this.look = { x: this.look.x + (this.lookTarget.x - this.look.x) * follow, y: this.look.y + (this.lookTarget.y - this.look.y) * follow };
     const bone = (name: BoneName) => model.humanoid.getNormalizedBoneNode(name);
+    // The angles below are for a VRM 1.0 model's normalized bones, which face +Z. A VRM 0.x model's face -Z (rotateVRM0
+    // turns its root instead), so its turns about X and Z are mirrored to move it the same way.
+    const sign = this.mirrored ? -1 : 1;
+    const turn = (name: BoneName, x: number, y: number, z: number) => bone(name)?.rotation.set(sign * x, y, sign * z);
     const inhale = this.inhale;
     const gesture = this.advanceGesture(deltaSeconds);
     const w = gesture?.weight ?? 0;
@@ -836,26 +857,26 @@ export class VrmRuntime {
     // Each arm swings out 0.015 radians at a full breath: against its shoulder's lift, or by itself on a model without one.
     const downLeft = -hang + (bone("leftShoulder") ? 0.055 : -0.015) * inhale;
     const downRight = -hang + (bone("rightShoulder") ? 0.055 : -0.015) * inhale;
-    bone("leftUpperArm")?.rotation.set(forward * relaxLeft, 0, lerp(lerp(-downLeft, -0.95, shrug), -0.15, open));
-    bone("rightUpperArm")?.rotation.set(forward * relaxRight, 0, lerp(lerp(lerp(downRight, 0.95, shrug), -0.25, wave), 0.15, open));
-    bone("leftLowerArm")?.rotation.set(0, lerp(lerp(elbow, -1.1, shrug), 0, open), 0);
-    bone("rightLowerArm")?.rotation.set(0, lerp(lerp(lerp(-elbow, 1.1, shrug), 0, wave), 0, open), lerp(0, -1.4 + waving, wave));
-    bone("leftHand")?.rotation.set(0, 0, wrist * relaxLeft);
-    bone("rightHand")?.rotation.set(0, 0, -wrist * relaxRight);
+    turn("leftUpperArm", forward * relaxLeft, 0, lerp(lerp(-downLeft, -0.95, shrug), -0.15, open));
+    turn("rightUpperArm", forward * relaxRight, 0, lerp(lerp(lerp(downRight, 0.95, shrug), -0.25, wave), 0.15, open));
+    turn("leftLowerArm", 0, lerp(lerp(elbow, -1.1, shrug), 0, open), 0);
+    turn("rightLowerArm", 0, lerp(lerp(lerp(-elbow, 1.1, shrug), 0, wave), 0, open), lerp(0, -1.4 + waving, wave));
+    turn("leftHand", 0, 0, wrist * relaxLeft);
+    turn("rightHand", 0, 0, -wrist * relaxRight);
     for (const [part, x, y, z] of VRM_RELAXED_FINGERS) {
-      bone(`left${part}` as BoneName)?.rotation.set(x * relaxLeft, y * relaxLeft, z * relaxLeft);
-      bone(`right${part}` as BoneName)?.rotation.set(x * relaxRight, -y * relaxRight, -z * relaxRight);
+      turn(`left${part}` as BoneName, x * relaxLeft, y * relaxLeft, z * relaxLeft);
+      turn(`right${part}` as BoneName, x * relaxRight, -y * relaxRight, -z * relaxRight);
     }
-    bone("leftShoulder")?.rotation.set(0, 0, shoulders);
-    bone("rightShoulder")?.rotation.set(0, 0, -shoulders);
+    turn("leftShoulder", 0, 0, shoulders);
+    turn("rightShoulder", 0, 0, -shoulders);
     // Breathing in opens the chest a little (only a little: leaning back would sink the head in a front view); the neck takes
     // most of it back, so the head stays level.
     const chest = bone("chest"), upperChest = bone("upperChest");
-    chest?.rotation.set(-0.01 * inhale, 0, 0);
-    upperChest?.rotation.set(-0.008 * inhale, 0, 0);
+    turn("chest", -0.01 * inhale, 0, 0);
+    turn("upperChest", -0.008 * inhale, 0, 0);
     const opened = ((chest ? 0.01 : 0) + (upperChest ? 0.008 : 0)) * inhale;
     const side = gesture?.name === "sway" ? w * Math.sin(2 * Math.PI * gesture.t / 1.2) : 0;
-    bone("spine")?.rotation.set((gesture?.name === "bow" ? 0.35 * w : 0) + pose.spineX, pose.spineY, 0.08 * side + pose.spineZ + this.sway);
+    turn("spine", (gesture?.name === "bow" ? 0.35 * w : 0) + pose.spineX, pose.spineY, 0.08 * side + pose.spineZ + this.sway);
     const hips = bone("hips");
     if (hips && this.hipsRest !== undefined)
       hips.position.y = this.hipsRest + (gesture?.name === "bounce" ? 0.035 * w * Math.abs(Math.sin(2 * Math.PI * gesture.t / 0.6)) : 0);
@@ -867,12 +888,12 @@ export class VrmRuntime {
       gx += pose.gx; gy += pose.gy;
       const tilt = (gesture?.name === "tilt" ? 0.3 * w : 0) + (gesture?.name === "shrug" ? 0.12 * w : 0) - 0.06 * side + pose.tilt;
       const x = this.look.x + gx, y = this.look.y + gy;
-      bone("neck")?.rotation.set(-y * 0.15 + 0.7 * opened, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02 - 0.6 * this.sway);
-      bone("head")?.rotation.set(-y * 0.2, x * 0.3, tilt);
+      turn("neck", -y * 0.15 + 0.7 * opened, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02 - 0.6 * this.sway);
+      turn("head", -y * 0.2, x * 0.3, tilt);
     }
     // Only a held eyes gesture (eyes_up) turns the eyes while idle; the head keeps following the look.
     const range = eyeRange(model, this.inspected?.gaze), clamp = (value: number) => Math.max(-1, Math.min(1, value));
-    for (const eye of ["leftEye", "rightEye"] as const) bone(eye)?.rotation.set(-range * clamp(pose.eyeY), range * clamp(pose.eyeX), 0);
+    for (const eye of ["leftEye", "rightEye"] as const) turn(eye, -range * clamp(pose.eyeY), range * clamp(pose.eyeX), 0);
     const expressions = model.expressionManager;
     if (!expressions) return;
     this.speechAge += deltaSeconds;
@@ -963,6 +984,7 @@ export class VrmRuntime {
       this.releaseModel();
       this.model = result.vrm;
       this.inspected = result.capabilities;
+      this.mirrored = result.capabilities.format === "VRM0";
       // A face is about a twelfth as wide as the figure is tall.
       const box = new THREE.Box3().setFromObject(result.vrm.scene);
       this.faceWidth = box.isEmpty() ? 0.14 : Math.max(0.01, 0.09 * (box.max.y - box.min.y));
@@ -1117,7 +1139,9 @@ export class VrmRuntime {
     this.poses++;
     this.composedAge += deltaSeconds;
     if (this.identity && this.selection?.head) {
-      model.humanoid.getNormalizedBoneNode("head")!.quaternion.fromArray(this.pose.head ?? [0, 0, 0, 1]);
+      // The head quaternion is for VRM 1.0's normalized bones; a VRM 0.x model's are mirrored (see animateIdle).
+      const [x, y, z, w] = this.pose.head ?? [0, 0, 0, 1], sign = this.mirrored ? -1 : 1;
+      model.humanoid.getNormalizedBoneNode("head")!.quaternion.set(sign * x, y, sign * z, w);
     }
     this.restoreFace(model);
     if (this.idle) this.animateIdle(model, deltaSeconds); else this.face = {};
@@ -1209,6 +1233,7 @@ export class VrmRuntime {
     this.featureHint = undefined;
     this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
     this.rest = undefined;
+    this.mirrored = false;
     this.talk = 0; this.speaking = false; this.heldMouth = 0;
   }
 }

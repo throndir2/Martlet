@@ -339,7 +339,9 @@ internal static class HostEngineCheck
             [[ "$2" == inspect ]] || exit 1
             shift 2; fmt=""; [[ "$1" == -f ]] && fmt="$2"
             case "$fmt" in
-              *PortBindings*) echo "192.168.1.20:9443 martlet-host:old" ;;
+              *martlet.home*) cat $S/label 2>/dev/null; echo ;;
+              *PortBindings*Config.Image*) echo "$(cat $S/binding 2>/dev/null || echo 192.168.1.20:9443) $(cat $S/image 2>/dev/null || echo martlet-host:old)" ;;
+              *PortBindings*) cat $S/binding 2>/dev/null || echo 192.168.1.20:9443 ;;
               *Config.Image*) echo "martlet-host:new" ;;
               *Config.Cmd*) echo "--yes add chatterbox" ;;
               *MARTLET_ENGINE*) echo "container:$(cat $S/engine-net) inner" ;;
@@ -379,6 +381,24 @@ internal static class HostEngineCheck
         D MARTLET_ENGINE=inner MARTLET_ENGINE_NAME=martlet-host-remove-check timeout 15 "$E" --yes remove fixture-role </dev/null >/tmp/attached.out 2>&1; rc=$?
         [[ $rc == 1 ]] && ! has /tmp/attached.out "was replaced" && has /tmp/attached.out "Run 'martlet-host setup' first." && ok=1 || ok=0
         step attached-engine-continues "$ok" "engine in the current holder's namespace passed the check (exit $rc at the fixture's missing setup)"
+
+        # Outside addresses make the holder publish the gateway on every address of the Docker host, so an overlay network
+        # (Tailscale) reaches it there; other exposure choices and setup keep that; clearing them goes back to the home address.
+        printf 'martlet-host:new' > /tmp/fake/image; : > /tmp/fake/calls
+        D timeout 30 "$E" --yes exposure --outside 100.101.102.103:9443 </dev/null >/tmp/expose-wide.out 2>&1; rc=$?
+        holder="$(grep -m1 '^run -d --name martlet-host-net ' /tmp/fake/calls || true)"
+        [[ $rc == 0 && "$holder" == *" -p 9443:9443 "* && "$holder" == *"--label martlet.home=192.168.1.20:9443 "* ]] &&
+          grep -q '^rm -f martlet-host-net' /tmp/fake/calls && grep -q '^run --rm .*--name martlet-host-exposure-' /tmp/fake/calls && ok=1 || ok=0
+        step exposure-publishes-everywhere "$ok" "exposure --outside (exit $rc): ${holder:-holder not replaced}"
+        printf ':9443' > /tmp/fake/binding; printf '192.168.1.20:9443' > /tmp/fake/label; : > /tmp/fake/calls
+        D timeout 30 "$E" --yes exposure --allow-pairing-outside-home no </dev/null >/tmp/expose-keep.out 2>&1; krc=$?
+        D timeout 30 "$E" --yes setup </dev/null >/tmp/expose-setup.out 2>&1; src=$?
+        kept="$(grep -c '^run -d --name martlet-host-net ' /tmp/fake/calls || true)"
+        D MARTLET_HOST_ADDRESS= timeout 30 "$E" --yes exposure --clear-outside </dev/null >/tmp/expose-clear.out 2>&1; crc=$?
+        home="$(grep -m1 '^run -d --name martlet-host-net ' /tmp/fake/calls || true)"
+        [[ $krc == 0 && $src == 0 && $kept == 0 && $crc == 0 && "$home" == *" -p 192.168.1.20:9443:9443 "* ]] && ok=1 || ok=0
+        step exposure-keeps-then-clears "$ok" "publishing everywhere: another choice (exit $krc) and setup (exit $src) replaced the holder $kept time(s); --clear-outside (exit $crc): ${home:-holder not replaced}"
+        rm -f /tmp/fake/binding /tmp/fake/label /tmp/fake/image
 
         # A role whose image build fails (a fake docker whose compose up fails like a pip download that timed out) stops
         # with what to do next instead of only Compose's exit code.

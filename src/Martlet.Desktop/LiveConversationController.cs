@@ -271,6 +271,9 @@ internal sealed class LiveConversationOperation
     internal bool Touch { get; init; }
     /// <summary>Martlet started this reply on its own (a report or a reaction to being touched), not an answer to the user.</summary>
     internal bool OnItsOwn => Report || Touch;
+    /// <summary>The reply may be the no-reply marker ([pass]), which is never shown or spoken: a reply to what always listening
+    /// heard, and every reply Martlet starts on its own (a character may have nothing to say, such as no greeting).</summary>
+    internal bool MayPass => Spoken || OnItsOwn;
     /// <summary>What Martlet says here on its own, without the user asking (<see cref="UnpromptedSpeech"/>): a report's reminder,
     /// finished work or check-in, or a screen or camera remark. Null for a reply (to the user, to what this PC played or to a
     /// touch, which answers what the user did).</summary>
@@ -2394,6 +2397,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // when they are ready now (never waited for).
                 var described = DescribesVoice(configured) ? PromptSettings.Fill(prompts, PromptCatalog.HeardVoiceDescribed) : null;
                 heardHow = VoiceNow(operation, prompts);
+                // Singing on a route without function calling: the reply writes song tags in place of the song tools, told the
+                // same way every time (settings alone decide it), so the request starts the same.
+                var singsWithTags = SingsWithTags(configured);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
@@ -2410,17 +2416,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),
                             picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply),
                             describes ? PictureDescriptions.Instructions(prompts) : null,
+                            singsWithTags ? SongTags.Instructions(prompts) : null,
                             // Every one of Martlet's own tools was handed off and no other tool is offered: what the reply is told
                             // instead still reaches it (with tools, it follows the tools prompt).
                             toolset is null && builtIns is { Tools.Count: 0 } ? builtIns.Guidance : null),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null && describedNote is null ? null : noticed, recalled, guide, songNote, whileSinging, touchNote),
-                        silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
+                        silentReply: operation.MayPass ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyClosing(operation.Authorization.Voice), audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
-                        controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts),
+                        controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts, singsWithTags),
                         spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null,
                         // The program in front and the window's title change as the user switches windows: they go with the
                         // picture (or its description) in the notes that are sent but not kept, never in the instructions, and only
@@ -2600,8 +2607,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
-            var passed = operation.Spoken && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
+            var passed = operation.MayPass && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
             operation.Passed = passed;
+            // Singing on a route without function calling: the reply's song tags start, play or stop a song now that it's done.
+            IReadOnlyList<string> songTags = terminal.State == ConversationState.Completed ? turn.Controls : [];
+            if (SongTags.Calls(songTags) is { Count: > 0 } songCalls) SingFromTags(operation, configured, songCalls, passed);
             // A reply that ends by asking something makes a short answer to it ("yes", "mm-hmm") count as words for a while.
             if (terminal.State == ConversationState.Completed && !passed && !string.IsNullOrWhiteSpace(turn.Content.Text))
                 Interlocked.Exchange(ref askedAt, AsksSomething(turn.Content.Text) ? clock.GetTimestamp() : 0);
@@ -2613,7 +2623,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled && operation.CutOff is null)
                     {
                         var earlier = context.Snapshot();
-                        var kept = passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text;
+                        var kept = passed ? $"[{LiveConversationConfiguration.SilentReply}]"
+                            : SongTags.Kept(songTags) is { } wrote ? turn.Content.Text.TrimEnd() + " " + wrote : turn.Content.Text;
                         var sawLine = SawLine(terminal);
                         string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
                         string? said = null;
@@ -2652,6 +2663,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         if (operation.Delivery is { } delivered)
                         {
                             delivered.Complete();
+                            if (passed) foreach (var job in delivered.Jobs) quietJobs[job.Id] = true;
                             ErrorLog.Info($"Background work: {string.Join(", ", delivered.Jobs.Select(job => job.Id))} " +
                                 (operation.Report ? "brought up by Martlet on its own"
                                     : own is null && !straight ? "brought up with what this PC played" : "brought up with your message") +
@@ -3195,6 +3207,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// prompts): <paramref name="facts"/> is what it knows (<see cref="Greetings.Facts"/>). Null when the conversation is closing.</summary>
     internal BackgroundJob? Greet(string facts) =>
         jobs.Start(Greetings.Kind, "Greeting", (_, _) => Task.FromResult(BackgroundJobOutcome.Done(facts))).Job;
+
+    // The finished jobs a reply carried that Martlet stayed quiet about ([pass]), by job ID.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> quietJobs = new(StringComparer.Ordinal);
+
+    /// <summary>Whether the reply that carried <paramref name="job"/> stayed quiet ([pass]): a character that wouldn't greet.</summary>
+    internal bool StayedQuiet(BackgroundJob job) => quietJobs.ContainsKey(job.Id);
 
     /// <summary>The newest <paramref name="count"/> exchanges of this conversation (oldest first: what the user said and the reply)
     /// and how many it has had in all, a count that only grows, for a check-in. In memory only.</summary>
@@ -3807,6 +3825,53 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var record = singing?.Stop(SongStopCause.Martlet, musical: true, reason: SongTools.ParseStop(call.ArgumentsJson));
         tools?.Record("Martlet", SongTools.StopName, record is null ? "nothing to stop" : "stopped " + record.SongId, "", false);
         return new(SongTools.Stopped(record));
+    }
+
+    /// <summary>Whether a reply sings through song tags (<see cref="SongTags"/>) in place of the song tools: singing is set up,
+    /// the Singing without tools prompt isn't empty and the Thinking route can't take tools (a host's gateway, or a model that
+    /// rejected them). It depends on settings alone, so every request starts the same.</summary>
+    internal bool SingsWithTags(LiveConversationConfiguration configured) =>
+        singing is { Offered: true } && !(configured.SupportsTools && tools is not null && !tools.IsUnsupported(configured.ToolModelKey())) &&
+        SongTags.Instructions(configured.Prompts) is not null;
+
+    /// <summary>Does what the song tags of a finished reply ask for, in order, as the song tools would: [sing: ...] starts the song
+    /// (the reply already told the user), [play_song: ...] plays one and [stop_singing] stops it. A reply that stayed quiet
+    /// (<paramref name="passed"/>) may only stop the song. What couldn't be done, Martlet brings up on its own.</summary>
+    private void SingFromTags(LiveConversationOperation operation, LiveConversationConfiguration configured, IReadOnlyList<SongTagCall> calls,
+        bool passed)
+    {
+        foreach (var tag in calls)
+        {
+            if (passed && tag.Name != SongTools.StopName) continue;
+            var call = new TextToolCall("tag-" + Guid.NewGuid().ToString("N")[..12], tag.Name, tag.ArgumentsJson);
+            ErrorLog.Info($"Singing: the reply wrote a {tag.Name} tag (it sings through tags; the Thinking route takes no tools).");
+            switch (tag.Name)
+            {
+                case SongTools.SingName:
+                    TellSongProblem(tag.Name, SingSong(operation, configured, call, afterReply: true));
+                    break;
+                case SongTools.PlayName:
+                    PlayFromTagAsync(configured, call).Forget();
+                    break;
+                default:
+                    StopSinging(call);
+                    break;
+            }
+        }
+    }
+
+    private async Task PlayFromTagAsync(LiveConversationConfiguration configured, TextToolCall call) =>
+        TellSongProblem(call.Name, await PlaySongAsync(configured, call, CancellationToken.None).ConfigureAwait(false));
+
+    // A song tag that couldn't be done: Martlet tells the user why on its own (the reply can't hear a tool's answer).
+    private void TellSongProblem(string name, ConversationToolResult result)
+    {
+        if (!result.IsError) return;
+        var text = CreationsCheckIn.TellUser(result) ? result.Output
+            : name == SongTools.SingName ? SongTools.Unavailable("the words can't be written in the background here.")
+            : result.Output + " Tell the user in a few words, in character.";
+        var told = BringUp("Singing", text) is not null;
+        ErrorLog.Info($"Singing: the {name} tag wasn't done" + (told ? "; Martlet tells you why on its own." : "."));
     }
 
     // ---------- pictures (draw_picture) ----------

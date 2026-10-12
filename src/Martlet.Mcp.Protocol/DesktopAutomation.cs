@@ -176,6 +176,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "FriendsMakeShareLink", "AcceptShareLink", "ShareLinkClose",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
         "CharacterModelAddCancel",
+        // Find a character (Companion › Character): Find a character... only opens its window and Close closes it, and Add a
+        // voice clip you downloaded only opens Companion › Voice. Search sends the typed name to VRoid Hub and GitHub and has the
+        // Thinking model write a personality, Write again asks it again, Search the web for models or voice clips sends the name
+        // to DuckDuckGo, Link VRoid Hub opens the browser sign-in, Open its page, Open and the site searches open the browser,
+        // Add a model you downloaded opens Add a character, and Use this look and Use without a new look make a character, so
+        // they need --allow-ui-effects. The Account page's Link VRoid Hub and Unlink VRoid Hub (AccountVRoidHubLink,
+        // AccountVRoidHubUnlink) need it too.
+        "CharacterFinderOpen", "CharacterFinderClose", "CharacterFinderAddVoice",
         // Character profiles: Home's Manage profiles, the Character and Personality pages' Open profiles and the Profiles page's
         // links only open a Companion page; New profile... and a profile's Edit (CharacterProfileEdit-<key>) only open the form,
         // filled in, and Cancel closes it. Nothing is saved until Save; Use (here, Home's HomeCharacterProfile and the icon
@@ -604,6 +612,16 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
         "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
+        // Find a character: the window's status line (what Search, Link and Use did, with a used look's credit), whether VRoid
+        // Hub is linked (and as which VRoid Hub user) on the window, Companion › Character and the Account page, how the
+        // personality was written and how many looks were found from where. Each look's creator, source and license
+        // (CharacterFinderAbout-<n>), its conditions of use (CharacterFinderConditions-<n>) and whether and how it can be used
+        // (CharacterFinderState-<n>). Never the typed name, notes or personality.
+        "CharacterFinderStatus", "CharacterFinderVRoidHub", "CharacterFinderPersonalityState", "CharacterFinderResults", "VRoidHubState",
+        "AccountVRoidHubState",
+        // Find a character's backup finder: how many web pages may have a model or recordings of the voice (or that the web
+        // search didn't work), and each page's site and the search engine's snippet (CharacterFinderWebAbout-<model|voice>-<n>).
+        "CharacterFinderWebModels", "CharacterFinderWebVoices",
         // Companion › Emotes and motions: how many the shown model has and who named them, the Thinking model's
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
         // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name), and
@@ -828,9 +846,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ID is kept from when Martlet asked first); ticking them saves guides\library.json,
         // so it needs --allow-ui-effects. Each app's name and line read through AppGuideName- and AppGuideStatus- below. The Add an
         // app boxes read as what is typed in them: an app's name, its program names and wiki addresses (ui_type and ui_set_text
-        // type there).
+        // type there). Each box's grey hint (AppGuideAddNameHint and the rest, Martlet's own fixed words) shows while it is empty;
+        // with layout, its bounds start where typed text's textBounds start.
         "AppGuidesNow", "AppGuidesDisclosure", "AppGuidesFront", "AppGuidesEmpty", "AppGuidesResult", "AppGuidesOn", "AppGuidesAsk",
-        "AppGuideAddName", "AppGuideAddPrograms", "AppGuideAddSites",
+        "AppGuideAddName", "AppGuideAddPrograms", "AppGuideAddSites", "AppGuideAddNameHint", "AppGuideAddProgramsHint", "AppGuideAddSitesHint",
         // Companion › Check-ins: how many check-ins are on and the Thinking pool member that takes them first, or why they can't
         // run ("CheckInsNow"), and the last check-in that ran, when, on which member and what came of it in a few words
         // ("CheckInsLast"; never what was said or answered). Each check-in's line reads through CheckInStatus- below.
@@ -1096,7 +1115,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
         "PickerFacts-", "PickerDetail-", "PickerFact-", "PickerState-", "PickerCell-", "PickerSummary-",
-        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "OwnVoiceLine-", "OwnVoiceLineState-", "OwnVoiceRecord-", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-",
+        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "OwnVoiceLine-", "OwnVoiceLineState-", "OwnVoiceRecord-", "CharacterModelState-", "CharacterFinderAbout-", "CharacterFinderConditions-", "CharacterFinderState-", "CharacterFinderWebAbout-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -1321,6 +1340,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new
         {
             processId,
+            // Front first (the order Windows stacks them), so it shows which window covers which.
             windows = windows.Select(window => window.Current.Name).ToArray(),
             // A window that is disabled can't take input, as when a modal dialog blocks it; the talk window never blocks Martlet.
             // Its frame shows whether it can be resized, minimized and maximized; with layout, where it is and the work area
@@ -1343,7 +1363,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["foreground"] = GetForegroundWindow() == handle,
                     // The mouse passes through the window to the one under it (WS_EX_TRANSPARENT): the character overlay while
                     // click-through is on.
-                    ["clickThrough"] = (GetWindowLongPtrW(handle, ExtendedStyleIndex) & TransparentStyle) != 0
+                    ["clickThrough"] = (GetWindowLongPtrW(handle, ExtendedStyleIndex) & TransparentStyle) != 0,
+                    // The Martlet window it belongs to and always stays in front of (a dialog over its window), or null for a
+                    // window of its own that another Martlet window can cover, such as the talk window.
+                    ["ownedBy"] = GetWindow(handle, OwnerWindow) is var owner && owner != 0
+                        ? windows.FirstOrDefault(other => other.Current.NativeWindowHandle == unchecked((int)owner))?.Current.Name
+                        : null
                 };
                 if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
                 return state;
@@ -1444,6 +1469,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     }
 
     [DllImport("user32.dll")] private static extern nint GetWindowLongPtrW(nint window, int index);
+    [DllImport("user32.dll")] private static extern nint GetWindow(nint window, uint command);
+    private const uint OwnerWindow = 4;
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetWindowRect(nint window, out NativeRect rect);
     [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint window, uint flags);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);

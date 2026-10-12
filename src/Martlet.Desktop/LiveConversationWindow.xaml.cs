@@ -263,6 +263,18 @@ public partial class LiveConversationWindow : ThemedWindow
         BeginAsync().Forget();
     }
 
+    /// <summary>Shows the window in front (Show conversation, the notification-area menu's Talk). It is a window of its own, so
+    /// Martlet's window can cover it; this brings it back over it even when Windows doesn't let Martlet take the focus.</summary>
+    internal void ShowInFront()
+    {
+        if (closed) return;
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Topmost = true;
+        Topmost = false;
+        Activate();
+    }
+
     /// <summary>Raised when the close button hid the window because the conversation keeps listening or watching.</summary>
     internal event Action? HiddenToBackground;
 
@@ -797,6 +809,9 @@ public partial class LiveConversationWindow : ThemedWindow
         RenderActions();
         return job;
     }
+
+    /// <summary>Whether the reply that carried <paramref name="job"/> stayed quiet ([pass]).</summary>
+    internal bool StayedQuiet(BackgroundJob job) => controller.StayedQuiet(job);
 
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
@@ -2287,38 +2302,6 @@ public partial class LiveConversationWindow : ThemedWindow
         RenderActions();
     }
 
-    private bool ownTaskbarButton;
-
-    /// <summary>While Martlet's main window is hidden in the notification area the talk window gets its own taskbar button, so
-    /// it can't get lost behind other windows.</summary>
-    internal void UseOwnTaskbarButton()
-    {
-        ownTaskbarButton = true;
-        if (PresentationSource.FromVisual(this) is not System.Windows.Interop.HwndSource source || !AddAppWindowStyle(source.Handle) ||
-            !IsVisible) return;
-        // The taskbar reads the style when a window shows.
-        Hide();
-        Show();
-    }
-
-    protected override void OnSourceInitialized(EventArgs e)
-    {
-        base.OnSourceInitialized(e);
-        if (ownTaskbarButton && PresentationSource.FromVisual(this) is System.Windows.Interop.HwndSource source) AddAppWindowStyle(source.Handle);
-    }
-
-    private static bool AddAppWindowStyle(nint window)
-    {
-        const int GWL_EXSTYLE = -20, WS_EX_APPWINDOW = 0x40000;
-        var style = GetWindowLongPtrW(window, GWL_EXSTYLE);
-        if ((style & WS_EX_APPWINDOW) != 0) return false;
-        SetWindowLongPtrW(window, GWL_EXSTYLE, style | WS_EX_APPWINDOW);
-        return true;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetWindowLongPtrW(nint window, int index);
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint SetWindowLongPtrW(nint window, int index, nint value);
-
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Escape) return;
@@ -2398,8 +2381,9 @@ public partial class LiveConversationWindow : ThemedWindow
         var content = operation.Turn?.Content;
         var text = content?.Text?.Trim() ?? "";
         var refusal = content?.Refusal?.Trim() ?? "";
-        // A reply to what always listening heard may be [pass]: nothing is shown until it clearly isn't.
-        if (operation.Spoken && LiveConversationController.MaybeSilent(text)) text = "";
+        // A reply to what always listening heard, or one Martlet started on its own, may be [pass]: nothing is shown until it
+        // clearly isn't.
+        if (operation.MayPass && LiveConversationController.MaybeSilent(text)) text = "";
         if (reply is null && (text.Length > 0 || refusal.Length > 0)) reply = lastReply = Add(ChatRole.Martlet, "", CharacterName);
         if (reply is not null) reply.Text = text.Length > 0 ? text : refusal;
         var snapshot = operation.Turn?.Snapshot;

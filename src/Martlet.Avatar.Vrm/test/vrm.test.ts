@@ -107,7 +107,7 @@ test("common but intentionally unsupported glTF features have explicit errors", 
     ["sparse", d => Object.assign(d.accessors[0]!, { sparse: {} }), /Sparse/],
     ["matrix", d => Object.assign(d.nodes[0]!, { matrix: new Array(16).fill(0) }), /TRS/],
     ["animation", d => Object.assign(d, { animations: [{}] }), /VRMA/],
-    ["JPEG", d => Object.assign(d, { images: [{ mimeType: "image/jpeg", bufferView: 0 }] }), /embedded PNG/],
+    ["WebP", d => Object.assign(d, { images: [{ mimeType: "image/webp", bufferView: 0 }] }), /embedded PNG or JPEG/],
   ];
   for (const [name, mutate, error] of cases) {
     const { document, bin } = fixtureDocument(); mutate(document);

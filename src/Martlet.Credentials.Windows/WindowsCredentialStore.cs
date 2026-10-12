@@ -354,4 +354,51 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
         value is { Length: > 0 and <= 64 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 
     private static string ShareLinkTarget(string linkId) => $"Martlet/v3/share-link/{linkId}";
+
+    // A linked VRoid Hub account's tokens (docs/AVATARS.md#find-a-character-online), one per Martlet account on this PC
+    // (32 lowercase hex digits; "pc" before accounts exist). Base64url-encoded like MCP secrets.
+    public CredentialError WriteVRoidHubTokens(string account, string value)
+    {
+        if (!VRoidHubAccount(account) || value.Length == 0 || System.Text.Encoding.UTF8.GetByteCount(value) > MaxMcpSecretBytes)
+            return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        var encoded = System.Buffers.Text.Base64Url.EncodeToChars(bytes);
+        try { return Map(native.Write(VRoidHubTarget(account), encoded)); }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+            Array.Clear(encoded);
+        }
+    }
+
+    public CredentialError ReadVRoidHubTokens(string account, out string? value)
+    {
+        value = null;
+        if (!VRoidHubAccount(account)) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var result = Map(native.Read(VRoidHubTarget(account), out var secret));
+        using (secret)
+        {
+            if (result != CredentialError.None) return result;
+            if (secret is null) return CredentialError.Unavailable;
+            string? decoded = null;
+            secret.Use(chars =>
+            {
+                try { decoded = System.Text.Encoding.UTF8.GetString(System.Buffers.Text.Base64Url.DecodeFromChars(chars)); }
+                catch (FormatException) { decoded = null; }
+            });
+            value = decoded;
+            return decoded is null ? CredentialError.Unavailable : CredentialError.None;
+        }
+    }
+
+    public CredentialError DeleteVRoidHubTokens(string account) =>
+        !VRoidHubAccount(account) ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(VRoidHubTarget(account))) : CredentialError.UnsupportedPlatform;
+
+    private static bool VRoidHubAccount(string account) =>
+        account == "pc" || account is { Length: 32 } && account.All(char.IsAsciiHexDigitLower);
+
+    private static string VRoidHubTarget(string account) => $"Martlet/v3/vroid-hub/{account}";
 }

@@ -263,6 +263,14 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
                 vrm.TryGetProperty("humanoid", out var humanoid) && humanoid.TryGetProperty("humanBones", out var human) &&
                 human.ValueKind == JsonValueKind.Object)
                 foreach (var bone in human.EnumerateObject().Take(64)) bones.Add(bone.Name);
+            // VRM 0.x: humanBones is a list of {bone, node}; the bone names are the same as VRM 1.0's.
+            else if (document.RootElement.TryGetProperty("extensions", out var old) && old.TryGetProperty("VRM", out var vrm0) &&
+                vrm0.TryGetProperty("humanoid", out var humanoid0) && humanoid0.TryGetProperty("humanBones", out var list) &&
+                list.ValueKind == JsonValueKind.Array)
+                foreach (var bone in list.EnumerateArray().Take(64))
+                    if (bone.ValueKind == JsonValueKind.Object && bone.TryGetProperty("bone", out var name) && name.ValueKind == JsonValueKind.String &&
+                        name.GetString() is { Length: > 0 } boneName)
+                        bones.Add(boneName);
         }
         catch (JsonException) { }
         return bones;
@@ -375,6 +383,52 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         "aa", "ih", "ou", "ee", "oh", "blink", "blinkLeft", "blinkRight", "lookUp", "lookDown", "lookLeft", "lookRight", "neutral"
     };
 
+    /// <summary>A VRM 0.x blend shape preset's VRM 1.0 expression name, as the renderer (three-vrm) names it; null for
+    /// <c>unknown</c> (a custom expression goes by its own name).</summary>
+    internal static string? Vrm0Preset(string? preset) => preset?.ToLowerInvariant() switch
+    {
+        "a" => "aa", "i" => "ih", "u" => "ou", "e" => "ee", "o" => "oh", "blink" => "blink", "blink_l" => "blinkLeft", "blink_r" => "blinkRight",
+        "joy" => "happy", "angry" => "angry", "sorrow" => "sad", "fun" => "relaxed", "lookup" => "lookUp", "lookdown" => "lookDown",
+        "lookleft" => "lookLeft", "lookright" => "lookRight", "neutral" => "neutral", _ => null
+    };
+
+    /// <summary>A VRM 0.x model's expressions: its blend shape groups, named as the renderer names them.</summary>
+    private static IEnumerable<CharacterActionSource> Vrm0Sources(JsonElement root, JsonElement vrm)
+    {
+        if (!vrm.TryGetProperty("blendShapeMaster", out var master) || master.ValueKind != JsonValueKind.Object ||
+            !master.TryGetProperty("blendShapeGroups", out var groups) || groups.ValueKind != JsonValueKind.Array) yield break;
+        string Morph(int mesh, int index)
+        {
+            try
+            {
+                var meshes = root.GetProperty("meshes")[mesh];
+                JsonElement names;
+                if (meshes.TryGetProperty("extras", out var extras) && extras.TryGetProperty("targetNames", out names) ||
+                    meshes.GetProperty("primitives")[0].TryGetProperty("extras", out extras) && extras.TryGetProperty("targetNames", out names))
+                    return names[index].GetString() ?? $"shape {index}";
+            }
+            catch (Exception error) when (error is KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException) { }
+            return $"shape {index}";
+        }
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var group in groups.EnumerateArray().Take(128))
+        {
+            if (group.ValueKind != JsonValueKind.Object) continue;
+            var preset = group.TryGetProperty("presetName", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+            var mapped = Vrm0Preset(preset);
+            var name = mapped ?? (group.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null);
+            if (string.IsNullOrWhiteSpace(name) || !seen.Add(name) || mapped is not null && NotActions.Contains(mapped)) continue;
+            var parts = new List<string> { mapped is not null ? "VRM preset expression" : "custom expression" };
+            if (group.TryGetProperty("binds", out var binds) && binds.ValueKind == JsonValueKind.Array && binds.GetArrayLength() > 0)
+                parts.Add("shapes " + string.Join(", ", binds.EnumerateArray().Take(8).Select(b =>
+                    b.TryGetProperty("mesh", out var m) && b.TryGetProperty("index", out var i) && m.ValueKind == JsonValueKind.Number &&
+                    i.ValueKind == JsonValueKind.Number ? Morph(m.GetInt32(), i.GetInt32()) : "?")));
+            if (group.TryGetProperty("materialValues", out var colors) && colors.ValueKind == JsonValueKind.Array && colors.GetArrayLength() > 0)
+                parts.Add($"{colors.GetArrayLength()} color changes");
+            yield return new("expression:" + name, CharacterActionKind.Expression, name, Clip(string.Join("; ", parts)));
+        }
+    }
+
     private static IEnumerable<CharacterActionSource> VrmSources(byte[] glb)
     {
         JsonDocument document;
@@ -389,6 +443,12 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         using (document)
         {
             var root = document.RootElement;
+            if (root.TryGetProperty("extensions", out var vrm0Extensions) && !vrm0Extensions.TryGetProperty("VRMC_vrm", out _) &&
+                vrm0Extensions.TryGetProperty("VRM", out var vrm0))
+            {
+                foreach (var source in Vrm0Sources(root, vrm0)) yield return source;
+                yield break;
+            }
             if (!root.TryGetProperty("extensions", out var extensions) || !extensions.TryGetProperty("VRMC_vrm", out var vrm) ||
                 !vrm.TryGetProperty("expressions", out var expressions) || expressions.ValueKind != JsonValueKind.Object) yield break;
             string Morph(int node, int index)

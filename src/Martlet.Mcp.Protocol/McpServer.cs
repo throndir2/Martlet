@@ -743,8 +743,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "on 127.0.0.1 (pinned TLS) told to treat every connection as outside home, a desktop paired at home through its paired " +
             "client, and a stranger's pinned HTTPS client. Checks that pairing from outside is refused until the owner allows it, " +
             "guessing is locked out with a doubling Retry-After, routes anyone may call have a per-address budget, and the paired " +
-            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. Loopback only; " +
-            "writes nothing to disk.", new { }),
+            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. When this PC has " +
+            "a Tailscale address, a second gateway on this PC's home address gets an outside address and is reached through this " +
+            "PC's own Tailscale address (refused as outside home until sign-in is set up, then answering; it stops listening there " +
+            "when the outside address is removed); otherwise that step is reported in notRun. Writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
             "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI) on its own graphics card, and a " +
@@ -1909,11 +1911,13 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
         Tool("greeting_check", "Rehearse Martlet's greeting once it has warmed up after it starts (docs/CONVERSATION.md#greeting-when-martlet-starts) " +
-            "with the production code and fixture facts: the time of day, the end of the newest conversation on this PC from a real " +
-            "conversation record in a temporary folder (a newer messaging-app chat left out), only the reminders due in the next 12 " +
-            "hours, the open apps with the one in front first, the counts-only line for the log and Settings' GreetingStatus, and the " +
-            "greeting notice through BackgroundJobs (on its own as soon as Martlet is free, in the notes of the user's first message, " +
-            "said once, let go after waiting too long). No model, network or credentials.", new { }),
+            "with the production code and fixture facts: the time of day, the weekend and special days, which account, voice or " +
+            "Windows names count as a real name (user names and handles don't), the end of the newest conversation on this PC and " +
+            "a newer Telegram chat from a real conversation record in a temporary folder, reminders missed while Martlet wasn't " +
+            "running, only the reminders due in the next 12 hours, a Martlet update, the open apps with the one in front first, the " +
+            "counts-only line for the log and Settings' GreetingStatus, and the greeting notice through BackgroundJobs (in character " +
+            "or not at all with [pass], on its own as soon as Martlet is free, in the notes of the user's first message, said once, " +
+            "let go after waiting too long). No model, network or credentials.", new { }),
         Tool("check_ins_status", "Martlet's check-ins (Companion › Check-ins; docs/CONVERSATION.md#check-ins: short questions the " +
             "Thinking pool answers every few minutes, such as whether lingering emotes still fit), from a data directory: " +
             "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
@@ -1960,9 +1964,17 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "arguments and the secret only to its role, terms recorded as accepted, the plan assignments with failover, Sharing work, " +
             "one cluster check, a failed step that doesn't stop the others, a change missing from the review skipped, and the run " +
             "record's states as every computer reads it from the shared settings. In-process; no network, model or credential.", new { }),
+        Tool("vroid_hub_status", "Whether Martlet can show VRoid Hub characters on this PC: whether this build has VRoid Hub app keys " +
+            "(never the keys), whether a VRoid Hub account is linked for the account whose settings the data directory holds (and its " +
+            "VRoid Hub user name; never a token), the VRoid Hub looks this PC used (vroid-hub-looks.json: name, creator, conditions " +
+            "of use) and whether the character shown is one. Read-only; no network.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("helper_jobs_status", "Where Martlet's helper jobs ran last, from a data directory's helper-jobs.json (written by the " +
             "desktop): for each kind (memory: remembering and learning names after a reply; action_naming: naming a character's " +
-            "emotes; touch_zones: finding its touch zones in one picture) its priority, whether it ran on a Thinking pool member " +
+            "emotes; touch_zones: finding its touch zones in one picture; character_writing: writing a character's personality in " +
+            "Find a character) its priority, whether it ran on a Thinking pool member " +
             "(route pool, with the member) or on the conversation's own Thinking model after the reply finished speaking (route " +
             "fallback, with how long it waited for the reply), how it ended and when. Never a prompt or answer. Read-only.", new
         {
@@ -2546,6 +2558,11 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "martlet_guide" => Guide(OptionalString(arguments, "topic"), OptionalString(arguments, "search"), OptionalString(arguments, "tool")),
                 "characters_list" => await CharacterConfiguration.ListAsync(DataDirectory(arguments), OptionalBool(arguments, "includeText") ?? false,
                     cancellation),
+                "character_find_looks" => await CharacterLooks.FindAsync(DataDirectory(arguments), RequiredString(arguments, "query"),
+                    OptionalInt(arguments, "count"), OptionalStrings(arguments, "sources"), cancellation),
+                "vroid_hub_status" => CharacterLooks.VRoidHubStatus(DataDirectory(arguments)),
+                "character_find_on_web" => await CharacterLooks.FindOnWebAsync(RequiredString(arguments, "query"),
+                    OptionalBool(arguments, "models") ?? true, OptionalBool(arguments, "voices") ?? true, cancellation),
                 "character_create" => await ChangingAsync(name, () => CharacterConfiguration.CreateAsync(DataDirectory(arguments),
                     OptionalString(arguments, "name"), OptionalString(arguments, "personality"), OptionalString(arguments, "cardPath"),
                     OptionalString(arguments, "look"), OptionalString(arguments, "voice"), OptionalBool(arguments, "profile"),
@@ -2836,9 +2853,12 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
             System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
             System.Windows.Automation.ElementNotAvailableException or Martlet.Core.Contracts.ContractException or
-            Martlet.Core.Settings.CharacterCardException or IOException or UnauthorizedAccessException)
+            Martlet.Core.Settings.CharacterCardException or IOException or UnauthorizedAccessException or
+            // The character finders (character_find_looks, character_find_on_web, a look key in character_create) go online.
+            System.Net.Http.HttpRequestException or Martlet.Avatar.Hosting.VRoidHubException or Martlet.Conversation.WebResearchException ||
+            ex is TaskCanceledException && !cancellation.IsCancellationRequested)
         {
-            return new { content = new[] { new { type = "text", text = ex.Message } }, isError = true };
+            return new { content = new[] { new { type = "text", text = ex is TaskCanceledException ? "A web request took too long." : ex.Message } }, isError = true };
         }
     }
 
@@ -3667,7 +3687,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         return new
         {
             stage = state.Stage.ToString(), ready = state.Ready, version = state.Version, hostId = state.HostId,
-            published = state.Address is not null, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
+            published = state.Address is not null, publishedEverywhere = state.PublishedEverywhere, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
             roles = state.Roles, network = state.Network,
             desktops = state.Desktops.Select(d => new { id = d.Id, name = d.Name }).ToArray(),
             // The warning Companion › Voice and Devices show when this PC's voice engine shares the card with other roles.

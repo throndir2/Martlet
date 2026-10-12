@@ -9,7 +9,8 @@ export interface VrmHit {
   readonly hair: boolean;
   readonly mesh: string | undefined;
   readonly material: string | undefined;
-  /** The hit point in the model's own space (its scene root). */
+  /** The hit point in the model's own space (its scene root). A VRM 0.x model's root is turned half a turn (rotateVRM0), so
+   *  its x and z point the other way than a VRM 1.0 model's. */
   readonly point: { readonly x: number; readonly y: number; readonly z: number };
   /** Where the hit point was in the rest pose (see restPoint), in the same space as `point`; absent without the rest pose. */
   readonly rest?: { readonly x: number; readonly y: number; readonly z: number };

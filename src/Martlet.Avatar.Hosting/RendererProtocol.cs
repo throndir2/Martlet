@@ -34,6 +34,43 @@ public sealed record RendererAction(string Kind, string Name, bool On = true, bo
 /// replies aren't spoken), so the overlay's menu offers to unmute it (see <see cref="RendererVoice"/>).</summary>
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme, RendererPlacement? Placement = null,
     IReadOnlyDictionary<string, string>? ThemeColors = null, bool VoiceMuted = false);
+/// <summary>One piece of a model Martlet shows from memory (<see cref="RemoteCharacterModels"/>), sent as "model" before
+/// "load" because the renderer can't read it from disk. Pieces go in order (<paramref name="Index"/> 0 to
+/// <paramref name="Count"/> - 1); <paramref name="Data"/> is base64. Each is replied to with "ok".</summary>
+public sealed record RendererModelPiece(string Path, int Index, int Count, int TotalBytes, string Data)
+{
+    /// <summary>A piece's size before base64: well under <see cref="RendererProtocol.MaximumMessageBytes"/> once encoded.</summary>
+    public const int PieceBytes = 4 * 1024 * 1024;
+
+    public static IEnumerable<RendererModelPiece> Split(string path, byte[] bytes)
+    {
+        var count = (bytes.Length + PieceBytes - 1) / PieceBytes;
+        for (var index = 0; index < count; index++)
+        {
+            var offset = index * PieceBytes;
+            yield return new(path, index, count, bytes.Length, Convert.ToBase64String(bytes, offset, Math.Min(PieceBytes, bytes.Length - offset)));
+        }
+    }
+
+    /// <summary>Adds this piece to <paramref name="into"/> (null before the first piece); returns the bytes so far. Throws
+    /// <see cref="InvalidDataException"/> for a piece out of order or of the wrong size.</summary>
+    public byte[] AddTo(byte[]? into, int expectedIndex)
+    {
+        RemoteCharacterModels.Validate(Path);
+        if (Index != expectedIndex || Count is < 1 or > 1024 || Index >= Count || TotalBytes is < 1 or > LocalAvatarFiles.MaximumVrmBytes ||
+            (long)Count * PieceBytes < TotalBytes || (into is not null && into.Length != TotalBytes))
+            throw new InvalidDataException("A model piece is out of order.");
+        byte[] data;
+        try { data = Convert.FromBase64String(Data); }
+        catch (FormatException) { throw new InvalidDataException("A model piece isn't valid base64."); }
+        var offset = Index * PieceBytes;
+        var expected = Math.Min(PieceBytes, TotalBytes - offset);
+        if (data.Length != expected) throw new InvalidDataException("A model piece has the wrong size.");
+        into ??= new byte[TotalBytes];
+        data.CopyTo(into, offset);
+        return into;
+    }
+}
 /// <summary>Whether Martlet's voice is muted now (changed from the overlay's menu, Martlet's window or another computer), so
 /// the overlay's menu offers Mute voice or Unmute voice. Only Martlet mutes: the menu asks it with a "mute" or "unmute"
 /// <see cref="RendererRequest"/>. Replied to with "ok".</summary>

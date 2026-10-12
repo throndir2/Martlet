@@ -160,8 +160,16 @@ public sealed class GatewayServer
     public GatewayExposure Exposure
     {
         get => application.Guard.Exposure;
-        set => application.Guard.Exposure = value;
+        set
+        {
+            application.Guard.Exposure = value;
+            overlay?.Wake();
+        }
     }
+
+    /// <summary>The addresses ("ip:port") this host listens on besides its home origin: its overlay network addresses while
+    /// it has outside addresses (empty for a host inside a container or on loopback).</summary>
+    public IReadOnlyList<string> OutsideListeners => application.OutsideListeners();
 
     public GatewayServer(
         GatewayHostIdentity identity,
@@ -225,7 +233,17 @@ public sealed class GatewayServer
                 $"Gateway {identity.HostId} started on {listener.Origin.CanonicalOrigin}" +
                 (typeof(GatewayServer).Assembly.GetName().Version?.ToString(3) is { } version ? $" (Martlet {version})." : "."));
             application.LogGpuMap();
-            return new InferenceListener(listener, inference, application.Logs);
+            // A host listening on its exact home address (not inside a container, whose runtime publishes the port) also listens
+            // on its overlay addresses while it has outside addresses (docs/NETWORK.md).
+            var overlay = listenerFactory is KestrelGatewayListenerFactory && binding.ListenAddress is null &&
+                !IPAddress.IsLoopback(binding.Origin.Address)
+                ? new GatewayOverlayListeners(binding, application.InvokeAsync, OutsideAddresses, GatewayOverlayListeners.LocalAddresses,
+                    (level, message, repeatKey) => application.Logs.Own(level, message, repeatKey))
+                : null;
+            this.overlay = overlay;
+            application.OutsideListeners = overlay is null ? static () => [] : () => overlay.Listening;
+            application.OutsideAddressesChanged = overlay is null ? null : overlay.Wake;
+            return new InferenceListener(listener, inference, application.Logs, overlay);
         }
         catch
         {
@@ -235,8 +253,14 @@ public sealed class GatewayServer
 
     }
 
+    private volatile GatewayOverlayListeners? overlay;
+
+    /// <summary>Every outside address of this host: those set on the host itself and those its roster entry lists.</summary>
+    private IReadOnlyList<string> OutsideAddresses() => [.. application.Guard.Exposure.OutsideAddresses ?? [], .. application.Network.OwnAddresses];
+
     private sealed class InferenceListener(
-        GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference, GatewayLogStore logs) : GatewayListenerHandle
+        GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference, GatewayLogStore logs,
+        GatewayOverlayListeners? overlay) : GatewayListenerHandle
     {
         private int stopping;
         public override GatewayOrigin Origin => listener.Origin;
@@ -245,6 +269,7 @@ public sealed class GatewayServer
             var first = Interlocked.Exchange(ref stopping, 1) == 0;
             if (first) logs.Own(Martlet.Core.Logs.LogLevels.Info, "Gateway stopping.");
             var closing = inference.CloseAsync().AsTask();
+            if (overlay is not null) await overlay.DisposeAsync().ConfigureAwait(false);
             await listener.DisposeAsync().ConfigureAwait(false);
             await closing.ConfigureAwait(false);
             if (first) logs.Flush();
@@ -261,36 +286,7 @@ public sealed class KestrelGatewayListenerFactory : IGatewayListenerFactory
     {
         ArgumentNullException.ThrowIfNull(binding);
         ArgumentNullException.ThrowIfNull(application);
-        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
-        {
-            ApplicationName = typeof(KestrelGatewayListenerFactory).Assembly.FullName,
-            Args = []
-        });
-        builder.Logging.ClearProviders();
-        builder.WebHost.ConfigureKestrel(options =>
-        {
-            options.AddServerHeader = false;
-            options.Limits.MaxRequestBodySize = GatewayHttpApplication.MaximumPairingRequestBytes;
-            options.Limits.MaxConcurrentConnections = 64;
-            options.Limits.MaxRequestHeaderCount = 32;
-            options.Limits.MaxRequestHeadersTotalSize = 16_384;
-            options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(5);
-            options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
-            options.Listen(binding.ListenAddress ?? binding.Origin.Address, binding.Origin.Port, listen =>
-            {
-                listen.Protocols = HttpProtocols.Http1;
-                listen.UseHttps(new HttpsConnectionAdapterOptions
-                {
-                    ServerCertificate = binding.Certificate,
-                    ServerCertificateSelector = binding.CertificateSelector is { } select
-                        ? (_, _) => select() : null,
-                    SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ClientCertificateMode = ClientCertificateMode.NoCertificate
-                });
-            });
-        });
-        var app = builder.Build();
-        app.Run(application);
+        var app = Build(binding.ListenAddress ?? binding.Origin.Address, binding.Origin.Port, binding, application);
         try
         {
             await app.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -308,6 +304,43 @@ public sealed class KestrelGatewayListenerFactory : IGatewayListenerFactory
             await app.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>A gateway listener on <paramref name="address"/>:<paramref name="port"/> with <paramref name="binding"/>'s TLS
+    /// key and the gateway's limits (also used for the overlay listeners, <see cref="GatewayOverlayListeners"/>).</summary>
+    internal static WebApplication Build(IPAddress address, int port, GatewayTlsBinding binding, RequestDelegate application)
+    {
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
+        {
+            ApplicationName = typeof(KestrelGatewayListenerFactory).Assembly.FullName,
+            Args = []
+        });
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.AddServerHeader = false;
+            options.Limits.MaxRequestBodySize = GatewayHttpApplication.MaximumPairingRequestBytes;
+            options.Limits.MaxConcurrentConnections = 64;
+            options.Limits.MaxRequestHeaderCount = 32;
+            options.Limits.MaxRequestHeadersTotalSize = 16_384;
+            options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(5);
+            options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
+            options.Listen(address, port, listen =>
+            {
+                listen.Protocols = HttpProtocols.Http1;
+                listen.UseHttps(new HttpsConnectionAdapterOptions
+                {
+                    ServerCertificate = binding.Certificate,
+                    ServerCertificateSelector = binding.CertificateSelector is { } select
+                        ? (_, _) => select() : null,
+                    SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    ClientCertificateMode = ClientCertificateMode.NoCertificate
+                });
+            });
+        });
+        var app = builder.Build();
+        app.Run(application);
+        return app;
     }
 
     private sealed class KestrelGatewayListenerHandle(

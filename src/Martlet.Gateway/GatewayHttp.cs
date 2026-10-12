@@ -50,7 +50,11 @@ internal sealed partial class GatewayHttpApplication
         ApiKeys = new(identity.HostId, clock);
         Guard = new(clock, (level, message, repeatKey) => Logs.Own(level, message, repeatKey));
         // A host whose roster entry lists outside addresses is reachable from outside: the guard's limits apply to every source.
-        Network.Changed = roster => Guard.Listed = roster?.Host(identity.HostId) is { Removed: false, Addresses.Count: > 0 };
+        Network.Changed = roster =>
+        {
+            Guard.Listed = roster?.Host(identity.HostId) is { Removed: false, Addresses.Count: > 0 };
+            OutsideAddressesChanged?.Invoke();
+        };
         InitializeSignIn(credentials);
         // The account directory decides which device may use which memory space (GatewayMemorySpaceAccess.cs).
         MemorySpaces.Access = MayUseMemorySpace;
@@ -61,6 +65,12 @@ internal sealed partial class GatewayHttpApplication
 
     /// <summary>Rate limits, lockouts and the audit log every request passes (see <see cref="GatewayRequestGuard"/>).</summary>
     internal GatewayRequestGuard Guard { get; }
+
+    /// <summary>The addresses this host listens on besides its home origin (<see cref="GatewayOverlayListeners"/>).</summary>
+    internal Func<IReadOnlyList<string>> OutsideListeners { get; set; } = static () => [];
+
+    /// <summary>Called when this host's roster entry may list other outside addresses.</summary>
+    internal Action? OutsideAddressesChanged { get; set; }
 
     internal async Task InvokeAsync(HttpContext context)
     {

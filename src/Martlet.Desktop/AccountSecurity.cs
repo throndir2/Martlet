@@ -42,6 +42,8 @@ internal interface IAccountPageHost
     /// <summary>Before the merge steps: this PC signs in as the merged account (its Prove sign-in) on the hosts, so they let it
     /// read that account's data.</summary>
     Task PrepareMergeAsync(Martlet.Avatar.Audio2Face.Remote.HostAccountProof other, CancellationToken token);
+    /// <summary>The active account's VRoid Hub link on this PC (Linked services); null while Martlet isn't ready.</summary>
+    VRoidHubService? VRoidHub { get; }
 }
 
 /// <summary>

@@ -35,6 +35,12 @@ character, change a setting or see how Martlet is set up, start with its
 `martlet_guide` tool, then the `character_*` and `settings_*` tools
 ([Use Martlet through its MCP server](../AGENTS.md#use-martlet-through-its-mcp-server)).
 
+**Martlet is one app on all the owner's computers:** settings, model lists,
+provider choices and their API keys are shared by default, so a new companion
+PC gets the same setup. Keep a setting on one computer only when it describes
+that computer (its devices, installs, measurements, pairings or startup).
+Details: [Martlet is one app](../AGENTS.md#martlet-is-one-app-configuration-is-shared).
+
 For implementation work, reuse the assigned worktree branch, commit, publish a
 PR and merge it into `main` yourself once validation passes, without routine
 approval prompts. Explicit user holds, required protections and authorization

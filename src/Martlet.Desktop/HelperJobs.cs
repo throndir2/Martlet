@@ -27,7 +27,9 @@ internal enum HelperJobKind
     /// <summary>Deciding a character's touch temperament from its personality.</summary>
     Temperament,
     /// <summary>Measuring a character's eyes in one close-up of its face (vision, low priority).</summary>
-    Eyes
+    Eyes,
+    /// <summary>Writing the personality of a character the owner named in Find a character (the owner waits).</summary>
+    CharacterWriting
 }
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
@@ -90,7 +92,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
     internal LiveFloor? Floor { get; init; }
 
     internal static HelperJobPriority PriorityOf(HelperJobKind kind) =>
-        kind == HelperJobKind.TouchZones ? HelperJobPriority.Normal : HelperJobPriority.Low;
+        kind is HelperJobKind.TouchZones or HelperJobKind.CharacterWriting ? HelperJobPriority.Normal : HelperJobPriority.Low;
 
     internal static string Name(HelperJobKind kind) => kind switch
     {
@@ -98,6 +100,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         HelperJobKind.ActionNaming => "action_naming",
         HelperJobKind.Temperament => "temperament",
         HelperJobKind.Eyes => "eyes",
+        HelperJobKind.CharacterWriting => "character_writing",
         _ => "touch_zones"
     };
 
