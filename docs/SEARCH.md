@@ -194,7 +194,7 @@ generic collections of its own structs on the hot path for the same reason.
   synthetic data and report the search times.
 
 When the engine replaced the three separate rankers, it gave the same
-rankings as before on the memory, guide and past-conversation fixtures and on
-about 2,000 random queries. The only difference: when more chunks than the
+rankings as before on every query of the memory, guide and past-conversation
+evaluations and on 2,420 random queries. The only difference: when more chunks than the
 first stage keeps have exactly the same score, the engine keeps the ones
 matched first; before, a heap kept an arbitrary set of them.
