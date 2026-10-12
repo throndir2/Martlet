@@ -259,6 +259,19 @@ internal sealed class AccountSession
         Changed?.Invoke();
     }
 
+    /// <summary>Joining with the owner's approval (<see cref="OwnerJoin"/>): the household's owner account <paramref name="owner"/>
+    /// signs in on this device with this Windows login (no Prove: the directory sync writes a <c>migration</c> binding). The
+    /// caller switches to it and folds this PC's own owner account into it.</summary>
+    internal void SignInOwner(Guid owner)
+    {
+        if (state.SignedIn.Contains(owner)) return;
+        var next = state.Add(owner);
+        next.Save(HouseholdFolder);
+        state = next;
+        ErrorLog.Info($"Accounts: the owner let this PC join, so it signs in to the household's owner account {Short(owner)} with this Windows login.");
+        Changed?.Invoke();
+    }
+
     /// <summary>W12, *Link this Windows login*: this device's binding of <paramref name="accountId"/>, signed in with a Prove
     /// sign-in, uses <paramref name="login"/> from now on (keeping the attestation), so the directory sync writes it that way.</summary>
     internal void BindWith(Guid accountId, AccountLoginKey login)
@@ -389,8 +402,11 @@ internal sealed class AccountSession
             if (entry is null)
             {
                 if (state.PendingFor(id) is not { } pending) continue;
-                var role = pending.Role == AccountRoles.Owner && directory.Live.Any(a => a.Role == AccountRoles.Owner && a.Id != id)
-                    ? AccountRoles.Member : pending.Role;
+                var otherOwner = directory.Live.Any(a => a.Role == AccountRoles.Owner && a.Id != id);
+                // This PC signs in to the household's owner account instead (OwnerJoin): its own owner account is never written.
+                if (pending.Role == AccountRoles.Owner && otherOwner &&
+                    state.SignedIn.Any(s => s != id && directory.Find(s) is { Removed: false, Role: AccountRoles.Owner })) continue;
+                var role = pending.Role == AccountRoles.Owner && otherOwner ? AccountRoles.Member : pending.Role;
                 entry = (id == OwnerAccount.IdFor(roster.NetworkId) ? OwnerAccount.Create(roster, pending.Name) with { Role = role }
                     : Account.Create(pending.Name, role, id)).WithLogin(AccountLogin.For(windows, null, pending.CreatedAt));
             }

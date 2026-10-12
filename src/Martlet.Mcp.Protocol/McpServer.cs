@@ -1072,6 +1072,19 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("memory_forget", "Delete remembered facts, as Companion › Memory's Delete does: every fact whose text contains contains " +
+            "(any case) or whose ID is in ids, in every memory store of the data folder or only in space (a space ID from " +
+            "memory_status). preview: true only counts them. A running Martlet keeps working (the tool waits up to 15 s for the store " +
+            "to be free) and its memory sync then forgets the facts on your other computers. Returns per space how many facts it has, " +
+            "matched and deleted and the matched fact IDs; never a fact's text. Needs --allow-changes unless preview. " +
+            DataDirectoryNote, new
+        {
+            contains = new { type = "string", maxLength = 200 },
+            ids = new { type = "array", items = new { type = "string" }, maxItems = 1000 },
+            space = new { type = "string", maxLength = 128 },
+            preview = new { type = "boolean" },
+            dataDirectory = new { type = "string" }
+        }),
         Tool("household_sharing", "Read what each account of a household shares (docs/ACCOUNTS.md \"Sharing\") from a desktop's data " +
             "directory: its copy of the household settings (shared-settings.json, the sharing.<account> entries) and the account in use " +
             "(accounts\\session.json). Per account: its ID (32 hex), how many characters it shares as a copy and together, each shared " +
@@ -2704,6 +2717,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
                 "memory_status" => await MemoryStatusAsync(arguments, cancellation),
+                "memory_forget" => await MemoryForgetAsync(arguments, cancellation),
                 "household_sharing" => HouseholdSharingStatus.Read(DataDirectory(arguments)),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "accounts_sync_selftest" => await NodeLinkCheckAsync(cancellation, "accounts"),
