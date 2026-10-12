@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-10-12
+
 ### Added
 
 - **Your VRM character moves its whole body when you talk**: with a computer that has the motion role (an NVIDIA GPU with about 24 GB), Martlet can cheer, clap, bow deeply or do any body movement it thinks of. It makes a new motion in the background and plays it when it's ready, and your words never wait for it. Martlet keeps each motion, so your VRM characters do it again at once later, on all your computers. Companion › Emotes and motions lists the kept motions with their tags, and **Make a motion** lets you make one yourself. Without a motion computer, or with a Live2D character, nothing changes. ([#821](https://github.com/throndir2/Martlet/pull/821))
