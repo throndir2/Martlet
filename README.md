@@ -156,12 +156,12 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.74.0
+## 🆕 What's new in 0.75.0
 
-- 🕺 **Your VRM character moves its whole body when you talk**: with a Motion computer, Martlet can cheer, clap, bow or do any movement it thinks of, and your words never wait for it. It keeps each motion for all your computers.
-- 🎞️ **Body motions on your own graphics card**: the new optional **Motion** host role runs Tencent's HY-Motion 1.0 on an NVIDIA graphics card with 24 GB or more and turns a short description into an animation.
-- 🧍 **VRM characters play motion clips**: VRM characters now play VRM Animation clips (`.vrma`) and go back to their relaxed pose when a clip ends.
-- ⚡ **Quick restarts into updates again**: an update Martlet installed in the background restarts in seconds with the character on screen.
+- 📚 **Reading up on a game no longer downloads its whole wiki**: Martlet first reads at most 200 pages (about 5 minutes and 10 MB on a big wiki) and tells you when its guide is ready.
+- 🎯 **The game's own pages first**: on a wiki about a whole series, such as the Borderlands Wiki, Martlet reads the pages about your game first and skips pages about the other games.
+- 🧠 **More pages chosen with what you're doing in mind**: afterwards, a Thinking pool helper picks up to 300 more pages worth reading, with your screen, the sounds and what you said lately in mind, and only those are downloaded.
+- 🧹 **Shrink an old guide**: press **Read again** on Companion › App guides to replace a guide Martlet read whole before.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

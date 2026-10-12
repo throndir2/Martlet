@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-10-12
+
 ### Added
 
 - **Martlet reads more of a game's wiki with what you're doing in mind**: after its first read, a Thinking pool helper looks at the pages the wiki links to and chooses up to 300 more worth reading, keeping in mind what's on your screen, the sounds and what you said lately. Only the pages it chooses are downloaded, and they join the game's guide. ([#824](https://github.com/throndir2/Martlet/pull/824))
