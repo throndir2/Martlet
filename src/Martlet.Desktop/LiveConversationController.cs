@@ -271,6 +271,9 @@ internal sealed class LiveConversationOperation
     internal bool Touch { get; init; }
     /// <summary>Martlet started this reply on its own (a report or a reaction to being touched), not an answer to the user.</summary>
     internal bool OnItsOwn => Report || Touch;
+    /// <summary>The reply may be the no-reply marker ([pass]), which is never shown or spoken: a reply to what always listening
+    /// heard, and every reply Martlet starts on its own (a character may have nothing to say, such as no greeting).</summary>
+    internal bool MayPass => Spoken || OnItsOwn;
     /// <summary>What Martlet says here on its own, without the user asking (<see cref="UnpromptedSpeech"/>): a report's reminder,
     /// finished work or check-in, or a screen or camera remark. Null for a reply (to the user, to what this PC played or to a
     /// touch, which answers what the user did).</summary>
@@ -2416,7 +2419,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null && describedNote is null ? null : noticed, recalled, guide, songNote, whileSinging, touchNote),
-                        silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
+                        silentReply: operation.MayPass ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyClosing(operation.Authorization.Voice), audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
@@ -2600,7 +2603,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
-            var passed = operation.Spoken && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
+            var passed = operation.MayPass && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
             operation.Passed = passed;
             // A reply that ends by asking something makes a short answer to it ("yes", "mm-hmm") count as words for a while.
             if (terminal.State == ConversationState.Completed && !passed && !string.IsNullOrWhiteSpace(turn.Content.Text))
@@ -2652,6 +2655,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         if (operation.Delivery is { } delivered)
                         {
                             delivered.Complete();
+                            if (passed) foreach (var job in delivered.Jobs) quietJobs[job.Id] = true;
                             ErrorLog.Info($"Background work: {string.Join(", ", delivered.Jobs.Select(job => job.Id))} " +
                                 (operation.Report ? "brought up by Martlet on its own"
                                     : own is null && !straight ? "brought up with what this PC played" : "brought up with your message") +
@@ -3195,6 +3199,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// prompts): <paramref name="facts"/> is what it knows (<see cref="Greetings.Facts"/>). Null when the conversation is closing.</summary>
     internal BackgroundJob? Greet(string facts) =>
         jobs.Start(Greetings.Kind, "Greeting", (_, _) => Task.FromResult(BackgroundJobOutcome.Done(facts))).Job;
+
+    // The finished jobs a reply carried that Martlet stayed quiet about ([pass]), by job ID.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> quietJobs = new(StringComparer.Ordinal);
+
+    /// <summary>Whether the reply that carried <paramref name="job"/> stayed quiet ([pass]): a character that wouldn't greet.</summary>
+    internal bool StayedQuiet(BackgroundJob job) => quietJobs.ContainsKey(job.Id);
 
     /// <summary>The newest <paramref name="count"/> exchanges of this conversation (oldest first: what the user said and the reply)
     /// and how many it has had in all, a count that only grows, for a check-in. In memory only.</summary>

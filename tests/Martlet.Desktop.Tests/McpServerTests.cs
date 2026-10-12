@@ -372,6 +372,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.True(result.GetProperty("passed").GetBoolean(), result.GetRawText());
         var steps = result.GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("name").GetString()).ToArray();
         Assert.Contains("the newest conversation on this PC", steps);
+        Assert.Contains("a real name gives its first name; a user name or handle gives none", steps);
+        Assert.Contains("only in character, or not at all", steps);
         Assert.Contains("said on its own as soon as Martlet is free", steps);
         Assert.Contains("let go after waiting too long", steps);
     }
