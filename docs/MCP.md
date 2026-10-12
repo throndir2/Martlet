@@ -1741,7 +1741,9 @@ restarted with its saved copy and got the change on the next sync; a stale copy
 that can't undo newer changes; a newer Martlet's setting passed through; a
 Parakeet model a new computer lacks (it waits, records nothing, then follows); a
 new computer taking everything without its defaults overriding anything; the
-Thinking fallback with its own key, turned off again (the key removed); lorebooks;
+Thinking fallback with its own key, turned off again (the key removed); two
+NVIDIA Build models in A's Thinking pool with one key, which reach B beside B's
+own model in Ollama and leave again with B's copy of the key; lorebooks;
 no key in any desktop file while the hosts' private copy holds them and every
 copy ends the same; and an unsigned request refused (HTTP 401). Then a fourth
 simulated desktop on this Martlet (`lab-desktop-d`) keeps each person's
