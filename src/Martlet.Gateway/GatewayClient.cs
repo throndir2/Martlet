@@ -705,6 +705,26 @@ internal static class GatewayClientJson
         return payload;
     }
 
+    private static Dictionary<string, object?> MotionPayload(GatewayMotionPayload motion)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["operation"] = motion.Operation switch
+            {
+                GatewayMotionOperation.Status => "status",
+                GatewayMotionOperation.Generate => "generate",
+                _ => "free"
+            }
+        };
+        if (motion.Operation == GatewayMotionOperation.Generate)
+        {
+            payload["prompt"] = motion.Prompt ?? throw new GatewayProtocolException("request.invalid");
+            payload["seconds"] = motion.Seconds;
+            if (motion.Seed is { } seed) payload["seed"] = seed;
+        }
+        return payload;
+    }
+
     internal static byte[] Request(GatewayInferenceRequest request)
     {
         object payload = request.Payload switch
@@ -738,6 +758,7 @@ internal static class GatewayClientJson
             GatewaySongPayload song => SongPayload(song),
             GatewayPicturePayload picture => PicturePayload(picture),
             GatewayOcrPayload ocr => OcrPayload(ocr),
+            GatewayMotionPayload motion => MotionPayload(motion),
             _ => throw new GatewayProtocolException("request.invalid")
         };
         var document = new Dictionary<string, object?>

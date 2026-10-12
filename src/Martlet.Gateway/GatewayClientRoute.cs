@@ -28,6 +28,7 @@ public sealed partial class GatewayInferenceRoute
             GatewayInferenceKind.Song => (SongRouteId, SongPath, SongContractId, SongContractVersion),
             GatewayInferenceKind.Picture => (PictureRouteId, PicturePath, PictureContractId, PictureContractVersion),
             GatewayInferenceKind.Ocr => (OcrRouteId, OcrPath, OcrContractId, OcrContractVersion),
+            GatewayInferenceKind.Motion => (MotionRouteId, MotionPath, MotionContractId, MotionContractVersion),
             _ => throw new GatewayProtocolException("worker.invalid")
         };
         GatewayRules.Require(capability.RequiredRole == GatewayRole.Voice &&

@@ -35,7 +35,8 @@ public enum GatewayInferenceKind
     Transcription,
     Song,
     Picture,
-    Ocr
+    Ocr,
+    Motion
 }
 
 public enum GatewayInferenceEventKind
@@ -662,6 +663,62 @@ public sealed partial class GatewayInferenceRoute
     public const int OcrMaximumImageBytes = 4 * 1024 * 1024;
     public const int OcrMaximumResultBytes = 256 * 1024;
 
+    /// <summary>
+    /// The motion host role's HY-Motion relay (<c>workers/motion</c>): <c>status</c> reports readiness, the model and whether it
+    /// is loaded; <c>generate</c> makes one body motion from an English prompt, its length in seconds and an optional seed, and
+    /// returns the VRMA clip as base64 pieces in JSON text events followed by one summary object; <c>free</c> unloads the model
+    /// so voice and thinking roles get the graphics card back. The first <c>generate</c> after a free loads the model (about
+    /// 20 GB), so the route allows minutes.
+    /// </summary>
+    public static GatewayInferenceRoute Motion(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision,
+        string modelSha256)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        GatewayRules.Sha256(modelSha256);
+        return new(
+            GatewayInferenceKind.Motion,
+            GatewayRole.Voice,
+            MotionRouteId,
+            MotionPath,
+            MotionContractId,
+            MotionContractVersion,
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(MotionContractId, MotionContractVersion, workerId, modelId, modelRevision, modelSha256),
+            maximumRequestBytes: 8 * 1024,
+            maximumInputBytes: MotionMaximumPromptBytes,
+            maximumOutputBytes: MotionMaximumVrmaBytes * 4 / 3 + 64 * 1024,
+            maximumEventBytes: MotionMaximumEventBytes * 4 / 3 + 8 * 1024,
+            maximumEvents: MotionMaximumVrmaBytes / MotionMaximumEventBytes + 8,
+            maximumStreamBytes: 8 * 1024 * 1024,
+            maximumDuration: MotionMaximumDuration,
+            GatewayCancellationCapability.RequestAbort);
+    }
+
+    public const string MotionRouteId = "martlet.gateway.motion.v1";
+    public const string MotionPath = "/martlet/v1/inference/motion";
+    public const string MotionContractId = "martlet.motion-relay";
+    public const string MotionContractVersion = "1.0";
+    /// <summary>The prompt's UTF-8 bytes (Martlet.Core.Motion.MotionRequest allows 400 characters).</summary>
+    public const int MotionMaximumPromptBytes = 1_600;
+    public const double MotionMinimumSeconds = 1;
+    public const double MotionMaximumSeconds = 12;
+    public const long MotionMaximumSeed = int.MaxValue;
+    /// <summary>The largest VRMA clip the relay returns (Martlet.Core.Motion.MotionFiles.MaximumBytes).</summary>
+    public const int MotionMaximumVrmaBytes = 4 * 1024 * 1024;
+    /// <summary>At most this much of the clip (base64 in the event's JSON text) per event.</summary>
+    public const int MotionMaximumEventBytes = 180_000;
+    public static readonly TimeSpan MotionMaximumDuration = TimeSpan.FromMinutes(8);
+
     private static GatewayCancellationCapability Map(F5CancellationCapability capability) =>
         capability switch
         {
@@ -1048,6 +1105,33 @@ public sealed class GatewayOcrPayload : GatewayInferencePayload
     internal override void Clear() => CryptographicOperations.ZeroMemory(image);
 }
 
+public enum GatewayMotionOperation
+{
+    Status,
+    Generate,
+    Free
+}
+
+/// <summary>One bounded operation against the host's HY-Motion relay: <see cref="Prompt"/>, <see cref="Seconds"/> and
+/// <see cref="Seed"/> belong to <see cref="GatewayMotionOperation.Generate"/>.</summary>
+public sealed class GatewayMotionPayload : GatewayInferencePayload
+{
+    internal GatewayMotionPayload(GatewayMotionOperation operation, string? prompt = null, double seconds = 0, long? seed = null)
+    {
+        Operation = operation;
+        Prompt = prompt;
+        Seconds = seconds;
+        Seed = seed;
+    }
+
+    public GatewayMotionOperation Operation { get; }
+    public string? Prompt { get; }
+    public double Seconds { get; }
+    public long? Seed { get; }
+    internal override void Clear() { }
+    public override string ToString() => $"Gateway motion {Operation} (content omitted)";
+}
+
 public sealed class GatewayInferenceRequest
 {
     internal GatewayInferenceRequest(
@@ -1321,6 +1405,10 @@ public interface IOcrGatewayInferenceWorker : IGatewayInferenceWorker
 {
 }
 
+public interface IMotionGatewayInferenceWorker : IGatewayInferenceWorker
+{
+}
+
 internal static class GatewayInferenceEventValidator
 {
     internal static void Validate(
@@ -1368,12 +1456,14 @@ internal static class GatewayInferenceEventValidator
             case GatewayInferenceEventKind.TextDelta:
                 GatewayRules.Require(
                     request.Route.Kind is GatewayInferenceKind.OllamaChat or GatewayInferenceKind.Transcription
-                        or GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr &&
+                        or GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr
+                        or GatewayInferenceKind.Motion &&
                     payloadLength > 0 &&
                     item.ErrorCode is null &&
                     IsUtf8(item.Payload.Span) &&
                     HasNoF5Metadata(item) &&
-                    (request.Route.Kind is not (GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr) ||
+                    (request.Route.Kind is not (GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr
+                        or GatewayInferenceKind.Motion) ||
                         IsJsonObject(item.Payload)),
                     "stream.invalid");
                 break;
@@ -1605,6 +1695,7 @@ internal static class GatewayInferenceEventValidator
                 case GatewayInferenceKind.Song:
                 case GatewayInferenceKind.Picture:
                 case GatewayInferenceKind.Ocr:
+                case GatewayInferenceKind.Motion:
                     GatewayRules.Require(dataEvents > 0, "stream.invalid");
                     break;
             }

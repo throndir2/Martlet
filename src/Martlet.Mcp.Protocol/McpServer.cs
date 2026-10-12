@@ -1236,6 +1236,32 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             dataDirectory = new { type = "string", maxLength = 260 },
             saveDirectory = new { type = "string", maxLength = 260 }
         }),
+        Tool("motion_status", "Read where Martlet makes body motions for VRM characters (docs/MOTION_HOST.md) for a data directory: " +
+            "the motion choice (motion.json, the shared motion setting: automatic, off or one computer), the computers the shared plan " +
+            "(cluster.json) says run the HY-Motion Motion role and whether this PC is paired with each (hosts.json), the computer a " +
+            "motion goes to now, the fixture switch (MARTLET_MOTION_FIXTURE=1), the route (martlet.gateway.motion.v1), the two models " +
+            "and their graphics memory minimums, and the request bounds (seconds, prompt length and words, seed). Files only; read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("motion_check", "Make one body motion from an English prompt and report the VRMA clip (VRM Animation): frames, fps, " +
+            "seconds, seed, bytes, SHA-256 and its glTF facts (VRMC_vrm_animation version, humanoid bones, channels, keyframes). " +
+            "place \"fixture\" (the default: the FIXTURE - NOT AI wave maker), \"worker\" (a Motion role's worker on loopback at " +
+            "endpoint, such as http://127.0.0.1:50090/: GET /status, then POST /generate; a worker started with serve --random-weights " +
+            "runs HY-Motion's code with RANDOM weights, FIXTURE - NOT AI) or \"host\" (through a paired computer's gateway route as " +
+            "the desktop asks it: dataDirectory with its pairings, hostId or the computer motion_status names). free unloads the " +
+            "model after. With saveDirectory (absolute) it writes motion.vrma there. A real motion needs an NVIDIA GPU with 24 GB+.", new
+        {
+            place = new { type = "string", @enum = new[] { "fixture", "worker", "host" } },
+            endpoint = new { type = "string", maxLength = 64 },
+            dataDirectory = new { type = "string", maxLength = 260 },
+            hostId = new { type = "string", maxLength = 128 },
+            prompt = new { type = "string", maxLength = Martlet.Core.Motion.MotionRequest.MaximumPromptCharacters },
+            seconds = new { type = "number", minimum = Martlet.Core.Motion.MotionRequest.MinimumSeconds, maximum = Martlet.Core.Motion.MotionRequest.MaximumSeconds },
+            seed = new { type = "integer", minimum = 0, maximum = Martlet.Core.Motion.MotionRequest.MaximumSeed },
+            free = new { type = "boolean" },
+            saveDirectory = new { type = "string", maxLength = 260 }
+        }),
         Tool("singing_status", "Read the singing host role: its loopback service's own status (default http://127.0.0.1:50085/: " +
             "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
             "voice matches set up (soulx, vevosing), queue, whether the worker process holds the graphics card, the card's memory " +
@@ -2766,6 +2792,11 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     OptionalString(arguments, "prompt"), OptionalString(arguments, "shape"),
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "saveDirectory"),
                     cancellation),
+                "motion_status" => MotionCheck.Status(DataDirectory(arguments)),
+                "motion_check" => await MotionCheck.RunAsync(OptionalString(arguments, "place"), OptionalString(arguments, "endpoint"),
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "hostId"),
+                    OptionalString(arguments, "prompt"), OptionalDouble(arguments, "seconds"), OptionalInt(arguments, "seed"),
+                    OptionalBool(arguments, "free") == true, OptionalString(arguments, "saveDirectory"), cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
@@ -4498,7 +4529,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
                 if (setting.Key is "memory" or "appearance" or "appearance-custom" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
-                    "model-abilities" or "work-sharing" || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
+                    "model-abilities" or "work-sharing" or Martlet.Core.Motion.MotionSettings.SharedKey || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();

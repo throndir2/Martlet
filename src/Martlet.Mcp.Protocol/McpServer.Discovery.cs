@@ -381,7 +381,7 @@ internal sealed partial class McpServer
         if (Starts("martlet_")) return "Start here";
         if (Starts("ui_") || name is "character_touch" or "character_stroke" or "character_face" or "character_picture" or "character_pose" or
             "character_zones" or "character_mouth" or "character_look" or "character_animation") return "The app's window";
-        if (Starts("character", "f5_")) return "Characters";
+        if (Starts("character", "f5_", "motion_")) return "Characters";
         if (Starts("settings_", "prompts_", "api_keys_", "recommended_setup", "setup_run", "chattiness")) return "Settings";
         if (Starts("doctor_", "logs_", "latency_", "thinking_trace", "companion_status")) return "Diagnostics and logs";
         if (Has("voice", "parakeet", "hearing", "listening", "echo", "utterance", "barge_in", "turn_judge", "early_reply", "spoken_reply",

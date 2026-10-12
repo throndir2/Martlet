@@ -4,6 +4,29 @@ The `motion` worker makes humanoid body motion from an English prompt with
 [HY-Motion 1.0](https://github.com/Tencent-Hunyuan/HY-Motion-1.0) and gives it to Martlet as a VRM
 Animation clip (`.vrma`) for VRM models.
 
+## Host role
+
+The `motion` host role (`martlet-host add motion`, `deploy/host/roles/motion`) builds `host/Dockerfile` and runs
+`martlet_motion/host.py` on `127.0.0.1:50090` behind the Martlet gateway (route `martlet.gateway.motion.v1`). It is optional
+and needs an NVIDIA graphics card with 24 GB or more. [Motion host](../../docs/MOTION_HOST.md) tells what it needs, what it
+downloads, its license terms and its HTTP contract.
+
+- `martlet_motion/pins.py`: the pinned HY-Motion code commit, its Git LFS files, and every model file (bytes and SHA-256).
+- `martlet_motion/host.py`: `martlet-motion provision`, `serve`, `selftest` and `code-assets` (the image build).
+- `martlet_motion/generator.py`: loads HY-Motion, makes one motion, and turns HY-Motion's output into the converter's input
+  (`rot6d` to axis-angle with HY-Motion's own `construct_smpl_data_dict`, `transl` unchanged), then calls
+  `smplh_to_vrma`.
+- `THIRD-PARTY-NOTICES.txt`: the licenses of what the role downloads.
+
+Check the image without the model files (HY-Motion's real code with random weights on the processor; FIXTURE - NOT AI):
+
+```powershell
+docker build -f workers\motion\host\Dockerfile -t martlet-motion:1 workers\motion
+docker run --rm martlet-motion:1 selftest
+```
+
+The host tests (`tests/test_host.py`) use a fake model and the real converter; they need numpy only.
+
 ## SMPL-H to VRMA converter
 
 `martlet_motion/vrma.py` changes HY-Motion's SMPL-H joint rotations to a `.vrma` clip. HY-Motion's own
