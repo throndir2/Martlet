@@ -29,6 +29,7 @@
   "browserDependencies": {
     "node_modules/@esbuild/win32-x64": [],
     "node_modules/@pixiv/three-vrm": ["node_modules/@pixiv/three-vrm-core", "node_modules/@pixiv/three-vrm-materials-hdr-emissive-multiplier", "node_modules/@pixiv/three-vrm-materials-mtoon", "node_modules/@pixiv/three-vrm-materials-v0compat", "node_modules/@pixiv/three-vrm-node-constraint", "node_modules/@pixiv/three-vrm-springbone", "node_modules/three"],
+    "node_modules/@pixiv/three-vrm-animation": ["node_modules/@pixiv/three-vrm-core", "node_modules/@pixiv/types-vrmc-vrm-1.0", "node_modules/@pixiv/types-vrmc-vrm-animation-1.0", "node_modules/three"],
     "node_modules/@pixiv/three-vrm-core": ["node_modules/@pixiv/types-vrm-0.0", "node_modules/@pixiv/types-vrmc-vrm-1.0", "node_modules/three"],
     "node_modules/@pixiv/three-vrm-materials-hdr-emissive-multiplier": ["node_modules/@pixiv/types-vrmc-materials-hdr-emissive-multiplier-1.0", "node_modules/three"],
     "node_modules/@pixiv/three-vrm-materials-mtoon": ["node_modules/@pixiv/types-vrm-0.0", "node_modules/@pixiv/types-vrmc-materials-mtoon-1.0", "node_modules/three"],
@@ -42,6 +43,7 @@
     "node_modules/@pixiv/types-vrmc-springbone-1.0": [],
     "node_modules/@pixiv/types-vrmc-springbone-extended-collider-1.0": [],
     "node_modules/@pixiv/types-vrmc-vrm-1.0": [],
+    "node_modules/@pixiv/types-vrmc-vrm-animation-1.0": ["node_modules/@pixiv/types-vrmc-vrm-1.0"],
     "node_modules/esbuild": ["node_modules/@esbuild/win32-x64"],
     "node_modules/three": []
   },

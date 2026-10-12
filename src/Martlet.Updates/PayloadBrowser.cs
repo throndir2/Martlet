@@ -20,6 +20,8 @@ internal static class PayloadBrowser
         ["@pixiv/three-vrm"] = ["@pixiv/three-vrm-core", "@pixiv/three-vrm-materials-hdr-emissive-multiplier",
             "@pixiv/three-vrm-materials-mtoon", "@pixiv/three-vrm-materials-v0compat", "@pixiv/three-vrm-node-constraint",
             "@pixiv/three-vrm-springbone", "three"],
+        ["@pixiv/three-vrm-animation"] = ["@pixiv/three-vrm-core", "@pixiv/types-vrmc-vrm-1.0",
+            "@pixiv/types-vrmc-vrm-animation-1.0", "three"],
         ["@pixiv/three-vrm-core"] = ["@pixiv/types-vrm-0.0", "@pixiv/types-vrmc-vrm-1.0", "three"],
         ["@pixiv/three-vrm-materials-hdr-emissive-multiplier"] = ["@pixiv/types-vrmc-materials-hdr-emissive-multiplier-1.0", "three"],
         ["@pixiv/three-vrm-materials-mtoon"] = ["@pixiv/types-vrm-0.0", "@pixiv/types-vrmc-materials-mtoon-1.0", "three"],
@@ -34,6 +36,7 @@ internal static class PayloadBrowser
         ["@pixiv/types-vrmc-springbone-1.0"] = [],
         ["@pixiv/types-vrmc-springbone-extended-collider-1.0"] = [],
         ["@pixiv/types-vrmc-vrm-1.0"] = [],
+        ["@pixiv/types-vrmc-vrm-animation-1.0"] = ["@pixiv/types-vrmc-vrm-1.0"],
         ["esbuild"] = ["@esbuild/win32-x64"],
         ["three"] = []
     };
