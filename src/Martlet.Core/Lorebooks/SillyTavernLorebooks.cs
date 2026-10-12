@@ -125,6 +125,7 @@ public static class SillyTavernLorebooks
                 Probability = probability,
                 CaseSensitive = Bool(item, "caseSensitive"),
                 MatchWholeWords = Bool(item, "matchWholeWords"),
+                MatchWordForms = Bool(item, "matchWordForms"),
                 ScanDepth = Int(item, "scanDepth"),
                 ExcludeRecursion = Bool(item, "excludeRecursion") ?? false,
                 PreventRecursion = Bool(item, "preventRecursion") ?? false
@@ -249,7 +250,8 @@ public static class SillyTavernLorebooks
         return new(book, skipped, format);
     }
 
-    /// <summary>SillyTavern World Info JSON that SillyTavern imports as a lorebook.</summary>
+    /// <summary>SillyTavern World Info JSON that SillyTavern imports as a lorebook. An entry's own word-forms choice is written as
+    /// <c>matchWordForms</c>, which SillyTavern ignores and Martlet reads back.</summary>
     public static byte[] Export(Lorebook book)
     {
         ArgumentNullException.ThrowIfNull(book);
@@ -290,6 +292,8 @@ public static class SillyTavernLorebooks
                 WriteNullable(writer, "scanDepth", entry.ScanDepth);
                 WriteNullable(writer, "caseSensitive", entry.CaseSensitive);
                 WriteNullable(writer, "matchWholeWords", entry.MatchWholeWords);
+                // Martlet's own field, which SillyTavern doesn't use; written only when the entry chose it.
+                if (entry.MatchWordForms is { } forms) writer.WriteBoolean("matchWordForms", forms);
                 writer.WriteNull("useGroupScoring");
                 writer.WriteString("automationId", "");
                 writer.WriteNull("role");

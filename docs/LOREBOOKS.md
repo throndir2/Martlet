@@ -41,9 +41,22 @@ editor.
 Keywords are case-insensitive whole words by default. A keyword written
 `/pattern/flags` is a regular expression (`i`, `m` and `s` are honored; an
 invalid or slow pattern never matches). Entries can override case sensitivity,
-whole-word matching and scan depth, be excluded from recursion (*only the
-conversation can trigger it*) or stop recursion (*its content never triggers
-other entries*).
+whole-word matching, word forms and scan depth, be excluded from recursion
+(*only the conversation can trigger it*) or stop recursion (*its content never
+triggers other entries*).
+
+**Match other word forms** (off by default, so keywords match exactly as in
+SillyTavern) lets a keyword also match the other forms of its words: *dragon*
+finds *dragons*, *red dragon* finds *Red Dragons* and *Drache* finds *Drachen*.
+Martlet compares the words by their search stems (the same
+[word rules](MEMORY.md#lexical-retrieval-and-reranking) as memory, with the
+light rules of Spanish, French, German, Portuguese or Italian when the
+conversation is in one of them), the words of a keyword in the same order. A
+case-sensitive keyword keeps its capital letters (*Rose* finds *Roses*, never
+*the sun rose*). A `/regex/` keyword, and a keyword in Chinese, Japanese,
+Korean or Thai, matches exactly as before. Turn it on for all lorebooks in
+the scan settings, or for one entry in its *More entry options* (*Other word
+forms*: a filled box overrides the scan setting).
 
 ## Privacy and cost
 
@@ -92,7 +105,9 @@ These carry over both ways: keywords, filter keywords and rule
 enabled (`disable`), order, placement (SillyTavern position 0 is *before the
 persona*; every other position, including @depth, becomes *after*), chance
 (`probability`/`useProbability`), scan depth, case sensitivity, whole words and
-the two recursion options. SillyTavern's inclusion groups, sticky/cooldown/delay
+the two recursion options. An entry's own *Other word forms* choice is written
+as `matchWordForms`, which SillyTavern doesn't use and Martlet reads back; an
+entry without its own choice is exported exactly as before. SillyTavern's inclusion groups, sticky/cooldown/delay
 timers, @depth roles, vector matching and automation IDs are not used.
 
 **Importing a character card as a persona** (Companion › Personality) keeps the

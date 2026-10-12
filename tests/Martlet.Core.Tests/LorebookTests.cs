@@ -19,6 +19,47 @@ public sealed class LorebookTests
         LorebookScanner.Scan(library, new(current, earlier), _ => 0).Included.Select(hit => hit.Content).ToArray();
 
     [Fact]
+    public void WordFormsMatchOtherFormsOnlyWhenChosen()
+    {
+        var dragon = Entry(0, "Dragons breathe fire.", "dragon");
+        var library = Library(dragon, Entry(1, "The Red Dragons are a guild.", "red dragon"), Entry(2, "Regex lore.", "/^dragon$/i"));
+        Assert.Empty(Scan(library, "Two dragons flew over the castle."));
+        Assert.Equal(["Dragons breathe fire."], Scan(library with { MatchWordForms = true }, "Two dragons flew over the castle."));
+        Assert.Equal(["Dragons breathe fire.", "The Red Dragons are a guild."], Scan(library with { MatchWordForms = true }, "The Red Dragons attacked."));
+        // A /regex/ key never changes, and an entry's own choice wins over the scan setting.
+        var regex = Library(Entry(2, "Regex lore.", "/^dragon$/i")) with { MatchWordForms = true };
+        Assert.Empty(Scan(regex, "dragons"));
+        Assert.Equal(["Regex lore."], Scan(regex, "Dragon"));
+        Assert.Equal(["Dragons breathe fire."], Scan(Library(dragon with { MatchWordForms = true }), "Two dragons flew."));
+        Assert.Empty(Scan(Library(dragon with { MatchWordForms = false }) with { MatchWordForms = true }, "Two dragons flew."));
+    }
+
+    [Fact]
+    public void WordFormsKeepCaseSensitivityAndReadTheTextsLanguage()
+    {
+        var rose = Library(new LorebookEntry { Uid = 0, Content = "Rose is a knight.", Keys = ["Rose"], CaseSensitive = true }) with { MatchWordForms = true };
+        Assert.Equal(["Rose is a knight."], Scan(rose, "The Roses are coming to dinner."));
+        Assert.Empty(Scan(rose, "The sun rose early."));
+        var german = Library(Entry(0, "Drachen speien Feuer.", "Drache"), Entry(1, "Katzen jagen Mäuse.", "Katze")) with { MatchWordForms = true };
+        Assert.Equal(["Drachen speien Feuer.", "Katzen jagen Mäuse."], Scan(german, "Die Kinder sahen zwei Drachen und drei Katzen über dem Dorf."));
+        Assert.True(LorebookScanner.MatchesWordForms("gatto", "Ho visto due gatti nel giardino di mia nonna.", caseSensitive: false));
+        Assert.False(LorebookScanner.MatchesWordForms("gatto", "I saw two gatti.", caseSensitive: false));
+        // Keys in scripts written without spaces match only as they always did.
+        Assert.False(LorebookScanner.MatchesWordForms("東京", "東京タワー", caseSensitive: false));
+    }
+
+    [Fact]
+    public void WordFormsChoiceTravelsThroughSillyTavernExportOnlyWhenSet()
+    {
+        var plain = Library(Entry(0, "Lore.", "dragon")).Books[0];
+        Assert.DoesNotContain("matchWordForms", Encoding.UTF8.GetString(SillyTavernLorebooks.Export(plain)));
+        var chosen = Library(Entry(0, "Lore.", "dragon") with { MatchWordForms = true }).Books[0];
+        var imported = SillyTavernLorebooks.Import(new MemoryStream(SillyTavernLorebooks.Export(chosen)), "World").Book;
+        Assert.True(imported.Entries[0].MatchWordForms);
+        Assert.Null(SillyTavernLorebooks.Import(new MemoryStream(SillyTavernLorebooks.Export(plain)), "World").Book.Entries[0].MatchWordForms);
+    }
+
+    [Fact]
     public void KeywordsTriggerWithinScanDepthAsWholeWords()
     {
         var library = Library(Entry(0, "Echo is Aria's lute.", "lute"), Entry(1, "Cats rule.", "cat"));

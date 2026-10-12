@@ -2617,6 +2617,16 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             query = new { type = "string" },
             facts = new { type = "array", items = new { type = "string" }, minItems = 1, maxItems = Martlet.Memory.MemoryLimits.MaximumFacts }
         }),
+        Tool("search_languages_check", "Rehearse search in other languages and lorebook word forms with the production code on " +
+            "synthetic text in disposable folders: English text keeping the search terms it always had (also with web addresses " +
+            "in it), the language of a text (Spanish, French, German, Portuguese, Italian), light stems of those languages " +
+            "(gatti and gatto, Drachen and Drache), Chinese and Japanese read as pairs of characters, memory recall (Martlet.Memory) " +
+            "and past-conversation recall (ConversationHistory and PastConversations) finding the right fact or exchange from a " +
+            "question in each of those languages and in Chinese, Japanese and Korean, ordinary messages not looking in the record, " +
+            "times such as \"hace 3 días\", \"vor 3 Tagen\", \"3天前\" and \"어제\" naming the right days, lorebook keywords with word " +
+            "forms off (exact, as SillyTavern) and on (\"dragon\" finds \"dragons\", case-sensitive keys keep their capitals, /regex/ " +
+            "keys unchanged) and the SillyTavern export, with timings for reading terms, recognizing a reference to the past and " +
+            "scanning 2,000 entries. Never opens your data. Nothing leaves this PC.", new { }),
         Tool("memory_upkeep_check", "Rehearse search words, replaced facts kept as history and tidying memory with the production " +
             "code (Martlet.Memory's store and recall, and the desktop's own upkeep: the plan, the pool member's fact list, parsing " +
             "its answer and the store request) on synthetic facts in a disposable store: a question in other words (\"What should " +
@@ -3000,6 +3010,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "app_guides_status" => await AppGuidesCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
                 "memory_recall_check" => await MemoryRecallCheck.RunAsync(OptionalString(arguments, "query"), MemoryRecallCheck.Facts(arguments), cancellation),
+                "search_languages_check" => await LanguagesCheck.RunAsync(cancellation),
                 "memory_upkeep_check" => await MemoryUpkeepCheck.RunAsync(cancellation),
                 "search_engine_check" => SearchEngineCheck.Run(cancellation),
                 "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),

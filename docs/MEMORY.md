@@ -190,7 +190,24 @@ field, the weights below and the penalty selection) and its features.
 letters and digits in lower case, without common English grammar words (*the*,
 *is*, *my* ...), each with a light English stem. So *cats* finds *cat*,
 *running* finds *runs* and *studying* finds *studies*. Words longer than 40
-characters and terms without a letter or digit (emoji) are left out. A query
+characters and terms without a letter or digit (emoji) are left out. Other
+languages work too:
+
+- A text that is clearly Spanish, French, German, Portuguese or Italian (at
+  least two different grammar words of that language, more of them than
+  English ones, and at least an eighth of its words) also leaves out that
+  language's grammar words and adds each word's stem by its light rules, so
+  *gatti* finds *gatto*, *Drachen* finds *Drache* and *perros* finds *perra*.
+  English text gets exactly the terms it always got, and words common in
+  English text (*AI*, *plus*, *com* of a web address) never make a text read
+  as another language.
+- Chinese, Japanese, Korean, Thai, Lao, Khmer and Myanmar have no spaces
+  between words, so each pair of neighboring characters is a term (*東京大学*
+  is *東京*, *京大* and *大学*); Chinese grammar characters (*的*, *了*, *我*...)
+  and Japanese and Korean particles are left out.
+
+`search_languages_check` (MCP) shows this with synthetic facts in each of those
+languages. A query
 made from a message (`MemoryQuery.TryFromBoundedSource`) keeps the message's
 own words, one word for each new term, so a stem is never stemmed again. It
 holds at most 24 terms, 256 characters and 512 UTF-8 bytes. A query without a
@@ -722,8 +739,10 @@ shared setting, each person's own).
 conversation opens (or the Conversations page or the Memory page needs it) and
 kept in memory with a lexical (BM25) index of what was said: each word in lower
 case and reduced to a light English stem, with common grammar words left out
-(the shared `SearchTerms` in `Martlet.Core`), so *plants* finds *plant* and
-*baking* finds *baked*. Nothing is embedded or sent anywhere. The newest
+(the shared `SearchTerms` in `Martlet.Core`, which also reads Spanish, French,
+German, Portuguese, Italian, Chinese, Japanese and Korean, as
+[above](#lexical-retrieval-and-reranking) for facts), so *plants* finds *plant*
+and *baking* finds *baked*. Nothing is embedded or sent anywhere. The newest
 100,000 exchanges are indexed; older ones stay in their files. With 20,000
 synthetic exchanges (7.3 MB) reading takes about a third of a second, once, and
 a recall about 2 ms (at most about 3 ms; `conversation_history_check`).
@@ -731,8 +750,12 @@ a recall about 2 ms (at most about 3 ms; `conversation_history_check`).
 **Bringing back what was said.** When your message refers to an earlier
 conversation (*do you remember…*, *remember when…*, *what did we talk about
 yesterday?*, *did I tell you about…*, *in our last conversation…*, or something
-said or talked about with a time such as *last week* or *3 days ago*; English
-phrasing), up to three matching exchanges of other conversations go in that
+said or talked about with a time such as *last week* or *3 days ago*; also
+in Spanish, French, German, Portuguese, Italian, Chinese, Japanese and Korean,
+such as *¿te acuerdas…?*, *tu te souviens…*, *weißt du noch…*, *você
+lembra…*, *ti ricordi…*, *你还记得…*, *覚えてる？* and *기억나?*, with times such
+as *hace 3 días*, *la semaine dernière*, *vor 3 Tagen*, *上周*, *昨日* and
+*어제*), up to three matching exchanges of other conversations go in that
 message's notes (see [Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
 between `[MARTLET_PAST_CONVERSATIONS]` labels, with today's date and each
 exchange's day and time (each side cut to 280 characters, brackets made
