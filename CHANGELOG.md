@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-10-11
+
 ### Added
 
 - **Find a character**: name a character in Companion › Character › *Find a character...* and Martlet writes its personality with your Thinking model and finds 3D models of it on VRoid Hub and Open Source Avatars. Each look shows its creator, license and every condition of use before you choose it, and one click makes the character and switches to it. ([#799](https://github.com/throndir2/Martlet/pull/799))
