@@ -126,11 +126,11 @@ internal sealed partial class LiveConversationController
                 Doing = job.Progress,
                 AttemptFinished = terminal =>
                 {
-                    NoteFallback("Web research", configured, terminal);
+                    routing.NoteFallback("Web research", configured, terminal);
                     NoteInput("Web research", terminal, reply: false);
-                    if (IsFailure(terminal) && terminal.State != ConversationState.Canceled)
+                    if (ConversationRouting.IsFailure(terminal) && terminal.State != ConversationState.Canceled)
                     {
-                        ErrorLog.Warn($"Web research: a step on {there} failed ({Describe(terminal)}).");
+                        ErrorLog.Warn($"Web research: a step on {there} failed ({ConversationRouting.Describe(terminal)}).");
                         // Its computer didn't answer: offline at once, so the step (and the next job) goes elsewhere.
                         if (terminal.ProviderFailure == ProviderFailureCode.Network) NoteUnreachable(here.Settings, job.Id);
                     }

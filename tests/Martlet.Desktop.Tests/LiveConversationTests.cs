@@ -1269,8 +1269,8 @@ public sealed class LiveConversationTests
         {
             RouteType = SetupRouteType.ChatCompletions, Origin = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
         }));
-        Assert.Contains("not a key or sign-in problem", LiveConversationController.TimeLimit(ConversationFailure.AuthorizationExpired));
-        Assert.Equal("", LiveConversationController.TimeLimit(ConversationFailure.ProviderFailed));
+        Assert.Contains("not a key or sign-in problem", ConversationRouting.TimeLimit(ConversationFailure.AuthorizationExpired));
+        Assert.Equal("", ConversationRouting.TimeLimit(ConversationFailure.ProviderFailed));
         fixture.NoEffects();
     }
 
