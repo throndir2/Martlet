@@ -288,7 +288,11 @@ that sings another song is passed over for a free one, and when all are busy
 the song waits on the shortest line ([Singing](SINGING.md#the-singing-pool)).
 Reading the screen goes through each PC's Reading list on Companion › Reading
 (lane `reading`): Windows OCR on this PC and your computers' Reading role, in
-order ([the Reading pool](READING.md#the-reading-pool)). Thinking with Ollama on a companion PC itself talks to that Ollama
+order ([the Reading pool](READING.md#the-reading-pool)). Recognizing who
+speaks goes through the Voice recognition list on Companion › People (lane
+`voice-recognition`): your computers' Voice recognition role and this PC's
+processor, which always takes it when no computer answers in time
+([where voice recognition runs](VOICES.md#where-voice-recognition-runs)). Thinking with Ollama on a companion PC itself talks to that Ollama
 directly, so the queue can't see those replies; Ollama queues them. The
 Devices card's status line (`WorkSharingStatus`) and the desktop log
 (`Sharing work: Speaking went to m3-host (1 busy) after 240 ms.`) say when a
@@ -307,7 +311,7 @@ never adds conversation latency. See
 ### Pools: one ordered list of members per area
 
 Each area whose requests can go to more than one place (Speaking, Listening,
-Thinking, lip-sync, pictures, singing, vision, hearing, reading and motion) uses one
+Thinking, lip-sync, pictures, singing, vision, hearing, reading, motion and voice recognition) uses one
 contract, `Martlet.Core.Cluster.Pools` (src\Martlet.Core\Cluster\Pools.cs).
 The area's own page shows and edits its list. There is no separate on/off
 switch and no single-computer choice.
@@ -320,7 +324,7 @@ switch and no single-computer choice.
 | Order | The list order is the order a request tries the members in |
 | On and off | A member that is `off` keeps its place and its settings and takes no work |
 | Kept for | `PoolMember.OnlyFor`: the companion PCs (device IDs) that may use the member; empty means every one |
-| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings that go with a reply, while background jobs with a picture or a recording go to Thinking pool models that see or hear, [as SENSE_MODELS.md says](SENSE_MODELS.md#the-image-and-audio-pools)) |
+| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings that go with a reply, while background jobs with a picture or a recording go to Thinking pool models that see or hear, [as SENSE_MODELS.md says](SENSE_MODELS.md#the-image-and-audio-pools); for voice recognition, this PC's processor, also when no computer in the list answers in time) |
 | Area (`PoolAreas`) | Its ID (also its `WorkQueue` lane), page, member kinds, host role, required or optional, shared or per PC. Thinking has `ConversationFirst`: the conversation's own model always goes first and is not a member |
 | Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision, hearing and reading). An area with no list yet makes it once from its older choices (`PoolMigration`) |
 | Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
