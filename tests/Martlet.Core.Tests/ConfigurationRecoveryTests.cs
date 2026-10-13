@@ -136,7 +136,7 @@ public sealed class ConfigurationRecoveryTests : IDisposable
         {
             "truncated" => Encoding.UTF8.GetBytes(text[..^5]),
             "oversized" => new byte[ConfigurationSnapshot.MaximumBytes + 1],
-            "tampered" => Encoding.UTF8.GetBytes(text.Replace("\"producer_version\": \"0.1.0.0\"", "\"producer_version\": \"0.2.0.0\"", StringComparison.Ordinal)),
+            "tampered" => Change("producer_version", "0.0.0.1"),
             "duplicate" => Encoding.UTF8.GetBytes(text.Replace("\"format_version\": 1,", "\"format_version\": 1, \"format_version\": 1,", StringComparison.Ordinal)),
             "unknown" => Encoding.UTF8.GetBytes(text.Replace("\"format_version\": 1,", "\"format_version\": 1, \"secret\": \"PRIVATE-CANARY\",", StringComparison.Ordinal)),
             "wrong-model" => Change("application", "AnotherProduct"),

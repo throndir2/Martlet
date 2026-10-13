@@ -159,6 +159,10 @@ public sealed class ThinkResumeTests
         Assert.Equal("ripley", job.Place?.Name);
         // Moving because its computer stopped answering is no stop for the conversation.
         Assert.Equal(0, job.Preemptions);
+        // The Thinking requests page shows what it sent (the newest of its two requests).
+        var request = Assert.Single(jobs.Places.Requests.List());
+        Assert.Equal(2, request.Asks);
+        Assert.Equal("[Message]\nAn explicit typed fixture input.", request.Input?.Text);
 
         // With one place only, the failure is the think's result: there is nowhere else to go on.
         offline.Clear();
