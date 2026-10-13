@@ -199,9 +199,9 @@ public sealed class ScreenCommentaryTests
         Assert.Equal("Martlet picks how chatty it is about what it sees and hears.", LiveConversationWindow.ChattinessDetail(Chattiness.Normal, null));
         Assert.StartsWith("Martlet picks how chatty it is about what it sees and hears and switched to chatty at ",
             LiveConversationWindow.ChattinessDetail(Chattiness.Chatty, DateTime.Now));
-        Assert.EndsWith("Right now it is quiet.", MainWindow.ChattinessStatus(ChattinessChoice.MartletDecides, Chattiness.Quiet));
-        Assert.Equal(MainWindow.ChattinessAbout, MainWindow.ChattinessStatus(ChattinessChoice.MartletDecides, null));
-        Assert.StartsWith("Chatty:", MainWindow.ChattinessStatus(ChattinessChoice.Chatty, Chattiness.Quiet));
+        Assert.EndsWith("Right now it is quiet.", ChattinessPicker.Status(ChattinessChoice.MartletDecides, Chattiness.Quiet));
+        Assert.Equal(ChattinessPicker.About, ChattinessPicker.Status(ChattinessChoice.MartletDecides, null));
+        Assert.StartsWith("Chatty:", ChattinessPicker.Status(ChattinessChoice.Chatty, Chattiness.Quiet));
         Assert.Contains("went quiet", LiveConversationWindow.ChattinessSwitched(Chattiness.Normal, Chattiness.Quiet));
         Assert.Contains("chattier", LiveConversationWindow.ChattinessSwitched(Chattiness.Quiet, Chattiness.Chatty));
     }
