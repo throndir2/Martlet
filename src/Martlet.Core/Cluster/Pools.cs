@@ -254,8 +254,16 @@ public static class PoolAreas
     {
         Id = "reading", Title = "Reading", Page = "Companion › Reading", HostRole = "ocr", Kinds = Local, Shared = false
     };
+    /// <summary>Body motions for VRM characters (<see cref="Martlet.Core.Motion.MotionPool"/>): this PC's own host service or a
+    /// paired computer that runs the HY-Motion <c>motion</c> role (one row each: a host runs one motion route on one card). The
+    /// list is the same on all the owner's computers, as the older choice (motion.json) was. Empty, or no member on: off.</summary>
+    public static readonly PoolArea Motion = new()
+    {
+        Id = "motion", Title = "Motion", Page = "Companion › Motion", HostRole = "motion",
+        Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer]
+    };
 
-    public static IReadOnlyList<PoolArea> All { get; } = [Speaking, Listening, Thinking, LipSync, Pictures, Singing, Vision, Hearing, Reading];
+    public static IReadOnlyList<PoolArea> All { get; } = [Speaking, Listening, Thinking, LipSync, Pictures, Singing, Vision, Hearing, Reading, Motion];
 
     public static PoolArea? Find(string? id) => All.FirstOrDefault(a => a.Id == id);
 }

@@ -9,9 +9,10 @@ internal sealed class MotionStudio(IMotionMaker maker, string? hostId) : IMotion
 {
     private int handedOff;
 
-    /// <summary>The motion computer the shared motion choice names, or null while motions aren't set up.</summary>
+    /// <summary>The motion pool's maker, or null while motions aren't set up. Its <see cref="HostId"/> is the computer a motion
+    /// tries first, which the motion job holds away from background thinks.</summary>
     internal static IMotionStudio? For(string dataDirectory) =>
-        MotionClient.For(dataDirectory) is { } maker ? new MotionStudio(maker, (maker as HostMotionMaker)?.HostId) : null;
+        MotionClient.For(dataDirectory) is { } maker ? new MotionStudio(maker, (maker as PoolMotionMaker)?.Hosts[0]) : null;
 
     public string Where => maker.Where;
     public string? HostId => hostId;

@@ -1104,16 +1104,35 @@ they need `--allow-ui-effects`; the Creations page shows a picture as
 Martlet's optional `motion` host role makes body motions for VRM characters
 with HY-Motion 1.0 and returns VRMA clips ([Motion host](MOTION_HOST.md)).
 
-`motion_status` (with `dataDirectory`; files only, read-only) returns
-`settings` (motion.json, the shared `motion` setting: `file` state, `place`
+`motion_status` (with `dataDirectory`, and optionally `deviceId`, the companion
+PC to answer for; files only, read-only) returns `pool` (the Motion list on
+Companion › Motion, the `motion` area of `pools.json`: `listed`, `from` (the
+list, or motion.json while no list exists), `off`, `members` with their `key`,
+`kind`, `name`, `on`, `onlyFor` and `usableHere`, `device`, `ownHost`, and
+`tries`: the computers this PC tries in order with the production planner
+`MotionPool.Members`, each with whether it is paired here),
+`settings` (motion.json, the older shared `motion` setting: `file` state, `place`
 `Automatic`, `Off` or `Host`, `hostId`, `on`, `isDefault`, `describe`),
 `planHosts` (the computers the shared plan, `cluster.json`, last saw running
 the motion role, with their model and whether this PC is paired with them),
 `paired` (this PC's pairings in `hosts.json`, without hosts a friend shares),
-`motionHost` (the computer a motion goes to now, or null), `fixtureVariable`
+`motionHost` (the computer a motion tries first, or null), `fixtureVariable`
 (`MARTLET_MOTION_FIXTURE`), `route` (`martlet.gateway.motion.v1`, its path and
 the longest a request may take), `role` (the two models and their graphics
 memory minimums) and `bounds` (the request bounds of `MotionRequest`).
+`work_sharing_status` lists the Motion list with the other pools.
+
+`motion_pool_check` (no arguments) rehearses the motion pool (`MotionPool`
+through `WorkQueue`, what the desktop's `PoolMotionMaker` runs) with simulated
+motion computers, NOT real hosts or models. It returns `ok` and each step: the
+list's order (members on, paired here and kept for this PC; This PC as its own
+host service; an empty list or none on is off), the older choice before a list
+(automatic: every computer running the role, this PC's own first; one computer;
+off), the first list made from it, a free first computer taking the motion with
+no other asked, a busy one (`motion.busy`) or one not answering passed over,
+every one busy waiting for the first to free, a motion that fails on its
+computer not made again elsewhere, and an empty list refused
+(`motion.unavailable`).
 
 `motion_check` makes one motion from `prompt` (default *A person waves with
 the right hand, then bows.*), `seconds` (1-12, default 3) and `seed` (default 7)
@@ -1130,8 +1149,8 @@ and returns `ok`, `place`, `where`, `fixture`, `engine`, `model`, `frames`,
   127.0.0.1:50090:50090 martlet-motion:1 serve --listen 0.0.0.0
   --random-weights 2`) runs HY-Motion's real code with RANDOM weights on the
   processor (FIXTURE - NOT AI: `fixture` is true and the motion is noise).
-- `host` with `dataDirectory` (and `hostId`, or the computer `motion_status`
-  names): through that paired computer's gateway route, as the desktop asks it
+- `host` with `dataDirectory` (and `hostId`, or the first computer of the Motion
+  list that `motion_status` names): through that paired computer's gateway route, as the desktop asks it
   (`status`, then `generate`).
 
 `free` unloads the model afterwards (`POST /free`, or the route's `free`).
@@ -1140,8 +1159,9 @@ seconds is a tool error. A real motion needs an NVIDIA GPU with 24 GB or more.
 
 ### Body motions
 
-While motions are set up (the shared `motion` choice names a paired computer that
-runs the motion role, or `MARTLET_MOTION_FIXTURE=1`) and the chosen character is a
+While motions are set up (the Motion list has a computer that is on and paired
+here, or, before the list, the shared `motion` choice names one; or
+`MARTLET_MOTION_FIXTURE=1`) and the chosen character is a
 VRM, every reply on a route that does function calling also gets `body_motion`
 (`name`, and for a new motion `motion` and `seconds`), last of Martlet's own tools.
 A tag the character has plays at once; a new motion starts a quiet `motion-N`
@@ -8137,8 +8157,8 @@ priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
 `CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
 the jobs Martlet works without, each with an intro that starts with
 "Optional.": `CompanionTab-DeepThinking` (Thinking pool),
-`CompanionTab-Singing`, `CompanionTab-Pictures`, `CompanionTab-Vision` and
-`CompanionTab-Reading`. Every page shows its group as `CompanionGroupTitle`
+`CompanionTab-Singing`, `CompanionTab-Pictures`, `CompanionTab-Vision`,
+`CompanionTab-Reading` and `CompanionTab-Motion`. Every page shows its group as `CompanionGroupTitle`
 ("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its intro as `CompanionIntro`.
 
 The desktop character has its own group in Companion's side list, *How it
@@ -9188,6 +9208,32 @@ model file's download, for example "Singing: downloading model-svc.pt, 45% of
 CC-BY-NC-ND-4.0 terms and downloads. There is no play button: songs are only
 performed by Martlet in conversation, so make and inspect real songs headlessly
 with `singing_check`.
+
+Companion › Motion (`CompanionTab-Motion`, under *Optional extras*;
+[the motion pool](MOTION_HOST.md#the-motion-pool)) has the standard order.
+`MotionNow` says whether and where Martlet makes body motions ("Martlet makes
+body motions on m3-host (or the first free one of 2 computers).", "Off. Martlet
+makes no new body motions; the ones it kept still play. No computer in the list
+is on.", "Not set up yet. ..."). `MotionCharacter` says whether the character
+shown (else the chosen one) can play them: only a VRM can ("Your character is a
+Live2D model. Body motions play only on VRM characters, ..."). `MotionOpenEmotes`
+(*Kept motions and Make a motion*, passive) opens Companion › Emotes and
+motions. There is no Off choice and no single-computer choice: *Where Martlet
+makes motions* is the shared pool list with the `Pool-motion-...` IDs (summary,
+each member's line with its state, such as "1. m3-host. A paired computer; runs
+Motion with HY-Motion-1.0-Lite.", On, Up, Down, Remove, Settings, kept-for and
+the Add buttons; only computers that aren't shared by friends and can run Motion
+can be added). A member's Settings (`Pool-motion-Settings-<i>`, passive) shows
+`Pool-motion-State-<member key>` ("Motion is ready here with ...", "Setting
+Motion up here...", "Motion isn't set up here yet.", "It isn't reachable right
+now." or why that computer can't make motions, such as "Needs an NVIDIA
+graphics card with 24 GB+; this PC has ...") and `Pool-motion-SetUp-<member
+key>` (*Set up Motion here*; disabled with the reason as help text when the
+computer can't make motions). It runs `martlet-host add motion` with the role's
+own dialog (the model and Tencent's license terms), so it needs
+`--allow-ui-effects`, as do the list's On, Up, Down, Remove, Add and kept-for
+choices, which save `pools.json` and share it. `MotionAbout` (fixed text) says
+what the Motion role is.
 On Companion › Tools (`CompanionTab-Tools`), the Now line `ToolsNow` comes first, then the Terminal card with
 the page's main choice: the radio buttons `ToolsTerminalOn` (*Let Martlet run terminal commands*) and
 `ToolsTerminalOff` (*Off*, the default) report which one is `selected`, and

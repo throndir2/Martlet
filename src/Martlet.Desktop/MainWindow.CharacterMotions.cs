@@ -132,8 +132,8 @@ public partial class MainWindow
     private static string MotionsStatus(CharacterMotions motions)
     {
         if (!motions.IsSetUp)
-            return "Body motions: a paired computer with the motion role (an NVIDIA GPU with about 24 GB) lets Martlet make new " +
-                "body motions for VRM characters and keep them here.";
+            return "Body motions: a computer with the motion role (an NVIDIA GPU with about 24 GB) in the Motion list (Companion › " +
+                "Motion) lets Martlet make new body motions for VRM characters and keep them here.";
         var kept = motions.Kept().Count;
         return (motions.ChosenVrm ? "Body motions: Martlet makes new ones in conversation when asked and keeps them; "
                 : "Body motions: replies make new ones while the chosen character is a VRM (Companion › Character); ") +

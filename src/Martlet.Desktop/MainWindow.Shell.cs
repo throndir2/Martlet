@@ -1623,6 +1623,7 @@ public partial class MainWindow
             if (closing) return done;
             ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped. See the progress window for details." : $"{host.HostId}: {done}";
             if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();
+            if (done is not null && action.Verb == HostVerb.Add && action.Role == HostRoles.Motion && !host.Shared) JoinMotionPool(host.HostId);
             if (local) gpuProbe = null;
             return done;
         }

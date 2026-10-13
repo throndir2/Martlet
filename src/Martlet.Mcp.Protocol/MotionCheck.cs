@@ -20,19 +20,33 @@ namespace Martlet.Mcp;
 /// asks it); it can save the .vrma file and free the graphics card after.</summary>
 internal static class MotionCheck
 {
-    internal static object Status(string dataDirectory)
+    internal static object Status(string dataDirectory, string? device = null)
     {
         var (settings, state) = MotionSettings.Read(dataDirectory);
         var plan = Plan(dataDirectory);
         var paired = PairedHosts(dataDirectory).Select(h => h.HostId).ToArray();
+        device ??= Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory);
+        var own = OwnHost(dataDirectory);
+        var list = PoolSettings.LoadFor(dataDirectory, PoolAreas.Motion);
+        var tries = MotionPool.Members(list, settings, plan, device, own, paired);
         return new
         {
+            pool = new
+            {
+                area = PoolAreas.Motion.Id, page = PoolAreas.Motion.Page, listed = list is not null,
+                from = list is null ? "motion.json (the older choice: no Motion list yet)" : "pools.json (the Motion list)",
+                off = list is null ? !settings.On : list.NoneOn,
+                members = list?.Members.Select(m => new { key = m.Key, kind = m.Kind.ToString(), name = m.Name, on = !m.Off, onlyFor = m.OnlyFor,
+                    usableHere = m.Allows(device) }),
+                device, ownHost = own,
+                tries = tries.Select(t => new { key = t.Member.Key, hostId = t.HostId, paired = paired.Contains(t.HostId) })
+            },
             settings = new { file = state, sharedKey = MotionSettings.SharedKey, place = settings.Place.ToString(), hostId = settings.HostId,
                 on = settings.On, isDefault = settings.IsDefault, describe = settings.Describe() },
             planHosts = plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == MotionSettings.RoleKind))
                 .Select(n => new { hostId = n.HostId, model = n.Roles.First(r => r.Kind == MotionSettings.RoleKind).Model, paired = paired.Contains(n.HostId) }),
             paired,
-            motionHost = settings.MotionHost(plan, paired),
+            motionHost = tries.Count > 0 ? tries[0].HostId : null,
             fixtureVariable = "MARTLET_MOTION_FIXTURE",
             route = new { id = Audio2FaceHostConnection.MotionRouteId, path = Audio2FaceHostConnection.MotionPath,
                 longestMinutes = Audio2FaceHostConnection.MotionLongest.TotalMinutes },
@@ -95,8 +109,10 @@ internal static class MotionCheck
                 {
                     if (dataDirectory is null) throw new ArgumentException("place host needs dataDirectory (the desktop's data folder with its pairings).");
                     var hosts = PairedHosts(dataDirectory);
-                    hostId ??= MotionSettings.Load(dataDirectory).MotionHost(Plan(dataDirectory), [.. hosts.Select(h => h.HostId)])
-                        ?? throw new ArgumentException("No paired computer runs the Motion role in that data directory; pass hostId.");
+                    hostId ??= MotionPool.Members(PoolSettings.LoadFor(dataDirectory, PoolAreas.Motion), MotionSettings.Load(dataDirectory),
+                            Plan(dataDirectory), Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory), OwnHost(dataDirectory),
+                            [.. hosts.Select(h => h.HostId)]).Select(m => m.HostId).FirstOrDefault()
+                        ?? throw new ArgumentException("No computer in that data directory's Motion list (or motion choice) runs the Motion role; pass hostId.");
                     var host = hosts.FirstOrDefault(h => h.HostId == hostId) ?? throw new ArgumentException($"{hostId} isn't paired in that data directory.");
                     where = $"{hostId}'s Motion role";
                     using var connection = Connect(host);
@@ -235,6 +251,143 @@ internal static class MotionCheck
             CredentialId = host.CredentialId
         }, secret));
         return connection!;
+    }
+
+    // The pairing saved as this PC's own host service (Docker Desktop here) in hosts.json, or null.
+    private static string? OwnHost(string dataDirectory)
+    {
+        try
+        {
+            var path = Path.Combine(dataDirectory, "hosts.json");
+            if (!File.Exists(path) || new FileInfo(path).Length > 262_144) return null;
+            return (JsonNode.Parse(File.ReadAllText(path))?["hosts"] as JsonArray ?? []).OfType<JsonObject>()
+                .FirstOrDefault(h => h["method"]?.GetValue<string>() == "ThisPcDocker")?["pairing"]?["hostId"]?.GetValue<string>();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return null; }
+    }
+
+    // ---------- motion_pool_check ----------
+
+    /// <summary>A simulated computer with the motion role: free, busy with another motion (motion.busy) until it was asked
+    /// <see cref="BusyFor"/> times, not answering, or failing the motion itself (motion.failed).</summary>
+    private sealed class Mover(string id)
+    {
+        public string Id { get; } = id;
+        public int BusyFor { get; init; }
+        public bool Down { get; init; }
+        public bool Fails { get; init; }
+        public int Asked;
+        public int Made;
+
+        public async Task<string> Make(CancellationToken token)
+        {
+            var asked = Interlocked.Increment(ref Asked);
+            if (Down) throw new HttpRequestException($"{Id} didn't answer.");
+            if (asked <= BusyFor) throw new MotionException(MotionErrorCodes.Busy, $"{Id}'s Motion role: it is making another motion.");
+            if (Fails) throw new MotionException(MotionErrorCodes.Failed, $"{Id}'s Motion role: the motion failed.");
+            await Task.Delay(5, token);
+            Interlocked.Increment(ref Made);
+            return Id;
+        }
+    }
+
+    private sealed record Moved(string? Host, string? Code);
+
+    private static async Task<Moved> MoveAsync(IReadOnlyList<Mover> pool)
+    {
+        try
+        {
+            var (made, host) = await MotionPool.RunAsync(new WorkQueue { Retry = TimeSpan.FromMilliseconds(10) }, [.. pool.Select(m => m.Id)],
+                (id, token) => pool.First(m => m.Id == id).Make(token), null, CancellationToken.None);
+            return made == host ? new(host, null) : new(null, "mismatch");
+        }
+        catch (MotionException error) { return new(null, error.Code); }
+        catch (HttpRequestException) { return new(null, "unreachable"); }
+    }
+
+    /// <summary>motion_pool_check: rehearses the production motion pool (<see cref="MotionPool"/> through <see cref="WorkQueue"/>,
+    /// what the desktop's PoolMotionMaker runs) with simulated motion computers. NOT real hosts or models; nothing leaves the
+    /// process.</summary>
+    internal static async Task<object> PoolCheckAsync(CancellationToken cancellation)
+    {
+        List<object> steps = [];
+        var ok = true;
+        void Step(string name, bool passed, object detail)
+        {
+            ok &= passed;
+            steps.Add(new { name, passed, detail });
+        }
+        var now = DateTimeOffset.UtcNow;
+        var plan = ClusterPlan.Empty
+            .Observe("m3-host", "https://192.168.1.33:9443", [new() { Kind = MotionSettings.RoleKind, Model = "hy-motion-1.0-lite" }], false, "desk-2", now)
+            .Observe("desk-host", "https://192.168.1.20:9443", [new() { Kind = MotionSettings.RoleKind, Model = "hy-motion-1.0" }], false, "desk-2", now)
+            .Observe("m1-host", "https://192.168.1.31:9443", [new() { Kind = "pictures", Model = "z-image-turbo" }], false, "desk-2", now)
+            .Observe("friend-host", "https://192.168.1.40:9443", [new() { Kind = MotionSettings.RoleKind, Model = "hy-motion-1.0" }], false, "desk-2", now);
+        string[] paired = ["m1-host", "m3-host", "desk-host"];
+
+        var list = new PoolList
+        {
+            Area = PoolAreas.Motion.Id,
+            Members = [PoolMember.Computer("m3-host"), PoolMember.ThisPc(), PoolMember.Computer("m1-host") with { Off = true },
+                PoolMember.Computer("friend-host"), PoolMember.Computer("m4-host") with { OnlyFor = ["desk-9"] }]
+        };
+        var listed = MotionPool.Members(list, new MotionSettings { Place = MotionPlace.Off }, plan, "desk-2", "desk-host", paired);
+        var empty = MotionPool.Members(new PoolList { Area = PoolAreas.Motion.Id }, new MotionSettings(), plan, "desk-2", "desk-host", paired);
+        var allOff = MotionPool.Members(list with { Members = [.. list.Members.Select(m => m with { Off = true })] }, new MotionSettings(), plan,
+            "desk-2", "desk-host", paired);
+        Step("The Motion list (pools.json) wins over motion.json: its members in order, This PC as its own host service; a member turned " +
+            "off, not paired here (a friend's host) or kept for another companion PC is left out; an empty list, or none on, is off",
+            listed.Select(m => m.HostId).SequenceEqual(["m3-host", "desk-host"]) && listed[1].Member.Kind == PoolMemberKind.ThisPc &&
+            empty.Count == 0 && allOff.Count == 0,
+            new { listed = listed.Select(m => new { m.Member.Key, m.HostId }), emptyList = empty.Count, allOff = allOff.Count });
+
+        var automatic = MotionPool.Members(null, new MotionSettings(), plan, "desk-2", "desk-host", paired);
+        var one = MotionPool.Members(null, new MotionSettings { Place = MotionPlace.Host, HostId = "m3-host" }, plan, "desk-2", "desk-host", paired);
+        var off = MotionPool.Members(null, new MotionSettings { Place = MotionPlace.Off }, plan, "desk-2", "desk-host", paired);
+        Step("Before a list: automatic tries every paired computer the shared plan says runs Motion, this PC's own first (never a " +
+            "friend's host or one without the role); one chosen computer; off: none",
+            automatic.Select(m => m.HostId).SequenceEqual(["desk-host", "m3-host"]) && one.Select(m => m.HostId).SequenceEqual(["m3-host"]) &&
+            off.Count == 0,
+            new { automatic = automatic.Select(m => m.HostId), one = one.Select(m => m.HostId), off = off.Count });
+
+        var runners = MotionPool.Runners(plan, paired, "desk-host");
+        var fromHost = MotionPool.FirstList(new MotionSettings { Place = MotionPlace.Host, HostId = "m3-host" }, runners);
+        var fromOff = MotionPool.FirstList(new MotionSettings { Place = MotionPlace.Off }, runners);
+        var fromNothing = MotionPool.FirstList(new MotionSettings(), []);
+        Step("The first list keeps the older choice: one computer first, then the others that run Motion; off: all of them off; " +
+            "automatic with no computer running Motion makes no list (adding the role later still turns motion on)",
+            fromHost?.Members.Select(m => m.Key).SequenceEqual(["host:m3-host", "host:desk-host"]) == true && fromHost.Members.All(m => !m.Off) &&
+            fromOff is { NoneOn: true, Members.Count: 2 } && fromNothing is null,
+            new { fromHost = fromHost?.Members.Select(m => m.Key), fromOff = fromOff?.Members.Select(m => new { m.Key, on = !m.Off }), fromNothing });
+
+        Mover first = new("m3-host"), second = new("desk-host");
+        var free = await MoveAsync([first, second]);
+        Step("The first computer is free: it makes the motion and no other computer is asked",
+            free.Host == "m3-host" && second.Asked == 0, new { free, asked = new { m3 = first.Asked, desk = second.Asked } });
+
+        Mover busy = new("m3-host") { BusyFor = 1000 }, idle = new("desk-host");
+        var passed = await MoveAsync([busy, idle]);
+        Step("The first computer is making another motion (motion.busy): the next one takes it at once",
+            passed.Host == "desk-host" && busy.Made == 0, passed);
+
+        Mover down = new("m3-host") { Down = true }, up = new("desk-host");
+        var around = await MoveAsync([down, up]);
+        Step("A computer that doesn't answer is passed over", around.Host == "desk-host", around);
+
+        Mover soon = new("m3-host") { BusyFor = 3 }, later = new("desk-host") { BusyFor = 1000 };
+        var waited = await MoveAsync([soon, later]);
+        Step("Every computer is busy: the motion waits and goes to the first one that frees", waited.Host == "m3-host" && soon.Asked >= 4, waited);
+
+        Mover failing = new("m3-host") { Fails = true }, spare = new("desk-host");
+        var failed = await MoveAsync([failing, spare]);
+        Step("A motion that fails on its computer (motion.failed) is not made again elsewhere",
+            failed.Code == MotionErrorCodes.Failed && spare.Asked == 0, failed);
+
+        var nothing = await MoveAsync([]);
+        Step("An empty list: motion.unavailable, and nothing is asked", nothing.Code == MotionErrorCodes.Unavailable, nothing);
+
+        cancellation.ThrowIfCancellationRequested();
+        return new { ok, fixture = "simulated motion computers (NOT real hosts or models)", steps };
     }
 
     private static Uri Endpoint(string value)

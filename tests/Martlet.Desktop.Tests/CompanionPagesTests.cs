@@ -24,8 +24,9 @@ public sealed class CompanionPagesTests
     {
         var groups = MainWindow.SideListOrder().GroupBy(MainWindow.GroupOf).ToDictionary(g => g.Key, g => g.ToArray());
         Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Lip-sync" }, groups[CompanionGroup.HowItWorks].Select(MainWindow.TabTitle));
-        // The Optional extras follow the priority list: vision, reading, hearing, the Thinking pool, smart home, singing, pictures.
-        Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Thinking pool", "Smart home", "Singing", "Pictures" },
+        // The Optional extras follow the priority list: vision, reading, hearing, the Thinking pool, smart home, singing, pictures,
+        // then motion, which the list doesn't rank.
+        Assert.Equal(new[] { "Vision", "Reading", "Hearing", "Thinking pool", "Smart home", "Singing", "Pictures", "Motion" },
             groups[CompanionGroup.Extras].Select(MainWindow.TabTitle));
         Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional.", MainWindow.TabIntro(tab)));
         Assert.All(groups[CompanionGroup.Extras], tab => Assert.EndsWith($" Off: {OptionalExtras.OffMeans(tab)}.", MainWindow.TabIntro(tab)));

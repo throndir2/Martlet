@@ -635,11 +635,16 @@ paired computer with the motion role (HY-Motion 1.0, an NVIDIA GPU with about
 24 GB; see [MOTION_HOST.md](MOTION_HOST.md)) and keeps it, so the character does
 it again at once later, without that computer. This is optional. Without a
 motion computer, or for a Live2D character, nothing changes: replies get the
-same tools and instructions as before.
+same tools and instructions as before. Companion › Motion (under *Optional
+extras*) is where it is controlled: its list, *Where Martlet makes motions*, is
+the [motion pool](MOTION_HOST.md#the-motion-pool) (the computers that make
+motions, in order, each on or off; with none on, motion is off), and it says
+whether the character can play motions (only a VRM can).
 
-- **When it is offered**: while motions are set up (the shared `motion`
-  choice names a paired computer that runs the motion role, or
-  `MARTLET_MOTION_FIXTURE=1` for automated checks) and the chosen character is a
+- **When it is offered**: while motions are set up (the Motion list has a
+  computer that is on and paired here, or, before the list, the shared
+  `motion` choice names one; or `MARTLET_MOTION_FIXTURE=1` for automated
+  checks) and the chosen character is a
   VRM, every reply that can use tools gets one more tool, `body_motion`. It is
   always the same and always the last of Martlet's own tools, so the start of
   every request stays the same, and switching between a VRM and a Live2D
@@ -657,12 +662,13 @@ same tools and instructions as before.
   background and the tool returns at once, so speech never waits for a motion.
   The talk window shows *Moving…* while the tool runs.
 - **The background job**: a `motion` job (one at a time, at most 20 an hour,
-  5 minutes each, *Making a motion*). It holds the motion computer away from
-  background thinks (its duty is `motions`), checks that the computer is ready,
-  makes the clip, checks it as the VRM renderer does (a VRMA of at most 4 MB),
+  5 minutes each, *Making a motion*). It holds the first computer of the Motion
+  list away from background thinks (its duty is `motions`), checks that a
+  computer in the list is ready, makes the clip on the first free one (a busy
+  one is passed over), checks it as the VRM renderer does (a VRMA of at most 4 MB),
   keeps it and plays it on the character, when a VRM still shows and the same
   conversation goes on. Three minutes after the last motion, Martlet frees the
-  motion computer's graphics card (the relay's free operation), as it does for
+  graphics card of each computer that made one (the relay's free operation), as it does for
   pictures. The job is *quiet*: Martlet never starts a reply of its own about a
   motion; the note (made and played, or why not) reaches the Thinking model with
   your next message.

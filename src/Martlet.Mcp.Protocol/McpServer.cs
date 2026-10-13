@@ -1269,19 +1269,30 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             saveDirectory = new { type = "string", maxLength = 260 }
         }),
         Tool("motion_status", "Read where Martlet makes body motions for VRM characters (docs/MOTION_HOST.md) for a data directory: " +
-            "the motion choice (motion.json, the shared motion setting: automatic, off or one computer), the computers the shared plan " +
-            "(cluster.json) says run the HY-Motion Motion role and whether this PC is paired with each (hosts.json), the computer a " +
-            "motion goes to now, the fixture switch (MARTLET_MOTION_FIXTURE=1), the route (martlet.gateway.motion.v1), the two models " +
-            "and their graphics memory minimums, and the request bounds (seconds, prompt length and words, seed). Files only; read-only.", new
+            "the Motion list (Companion › Motion, the motion area of pools.json: its members in order, each on or off and kept for " +
+            "which companion PCs, and the computers this PC tries with the production planner MotionPool.Members), the older motion " +
+            "choice it was made from (motion.json, the shared motion setting: automatic, off or one computer; used while no list " +
+            "exists), the computers the shared plan (cluster.json) says run the HY-Motion Motion role and whether this PC is paired " +
+            "with each (hosts.json), the computer a motion goes to first, the fixture switch (MARTLET_MOTION_FIXTURE=1), the route " +
+            "(martlet.gateway.motion.v1), the two models and their graphics memory minimums, and the request bounds (seconds, prompt " +
+            "length and words, seed). Files only; read-only.", new
         {
-            dataDirectory = new { type = "string" }
+            dataDirectory = new { type = "string" },
+            deviceId = new { type = "string", maxLength = 64 }
         }),
+        Tool("motion_pool_check", "Rehearse the motion pool (MotionPool through WorkQueue, what the desktop's PoolMotionMaker runs) with " +
+            "simulated motion computers, NOT real hosts or models: the Motion list's order (members on, paired here and kept for this PC; " +
+            "This PC as its own host service; an empty list or none on is off), the older choice before a list (automatic: every computer " +
+            "running the role, this PC's own first; one computer; off), the first list made from it, a free first computer taking the " +
+            "motion with no other asked, a busy one (motion.busy) or one not answering passed over for the next, every one busy waiting " +
+            "for the first to free, a motion that fails on its computer not made again elsewhere, and an empty list refused " +
+            "(motion.unavailable). Returns ok and each step.", new { }),
         Tool("motion_check", "Make one body motion from an English prompt and report the VRMA clip (VRM Animation): frames, fps, " +
             "seconds, seed, bytes, SHA-256 and its glTF facts (VRMC_vrm_animation version, humanoid bones, channels, keyframes). " +
             "place \"fixture\" (the default: the FIXTURE - NOT AI wave maker), \"worker\" (a Motion role's worker on loopback at " +
             "endpoint, such as http://127.0.0.1:50090/: GET /status, then POST /generate; a worker started with serve --random-weights " +
             "runs HY-Motion's code with RANDOM weights, FIXTURE - NOT AI) or \"host\" (through a paired computer's gateway route as " +
-            "the desktop asks it: dataDirectory with its pairings, hostId or the computer motion_status names). free unloads the " +
+            "the desktop asks it: dataDirectory with its pairings, hostId or the first computer of the Motion list motion_status names). free unloads the " +
             "model after. With saveDirectory (absolute) it writes motion.vrma there. A real motion needs an NVIDIA GPU with 24 GB+.", new
         {
             place = new { type = "string", @enum = new[] { "fixture", "worker", "host" } },
@@ -2899,7 +2910,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     OptionalString(arguments, "prompt"), OptionalString(arguments, "shape"),
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "saveDirectory"),
                     cancellation),
-                "motion_status" => MotionCheck.Status(DataDirectory(arguments)),
+                "motion_status" => MotionCheck.Status(DataDirectory(arguments), OptionalString(arguments, "deviceId")),
+                "motion_pool_check" => await MotionCheck.PoolCheckAsync(cancellation),
                 "motion_check" => await MotionCheck.RunAsync(OptionalString(arguments, "place"), OptionalString(arguments, "endpoint"),
                     OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "hostId"),
                     OptionalString(arguments, "prompt"), OptionalDouble(arguments, "seconds"), OptionalInt(arguments, "seed"),
