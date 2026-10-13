@@ -131,7 +131,7 @@ public sealed class SenseRoutingTests
             Origin = "https://miku-host.local:9443", ModelId = model, ConfigurationRevision = Guid.NewGuid(), Enabled = true,
             Gateway = new() { SchemaVersion = 1, Origin = "https://miku-host.local:9443", HostId = "miku-host", SpkiFingerprint = "sha256:" + new string('0', 64), DeviceRole = SelfHostSetup.GatewayRole }
         };
-        Assert.Equal(HearingSupport.Supported, SenseRouting.ThinkingHears(OnHost("gemma4-e4b"), null));
+        Assert.Equal(HearingSupport.Supported, ModelSenses.For(OnHost("gemma4-e4b"), null).Hears);
         Assert.Equal(SensePath.Thinking, SenseRouting.For(SenseKind.Audio, new(), OnHost("gemma4-e4b"), null).Path);
         Assert.Equal(SensePath.None, SenseRouting.For(SenseKind.Audio, new(), OnHost("qwen3:8b"), null).Path);
         // A refused recording there is remembered by the computer's gateway origin.

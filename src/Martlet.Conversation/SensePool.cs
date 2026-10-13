@@ -89,15 +89,13 @@ public static class SensePool
         return members;
     }
 
-    /// <summary>Whether <paramref name="member"/>'s model is known not to see (an image job) or hear (an audio job): what Martlet
-    /// found out about it, then its name (<see cref="SenseRouting.Sees"/>, <see cref="SenseRouting.Hears"/>). The owner put it in
-    /// the list, so a model Martlet can't tell about is tried, and a refusal is remembered.</summary>
+    /// <summary>Whether <paramref name="member"/>'s model is known not to see (an image job) or hear (an audio job)
+    /// (<see cref="ModelSenses"/>, <see cref="SenseUse.List"/>). The owner put it in the list, so a model Martlet can't tell about
+    /// is tried, and a refusal is remembered.</summary>
     public static bool Refuses(SenseKind kind, DeepThinkingSettings member, ModelAbilities? abilities)
     {
         ArgumentNullException.ThrowIfNull(member);
-        return kind == SenseKind.Image
-            ? SenseRouting.Sees(member, abilities) == VisionSupport.Unsupported
-            : SenseRouting.Hears(member, abilities) == HearingSupport.Unsupported;
+        return !ModelSenses.For(member, abilities).Takes(kind, SenseUse.List);
     }
 
     /// <summary>Runs one job of <paramref name="kind"/> on the first of <paramref name="members"/> that takes it
