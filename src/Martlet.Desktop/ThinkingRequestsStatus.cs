@@ -8,18 +8,7 @@ namespace Martlet.Desktop;
 /// <summary>Plain words for the Thinking requests page and its status file: kinds, states, sources and times.</summary>
 internal static class ThinkingRequestWords
 {
-    internal static string Kind(ThinkingJobKind kind) => kind switch
-    {
-        ThinkingJobKind.BargeInJudge => "Barge-in judge",
-        ThinkingJobKind.EndOfTurnJudge => "End-of-turn judge",
-        ThinkingJobKind.Digest => "Summary",
-        ThinkingJobKind.ThinkLonger => "Think longer",
-        ThinkingJobKind.TouchZones => "Touch zones",
-        ThinkingJobKind.Memory => "Memory",
-        ThinkingJobKind.Naming => "Naming",
-        ThinkingJobKind.CheckIn => "Check-in",
-        _ => "Research"
-    };
+    internal static string Kind(ThinkingJobKind kind) => ThinkingJobKinds.Row(kind).TypeName;
 
     internal static string State(ThinkingRequestInfo request) => request.State switch
     {

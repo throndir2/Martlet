@@ -112,6 +112,18 @@ internal static class ThinkingPoolCheck
                 tools = places.Any(p => p.Takes(kind) && p.Can.HasFlag(ThinkingCapability.Tools)),
                 priority = (int)ThinkingJobKinds.Priority(kind), fast = ThinkingJobKinds.IsFast(kind)
             }),
+            // The one table of job kinds (ThinkingJobKinds.Rows, in the Runs on card's order): each kind's saved key, the Runs on
+            // label (all the work it controls), its type on the Thinking requests page, its priority, whether it is fast, the most
+            // its jobs need, what the live floor does to it and the helper jobs that run as it.
+            kinds = ThinkingJobKinds.Rows.Select(row => new
+            {
+                key = row.Key, label = row.Label, type = row.TypeName, priority = (int)row.Priority, fast = row.Fast,
+                needs = row.Needs.ToString(), whileLive = row.WhileLive.ToString(),
+                helpers = row.Helpers.Select(helper => new
+                {
+                    kind = helper.Kind.ToString(), key = helper.Key, priority = (int)(helper.Priority ?? row.Priority), ownerWaits = helper.OwnerWaits
+                })
+            }),
             guidance = ThinkingJobBoard.Guidance(members),
             warnings = ThinkingPoolWarnings.For(plan, routes),
             // The pool now, as the desktop last wrote it: slots of the members that answer, of every member, and who is offline.
@@ -221,6 +233,22 @@ internal static class ThinkingPoolCheck
         static ThinkingJob Job(ThinkingJobKind kind, ThinkingCapability? needs = null, TimeSpan? timeout = null, bool stale = false) =>
             new() { Kind = kind, Instructions = "Answer in one word.", Text = "fixture", Needs = needs, Timeout = timeout ?? TimeSpan.FromSeconds(10), DropWhenStale = stale };
 
+        // 0. The one table of job kinds (ThinkingJobKinds.Rows): a row for each kind, unique saved keys in one format (lower case
+        // words with hyphens), and each helper job in exactly one row.
+        {
+            var rows = ThinkingJobKinds.Rows;
+            var missing = ThinkingJobKinds.All.Where(kind => rows.Count(row => row.Kind == kind) != 1).ToArray();
+            var keys = rows.Select(row => row.Key).ToArray();
+            var helpers = rows.SelectMany(row => row.Helpers).ToArray();
+            var unplaced = Enum.GetValues<HelperJobKind>().Where(kind => helpers.Count(h => h.Kind == kind) != 1).ToArray();
+            var badKeys = keys.Concat(helpers.Select(h => h.Key))
+                .Where(key => !System.Text.RegularExpressions.Regex.IsMatch(key, "^[a-z]+(-[a-z]+)*$")).ToArray();
+            Check("kinds: one row for each kind, unique keys in one format, each helper job in one row",
+                missing.Length == 0 && keys.Distinct(StringComparer.Ordinal).Count() == keys.Length && unplaced.Length == 0 && badKeys.Length == 0,
+                $"{rows.Count} kinds ({string.Join(", ", keys)}); no row: [{string.Join(", ", missing)}]; helpers not in one row: " +
+                $"[{string.Join(", ", unplaced)}]; keys in another format: [{string.Join(", ", badKeys)}]");
+        }
+
         // 1. An empty pool answers "no member" at once.
         {
             var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [], (_, _, _) => Task.FromResult(ThinkingAnswer.Done("x")));
@@ -260,8 +288,8 @@ internal static class ThinkingPoolCheck
             var status = board.Status();
             var fast = await board.RunAsync(Job(ThinkingJobKind.EndOfTurnJudge), cancellation);
             Check("fast slot: the second long job waits, a judge takes the last slot",
-                fast.Succeeded && !second.IsCompleted && status.KeepsFastSlot && status.Running.GetValueOrDefault("think-longer") == 1 &&
-                status.Waiting.GetValueOrDefault("think-longer") == 1,
+                fast.Succeeded && !second.IsCompleted && status.KeepsFastSlot && status.Running.GetValueOrDefault(ThinkingJobKinds.Name(ThinkingJobKind.ThinkLonger)) == 1 &&
+                status.Waiting.GetValueOrDefault(ThinkingJobKinds.Name(ThinkingJobKind.ThinkLonger)) == 1,
                 $"judge {fast.Outcome}; second think waiting: {!second.IsCompleted}; running {Json(status.Running)}, waiting {Json(status.Waiting)}");
             release.TrySetResult();
             var done = await Task.WhenAll(first, second);
@@ -293,7 +321,7 @@ internal static class ThinkingPoolCheck
             release.TrySetResult();
             await Task.WhenAll(holding, research, digest, judge);
             var ran = order.Select(ThinkingJobKinds.Name).ToArray();
-            Check("priority: one slot, highest priority first", ran.SequenceEqual(["think-longer", "barge-in-judge", "digest", "research"]),
+            Check("priority: one slot, highest priority first", order.SequenceEqual([ThinkingJobKind.ThinkLonger, ThinkingJobKind.BargeInJudge, ThinkingJobKind.Digest, ThinkingJobKind.Research]),
                 $"line {string.Join(" > ", line)}; ran {string.Join(", ", ran)}; 1 slot: long jobs may take it");
             Check("guidance: 1 slot", ThinkingJobBoard.Guidance([new("host:one", "one", 1, 0, ThinkingCapability.Text, 0)])[0].StartsWith("1 slot:", StringComparison.Ordinal),
                 ThinkingJobBoard.Guidance([new("host:one", "one", 1, 0, ThinkingCapability.Text, 0)])[0]);
@@ -481,8 +509,8 @@ internal static class ThinkingPoolCheck
             var toolsAllOffline = Tools();
             offline.Clear();
             places.Reconsider();
-            await WaitAsync(() => places.Leases.Any(l => l.Holder.StartsWith("memory", StringComparison.Ordinal)), cancellation);
-            var placedOn = places.Leases.FirstOrDefault(l => l.Holder.StartsWith("memory", StringComparison.Ordinal))?.Place.Name;
+            await WaitAsync(() => places.Leases.Any(l => l.Holder.StartsWith(ThinkingJobKinds.Name(ThinkingJobKind.Memory), StringComparison.Ordinal)), cancellation);
+            var placedOn = places.Leases.FirstOrDefault(l => l.Holder.StartsWith(ThinkingJobKinds.Name(ThinkingJobKind.Memory), StringComparison.Ordinal))?.Place.Name;
             release.TrySetResult();
             var back = await waiting;
             holding.Dispose();
@@ -930,16 +958,17 @@ internal static class ThinkingPoolCheck
             var guesses = new[] { "gemma4:e2b", "qwen3:8b", "gemma4:27b", "nvidia/llama-3.3-nemotron-super-49b-v1", "llama3.3:70b" }
                 .Select(model => $"{model} {ThinkingSmartsGuess.From(model)}").ToArray();
             var endpoint = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "https://integrate.api.nvidia.com", ModelId = "qwen3:8b" };
+            var checkInKey = ThinkingJobKinds.Name(ThinkingJobKind.CheckIn);
             var settings = new ThinkingPoolSettings().Add(endpoint).WithSmarts(endpoint.Key, ThinkingSmarts.Smart)
-                .WithRunsOn("check-in", ThinkingRunsOn.Only([endpoint.Key]));
+                .WithRunsOn(checkInKey, ThinkingRunsOn.Only([endpoint.Key]));
             var left = settings.Remove(endpoint.Key);
             Check("runs on: smarts are guessed from the model name, and the owner's choice is kept until the member leaves",
                 ThinkingSmartsGuess.From("gemma4:e2b") == ThinkingSmarts.Fast && ThinkingSmartsGuess.From("qwen3:8b") == ThinkingSmarts.Standard &&
                 ThinkingSmartsGuess.From("nvidia/llama-3.3-nemotron-super-49b-v1") == ThinkingSmarts.Smart &&
-                settings.SmartsOf(endpoint) == ThinkingSmarts.Smart && settings.RunsOn("check-in").Members.Count == 1 &&
-                left.Smarts.Count == 0 && left.RunsOn("check-in").Members.Count == 0,
+                settings.SmartsOf(endpoint) == ThinkingSmarts.Smart && settings.RunsOn(checkInKey).Members.Count == 1 &&
+                left.Smarts.Count == 0 && left.RunsOn(checkInKey).Members.Count == 0,
                 $"{string.Join("; ", guesses)}; chosen {settings.SmartsOf(endpoint)}; after leaving: {left.Smarts.Count} chosen, " +
-                $"check-ins on {left.RunsOn("check-in").Describe()}");
+                $"check-ins on {left.RunsOn(checkInKey).Describe()}");
         }
 
         return new

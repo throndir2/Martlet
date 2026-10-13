@@ -2,27 +2,18 @@ using Martlet.Conversation;
 
 namespace Martlet.Desktop;
 
-/// <summary>Helper jobs (<see cref="HelperJobs"/>) on the Thinking pool: memory goes as a Memory job, emote naming as a Naming job
-/// and touch zones as a TouchZones job (needs vision), each with the pool's priority for its kind. Measuring the eyes needs vision
-/// too, so it goes as a TouchZones job, but at the helpers' low priority. A job the pool can't finish (no member, none free in
-/// time, failed or timed out) returns null, so the conversation's own Thinking model does it after the reply, as before.</summary>
+/// <summary>Helper jobs (<see cref="HelperJobs"/>) on the Thinking pool, each as the pool kind whose row in
+/// <see cref="ThinkingJobKinds.Rows"/> lists it: remembering, tidying memory and the memory brief as Memory jobs, emote naming and
+/// touch temperament as Naming jobs, and touch zones, measuring the eyes and writing a character as TouchZones jobs. A job the
+/// pool can't finish (no member, none free in time, failed or timed out) returns null, so the conversation's own Thinking model
+/// does it after the reply, as before.</summary>
 internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobPool
 {
-    internal static ThinkingJobKind Kind(HelperJobKind kind) => kind switch
-    {
-        HelperJobKind.Memory or HelperJobKind.MemoryUpkeep or HelperJobKind.MemoryBrief => ThinkingJobKind.Memory,
-        HelperJobKind.ActionNaming or HelperJobKind.Temperament => ThinkingJobKind.Naming,
-        _ => ThinkingJobKind.TouchZones
-    };
+    internal static ThinkingJobKind Kind(HelperJobKind kind) => ThinkingJobKinds.Helper(kind).Pool.Kind;
 
     /// <summary>The pool priority of a helper kind when it isn't its pool kind's own: the eyes wait like the other helpers, and
     /// the memory brief waits behind everything (it is never urgent).</summary>
-    internal static ThinkingPriority? Priority(HelperJobKind kind) => kind switch
-    {
-        HelperJobKind.Eyes => ThinkingPriority.Helper,
-        HelperJobKind.MemoryBrief => ThinkingPriority.Research,
-        _ => null
-    };
+    internal static ThinkingPriority? Priority(HelperJobKind kind) => ThinkingJobKinds.Helper(kind).Helper.Priority;
 
     internal static ThinkingCapability Needs(HelperCapability capability) =>
         capability == HelperCapability.Vision ? ThinkingCapability.Text | ThinkingCapability.Vision : ThinkingCapability.Text;

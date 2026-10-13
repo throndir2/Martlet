@@ -15,27 +15,8 @@ using Martlet.Logging;
 namespace Martlet.Desktop;
 #endif
 
-/// <summary>Background model work Martlet does on its own, besides replies and think_longer.</summary>
-internal enum HelperJobKind
-{
-    /// <summary>Remembering and learning names after a reply.</summary>
-    Memory,
-    /// <summary>Naming a character's emotes and motions.</summary>
-    ActionNaming,
-    /// <summary>Finding a character's touch zones in one picture of it.</summary>
-    TouchZones,
-    /// <summary>Deciding a character's touch temperament from its personality.</summary>
-    Temperament,
-    /// <summary>Measuring a character's eyes in one close-up of its face (vision, low priority).</summary>
-    Eyes,
-    /// <summary>Writing the personality of a character the owner named in Find a character (the owner waits).</summary>
-    CharacterWriting,
-    /// <summary>Tidying memory: search words for facts, duplicates merged and outdated facts kept as history (Thinking pool only,
-    /// low priority).</summary>
-    MemoryUpkeep,
-    /// <summary>Writing the memory brief from the remembered facts (lowest priority).</summary>
-    MemoryBrief
-}
+// The helper job kinds (HelperJobKind) and their keys, pool kinds and priorities are rows of ThinkingJobKinds.Rows
+// (Martlet.Conversation\ThinkingJobKinds.cs).
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
 internal enum HelperCapability { Text, Vision }
@@ -97,19 +78,10 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
     internal LiveFloor? Floor { get; init; }
 
     internal static HelperJobPriority PriorityOf(HelperJobKind kind) =>
-        kind is HelperJobKind.TouchZones or HelperJobKind.CharacterWriting ? HelperJobPriority.Normal : HelperJobPriority.Low;
+        ThinkingJobKinds.Helper(kind).Helper.OwnerWaits ? HelperJobPriority.Normal : HelperJobPriority.Low;
 
-    internal static string Name(HelperJobKind kind) => kind switch
-    {
-        HelperJobKind.Memory => "memory",
-        HelperJobKind.ActionNaming => "action_naming",
-        HelperJobKind.Temperament => "temperament",
-        HelperJobKind.Eyes => "eyes",
-        HelperJobKind.CharacterWriting => "character_writing",
-        HelperJobKind.MemoryUpkeep => "memory_upkeep",
-        HelperJobKind.MemoryBrief => "memory_brief",
-        _ => "touch_zones"
-    };
+    /// <summary>The kind's key in helper-jobs.json, the log and a sense job's purpose (memory, action-naming, touch-zones...).</summary>
+    internal static string Name(HelperJobKind kind) => ThinkingJobKinds.Helper(kind).Helper.Key;
 
     /// <summary>The last route of each kind that ran since Martlet started.</summary>
     internal IReadOnlyList<HelperRoute> Last

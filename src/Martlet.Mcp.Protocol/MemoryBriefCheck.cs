@@ -1,4 +1,5 @@
 using System.IO;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Mcp.Shared;

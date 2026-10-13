@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
 using Martlet.Avatar.Hosting;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;

@@ -1265,8 +1265,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // smart") with its machine boxes for These members ("ThinkingPoolRunsOnMember-check-in-0" reads "Check-ins: runs on
         // diva's Thinking pool (qwen3:8b) (Standard)" and whether it is ticked), and each check-in card's own Runs on
         // ("CheckInRunsOn-c1" reads "Like other check-ins", "CheckInRunsOnMember-c1-0" as above). Changing any of them saves
-        // thinking-pool.json or check-ins.json, so it needs --allow-ui-effects.
-        "ThinkingPoolSmarts-", "ThinkingPoolRunsOn-", "ThinkingPoolRunsOnMember-", "CheckInRunsOn-", "CheckInRunsOnMember-",
+        // thinking-pool.json or check-ins.json, so it needs --allow-ui-effects. Each kind's label on the Runs on card
+        // ("ThinkingPoolRunsOnLabel-touch-zones" reads "Touch zones, measuring the eyes and writing a character's personality":
+        // all the work the kind controls, from ThinkingJobKinds.Rows) is read-only text.
+        "ThinkingPoolSmarts-", "ThinkingPoolRunsOn-", "ThinkingPoolRunsOnMember-", "ThinkingPoolRunsOnLabel-", "CheckInRunsOn-", "CheckInRunsOnMember-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
