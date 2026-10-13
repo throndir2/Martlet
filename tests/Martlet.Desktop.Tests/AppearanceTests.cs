@@ -323,10 +323,14 @@ public sealed class AppearanceTests
     [Fact]
     public void EveryDesktopWindowInheritsSharedTheme()
     {
+        // The subtitle strip is a click-through caption overlay with fixed caption colors over full-screen games; ThemedWindow's
+        // ScreenFit would move it into the work area, off its place at the bottom of the monitor.
+        Type[] overlays = [typeof(SubtitleOverlayWindow)];
         var windows = typeof(MainWindow).Assembly.GetTypes()
             .Where(type => type.IsClass && !type.IsAbstract && type != typeof(ThemedWindow) &&
-                typeof(Window).IsAssignableFrom(type));
+                typeof(Window).IsAssignableFrom(type) && !overlays.Contains(type));
         Assert.All(windows, type => Assert.True(type.IsSubclassOf(typeof(ThemedWindow)), type.FullName));
+        Assert.All(overlays, type => Assert.False(type.IsSubclassOf(typeof(ThemedWindow)), type.FullName));
     }
 
     [Theory]

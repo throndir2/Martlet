@@ -100,8 +100,9 @@ public sealed class HostRolesTests
         HostRegistry.Save(scope.DirectoryPath, [here, pasted]);
         var loaded = HostRegistry.Load(scope.DirectoryPath, thisPcAddress: "192.168.1.10");
         Assert.Equal(HostSetupMethod.ThisPcDocker, loaded[0].Method);
-        Assert.Equal(HostSetupMethod.OnHost, loaded[1].Method);
-        Assert.False(loaded[1].CanLaunch);
+        // Another computer is reached through Martlet there (its paired connection), which can run the host commands.
+        Assert.Equal(HostSetupMethod.Agent, loaded[1].Method);
+        Assert.True(loaded[1].CanLaunch);
         Assert.All(HostRegistry.Load(scope.DirectoryPath), h => Assert.Equal(HostSetupMethod.ThisPcDocker, h.Method));
     }
 
@@ -137,7 +138,7 @@ public sealed class HostRolesTests
         Assert.Contains(b.Roles, r => r.Chip == "Lip-sync" && r.Detail.StartsWith("Handles lip-sync", StringComparison.Ordinal));
         Assert.DoesNotContain(b.Commands, c => c.Action == NodeAction.UseForLipSync);
         Assert.Contains(b.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/audio2face");
-        Assert.Contains(b.Facts, f => f.Label == "Connection" && f.Value.StartsWith("Run commands", StringComparison.Ordinal));
+        Assert.Contains(b.Facts, f => f.Label == "Connection" && f.Value == "Martlet on that computer (paired connection)");
         Assert.Contains(pc.Commands, c => c.Action == NodeAction.LipSyncThisPc);
         Assert.Equal(LipSyncHandler.Host, NetworkMap.LipSync(avatar));
         Assert.Equal(LipSyncHandler.Loudness, NetworkMap.LipSync(avatar with { LipSync = AvatarLipSync.Loudness }));
