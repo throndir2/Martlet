@@ -13,9 +13,13 @@ A moved page has these parts:
 | Page | `ThinkingPool\ThinkingPoolPage.cs` | Makes the WPF controls and connects their events. It has no decisions and reads no settings files. |
 | Page model | `ThinkingPool\ThinkingPoolPageModel.cs` | Reads the settings once each time the page draws, decides what each line says and saves the changes. It has no WPF types. |
 | Services | `ThinkingPool\IThinkingPoolPageServices.cs` | Lists everything the page and its model need from the app. `MainWindow` implements it (for example in `MainWindow.ThinkingPool.cs`). |
-| Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Warning`, `Row`, `PageButton`, `TerminalRow`, `TakeKey` and the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`). |
+| Page kit | `PageKit.cs` | The small builders that every page uses: `Card`, `Heading`, `Note`, `Warning`, `Row`, `PageButton`, `Choice` (a large radio choice), `TerminalRow`, `TakeKey` and the dense rows (`Compact`, `RowLabel`, `RowGroup`, `RowSwitch`). |
 
-Moved pages: Thinking pool (`ThinkingPool\`) and Check-ins (`CheckIns\`).
+Moved pages: Thinking pool (`ThinkingPool\`), Check-ins (`CheckIns\`) and Vision
+(`Vision\`). `Shared\` has the parts that more than one page uses, such as
+`ChattinessPicker` (Vision and Listening). Vision's image-model list and its Now
+lines are shared with Hearing, so `MainWindow` still makes them and gives them
+to `VisionPage` as builders.
 
 Rules:
 
