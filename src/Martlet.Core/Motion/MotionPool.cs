@@ -33,15 +33,10 @@ public static class MotionPool
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(paired);
-        string? HostOf(PoolMember member) => (member.Kind switch
-        {
-            PoolMemberKind.ThisPc => own,
-            PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
-            _ => null
-        }) is { } id && paired.Contains(id, StringComparer.Ordinal) ? id : null;
+        // A motion waits for a computer (its key in the queue is the host ID), so each computer is in the order once.
         if (list is not null)
-            return [.. PoolRouting.Order(PoolAreas.Motion, list, device, m => HostOf(m) is not null).Members
-                .Select(m => (m, HostOf(m)!)).DistinctBy(m => m.Item2, StringComparer.Ordinal)];
+            return [.. PoolPlaces.Order(PoolAreas.Motion, list, device, m => PoolPlaces.HostOf(m, own) is { } host &&
+                paired.Contains(host, StringComparer.Ordinal) ? new PoolPlace(m, host, host) : null).Select(p => (p.Member, p.HostId!))];
         return settings.Place switch
         {
             MotionPlace.Off => [],
@@ -92,9 +87,9 @@ public static class MotionPool
     };
 
     /// <summary>Makes a motion on the first of <paramref name="hosts"/> that takes it (see the class summary) through
-    /// <paramref name="queue"/>, and returns it with the computer that made it. <paramref name="make"/> makes it on one computer.
-    /// Throws <see cref="MotionException"/> (<c>motion.unavailable</c>) when the list is empty, else the last refusal when no
-    /// computer took it.</summary>
+    /// <paramref name="queue"/> (<see cref="PoolRunner{TPlace}"/>), and returns it with the computer that made it.
+    /// <paramref name="make"/> makes it on one computer. Throws <see cref="MotionException"/> (<c>motion.unavailable</c>) when the
+    /// list is empty, else the last refusal when no computer took it.</summary>
     public static async Task<(T Result, string HostId)> RunAsync<T>(WorkQueue queue, IReadOnlyList<string> hosts,
         Func<string, CancellationToken, Task<T>> make, TimeProvider? clock, CancellationToken token)
     {
@@ -102,15 +97,9 @@ public static class MotionPool
         ArgumentNullException.ThrowIfNull(hosts);
         ArgumentNullException.ThrowIfNull(make);
         if (hosts.Count == 0) throw new MotionException(MotionErrorCodes.Unavailable, "No computer in the Motion list is on.");
-        var time = clock ?? TimeProvider.System;
-        string? took = null;
-        var made = await queue.RunAsync(Lane, hosts, h => h, async (host, t) =>
-        {
-            var result = await make(host, t).ConfigureAwait(false);
-            took = host;
-            return result;
-        }, Classify, time.GetUtcNow() + LongestWait, time, token, WorkPriority.Background).ConfigureAwait(false);
-        return (made, took!);
+        var run = await new PoolRunner<string>(Lane, host => host, Classify, WorkPriority.Background, queue, clock)
+            .RunAsync(hosts, (host, _, t) => make(host, t), LongestWait, token).ConfigureAwait(false);
+        return (run.Result, run.Place);
     }
 
     private static PoolMember Member(string host, string? own) => host == own ? PoolMember.ThisPc() : PoolMember.Computer(host);

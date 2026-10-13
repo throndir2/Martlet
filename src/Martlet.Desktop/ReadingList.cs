@@ -42,7 +42,7 @@ internal static class ReadingList
         (directory is null ? null : WorkSharingRoster.Hosts(directory).FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId);
 
     /// <summary>The places this PC tries for a read, first to last, each with its pairing (null: Windows OCR on this PC).</summary>
-    internal static IReadOnlyList<(ReadingTarget Target, PairedHost? Host)> Targets(string? directory)
+    internal static IReadOnlyList<(PoolPlace Target, PairedHost? Host)> Targets(string? directory)
     {
         var hosts = directory is null ? [] : WorkSharingRoster.Hosts(directory);
         return [.. ReadingPool.Targets(Load(directory), WorkSharingRoster.Device, OwnHost(directory), id => hosts.Any(h => h.HostId == id))

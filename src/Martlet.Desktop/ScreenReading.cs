@@ -125,7 +125,8 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
         var tried = targets[0];
         try
         {
-            var (engine, lines) = await queue.RunAsync(PoolAreas.Reading.Id, targets, p => p.Target.Key, async (p, t) =>
+            var (engine, lines) = (await new PoolRunner<(PoolPlace Target, PairedHost? Host)>(PoolAreas.Reading.Id, p => p.Target.Key,
+                WorkSharingRoster.Classify, WorkPriority.Background, queue).RunAsync(targets, async (p, _, t) =>
             {
                 tried = p;
                 if (p.Host is not { } host)
@@ -138,7 +139,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
                 jpeg ??= await LowPriority.RunAsync(() => Jpeg(bgra, width, height), t, "Martlet screen reading").ConfigureAwait(false);
                 var (route, lines) = await WorkSharingRoster.WatchedOnce(host.HostId, "reading", read(host, jpeg, t)).ConfigureAwait(false);
                 return ($"{host.HostId}'s Reading role" + (OptionalExtras.ReadingModelOf(route.ModelId) is { } model ? $" ({model.Name})" : ""), lines);
-            }, WorkSharingRoster.Classify, DateTimeOffset.UtcNow + wait, null, token, WorkPriority.Background).ConfigureAwait(false);
+            }, wait, token).ConfigureAwait(false)).Result;
             last = engine;
             return lines;
         }
@@ -174,11 +175,11 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
         }
     }
 
-    private static string Name((ReadingTarget Target, PairedHost? Host) place) => place.Host?.HostId ?? "This PC";
+    private static string Name((PoolPlace Target, PairedHost? Host) place) => place.Host?.HostId ?? "This PC";
 
     /// <summary>The places a read tries, first to last (<see cref="ReadingList.Targets"/>): the list's members that are on, kept
     /// for this PC and paired here, Windows OCR as This PC, each computer once.</summary>
-    internal IReadOnlyList<(ReadingTarget Target, PairedHost? Host)> Targets()
+    internal IReadOnlyList<(PoolPlace Target, PairedHost? Host)> Targets()
     {
         var targets = ReadingList.Targets(dataDirectory);
         return targets.Count > 0 ? targets
