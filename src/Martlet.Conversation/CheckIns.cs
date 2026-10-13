@@ -144,10 +144,11 @@ public sealed partial record CheckIn(string Id, string Name, string Does, CheckI
     public CheckInFacts Facts { get; init; }
     public CheckInConditions Conditions { get; init; }
     /// <summary>What a Thinking pool member must handle to take the check-in: text, and pictures or recordings when the owner
-    /// asks for them or the check-in sends a screenshot or a recording, and tool calls when it has <see cref="ToolSets"/>.</summary>
+    /// asks for them or the check-in sends a screenshot or a recording, and tool calls when it has <see cref="ToolSets"/> that
+    /// aren't all <see cref="CheckInToolSet.Optional"/>.</summary>
     public ThinkingCapability Needs
     {
-        get => needs | (ToolSets.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
+        get => needs | (CheckInToolSets.NeedTools(ToolSets) ? ThinkingCapability.Tools : ThinkingCapability.None);
         init => needs = value;
     }
     private readonly ThinkingCapability needs = ThinkingCapability.Text;
@@ -408,13 +409,15 @@ public static partial class CheckIns
         {
             PromptId = PromptCatalog.CheckInAside,
             Facts = CheckInFacts.Heard | CheckInFacts.Conversation | CheckInFacts.Activity | CheckInFacts.People,
-            Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.Spoke
+            Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.Spoke,
+            // Who the voices are, when a member calls tools; it runs without them otherwise (an optional set).
+            ToolSets = [PeopleTools.SetId]
         },
         new(Others, "Someone else is here", "When Martlet hears a voice that isn't yours, reminds it in its next reply not to share " +
             "private things it knows about you in front of others.", CheckInOutcome.Note, false, 10)
         {
             PromptId = PromptCatalog.CheckInOthers, Facts = CheckInFacts.People | CheckInFacts.Persona,
-            Conditions = CheckInConditions.SomeoneElse
+            Conditions = CheckInConditions.SomeoneElse, ToolSets = [PeopleTools.SetId]
         },
         new(DescribeTouches, "Describe touches", "Right after you touch the character, describes vividly what you have been doing " +
             "to it, true to its personality, so Martlet's next reply can draw on it. The touch reaction never waits for it.",
@@ -547,9 +550,18 @@ public static partial class CheckIns
         };
 
     /// <summary>What a Thinking pool member must handle to take <paramref name="custom"/>: text, what the owner chose, pictures
-    /// for a screenshot, recordings for a recording and tool calls for tool sets.</summary>
+    /// for a screenshot, recordings for a recording and tool calls for tool sets that aren't all optional.</summary>
     public static ThinkingCapability Needs(CustomCheckIn custom) => Needs(custom.Needs, custom.Screenshot, custom.Recording) |
-        (custom.ToolSets.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
+        (CheckInToolSets.NeedTools(custom.ToolSets) ? ThinkingCapability.Tools : ThinkingCapability.None);
+
+    /// <summary>The tool sets a run of <paramref name="checkIn"/> is offered: all it ticks when the pool has a member that calls
+    /// tools for it (<paramref name="poolCallsTools"/>), otherwise only those that aren't <see cref="CheckInToolSet.Optional"/>
+    /// (a check-in with such sets waits for a member that calls tools anyway).</summary>
+    public static IReadOnlyList<string> Offered(CheckIn checkIn, bool poolCallsTools)
+    {
+        ArgumentNullException.ThrowIfNull(checkIn);
+        return poolCallsTools ? checkIn.ToolSets : [.. checkIn.ToolSets.Where(id => CheckInToolSets.Find(id) is not { Optional: true })];
+    }
 
     /// <summary>What a member must handle: text, what the owner <paramref name="chose"/>, pictures for a screenshot and recordings
     /// for a recording (<see cref="SenseJobKind.CheckInScreenshot"/> and <see cref="SenseJobKind.CheckInRecording"/> in
@@ -645,8 +657,9 @@ public static partial class CheckIns
     /// may call their tools for up to <see cref="MaximumToolRounds"/> rounds.</summary>
     public static ThinkingJob? Prepare(CheckIn checkIn, CheckInState state, PromptSettings? prompts, CheckInToolHost? tools = null)
     {
-        if (Message(checkIn, state, prompts) is not { } text) return null;
         var offered = tools?.Tools ?? [];
+        // The message says it may call tools only when this run offers some.
+        if (Message(offered.Count > 0 ? checkIn : checkIn with { ToolSets = [] }, state, prompts) is not { } text) return null;
         return new()
         {
             Kind = ThinkingJobKind.CheckIn, Label = $"Check-in: {checkIn.Name}", Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,

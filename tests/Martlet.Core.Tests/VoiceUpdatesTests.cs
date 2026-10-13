@@ -50,6 +50,29 @@ public sealed class VoiceUpdatesTests
     public void TheCharacterGoesByItsPersonasName(string? persona, string expected) =>
         Assert.Equal(expected, CompanionNames.Character(persona));
 
+    // SPOKE says whose voice said a message Martlet couldn't attribute for sure: only a voice that could have said it, once,
+    // and only as a label. The voice list (names, voiceprint, samples, heard count) stays exactly as it was.
+    [Fact]
+    public void SpokeOnlyLabelsAMessageAndNeverTeachesAVoice()
+    {
+        var (roster, a, b) = Two();
+        roster = roster.AddHeardName(a.Id, "Kim", "desk", Start);
+        var parsed = VoiceUpdates.Parse($"- **SPOKE {a.Tag}**\nSPOKE: {a.Tag}\nSPOKE {b.Tag}\nNAME {a.Tag}: Kimmy", Tags(a, b), [], CompanionNames.Martlet, [a.Id]);
+        var spoke = Assert.Single(parsed.Updates);
+        Assert.Equal((VoiceUpdateKind.Spoke, a.Id, 1), (spoke.Kind, spoke.VoiceId, spoke.Line));
+        Assert.Equal(new[] { "only one SPOKE line per exchange", "not a voice that could have said it", "the voice wasn't heard in this message" },
+            parsed.Refused.Select(r => r.Reason).ToArray());
+        Assert.Equal("Martlet knew who said the message",
+            VoiceUpdates.Parse($"SPOKE {a.Tag}", Tags(a, b), [a.Id], CompanionNames.Martlet).Refused.Single().Reason);
+
+        var (after, applied, refused) = VoiceUpdates.Apply(roster, parsed.Updates, "desk", Start.AddMinutes(1));
+        Assert.Same(roster, after);
+        Assert.Empty(refused);
+        var label = Assert.Single(applied);
+        Assert.Equal(VoiceUpdateKind.Spoke, label.Kind);
+        Assert.Equal($"Martlet wasn't sure whose voice that was; it thinks Kim (voice {a.Number}) said it.", label.Text);
+    }
+
     [Fact]
     public void PlaceholdersAreNeverLearnedAsNames()
     {

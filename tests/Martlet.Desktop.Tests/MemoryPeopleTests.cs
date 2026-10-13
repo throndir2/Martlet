@@ -269,14 +269,18 @@ public sealed class MemoryPeopleTests
         Assert.Equal(other.Id, facts.Single(f => f.Content == "Likes jazz.").VoiceId);
         var report = Assert.Single(reports);
         Assert.Equal(new string?[] { "Sam", other.Tag }, report.Changes!.Select(c => c.Person));
-        Assert.Contains($"A new fact is saved as {sam.Tag}'s", requests.ElementAt(1));
+        // The other voice has no name yet, so learning names asks first, in a request of its own; remembering asks next.
+        Assert.Contains("You keep track of who is talking to Martlet", requests.ElementAt(1));
+        Assert.DoesNotContain("A new fact is saved as", requests.ElementAt(1));
+        Assert.Contains($"A new fact is saved as {sam.Tag}'s", requests.ElementAt(2));
+        Assert.DoesNotContain("You keep track of who is talking to Martlet", requests.ElementAt(2));
 
         // Sam asks again: the facts come back saying whose each is, with what that means.
         var second = fixture.Controller.Start("What is my dog called?", voice: false, microphone: false, approved: true,
             spoken: true, heard: new([new(sam, VoiceMatchKind.Known, 0.9, 3, false)], false));
         await fixture.Finish(second);
         await fixture.FinishRemembering();
-        var asked = requests.ElementAt(2);
+        var asked = requests.ElementAt(3);
         Assert.Contains("[Sam] Sam's dog is called Biscuit. (from conversation", asked);
         Assert.Contains($"[{other.Tag}] Likes jazz. (from conversation", asked);
         Assert.Contains(PromptCatalog.Default(PromptCatalog.MemoryPeople), asked);
@@ -287,7 +291,7 @@ public sealed class MemoryPeopleTests
             spoken: true, heard: new([new(sam, VoiceMatchKind.Known, 0.9, 3, false)], false));
         await fixture.Finish(third);
         await fixture.FinishRemembering();
-        var later = requests.ElementAt(4);
+        var later = requests.ElementAt(5);
         Assert.Contains("[Sam] Sam plays the piano. (saved by the user", later);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(later,
             System.Text.RegularExpressions.Regex.Escape(PromptCatalog.Default(PromptCatalog.MemoryPeople))));

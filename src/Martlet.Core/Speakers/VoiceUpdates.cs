@@ -3,8 +3,9 @@ using System.Text.RegularExpressions;
 namespace Martlet.Core.Speakers;
 
 /// <summary>What Learning names may change about the voices in an exchange: a name a voice goes by (NAME), the name it asks to
-/// be called from now on (CALL), a learned name that isn't its own (NOT), or another voice that is the same person (SAME).</summary>
-public enum VoiceUpdateKind { Name, Call, Not, Same }
+/// be called from now on (CALL), a learned name that isn't its own (NOT), or another voice that is the same person (SAME).
+/// SPOKE changes nothing: it only says whose voice said a message Martlet couldn't attribute for sure.</summary>
+public enum VoiceUpdateKind { Name, Call, Not, Same, Spoke }
 
 /// <summary>One change the Thinking model's answer asks for. <see cref="SameAsId"/> is the other voice of a SAME line;
 /// <see cref="Line"/> is the answer's line (from 1).</summary>
@@ -134,9 +135,11 @@ public static partial class VoiceUpdates
         clean.Split(' ').Any(PlaceholderWords.Contains);
 
     /// <summary>The changes in the model's answer. <paramref name="voices"/> maps the listed tags (V3) to voice IDs;
-    /// <paramref name="heard"/> holds the IDs of the voices heard in the exchange, the only ones that may get or lose names.</summary>
+    /// <paramref name="heard"/> holds the IDs of the voices heard in the exchange, the only ones that may get or lose names.
+    /// <paramref name="speakers"/> holds the IDs a SPOKE line may name: the voices that could have said a message Martlet
+    /// couldn't attribute for sure (null or empty: Martlet knew who spoke, so SPOKE lines are left out).</summary>
     public static VoiceUpdateAnswer Parse(string? answer, IReadOnlyDictionary<string, string> voices, IReadOnlyCollection<string> heard,
-        CompanionNames companion)
+        CompanionNames companion, IReadOnlyCollection<string>? speakers = null)
     {
         ArgumentNullException.ThrowIfNull(voices);
         ArgumentNullException.ThrowIfNull(heard);
@@ -150,11 +153,22 @@ public static partial class VoiceUpdates
             var number = index + 1;
             var line = lines[index].Replace("**", "", StringComparison.Ordinal).Replace("`", "", StringComparison.Ordinal)
                 .Trim().TrimStart('-', '*', '\u2022', '>', ' ', '\t').Trim();
-            var match = UpdateLine().Match(line);
+            var spoke = SpokeLine().Match(line);
+            var match = spoke.Success ? spoke : UpdateLine().Match(line);
             if (!match.Success) continue;
             if (updates.Count == MaximumUpdates)
             {
                 refused.Add(new(number, "too many changes in one answer"));
+                continue;
+            }
+            if (spoke.Success)
+            {
+                // Only a label for the message: it never names, merges or teaches a voice.
+                if (speakers is not { Count: > 0 }) refused.Add(new(number, "Martlet knew who said the message"));
+                else if (!voices.TryGetValue("V" + spoke.Groups["n"].Value, out var said) || !speakers.Contains(said))
+                    refused.Add(new(number, "not a voice that could have said it"));
+                else if (updates.Any(u => u.Kind == VoiceUpdateKind.Spoke)) refused.Add(new(number, "only one SPOKE line per exchange"));
+                else updates.Add(new(VoiceUpdateKind.Spoke, said, Line: number));
                 continue;
             }
             if (!voices.TryGetValue("V" + match.Groups["n"].Value, out var id))
@@ -204,7 +218,8 @@ public static partial class VoiceUpdates
 
     /// <summary>Makes the changes, in order. NAME adds a name the voice goes by; CALL also makes it the learned name shown (a
     /// name the owner typed still wins); NOT drops a learned name, never one the owner typed; SAME merges the two voices into
-    /// the owner's, else a named one, else the one heard most.</summary>
+    /// the owner's, else a named one, else the one heard most. SPOKE leaves the list as it is (no name, no voiceprint, no
+    /// sample, not even when it was last heard): it only says whose voice said the message.</summary>
     public static (VoiceRoster Roster, IReadOnlyList<VoiceUpdateResult> Applied, IReadOnlyList<VoiceUpdateRefusal> Refused) Apply(
         VoiceRoster roster, IEnumerable<VoiceUpdate> updates, string by, DateTimeOffset now)
     {
@@ -268,6 +283,9 @@ public static partial class VoiceUpdates
                     applied.Add(new(update.Kind, kept, null, $"Learned {Voice(away)} is the same person as {Voice(kept)}, and merged them."));
                     break;
                 }
+                case VoiceUpdateKind.Spoke:
+                    applied.Add(new(update.Kind, voice, null, $"Martlet wasn't sure whose voice that was; it thinks {Voice(voice)} said it."));
+                    break;
             }
         }
         return (roster, applied, refused);
@@ -279,6 +297,9 @@ public static partial class VoiceUpdates
 
     [GeneratedRegex(@"^(?<kind>NAME|CALL|NOT|SAME)\s*V(?<n>\d{1,7})\s*[:=\-\u2013]\s*(?<value>.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex UpdateLine();
+
+    [GeneratedRegex(@"^SPOKE\s*[:=\-\u2013]?\s*(?:voice\s*)?V(?<n>\d{1,7})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SpokeLine();
 
     [GeneratedRegex(@"^(?:voice\s*)?V?(?<n>\d{1,7})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SameTarget();

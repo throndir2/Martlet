@@ -391,15 +391,11 @@ public static partial class PromptCatalog
             "Empty it and Martlet writes no brief.",
             DefaultMemoryBriefWritingInstructions, []),
         new(VoiceNaming, BackgroundGroup, "Learning names",
-            "Asks the Thinking model which names recognized voices go by, which name someone asks to be called, which name was wrong " +
-            "and which voices are one person. Martlet reads the NAME, CALL, NOT and SAME lines it answers and never gives a voice the " +
-            "companion's own names; {nothing} is the word for none.",
+            "Sent after a reply, in a Thinking request of its own (a Thinking pool member that takes naming jobs, else the " +
+            "conversation's Thinking model once the conversation is quiet): who the people speaking are. Martlet reads the NAME, " +
+            "CALL, NOT and SAME lines it answers about recognized voices, and the SPOKE line about a voice it wasn't sure of (a " +
+            "label only), and never gives a voice the companion's own names; {nothing} is the word for none.",
             DefaultVoiceNamingInstructions, ["nothing"]),
-        new(AfterReply, BackgroundGroup, "Remembering and learning names together",
-            "When both are due after the same reply, Martlet asks once instead of twice: this joins the two prompts above " +
-            "({remembering} and {naming}) for one request about the same excerpt. {nothing} is the word for no change.",
-            DefaultAfterReplyInstructions,
-            ["remembering", "naming", "nothing"]),
         new(CharacterActionNaming, BackgroundGroup, "Naming character emotes",
             "Asks the Thinking model what each of a character model's emotes and motions is (Companion › Emotes and " +
             "motions › Name them with Thinking; also once for each new model). The numbered list follows it; Martlet reads the " +
