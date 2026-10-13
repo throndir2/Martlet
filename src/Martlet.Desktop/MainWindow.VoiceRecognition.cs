@@ -67,7 +67,7 @@ public partial class MainWindow
         else
         {
             var check = hostChecks.GetValueOrDefault(hostId);
-            parts.Add(check?.Offers?.ContainsKey(VoiceRecognitionPool.Role) == true ? "runs Voice recognition"
+            parts.Add(check?.Offers?.ContainsKey(HostRoles.VoiceRecognition) == true ? "runs Voice recognition"
                 : check?.Reachable == false ? "not reachable right now"
                 : check?.Reachable == true ? "doesn't run Voice recognition yet: add the role on Devices" : "not checked yet");
         }

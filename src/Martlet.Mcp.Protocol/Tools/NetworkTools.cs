@@ -229,7 +229,9 @@ internal sealed partial class McpServer
             "left in a replaced holder's namespace stops at once. A fixture role with two variants (like the stt role's whisper and " +
             "Parakeet engines) shows describe listing each variant's own choices, suggestion and GPU option with their condition, an " +
             "add keeping a variant's own choices, GPU option and prepare step, and a switch stopping the previous variant only once " +
-            "the chosen one is prepared (also when a failed switch is run again). Returns notRun when Docker or the image is missing.", new { },
+            "the chosen one is prepared (also when a failed switch is run again). The real voice-recognition role's files show its " +
+            "GPU or CPU choice on an x86_64 host with a card and its processor build on ARM64. Returns notRun when Docker or the " +
+            "image is missing.", new { },
             async (_, cancellation) => await HostEngineCheck.RunAsync(cancellation)),
         Tool("host_supply_check", "Check that Martlet sets up a native Ubuntu host without internet access by sending what it needs " +
             "from this PC: with the production HostSupplier and HostCheckout and this checkout's real martlet-host, in one disposable " +

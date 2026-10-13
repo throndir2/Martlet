@@ -96,7 +96,7 @@ public sealed class ConfigurationRecoveryDispatcherTests
             await Preview(window, controller, scope.Backup);
             Click(window, "RecoveryRestore");
             await Until(() => !controller.IsBusy);
-            await Until(() => Field<TextBox>(window, "ResultText").Text.Contains(mutation == "path" ? "changed" : "Conflict", StringComparison.Ordinal));
+            await Until(() => Field<TextBox>(window, "ResultText").Text.Contains(mutation == "path" ? "changed" : "out of date", StringComparison.Ordinal));
             Assert.Null(controller.Receipt);
             Assert.Null(controller.Preview);
             Assert.Empty(Directory.GetFiles(scope.Data, "settings.recovery.*.bak"));

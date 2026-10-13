@@ -1554,6 +1554,32 @@ folder's engine through the keeper: `loadMs`, `analyzeMs` for 3 s of a tone,
 `routedMs` (the same through the router with this PC alone, the default list),
 `msPerSecond` and `headStartMs`. Nothing is recorded, played or sent.
 
+`voice_recognition_engine_check` (optional `endpoint`, default
+`http://127.0.0.1:50091/`, and absolute `martletDirectory`) runs Voice
+recognition on another computer through a REAL `voice-recognition` host role's
+service ([Voice recognition host](VOICE_RECOGNITION_HOST.md)) on a numeric
+loopback address. Two Windows voices (one female, one male; System.Speech
+rendered to memory, never played) speak alone, in turns, over each other for
+2 s and for 1.4 s only. Martlet.NodeLinkCheck's `voice-recognition-engine` mode
+sends each clip through the production path: the role's relay
+(`Martlet.Gateway.VoiceRecognition`) inside a real gateway on 127.0.0.1 (pinned
+TLS, pairing) and the desktop's paired client (`HostVoiceRecognition`), which
+reads every answer with `SpeakerAnswers` as People's list does. It returns
+`ok`, the service's own `/status` (`service`), the route's `model` and
+`modelRevision`, the role's `state` and `provider` (`cuda` or `cpu`) through the
+gateway, `readyMs` (how long until it said `ready`) and per clip (`clips`) the
+`voices`, the recognized `speakers` with `cleanSeconds`, `start` and `end`,
+`overlap`, `speechSeconds`, whether a `wholeVoiceprint` and a `voiceprint` came
+back, and `analyzeMs`, `voiceprintMs` and the host's own `hostMs`. With a
+`martletDirectory` (a Martlet folder with its `voice-recognition` files) it
+also runs this PC's engine on the same audio: `comparedWithThisPc` has
+`matches` (the same voices, speakers in the same order, times within 0.05 s,
+voiceprints with a cosine of at least 0.995), `lowestCosine`,
+`largestTimeDifference` and `differences`, and `ok` needs `matches`. To check a
+role in Docker on this PC, publish a forwarder in the role container's network
+namespace to 127.0.0.1:50091 (the role itself listens only on its own
+loopback). Nothing is recorded, played or kept.
+
 `voices_naming_check` rehearses [learning names](VOICES.md#what-happens-in-a-conversation)
 with the production checks and changes (`CompanionNames`, `VoiceUpdates` and the
 voice list's name rules) on a fixture voice list in memory: V1 is the owner
@@ -3922,7 +3948,14 @@ NVIDIA CUDA roles) with *built only for 64-bit Intel or AMD (x86_64)* and
 with an ARM64 build (`arm64=<overlay>`, like the `stt` role's whisper.cpp arm64
 image) gets that overlay as `compose.arch.yaml`, runs on the CPU even when the
 GPU is asked for, and `describe` offers no GPU option
-(`arm64-overlay-runs-on-cpu`). Last, `warm` on its own fixture host (fake
+(`arm64-overlay-runs-on-cpu`). The real `voice-recognition` role's files
+(`deploy/host/roles/voice-recognition`, copied into the container) are read the
+same way: on an x86_64 host with the fake 8192 MiB card `describe` offers
+`role.accelerator=gpu cpu` and its one model
+(`wespeaker-en-voxceleb-resnet34-lm`), and on the `aarch64` shim it offers no
+GPU option and an add gets `compose.arch.yaml`, no `compose.gpu.yaml`,
+`MARTLET_ACCELERATOR=cpu` and the model in `.env` (`voice-recognition-role`).
+Last, `warm` on its own fixture host (fake
 `docker` and `systemctl`) starts the stopped gateway (`systemctl --user start`),
 runs `compose up -d --no-build` for every installed role, then the warm step of
 `fixture-warm` with its saved choice filled in (`warm-it m2`; its `post_start`

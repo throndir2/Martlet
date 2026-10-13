@@ -159,14 +159,17 @@ internal static class CheckInsCheck
                 new(now.AddMinutes(-2), "FIXTURE: Ooh, that boss is almost down!")
             ]
         };
+        // The emotes check-in's pace comes from its built-in; KeptPace slows it after an answer that kept every emote.
+        var emotesPace = Built(CheckIns.Emotes).Every;
         var waits = new Dictionary<string, string?>
         {
             ["emotes: due"] = CheckIns.Wait(Built(CheckIns.Emotes), facts, null),
             ["emotes: only young ones"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { Emotes = [facts.Emotes[2]] }, null),
             ["emotes: character hidden"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { CharacterShows = false }, null),
-            ["emotes: ran 2 min ago"] = CheckIns.Wait(Built(CheckIns.Emotes), facts, new(now.AddMinutes(-2), 4, "every emote still fits", false)),
-            ["emotes: kept 6 min ago, nothing new"] = CheckIns.Wait(Built(CheckIns.Emotes), facts,
-                new(now.AddMinutes(-6), 4, "every emote still fits", false) { Kept = true }),
+            ["emotes: ran half its pace ago"] = CheckIns.Wait(Built(CheckIns.Emotes), facts,
+                new(now - emotesPace / 2, 4, "every emote still fits", false)),
+            ["emotes: kept twice its pace ago, nothing new"] = CheckIns.Wait(Built(CheckIns.Emotes), facts,
+                new(now - emotesPace * 2, 4, "every emote still fits", false) { Kept = true }),
             ["emotes: you talk"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { Quiet = TimeSpan.Zero }, null),
             ["emotes: nobody here"] = CheckIns.Wait(Built(CheckIns.Emotes), facts with { Away = TimeSpan.FromMinutes(25) }, null),
             ["gaze: due"] = CheckIns.Wait(Built(CheckIns.Gaze), facts, null),
@@ -182,8 +185,9 @@ internal static class CheckInsCheck
                 new(now.AddMinutes(-1), 4, "nothing to remind Martlet of", false), now: true)
         };
         Step("when check-ins wait", waits["emotes: due"] is null && waits["emotes: only young ones"]?.Contains("3 min") == true &&
-            waits["emotes: character hidden"] == "the character isn't showing" && waits["emotes: ran 2 min ago"] == "next in 3 min" &&
-            waits["emotes: kept 6 min ago, nothing new"] == "next in 9 min" &&
+            waits["emotes: character hidden"] == "the character isn't showing" &&
+            waits["emotes: ran half its pace ago"] == "next in " + Reminders.Span(emotesPace / 2) &&
+            waits["emotes: kept twice its pace ago, nothing new"] == "next in " + Reminders.Span(emotesPace * (CheckIns.KeptPace - 2)) &&
             waits["emotes: you talk"] == "the conversation is busy" && waits["emotes: nobody here"]?.StartsWith("nobody used this PC", StringComparison.Ordinal) == true &&
             waits["gaze: due"] is null && waits["gaze: chosen 1 min ago"] is not null && waits["promises: new exchanges"] is null &&
             waits["promises: nothing new"] == "nothing new was said since the last check" && waits["character: 4 new replies"] is null &&

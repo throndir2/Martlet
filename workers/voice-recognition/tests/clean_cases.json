@@ -1,0 +1,22 @@
+{
+  "about": "Shared by workers/voice-recognition/tests/test_host.py and tests/Martlet.Desktop.Tests/VoiceRecognitionHostTests.cs: the host's port of SpeakerEngine.Clean and .NET's Math.Round(x, 2) must give these answers, as the desktop's engine does. Times are seconds.",
+  "clean": [
+    { "name": "one long turn is trimmed at both edges", "turns": [[0.5, 4.0, 0]], "speaker": 0, "expected": [[0.62, 3.88]] },
+    { "name": "another voice cuts a turn in two, longest first", "turns": [[0.0, 5.0, 0], [2.0, 2.5, 1]], "speaker": 0, "expected": [[2.62, 4.88], [0.12, 1.88]] },
+    { "name": "touching turns of one voice merge", "turns": [[0.0, 1.0, 0], [1.0, 2.2, 0], [5.0, 5.5, 1]], "speaker": 0, "expected": [[0.12, 2.08]] },
+    { "name": "a stretch shorter than 1.5 s after trimming is dropped", "turns": [[0.0, 1.7, 0]], "speaker": 0, "expected": [] },
+    { "name": "a voice talked over all the time has no clean speech", "turns": [[1.0, 3.0, 0], [0.0, 4.0, 1]], "speaker": 0, "expected": [] },
+    { "name": "equal lengths keep the earlier first", "turns": [[0.0, 2.0, 0], [2.0, 2.1, 1], [2.1, 4.1, 0]], "speaker": 0, "expected": [[0.12, 1.88], [2.22, 3.98]] },
+    { "name": "the short voice inside a long one has none", "turns": [[0.0, 5.0, 0], [2.0, 2.5, 1]], "speaker": 1, "expected": [] },
+    { "name": "two other voices cut three stretches", "turns": [[0.0, 10.0, 0], [2.0, 3.0, 1], [6.0, 6.5, 2]], "speaker": 0, "expected": [[6.62, 9.88], [3.12, 5.88], [0.12, 1.88]] }
+  ],
+  "round": [
+    [1.115, 1.12],
+    [0.005, 0.0],
+    [0.125, 0.12],
+    [0.135, 0.14],
+    [2.675, 2.68],
+    [3.14159, 3.14],
+    [2.4, 2.4]
+  ]
+}

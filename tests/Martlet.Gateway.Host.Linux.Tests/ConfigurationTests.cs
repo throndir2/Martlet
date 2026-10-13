@@ -167,6 +167,14 @@ public sealed class ConfigurationTests
         Assert.Equal((Martlet.Gateway.GatewayInferenceRoute.MotionRouteId, "hy-motion-1.0"), (motionWorker.Route.RouteId, motionWorker.Route.ModelId));
         Assert.Throws<HostInputException>(() => NativeHostPlatform.RoleWorker(Assert.Single(HostConfiguration.Parse(RoleConfig(
             "[{\"kind\":\"motion\",\"endpoint\":\"http://127.0.0.1:50090/\",\"model\":\"hy-motion-2\"}]")).Roles)));
+        var voices = Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"voice-recognition\",\"endpoint\":\"http://127.0.0.1:50091/\",\"model\":\"wespeaker-en-voxceleb-resnet34-lm\"}]")).Roles);
+        var voicesWorker = Assert.IsType<Martlet.Gateway.VoiceRecognition.VoiceRecognitionRelayWorker>(NativeHostPlatform.RoleWorker(voices));
+        Assert.Equal((Martlet.Gateway.GatewayInferenceRoute.VoiceRecognitionRouteId, "wespeaker-en-voxceleb-resnet34-lm"),
+            (voicesWorker.Route.RouteId, voicesWorker.Route.ModelId));
+        // Placed where martlet-host put it: the processor here (a role added on the CPU says so in host.json "gpus").
+        Assert.Equal(new[] { "cpu" }, NativeHostPlatform.RoleWorker(voices with { Gpus = ["cpu"] }).Route.Gpus);
+        Assert.Throws<HostInputException>(() => NativeHostPlatform.RoleWorker(voices with { Model = "wespeaker-en-voxceleb-resnet293-lm" }));
         Assert.Empty(HostConfiguration.Parse(Config()).Roles);
         Assert.Empty(HostConfiguration.Parse(RoleConfig("[]")).Roles);
         foreach (var endpoint in new[] { "http://192.168.1.5:52000/", "http://localhost:52000/", "https://127.0.0.1:52000/",

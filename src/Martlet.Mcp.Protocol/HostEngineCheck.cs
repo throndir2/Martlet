@@ -24,6 +24,9 @@ internal static class HostEngineCheck
 {
     internal const string Image = "ubuntu:24.04";
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(150);
+    /// <summary>Real roles (deploy/host/roles) the scenario reads as they are: voice-recognition's GPU or CPU choice and its
+    /// ARM64 build.</summary>
+    private static readonly string[] RealRoles = ["voice-recognition"];
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
     {
@@ -40,16 +43,25 @@ internal static class HostEngineCheck
         var script = new StringBuilder()
             .Append("mkdir -p /m/deploy/host\nbase64 -d > /m/deploy/host/martlet-host <<'MARTLET_ENGINE'\n")
             .Append(Convert.ToBase64String(await File.ReadAllBytesAsync(engine, cancellation), Base64FormattingOptions.InsertLineBreaks).Replace("\r\n", "\n"))
-            .Append("\nMARTLET_ENGINE\nchmod 755 /m/deploy/host/martlet-host\n")
-            .Append(Scenario.Replace("\r\n", "\n"))
-            .ToString();
+            .Append("\nMARTLET_ENGINE\nchmod 755 /m/deploy/host/martlet-host\n");
+        // A real role's files, as the host image has them (deploy/host/roles), for the steps that check the engine reads them.
+        foreach (var role in RealRoles)
+        {
+            script.Append($"mkdir -p /m/deploy/host/roles/{role}\n");
+            foreach (var file in Directory.GetFiles(Path.Combine(Path.GetDirectoryName(engine)!, "roles", role)).Order(StringComparer.Ordinal))
+                script.Append($"base64 -d > /m/deploy/host/roles/{role}/{Path.GetFileName(file)} <<'MARTLET_ROLE'\n")
+                    .Append(Convert.ToBase64String(Encoding.UTF8.GetBytes((await File.ReadAllTextAsync(file, cancellation)).Replace("\r\n", "\n")),
+                        Base64FormattingOptions.InsertLineBreaks).Replace("\r\n", "\n"))
+                    .Append("\nMARTLET_ROLE\n");
+        }
+        script.Append(Scenario.Replace("\r\n", "\n"));
         int exit;
         string output;
         try
         {
             (exit, output) = await DockerAsync(["run", "--rm", "-i", "--pull", "never", "--network", "none", "--name", name, Image,
                 "timeout", ((int)Limit.TotalSeconds - 10).ToString(System.Globalization.CultureInfo.InvariantCulture), "bash", "-s"],
-                script, Limit, cancellation);
+                script.ToString(), Limit, cancellation);
         }
         finally
         {
@@ -82,7 +94,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 40;
+        const int expected = 41;
         if (steps.Count < expected)
         {
             passed = false;
@@ -529,6 +541,23 @@ internal static class HostEngineCheck
           has /tmp/arm/add2 "runs its ARM64 build on the CPU" && has /tmp/arm/describe2 'role.title=' &&
           ! has /tmp/arm/describe2 'role.accelerator=' && ok=1 || ok=0
         step arm64-overlay-runs-on-cpu "$ok" "add with gpu asked on an aarch64 host: files $files; $(grep MARTLET_ACCELERATOR /tmp/d/roles/fixture-arm/.env); $(tr '\n' ';' < /tmp/variant/calls)"
+
+        # The real voice-recognition role (deploy/host/roles/voice-recognition, as the host image has it): on an x86_64 host with
+        # an NVIDIA card it offers the GPU or the CPU and its one model; on ARM64 it runs its processor build (compose.arm64.yaml)
+        # with no GPU option, and the CUDA overlay is never added there.
+        PATH="/tmp/vram:/tmp/variant:$PATH" timeout 15 "$E" describe voice-recognition </dev/null >/tmp/vr-describe 2>&1
+        PATH="/tmp/arm:/tmp/vram:/tmp/variant:$PATH" timeout 15 "$E" describe voice-recognition </dev/null >/tmp/vr-describe-arm 2>&1
+        : > /tmp/variant/calls
+        printf '%s\n' choice.accelerator=gpu end | PATH="/tmp/arm:/tmp/vram:/tmp/variant:$PATH" timeout 30 "$E" --yes add voice-recognition >/tmp/vr-add-arm 2>&1
+        vrfiles="$(ls /tmp/d/roles/voice-recognition 2>/dev/null | tr '\n' ' ')"
+        has /tmp/vr-describe 'role.title=Voice recognition:' && has /tmp/vr-describe 'role.accelerator=gpu cpu' &&
+          has /tmp/vr-describe 'role.choice=VOICE_RECOGNITION_MODEL|Voice model (the same as on your PC, so voiceprints match)|wespeaker-en-voxceleb-resnet34-lm|wespeaker-en-voxceleb-resnet34-lm' &&
+          ! grep -q '^role.unavailable=' /tmp/vr-describe && ! has /tmp/vr-describe-arm 'role.accelerator=' &&
+          ! grep -q '^role.unavailable=' /tmp/vr-describe-arm &&
+          [[ -e /tmp/d/roles/voice-recognition/compose.arch.yaml && ! -e /tmp/d/roles/voice-recognition/compose.gpu.yaml ]] &&
+          grep -qx 'MARTLET_ACCELERATOR=cpu' /tmp/d/roles/voice-recognition/.env &&
+          grep -qx 'VOICE_RECOGNITION_MODEL=wespeaker-en-voxceleb-resnet34-lm' /tmp/d/roles/voice-recognition/.env && ok=1 || ok=0
+        step voice-recognition-role "$ok" "x86_64 with an 8 GB card: $(grep -m1 -oE '^role.accelerator=.*' /tmp/vr-describe || echo 'no accelerator line'); aarch64: $(grep -c '^role.accelerator=' /tmp/vr-describe-arm) accelerator lines; add there: files $vrfiles; $(grep -E '^(MARTLET_ACCELERATOR|VOICE_RECOGNITION_MODEL)=' /tmp/d/roles/voice-recognition/.env 2>/dev/null | tr '\n' ' ')"
 
         # warm (Martlet runs it when this PC becomes or starts as a host PC, after starting Docker Desktop): starts the gateway
         # and every installed role as it was added, waits until each listens and runs its warm steps with its choices filled

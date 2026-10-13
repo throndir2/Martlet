@@ -1001,9 +1001,11 @@ public sealed class McpServerTests(ITestOutputHelper output)
         await WaitForVisibility(mainHandle, false);
         await Task.Run(() =>
         {
+            // A hidden window can't be driven, but a Martlet in the notification area stays connected (its icon's window).
             Assert.Throws<InvalidOperationException>(() => DesktopAutomation.WindowForProcess(pid, mainHandle));
-            Assert.Throws<InvalidOperationException>(() => automation.Snapshot());
-            Assert.Throws<InvalidOperationException>(() => new DesktopAutomation(false).Connect(pid));
+            Assert.DoesNotContain("Martlet", JsonSerializer.SerializeToElement(automation.Snapshot())
+                .GetProperty("windows").EnumerateArray().Select(window => window.GetString()));
+            Assert.True(JsonSerializer.SerializeToElement(new DesktopAutomation(false).Connect(pid)).GetProperty("inTray").GetBoolean());
         });
         Assert.True(ShowWindowAsync(mainHandle, 4));
         await WaitForVisibility(mainHandle, true);
