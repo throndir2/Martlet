@@ -265,7 +265,7 @@ public partial class MainWindow
                 // The same check saving it makes, so a key that can't be saved isn't sent either.
                 using (new SecretLease(typed.AsSpan())) return typed;
             }
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         return route is not null && route.Origin == baseUrl ? RouteKey(route) : null;
     }
 
@@ -348,7 +348,7 @@ public partial class MainWindow
             catch (OperationCanceledException) { return; }
             if (closing) return;
             localServerTest = new(baseUrl, model, result.Summary + context, true, result.Warning);
-            var inUse = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } route &&
+            var inUse = homeSettings.ThinkingRoute() is { } route &&
                 route.Origin == baseUrl && route.ModelId == model;
             ActionText.Text = localServerTest.Text + (inUse ? "" : $" Choose Use {name} to use it.");
             showContextStatus?.Invoke();

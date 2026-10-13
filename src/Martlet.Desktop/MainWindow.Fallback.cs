@@ -38,7 +38,7 @@ public partial class MainWindow
     private Border FallbackCard()
     {
         var saved = homeSettings?.ThinkingFallback;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var now = Note(FallbackStatus(saved, thinking), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(now, "FallbackNow");
         var savedProvider = saved is null ? null : FallbackProviders.FirstOrDefault(p => p.BaseUrl == saved.Origin) ?? CustomCloud;
@@ -141,7 +141,7 @@ public partial class MainWindow
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
             var settings = UseModels(SetupSettings.Begin(loaded.Settings));
             var old = settings.ThinkingFallback;
-            var thinking = settings.Setup?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+            var thinking = settings.ThinkingRoute();
             ThinkingFallbackSettings? chosen = null;
             if (provider is not null)
             {

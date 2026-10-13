@@ -31,7 +31,7 @@ public partial class MainWindow
         IReadOnlyList<GpuNow> gpus;
         try { gpus = await ListeningAdvisor.ReadGpusAsync(lifetime.Token); }
         catch (OperationCanceledException) { gpus = []; }
-        var current = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var current = homeSettings.ThinkingRoute();
         double? thinkingGb = thinking ? null : IsLocalOllama(current) ? ListeningAdvisor.OllamaModelGb(current!.ModelId) : 0;
         var preferences = RecommendationPreferences.Load(store?.DataDirectory);
         await PlanningOptionsAsync();
@@ -50,7 +50,7 @@ public partial class MainWindow
     {
         if (store is null || setupService is null || closing || settingUpDefaults) return false;
         var routes = homeSettings?.Setup?.Routes ?? [];
-        thinking &= routes.All(r => r.Role != SetupRole.Llm);
+        thinking &= routes.ThinkingRoute() is null;
         listening &= routes.All(r => r.Role != SetupRole.Stt);
         voice &= routes.All(r => r.Role != SetupRole.Tts);
         if (!thinking && !listening && !voice)
@@ -86,7 +86,7 @@ public partial class MainWindow
                 var question =
                     $"Set up Martlet for this PC ({plan.Gpu})?\n\n{plan.Describe(thinking, listening, voice)}{unused}{(extra is null ? "" : "\n" + extra)}\n\n" +
                     (downloads.Count > 0 ? $"Martlet downloads {string.Join(", ", downloads)}. " : "") +
-                    (thinking || homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is not { RouteType: SetupRouteType.ChatCompletions or SetupRouteType.OpenAi }
+                    (thinking || homeSettings.ThinkingRoute() is not { RouteType: SetupRouteType.ChatCompletions or SetupRouteType.OpenAi }
                         ? "Everything runs on this PC: what you say and Martlet's replies aren't sent online. "
                         : "Listening and the voice run on this PC; Thinking uses the online service you chose. ") + "The microphone only listens " +
                     "after you press Start listening." +
@@ -164,7 +164,7 @@ public partial class MainWindow
         var routes = homeSettings?.Setup?.Routes ?? [];
         string Job(SetupRole role, string name) => routes.FirstOrDefault(r => r.Role == role) is { } route
             ? $"{name}: {PlaceName(route)}" : $"{name}: not set up";
-        var ready = routes.Any(r => r.Role == SetupRole.Llm);
+        var ready = routes.ThinkingRoute() is not null;
         var mute = routes.All(r => r.Role != SetupRole.Tts) && pendingJobHosts.GetValueOrDefault(SetupRole.Tts) is null;
         return string.Join(" · ", Job(SetupRole.Llm, "Thinking"), Job(SetupRole.Stt, "Listening"), Job(SetupRole.Tts, "Voice")) +
             (!ready ? ". Set up Thinking in Companion to start talking."

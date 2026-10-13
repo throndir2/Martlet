@@ -38,7 +38,7 @@ internal static class ThinkLongerCheck
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
         var generation = loaded.Settings?.Generation;
         var settings = ThinkLongerSettings.Of(generation);
-        var route = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = loaded.Settings.ThinkingRoute();
         var supportsTools = route?.RouteType is SetupRouteType.OpenAi or SetupRouteType.ChatCompletions;
         var local = route is not null && (ContextBudget.IsLocalOllama(route.RouteType, route.Origin) ||
             route.RouteType == SetupRouteType.ChatCompletions && Uri.TryCreate(route.Origin, UriKind.Absolute, out var origin) && origin.IsLoopback);

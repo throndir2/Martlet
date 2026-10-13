@@ -207,7 +207,7 @@ internal sealed partial class LiveConversationController
         var configured = operation.Authorization.Configuration;
         bool refused;
         lock (gate) refused = reasoningRefused.Contains(configured.ToolModelKey());
-        var thinking = configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = configured.Routes.ThinkingRoute();
         var reasoning = refused || GenerationSettings.ThinkingSteps(configured.Generation) && thinking is not null &&
             GenerationSupport.Use(thinking.RouteType, thinking.Origin, GenerationSetting.Reasoning) != GenerationSettingUse.Unused;
         Task.Run(async () =>

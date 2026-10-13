@@ -376,7 +376,7 @@ public partial class MainWindow
     /// model that hears and takes quick jobs, else the CPU sound tagger when it is in Martlet's folder.</summary>
     private (string? Name, Martlet.Audio.SoundJudgeKind? Kind) SavedSoundJudge()
     {
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         if (SenseRouting.For(SenseKind.Audio, SavedSenses(), thinking, abilities) is { Described: true } audio)
             return (audio.Name, Martlet.Audio.SoundJudgeKind.AudioModel);
@@ -417,7 +417,7 @@ public partial class MainWindow
     /// says which applies, what is sent and where; the Now card above says whether the model hears (TalkHearVoiceStatus).</summary>
     private Border HearVoiceCard()
     {
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var audio = Martlet.Conversation.SenseRouting.For(SenseKind.Audio, SavedSenses(), thinking, abilities);
         // An audio model of its own takes recordings in Thinking's place: Thinking never gets one then.
@@ -626,7 +626,7 @@ public partial class MainWindow
     private void RenderVisionPage(Panel page)
     {
         var prefs = Talk;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         // Martlet can see when its pictures go to Thinking or to an image model of its own (docs/SENSE_MODELS.md).
         var image = SavedImageRoute(thinking, abilities);
