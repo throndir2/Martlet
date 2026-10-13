@@ -14,7 +14,7 @@ No. Public installers are unsigned normal releases. Windows may warn about an un
 
 ## Does Martlet need a GPU?
 
-No. A basic setup can use cloud Thinking and typed text. A GPU helps local Thinking, cloned voices, Singing, Pictures and Audio2Face.
+No. A basic setup can use cloud Thinking and typed text. A GPU helps local Thinking, cloned voices, Singing, Picture making and Audio2Face.
 
 ## Does Martlet listen on launch?
 

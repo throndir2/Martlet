@@ -376,7 +376,7 @@ priority order**.
 | 9 | Deep thinking (the Thinking pool) | Optional | Martlet doesn't think things over in the background |
 | 10 | Smart home (Home Assistant) | Optional | Martlet doesn't control your smart home |
 | 11 | Singing | Optional | Martlet doesn't sing |
-| 12 | Pictures | Optional | Martlet doesn't draw pictures |
+| 12 | Picture making | Optional | Martlet doesn't draw pictures |
 
 The needed parts come first. The optional parts follow in the order they help
 most. Vision, Reading and Hearing make every conversation better, and they
@@ -462,7 +462,7 @@ that every host role has a catalog option.
 | 9 | Deep thinking | The Thinking pool: thinks longer, web research, screen and sound summaries, judges, helper jobs, check-ins | A graphics card, or online | `deep-thinking` | Optional | Yes | Companion › Thinking pool |
 | 10 | Smart home | Home Assistant, the hub that controls your devices | The processor of a Linux computer with Docker Engine, always on, or your own hub | `home-assistant` | Optional | Yes | Companion › Smart home |
 | 11 | Singing | Sings songs on request | A large NVIDIA card | `singing` | Optional | Yes | Companion › Singing |
-| 12 | Pictures | Draws pictures on request | A large NVIDIA card (ComfyUI with Z-Image Turbo), or online (NVIDIA Build's FLUX, OpenRouter) | `pictures` | Optional | Yes | Companion › Pictures |
+| 12 | Picture making | Draws pictures on request | A large NVIDIA card (ComfyUI with Z-Image Turbo), or online (NVIDIA Build's FLUX, OpenRouter) | `pictures` | Optional | Yes | Companion › Picture making |
 
 **Features without compute of their own** (they use the parts above, or
 small work inside Martlet that the footprints count as always on):

@@ -953,7 +953,7 @@ What a friend's computer gets on a shared host:
   if `signin.json` is lost). The host lets it read the version, the capabilities
   and the status, use the engines that serve only the request that asks
   (thinking, listening, speaking, lip-sync and reading), and cancel its own
-  requests. Pictures and singing keep the whole host's queues, results and
+  requests. Picture making and singing keep the whole host's queues, results and
   models, so they stay yours: the host leaves them out of a friend's
   capabilities and refuses them. Every other route refuses a friend too
   (`access.friend`) before anything is read: pairing, the network, the hardware
@@ -1031,7 +1031,7 @@ to join through it.
   shared host: not the network sync, the plan, shared settings, memories,
   voices, speaking voices, characters, creations, Home Assistant, API keys,
   logs, commands, the security audit, live GPU holds, or hardware and update
-  reads. So normal use never meets `access.friend`. Pictures and singing never
+  reads. So normal use never meets `access.friend`. Picture making and singing never
   use a shared host.
 - **Your work first.** When the host turns your friend's request away for your
   work (`job.busy` with detail `owner`, or `job.preempted`), their Martlet tries

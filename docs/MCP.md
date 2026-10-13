@@ -1127,21 +1127,21 @@ Read my screen now (`ReadingTest`) captures the screen, so it needs
 screenshot it read, for example *(1920 x 1080 screenshot)*. The text it read
 (`ReadingTestText`) is never returned.
 
-### Pictures
+### Picture making
 
-While Companion › Pictures has a place (or `MARTLET_PICTURES_FIXTURE=1`), every
+While Companion › Picture making has a place (or `MARTLET_PICTURES_FIXTURE=1`), every
 reply on a route that does function calling also gets `draw_picture`
 (`description`, optional `title`, `shape`, `avoid`), after the song tools. It
 starts a `picture-N` background job and returns at once; the finished picture is
 kept as a `picture` creation and shown in the talk window (`LivePicture`, whose
 click opens `LivePictureViewer`), and `perform_creation` shows a kept one again.
-See [Pictures](PICTURES.md). The talk window's status says *Starting a picture in
+See [Picture making](PICTURES.md). The talk window's status says *Starting a picture in
 the background…* while it is called, and the desktop log notes `Pictures:`
 lines (where, size, seconds; never the description).
 
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
-its Pictures list as `pool` (`pools-local.json`: `configured`, `off`, each
+its Picture making list as `pool` (`pools-local.json`: `configured`, `off`, each
 member's `key`, `kind`, `name`, `settings`, `consented`, `ownKeySaved` and the
 `place` it reads as; without a list yet, the list the desktop would make from
 `pictures.json`) and `tries` (the places a picture tries now, in order),
@@ -1155,16 +1155,16 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
 back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
-Pictures list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
+Picture making list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
 simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
 or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
 the first list is made from `pictures.json`. It returns `ok` and each step. It
 never calls OpenRouter or NVIDIA
-Build (a picture costs money). Desktop automation: Companion › Pictures' *Where
+Build (a picture costs money). Desktop automation: Companion › Picture making's *Where
 it draws* is the shared pool list (`Pool-pictures-...`, see the pool list
 automation IDs): `Pool-pictures-Summary`, `Pool-pictures-Member-<i>` (a place,
-its kind and its state: whether the Pictures role is ready there, its workflow,
+its kind and its state: whether the Picture making role is ready there, its workflow,
 or a cloud provider's key status), `Pool-pictures-On-<i>`, `-Up-`, `-Down-`,
 `-Remove-`, `-OnlyFor-<i>`, `-AddThisPc`, `-AddHost-<host>`, `-Address` and
 `-AddAddress`. `Pool-pictures-Settings-<i>` (show or hide a place's settings),
@@ -1499,6 +1499,45 @@ yet", dropped the same way, `mostNames`: the most names one voice has, merged,
 tombstones) and `clips` (`keep`: People's *Keep the last 20 clips* choice,
 `voices` and `clips`: how many clips of voices not named yet are kept). It never
 returns names, voiceprints or audio and runs no model.
+
+`voices_status`'s `recognitionWhere` is Companion › People › *Where it runs*
+([where voice recognition runs](VOICES.md#where-voice-recognition-runs)): the
+area facts (`area`, `page`, `file` *pools.json*, `shared` and `required` true,
+`whenEmpty` *This PC's processor*, `hostRole` and `lane` *voice-recognition*),
+`list` (*saved* or *none saved: this PC's processor*), its `members` (`key`,
+`name`, `kind`, `on`, `recognizes`, `onlyFor`, `paired`), `tries` (the places
+this PC tries in order, each `key`, `hostId` and `fallback`: this PC's
+processor added last because the list doesn't have it on), a `summary` line and
+`desktop`: the running desktop's `voice-recognition-state.json` (null before
+the desktop wrote one). `desktop` has `enabled`, `problem` (People's problem
+line, or null), `engine` (`state` *notloaded*, *ready* or *failed*, `loaded`,
+`problem`, `failures` in a row, `failed_at`, `retry_at`, `worked_at`,
+`reloads` and `ms_per_second`, this PC's measured speed), `last` (the last
+recognition's `key`, `where`, `milliseconds`, `seconds` of speech, `raced`,
+`passed`: the places passed over and why, and `at`), `hosts` (each computer
+tried since the desktop started: `host_id`, `answered_at`, `milliseconds`,
+`problem` and `rest_until`) and `tries`.
+
+`voice_recognition_check` rehearses the Voice recognition list with the
+production code (`VoiceRecognitionPool`, `VoiceRecognitionRouter`,
+`VoiceEngineKeeper`, `SpeakerAnswers` and the host request
+`VoiceRecognitionPayload`) and SIMULATED computers and engine, NOT real hosts.
+Its `steps` (each `passed` with `detail`; `ok` is all of them) check the order
+(each computer once, this PC's processor always last as the fallback, also with
+no list, an empty list or nothing on), the list shared by two simulated
+computers, the request (`operation`, `sample_rate` 16000, `pcm16_base64`), the
+answer checks (a good answer is read; 255 numbers, a voiceprint not of length 1,
+a time after the audio, fewer voices than speakers or an error answer are
+refused), routing (a computer that answers in time recognizes and this PC does
+nothing; a busy one passes it to this PC at once; a bad answer, an unreachable
+computer or a slow one is passed over and rests, and a slow one loses to this
+PC after its head start) and keeping the engine running (one failure: loaded
+again at once; repeated failures: it rests, tries again in 5 s, a computer after
+this PC recognizes, the failure is reported while it rests, and the check
+brings it back). With an optional absolute `martletDirectory`, `real` runs that
+folder's engine through the keeper: `loadMs`, `analyzeMs` for 3 s of a tone,
+`routedMs` (the same through the router with this PC alone, the default list),
+`msPerSecond` and `headStartMs`. Nothing is recorded, played or sent.
 
 `voices_naming_check` rehearses [learning names](VOICES.md#what-happens-in-a-conversation)
 with the production checks and changes (`CompanionNames`, `VoiceUpdates` and the
@@ -7701,7 +7740,24 @@ saves `recommended-setup.json` and asks again, so it needs
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleNow` (its Now line: *Voice recognition on: 3 voices known, 2 with a name.*,
 *Off: Martlet doesn't check who is talking.*) and `PeopleNowProblem` (the
-installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus`,
+installation lacks the voice recognition files, the voices couldn't be read, or
+*Voice recognition on this PC stopped working: ... Martlet loads it again and
+tries at 15:05.*), `PeopleRecognitionWhere` (where the last voice was recognized
+and how long it took: *Last voice recognized by this PC's processor in 149 ms
+(3 s of speech, at 15:05).*, or what the Voice recognition list means),
+`PeopleRecognitionCheck` (*Check it now*: it sends a test tone through the
+list, so it needs `--allow-ui-effects`) and `PeopleRecognitionCheckResult`
+(*Checked at 15:05: this PC's processor recognized the test tone in 149 ms.*,
+or *... nothing could recognize the test tone.* with the reason). *Where it
+runs* is the shared pool list (`Pool-voice-recognition-Summary`,
+`-Member-<i>` with each member's state: *ready; about 47 ms for each second of
+speech*, *stopped working: ...*, *runs Voice recognition; last answered in 45
+ms* or *left out until 15:06 (...); this PC recognizes instead*; `-On-<i>`,
+`-AddThisPc`, `-AddHost-<host>` and the other list controls). While this PC's
+engine has failed, Home shows `HealthIssue-voice-recognition` (*Warning: Voice
+recognition stopped working on this PC. ...*) with
+`HealthFix-voice-recognition-retry` (*Try again now*: loads the engine again,
+so it needs `--allow-ui-effects`) and `HealthOpen-voice-recognition-open-people`. `PeopleSyncStatus`,
 `PeopleVoiceCount` and `PeopleLinkStatus` (counts only: *1 of 3 voices is linked to people's accounts. Your
 account has 1 voice. ...*, or before this PC knows its account whether a voice is marked as yours), and Listening › This PC shows its speech recognizers as an
 option picker: `Picker-Listening-<model ID>` for each Parakeet model (inside
@@ -7810,7 +7866,7 @@ memory, 3% memory, 6% processor.*; one number when the job does not grow),
 `DeviceAlsoFits-<n>` from `PlacementEngine.Afford` (*Room for another Deep
 thinking model (Gemma 4 12B) here.*). The **What your computers can run** card
 (`CapacityCard`) returns `CapacityCoverage` (*On your computers: Thinking
-(gpu-box). Online: Voice (OpenAI voice). Not set up: Singing, Pictures.*),
+(gpu-box). Online: Voice (OpenAI voice). Not set up: Singing, Picture making.*),
 `CapacityTotals` (*Totals across 2 computers: 32 GB graphics memory, 80 GB
 memory, ...*) and `CapacityFits` (*Your computers could also run 2 more Thinking
 models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).*). All are
@@ -8315,9 +8371,10 @@ priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
 `CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
 the jobs Martlet works without, each with an intro that starts with
 "Optional.": `CompanionTab-DeepThinking` (Thinking pool),
-`CompanionTab-Singing`, `CompanionTab-Pictures`, `CompanionTab-Vision`,
+`CompanionTab-Singing`, `CompanionTab-Pictures` (Picture making; its ID keeps the old name), `CompanionTab-Vision`,
 `CompanionTab-Reading` and `CompanionTab-Motion`. Every page shows its group as `CompanionGroupTitle`
-("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its intro as `CompanionIntro`.
+("HOW IT WORKS", "OPTIONAL EXTRAS", ...), its name as `CompanionPageTitle` (*Thinking*, *Picture making*,
+...) and its intro as `CompanionIntro`.
 
 The desktop character has its own group in Companion's side list, *How it
 looks*: `CompanionTab-Character` (the character model, showing and hiding it,
@@ -10026,7 +10083,7 @@ picture's `DiscordCallCameraFile` (*Choose a picture file...*, a file dialog),
 `DiscordCallCameraCreation` (*A picture from Creations...* and each picture
 creation on this PC; shown only when there is one, its titles never returned),
 `DiscordCallCameraPrompt` and `DiscordCallCameraDraw` (*Draw it*; shown only
-while Companion › Pictures has a place or `MARTLET_PICTURES_FIXTURE=1`, it
+while Companion › Picture making has a place or `MARTLET_PICTURES_FIXTURE=1`, it
 draws a 16:9 picture, keeps it as a `picture` creation and uses it) and
 `DiscordCallCameraPicture` (the saved picture's preview),
 `DiscordCallCamera` (*Open camera view* / *Close camera

@@ -1,4 +1,5 @@
 using System.IO;
+using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Speakers;
 using Martlet.Providers;
@@ -29,7 +30,9 @@ internal sealed record HeardVoices(IReadOnlyList<HeardVoice> Voices, bool Overla
 
 /// <summary>Recognizing the people Martlet hears. The voice list (voices.json) holds voiceprints and the names each voice goes
 /// by, never audio (the last few clips of voices the owner hasn't named are kept apart, on this PC only: <see cref="VoiceClips"/>); the engine (sherpa-onnx with the WeSpeaker and pyannote models, AudioTranscriber's pipeline) ships in
-/// Martlet's folder and runs on this PC. Whether it is on (voice-recognition.txt, on unless the owner turned it off) is one of
+/// Martlet's folder and runs on this PC, or on a computer of the Voice recognition list (Companion › People,
+/// <see cref="VoiceRecognitionHosts"/>), with this PC's processor as the fallback that keeps it working
+/// (<see cref="VoiceRecognitionRouter{T}"/>, <see cref="VoiceEngineKeeper{T}"/>). Whether it is on (voice-recognition.txt, on unless the owner turned it off) is one of
 /// Martlet's shared settings, and the list itself travels through the paired hosts while Martlet is the same on all the
 /// owner's computers.</summary>
 internal sealed class LocalVoices : IDisposable
@@ -38,23 +41,41 @@ internal sealed class LocalVoices : IDisposable
     internal const string EnabledFile = "voice-recognition.txt";
     private readonly object gate = new();
     private readonly string? directory;
-    private readonly string? appDirectory;
     private readonly string by;
     private readonly TimeProvider clock;
-    private SpeakerEngine? engine;
+    private readonly VoiceEngineKeeper<SpeakerAnalysis> keeper;
+    private readonly VoiceRecognitionHosts hosts;
+    private readonly VoiceRecognitionRouter<SpeakerAnalysis> router;
+    private VoiceRecognitionLast? lastRecognition;
     private VoiceRoster roster = VoiceRoster.Empty;
 
     /// <param name="appDirectory">Where the engine and voice models are; Martlet's own folder unless a test says otherwise.</param>
-    internal LocalVoices(string? directory, string? device = null, TimeProvider? clock = null, string? appDirectory = null)
+    /// <param name="engine">Makes this PC's engine; tests give a fake one.</param>
+    /// <param name="remote">Recognizes on a computer of the Voice recognition list; tests give a fake one.</param>
+    /// <param name="queue">The work queue; tests give their own.</param>
+    internal LocalVoices(string? directory, string? device = null, TimeProvider? clock = null, string? appDirectory = null,
+        Func<IVoiceEngine<SpeakerAnalysis>>? engine = null, VoiceRecognitionRouter<SpeakerAnalysis>.Remote? remote = null,
+        WorkQueue? queue = null)
     {
         this.directory = directory;
-        this.appDirectory = appDirectory;
         by = device ?? HostSetupCommands.SuggestedDeviceId();
         this.clock = clock ?? TimeProvider.System;
-        Included = SpeakerEngine.Included(appDirectory);
+        Included = engine is not null || SpeakerEngine.Included(appDirectory);
+        keeper = new(engine ?? (() => new SherpaVoiceEngine(appDirectory)), this.clock);
+        keeper.Log += (line, error) =>
+        {
+            if (error is null) ErrorLog.Info(line);
+            else ErrorLog.Warn(line, error);
+        };
+        keeper.Changed += () => RecognitionChanged?.Invoke();
+        hosts = new(directory);
+        router = new(keeper, remote ?? hosts.AnalyzeAsync, queue, VoiceRecognitionHosts.Classify, this.clock);
+        router.Changed += () => RecognitionChanged?.Invoke();
+        RecognitionChanged += WriteStateSoon;
         Clips = new VoiceClips(directory);
         if (directory is null) return;
         Enabled = ReadChoice(EnabledFile) ?? true;
+        if (!Enabled) keeper.Pause();
         try
         {
             var path = Path.Combine(directory, RosterFile);
@@ -90,7 +111,10 @@ internal sealed class LocalVoices : IDisposable
     {
         WriteChoice(EnabledFile, on);
         Enabled = on;
+        if (on) keeper.Resume();
+        else keeper.Pause();
         Changed?.Invoke();
+        WriteStateSoon();
     }
 
     /// <summary>When voice-recognition.txt last changed (null when the owner never chose).</summary>
@@ -442,44 +466,131 @@ internal sealed class LocalVoices : IDisposable
     }
 
     /// <summary>The voice engine is in memory now (it loads on the first utterance it checks).</summary>
-    internal bool Loaded { get { lock (gate) return engine is not null; } }
+    internal bool Loaded => keeper.Loaded;
 
-    /// <summary>Analyzes the utterance with the voice engine, loading it first when it isn't (also after Free up this PC
-    /// unloaded it, even while this waited for it).</summary>
+    /// <summary>How this PC's engine is doing (ready, failed and when it tries again, its speed).</summary>
+    internal VoiceEngineStatus Engine => keeper.Status;
+
+    /// <summary>What Martlet knows about each computer of the Voice recognition list it tried since it started.</summary>
+    internal IReadOnlyList<VoiceRecognitionHost> RecognitionHosts => router.Hosts;
+
+    /// <summary>The last recognition: where, how long and why places before it were passed over; null before the first.</summary>
+    internal VoiceRecognitionLast? LastRecognition { get { lock (gate) return lastRecognition; } }
+
+    /// <summary>Raised (off the dispatcher too) when where recognition runs or how this PC's engine is doing changed.</summary>
+    internal event Action? RecognitionChanged;
+
+    /// <summary>Why voice recognition doesn't work on this PC now, in plain words; null while it works (or is off).</summary>
+    internal string? RecognitionProblem => RecognitionFailure is { } failure ? "Voice recognition on this PC stopped working: " + failure : null;
+
+    /// <summary>This PC's engine's failure and when Martlet tries it again; null while it works (or recognition is off).</summary>
+    internal string? RecognitionFailure => Enabled && Included && keeper.Status is { State: VoiceEngineState.Failed } failed
+        ? failed.Problem + (failed.RetryAt is { } at ? $" Martlet loads it again and tries at {at.ToLocalTime():t}." : "")
+        : null;
+
+    /// <summary>Home's Try again: loads a new engine now. True when it works.</summary>
+    internal bool CheckEngine() => keeper.Check();
+
+    /// <summary>The places this PC tries, first to last (<see cref="VoiceRecognitionHosts.Targets"/>).</summary>
+    internal IReadOnlyList<VoiceRecognitionTarget> RecognitionTargets => VoiceRecognitionHosts.Targets(directory, by);
+
+    /// <summary>People's Check it now: recognizes three seconds of a generated tone through the Voice recognition list, the way an
+    /// utterance goes (<see cref="LastRecognition"/> says where and how long). Nothing is learned, added or kept. Throws
+    /// <see cref="VoiceEngineException"/> when no place could recognize it.</summary>
+    internal VoiceRecognitionLast Check()
+    {
+        var tone = new float[3 * SpeakerEngine.SampleRate];
+        for (var i = 0; i < tone.Length; i++)
+        {
+            var t = i / (double)SpeakerEngine.SampleRate;
+            var f = 140 + 40 * Math.Sin(Math.PI * t);
+            tone[i] = (float)(0.2 * Math.Sin(2 * Math.PI * f * t) + 0.1 * Math.Sin(4 * Math.PI * f * t));
+        }
+        Analyze(tone);
+        return LastRecognition!;
+    }
+
+    /// <summary>Recognizes the utterance at the first place of the Voice recognition list that can (<see cref="VoiceRecognitionRouter{T}"/>):
+    /// a computer's role or this PC's engine, which loads first when it isn't (also after Free up this PC unloaded it) and is
+    /// loaded again after a failure (<see cref="VoiceEngineKeeper{T}"/>).</summary>
     private SpeakerAnalysis Analyze(float[] samples)
     {
-        for (var attempt = 0; ; attempt++)
+        var targets = RecognitionTargets;
+        // Called on a worker thread (the turn's recognition task); the router waits for a computer at most a few seconds.
+        var run = router.RunAsync(targets, samples, CancellationToken.None).GetAwaiter().GetResult();
+        var seconds = samples.Length / (double)SpeakerEngine.SampleRate;
+        var last = new VoiceRecognitionLast(run.By.Key, run.By.Here ? "this PC's processor" : $"{run.By.HostId}'s Voice recognition role",
+            Math.Round(run.Took.TotalMilliseconds), Math.Round(seconds, 1), run.Raced, run.Passed, Now);
+        string? before;
+        lock (gate)
         {
-            SpeakerEngine current;
-            lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
-            try { return current.Analyze(samples); }
-            catch (ObjectDisposedException) when (attempt == 0) { }
+            before = lastRecognition?.Key;
+            lastRecognition = last;
         }
+        ErrorLog.Info($"Voice recognition: {last.Where} in {last.Milliseconds:0} ms ({seconds:0.0} s of speech)" +
+            (run.Raced ? ", racing this PC after a computer didn't answer in time" : "") +
+            (run.Passed.Count > 0 ? "; passed over: " + string.Join("; ", run.Passed) : "") + ".");
+        if (before != last.Key) RecognitionChanged?.Invoke();
+        else WriteStateSoon();
+        return run.Result;
+    }
+
+    private int stateQueued;
+    private bool writesState;
+
+    /// <summary>Whether this PC's recognition state is written for MCP (<see cref="VoiceRecognitionHosts.StateFile"/>); the main
+    /// window turns it on.</summary>
+    internal bool WritesState
+    {
+        get => writesState;
+        set
+        {
+            writesState = value;
+            WriteStateSoon();
+        }
+    }
+
+    /// <summary>Writes <see cref="VoiceRecognitionHosts.StateFile"/> a second from now (once for any number of changes), in the
+    /// background, so recognition never waits for the disk. Only once the main window turned <see cref="WritesState"/> on.</summary>
+    private void WriteStateSoon()
+    {
+        if (!WritesState || directory is null || Interlocked.Exchange(ref stateQueued, 1) == 1) return;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            Volatile.Write(ref stateQueued, 0);
+            VoiceRecognitionHosts.WriteState(directory, Enabled, keeper.Status, keeper.Loaded, LastRecognition, router.Hosts,
+                RecognitionTargets, RecognitionProblem);
+        });
     }
 
     /// <summary>Home's Free up this PC: takes the voice engine out of memory. The next utterance loads it again. True when it
     /// was loaded.</summary>
-    internal bool Unload()
-    {
-        SpeakerEngine? loaded;
-        lock (gate)
-        {
-            loaded = engine;
-            engine = null;
-        }
-        // Unloading waits for an analysis still running, so it happens outside the gate.
-        loaded?.Dispose();
-        return loaded is not null;
-    }
+    internal bool Unload() => keeper.Unload();
 
     public void Dispose()
     {
-        lock (gate)
-        {
-            engine?.Dispose();
-            engine = null;
-        }
+        keeper.Dispose();
+        hosts.Dispose();
     }
+}
+
+/// <summary>The last recognition, for People, Home and the status file: the place's key and name, how long it took, how much
+/// speech, whether this PC raced a slow computer, and why places before it were passed over.</summary>
+internal sealed record VoiceRecognitionLast(string Key, string Where, double Milliseconds, double Seconds, bool Raced,
+    IReadOnlyList<string> Passed, DateTimeOffset At);
+
+/// <summary>This PC's sherpa-onnx engine (<see cref="SpeakerEngine"/>) as <see cref="VoiceEngineKeeper{T}"/> keeps it. Load takes
+/// a voiceprint of a second of silence, which loads both models.</summary>
+internal sealed class SherpaVoiceEngine(string? appDirectory) : IVoiceEngine<SpeakerAnalysis>
+{
+    private readonly SpeakerEngine engine = new(appDirectory);
+
+    public SpeakerAnalysis Analyze(float[] samples) => engine.Analyze(samples);
+
+    public void Load() => _ = engine.Voiceprint(new float[SpeakerEngine.SampleRate]);
+
+    public void Dispose() => engine.Dispose();
 }
 
 /// <summary>Parakeet on this PC as the conversation's speech-to-text: the utterance is transcribed in memory here and nothing

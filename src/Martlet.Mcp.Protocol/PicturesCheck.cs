@@ -10,13 +10,13 @@ using Martlet.Providers.Pictures;
 
 namespace Martlet.Mcp;
 
-/// <summary>pictures_status and pictures_check (docs/PICTURES.md). The status reads a data directory's Companion › Pictures
-/// choice (pictures.json; never a key, only whether one is saved), its Pictures list (pools-local.json, or the list the desktop
+/// <summary>pictures_status and pictures_check (docs/PICTURES.md). The status reads a data directory's Companion › Picture making
+/// choice (pictures.json; never a key, only whether one is saved), its Picture making list (pools-local.json, or the list the desktop
 /// would make from pictures.json) and the places a picture tries now, its workflow file and the picture creations, plus the
 /// draw_picture tool and job kind the conversation offers. The check draws one picture through the production picture maker:
 /// the FIXTURE - NOT AI maker, or a ComfyUI at an address (<see cref="ComfyHttpApi"/>, <see cref="ComfyPictureMaker"/> and
 /// <see cref="ComfyWorkflows"/>), then keeps it as a picture creation in a data directory and reads it back the way the talk
-/// window shows it; or (place pool) rehearses the Pictures list's routing on simulated ComfyUI computers
+/// window shows it; or (place pool) rehearses the Picture making list's routing on simulated ComfyUI computers
 /// (<see cref="PictureMakingPoolCheck"/>). Cloud providers are never called here (a picture costs money).</summary>
 internal static class PicturesCheck
 {
@@ -66,7 +66,7 @@ internal static class PicturesCheck
         };
     }
 
-    // This PC's Pictures list (pools-local.json) and the places a picture tries now (PoolRouting.Order, as the desktop: on, kept
+    // This PC's Picture making list (pools-local.json) and the places a picture tries now (PoolRouting.Order, as the desktop: on, kept
     // for this PC, agreed to and, for a paired computer, still paired and not a host a friend shares). Without a list yet, the one
     // the desktop makes once from pictures.json (the chosen place, then the other computers the shared plan says run the
     // pictures role). Read-only: it never saves the list.

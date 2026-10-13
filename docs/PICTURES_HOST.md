@@ -1,8 +1,8 @@
-# Pictures host role
+# Picture making host role
 
 The `pictures` host role lets a paired Martlet desktop draw pictures on a Martlet host through the authenticated gateway. It runs ComfyUI in a container, bound only to `127.0.0.1:50086` inside the host/gateway network namespace. The gateway relay is a thin, validated pass-through to ComfyUI's own HTTP API; there is no custom image service.
 
-The user-facing picture feature is described in [Pictures](PICTURES.md).
+The user-facing picture feature is described in [Picture making](PICTURES.md).
 
 ## Host setup
 

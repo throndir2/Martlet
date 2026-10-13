@@ -74,7 +74,7 @@ asset, `image` (PNG, JPEG or WebP, at most 24 MiB); its text is the description 
 was drawn from and its summary what you asked for; metadata with its shape, size,
 engine, model, where it was drawn, seed and seconds. Martlet *shows* a picture: the
 conversation's handler puts it in the talk window (no options), and the Creations
-page shows it with its details ([Pictures](PICTURES.md)).
+page shows it with its details ([Picture making](PICTURES.md)).
 
 **Motions** (`MotionCreations.Kind`, registered by the desktop at startup): body
 motions Martlet made for VRM characters ([motions in

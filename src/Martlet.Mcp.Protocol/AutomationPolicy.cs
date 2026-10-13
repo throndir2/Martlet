@@ -98,7 +98,7 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: CheckInRun-<id> (Check now sends the check to a Thinking pool member, which may be a paid provider).
         new("Pool-vision-AlsoOpen", "Companion › Vision", "Open Thinking pool under 'Also gets your pictures': only opens that page."),
         new("Pool-hearing-AlsoOpen", "Companion › Hearing", "Open Thinking pool under 'Also gets your recordings': only opens that page."),
-        new("PicturesCheck", "Companion › Pictures", "Check: only asks each place in the Pictures list whether it can draw now (a cloud provider: only whether a key is there); saves and draws nothing."),
+        new("PicturesCheck", "Companion › Picture making", "Check: only asks each place in the Picture making list whether it can draw now (a cloud provider: only whether a key is there); saves and draws nothing."),
         // Needs --allow-ui-effects: Draw a test picture, Set up, Save, Load workflow file, Save key and Add.
         new("LiveToolDeny", "Talk window", "A tool call's Deny: only declines the waiting call (an MCP tool or a terminal command); runs nothing."),
         // Needs --allow-ui-effects: Allow once and Always allow (they run the tool call).
@@ -306,8 +306,8 @@ internal static class AutomationPolicy
         // Needs --allow-ui-effects: Pool-lip-sync-SaveEndpoint (it saves the address in Pool-lip-sync-Endpoint).
         new("Pool-singing-Settings-", "Companion › Singing", "The Settings button of a list member, such as Pool-singing-Settings-0; only shows or hides its Singing state, Set up Singing here, Add VevoSing here and its own quality."),
         // Needs --allow-ui-effects: Singing's Set up Singing here, Add VevoSing here and quality (they save or install).
-        new("Pool-pictures-Settings-", "Companion › Pictures", "The Settings button of a place, such as Pool-pictures-Settings-0; only shows or hides its settings."),
-        new("PicturesComfyConnect-", "Companion › Pictures", "The Connect button of a place, such as PicturesComfyConnect-0; only reads the version, checkpoints and models of that ComfyUI server."),
+        new("Pool-pictures-Settings-", "Companion › Picture making", "The Settings button of a place, such as Pool-pictures-Settings-0; only shows or hides its settings."),
+        new("PicturesComfyConnect-", "Companion › Picture making", "The Connect button of a place, such as PicturesComfyConnect-0; only reads the version, checkpoints and models of that ComfyUI server."),
         new("Pool-motion-Settings-", "Companion › Motion", "The Settings button of a list member, such as Pool-motion-Settings-0; only shows or hides where Motion stands there and its Set up Motion here button."),
         // Needs --allow-ui-effects: Set up Motion here (it installs the role).
         new("Pool-vision-Settings-", "Companion › Vision", "The Settings button of a list member, such as Pool-vision-Settings-0; only shows or hides its model and settings."),
@@ -402,6 +402,9 @@ internal static class AutomationPolicy
         new("SetupCharacterView", "Companion › Character", "Shows the zoom and pan of the character overlay view."),
         new("SetupCharacterSpeechDisplay", "Companion › Speech bubbles", "Shows how speech bubbles show now."),
         new("PeopleLinkStatus", "Companion › People", "Shows how many voices link to the accounts of people and how many are the signed-in person's. Counts only."),
+        new("PeopleRecognitionWhere", "Companion › People", "Shows where the last voice was recognized and how long it took, such as 'Last voice recognized by gpu-pc's Voice recognition role in 45 ms (3.2 s of speech, at 14:02).', or what the Voice recognition list means. Host IDs, times and fixed wording."),
+        new("PeopleRecognitionCheck", "Companion › People", "Shows the label of Check it now. Pressing it sends a test tone through the Voice recognition list, so it needs --allow-ui-effects."),
+        new("PeopleRecognitionCheckResult", "Companion › People", "Shows what Check it now found: the place that recognized the test tone and how long it took, or why nothing could. Host IDs, times and fixed wording."),
         new("SpeechBubblesNow", "Companion › Speech bubbles", "Shows the Now line: what the page uses now, in one line. Counts, names, addresses and fixed wording; never a token or what was said."),
         new("SpeechBubblesNowProblem", "Companion › Speech bubbles", "Shows what stops the Now line. Counts, names, addresses and fixed wording; never a token or what was said."),
         new("EmotesNow", "Companion › Emotes and motions", "Shows the Now line: what the page uses now, in one line. Counts, names, addresses and fixed wording; never a token or what was said."),
@@ -574,17 +577,18 @@ internal static class AutomationPolicy
         // The Singing list, each member's Singing state, Set up Singing here, Add VevoSing here and quality read through the Pool- prefix; Picker-Singing-Role tells what Singing is.
         // Songs are only performed in conversation; singing_check exercises them headlessly.
         new("CompanionGroupTitle", "Any Companion page", "Shows the page's group in the side list, such as HOW IT WORKS or OPTIONAL EXTRAS; fixed text."),
+        new("CompanionPageTitle", "Any Companion page", "Shows the page's name, such as Thinking pool or Picture making; fixed text."),
         new("CompanionIntro", "Any Companion page", "Shows the page's fixed intro, which starts with 'Optional.' on a page Martlet works without."),
-        new("PicturesNow", "Companion › Pictures", "Shows where Martlet draws now: the first place in the Pictures list and the places that draw when it is busy."),
-        new("PicturesTestState", "Companion › Pictures", "Shows what Check or Draw a test picture found: each place ready or why not, or the test picture's size, place and seconds. Never the picture."),
-        new("PicturesCheck", "Companion › Pictures", "Shows the label of the Check button."),
-        new("PicturesTest", "Companion › Pictures", "Shows the label of the Draw a test picture button."),
-        new("PicturesCloudProvider", "Companion › Pictures", "Shows the provider chosen in the Add a cloud provider form."),
-        new("PicturesModel", "Companion › Pictures", "Shows the model ID in the Add a cloud provider form."),
-        new("PicturesKeyStatus", "Companion › Pictures", "Shows the key status of the Add a cloud provider form: whether the Thinking key is used. Never the key."),
-        new("PicturesConsent", "Companion › Pictures", "Shows the agreement box of the Add a cloud provider form."),
-        new("PicturesAddCloud", "Companion › Pictures", "Shows the label of the Add a cloud provider form's button."),
-        new("PicturesCloudState", "Companion › Pictures", "Shows what the last Add did."),
+        new("PicturesNow", "Companion › Picture making", "Shows where Martlet draws now: the first place in the Picture making list and the places that draw when it is busy."),
+        new("PicturesTestState", "Companion › Picture making", "Shows what Check or Draw a test picture found: each place ready or why not, or the test picture's size, place and seconds. Never the picture."),
+        new("PicturesCheck", "Companion › Picture making", "Shows the label of the Check button."),
+        new("PicturesTest", "Companion › Picture making", "Shows the label of the Draw a test picture button."),
+        new("PicturesCloudProvider", "Companion › Picture making", "Shows the provider chosen in the Add a cloud provider form."),
+        new("PicturesModel", "Companion › Picture making", "Shows the model ID in the Add a cloud provider form."),
+        new("PicturesKeyStatus", "Companion › Picture making", "Shows the key status of the Add a cloud provider form: whether the Thinking key is used. Never the key."),
+        new("PicturesConsent", "Companion › Picture making", "Shows the agreement box of the Add a cloud provider form."),
+        new("PicturesAddCloud", "Companion › Picture making", "Shows the label of the Add a cloud provider form's button."),
+        new("PicturesCloudState", "Companion › Picture making", "Shows what the last Add did."),
         // Each place's settings read through SafeValuePrefixes (PicturesMemberState-<i> and the rest). Never returned: the pictures themselves.
         new("ReadingNow", "Companion › Reading", "Shows what reads the text on the screen."),
         new("ReadingLast", "Companion › Reading", "Shows the newest read while watching: line count, engine, milliseconds, screenshot size and timing, or why it could not. Never the text."),
@@ -1020,16 +1024,16 @@ internal static class AutomationPolicy
     [
         new("AccountSwitch-", "Account picker", "An account signed in on this PC, such as AccountSwitch-<32 hex>; reads its display name (Sam (in use) or Alex), and its checked state shows the one in use. Display names only."),
         // Needs --allow-ui-effects: clicking an AccountSwitch-<32 hex> account (it switches the account).
-        new("PicturesMemberState-", "Companion › Pictures", "Where the Pictures role stands on one place of the Pictures list, such as PicturesMemberState-0: Pictures role ready. or Not set up yet ..."),
-        new("PicturesSetUp-", "Companion › Pictures", "The label of a place's Set up button, such as PicturesSetUp-0."),
-        new("PicturesWorkflow-", "Companion › Pictures", "The chosen workflow of a place, such as PicturesWorkflow-0."),
-        new("PicturesCheckpoint-", "Companion › Pictures", "The chosen checkpoint of a place, such as PicturesCheckpoint-0."),
-        new("PicturesComfyState-", "Companion › Pictures", "What Connect found on a place, such as PicturesComfyState-0: the version, the checkpoints and whether Z-Image Turbo is there."),
-        new("PicturesComfyConnect-", "Companion › Pictures", "The label of a place's Connect button, such as PicturesComfyConnect-0."),
-        new("PicturesLoadWorkflow-", "Companion › Pictures", "The label of a place's Load button, such as PicturesLoadWorkflow-0."),
-        new("PicturesSaveSettings-", "Companion › Pictures", "The label of a place's Save button, such as PicturesSaveSettings-0."),
-        new("PicturesKeyStatus-", "Companion › Pictures", "A cloud place's key status, such as PicturesKeyStatus-0: whether its own key or the Thinking key is used; never the key."),
-        new("PicturesSaveKey-", "Companion › Pictures", "The label of a cloud place's Save key button, such as PicturesSaveKey-0; the label only, never the key."),
+        new("PicturesMemberState-", "Companion › Picture making", "Where the Picture making role stands on one place of the Picture making list, such as PicturesMemberState-0: Picture making role ready. or Not set up yet ..."),
+        new("PicturesSetUp-", "Companion › Picture making", "The label of a place's Set up button, such as PicturesSetUp-0."),
+        new("PicturesWorkflow-", "Companion › Picture making", "The chosen workflow of a place, such as PicturesWorkflow-0."),
+        new("PicturesCheckpoint-", "Companion › Picture making", "The chosen checkpoint of a place, such as PicturesCheckpoint-0."),
+        new("PicturesComfyState-", "Companion › Picture making", "What Connect found on a place, such as PicturesComfyState-0: the version, the checkpoints and whether Z-Image Turbo is there."),
+        new("PicturesComfyConnect-", "Companion › Picture making", "The label of a place's Connect button, such as PicturesComfyConnect-0."),
+        new("PicturesLoadWorkflow-", "Companion › Picture making", "The label of a place's Load button, such as PicturesLoadWorkflow-0."),
+        new("PicturesSaveSettings-", "Companion › Picture making", "The label of a place's Save button, such as PicturesSaveSettings-0."),
+        new("PicturesKeyStatus-", "Companion › Picture making", "A cloud place's key status, such as PicturesKeyStatus-0: whether its own key or the Thinking key is used; never the key."),
+        new("PicturesSaveKey-", "Companion › Picture making", "The label of a cloud place's Save key button, such as PicturesSaveKey-0; the label only, never the key."),
         new("Help-", "Any page", "A help mark (?) from HelpTip.cs, such as Help-CheckInsAbout; reads About <topic>, and its help is the explanation it shows. Never anything typed or secret."),
         // MainWindow.OptionPicker.cs
         new("PickerFacts-", "Any option picker", "The short facts of one option, such as PickerFacts-VoiceEngine-chatterbox: NVIDIA GPU · 4.2 GB VRAM · 0.45 s to first audio."),

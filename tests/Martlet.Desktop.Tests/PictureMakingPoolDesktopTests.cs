@@ -48,10 +48,10 @@ public sealed class PictureMakingPoolDesktopTests
             {
                 Assert.Equal(["m4-host", "m1-host", "m3-host"], pool.Members.Select(m => m.HostId));
                 Assert.All(pool.Members, m => Assert.Equal("c.safetensors", Assert.IsType<ComfyPictureMaker>(m.Maker).Model));
-                Assert.StartsWith("m4-host's Pictures role (or m1-host or m3-host", pool.Where);
+                Assert.StartsWith("m4-host's Picture making role (or m1-host or m3-host", pool.Where);
             }
 
-            // A later change in Companion › Pictures still reads the list made before; the list is the source now.
+            // A later change in Companion › Picture making still reads the list made before; the list is the source now.
             Assert.True(new PicturesSettings { Place = PicturePlace.ComfyUi, Address = "http://lab:8188" }.Save(directory));
             Assert.Equal(3, PictureClient.List(directory).Members.Count);
 
