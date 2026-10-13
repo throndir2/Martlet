@@ -8,7 +8,6 @@
 # Burn-down: https://github.com/throndir2/Martlet/issues/332
 
 # Assertions that no longer match the product's current text or behavior.
-Martlet.Desktop.Tests.McpServerTests.PreservesDialogsAndRejectsWrongOwnerHiddenMainAndExitedProcess
 Martlet.Desktop.Tests.SupportIntegrationTests.ActualConversationUiProjectsMetadataWithoutInputResponseKeysOrDevices  # fails most runs
 Martlet.Desktop.Tests.SupportIntegrationTests.BusyTerminalObservationIsCountedDroppedAndNeverInventedInArchive
 Martlet.Desktop.Tests.SupportIntegrationTests.DestinationAndSelectionChangesDuringConfirmationInvalidateApproval
@@ -26,9 +25,6 @@ Martlet.Desktop.Tests.SupportIntegrationTests.ObservationTimeoutIsResponsiveAndC
 # Failing on a clean export of origin/main 6bb387c on 2026-10-07: the voice cue "expressive" (Chatterbox Original) has no
 # global voice emote yet (shown without the layered-held-emotes change).
 Martlet.Desktop.Tests.CharacterGestureTests.EveryVoiceSoundAndToneHasAGlobalEmoteLinkedToItThatFollowsTheVoiceOnly
-# The check-ins rehearsal's "when check-ins wait" step fails on a clean worktree of origin/main b10d5fe0 alone (3 of 3 runs,
-# 2026-10-10, found by the W8 account settings change).
-Martlet.Desktop.Tests.McpServerTests.SaidLatelyAndCheckInsRehearsalsPassWithTheProductionCode
 # Fail alone on origin/main 58005289 on 2026-10-11 (3 of 3 runs, shown without the raise-arbitrary-limits changes): support
 # export owner/cleanup callbacks (NullReferenceException or false asserts).
 Martlet.Desktop.Tests.SupportIntegrationTests.BlockedExportAndCancellationCallbacksKeepOwnerAcrossCloseAndReopen
