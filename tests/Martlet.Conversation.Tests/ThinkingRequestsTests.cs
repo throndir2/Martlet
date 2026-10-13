@@ -1,3 +1,5 @@
+using Martlet.Providers;
+
 namespace Martlet.Conversation.Tests;
 
 /// <summary>The Thinking requests journal (<see cref="ThinkingRequests"/>): what the job board and background jobs record, with
@@ -293,5 +295,61 @@ public sealed class ThinkingRequestsTests
         var start = jobs.Start(song, "a song", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("sung")), [new BackgroundPlace("host:a", "a")]);
         Assert.True(start.Started);
         Assert.Empty(jobs.Places.Requests.List());
+    }
+
+    [Fact]
+    public async Task ThinkingRequests_a_board_job_keeps_what_it_sends_for_the_page()
+    {
+        var places = new BackgroundPlaces();
+        BackgroundPlace member = new("host:a", "a") { Can = ThinkingCapability.Text | ThinkingCapability.Vision };
+        var board = new ThinkingJobBoard(places, () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done("A cat.")));
+        var picture = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[30]], ImageMediaType.Jpeg, 640, 480);
+        Assert.True((await board.RunAsync(Job(ThinkingJobKind.Digest) with { Text = "What is on the screen?", Image = picture },
+            CancellationToken.None)).Succeeded);
+
+        var request = Assert.Single(places.Requests.List());
+        Assert.Equal(0, request.Asks);
+        Assert.Equal("[Instructions]\nAnswer in one word.\n\n[Message]\nWhat is on the screen?\n\n[Sent with it]\nA picture: 640 x 480 JPEG.",
+            request.Input?.Text);
+        Assert.Equal(request.Input!.Text.Length, request.Input.Length);
+        Assert.Equal(0, request.Input.LeftOut);
+        Assert.DoesNotContain("screen", request.Input.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ThinkingRequests_a_conversation_request_keeps_its_newest_input_with_every_part()
+    {
+        var requests = new ThinkingRequests(new RuntimeClock());
+        var think = requests.Post(new(ThinkingJobKind.ThinkLonger, ThinkingRequestSource.Conversation, "think-1"));
+        Assert.Null(Assert.Single(requests.List()).Input);
+        var first = new BoundedTextInput("Work it out.", "You are Diva.",
+            [new(TextHistoryRole.User, "Plan my week."), new(TextHistoryRole.Assistant, "Let me think.")], notes: "It is Monday.");
+        think.Asked(ThinkingRequestInput.Of(first));
+        think.Begin(new BackgroundPlace("host:a", "a"));
+        think.Asked(ThinkingRequestInput.Of(new BoundedTextInput("Work it out.", "You are Diva.", continuation: "Monday: rest.")));
+        think.Finish(ThinkingRequestState.Succeeded, text: "Monday: rest. Tuesday: work.");
+        think.Asked(ThinkingRequestInput.Of(null, "after it ended"));
+
+        var request = Assert.Single(requests.List());
+        Assert.Equal(2, request.Asks);
+        Assert.Equal("[Instructions]\nYou are Diva.\n\n[Message]\nWork it out.\n\n[Its unfinished answer, which it goes on with]\nMonday: rest.",
+            request.Input?.Text);
+        Assert.Equal("[Instructions]\nYou are Diva.\n\n[Earlier messages (2)]\nUser: Plan my week.\n\nAssistant: Let me think.\n\n" +
+            "[Message]\nWork it out.\n\n[Notes with the message]\nIt is Monday.", ThinkingRequestInput.Of(first).Text);
+    }
+
+    [Fact]
+    public void ThinkingRequests_a_long_input_keeps_its_start_and_its_end()
+    {
+        var message = "START" + new string('x', ThinkingRequestInput.Kept * 2) + "END";
+        var input = ThinkingRequestInput.Of("Be brief.", message);
+        var whole = "[Instructions]\nBe brief.\n\n[Message]\n".Length + message.Length;
+        Assert.Equal(whole, input.Length);
+        Assert.Equal(whole - ThinkingRequestInput.Kept, input.LeftOut);
+        Assert.StartsWith("[Instructions]\nBe brief.\n\n[Message]\nSTART", input.Text, StringComparison.Ordinal);
+        Assert.EndsWith("xEND", input.Text, StringComparison.Ordinal);
+        Assert.Contains($"[… {input.LeftOut:N0} characters left out here …]", input.Text, StringComparison.Ordinal);
+        Assert.Equal(ThinkingRequestInput.Kept, input.Text.Replace($"\n\n[… {input.LeftOut:N0} characters left out here …]\n\n", "",
+            StringComparison.Ordinal).Length);
     }
 }

@@ -39,10 +39,10 @@ public sealed partial class CheckInsTests
     {
         var defaults = CheckIns.All(null);
         Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats, CheckIns.Reactions,
-            CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Ahead, CheckIns.Actions],
+            CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches, CheckIns.Ahead, CheckIns.Actions],
             defaults.Select(c => c.Id));
         // The check-ins that wait for a signal are off until the owner turns them on.
-        Assert.Equal([true, true, true, true, true, true, false, false, false, false, true, true, true], defaults.Select(c => c.On));
+        Assert.Equal([true, true, true, true, true, true, false, false, true, false, true, true, true], defaults.Select(c => c.On));
         Assert.Equal(1, defaults.Single(c => c.Id == CheckIns.Emotes).EveryMinutes);
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
         Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
@@ -417,7 +417,7 @@ public sealed partial class CheckInsTests
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
             PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInWelcome, PromptCatalog.CheckInUnanswered,
-            PromptCatalog.CheckInCall, PromptCatalog.CheckInOthers, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
+            PromptCatalog.CheckInAside, PromptCatalog.CheckInAsideNote, PromptCatalog.CheckInOthers, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
             PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes, PromptCatalog.CheckInAdultOn,
             PromptCatalog.CheckInAdultOff, PromptCatalog.CheckInTouches, PromptCatalog.CheckInAhead, PromptCatalog.CheckInPlan];
         foreach (var id in ids)
@@ -582,7 +582,7 @@ public sealed partial class CheckInsTests
     }
 
     public static TheoryData<string> BuiltInIds => [CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats,
-        CheckIns.Reactions, CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others, CheckIns.DescribeTouches];
+        CheckIns.Reactions, CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others, CheckIns.DescribeTouches];
 
     [Theory]
     [MemberData(nameof(BuiltInIds))]
@@ -938,9 +938,9 @@ public sealed partial class CheckInsTests
         // Only Describe touches and How I react start on touches by default; Think ahead and Act on what was said after replies.
         Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
             : c.Id == CheckIns.Reactions ? CheckIns.ByTouches
-            : c.Id is CheckIns.Actions or CheckIns.Ahead ? CheckInTriggers.ExchangeEnded : CheckInTriggers.None, c.Triggers));
-        Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)32 }).Validate());
-        Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)64 }).Validate());
+            : c.Id is CheckIns.Actions or CheckIns.Ahead ? CheckInTriggers.ExchangeEnded : c.Id == CheckIns.Aside ? CheckInTriggers.Spoke : CheckInTriggers.None, c.Triggers));
+        Assert.Throws<ContractException>(() => settings.With(new CustomCheckIn { Id = "c2", Name = "Bad", Triggers = (CheckInTriggers)64 }).Validate());
+        Assert.Throws<ContractException>(() => settings.With(CheckIns.Emotes, new CheckInChoice(true, 5) { Triggers = (CheckInTriggers)128 }).Validate());
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
         try
         {

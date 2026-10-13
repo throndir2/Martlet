@@ -70,7 +70,7 @@ public sealed class PcSoundDigestTests
         };
         Martlet.Conversation.ThinkingJob? seen = null;
         IReadOnlyList<Martlet.Conversation.BackgroundPlace> members = [text];
-        var pool = new ThinkingPool(new Martlet.Conversation.ThinkingJobBoard(new Martlet.Conversation.BackgroundPlaces(), () => members,
+        var pool = new DesktopThinkingPool(new Martlet.Conversation.ThinkingJobBoard(new Martlet.Conversation.BackgroundPlaces(), () => members,
             (member, job, _) =>
             {
                 seen = job;

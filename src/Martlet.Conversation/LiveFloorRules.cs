@@ -185,13 +185,12 @@ public sealed class LiveFloorRules : IPlaceRules, IDisposable
         return this;
     }
 
-    /// <summary>The kinds stopped while the floor is Live on a place that shares: summaries, remembering and naming, thinking
-    /// longer, research and check-ins.</summary>
-    public static bool Stops(ThinkingJobKind kind) => kind is ThinkingJobKind.Digest or ThinkingJobKind.Memory or ThinkingJobKind.Naming or
-        ThinkingJobKind.ThinkLonger or ThinkingJobKind.Research or ThinkingJobKind.CheckIn;
+    /// <summary>The kinds stopped while the floor is Live on a place that shares (<see cref="ThinkingJobWhileLive.Stops"/> in
+    /// <see cref="ThinkingJobKinds.Rows"/>): summaries, remembering and naming, thinking longer, research and check-ins.</summary>
+    public static bool Stops(ThinkingJobKind kind) => ThinkingJobKinds.Row(kind).WhileLive == ThinkingJobWhileLive.Stops;
 
-    /// <summary>The kinds that serve the live turn itself and always start (the judges).</summary>
-    public static bool ServesTheTurn(ThinkingJobKind kind) => kind is ThinkingJobKind.BargeInJudge or ThinkingJobKind.EndOfTurnJudge;
+    /// <summary>The kinds that serve the live turn itself and always start (the judges; <see cref="ThinkingJobWhileLive.Starts"/>).</summary>
+    public static bool ServesTheTurn(ThinkingJobKind kind) => ThinkingJobKinds.Row(kind).WhileLive == ThinkingJobWhileLive.Starts;
 
     public bool Shares(BackgroundPlace place) => Resources.Shares(place);
 
