@@ -795,10 +795,6 @@ public sealed class ThinkingPoolTests
     }
 
     [Fact]
-    public void The_core_kind_names_match_the_job_kinds() =>
-        Assert.Equal(ThinkingJobKinds.All.Select(ThinkingJobKinds.Name).Order(), ThinkingPoolSettings.JobKinds.Order());
-
-    [Fact]
     public async Task Prefer_smart_passes_over_a_smart_member_whose_provider_asks_martlet_to_wait()
     {
         var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [Small, Big], (m, _, _) => Task.FromResult(m.Id == Big.Id

@@ -46,6 +46,7 @@ public sealed class AutomationPolicyTests
     [InlineData("CheckInStatus-c1", true)]
     [InlineData("ThinkingRequestInputState", true)]
     [InlineData("ApiKeyRow-AbC", true)]
+    [InlineData("ThinkingPoolRunsOnLabel-touch-zones", true)]
     [InlineData("ThinkingRequestTopic", false)]
     [InlineData("ThinkingRequestInput", false)]
     [InlineData("ThinkingRequestOutput", false)]

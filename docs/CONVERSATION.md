@@ -759,20 +759,38 @@ thinks and research count against the same slots:
    The [live floor](#the-live-floor-the-live-turn-comes-first) also stops
    running jobs.
 
-| Kind (`ThinkingJobKind`) | Priority (`ThinkingPriority`) | Fast |
-| --- | --- | --- |
-| `BargeInJudge` | 70 | yes |
-| `EndOfTurnJudge` | 60 | yes |
-| `Digest` (screen or sound) | 50 | yes |
-| `ThinkLonger` | 40 | no |
-| `TouchZones` | 35 | no |
-| `Memory`, `Naming`, `CheckIn` | 20 (`Helper`) | no |
-| `Research` | 10 | no |
+#### Job kinds
+
+`ThinkingJobKinds.Rows` (`src/Martlet.Conversation/ThinkingJobKinds.cs`) is the
+one table of job kinds. Each row has the `ThinkingJobKind`, its saved key
+(thinking-pool.json's *Runs on*, status files, logs and the
+`ThinkingPoolRunsOn-<key>` automation IDs), its *Runs on* label (all the work
+the kind controls), its name on the Thinking requests page, its priority,
+whether it is fast, the most its jobs need, what the
+[live floor](#the-live-floor-the-live-turn-comes-first) does to it and the
+helper jobs that run as it. Every other list reads from it: the priorities,
+the fast kinds, the keys, the *Runs on* card, the Thinking requests page, the
+live floor rules, `HelperJobs` and `ThinkingPoolHelpers`. To add a kind, add the
+enum value and its row; a test fails when a kind has no row. A key is saved, so
+a changed key needs a migration of the saved files.
+
+| Kind | Key | Priority | Fast | While you talk | Helper jobs that run as it |
+| --- | --- | --- | --- | --- | --- |
+| `BargeInJudge` | `barge-in-judge` | 70 | yes | starts | |
+| `EndOfTurnJudge` | `end-of-turn-judge` | 60 | yes | starts | |
+| `Digest` (screen or sound) | `digest` | 50 | yes | stops | |
+| `ThinkLonger` | `think-longer` | 40 | no | stops | |
+| `TouchZones` | `touch-zones` | 35 | no | waits | `touch-zones`, `eyes` (at 20), `character-writing` |
+| `Memory` | `memory` | 20 (`Helper`) | no | stops | `memory`, `memory-upkeep`, `memory-brief` (at 10) |
+| `Naming` | `naming` | 20 (`Helper`) | no | stops | `action-naming`, `temperament` |
+| `CheckIn` | `check-in` | 20 (`Helper`) | no | stops | |
+| `Research` (web and app guides) | `research` | 10 | no | stops | |
 
 Helper jobs use these kinds through `HelperJobs` and `ThinkingPoolHelpers`.
-Remembering after a reply is a `Memory` job. Emote naming and touch temperament
-are `Naming` jobs, and touch-zone detection is a `TouchZones` job that needs
-vision. When the pool can't do one, the conversation's Thinking model does it
+Remembering after a reply, tidying memory and the memory brief are `Memory`
+jobs. Emote naming and touch temperament are `Naming` jobs. Touch-zone
+detection, measuring the eyes (vision) and writing a character's personality
+in *Find a character* are `TouchZones` jobs. When the pool can't do one, the conversation's Thinking model does it
 after the reply finishes speaking
 ([helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool)). A
 [check-in](#check-ins) is a `CheckIn` job; it has no fallback, so it waits
