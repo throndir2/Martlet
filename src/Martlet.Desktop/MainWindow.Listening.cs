@@ -52,7 +52,7 @@ public partial class MainWindow
     private List<GpuLoad> GpuLoads()
     {
         var loads = new List<GpuLoad>();
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         if (IsLocalOllama(thinking)) loads.Add(new($"Ollama {thinking!.ModelId}", ListeningAdvisor.OllamaModelGb(thinking.ModelId)));
         if (ThisPcHost() is { } thisPc && hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers is { } offers)
         {

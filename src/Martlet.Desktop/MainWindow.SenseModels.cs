@@ -42,7 +42,7 @@ public partial class MainWindow
         var id = SenseId(kind);
         var setup = SavedSenseSetup();
         var senses = setup.Senses;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var route = SenseRouting.For(kind, senses, thinking, abilities);
         var place = senses.Place(kind);

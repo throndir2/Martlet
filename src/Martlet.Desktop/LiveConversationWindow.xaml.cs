@@ -1866,7 +1866,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void KeepFirstWord(LiveConversationConfiguration configuration, ConversationSnapshot reply)
     {
         if (controller.DataDirectory is not { } directory || ReplyLatency.ThinkingFirstWordMs(reply) is not { } ms ||
-            configuration.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm && r.Enabled == true) is not { } route) return;
+            configuration.Routes.ThinkingRoute() is not { Enabled: true } route) return;
         var (origin, model, at) = (route.Origin, route.ModelId, DateTimeOffset.UtcNow);
         _ = Task.Run(() => Martlet.Core.Planning.MeasuredFirstWords.Record(directory, origin, model, ms, at));
     }

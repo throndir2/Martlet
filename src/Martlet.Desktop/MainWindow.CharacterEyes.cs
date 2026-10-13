@@ -85,7 +85,7 @@ public partial class MainWindow
     {
         conversation?.ReadThinkingPoolOnce();
         var seer = conversation?.ThinkingPool.Find(ThinkingJobKind.TouchZones, ThinkingCapability.Text | ThinkingCapability.Vision);
-        return TouchZonesSight(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), SavedModelAbilities(),
+        return TouchZonesSight(homeSettings.ThinkingRoute(), SavedModelAbilities(),
             seer is null ? null : seer.Name + (seer.Model is { Length: > 0 } model ? $" ({model})" : ""), CharacterEyeService.Fixture,
             HelperImageModel());
     }
@@ -93,7 +93,7 @@ public partial class MainWindow
     /// <summary>The image model of its own that takes pictures now (Companion › Vision, sense-models.json), by name, or null: a
     /// helper job with a picture goes to it when no Thinking pool member can take it (docs/SENSE_MODELS.md).</summary>
     private string? HelperImageModel() =>
-        SenseRouting.For(SenseKind.Image, SavedSenses(), homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm),
+        SenseRouting.For(SenseKind.Image, SavedSenses(), homeSettings.ThinkingRoute(),
             SavedModelAbilities()) is { Described: true } route ? route.Name : null;
 
     private string EyesStatusText() => characterEyes.ModelId is null ? "Reading the character..."

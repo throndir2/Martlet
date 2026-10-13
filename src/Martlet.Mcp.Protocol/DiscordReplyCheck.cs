@@ -68,7 +68,7 @@ internal static class DiscordReplyCheck
             catch (ContractException error) { throw new ArgumentException(error.Message); }
         }
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
-        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = loaded.Settings.ThinkingRoute();
         var localOllama = thinking is not null && ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin);
         var liveModel = model ?? (localOllama ? thinking!.ModelId : null);
         var persona = loaded.Settings?.Companion?.ActivePersona;

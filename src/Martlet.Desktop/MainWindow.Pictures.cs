@@ -368,7 +368,7 @@ public partial class MainWindow
     {
         var name = PicturePoolMembers.ProviderName(member.Provider);
         var place = store is null ? null : PictureClient.CloudPlace(store.DataDirectory, member);
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         return place?.CredentialId is not null ? $"its own {name} key is saved"
             : place?.UsesThinkingKey(thinking) == true ? $"it uses Thinking's {name} key"
             : $"no {name} key yet (add one in its settings)";
@@ -444,7 +444,7 @@ public partial class MainWindow
         var provider = picturesCloudProvider;
         var name = PicturePoolMembers.ProviderName(provider);
         var draft = new PicturesSettings { Place = provider == PicturePoolMembers.NvidiaBuild ? PicturePlace.NvidiaBuild : PicturePlace.OpenRouter };
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var choice = new ComboBox { MinHeight = 30, MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Left };
         choice.Items.Add(new ComboBoxItem { Content = "OpenRouter", Tag = PicturePoolMembers.OpenRouter });
         choice.Items.Add(new ComboBoxItem { Content = "NVIDIA Build", Tag = PicturePoolMembers.NvidiaBuild });
@@ -520,7 +520,7 @@ public partial class MainWindow
             if (list.Find(member.Key) is not null)
                 throw new ContractException(ErrorCode.InvalidContract, $"{PicturePoolMembers.Describe(member)} is in the Pictures list already.");
             var place = PicturePoolMembers.Place(member, null, null)!;
-            var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var thinking = homeSettings.ThinkingRoute();
             using (var entered = keyBox.SecurePassword)
                 if (entered.Length > 0) key = TakeKey(keyBox);
             if (key is null && !place.UsesThinkingKey(thinking)) throw new ContractException(ErrorCode.InvalidContract, $"Paste your {name} API key first.");
@@ -714,7 +714,7 @@ public partial class MainWindow
         if (test && PictureClient.FirstPaid(store.DataDirectory) is { } paid && !PictureClient.Fixture &&
             !ConfirmationDialog.Confirm(this, $"Draw a test picture? It may go to {paid}, which may cost money.", "Draw a test picture", "Draw", "Cancel"))
             return;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var maker = PictureClient.For(store.DataDirectory, homeSettings?.Profile.Id ?? Guid.Empty, thinking);
         if (maker is null) return;
         picturesChecking = true;

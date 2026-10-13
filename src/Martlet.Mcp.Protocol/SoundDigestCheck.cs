@@ -113,7 +113,7 @@ internal static class SoundDigestCheck
     private static async Task<object> JudgesAsync(string directory, CancellationToken cancellation)
     {
         var loaded = await new SettingsStore(directory).LoadAsync(cancellation);
-        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = loaded.Settings.ThinkingRoute();
         var (senses, file) = SenseSetup.Read(directory);
         var audio = SenseRouting.For(SenseKind.Audio, senses, thinking, ModelAbilities.Load(directory));
         return new

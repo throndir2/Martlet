@@ -20,7 +20,7 @@ internal static class ContextCheck
     internal static async Task<object> RunAsync(string dataDirectory, CancellationToken cancellation)
     {
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
-        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = loaded.Settings.ThinkingRoute();
         var generation = loaded.Settings?.Generation;
         var limits = ModelLimits.Load(dataDirectory);
         var budget = thinking is null ? null : ContextBudget.For(thinking, generation, limits);

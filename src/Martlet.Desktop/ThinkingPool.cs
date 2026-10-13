@@ -130,7 +130,7 @@ internal sealed partial class LiveConversationController
     {
         var routes = Configuration?.Routes ?? [];
         var plan = PoolPlan(routes);
-        var thinking = routes.FirstOrDefault(r => r.Role == SetupRole.Llm && r.Enabled != false);
+        var thinking = routes.ThinkingRoute() is { Enabled: not false } enabled ? enabled : null;
         // A member on a graphics card of its own beside the Thinking model's card (one Thinking pool model per card of a host)
         // shares only the computer, so it goes before a member on Thinking's own card.
         return [.. ThinkLonger.Places(plan, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool))
@@ -280,7 +280,7 @@ internal sealed partial class LiveConversationController
         var routes = configured?.Routes ?? [];
         if (PoolPlan(routes).Find(place.Id) is not { Settings.Separate: true } spot) return ThinkingAnswer.Failed($"{place.Name} left the pool");
         var member = spot.Settings;
-        var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = routes.ThinkingRoute();
         if (spot.Plan.ChecksFit && thinking?.ModelId is { } thinkingModel)
         {
             // A second model in Ollama on this PC runs only while it fits beside Thinking's, so the conversation keeps its cache.

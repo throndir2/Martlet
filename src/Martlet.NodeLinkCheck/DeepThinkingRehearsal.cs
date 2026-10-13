@@ -73,7 +73,7 @@ internal static class DeepThinkingRehearsal
             var settings = HostHandoff.ToHost(SetupSettings.Begin(null), SetupRouteType.GatewayOllama, endpoint, Guid.NewGuid(),
                 pairing.DeviceId, thinkingRoute.Snapshot(SetupRouteType.GatewayOllama));
             settings.Validate();
-            var saved = settings.Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
+            var saved = settings.ThinkingRoute()!;
             var ok = saved is { Enabled: true, RouteType: SetupRouteType.GatewayOllama } && saved.GatewaySnapshot is { } snapshot &&
                 snapshot.ModelId == thinkingRoute.ModelId &&
                 snapshot.MaximumDurationSeconds == (int)thinkingRoute.MaximumDuration.TotalSeconds;

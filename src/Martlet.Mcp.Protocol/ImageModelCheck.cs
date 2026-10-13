@@ -34,7 +34,7 @@ internal static class ImageModelCheck
         if (imageOrigin is null != imageModel is null) throw new ArgumentException("Give both imageOrigin and imageModel, or neither.");
         if (delayMs is < 200 or > 10_000) throw new ArgumentException("delayMs is 200-10000.");
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
-        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = loaded.Settings.ThinkingRoute();
         var abilities = ModelAbilities.Load(dataDirectory);
         var (senses, sensesState) = SenseSetup.Read(dataDirectory);
         if (imageOrigin is not null)

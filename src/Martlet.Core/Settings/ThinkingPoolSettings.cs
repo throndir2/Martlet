@@ -469,7 +469,7 @@ public static class ThinkingPoolWarnings
             SetupRoute[] shared = member.Place == DeepThinkingPlace.Host
                 ? [.. live.Where(r => SelfHostSetup.IsGateway(r.RouteType) && r.Gateway?.HostId == member.HostId)]
                 : member.OnThisPc ? [.. live.Where(IsThisPc)] : [];
-            if (shared.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } thinking && !OwnCard(member, thinking, gpus))
+            if (shared.ThinkingRoute() is { } thinking && !OwnCard(member, thinking, gpus))
                 warnings.Add(SameServer(member, thinking)
                     ? $"{name} runs in the same Ollama server as the conversation's Thinking model ({thinking.ModelId}): replies may start later while it works, and Martlet checks both fit first."
                     : $"{name} shares {(member.Place == DeepThinkingPlace.Host ? member.HostId : "this PC")} and its graphics card with the conversation's Thinking model: replies may start later while it works.");

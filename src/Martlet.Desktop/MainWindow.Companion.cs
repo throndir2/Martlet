@@ -860,7 +860,7 @@ public partial class MainWindow
         }
         finally { testingLocalModel = false; }
         if (closing) return;
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         var inUse = IsLocalOllama(route) && route!.ModelId == model;
         if (result is not null)
         {
@@ -969,7 +969,7 @@ public partial class MainWindow
             $"Martlet now uses {model} in Ollama on this PC." +
             (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $" Download {model} to use it." : ""));
         // Ollama says how much context it gives the model once it has loaded it (Test model does); nothing leaves this PC.
-        if (!closing && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))
+        if (!closing && IsLocalOllama(homeSettings.ThinkingRoute()))
             CheckNewModelContextAsync().Forget();
         return saved;
     }
@@ -1012,7 +1012,7 @@ public partial class MainWindow
                 }
             }
             ollamaModels = models;
-            var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var thinking = homeSettings.ThinkingRoute();
             var keeps = thinking is null || IsLocalOllama(thinking) && thinking.ModelId == model ? ""
                 : $" Thinking keeps using {(IsLocalOllama(thinking) ? thinking.ModelId : NetworkMap.ProviderName(thinking))} until it's ready.";
             var download = !LocalOllama.Serves(models, model);
@@ -1420,7 +1420,7 @@ public partial class MainWindow
             // A new Thinking model: ask its server how much context it takes, so replies stay within it. Choosing a model Martlet
             // found retired tries it again; another HTTP 410 marks it retired again.
             if (!closing && role == SetupRole.Llm && provider.Chat &&
-                homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } chosen && chosen.Origin == url && chosen.ModelId == model)
+                homeSettings.ThinkingRoute() is { } chosen && chosen.Origin == url && chosen.ModelId == model)
             {
                 ForgetRetired(chosen.Origin, model, "you chose it again");
                 CheckNewModelContextAsync().Forget();

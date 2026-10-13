@@ -43,7 +43,7 @@ public partial class MainWindow
 
     private void RenderDeepThinkingTab(Panel page)
     {
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         var poolSettings = ThinkingPoolSettings.Load(store?.DataDirectory);
         var routes = homeSettings?.Setup?.Routes ?? [];
         var sharing = WorkSharingRoster.Settings(store?.DataDirectory);

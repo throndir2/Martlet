@@ -260,7 +260,7 @@ public partial class MainWindow
     }
 
     private IReadOnlyCollection<string> ConfiguredProviders() =>
-        DefaultSetup.ConfiguredProviders(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), homeSettings?.ThinkingFallback);
+        DefaultSetup.ConfiguredProviders(homeSettings.ThinkingRoute(), homeSettings?.ThinkingFallback);
 
     private void RenderWelcomePlan()
     {
@@ -373,7 +373,7 @@ public partial class MainWindow
     private void WizardAccept_Click(object sender, RoutedEventArgs e)
     {
         if (welcomePlan is not { } plan) return;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         if (plan.ThinkingHosted?.Option.ProviderId == "nvidia-build" && thinking is null)
         {
             welcomeNeedsKey = true;
@@ -431,7 +431,7 @@ public partial class MainWindow
                 null, WizardKeyBox, consent: true);
             await RefreshHomeAsync();
             if (closing) return;
-            var saved = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var saved = homeSettings.ThinkingRoute();
             if (saved?.Origin != ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl || saved.CredentialId is null)
             {
                 WizardKeyStatus.Text = string.IsNullOrWhiteSpace(ActionText.Text) ? "The key wasn't saved. Try again." : ActionText.Text;
