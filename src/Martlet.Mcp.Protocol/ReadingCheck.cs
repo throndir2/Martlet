@@ -39,11 +39,86 @@ internal static class ReadingCheck
             },
             pool = dataDirectory is null ? null : ReadingPoolCheck.Status(dataDirectory),
             poolCheck,
+            pace = dataDirectory is null ? null : Pace(dataDirectory),
+            paceCheck = PaceCheck(),
             picture = new { width, height, expected = Expected },
             windowsOcr = windows,
             desktop,
             worker
         };
+    }
+
+    /// <summary>Companion › Reading › Read the screen as saved in a data directory (talk-preferences.json's ReadEveryMs, 3000 by
+    /// default; the nearest choice for a value that isn't one).</summary>
+    internal static object Pace(string directory)
+    {
+        var path = Path.Combine(directory, "talk-preferences.json");
+        var (every, source) = (ScreenReadPace.DefaultMs, "default (no talk-preferences.json)");
+        if (File.Exists(path))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                (every, source) = document.RootElement.TryGetProperty("ReadEveryMs", out var ms) && ms.TryGetInt32(out var chosen)
+                    ? (ScreenReadPace.Normalize(chosen), "talk-preferences.json") : (ScreenReadPace.DefaultMs, "default");
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            {
+                source = "default (talk-preferences.json unreadable)";
+            }
+        }
+        return new
+        {
+            everyMs = every, describe = ScreenReadPace.Describe(every), source, choicesMs = ScreenReadPace.ChoicesMs,
+            refreshSeconds = ScreenReadPace.Refresh.TotalSeconds, pictureChange = ScreenReadPace.PictureChange
+        };
+    }
+
+    private sealed class SteppedClock : TimeProvider
+    {
+        public long Now { get; set; }
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => Now;
+    }
+
+    /// <summary>The production pace (<see cref="ScreenReadPace"/>) for each choice over a simulated minute, polled every 100 ms
+    /// as the talk window does, one read at a time: reads of a screen that changes in every picture with a fast reader (150 ms,
+    /// such as a graphics card) and a slow one (2 s, PP-OCRv5 mobile on a processor), and reads of a still screen. Simulated
+    /// time and pictures only: nothing is captured or read.</summary>
+    internal static object PaceCheck()
+    {
+        var choices = ScreenReadPace.ChoicesMs.Select(every =>
+        {
+            int fast = Reads(every, 150, changing: true), slow = Reads(every, 2000, changing: true), still = Reads(every, 150, changing: false);
+            var expected = 60_000 / every;
+            var stillMost = (int)Math.Ceiling(60 / ScreenReadPace.Refresh.TotalSeconds);
+            return new
+            {
+                everyMs = every, describe = ScreenReadPace.Describe(every), changingFastPerMinute = fast, expectedFastPerMinute = expected,
+                changingSlowPerMinute = slow, stillPerMinute = still,
+                ok = fast == expected && slow == 60_000 / Math.Max(every, 2000) && still >= 1 && still <= stillMost
+            };
+        }).ToArray();
+        return new { ok = choices.All(c => c.ok), simulatedSeconds = 60, pollMs = 100, choices };
+
+        static int Reads(int everyMs, int readMs, bool changing)
+        {
+            var clock = new SteppedClock();
+            var pace = new ScreenReadPace(clock) { Every = TimeSpan.FromMilliseconds(everyMs) };
+            int reads = 0, picture = 0;
+            var busyUntil = 0L;
+            for (var t = 0L; t < TimeSpan.TicksPerMinute; t += TimeSpan.TicksPerMillisecond * 100)
+            {
+                clock.Now = t;
+                if (t < busyUntil || !pace.Capture()) continue;
+                var signature = new byte[16 * 9];
+                Array.Fill(signature, (byte)(changing && picture++ % 2 == 1 ? 200 : 40));
+                if (!pace.Read(signature, always: reads == 0)) continue;
+                reads++;
+                busyUntil = t + TimeSpan.TicksPerMillisecond * readMs;
+            }
+            return reads;
+        }
     }
 
     /// <summary>A drawn 1920 x 1080 desktop with three panels of small (12 px, Windows' 9 pt) text, read by Windows OCR the way

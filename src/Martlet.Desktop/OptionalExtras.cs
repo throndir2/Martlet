@@ -121,9 +121,14 @@ internal static class OptionalExtras
 
     /// <summary>One model of Martlet's Reading role (deploy/host/roles/ocr/role.conf): its OCR_MODEL, the OCR_ENGINE that runs
     /// it, where it runs (martlet-host's accelerator; null for RapidOCR, which runs only on the processor), its name, its catalog
-    /// option and its download.</summary>
-    internal sealed record ReadingRoleModel(string Model, string Engine, string? Accelerator, string Name, string CatalogId, string Download)
+    /// option, its download and, for a model that runs on the processor or a graphics card, its own <paramref name="Id"/>.</summary>
+    internal sealed record ReadingRoleModel(string Model, string Engine, string? Accelerator, string Name, string CatalogId, string Download,
+        string? Id = null)
     {
+        /// <summary>The model's pill and a list member's model setting: the model ("ppocrv5-server"), or the model and where it runs
+        /// ("ppocrv5-mobile-gpu").</summary>
+        public string Key => Id ?? Model;
+
         /// <summary>It runs only on an NVIDIA graphics card.</summary>
         public bool NeedsNvidia => Accelerator == "gpu";
 
@@ -137,21 +142,37 @@ internal static class OptionalExtras
     }
 
     /// <summary>The Reading role's models, the recommended first: PP-OCRv5 mobile on the processor (the most accurate that is fast
-    /// there, and it leaves the graphics card to the voice and thinking), PP-OCRv5 server on an NVIDIA graphics card, and RapidOCR
-    /// with PP-OCRv4 (the first Reading role, the smallest).</summary>
+    /// there, and it leaves the graphics card to the voice and thinking), the same model on an NVIDIA graphics card (faster, for a
+    /// computer with a card to spare), PP-OCRv5 server on an NVIDIA graphics card, and RapidOCR with PP-OCRv4 (the first Reading
+    /// role, the smallest).</summary>
     internal static IReadOnlyList<ReadingRoleModel> ReadingModels { get; } =
     [
         new("ppocrv5-mobile", "ppocrv5", "cpu", "PP-OCRv5 mobile", ReadingPpOcrV5, "about 700 MB"),
+        new("ppocrv5-mobile", "ppocrv5", "gpu", "PP-OCRv5 mobile on the graphics card", ReadingPpOcrV5Cuda, "about 3.1 GB", "ppocrv5-mobile-gpu"),
         new("ppocrv5-server", "ppocrv5", "gpu", "PP-OCRv5 server", ReadingPpOcrV5Cuda, "about 3.1 GB"),
         new("rapidocr-ppocrv4", "rapidocr", null, "RapidOCR", ReadingRapidOcr, "about 200 MB")
     ];
 
-    /// <summary>The Reading role's model named <paramref name="model"/> (a host's offer), or null when it isn't one.</summary>
-    internal static ReadingRoleModel? ReadingModelOf(string? model) => ReadingModels.FirstOrDefault(m => m.Model == model);
+    /// <summary>The Reading role's model with <paramref name="model"/> as its key (a list member's setting) or as its model (a
+    /// host's offer, which names only the model: the processor one then), or null when it isn't one.</summary>
+    internal static ReadingRoleModel? ReadingModelOf(string? model) =>
+        ReadingModels.FirstOrDefault(m => m.Key == model) ?? ReadingModels.FirstOrDefault(m => m.Model == model);
 
     /// <summary>The facts of the Reading role running <paramref name="model"/>: the catalog's numbers first, then what only OCR has.</summary>
-    private static IReadOnlyList<OptionFact> ReadingRoleFacts(ReadingRoleModel model) => model.Model switch
+    private static IReadOnlyList<OptionFact> ReadingRoleFacts(ReadingRoleModel model) => model.Key switch
     {
+        "ppocrv5-mobile-gpu" => Facts(model.CatalogId,
+            [
+                new("runs-on", "Runs on", "an NVIDIA graphics card of this PC or another of your computers, in Docker", "NVIDIA GPU (Docker)")
+            ],
+            new("download", "Download", "about 3.1 GB of packages and models, with NVIDIA's CUDA 13 and cuDNN libraries", null),
+            new("driver", "Driver", "NVIDIA driver 580 or newer (CUDA 13)", null),
+            new("languages", "Languages", "Chinese, English and Japanese letters, digits and symbols (PaddleOCR PP-OCRv5)", null),
+            new("accuracy", "Accuracy", "the same as PP-OCRv5 mobile on the processor, in less time", null),
+            new("game-fonts", "Game fonts", "good: often better than Windows OCR", null),
+            new("cost", "Cost", "free", "free"),
+            new("data", "Your data", "screenshots go to that computer; it reads them in memory and doesn't keep them", null),
+            new("license", "License", "RapidOCR and PaddleOCR models Apache-2.0; CUDA and cuDNN NVIDIA's license", null)),
         "ppocrv5-mobile" => Facts(model.CatalogId,
             [
                 new("runs-on", "Runs on", "the processor of this PC or another of your computers, in Docker: no graphics card needed",

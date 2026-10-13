@@ -4,6 +4,38 @@ namespace Martlet.Core.Tests;
 
 public sealed class ReadingTests
 {
+    private sealed class Clock : TimeProvider
+    {
+        public long Now { get; set; }
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => Now;
+        public void Advance(TimeSpan time) => Now += time.Ticks;
+    }
+
+    [Fact]
+    public void Reading_pace_takes_a_picture_at_most_as_often_as_chosen_and_reads_only_a_changed_one_until_a_while_passed()
+    {
+        var clock = new Clock();
+        var pace = new ScreenReadPace(clock) { Every = TimeSpan.FromSeconds(1) };
+        byte[] still = [.. Enumerable.Repeat((byte)40, 144)], moved = [.. Enumerable.Repeat((byte)200, 144)];
+
+        Assert.True(pace.Capture());
+        Assert.True(pace.Read(still));
+        Assert.False(pace.Capture());
+        clock.Advance(TimeSpan.FromMilliseconds(999));
+        Assert.False(pace.Capture());
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.True(pace.Capture());
+        Assert.False(pace.Read(still));
+        Assert.True(pace.Read(still, always: true));
+        Assert.True(pace.Read(moved));
+        clock.Advance(ScreenReadPace.Refresh);
+        Assert.True(pace.Read(moved));
+        Assert.Equal(1, ScreenReadPace.Change(null, still));
+        Assert.Equal(0, ScreenReadPace.Change(still, still));
+        Assert.Equal(160 / 255.0, ScreenReadPace.Change(still, moved), 6);
+    }
+
     [Fact]
     public void Lines_come_in_reading_order_without_blanks_or_repeats()
     {

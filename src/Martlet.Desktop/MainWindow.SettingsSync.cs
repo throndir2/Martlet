@@ -519,21 +519,12 @@ public partial class MainWindow
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
             var path = Path.Combine(directory, "talk-preferences.json");
-            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(TalkShare(Talk), SharedJson), null, !File.Exists(path), FileTime(path)));
+            return Task.FromResult<SharedLocal?>(new(TalkSharing.Value(Talk), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
         {
-            var value = JsonSerializer.Deserialize<SharedTalk>(setting.Value, SharedJson) ?? throw new JsonException();
-            SaveTalk(Talk with
-            {
-                HandsFree = value.HandsFree, PauseIndex = Math.Clamp(value.PauseIndex, 0, TalkPreferences.Pauses.Length - 1),
-                SpeakReplies = value.SpeakReplies, HearVoice = value.Hearing, BargeIn = value.BargeIn,
-                ScreenChattiness = (int)ChattinessTags.Choice(value.ScreenChattiness),
-                WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal,
-                TranscribeFirst = value.TranscribeFirst,
-                BargeInStyle = Enum.IsDefined(value.BargeInStyle) ? value.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide
-            });
+            SaveTalk(TalkSharing.Follow(Talk, setting.Value));
             return Task.FromResult(SharedApply.Done);
-        }, () => JsonSerializer.Serialize(TalkShare(new TalkPreferences()), SharedJson));
+        }, () => TalkSharing.Value(new TalkPreferences()));
         yield return new DelegateSection(SpeechDisplayKey, "Speech bubbles", _ =>
         {
             // Where the bubble sits (beside the character or in one place, and its offsets) depends on this PC's screens, like
@@ -793,19 +784,6 @@ public partial class MainWindow
     private sealed record SharedHomePermissions(bool Control, bool AllowSensitive, bool ModelTools);
     private sealed record SharedUpdates(bool Checks, int IntervalMinutes, bool AutoInstall, bool AutoUpdateHosts);
 
-    // TranscribeFirst: Companion › Listening › When Thinking can hear you (an older computer leaves it out: straight, the default).
-    // BargeInStyle: Companion › Listening › When you talk over Martlet (an older computer leaves it out: pause and decide).
-    // HearVoice is what an older computer reads (on only when chosen); HearChoice is Let Thinking hear my voice as chosen (null:
-    // never chosen, on only while the recording stays on that computer), sent with HearVersion so a copy from an older computer,
-    // whose off was only its default, leaves it unchosen.
-    private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness,
-        ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool TranscribeFirst = false, bool? HearChoice = null, int HearVersion = 0,
-        Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide)
-    {
-        internal const int ThreeWayHearing = 1;
-        internal bool? Hearing => HearVersion >= ThreeWayHearing ? HearChoice : HearVoice ? true : null;
-    }
-
     /// <summary>The character as it travels: which model (a bundled one; one of your characters by its ID, shown from each
     /// computer's own copy; or a model file at the same place on every computer), its renderer, its Audio2Face mapping and
     /// whether it shows when Martlet starts. Who does lip-sync travels in the who-does-what plan; the overlay's place on the
@@ -819,11 +797,6 @@ public partial class MainWindow
     }
 
     private const string SharedModelPrefix = "shared:";
-
-    /// <summary>How you talk as it travels (<see cref="SharedTalk"/>).</summary>
-    private static SharedTalk TalkShare(TalkPreferences prefs) =>
-        new(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice == true, prefs.BargeIn, prefs.ScreenChattiness,
-            prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing, prefs.BargeInStyle);
 
     /// <summary>The character an account that never chose one starts with: Martlet's built-in one, not shown at start.</summary>
     private static string DefaultCharacter()

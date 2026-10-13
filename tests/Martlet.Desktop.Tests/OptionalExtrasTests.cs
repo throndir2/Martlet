@@ -114,8 +114,9 @@ public sealed class OptionalExtrasTests
     [Fact]
     public void Each_reading_model_has_its_catalog_option_and_martlet_host_answers()
     {
-        Assert.Equal(new[] { "ppocrv5-mobile", "ppocrv5-server", "rapidocr-ppocrv4" }, OptionalExtras.ReadingModels.Select(m => m.Model));
-        Assert.All(OptionalExtras.ReadingModels, m => Assert.Equal(m.Model, FootprintCatalog.Default.Find(m.CatalogId)!.ModelId));
+        Assert.Equal(new[] { "ppocrv5-mobile", "ppocrv5-mobile-gpu", "ppocrv5-server", "rapidocr-ppocrv4" }, OptionalExtras.ReadingModels.Select(m => m.Key));
+        Assert.All(OptionalExtras.ReadingModels.Where(m => m.Key == m.Model),
+            m => Assert.Equal(m.Model, FootprintCatalog.Default.Find(m.CatalogId)!.ModelId));
         Assert.Equal(new Dictionary<string, string>
             {
                 ["choice.OCR_ENGINE"] = "ppocrv5", ["choice.OCR_MODEL"] = "ppocrv5-mobile", ["choice.accelerator"] = "cpu"
@@ -124,6 +125,16 @@ public sealed class OptionalExtrasTests
         Assert.Equal("gpu", OptionalExtras.ReadingModelOf("ppocrv5-server")!.Answers()["choice.accelerator"]);
         Assert.True(OptionalExtras.ReadingModelOf("ppocrv5-server")!.NeedsNvidia);
         Assert.False(OptionalExtras.ReadingModelOf("ppocrv5-mobile")!.NeedsNvidia);
+        // PP-OCRv5 mobile also runs on an NVIDIA graphics card: the same model, set up with the gpu accelerator. A host's offer
+        // names only the model, which is the processor one.
+        var mobileGpu = OptionalExtras.ReadingModelOf("ppocrv5-mobile-gpu")!;
+        Assert.True(mobileGpu.NeedsNvidia);
+        Assert.Equal(new Dictionary<string, string>
+            {
+                ["choice.OCR_ENGINE"] = "ppocrv5", ["choice.OCR_MODEL"] = "ppocrv5-mobile", ["choice.accelerator"] = "gpu"
+            },
+            mobileGpu.Answers());
+        Assert.Same(OptionalExtras.ReadingModels[0], OptionalExtras.ReadingModelOf("ppocrv5-mobile"));
         // RapidOCR runs only on the processor, so martlet-host doesn't ask where.
         Assert.Equal(new Dictionary<string, string> { ["choice.OCR_ENGINE"] = "rapidocr", ["choice.OCR_MODEL"] = "rapidocr-ppocrv4" },
             OptionalExtras.ReadingModelOf("rapidocr-ppocrv4")!.Answers());

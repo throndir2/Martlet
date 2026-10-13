@@ -34,7 +34,8 @@ public sealed class ScreenReadingTests
         public void Dispose() { }
     }
 
-    private static ScreenFrame Frame(double change) => new(new byte[8 * 4 * 4], 8, 4, "game", change);
+    // A full-size picture whose grey thumbnail is all one shade: the same shade is the same picture.
+    private static ScreenFrame Picture(byte shade) => new(new byte[8 * 4 * 4], 8, 4, "game", 0, signature: Enumerable.Repeat(shade, 16 * 9).ToArray());
 
     [Fact]
     public async Task Watching_reads_the_full_size_look_and_not_the_downscaled_one()
@@ -43,7 +44,7 @@ public sealed class ScreenReadingTests
         using var reader = new ScreenReader(fake, new Clock());
         var full = new ScreenFrame(new byte[32 * 16 * 4], 32, 16, "game", 0);
 
-        var read = await reader.Offer(Frame(1.0), () => full)!;
+        var read = await reader.Offer(() => full)!;
 
         Assert.Equal((32, 16), fake.Size);
         Assert.Equal((32, 16), (read!.Width, read.Height));
@@ -54,14 +55,16 @@ public sealed class ScreenReadingTests
     [Fact]
     public async Task A_skipped_full_size_look_reads_nothing_and_frees_the_reader()
     {
+        var clock = new Clock();
         var fake = new FakeReader(["HEALTH 87"]);
-        using var reader = new ScreenReader(fake, new Clock());
+        using var reader = new ScreenReader(fake, clock);
 
-        Assert.Null(await reader.Offer(Frame(1.0), () => null)!);
+        Assert.Null(await reader.Offer(() => null)!);
         Assert.Equal(0, fake.Calls);
         Assert.False(reader.Busy);
         Assert.Null(reader.Latest);
-        Assert.Null(await reader.Offer(Frame(1.0), () => throw new InvalidOperationException("no screen"))!);
+        clock.Advance(reader.Every);
+        Assert.Null(await reader.Offer(() => throw new InvalidOperationException("no screen"))!);
         Assert.Contains("Couldn't take a full-size picture of the screen (no screen)", reader.Problem, StringComparison.Ordinal);
     }
 
@@ -106,24 +109,92 @@ public sealed class ScreenReadingTests
         var fake = new FakeReader(["HEALTH 87"], ["HEALTH 87"], ["VICTORY"]) { Gate = new() };
         using var reader = new ScreenReader(fake, clock);
 
-        var first = reader.Offer(Frame(1.0));
+        var first = reader.Offer(() => Picture(40));
         Assert.NotNull(first);
-        Assert.Null(reader.Offer(Frame(1.0)));
+        Assert.Null(reader.Offer(() => Picture(200)));
         fake.Gate.SetResult();
         var read = await first!;
         Assert.Equal("HEALTH 87", read!.Text);
         Assert.Equal(0, read.Change);
 
         // The same picture again soon: not read; after a while, or once it changed, it is.
-        Assert.Null(reader.Offer(Frame(0.0)));
-        clock.Advance(ScreenReader.Refresh);
-        Assert.Equal(0, (await reader.Offer(Frame(0.0))!)!.Change);
-        var changed = await reader.Offer(Frame(0.5))!;
+        clock.Advance(reader.Every);
+        Assert.Null(await reader.Offer(() => Picture(40))!);
+        clock.Advance(ScreenReadPace.Refresh - reader.Every);
+        var again = await reader.Offer(() => Picture(40))!;
+        Assert.Equal(0, again!.Change);
+        Assert.Contains($", {ScreenReadPace.Refresh.TotalSeconds:0.0} s after the read before.", again.Describe(), StringComparison.Ordinal);
+        clock.Advance(reader.Every);
+        var changed = await reader.Offer(() => Picture(200))!;
         Assert.Equal("VICTORY", changed!.Text);
         Assert.Equal(1, changed.Change);
         Assert.Same(changed, reader.Latest);
         Assert.Equal(3, fake.Calls);
         Assert.Contains("Read 1 line with the test reader", changed.Describe(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reader_takes_a_picture_no_more_often_than_its_pace_and_as_often_as_it_is_set()
+    {
+        var clock = new Clock();
+        var fake = new FakeReader(["Score 1"], ["Score 2"], ["Score 3"], ["Score 4"]);
+        using var reader = new ScreenReader(fake, clock) { Every = TimeSpan.FromMilliseconds(500) };
+        var pictures = 0;
+        ScreenFrame Next() => Picture((byte)(pictures++ % 2 == 0 ? 40 : 200));
+
+        Assert.Equal("Score 1", (await reader.Offer(Next)!)!.Text);
+        clock.Advance(TimeSpan.FromMilliseconds(400));
+        Assert.Null(reader.Offer(Next));
+        Assert.Equal(1, pictures);
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+        Assert.Equal("Score 2", (await reader.Offer(Next)!)!.Text);
+        // Twice a second: four reads of a changing screen in 1.5 seconds, where the looks' 3-second pace read one.
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        Assert.Equal("Score 3", (await reader.Offer(Next)!)!.Text);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        Assert.Equal("Score 4", (await reader.Offer(Next)!)!.Text);
+        Assert.Equal(4, fake.Calls);
+    }
+
+    [Fact]
+    public void Read_the_screen_travels_to_another_computer_and_an_older_one_leaves_it_alone()
+    {
+        // Computer A reads twice a second; computer B (still the default) follows the talk setting A shares.
+        var a = new TalkPreferences(ReadEveryMs: 500, ScreenChattiness: 2);
+        var b = new TalkPreferences(VoiceVolume: 0.4);
+        var followed = TalkSharing.Follow(b, TalkSharing.Value(a));
+        Assert.Equal(500, followed.ReadEveryMs);
+        Assert.Equal(2, followed.ScreenChattiness);
+        Assert.Equal(0.4, followed.VoiceVolume);
+
+        // A computer on an older Martlet shares how you talk without Read the screen: B keeps its own choice.
+        var older = """{"hands_free":true,"pause_index":1,"speak_replies":true,"hear_voice":false,"barge_in":false,"screen_chattiness":1}""";
+        Assert.Equal(500, TalkSharing.Follow(followed, older).ReadEveryMs);
+        Assert.Equal(1000, TalkSharing.Follow(b, """{"read_every_ms":1200,"screen_chattiness":1}""").ReadEveryMs);
+        Assert.Contains("\"read_every_ms\":500", TalkSharing.Value(a), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Read_the_screen_keeps_a_known_choice_and_snaps_others_to_the_nearest()
+    {
+        Assert.Equal(3000, ScreenReadPace.DefaultMs);
+        Assert.All(ScreenReadPace.ChoicesMs, ms => Assert.Equal(ms, ScreenReadPace.Normalize(ms)));
+        Assert.Equal(ScreenReadPace.DefaultMs, ScreenReadPace.Normalize(0));
+        Assert.Equal(500, ScreenReadPace.Normalize(100));
+        Assert.Equal(10000, ScreenReadPace.Normalize(60000));
+        Assert.Equal("Twice a second", ScreenReadPace.Describe(500));
+        Assert.Equal("Every 3 seconds", ScreenReadPace.Describe(3000));
+
+        var directory = Directory.CreateTempSubdirectory("martlet-read-every-").FullName;
+        try
+        {
+            Assert.Equal(ScreenReadPace.DefaultMs, TalkPreferences.Load(directory).ReadEveryMs);
+            Assert.True(new TalkPreferences(ReadEveryMs: 1000).Save(directory));
+            Assert.Equal(1000, TalkPreferences.Load(directory).ReadEveryMs);
+            File.WriteAllText(Path.Combine(directory, "talk-preferences.json"), """{"ReadEveryMs":1200}""");
+            Assert.Equal(1000, TalkPreferences.Load(directory).ReadEveryMs);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     [Fact]
