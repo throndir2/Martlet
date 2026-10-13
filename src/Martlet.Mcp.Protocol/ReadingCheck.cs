@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Text.Json;
 using Martlet.Core.Reading;
 using Martlet.Discord.Calls;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -53,21 +54,8 @@ internal static class ReadingCheck
     /// default; the nearest choice for a value that isn't one).</summary>
     internal static object Pace(string directory)
     {
-        var path = Path.Combine(directory, "talk-preferences.json");
-        var (every, source) = (ScreenReadPace.DefaultMs, "default (no talk-preferences.json)");
-        if (File.Exists(path))
-        {
-            try
-            {
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
-                (every, source) = document.RootElement.TryGetProperty("ReadEveryMs", out var ms) && ms.TryGetInt32(out var chosen)
-                    ? (ScreenReadPace.Normalize(chosen), "talk-preferences.json") : (ScreenReadPace.DefaultMs, "default");
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-            {
-                source = "default (talk-preferences.json unreadable)";
-            }
-        }
+        var file = TalkPreferences.Read(directory);
+        var (every, source) = (file.Preferences.ReadEveryMs, file.Source(nameof(TalkPreferences.ReadEveryMs)));
         return new
         {
             everyMs = every, describe = ScreenReadPace.Describe(every), source, choicesMs = ScreenReadPace.ChoicesMs,

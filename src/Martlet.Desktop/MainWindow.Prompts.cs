@@ -94,7 +94,7 @@ public partial class MainWindow
 
     /// <summary>A prompt's state in words, against what is saved: built in, edited, empty (sent as nothing), its estimated tokens,
     /// and whether it is still saving.</summary>
-    private static string PromptState(PromptDefinition prompt, string text, PromptSettings? saved)
+    internal static string PromptState(PromptDefinition prompt, string text, PromptSettings? saved)
     {
         var sent = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         var state = string.IsNullOrWhiteSpace(text) ? "Empty: nothing is sent for this prompt."

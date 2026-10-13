@@ -14,7 +14,7 @@
     <EmbeddedResource Include="..\..\deploy\host\martlet-prepare" LogicalName="Martlet.Desktop.martlet-prepare" Link="Assets\martlet-prepare" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <Using Include="Martlet.Logging" />
-    <!-- The page builders (Card, Heading, Note, Warning, Row, PageButton, TerminalRow, TakeKey) for every page: Pages\PageKit.cs. -->
+    <!-- The page builders (Card, Heading, Note, Warning, Row, PageButton, TerminalRow, TakeKey and the dense rows) for every page: Pages\PageKit.cs. -->
     <Using Include="Martlet.Desktop.PageKit" Static="true" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />

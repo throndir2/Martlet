@@ -46,7 +46,7 @@ internal static partial class HearingCheck
         // Let ... hear my voice as replies use it (Martlet.Desktop's TalkPreferences.HearVoiceFor): your own choice wins; never
         // chosen, it is on only while the recording stays on this PC where it goes.
         var hearVoice = VoiceNotes.MayHear(choice, staysOnThisPc);
-        var transcribeFirst = TalkChoice(dataDirectory, "TranscribeFirst");
+        var transcribeFirst = TranscribeFirst(dataDirectory);
         return new
         {
             model,
@@ -89,36 +89,12 @@ internal static partial class HearingCheck
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): TranscribeFirst is off unless saved on.
-    private static bool TalkChoice(string directory, string name)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            return document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return false; }
-    }
+    // talk-preferences.json as the desktop reads it (TalkPreferences): TranscribeFirst is off unless saved on.
+    private static bool TranscribeFirst(string directory) => TalkPreferences.Load(directory).TranscribeFirst;
 
     // talk-preferences.json's HearVoice as TalkPreferences.Load reads it: true or false as chosen, null when never chosen (missing,
     // null, or a false saved before version 4, when off was only the default).
-    private static bool? HearVoiceChoice(string directory)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            var root = document.RootElement;
-            var version = root.TryGetProperty("Version", out var v) && v.TryGetInt32(out var number) ? number : 0;
-            if (!root.TryGetProperty("HearVoice", out var value)) return null;
-            return value.ValueKind switch
-            {
-                JsonValueKind.True => true,
-                JsonValueKind.False when version >= 4 => false,
-                _ => null
-            };
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
-    }
+    private static bool? HearVoiceChoice(string directory) => TalkPreferences.Load(directory).HearVoice;
 
     /// <summary>Which way the newest spoken reply's message went to Thinking, from the desktop log (never what was said): its
     /// "Voice path:" line, and for a straight one the "Background transcript" line (how long after the reply started the words

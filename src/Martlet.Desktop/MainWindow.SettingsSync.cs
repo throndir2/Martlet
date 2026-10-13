@@ -518,7 +518,7 @@ public partial class MainWindow
         yield return new DelegateSection(CharacterKey, "Character", ReadCharacterAsync, ApplyCharacterAsync, DefaultCharacter);
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
-            var path = Path.Combine(directory, "talk-preferences.json");
+            var path = TalkPreferences.PathIn(directory);
             return Task.FromResult<SharedLocal?>(new(TalkSharing.Value(Talk), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
         {
@@ -556,7 +556,7 @@ public partial class MainWindow
         });
         yield return new DelegateSection(AppearanceKey, "Theme", _ =>
         {
-            var path = Path.Combine(directory, "appearance.txt");
+            var path = Path.Combine(directory, Appearance.ThemeFile);
             var theme = Application.Current is App { SelectedTheme: var selected } ? selected : AppearanceTheme.Light;
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(theme.ToString()), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
@@ -634,7 +634,7 @@ public partial class MainWindow
             var print = voiceIdentity.Current;
             var value = new SharedVoiceId(Talk.VoiceId, print is null ? null
                 : new SharedVoiceprint(print.Embedding, print.Threshold, print.Consistency, print.CreatedAt, print.SpeechSeconds));
-            var times = new[] { FileTime(Path.Combine(directory, VoiceIdentity.FileName)), FileTime(Path.Combine(directory, "talk-preferences.json")) };
+            var times = new[] { FileTime(Path.Combine(directory, VoiceIdentity.FileName)), FileTime(TalkPreferences.PathIn(directory)) };
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !value.On && print is null,
                 times.Max()));
         }, (setting, _) =>

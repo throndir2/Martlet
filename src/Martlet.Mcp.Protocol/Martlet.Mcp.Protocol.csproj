@@ -50,6 +50,9 @@
     <Compile Include="..\Martlet.Desktop\VoiceNote.cs" Link="Shared\VoiceNote.cs" />
     <Compile Include="..\Martlet.Desktop\ConversationContextBuffer.cs" Link="Shared\ConversationContextBuffer.cs" />
     <Compile Include="..\Martlet.Desktop\VisionHistory.cs" Link="Shared\VisionHistory.cs" />
+    <!-- The checks read talk-preferences.json through the desktop's own store (SettingsFiles.TalkPreferences). -->
+    <Compile Include="..\Martlet.Desktop\TalkPreferences.cs" Link="Shared\TalkPreferences.cs" />
+    <Compile Include="..\Martlet.Desktop\CameraAddress.cs" Link="Shared\CameraAddress.cs" />
     <!-- active_app_check: the desktop's own reading of the program in front and whether it fills its monitor. -->
     <Compile Include="..\Martlet.Desktop\ActiveApp.cs" Link="Shared\ActiveApp.cs" />
     <!-- active_app_check: the desktop's own rule for what changed since the last look (no look while nothing did). -->

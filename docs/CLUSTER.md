@@ -611,22 +611,26 @@ before.
 
 ### What stays with each computer
 
-These describe the computer itself, so they never travel:
+These describe the computer itself, so they never travel. Each settings file
+with such parts is in `SettingsFiles` (`src/Martlet.Core/Settings/SettingsFiles.cs`)
+with the reason from its row here; `SettingsFilesTests` checks that they agree.
 
 | Stays here | Why |
 | --- | --- |
-| Microphone, speakers, cameras, video addresses, microphone sensitivity, echo reduction, hearing what the PC plays | This PC's devices |
+| Microphone, speakers, cameras, video addresses, microphone sensitivity, echo reduction, hearing what the PC plays (`talk-preferences.json` keeps this PC's choices beside the ones that travel as `talk`) | This PC's devices |
 | Watch my screen or a camera (on or off, what it looks at) | It captures this PC's screen or camera, so it is chosen at that screen |
-| Where the character and its speech bubble sit, and the character's zoom | This PC's screens |
+| Where the character and its speech bubble sit, and the character's zoom (`character-placement.json`, and the bubble's place in `speech-display.json`) | This PC's screens |
 | Companion PC or host PC, and the host service on it | What this computer is for. Every Windows user of this PC shares it ([PC scope](ACCOUNTS.md#pc-scope), `%ProgramData%\Martlet`); another of your computers can still [switch it](#switching-another-computer-between-companion-and-host) |
 | *When Martlet starts* and closing choices, Start with Windows | How Martlet starts for this Windows user |
-| Paired hosts, SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
+| Paired hosts (`hosts.json`), SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
 | Where memory is stored | A folder on this PC (the memories travel) |
 | The queue of deletions and edits waiting for Telegram and Discord (`conversations\platform-changes.json`) | Only the computer where you made the change asks the app; the record itself travels |
 | Installed engines and models: Ollama models, Parakeet, a whisper package, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 | Memory local models took in Ollama (`model-memory.json`) | Measured on this PC |
+| The Picture making, Vision, Hearing and Reading lists (`pools-local.json`) | Each computer chooses them itself |
+| Which saved key each cloud pool member uses (`pool-keys.json`) | The keys are in this PC's Windows Credential Manager |
 | Embedding vectors for finding by meaning (memory's and reports' in memory only; guides' in `meaning\guides`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
 | That this computer made or saw Martlet's [starter motions](AVATARS.md#starter-motions) made (`motion-starters.json` in the account's creations folder) | What this computer saw, so it never makes them again after you delete them; the motions themselves are shared creations |
 

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
 using Martlet.Core.Contracts;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -114,24 +115,13 @@ internal static class PcAudioCheck
 
     private sealed record Choices(bool HearPc, string Source, bool HandsFree, bool ReduceEcho);
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearPc is off unless saved on; files older than version 2
+    // talk-preferences.json as the desktop reads it (TalkPreferences): HearPc is off unless saved on; files older than version 2
     // listen always.
     private static Choices Saved(string directory)
     {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            var root = document.RootElement;
-            bool? Flag(string name) => root.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                ? value.GetBoolean() : null;
-            var version = root.TryGetProperty("Version", out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
-            var hear = Flag("HearPc");
-            return new(hear ?? false, hear is null ? "default" : "saved", version < 2 || (Flag("HandsFree") ?? true), Flag("ReduceEcho") ?? true);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return new(false, "default", true, true);
-        }
+        var file = TalkPreferences.Read(directory);
+        var prefs = file.Preferences;
+        return new(prefs.HearPc, file.Has(nameof(TalkPreferences.HearPc)) ? "saved" : "default", prefs.HandsFree, prefs.ReduceEcho);
     }
 
     internal static async Task<byte[]> RecordAsync(ICaptureDeviceFactory devices, CancellationToken cancellation)

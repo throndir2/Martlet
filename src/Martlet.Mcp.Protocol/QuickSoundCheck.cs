@@ -11,6 +11,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
 using Martlet.Providers;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -60,21 +61,8 @@ internal static class QuickSoundCheck
 
     private static (bool On, int DelayMs, string Source) Setting(string directory)
     {
-        var path = Path.Combine(directory, "talk-preferences.json");
-        var fallback = (int)QuickSoundOptions.DefaultDelay.TotalMilliseconds;
-        if (!File.Exists(path)) return (false, fallback, "default (no talk-preferences.json)");
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            var on = document.RootElement.TryGetProperty("QuickSounds", out var value) && value.ValueKind is JsonValueKind.True;
-            var delay = document.RootElement.TryGetProperty("QuickSoundDelayMs", out var ms) && ms.TryGetInt32(out var chosen) &&
-                QuickSoundOptions.DelayChoices.Contains(chosen) ? chosen : fallback;
-            return (on, delay, document.RootElement.TryGetProperty("QuickSounds", out _) ? "talk-preferences.json" : "default");
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return (false, fallback, "default (talk-preferences.json unreadable)");
-        }
+        var file = TalkPreferences.Read(directory);
+        return (file.Preferences.QuickSounds, file.Preferences.QuickSoundDelayMs, file.Source(nameof(TalkPreferences.QuickSounds)));
     }
 
     internal static async Task<object> RunAsync(string? scenario, int? delayMs, CancellationToken cancellation)
