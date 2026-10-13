@@ -120,7 +120,7 @@ public sealed class HelperJobsTests
             posted.Enqueue(job);
             return Task.FromResult(fail ? Martlet.Conversation.ThinkingAnswer.Failed("broken") : Martlet.Conversation.ThinkingAnswer.Done("answer from " + member.Name));
         });
-        var adapter = new ThinkingPoolHelpers(() => new ThinkingPool(board));
+        var adapter = new ThinkingPoolHelpers(() => new DesktopThinkingPool(board));
 
         Assert.True(adapter.Has(HelperCapability.Text));
         Assert.False(adapter.Has(HelperCapability.Vision));

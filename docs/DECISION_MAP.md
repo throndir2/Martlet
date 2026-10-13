@@ -128,8 +128,8 @@ Its parts:
 | What a member can do | See [sense capability](#whether-a-model-sees-hears-or-calls-tools-sense-capability) |
 | Slots, the kept fast slot and the live floor | `BackgroundPlaces` and the board's `MayStartNow` and `CanRunBeside` |
 | Priority, stops for priority and retries | `ThinkingPriority`, `ThinkingPoolPolicy` |
-| The members, from the settings | `LiveConversationController.PoolMembers` in `src\Martlet.Desktop\ThinkingPool.cs` |
-| The desktop's handle on the board | `Martlet.Desktop.ThinkingPool` in `src\Martlet.Desktop\ThinkingPool.cs` (a rename to `DesktopThinkingPool` is in progress) |
+| The members, from the settings | `LiveConversationController.PoolMembers` in `src\Martlet.Desktop\DesktopThinkingPool.cs` |
+| The desktop's handle on the board | `DesktopThinkingPool` (`src\Martlet.Desktop\DesktopThinkingPool.cs`), from `LiveConversationController.ThinkingPool` |
 
 **Tests:** `ThinkingPoolTests` (Martlet.Conversation.Tests);
 `ThinkingPoolSettingsTests` (Martlet.Core.Tests); `ThinkingPoolPresenceTests`
