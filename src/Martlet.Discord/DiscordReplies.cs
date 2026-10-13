@@ -228,6 +228,8 @@ public static partial class DiscordReplyText
                 break;
             }
         if (source == DiscordTurnSource.Voice) text = Spoken(text);
+        // A model that answered and then added the [pass] marker: the answer stands, without the marker.
+        text = StrayPass().Replace(text, "").Trim();
         text = Limit(text, source == DiscordTurnSource.Voice ? VoiceLimit : TextLimit);
         return text.Length == 0 ? null : text;
     }
@@ -270,6 +272,7 @@ public static partial class DiscordReplyText
     [GeneratedRegex(@"https?://\S+")] private static partial Regex Url();
     [GeneratedRegex(@"(?m)^\s*(?:[-*+>]|\d+[.)])\s+")] private static partial Regex ListMark();
     [GeneratedRegex(@"\s+")] private static partial Regex Spaces();
+    [GeneratedRegex(@"[ \t]*\[pass\]", RegexOptions.IgnoreCase)] private static partial Regex StrayPass();
 }
 
 /// <summary>Whether an ambient turn (one Martlet may pass over) is worth asking the model about at all, so Martlet speaks up only

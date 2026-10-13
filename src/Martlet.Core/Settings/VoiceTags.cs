@@ -236,15 +236,18 @@ public static class VoiceTags
 /// tag removed is passed to <paramref name="droppedTag"/> and each control tag to <paramref name="droppedControl"/>, as
 /// written in the list given, whichever spelling the reply used (<see cref="VoiceTags.Spellings"/>). <paramref name="voiceTags"/>
 /// are the speaking engine's tags, so a spelling two tags share means the same as it does to the speech segmenter; every tag
-/// removed is passed to <paramref name="removed"/> as matched.</summary>
+/// removed is passed to <paramref name="removed"/> as matched. <paramref name="quietMarker"/> (the stay-quiet word in brackets,
+/// as "[pass]") stays where nothing was written before it, so a reply that is that marker still reads as quiet; after words
+/// (a model that answered and then added it) it is removed.</summary>
 public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, Action<string>? droppedTag = null,
     IEnumerable<string>? controlTags = null, Action<string>? droppedControl = null, IReadOnlyList<VoiceTag>? voiceTags = null,
-    Action<VoiceTag>? removed = null)
+    Action<VoiceTag>? removed = null, string? quietMarker = null)
 {
-    private readonly VoiceTagSet known = VoiceTags.Recognized(voiceTags, characterTags, controlTags);
+    private readonly VoiceTagSet known = VoiceTags.Recognized(voiceTags, characterTags,
+        quietMarker is null ? controlTags : [.. controlTags ?? [], quietMarker]);
     private readonly StringBuilder held = new();
     private readonly StringBuilder spaces = new();
-    private bool dropped, emitted;
+    private bool dropped, emitted, wrote;
 
     public string Push(string delta)
     {
@@ -259,6 +262,12 @@ public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, 
                 if (known.Find(text) is { } whole)
                 {
                     held.Clear();
+                    if (quietMarker is not null && string.Equals(whole.Text, quietMarker, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (wrote) dropped = true;
+                        else foreach (var kept in text) Emit(kept, output);
+                        continue;
+                    }
                     dropped = true;
                     if (whole.Kind == VoiceTagKind.Character) droppedTag?.Invoke(whole.Canonical);
                     else if (whole.Kind == VoiceTagKind.Control) droppedControl?.Invoke(whole.Text);
@@ -302,6 +311,7 @@ public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, 
         spaces.Clear();
         dropped = false;
         emitted = c != '\n';
+        wrote |= !char.IsWhiteSpace(c);
         output.Append(c);
     }
 }

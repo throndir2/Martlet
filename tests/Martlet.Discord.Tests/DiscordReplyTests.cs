@@ -93,6 +93,7 @@ public sealed class DiscordReplyTests
         Assert.True(words.Length <= DiscordReplyText.TextLimit);
         Assert.EndsWith("…", words);
         Assert.Equal("Hi there", DiscordReplyText.Clean("Martlet: Hi there", DiscordTurnSource.Text, ["Martlet"]));
+        Assert.Equal("I didn't hear any music.", DiscordReplyText.Clean("I didn't hear any music. [pass]", DiscordTurnSource.Text, []));
     }
 
     [Fact]

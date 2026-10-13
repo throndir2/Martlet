@@ -1641,6 +1641,10 @@ activity! [nod] What are you working on right now?","characterTags":["{nod}"]}}`
 returns both sentences in `spoken` (before, the `[` silenced the second and the
 chat showed `[nod]`), the `{nod}` cue at the start of the second, `written`
 `[nod]` and `note` *Emote: nod.* It synthesizes and contacts nothing.
+A `[pass]` the model adds after words (*I didn't hear any music. [pass]*) is
+dropped from `spoken` and `shown`, and `quiet` is false: the reply stands. A
+reply that is `[pass]`, or starts with it, keeps it in `shown`, says nothing
+and has `quiet` true.
 
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `sync` is
