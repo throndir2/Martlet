@@ -98,7 +98,7 @@ public sealed class AvatarIntegrationTests
         await using var harness = new Harness(device, generatedSpeech: controller.Observer);
         harness.Answer("Actual generated PCM test.");
         var turn = harness.Start();
-        await Harness.Until(() => controller.Status.Contains("unavailable", StringComparison.Ordinal) ||
+        await Harness.Until(() => controller.Status.Contains("Voice continues", StringComparison.Ordinal) ||
             renderer.Messages.Any(m => m.Kind == "apply"));
         Assert.True(rendererFails || renderer.Messages.Any(m => m.Kind == "apply"), controller.Status);
         Assert.False(turn.Completion.IsCompleted);
@@ -507,7 +507,7 @@ public sealed class AvatarIntegrationTests
         { Configuration = AvatarProfile.ConfigurationElement(Mapping(controller.Capabilities!.ModelId)) };
         await controller.ActivateAsync(profile, true, default);
         await renderer.DisposeAsync();
-        await Harness.Until(() => controller.Status.Contains("unavailable", StringComparison.Ordinal));
+        await Harness.Until(() => controller.Status.Contains("Character lip-sync stopped", StringComparison.Ordinal));
         Assert.False(controller.Observer.IsEnabled);
         Assert.False(controller.IsActive);
     }

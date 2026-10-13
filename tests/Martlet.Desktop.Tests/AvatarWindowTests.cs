@@ -22,7 +22,8 @@ public sealed class AvatarWindowTests
         await using var controller = new AvatarController(createRenderer: () => renderer);
         await controller.InspectAsync(scope.Profile(), default);
         await controller.UpdateThemeAsync(default);
-        Assert.False(renderer.LastTheme!.Dark);
+        // Only Martlet's App has the theme and its colors to send; a test's dispatcher has none, so nothing is sent.
+        Assert.Null(renderer.LastTheme);
         await SaveMappingAsync(store, controller);
         AvatarWindow Open() => new(controller, store, new SetupService(settings, new ForbiddenVault()), new SetupOperationRunner())
             { ShowActivated = false, ShowInTaskbar = false };

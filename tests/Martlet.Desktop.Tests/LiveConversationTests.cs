@@ -824,7 +824,8 @@ public sealed class LiveConversationTests
     public Task TypedWindowRunsActualBridgePolicyParsersRuntimeAndSelectedSink(bool voice) => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
-        fixture.Answer("Hello there. ", "Second sentence.");
+        // More than SpeechBreaks.DefaultShortEndingWords words, so the second sentence is its own speech piece.
+        fixture.Answer("Hello there. ", "Here is the second sentence.");
         var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: voice));
         try
         {
@@ -835,7 +836,7 @@ public sealed class LiveConversationTests
             Assert.Equal("", Control<TextBox>(window, "InputText").Text);
             await fixture.Finish();
             await Until(() => window.Current is { OwnershipReleased: true });
-            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Hello there. Second sentence."));
+            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Hello there. Here is the second sentence."));
             Assert.Equal("typed-content-canary", Assert.Single(window.Messages, m => m.IsUser).Text);
             Assert.False(Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet).HasNote);
             Assert.Equal(1, fixture.Llm.Calls);
