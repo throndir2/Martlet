@@ -112,7 +112,8 @@ public static class PromptCatalog
     public const string CheckInTouches = "check_in_touches";
     public const string CheckInWelcome = "check_in_welcome";
     public const string CheckInUnanswered = "check_in_unanswered";
-    public const string CheckInCall = "check_in_call";
+    public const string CheckInAside = "check_in_aside";
+    public const string CheckInAsideNote = "check_in_aside_note";
     public const string CheckInOthers = "check_in_others";
     public const string CheckInReactions = "check_in_reactions";
     public const string CheckInActions = "check_in_actions";
@@ -280,10 +281,22 @@ public static class PromptCatalog
         "Decide whether {name} should follow up once, softly and briefly (a gentle nudge, never repeating the question word for " +
         "word), or let it go because the user is busy or the question didn't matter. Nothing needs saying when it should let it go.";
 
-    public const string DefaultCheckInCallInstructions =
-        "What the user does on their PC just changed.\n{activity}\n\nIf a call or voice chat just started, tell {name}, " +
-        "their desktop companion, to keep quiet while it lasts: don't speak up on its own, and keep any reply very short. If a " +
-        "call or voice chat just ended, tell {name} it may talk as usual again. If neither happened, nothing needs doing.";
+    public const string DefaultCheckInAsideInstructions =
+        "{name} is the user's desktop companion. It hears the user through an always-on microphone, so it also hears what they " +
+        "say to other people: to someone in the room, in a call or voice chat on this PC, or on a phone {name} can't see, where " +
+        "it hears only the user's side.\n\n{heard}\n\n{conversation}\n\n{activity}\n\n{people}\n\n" +
+        "Decide whether the user is talking to someone else now, not to {name}. Signs: a call or voice chat on this PC; other " +
+        "voices that answer them; a one-sided conversation, as on a phone (\"hello?\", \"yeah, uh-huh\", answers to questions " +
+        "{name} never asked, pauses as if listening); names that aren't {name}'s; words that don't fit what {name} said. Signs " +
+        "that they talk to {name} again: they say its name, ask or answer it something, or the other conversation ended " +
+        "(\"bye\", \"talk to you later\", the call ended). When {name} already holds back, keep it so until one of those signs " +
+        "shows.";
+
+    public const string DefaultCheckInAsideNoteInstructions =
+        "From your own check-in, for you only: the user seems to be talking to someone else now, not to you ({about}). What " +
+        "the microphone hears is most likely meant for them, so stay quiet: reply only [{silent}], and don't start talking on " +
+        "your own. Reply as usual when the user clearly talks to you: they say your name, ask or answer you something, or type " +
+        "to you. Never mention this note.";
 
     public const string DefaultCheckInOthersInstructions =
         "{name} is the user's desktop companion. It heard these voices lately:\n{people}\n\nIf someone other than the user " +
@@ -1235,10 +1248,18 @@ public static class PromptCatalog
             "What Unanswered question checks, when Martlet's last remark asked something and the user, at the PC, didn't answer " +
             "for a few minutes. Check-ins: each check adds the answer format (a SAY: line or OK).",
             DefaultCheckInUnansweredInstructions, ["name", "conversation", "said", "activity"]),
-        new(CheckInCall, CheckInGroup, "Check-in: on a call",
-            "What On a call checks, when a game, a call or a full-screen app starts or ends. {activity} is what the user seems to " +
-            "be doing now and before. Check-ins: each check adds the answer format (a REMIND: line or OK).",
-            DefaultCheckInCallInstructions, ["name", "activity"]),
+        new(CheckInAside, CheckInGroup, "Check-in: talking to someone else",
+            "What Talking to someone else checks right after always listening hears the user. {heard} lists what it heard in the " +
+            "last 10 minutes (when, who spoke, other voices, talking over each other, lines this PC played, and whether Martlet " +
+            "answered or stayed quiet) and whether Martlet holds back now, {conversation} the end of the conversation, {activity} " +
+            "what the user does on this PC (a call or voice chat) and {people} the voices heard lately. Check-ins: each check adds " +
+            "the answer format (an ASIDE: line, BACK or OK).",
+            DefaultCheckInAsideInstructions, ["name", "heard", "conversation", "activity", "people"]),
+        new(CheckInAsideNote, CheckInGroup, "Check-in: holding back while you talk to someone else",
+            "Goes in the notes of every message while Martlet holds back because a check-in said the user talks to someone else, " +
+            "never in the conversation or its instructions, so prompt caches keep working. {about} is who the user talks to and " +
+            "how, in a few words, and {silent} the word Martlet answers to stay quiet.",
+            DefaultCheckInAsideNoteInstructions, ["about", "silent"]),
         new(CheckInOthers, CheckInGroup, "Check-in: someone else is here",
             "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
             "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
@@ -1264,7 +1285,8 @@ public static class PromptCatalog
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
             "or KEEP (move the eyes), a REMIND: line or OK (a reminder for the next reply), a SAY: line or OK (Martlet brings it " +
-            "up), a KNOW: line or OK (adds to what Martlet knows), a PLAN: line or OK (thinks ahead for the next reply). Emptied, " +
+            "up), a KNOW: line or OK (adds to what Martlet knows), a PLAN: line or OK (thinks ahead for the next reply), an ASIDE: " +
+            "line, BACK or OK (holds Martlet back while you talk to someone else). Emptied, " +
             "each check sends only its prompt and facts, so the " +
             "prompt must then ask for the answer format itself.",
             DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),
@@ -1354,9 +1376,10 @@ public static class PromptCatalog
     public static PromptDefinition? Find(string id) => ById.GetValueOrDefault(id);
 
     /// <summary>Prompts an older Martlet had (the Thinking model's character palettes, the response styles a reply was
-    /// picked from, and the glances' Earlier remarks, which What you said lately replaced); their saved edits are dropped.</summary>
+    /// picked from, the glances' Earlier remarks, which What you said lately replaced, and the On a call check-in's, which
+    /// Talking to someone else replaced); their saved edits are dropped.</summary>
     public static bool Retired(string id) => id is "character_theme" or "style" or "style_helpful" or "style_sarcastic" or
-        "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks";
+        "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks" or "check_in_call";
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
