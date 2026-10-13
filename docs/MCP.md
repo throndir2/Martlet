@@ -735,7 +735,11 @@ the `last` job's `member`, `name`, `position`, `chosen`, `busy`,
 
 `sense_models_check` rehearses the production routing (`SenseRouting`) over
 the combinations of text, image and audio models with fixture model names (a
-paired computer's model that hears takes recordings), the `sense-models.json`
+paired computer's model that hears takes recordings), the one rule for what a
+model takes (`one-rule-for-every-place`, `ModelSenses`: a paired computer's
+Test vision counts for the Vision list and the Thinking pool alike, and a
+model Martlet can't tell about is tried from the list but gets no Thinking
+pool picture jobs), the `sense-models.json`
 round trip and the lists made from it once (`lists-made-once`; a damaged list
 file reads as the text model), and the production lines (`SenseLanes`) with a
 simulated runner, NOT models: no model of its own, one job at a time, a newer

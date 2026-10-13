@@ -742,16 +742,8 @@ internal sealed class LiveConversationConfiguration
 
     internal VisionSupport Vision() => Vision(Routes.ThinkingRoute(), Abilities);
 
-    /// <summary>Whether the Thinking model sees: what its server's metadata said when it was chosen or checked
-    /// (<paramref name="abilities"/>), otherwise its name.</summary>
-    internal static VisionSupport Vision(SetupRoute? thinking, ModelAbilities? abilities = null) =>
-        thinking is null ? VisionSupport.Unknown
-        : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities) is not null);
-
-    /// <summary>The Thinking route's model when its server retired it: found on that route (an HTTP 410 Gone answer) or in
-    /// Martlet's built-in list; null otherwise or for a route that isn't a Chat Completions endpoint.</summary>
-    internal static RetiredModel? Retired(SetupRoute? thinking, ModelAbilities? abilities) =>
-        thinking is not null && IsChat(thinking) ? ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId, abilities) : null;
+    /// <summary>Whether the Thinking model sees (<see cref="ModelSenses"/>).</summary>
+    internal static VisionSupport Vision(SetupRoute? thinking, ModelAbilities? abilities = null) => ModelSenses.For(thinking, abilities).Sees;
 
     /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
     internal string VisionAdvice() => VisionAdvice(Routes.ThinkingRoute(), Abilities);
@@ -775,7 +767,7 @@ internal sealed class LiveConversationConfiguration
     internal static string VisionAdvice(SetupRoute? route, ModelAbilities? abilities = null)
     {
         if (route is null) return "Set up Thinking so Martlet can see.";
-        if (Retired(route, abilities) is { } retired)
+        if (ModelSenses.Retired(route, abilities) is { } retired)
             return $"{retired.Server} retired this Thinking model. {retired.Remedy}";
         var found = abilities?.Find(route.Origin, route.ModelId) is { Sees: not null } ability ? $" ({Said(ability)})" : "";
         return Vision(route, abilities) switch
@@ -795,23 +787,15 @@ internal sealed class LiveConversationConfiguration
         };
     }
 
-    /// <summary>Whether the Thinking model can hear the user's recording: Chat Completions endpoints (the <c>input_audio</c>
-    /// content part) and a paired computer's Ollama take audio (OpenAI's Responses route takes none), then what was found out
-    /// about the model (its server's metadata, Test hearing or a refused recording), then its name.</summary>
+    /// <summary>Whether the Thinking model can hear the user's recording (<see cref="ModelSenses"/>): Chat Completions endpoints
+    /// (the <c>input_audio</c> content part) and a paired computer's Ollama take audio (OpenAI's Responses route takes none).</summary>
     internal HearingSupport Hearing() => Hearing(Routes.ThinkingRoute(), Abilities);
 
-    internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) =>
-        thinking is null ? HearingSupport.Unknown
-        : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities) is not null);
+    internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) => ModelSenses.For(thinking, abilities).Hears;
 
-    /// <summary>Whether the Thinking model calls tools (<see cref="RouteAbilities.Tools"/>): OpenAI's models and a Chat
-    /// Completions model Martlet didn't find unable to; a paired computer's gateway takes none.</summary>
-    internal ToolSupport Tools()
-    {
-        var thinking = Routes.ThinkingRoute();
-        return thinking is null ? ToolSupport.Unknown
-            : RouteAbilities.Tools(thinking.RouteType, thinking.Origin, thinking.ModelId, Abilities, Retired(thinking, Abilities) is not null);
-    }
+    /// <summary>Whether the Thinking model calls tools (<see cref="ModelSenses"/>): OpenAI's models and a Chat Completions model
+    /// Martlet didn't find unable to; a paired computer's gateway takes none.</summary>
+    internal ToolSupport Tools() => ModelSenses.For(Routes.ThinkingRoute(), Abilities).Tools;
 
     // Where what Martlet knows about a model came from, in a few words: "Ollama on this PC says so, checked 3 Oct".
     private static string Said(ModelAbility ability, ModelFact fact = ModelFact.Sees)

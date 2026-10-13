@@ -417,7 +417,7 @@ public partial class MainWindow
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
         }
         if (RetiredFallbackIssue(SavedModelAbilities()) is { } fallbackRetired && !dismissedHealth.Contains(fallbackRetired.Id)) issues.Add(fallbackRetired);
-        if (llm is not null && LiveConversationConfiguration.Retired(llm, SavedModelAbilities()) is { } retired)
+        if (llm is not null && Martlet.Conversation.ModelSenses.Retired(llm, SavedModelAbilities()) is { } retired)
             Add("thinking-retired", HealthLevel.Problem, "Your thinking model was retired",
                 $"This model is no longer available{(retired.Since is { } since ? $" ({retired.Server} said so on {since.LocalDateTime:d MMM})" : "")}. " +
                 RetiredProposal(llm.Origin, llm.ModelId, retired),

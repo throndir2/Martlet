@@ -560,6 +560,38 @@ cloud model asks first, because it is one small request with your key.
 `model-abilities.json` keeps one source and date for each model, so the
 cards say *as Martlet found out (last check on <date>: <source>)*.
 
+## What a model takes
+
+`ModelSenses` (Martlet.Conversation) is the one rule for whether a model sees
+pictures, hears recordings and calls tools. Every place uses it: the Thinking
+route, a model in the Vision or Hearing list, a Thinking pool member and a
+model in Ollama on this PC. Each fact comes from the first of these that says:
+
+1. **The route can't carry it.** Recordings go only over Chat Completions and
+   a paired computer's gateway. Tool calls go only over Chat Completions and
+   OpenAI's Responses route.
+2. **The model is retired:** its endpoint answered HTTP 410, or it is in
+   Martlet's built-in list for that endpoint.
+3. **What Martlet found out** (see above). A paired computer's model is found
+   by its gateway's origin in every place, so Test vision there counts for the
+   Vision list and the Thinking pool alike.
+4. **The model's name.**
+
+When none of these says, Martlet can't tell. Then who sends the input decides
+(`ModelSenses.Takes`, `SenseUse`):
+
+| Who sends it | When Martlet can't tell |
+| --- | --- |
+| A model in the Vision or Hearing list (`List`) | It is tried. You chose it for that sense, and a refusal is remembered. |
+| Thinking's own reply (`Reply`) | A picture is tried: a refused picture is asked again with the words only. A recording is not: a refused recording asks again and delays Martlet's first word. Thinking gets the transcript until Test hearing finds out. |
+| A Thinking pool job (`Pool`) | It gets none. Pool members are chosen for text work, and the pool doesn't remember a refusal. Test vision or Test hearing finds out. |
+
+A known answer always decides. A tool call is offered unless the model is
+known not to call tools. The Thinking pool sends recordings only to an
+OpenAI-compatible endpoint: its runner doesn't check whether a paired
+computer's Martlet is new enough for recordings, as the Hearing list's runner
+does.
+
 ## Barge-in, end of turn and the word check
 
 These don't change. They run on the words of speech-to-text (and Parakeet's
@@ -624,8 +656,9 @@ line in the desktop log.
 
 ## For developers
 
-The types are `SenseModels` and `SenseLists` (Martlet.Core), `SenseRouting`,
-`SenseLanes`, `SensePool` and `SenseSetup` (Martlet.Conversation). The desktop's controller runs the jobs
+The types are `SenseModels` and `SenseLists` (Martlet.Core), `ModelSenses`,
+`SenseRouting`, `SenseLanes`, `SensePool` and `SenseSetup`
+(Martlet.Conversation). The desktop's controller runs the jobs
 (`LiveConversationController.Senses.cs`).
 
 ```csharp
@@ -679,7 +712,7 @@ Without a data folder, a refusal is kept in memory only.
   `model_lab` runs a fixture endpoint for the desktop's cards.
 - Tests: `SenseModelsTests` and `SenseListsTests` (members as places, the
   consent rules, the first lists from `sense-models.json`, hosts.json;
-  Martlet.Core.Tests), `SenseRoutingTests`, `SenseLanesTests`,
+  Martlet.Core.Tests), `ModelSensesTests`, `SenseRoutingTests`, `SenseLanesTests`,
   `SensePoolTests` and `SenseSetupTests` (the lists made once, a damaged list
   file never replaced; Martlet.Conversation.Tests), `ModelVisionTestTests`
   (Martlet.Providers.Tests), and in Martlet.Desktop.Tests
