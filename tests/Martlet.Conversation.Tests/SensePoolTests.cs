@@ -68,7 +68,7 @@ public sealed class SensePoolTests
         Assert.Equal([chosen.Key, hostEars.Key, ears.Key],
             SensePool.Members(SenseKind.Audio, chosen, [Host("diva", "qwen2.5vl:7b"), hostEars, Endpoint("qwen2.5vl:7b"), ears], Thinking, null).Select(m => m.Key));
         Assert.Equal([chosen.Key], SensePool.Members(SenseKind.Audio, chosen, null, Thinking, null).Select(m => m.Key));
-        Assert.Equal(HearingSupport.Supported, SenseRouting.Hears(hostEars, null));
+        Assert.Equal(HearingSupport.Supported, ModelSenses.For(hostEars, null).Hears);
     }
 
     [Fact]

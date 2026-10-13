@@ -2197,8 +2197,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         Tool("thinking_requests", "The Thinking requests page from a data directory: the desktop's thinking-requests.json (every " +
             "request for the Thinking pool's slots it keeps, waiting and running first, then the newest ended ones: id, kind, " +
             "source, task, companion, priority, state and note, line position, each try's member, model, start, end and ending, " +
-            "retries, stops for the conversation, how long it waited and ran in ms, the answer's length; and the totals by kind " +
-            "since Martlet started). Never a request's text, answer or topic. state is none (no file yet), unreadable or loaded. " +
+            "retries, stops for the conversation, how long it waited and ran in ms, the input's and the answer's lengths; and the totals by kind " +
+            "since Martlet started). Never a request's text, input, answer or topic. state is none (no file yet), unreadable or loaded. " +
             "Filters: state (active, done, problems or one state such as succeeded or stale), kind (a job kind such as memory) " +
             "and limit (1-200, default 50). Read-only.", new
         {

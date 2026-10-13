@@ -16,8 +16,8 @@ public sealed class DoctorCommandTests : IDisposable
         using var output = new StringWriter();
         Assert.Equal(0, await DoctorCommand.RunAsync(["--help"], output));
         Assert.Contains(SupportHelp.Text, output.ToString());
-        Assert.Contains("CLI export is not implemented", output.ToString());
-        Assert.Contains("OFF at each launch", output.ToString());
+        Assert.Contains("off until you start it", output.ToString());
+        Assert.DoesNotContain("Martlet.Doctor export", output.ToString());
         Assert.False(Directory.Exists(path));
         using var rejected = new StringWriter();
         Assert.Equal(3, await DoctorCommand.RunAsync(["export", "--json", "--data-directory", path], rejected));

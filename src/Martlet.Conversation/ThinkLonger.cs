@@ -404,6 +404,8 @@ public sealed class BackgroundThink
         if (left < ThinkLonger.MinimumAttempt) await Task.Delay(Timeout.InfiniteTimeSpan, Clock, token).ConfigureAwait(false);
         job.Report(BackgroundJobState.Running, Doing);
         var (request, authorization) = Prepare(left);
+        // What it sends, for this PC's Thinking requests page (references only; private).
+        job.Request?.Asked(ThinkingRequestInput.Of(request.Input));
         var started = Runtime.Start(request, authorization, token, purpose: job.Id);
         Attempts++;
         var terminal = await started.Completion.ConfigureAwait(false);
