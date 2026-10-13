@@ -5327,7 +5327,8 @@ thinker and context board (no model; nothing is sent). `setting` is Companion �
 Vision › *Screen summary over time* from the data directory's
 talk-preferences.json (on by default; optional absolute `dataDirectory`, a
 disposable one through `scripts\Invoke-MartletMcp.ps1`), `timing` the window,
-spacing, fresh, stale and board ages, `observed` which frames the ring kept or
+spacing, fresh, job time (`jobSeconds`: how long one summary may wait for a
+model and run), stale and board ages, `observed` which frames the ring kept or
 skipped, `job` the reason, frames, contact sheet size and bytes and the message
 as Companion › Prompts › *Screen summary over time* makes it, `answer` the
 FIXTURE reply (or `reply`, up to 1,024 characters) and `parsed` what Martlet

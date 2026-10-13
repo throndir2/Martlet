@@ -8,7 +8,7 @@ namespace Martlet.Desktop;
 /// before <see cref="ScreenDigestTiming.Stale"/>; a job no member took in time is dropped.</summary>
 internal sealed class PoolScreenDigestThinker(Func<ThinkingPool> pool) : IScreenDigestThinker
 {
-    internal static TimeSpan Timeout => TimeSpan.FromSeconds(15);
+    internal static TimeSpan Timeout => ScreenDigestTiming.JobTime;
     internal const string Instructions =
         "You write short private notes for a companion app about what changed on the user's screen. Answer only with the note.";
     private static readonly ThinkingCapability Needs = ThinkingCapability.Text | ThinkingCapability.Vision;

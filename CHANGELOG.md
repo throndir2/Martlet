@@ -16,6 +16,10 @@ Each release's section here is also its notes on GitHub.
 
 - **Martlet ignores text it misreads on your screen for a moment**: when the text reader gets a letter wrong once (say "App1e" for "Apple"), Martlet no longer treats it as new text, so it doesn't look or comment because of it, and the wrong text never goes to the model. New text counts once two reads agree, and a ticking timer still shows. ([#836](https://github.com/throndir2/Martlet/pull/836))
 
+### Fixed
+
+- **Screen summaries on cloud models time out less often**: a summary of your screen now has 30 seconds instead of 15 to get its answer, so a slow cloud endpoint such as NVIDIA Build still finishes it instead of showing *Timed out*. ([#838](https://github.com/throndir2/Martlet/pull/838))
+
 ## [0.76.0] - 2026-10-12
 
 ### Added

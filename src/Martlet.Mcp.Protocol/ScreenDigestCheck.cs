@@ -109,6 +109,7 @@ internal static class ScreenDigestCheck
                 windowSeconds = digester.Timing.Window.TotalSeconds,
                 everySeconds = digester.Timing.Every.TotalSeconds,
                 freshSeconds = digester.Timing.Fresh.TotalSeconds,
+                jobSeconds = ScreenDigestTiming.JobTime.TotalSeconds,
                 staleSeconds = digester.Timing.Stale.TotalSeconds,
                 maximumAgeSeconds = digester.Timing.MaximumAge.TotalSeconds,
                 sheetFrames = digester.Timing.SheetFrames,

@@ -31,8 +31,12 @@ internal sealed record ScreenDigestTiming
     internal TimeSpan Fresh { get; init; } = TimeSpan.FromSeconds(12);
     /// <summary>The least time between two summaries when you start to speak.</summary>
     internal TimeSpan SpeechGap { get; init; } = TimeSpan.FromSeconds(4);
-    /// <summary>A summary that arrives later than this after its newest picture is dropped; the job is stopped then too.</summary>
-    internal TimeSpan Stale { get; init; } = TimeSpan.FromSeconds(20);
+    /// <summary>How long one summary job may wait for a model and run on it (Thinking pool or image model). Cloud endpoints
+    /// such as NVIDIA Build sometimes take more than 15 s for a picture, so it is 30 s.</summary>
+    internal static TimeSpan JobTime { get; } = TimeSpan.FromSeconds(30);
+    /// <summary>A summary that arrives later than this after its newest picture is dropped; the job is stopped then too. It is
+    /// longer than <see cref="JobTime"/>, so an answer that comes in time is kept.</summary>
+    internal TimeSpan Stale { get; init; } = TimeSpan.FromSeconds(40);
     /// <summary>How long a posted summary stays on the context board.</summary>
     internal TimeSpan MaximumAge { get; init; } = TimeSpan.FromSeconds(45);
     /// <summary>How long Martlet waits after a failed summary before it asks again.</summary>
