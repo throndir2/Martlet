@@ -48,9 +48,9 @@ internal sealed partial class McpServer
             async (arguments, cancellation) => await ReadingCheck.RunAsync(
                 OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments),
                 OptionalString(arguments, "endpoint"), cancellation)),
-        Tool("pictures_status", "Read Companion › Pictures for a data directory: where Martlet draws (pictures.json: off, " +
-            "Martlet's Pictures host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
-            "model; whether an own key is saved, never the key), the Pictures list (pool: pools-local.json's members with their keys, " +
+        Tool("pictures_status", "Read Companion › Picture making for a data directory: where Martlet draws (pictures.json: off, " +
+            "Martlet's Picture making host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
+            "model; whether an own key is saved, never the key), the Picture making list (pool: pools-local.json's members with their keys, " +
             "settings and agreement, or the list the desktop would make from pictures.json; tries: the places a picture tries now, in " +
             "order), the loaded custom workflow's node count, the picture creations " +
             "(shape, size, engine, model, seconds, fixture, assets, whether they're on this PC; never titles or descriptions) and the " +
@@ -65,7 +65,7 @@ internal sealed partial class McpServer
             "custom with workflowFile, an absolute path to an Export (API) file), queue, history, the picture fetched). Returns " +
             "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
             "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
-            "does; with saveDirectory (absolute) it writes the picture there. Place \"pool\" instead rehearses the Pictures list's " +
+            "does; with saveDirectory (absolute) it writes the picture there. Place \"pool\" instead rehearses the Picture making list's " +
             "routing (PictureMakingPool and WorkQueue) on simulated ComfyUI computers (FIXTURE): busy, absent or unsuitable computers " +
             "passed over, all busy waiting in the shortest queue, two pictures on two computers and the first list made from " +
             "pictures.json; it returns ok and each step. Never calls a paid cloud provider.", new

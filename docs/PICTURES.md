@@ -1,13 +1,13 @@
-# Pictures
+# Picture making
 
 Martlet draws pictures when you ask ("draw me a fox curled up in the snow", "paint our cat as a knight"). It draws in the
 background while the conversation carries on, shows the picture in the talk window when it's ready (click it to open it
 full size), keeps it in **Creations** on all your Martlet computers, and shows it again later when you ask
-(`perform_creation`). Nothing is drawn until you choose where in **Companion › Pictures**.
+(`perform_creation`). Nothing is drawn until you choose where in **Companion › Picture making**.
 
 ## Where it draws
 
-Companion › Pictures › *Where it draws* is this PC's own list of places that draw, in order (the Pictures list,
+Companion › Picture making › *Where it draws* is this PC's own list of places that draw, in order (the Picture making list,
 `pools-local.json` in the data folder; never shared, since which machine is free to draw depends on the computer you talk
 to). The pictures themselves are shared.
 
@@ -20,7 +20,7 @@ before stay in Creations.
 
 A place's **Settings** hold what it needs:
 
-- Martlet's Pictures role on this PC or a computer: where the role stands there and **Set up** when it isn't set up yet,
+- Martlet's Picture making role on this PC or a computer: where the role stands there and **Set up** when it isn't set up yet,
   then its workflow.
 - A ComfyUI place (the role or your own): its workflow, its checkpoint and its own Export (API) file
   ([ComfyUI workflows](#comfyui-workflows)), **Connect** (what that ComfyUI has) and **Save**.
@@ -28,7 +28,7 @@ A place's **Settings** hold what it needs:
 
 | Place | What it is | Cost and privacy |
 | --- | --- | --- |
-| **Martlet's Pictures role** (recommended) | ComfyUI with [Z-Image Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) on this PC or another of your computers with an NVIDIA graphics card (8 GB+, 12 GB+ is faster). **Set up** installs it with the same `martlet-host add` flow as every role and Martlet reaches it through that computer's gateway ([host role details](PICTURES_HOST.md)). | Free and private. About 20 GB of downloads. |
+| **Martlet's Picture making role** (recommended) | ComfyUI with [Z-Image Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) on this PC or another of your computers with an NVIDIA graphics card (8 GB+, 12 GB+ is faster). **Set up** installs it with the same `martlet-host add` flow as every role and Martlet reaches it through that computer's gateway ([host role details](PICTURES_HOST.md)). | Free and private. About 20 GB of downloads. |
 | **My own ComfyUI** | A [ComfyUI](https://github.com/comfyanonymous/ComfyUI) you already run, on this PC or another machine, at its address (for example `http://192.168.1.20:8188`). Start it with `--listen` so other computers can reach it; ComfyUI has no password, so only on your own network. | Free and private. |
 | **OpenRouter** | Any model on [OpenRouter](https://openrouter.ai/models?output_modalities=image) that draws, through its image API (`POST /api/v1/images`, one picture at the 1K tier in the chosen aspect ratio). Default `google/gemini-3.1-flash-image`. | Each picture costs money. The description goes to OpenRouter and the model's provider. |
 | **NVIDIA Build** | NVIDIA's FLUX models (`POST https://ai.api.nvidia.com/v1/genai/<model>`). Default `black-forest-labs/flux.1-schnell`. | Uses your `nvapi-` key; the description goes to NVIDIA. |
@@ -40,7 +40,7 @@ key.
 
 ### ComfyUI workflows
 
-With each ComfyUI place (your own, or Martlet's Pictures role), choose in its **Settings** what it runs. Each place
+With each ComfyUI place (your own, or Martlet's Picture making role), choose in its **Settings** what it runs. Each place
 keeps its own choice:
 
 - **Z-Image Turbo**: ComfyUI's own Z-Image Turbo example (9 steps, cfg 1), when ComfyUI has its three files
@@ -60,13 +60,13 @@ fetches the saved picture. Cancelling the job (the talk window's Cancel) takes i
 ### More than one picture computer
 
 Pictures use a list of places, in order (the Pictures pool: `pictures` in `pools-local.json`, this PC's own and never
-shared; see [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A place is Martlet's Pictures role on this
+shared; see [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). A place is Martlet's Picture making role on this
 PC's host service or on one of your paired computers, a ComfyUI you run at an address, or OpenRouter or NVIDIA Build. Each
 place keeps its own settings: the workflow, the checkpoint and a custom workflow file for ComfyUI, the model for a cloud
 provider. An empty list means pictures are off.
 
 The first time it needs the list, Martlet makes it from the older choice in `pictures.json`. The chosen place goes first.
-For Martlet's Pictures role, the other computers that run the role follow, with the same workflow: this PC's own host
+For Martlet's Picture making role, the other computers that run the role follow, with the same workflow: this PC's own host
 service first, then the others (fewest jobs first). A host a friend shares and a computer kept for another companion PC
 (Devices › Sharing work) are left out. A cloud provider you chose before keeps your agreement to pay. After that, the page
 edits the list, and *Now* names the places that draw when the first is busy.
@@ -85,7 +85,7 @@ Each picture tries the places in order and draws on the first that is free:
 
 Pictures go through Martlet's queue for shared work (lane `pictures`, each place by its key, such as `host:m3-host`), so the
 desktop log says when a picture went elsewhere (`Sharing work: Pictures went to host:m3-host (1 busy).`, `Pictures: drawn
-on m3-host's Pictures role, place 2 in the Pictures list ...`). The computer that draws holds its place against background
+on m3-host's Picture making role, place 2 in the Picture making list ...`). The computer that draws holds its place against background
 thinks while it draws, and each computer frees its own graphics card three minutes after its last picture. The places'
 order is kept as it is: a computer whose model is still loaded is not moved first.
 
@@ -112,15 +112,15 @@ busy, the hourly limit) is brought up by Martlet on its own.
 
 ## Check and test
 
-Companion › Pictures › **Check** asks each place in the list that is on whether it can draw now (for a cloud provider, only
+Companion › Picture making › **Check** asks each place in the list that is on whether it can draw now (for a cloud provider, only
 whether a key is there). **Draw a test picture** draws one picture where the list sends it and shows it on the page (when
-the list has a cloud provider on, it asks first, since a picture there costs money). After a picture on Martlet's Pictures
+the list has a cloud provider on, it asks first, since a picture there costs money). After a picture on Martlet's Picture making
 role, the desktop frees that computer's graphics card three minutes after its last picture, so the voice, listening and a
 local Thinking model get it back.
 
 `MARTLET_PICTURES_FIXTURE=1` before Martlet starts makes it draw with the FIXTURE - NOT AI gradient maker (automated
-checks). MCP: `pictures_status` (with the Pictures list and the places a picture tries now) and `pictures_check` (with
-`place` `pool`, a rehearsal of the list's routing on simulated ComfyUI computers) ([MCP](MCP.md#pictures)).
+checks). MCP: `pictures_status` (with the Picture making list and the places a picture tries now) and `pictures_check` (with
+`place` `pool`, a rehearsal of the list's routing on simulated ComfyUI computers) ([MCP](MCP.md#picture-making)).
 
 ## Use
 
@@ -137,7 +137,7 @@ Verified on 2026-10-06 on Windows with no usable NVIDIA GPU in that session:
   - `pictures_check` reported the missing Z-Image Turbo files and the missing checkpoint clearly.
   - It drew a real 1024x1024 picture with a custom Export (API) workflow, kept it and read it back.
   - A run that hit the 10-minute limit was taken off ComfyUI (*Processing interrupted*).
-- The desktop's Companion › Pictures:
+- The desktop's Companion › Picture making:
   - Connect found the version and checkpoint, and it saved the ComfyUI choice.
   - Check said ready, and Draw a test picture started.
 - A live conversation with a loopback FIXTURE Thinking server called `draw_picture` and showed the FIXTURE picture in the
@@ -145,14 +145,14 @@ Verified on 2026-10-06 on Windows with no usable NVIDIA GPU in that session:
 
 **NOT RUN:**
 
-- The Pictures role's Docker image build and Z-Image Turbo on a GPU, because Docker wasn't running.
+- The Picture making role's Docker image build and Z-Image Turbo on a GPU, because Docker wasn't running.
 - OpenRouter and NVIDIA Build with real keys, because each picture costs money.
 - A real Thinking model choosing to draw.
 
-The Pictures list (2026-10-09) is checked locally: `PictureMakingPoolTests`, `PictureMakingPoolMembersTests` and
+The Picture making list (2026-10-09) is checked locally: `PictureMakingPoolTests`, `PictureMakingPoolMembersTests` and
 `PictureMakingPoolDesktopTests`, MCP `pictures_check` with `place` `pool` (simulated ComfyUI computers, FIXTURE) and
-`pictures_status`. Companion › Pictures' list was driven through `-Desktop` on a disposable data folder: the list made from
+`pictures_status`. Companion › Picture making's list was driven through `-Desktop` on a disposable data folder: the list made from
 `pictures.json`, Down, On, Add address, Remove, a place's workflow saved, Connect and Check reporting each place, and the
 cloud provider form refusing to add a provider without the agreement or a key. Pictures drawn on real computers through
-the list, and a cloud provider added with a real key, are **NOT RUN**: this PC had no computer with the Pictures role, and
+the list, and a cloud provider added with a real key, are **NOT RUN**: this PC had no computer with the Picture making role, and
 a real key would be used.

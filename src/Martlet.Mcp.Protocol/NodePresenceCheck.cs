@@ -153,7 +153,7 @@ internal static class NodePresenceCheck
             detail.Contains("Thinking stays with it until it is back", StringComparison.Ordinal) &&
             detail.Contains("Your Speaking pool and Thinking pool go on with your other computers.", StringComparison.Ordinal) &&
             detail.Contains("Your Listening pool has no other computer now.", StringComparison.Ordinal) &&
-            detail.Contains("No other computer does Pictures.", StringComparison.Ordinal),
+            detail.Contains("No other computer does Picture making.", StringComparison.Ordinal),
             new { title = NodePresenceNotices.MissingTitle("gpu-box"), detail });
 
         // 3. Stayed away: once, after the time chosen (10 minutes by default).
