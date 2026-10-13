@@ -75,6 +75,54 @@ public sealed class ReadingTests
     }
 
     [Fact]
+    public void Settled_text_counts_a_line_once_two_reads_agree_and_ignores_a_misread_once()
+    {
+        static IReadOnlyList<ReadLine> Read(params string[] texts) =>
+            [.. texts.Select((text, row) => new ReadLine(text, 40, 40 + row * 30, 220, 24))];
+        static string[] Texts(SettledText settled) => [.. settled.Lines.Select(line => line.Text)];
+
+        var r1 = Read("HEALTH 87", "Apple pie", "10:05");
+        var s1 = ScreenText.Settle(r1, null, null);
+        Assert.Empty(s1.Lines);
+        Assert.Equal(3, s1.Pending);
+
+        var r2 = Read("HEALTH 87", "Apple pie", "10:05");
+        var s2 = ScreenText.Settle(r2, r1, s1.Lines);
+        Assert.Equal(["HEALTH 87", "Apple pie", "10:05"], Texts(s2));
+        Assert.Equal(0, s2.Pending);
+
+        // One misread and a timer that ticks: the lines that counted stay, at their places, until a second read agrees.
+        var r3 = Read("HEALTH 87", "App1e pie", "10:08");
+        var s3 = ScreenText.Settle(r3, r2, s2.Lines, r1);
+        Assert.Equal(["HEALTH 87", "Apple pie", "10:05"], Texts(s3));
+        Assert.Equal(4, s3.Pending);
+
+        // The misread went; the timer showed a different time in each of three reads, so it counts as it is.
+        var r4 = Read("HEALTH 87", "Apple pie", "10:11");
+        var s4 = ScreenText.Settle(r4, r3, s3.Lines, r2);
+        Assert.Equal(["HEALTH 87", "Apple pie", "10:11"], Texts(s4));
+        Assert.Equal(0, s4.Pending);
+
+        // New text counts at its second read.
+        var r5 = Read("HEALTH 87", "Apple pie", "10:14", "VICTORY");
+        var s5 = ScreenText.Settle(r5, r4, s4.Lines, r3);
+        Assert.Equal(["HEALTH 87", "Apple pie", "10:14"], Texts(s5));
+        Assert.Equal(1, s5.Pending);
+        var r6 = Read("HEALTH 87", "Apple pie", "10:17", "VICTORY");
+        Assert.Contains("VICTORY", Texts(ScreenText.Settle(r6, r5, s5.Lines, r4)));
+
+        // Another window: the old text goes at once and the new text waits for its second read.
+        var r7 = Read("Inbox", "3 unread messages");
+        var s7 = ScreenText.Settle(r7, r6, ScreenText.Settle(r6, r5, s5.Lines, r4).Lines, r5);
+        Assert.Empty(s7.Lines);
+        Assert.Equal(2, s7.Pending);
+
+        // OCR that joins two lines into one still has the same words.
+        IReadOnlyList<ReadLine> joined = [new("HEALTH 87 Apple pie", 40, 40, 440, 24), new("10:05", 40, 100, 220, 24)];
+        Assert.Equal(["HEALTH 87 Apple pie", "10:05"], Texts(ScreenText.Settle(joined, r2, s2.Lines)));
+    }
+
+    [Fact]
     public void Reading_settings_default_to_windows_ocr_on_this_pc_and_round_trip()
     {
         var directory = Directory.CreateTempSubdirectory("martlet-reading-").FullName;

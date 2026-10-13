@@ -131,18 +131,29 @@ and the Devices card's status line say when a read went past the first member.
    size, reads that copy and then clears it. In a test on a drawn
    1920 x 1080 desktop with 108 lines of 12-pixel text, Windows OCR read 102
    lines at full size in 138 ms, and no lines at 1024 x 576.
-4. Martlet compares the words with the text it saw at the look before. New
-   text makes a look more likely, even when the picture barely changed. The
-   same words add nothing. Reading more often does not make looks more likely.
-5. When Martlet takes a look on its own, the newest text (at most 10 seconds
-   old) goes at the end of that look's message, after the glance prompt. The
-   prompt is **Text on screen** on Companion › Prompts. Empty it to send no text.
-   At most 60 lines and 1,500 characters go, in reading order.
-6. The conversation keeps only the look's short `[Screen]` line, never the text
+4. Martlet takes out OCR's flicker (`ScreenText.Settle`). OCR can misread a
+   character for one read, for example "App1e" for "Apple". A line counts only
+   when two reads in a row have it. So after a read with new lines, Martlet
+   reads the next picture too, even when it looks the same (once). A line that
+   counted stays for one more read when its place shows almost the same text
+   (a misread) or nothing. A line whose place shows a different text in each of
+   three reads, such as a timer, counts as it is. When another window comes to
+   the front, the old text goes at once. A misread that comes only once never
+   counts, never makes a look more likely and never goes to the model.
+5. Martlet compares the words that count with the text it saw at the look
+   before. New text makes a look more likely, even when the picture barely
+   changed. The same words add nothing. Reading more often does not make looks
+   more likely.
+6. When Martlet takes a look on its own, the newest text that counts (at most
+   10 seconds old) goes at the end of that look's message, after the glance
+   prompt. The prompt is **Text on screen** on Companion › Prompts. Empty it to
+   send no text. At most 60 lines and 1,500 characters go, in reading order.
+7. The conversation keeps only the look's short `[Screen]` line, never the text
    that was read.
 
 Companion › Reading's **Now** card shows the newest read: the lines, the
-engine, the read time and how long after the read before it started.
+engine, the read time, how long after the read before it started and how many
+lines wait for the next read to count.
 
 Rules that keep conversations fast:
 

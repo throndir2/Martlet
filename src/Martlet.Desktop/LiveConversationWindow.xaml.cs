@@ -2768,18 +2768,19 @@ public partial class LiveConversationWindow : ThemedWindow
         ScreenReader.LastReport = readNote;
     }
 
-    /// <summary>At each capture, how much the text on the screen changed since the pacer last heard (the newest read against the
-    /// one it heard of before), so reading more often doesn't make looks more likely.</summary>
+    /// <summary>At each capture, how much the text that counts on the screen changed since the pacer last heard (the newest read
+    /// against the one it heard of before), so reading more often, or OCR's flicker, doesn't make looks more likely.</summary>
     private void ObserveReadText()
     {
         if (pacer is null || reader?.Latest is not { } newest || ReferenceEquals(newest, fedRead)) return;
-        pacer.ObserveText(fedRead is null ? newest.Change : ScreenText.Change(fedRead.Text, newest.Text));
+        pacer.ObserveText(fedRead is null ? newest.Change : ScreenText.Change(fedRead.Steady, newest.Steady));
         fedRead = newest;
     }
 
-    /// <summary>The text Companion › Reading read on the screen in the last <see cref="SeenFreshness"/>, for a glance.</summary>
+    /// <summary>The text Companion › Reading read on the screen in the last <see cref="SeenFreshness"/>, for a glance: only the
+    /// lines that count (<see cref="ScreenRead.Steady"/>), so a character OCR misread once never reaches the model.</summary>
     private string? ReadText() =>
-        watchSource.IsScreen && reader?.Latest is { Text.Length: > 0 } read && clock.GetUtcNow() - read.At <= SeenFreshness ? read.Text : null;
+        watchSource.IsScreen && reader?.Latest is { Steady.Length: > 0 } read && clock.GetUtcNow() - read.At <= SeenFreshness ? read.Steady : null;
     /// <summary>How long something that wants your attention waits for Martlet to be free before it is let go.</summary>
     internal static TimeSpan AttentionPatience => TimeSpan.FromSeconds(60);
 

@@ -41,6 +41,7 @@ internal static class ReadingCheck
             poolCheck,
             pace = dataDirectory is null ? null : Pace(dataDirectory),
             paceCheck = PaceCheck(),
+            settleCheck = SettleCheck(),
             picture = new { width, height, expected = Expected },
             windowsOcr = windows,
             desktop,
@@ -119,6 +120,48 @@ internal static class ReadingCheck
             }
             return reads;
         }
+    }
+
+    /// <summary>The production flicker filter (<see cref="ScreenText.Settle"/>) over a simulated run of reads of a game screen:
+    /// the first read, the same read, OCR misreading "Apple" as "App1e" once while a timer ticks, the timer going on, "VICTORY"
+    /// appearing for two reads, and another window. Each step gives the text that counts, how many lines wait and how much the
+    /// text that counts changed (what the look pacer hears). Simulated lines only: nothing is captured or read.</summary>
+    internal static object SettleCheck()
+    {
+        string[][] reads =
+        [
+            ["HEALTH 87", "Apple pie", "10:05"],
+            ["HEALTH 87", "Apple pie", "10:05"],
+            ["HEALTH 87", "App1e pie", "10:08"],
+            ["HEALTH 87", "Apple pie", "10:11"],
+            ["HEALTH 87", "Apple pie", "10:14", "VICTORY"],
+            ["HEALTH 87", "Apple pie", "10:17", "VICTORY"],
+            ["Inbox", "3 unread messages"],
+            ["Inbox", "3 unread messages"]
+        ];
+        IReadOnlyList<ReadLine>? before = null, settled = null, earlier = null;
+        string? counted = null;
+        var steps = reads.Select((texts, i) =>
+        {
+            IReadOnlyList<ReadLine> lines = [.. texts.Select((text, row) => new ReadLine(text, 40, 40 + row * 30, 220, 24))];
+            var settle = ScreenText.Settle(lines, before, settled, earlier);
+            var text = ScreenText.Join(settle.Lines);
+            var change = counted is null ? 0 : ScreenText.Change(counted, text);
+            (earlier, before, settled, counted) = (before, lines, settle.Lines, text);
+            return new { step = i + 1, read = texts, counts = settle.Lines.Select(l => l.Text).ToArray(), pending = settle.Pending, change };
+        }).ToArray();
+        var ok = steps[0].counts.Length == 0 && steps[1].counts.SequenceEqual(reads[1]) &&
+            steps.All(s => !s.counts.Contains("App1e pie")) && steps[2].change == 0 && steps[2].counts.Contains("Apple pie") &&
+            steps[3].counts.Contains("10:11") && !steps[4].counts.Contains("VICTORY") && steps[5].counts.Contains("VICTORY") &&
+            steps[6].counts.Length == 0 && steps[7].counts.SequenceEqual(reads[7]);
+        return new
+        {
+            ok,
+            rule = "A line counts once two reads in a row have it; a misread that comes once never counts; a line whose place " +
+                "changes in each of three reads (a timer) counts as it is; another window drops the old text at once.",
+            keepBelow = ScreenText.SettleKeepBelow,
+            steps
+        };
     }
 
     /// <summary>A drawn 1920 x 1080 desktop with three panels of small (12 px, Windows' 9 pt) text, read by Windows OCR the way
