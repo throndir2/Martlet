@@ -1739,10 +1739,10 @@ thing again and again. **Check-ins**
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
 
-**Built-in check-ins.** The first five, How I react, Describe touches, Think
-ahead and Act on what was said are on by default. The four that wait
-for a signal (Welcome back, Unanswered question, On a call, Someone else is
-here) are off until you turn them on. The choices are this PC's own
+**Built-in check-ins.** The first five, How I react, Talking to someone else,
+Describe touches, Think ahead and Act on what was said are on by default. The
+three that wait for a signal (Welcome back, Unanswered question, Someone else
+is here) are off until you turn them on. The choices are this PC's own
 (`check-ins.json` in the data folder, never shared), because each PC shows its
 own character and runs its own conversation.
 
@@ -1756,7 +1756,7 @@ own character and runs its own conversation.
 | How I react (`reactions`) | After your touches, at most every 5 min | Did the character's feelings toward you change (it got angry, hurt or shy, or it warmed up)? Its personality, the end of the conversation and [how you touched it lately](#check-in-triggers). | Its [Touch reactions](#how-i-react) tools change how it reacts to your touches for a while. Its answer is only a short line for the log. |
 | Welcome back (`welcome`, off) | 30 min | You came back after 10 minutes or more away: should Martlet welcome you back? How long you were away and what happened meanwhile, what you do now, the personality. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
 | Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
-| On a call (`call`, off) | 2 min | A game, a call or a full-screen app started or ended: did a call start or end? What you do now and before. | A `REMIND:` line (keep quiet and short during the call, or talk as usual again) goes in the notes of the next message. `OK` changes nothing. |
+| Talking to someone else (`aside`) | At most once a minute, right after always listening hears you | Are you talking to someone else, not to Martlet (someone in the room, a call on this PC, or a phone Martlet can't see)? What it heard you say in the last 10 minutes with who spoke and whether Martlet answered, the end of the conversation, what you do on this PC and the voices heard lately. | An `ASIDE:` line: Martlet [holds back](#talking-to-someone-else) while that lasts. `BACK` ends it. `OK` changes nothing. |
 | Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
 | Describe touches (`touches`) | At most once a minute, right after your touches end | What have you been doing to the character, told vividly as the story so far, true to its personality? How you touched it in the last 10 minutes, the end of the conversation, the personality, the emotes it shows and `{adult}` (explicit only while Adult content is on). | A `KNOW:` line goes with the next reply as [background it may draw on](#describe-touches). `OK` changes nothing. |
 | Think ahead (`ahead`) | At most once a minute, right after a reply ends | As the character, before you answer: how is the conversation going, what will you likely say next, and what does it want to say then? Its personality and the end of the conversation. | A `PLAN:` line, the character's [own thoughts ahead](#think-ahead), goes in the notes of the next message, unless another reply ends first. `OK` changes nothing. |
@@ -1792,7 +1792,7 @@ built-in check-in can be recreated, and changed, as your own.
 | How I react | Its personality, the conversation, how you touched the character | A personality is active; it starts when your touches end (any touch trigger) |
 | Welcome back | What happened while you were away, what you are doing, its personality | You came back |
 | Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
-| On a call | What you are doing | What you do changed |
+| Talking to someone else | What Martlet heard you say, the conversation, what you are doing, who is here | Something new was said; it starts when you say something ([below](#talking-to-someone-else)) |
 | Someone else is here | Who is here, its personality | Someone else spoke |
 | Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
 | Think ahead | Its personality, the conversation | You talked lately, something new was said; it starts when a reply ends ([below](#think-ahead)) |
@@ -1863,6 +1863,7 @@ conversation:
 | A stroke across 3 zones (`StrokeAcrossZones`) | a stroke among them crossed 3 or more noticed zones |
 | You keep coming back to one place (`KeepsComingBack`) | they touched a place touched 5 or more times in the last 10 minutes (the touch ledger's `TouchHabit`, *They keep coming back to ...*) |
 | A reply ends (`ExchangeEnded`) | a reply ended and its exchange is in the conversation: after its voice played (or, for what went [straight to Thinking](#straight-to-thinking), once its words are in the conversation). Never for a `[pass]` or a reply that failed or was stopped |
+| You say something (`Spoke`) | always listening heard you say something and its exchange is in the conversation, whether Martlet answered or stayed quiet (`[pass]`). Never for typed words, push-to-talk, what only this PC played or what Martlet starts on its own |
 
 Moving, zooming, locking or hiding the character never fires a trigger. A
 check-in with triggers runs this way:
@@ -1969,6 +1970,69 @@ waits and replies go on as before. A reply that comes before its thoughts are
 ready simply doesn't get them. Turn it off, change its prompt or copy it as
 your own on its card.
 
+<a id="talking-to-someone-else"></a>
+**Talking to someone else.** Always listening hears everything you say, also
+what you say to other people. The built-in check-in `aside` (on by default)
+finds out when you talk to someone else, and Martlet then holds back until
+you talk to it again. Before it, a hands-free reply could answer `[pass]` for
+one thing you said, but it had no memory of a side conversation that goes on.
+
+1. Always listening hears you, and the exchange is in the conversation,
+   answered or not. *You say something* (`Spoke`) fires, and Talking to
+   someone else starts on a Thinking pool member, at most once a minute (its
+   *Every*). So it usually catches a side conversation after one or two
+   things you said.
+2. The member gets Companion › Prompts › *Check-in: talking to someone else*:
+   - `{heard}` (*What Martlet heard you say*, `CheckInFacts.Heard`): what
+     always listening heard in the last 10 minutes, each thing with when,
+     who spoke (voice recognition: a name, your own voice or a voice Martlet
+     doesn't know), how many other voices were in it, whether people talked
+     over each other, whether lines this PC played went with it, and whether
+     Martlet answered or stayed quiet. It ends with whether Martlet holds back
+     now;
+   - `{conversation}`, `{activity}` (a call or voice chat on this PC, from
+     what this PC plays) and `{people}` (the voices heard lately).
+
+   It looks for a call on this PC, other voices that answer you, and a
+   one-sided conversation as on a phone that Martlet can't see (*"hello?"*,
+   *"yeah, uh-huh"*, answers to questions Martlet never asked, names that
+   aren't Martlet's). It answers `ASIDE:` with who you talk to and how, in a
+   few words (*ASIDE: on the phone with their mom*), `BACK` when you talk to
+   Martlet again or that conversation ended, or `OK`.
+3. With `ASIDE:`, Martlet holds back (`CheckInAside`). A note goes on the
+   context board as `check-in-aside`, filled into Companion › Prompts ›
+   *Check-in: holding back while you talk to someone else*: *the user seems to
+   be talking to someone else now, not to you (...). ... stay quiet: reply
+   only [pass], and don't start talking on your own. Reply as usual when the
+   user clearly talks to you: they say your name, ask or answer you
+   something, or type to you.* It is not consumed: it goes with every request
+   while the hold lasts, so each hands-free reply passes unless you talk to
+   Martlet.
+4. The hold lasts while you keep talking. Each thing you say renews it for 3
+   more minutes (`CheckIns.AsideQuiet`). It ends when the check-in answers
+   `BACK`, when you say nothing for 3 minutes, or when you turn the check-in
+   off. The desktop log says *Check-ins: Talking to someone else says you
+   talk to someone else, so Martlet holds back ...* and *Check-ins: Martlet
+   talks as usual again (...); it held back for 4 min.*, never what you said
+   or who you talk to.
+
+It is on by default because it costs nothing until always listening hears
+you, and then at most one small pool request a minute. Without it, Martlet
+answers the words of a phone call it can't see. Like every check-in, it runs
+only on the Thinking pool, beside the conversation and never before a reply,
+so the time to Martlet's first words stays the same. The live floor stops it
+while you talk on shared hardware. With no pool member, nothing holds Martlet
+back, and each reply still decides `[pass]` for itself. The note adds about
+90 tokens at the end of each message, and only while Martlet holds back. It is
+never kept in the conversation, so prompt caches keep working.
+
+It replaces the earlier *On a call* check-in (`call`), which only reminded
+Martlet once to keep quiet during a call on this PC. A saved choice for
+`call` and an edited *Check-in: on a call* prompt are dropped when Martlet
+reads them (`CheckIns.Retired`, `PromptEditRules.Retired`). *Someone else is
+here* (`others`) stays: it is about privacy in front of others, not about
+when to talk.
+
 An answer that turns off emotes looks only at emotes a reply turned on (their
 own tag or a combo's). It never turns off an emote you turned on with *Try*,
 or one a touch holds: `HeldEmote.Why` records why each emote went on.
@@ -2026,6 +2090,7 @@ Point at a fact or a condition on the page to see what it does:
 | What you are doing | What you seem to be doing on this PC (a game, a call or voice chat, a video, music, full screen), what it was before and when it changed. Martlet knows it only while it hears what this PC plays (`PcActivity`). | `{activity}` |
 | Who is here | The voices Martlet heard in the last 10 minutes (Voice ID), newest first: the names of the voices it knows, *a voice Martlet doesn't know*, which one is yours, each with when, and whether someone other than you seems to be here. Never what they said. | `{people}` |
 | What happened while you were away | After you come back from 10 minutes or more away: how long you were away and, from then, what Martlet said, the background work that finished and the reminders that came due. | `{away}` |
+| What Martlet heard you say | What always listening heard you say in the last 10 minutes (at most 12 things), oldest first, each with when, who spoke (voice recognition), other voices, people talking over each other, lines this PC played with it, and whether Martlet answered or stayed quiet; then whether Martlet holds back now while you talk to someone else. | `{heard}` |
 
 A placeholder puts that fact where you write it in the prompt; `{name}` and
 `{time}` work too. The facts you tick that the prompt doesn't name go after it.
@@ -2066,6 +2131,11 @@ follows them at each 15-second look:
 - *Who is here* and *Someone else spoke*: the voices Voice ID recognized in
   what Martlet heard (`LiveConversationController.RecentVoices`), names and
   times only, for 10 minutes.
+- *What Martlet heard you say*: what always listening heard, answered or not
+  (`LiveConversationController.RecentHeard`), with the voice recognition
+  result of each thing (the speaker, the other voices, `Overlap`) and whether
+  lines this PC played went with it, for 10 minutes. It is in memory only and
+  is forgotten with the conversation.
 - *Martlet asked something you didn't answer*: the last thing Martlet said
   (`CheckIns.LastQuestion`), how long the conversation has been quiet and how
   long since you used the PC.
@@ -2094,6 +2164,9 @@ What happens with its answer:
   thoughts about what you'll say next and what it means to say then, goes on
   the context board for the next reply until another reply ends, as [Think
   ahead](#think-ahead) does.
+- *Martlet holds back while you talk to someone else*: an `ASIDE:` line makes
+  Martlet stay quiet while you talk to someone else, and `BACK` ends it, as
+  [Talking to someone else](#talking-to-someone-else) does.
 - *Turns off the emotes it names*: `OFF` lines with the tags of lingering
   emotes, as Lingering emotes does (tick *Emotes and gaze*).
 - *Takes the eyes back to their usual*: `USUAL`, as Where the character looks
@@ -3638,6 +3711,10 @@ the data folder.
   smaller model sometimes answers and then adds `[pass]` (*I didn't hear any
   music. [pass]*): the answer stands and the `[pass]` is never shown, spoken or
   kept. Only a reply that is `[pass]`, or starts with it, stays quiet. When
+  [Talking to someone else](#talking-to-someone-else) finds that you talk to
+  someone else (in the room, in a call, or on a phone Martlet can't see), each
+  request carries a note to stay quiet until you talk to Martlet again, so
+  that judgment remembers the side conversation. When
   what you said trails off ("so, um", "and", a trailing comma or dash), Martlet
   waits 1.5 s longer for the rest.
 - If you keep talking before Martlet says anything, that reply is dropped and,
