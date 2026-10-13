@@ -8,14 +8,16 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-10-13
+
 ### Added
 
 - **The Voice recognition role recognizes who is speaking on another computer**: add it to one of your computers (Devices, or `martlet-host add voice-recognition`) and it runs the same voice models as your PC, on its NVIDIA graphics card when it has one and otherwise on its processor, so its voiceprints match your saved people exactly. It says which one it uses, and when the graphics card doesn't work it uses the processor. Your speech is analyzed in memory there and not kept. ([#874](https://github.com/throndir2/Martlet/pull/874))
 - **Martlet's check-ins can look up the people it knows by voice**: a new *People* tool set lets a check-in see the names each voice in Companion › People goes by, whether it is you or linked to someone's account, how often and when it was last heard, and who spoke lately. *Talking to someone else* and *Someone else is here* use it by default, and they still work when no Thinking model can call tools. It never shares voiceprints or recordings. ([#868](https://github.com/throndir2/Martlet/pull/868))
 - **Companion › People › Where it runs chooses where voice recognition runs**: list this PC's processor and your computers that run the new *Voice recognition* role (on their NVIDIA graphics card when they have one), in order. Your voice goes to the first one that answers in time; when none does, this PC's processor recognizes it, so a slow or busy computer never makes it slower. **Check it now** tries the list with a test tone, and People says where the last voice was recognized and how long it took. Your other computers follow the same list. ([#864](https://github.com/throndir2/Martlet/pull/864))
 - **Martlet stays quiet while you talk to someone else**: a new check-in, *Talking to someone else* (on by default), notices when you talk to someone in the room, in a call, or on a phone Martlet can't see (from what you say, such as "hello?" and "uh-huh", and the voices it hears). Martlet then holds back until you talk to it again or that conversation ends, instead of answering words that weren't for it. No reply waits for it. It replaces the *On a call* check-in. ([#854](https://github.com/throndir2/Martlet/pull/854))
-- **Companion › Motion controls your VRM character's body motions**: turn motion off, choose which of your computers make new motions and in what order, keep one for one companion PC, and set the Motion role up on a computer from the list. A motion goes to the first computer that isn't busy, and Martlet tells you when your character is a Live2D model, which can't play them. Your other computers follow the same list. ([#835](https://github.com/throndir2/Martlet/pull/835))
 - **Thinking requests show what each request sent**: select a request to see its input (the instructions, the earlier messages and the message it sent its model) beside its output, and close the details again with **Close** or Esc. ([#845](https://github.com/throndir2/Martlet/pull/845))
+- **Companion › Motion controls your VRM character's body motions**: turn motion off, choose which of your computers make new motions and in what order, keep one for one companion PC, and set the Motion role up on a computer from the list. A motion goes to the first computer that isn't busy, and Martlet tells you when your character is a Live2D model, which can't play them. Your other computers follow the same list. ([#835](https://github.com/throndir2/Martlet/pull/835))
 
 ### Changed
 
