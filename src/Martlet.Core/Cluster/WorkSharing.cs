@@ -465,19 +465,28 @@ public sealed class WorkQueue
         return live && background.TryGetValue(Key(lane, host), out var mine) ? all - mine.Count : all;
     }
 
-    // Stops this PC's background requests of lane on host; false when there are none.
+    // Stops this PC's background requests of lane on host; false when there are none. A request that is stopping already
+    // still holds the computer (true), but is not stopped or counted again while the live request waits for it.
     private bool StopBackground(string lane, string host)
     {
-        CancellationTokenSource[] stopping;
-        lock (gate) stopping = background.TryGetValue(Key(lane, host), out var list) ? [.. list] : [];
-        foreach (var source in stopping)
+        var fresh = 0;
+        lock (gate)
         {
-            // The callbacks (closing the request) run off this thread, so the live request goes on at once.
-            try { _ = source.CancelAsync(); }
-            catch (ObjectDisposedException) { }
+            if (!background.TryGetValue(Key(lane, host), out var list) || list.Count == 0) return false;
+            foreach (var source in list)
+            {
+                if (source.IsCancellationRequested) continue;
+                // The callbacks (closing the request) run off this thread, so the live request goes on at once.
+                try
+                {
+                    _ = source.CancelAsync();
+                    fresh++;
+                }
+                catch (ObjectDisposedException) { }
+            }
         }
-        if (stopping.Length == 0) return false;
-        Interlocked.Add(ref stopped, stopping.Length);
+        if (fresh == 0) return true;
+        Interlocked.Add(ref stopped, fresh);
         Preempted?.Invoke(lane, host);
         return true;
     }
