@@ -93,7 +93,11 @@ internal static class Program
                 await Task.Delay(Timeout.InfiniteTimeSpan);
                 return 0;
             case "late":
-                await Task.Delay(1000);
+                var deadline = DateTimeOffset.Parse(
+                    Environment.GetEnvironmentVariable("MARTLET_READINESS_DEADLINE_UTC")!,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                var wait = deadline - DateTimeOffset.UtcNow + TimeSpan.FromSeconds(1);
+                if (wait > TimeSpan.Zero) await Task.Delay(wait);
                 await ReportInitializedAsync();
                 return 0;
             case "crash":

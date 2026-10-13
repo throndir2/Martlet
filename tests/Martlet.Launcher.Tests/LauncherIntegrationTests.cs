@@ -85,11 +85,13 @@ public sealed class LauncherIntegrationTests
         string mode,
         LauncherFailure expected)
     {
-        using var fixture = Active(mode, TimeSpan.FromMilliseconds(400));
+        // The deadline also covers the payload check and the .NET start of the fixture child, which take seconds on a
+        // busy PC. "late" answers after the deadline, so a long deadline does not slow the other cases.
+        using var fixture = Active(mode);
         var receipt = fixture.Activation!.Inspect();
         var launcher = new LocalDesktopLauncher(
             fixture.Activation, fixture.LauncherRoot,
-            TimeSpan.FromMilliseconds(400));
+            TimeSpan.FromSeconds(5));
 
         var error = await Assert.ThrowsAsync<LauncherException>(
             () => launcher.LaunchActiveAsync(receipt.Revision));
@@ -397,7 +399,7 @@ public sealed class LauncherIntegrationTests
         fixture.InitializeSelection();
         fixture.Select(fixture.Stage(
             "0.2.0.0", activationMode: mode));
-        fixture.ConfigureActivation(TimeSpan.FromMilliseconds(400));
+        fixture.ConfigureActivation(TimeSpan.FromSeconds(5));
         fixture.InitializeActivation();
 
         var error = Assert.Throws<ActivationException>(
@@ -442,9 +444,9 @@ public sealed class LauncherIntegrationTests
                 activationMode: "initialized-exit",
                 launchMode: launchMode));
             var activationTimeout = timeout is { } requested &&
-                requested > TimeSpan.FromSeconds(2)
+                requested > TimeSpan.FromSeconds(5)
                     ? requested
-                    : TimeSpan.FromSeconds(2);
+                    : TimeSpan.FromSeconds(5);
             fixture.ConfigureActivation(activationTimeout);
             fixture.InitializeActivation();
             fixture.ActivateCurrent();
