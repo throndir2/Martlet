@@ -227,10 +227,12 @@ also keeps a short **screen summary over time**:
    Companion › Reading read
    on them, and Companion › Prompts › *Screen summary over time*. One job runs at
    a time. The pool drops a job that no member takes, or that does not finish,
-   within 15 seconds. A job that takes longer than 20 seconds after its newest
-   picture is stopped and its answer dropped. With an image model of its own,
-   the job goes to that model first, behind the pictures it describes for
-   replies, and to the Thinking pool only when no image model takes it.
+   within 30 seconds, so a slower cloud endpoint (such as NVIDIA Build when it
+   is busy) still has time to answer. A job that takes longer than 40 seconds
+   after its newest picture is stopped and its answer dropped. With an image
+   model of its own, the job goes to that model first (with the same 30
+   seconds), behind the pictures it describes for replies, and to the Thinking
+   pool only when no image model takes it.
 3. The one or two lines it answers (*"They switched from VS Code to a boss
    fight; health dropped to 20%."*) go to the context board as source `screen`
    (*Screen over the last 9 s: …*) for 45 seconds. The next reply or look takes

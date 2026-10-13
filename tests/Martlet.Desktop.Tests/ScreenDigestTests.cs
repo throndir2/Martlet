@@ -224,7 +224,8 @@ public sealed class ScreenDigestTests
         Assert.True(digester.Status.Running);
         Assert.Null(digester.Tick());
         // An answer that comes after the stale limit is dropped.
-        clock.Advance(TimeSpan.FromSeconds(25), fireTimers: false);
+        var stale = new ScreenDigestTiming().Stale;
+        clock.Advance(stale + TimeSpan.FromSeconds(5), fireTimers: false);
         thinker.Answer.SetResult("Too late.");
         await job.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Empty(board.Posts);
@@ -235,10 +236,69 @@ public sealed class ScreenDigestTests
         See(digester, "Game", 1, 90);
         var second = digester.Tick()!;
         for (var i = 0; thinker.Jobs.Count < 2; i++) { Assert.True(i < 2000, "second job never asked"); await Task.Delay(5); }
-        clock.Advance(TimeSpan.FromSeconds(21));
+        clock.Advance(stale + TimeSpan.FromSeconds(1));
         await second.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(2, digester.Status.Dropped);
         Assert.Empty(board.Posts);
+    }
+
+    [Fact]
+    public async Task ASlowAnswerWithinTheJobTimeIsPosted()
+    {
+        var clock = new ManualClock();
+        var thinker = new FakeThinker { Answer = new() };
+        var board = new FakeBoard();
+        var digester = new ScreenDigester(thinker, board, clock);
+        digester.Turn(true);
+        See(digester, "Code", 1, 10);
+        See(digester, "Game", 1, 200);
+        var job = digester.Tick()!;
+        for (var i = 0; thinker.Jobs.Count == 0; i++) { Assert.True(i < 2000, "job never asked"); await Task.Delay(5); }
+        // A cloud endpoint answers after 25 s: more than the old 20 s limit, less than the job time.
+        Assert.True(ScreenDigestTiming.JobTime > TimeSpan.FromSeconds(25));
+        clock.Advance(TimeSpan.FromSeconds(25));
+        thinker.Answer.SetResult("They opened a game.");
+        await job.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, digester.Status.Dropped);
+        Assert.Contains("They opened a game.", Assert.Single(board.Posts).Text);
+    }
+
+    [Fact]
+    public async Task ThePoolGivesASlowCloudMemberTheWholeJobTime()
+    {
+        var clock = new ManualClock();
+        BackgroundPlace cloud = new("endpoint:nvidia", "NVIDIA Build") { Can = ThinkingCapability.Text | ThinkingCapability.Vision };
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answer = new TaskCompletionSource<ThinkingAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud], async (_, _, token) =>
+        {
+            started.TrySetResult();
+            return await answer.Task.WaitAsync(token);
+        }, clock);
+        var thinker = new PoolScreenDigestThinker(() => new ThinkingPool(board));
+        var sheet = ScreenDigestSheet.Encode(Solid(16, 8, 1, 2, 3), 16, 8);
+        var job = new ScreenDigestJob("What changed?", sheet, 2, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "changes");
+
+        var digest = thinker.DigestAsync(job, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // 20 s is past the old 15 s limit: the member still runs the job.
+        clock.Advance(TimeSpan.FromSeconds(20));
+        Assert.False(digest.IsCompleted);
+        answer.SetResult(ThinkingAnswer.Done("They opened a game."));
+        Assert.Equal("They opened a game.", await digest.WaitAsync(TimeSpan.FromSeconds(10)));
+
+        // An answer that takes longer than the job time is dropped.
+        var slow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var never = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud], async (_, _, token) =>
+        {
+            slow.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return ThinkingAnswer.Done("never");
+        }, clock);
+        var late = new PoolScreenDigestThinker(() => new ThinkingPool(never)).DigestAsync(job, CancellationToken.None);
+        await slow.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        clock.Advance(ScreenDigestTiming.JobTime + TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => late.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     [Fact]
