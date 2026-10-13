@@ -196,24 +196,34 @@ come from the decisions above (`SenseJobRouting.Instead`, through
 computers (shared), stays on one computer (local), and, with accounts, whether
 it belongs to the household or to each person.
 
-**Owner today:** several lists that must agree by hand.
+**Owner:** `SettingsFiles` (`src\Martlet.Core\Settings\SettingsFiles.cs`):
+one row for each settings file in the data folder, with its scope (shared,
+account or local), the shared setting that carries it, the store type that
+owns its path, load, save and defaults, and, for what stays on this computer,
+the reason from [What stays with each computer](CLUSTER.md#what-stays-with-each-computer).
+Read and write a file only through its store, also in MCP checks (for example
+`TalkPreferences.Read` and `TalkPreferences.Load` for `talk-preferences.json`).
 
-| Part | Owner today |
+These parts carry the shared settings and must agree with `SettingsFiles`:
+
+| Part | Owner |
 | --- | --- |
-| Shared sections of `settings.json` and `lorebooks.json` (Thinking, Listening, Speaking, the Thinking pool and others) | `AppSettingsSections` (`src\Martlet.Core\Sync\AppSettingsSections.cs`) |
+| Shared sections of `settings.json` and `lorebooks.json` (Thinking, Listening, Speaking, the Thinking pool and others); `settings.json` is not a `SettingsFiles` row | `AppSettingsSections` (`src\Martlet.Core\Sync\AppSettingsSections.cs`) |
 | Shared sections of the desktop's own files (`talk`, `character`, `model-abilities`, `work-sharing` and others) | `DesktopSections()` (`src\Martlet.Desktop\MainWindow.SettingsSync.cs`) |
 | Household or each person | `SettingScopes` (`src\Martlet.Core\Sync\SettingScopes.cs`) |
 | Pool lists: `pools.json` (shared) or `pools-local.json` (this PC) | `PoolArea.Shared` (`src\Martlet.Core\Cluster\Pools.cs`) |
-| Why a setting stays on one computer | The table [What stays with each computer](CLUSTER.md#what-stays-with-each-computer) |
 
 The rule is in [AGENTS.md](../AGENTS.md#martlet-is-one-app-configuration-is-shared):
 share by default; keep a setting local only when it describes the computer.
-A settings file registry (one row for each file, with its scope) is planned.
+A new settings file gets a `SettingsFiles` row, a store and, when it is not
+shared, a row in CLUSTER.md.
 
-**Tests:** `ClusterSyncTests` (Martlet.Desktop.Tests); `AccountSettingsTests`
-and `ThinkingPoolShareTests` (Martlet.Core.Tests).
+**Tests:** `SettingsFilesTests` (every local file has its CLUSTER.md row),
+`AccountSettingsTests` and `ThinkingPoolShareTests` (Martlet.Core.Tests);
+`SettingsFileStoreTests` and `ClusterSyncTests` (Martlet.Desktop.Tests).
 
-**MCP:** `settings_sync_status`, `settings_sync_selftest`.
+**MCP:** `settings_sync_status`, `settings_sync_selftest`, `settings_get`,
+`settings_schema`, `settings_set`.
 
 **Docs:** [One Martlet on every computer](CLUSTER.md#one-martlet-on-every-computer).
 
