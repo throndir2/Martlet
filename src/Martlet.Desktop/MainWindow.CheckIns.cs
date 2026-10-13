@@ -105,7 +105,12 @@ public partial class MainWindow
             "said meanwhile, the background work that finished and the reminders that came due. Placeholder: {away}."),
         (CheckInFacts.Latest, "The latest exchange",
             "What you said last and Martlet's reply, in full, or every exchange since it last ran (at most " +
-            $"{CheckIns.MaximumLatest}), so a check-in that runs after each reply misses nothing. Placeholder: {{exchange}}.")
+            $"{CheckIns.MaximumLatest}), so a check-in that runs after each reply misses nothing. Placeholder: {{exchange}}."),
+        (CheckInFacts.Heard, "What Martlet heard you say",
+            $"What always listening heard you say in the last {CheckIns.HeardWindow.TotalMinutes:0} minutes, oldest first, each " +
+            "with when, who spoke (Voice ID), other voices, people talking over each other, lines this PC played with it, and " +
+            "whether Martlet answered or stayed quiet; then whether Martlet holds back now while you talk to someone else. " +
+            "Placeholder: {heard}.")
     ];
 
     private static readonly (CheckInConditions Condition, string Label, string Help)[] CheckInConditionChoices =
@@ -169,11 +174,15 @@ public partial class MainWindow
             $"last {TouchLedger.OftenWindow.TotalMinutes:0} minutes."),
         (CheckInTriggers.ExchangeEnded, "A reply ends",
             "It runs right after each of Martlet's replies (once it was said), with what you said and the reply. Exchanges " +
-            "that end while it waits for its Every are kept, and it reads them all when it runs.")
+            "that end while it waits for its Every are kept, and it reads them all when it runs."),
+        (CheckInTriggers.Spoke, "You say something",
+            "It runs right after always listening hears you say something, whether Martlet answered or stayed quiet. Only what " +
+            "the microphone hears counts, not what you type.")
     ];
 
     private const string CheckInTriggersHelp = "With one ticked, it runs only when one of them happens (a moment after your " +
-        "touches stop, or right after a reply), and at most once per Every (Every is then the time it waits before it can run " +
+        "touches stop, right after a reply, or right after you say something), and at most once per Every (Every is then the " +
+        "time it waits before it can run " +
         "again). It runs on the Thinking pool, so a reply never waits for it. It still waits while it's off, while nobody uses " +
         "this PC, for its conditions and for a pool member. With none ticked, it runs every few minutes.";
 
@@ -184,6 +193,7 @@ public partial class MainWindow
         (CheckInOutcome.Say, "Martlet brings it up"),
         (CheckInOutcome.Context, "Adds to what Martlet knows"),
         (CheckInOutcome.Plan, "Thinks ahead for Martlet's next reply"),
+        (CheckInOutcome.HoldBack, "Martlet holds back while you talk to someone else"),
         (CheckInOutcome.EmotesOff, "Turns off the emotes it names"),
         (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual"),
         (CheckInOutcome.Tools, "Its tools act")
@@ -195,6 +205,8 @@ public partial class MainWindow
         "the notes of your next message (within a few minutes) as background Martlet may draw on, not a reminder to follow. " +
         "Thinks ahead: a PLAN: line, the character's own thoughts about what you'll likely say next and what it means to say " +
         "then, goes in the notes of your next message, once; it's dropped when another reply ends first. " +
+        "Holds back: an ASIDE: line (you talk to someone else) makes Martlet stay quiet while that lasts, unless you talk to " +
+        "it; BACK ends it, and so do a few quiet minutes. " +
         "Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing. Its tools act: the tools it " +
         "calls (tick at least one set under It may use these tools) are what it does, and its answer only says what it did.";
@@ -202,7 +214,7 @@ public partial class MainWindow
     private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {adult} (whether " +
         "Adult content is on: an explicit or a non-explicit line, from Companion › Prompts), {conversation}, " +
         "{persona}, {replies}, {said}, {emotes}, {example}, {looking}, {usual}, {since}, {work}, {screen}, {sound}, " +
-        "{presence}, {touches}, {activity}, {people}, {away} and {exchange}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
+        "{presence}, {touches}, {activity}, {people}, {away}, {exchange} and {heard}. The facts you tick that the prompt doesn't name go after it, then the day and time and the answer format.";
 
     private const string CheckInsAbout = "A check-in is a short question that the Thinking pool answers for Martlet every few " +
         "minutes, with only the facts it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, " +
@@ -249,6 +261,7 @@ public partial class MainWindow
         var all = CheckIns.All(checkInSettings);
         KeepCheckInSound(all);
         TrackCheckInSignals(all, DateTimeOffset.Now);
+        FollowAside(all, DateTimeOffset.Now);
         ShareCheckInChoices();
         var blocked = Role != DeviceRole.Companion ? "this PC is a Martlet host" : conversation is null ? "Martlet can't talk on this PC" : null;
         if (blocked is not null || now is null && !all.Any(c => c.On))
@@ -623,10 +636,14 @@ public partial class MainWindow
                 CheckInOutcome.Tools => "its tools acted",
                 CheckInOutcome.Context => "nothing to add to what Martlet knows",
                 CheckInOutcome.Plan => "nothing worth thinking ahead about",
+                CheckInOutcome.HoldBack => checkInAside is { } holding && holding.HoldsAt(DateTimeOffset.Now)
+                    ? "nothing changed, so Martlet still holds back" : "you don't seem to be talking to someone else",
                 _ => "nothing to remind Martlet of"
             }, false);
         switch (checkIn.Outcome)
         {
+            case CheckInOutcome.HoldBack:
+                return ActOnAside(checkIn, verdict, prompts);
             case CheckInOutcome.EmotesOff:
             {
                 var off = await TurnOffReplyEmotesAsync(tag => verdict.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase));
@@ -696,7 +713,9 @@ public partial class MainWindow
             // Read without taking: the next reply still drains these touches as before.
             Touches = conversation?.Touches.History(conversation.TouchNow),
             HearsMicrophone = checkInMicrophone.Hears(CheckInFresh), HearsPc = checkInPcSound.Hears(CheckInFresh),
-            Adult = GenerationSettings.Adult(homeSettings?.Generation)
+            Adult = GenerationSettings.Adult(homeSettings?.Generation),
+            Heard = conversation?.RecentHeard(now) ?? [],
+            Aside = checkInAside is { } holding && holding.HoldsAt(now) ? holding : null
         });
     }
 
@@ -1503,6 +1522,8 @@ public partial class MainWindow
             pool = new { canRun = member is not null, member = member?.Name, model = member?.Model, fixture = CheckInFixture() is not null },
             // The reply tools a check-in that runs after each exchange takes over, and why (saved settings only).
             afterExchange = AfterExchangeStatus(),
+            // Whether Martlet holds back now while you talk to someone else, and until when (never who or what was said).
+            aside = AsideStatus(),
             checkIns = CheckIns.All(checkInSettings).Select(c =>
             {
                 var last = checkInRuns.GetValueOrDefault(c.Id);
@@ -1549,7 +1570,8 @@ public partial class MainWindow
             {
                 attentionWatched = checkInAttentionTimer.IsEnabled, activityKnown = checkInActivity is not null,
                 cameBackMinutesAgo = checkInCameBack is { } back ? (int?)(DateTimeOffset.Now - back.At).TotalMinutes : null,
-                voicesLately = conversation?.RecentVoices(DateTimeOffset.Now).Voices.Count ?? 0
+                voicesLately = conversation?.RecentVoices(DateTimeOffset.Now).Voices.Count ?? 0,
+                heardLately = conversation?.RecentHeard(DateTimeOffset.Now).Count ?? 0
             }
         }, new JsonSerializerOptions { WriteIndented = true });
     }

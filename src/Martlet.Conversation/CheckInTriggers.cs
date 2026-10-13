@@ -24,7 +24,10 @@ public enum CheckInTriggers
     /// <summary>A reply ended (it was said, or written when Martlet doesn't speak) and its exchange is in the conversation; never
     /// a [pass] or a reply that failed or was stopped. A check-in it starts gets the exchanges since it last ran
     /// (<see cref="CheckInFacts.Latest"/>).</summary>
-    ExchangeEnded = 16
+    ExchangeEnded = 16,
+    /// <summary>Always listening heard the user say something and its exchange is in the conversation, whether Martlet answered
+    /// it or stayed quiet ([pass]). Never for typed words, what only this PC played or what Martlet starts on its own.</summary>
+    Spoke = 32
 }
 
 /// <summary>Triggers that fired (<see cref="Fired"/>, one flag or more), when, and what happened in a few words with counts only
@@ -93,7 +96,7 @@ public static partial class CheckIns
         CheckInTriggers.StrokeAcrossZones | CheckInTriggers.KeepsComingBack;
 
     /// <summary>Every trigger Martlet offers.</summary>
-    public const CheckInTriggers AllTriggers = ByTouches | CheckInTriggers.ExchangeEnded;
+    public const CheckInTriggers AllTriggers = ByTouches | CheckInTriggers.ExchangeEnded | CheckInTriggers.Spoke;
 
     /// <summary>How many zones a stroke crosses to fire <see cref="CheckInTriggers.StrokeAcrossZones"/>.</summary>
     public const int StrokeZones = 3;
@@ -126,13 +129,19 @@ public static partial class CheckIns
         return new(CheckInTriggers.ExchangeEnded, now, count == 1 ? "1 exchange" : $"{count} exchanges");
     }
 
+    /// <summary>The trigger always listening fires at <paramref name="now"/> when it heard the user say something: whether Martlet
+    /// <paramref name="answered"/> it or stayed quiet, never the words.</summary>
+    public static CheckInTrigger SpokeTrigger(DateTimeOffset now, bool answered) =>
+        new(CheckInTriggers.Spoke, now, answered ? "you said something and Martlet answered" : "you said something and Martlet stayed quiet");
+
     private static readonly (CheckInTriggers Trigger, string Words)[] TriggerPhrases =
     [
         (CheckInTriggers.TouchesEnded, "your touches to end"),
         (CheckInTriggers.IntimateTouch, "an intimate touch"),
         (CheckInTriggers.StrokeAcrossZones, $"a stroke across {StrokeZones} zones"),
         (CheckInTriggers.KeepsComingBack, "you to keep coming back to one place"),
-        (CheckInTriggers.ExchangeEnded, "a reply to end")
+        (CheckInTriggers.ExchangeEnded, "a reply to end"),
+        (CheckInTriggers.Spoke, "you to say something")
     ];
 
     /// <summary>The triggers in words, for "it waits for ...": "your touches to end or an intimate touch".</summary>

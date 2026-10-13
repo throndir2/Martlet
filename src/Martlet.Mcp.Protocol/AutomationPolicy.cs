@@ -1168,6 +1168,7 @@ internal static class AutomationPolicy
         new("ThinkingPoolSmarts-", "Companion › Thinking pool", "A machine's Smarts choice, such as ThinkingPoolSmarts-0: Guessed: Smart, Fast, Standard or Smart."),
         new("ThinkingPoolRunsOn-", "Companion › Thinking pool", "The Runs on choice for a kind of job, such as ThinkingPoolRunsOn-check-in: Prefer smart."),
         new("ThinkingPoolRunsOnMember-", "Companion › Thinking pool", "A machine box for These members, such as ThinkingPoolRunsOnMember-check-in-0: Check-ins: runs on diva's Thinking pool (qwen3:8b) (Standard), and whether it is ticked."),
+        new("ThinkingPoolRunsOnLabel-", "Companion › Thinking pool", "A kind's label on the Runs on card (read-only text from ThinkingJobKinds.Rows, all the work the kind controls), such as ThinkingPoolRunsOnLabel-touch-zones: Touch zones, measuring the eyes and writing a character's personality."),
         new("CheckInRunsOn-", "Companion › Check-ins", "A check-in card's own Runs on choice, such as CheckInRunsOn-c1: Like other check-ins."),
         new("CheckInRunsOnMember-", "Companion › Check-ins", "A machine box of a check-in card's own Runs on, such as CheckInRunsOnMember-c1-0, and whether it is ticked."),
         // Needs --allow-ui-effects: changing any Smarts or Runs on choice or box (it saves thinking-pool.json or check-ins.json).

@@ -675,10 +675,22 @@ public static partial class PromptCatalog
         "Decide whether {name} should follow up once, softly and briefly (a gentle nudge, never repeating the question word for " +
         "word), or let it go because the user is busy or the question didn't matter. Nothing needs saying when it should let it go.";
 
-    public const string DefaultCheckInCallInstructions =
-        "What the user does on their PC just changed.\n{activity}\n\nIf a call or voice chat just started, tell {name}, " +
-        "their desktop companion, to keep quiet while it lasts: don't speak up on its own, and keep any reply very short. If a " +
-        "call or voice chat just ended, tell {name} it may talk as usual again. If neither happened, nothing needs doing.";
+    public const string DefaultCheckInAsideInstructions =
+        "{name} is the user's desktop companion. It hears the user through an always-on microphone, so it also hears what they " +
+        "say to other people: to someone in the room, in a call or voice chat on this PC, or on a phone {name} can't see, where " +
+        "it hears only the user's side.\n\n{heard}\n\n{conversation}\n\n{activity}\n\n{people}\n\n" +
+        "Decide whether the user is talking to someone else now, not to {name}. Signs: a call or voice chat on this PC; other " +
+        "voices that answer them; a one-sided conversation, as on a phone (\"hello?\", \"yeah, uh-huh\", answers to questions " +
+        "{name} never asked, pauses as if listening); names that aren't {name}'s; words that don't fit what {name} said. Signs " +
+        "that they talk to {name} again: they say its name, ask or answer it something, or the other conversation ended " +
+        "(\"bye\", \"talk to you later\", the call ended). When {name} already holds back, keep it so until one of those signs " +
+        "shows.";
+
+    public const string DefaultCheckInAsideNoteInstructions =
+        "From your own check-in, for you only: the user seems to be talking to someone else now, not to you ({about}). What " +
+        "the microphone hears is most likely meant for them, so stay quiet: reply only [{silent}], and don't start talking on " +
+        "your own. Reply as usual when the user clearly talks to you: they say your name, ask or answer you something, or type " +
+        "to you. Never mention this note.";
 
     public const string DefaultCheckInOthersInstructions =
         "{name} is the user's desktop companion. It heard these voices lately:\n{people}\n\nIf someone other than the user " +

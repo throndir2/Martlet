@@ -475,10 +475,18 @@ public static partial class PromptCatalog
             "What Unanswered question checks, when Martlet's last remark asked something and the user, at the PC, didn't answer " +
             "for a few minutes. Check-ins: each check adds the answer format (a SAY: line or OK).",
             DefaultCheckInUnansweredInstructions, ["name", "conversation", "said", "activity"]),
-        new(CheckInCall, CheckInGroup, "Check-in: on a call",
-            "What On a call checks, when a game, a call or a full-screen app starts or ends. {activity} is what the user seems to " +
-            "be doing now and before. Check-ins: each check adds the answer format (a REMIND: line or OK).",
-            DefaultCheckInCallInstructions, ["name", "activity"]),
+        new(CheckInAside, CheckInGroup, "Check-in: talking to someone else",
+            "What Talking to someone else checks right after always listening hears the user. {heard} lists what it heard in the " +
+            "last 10 minutes (when, who spoke, other voices, talking over each other, lines this PC played, and whether Martlet " +
+            "answered or stayed quiet) and whether Martlet holds back now, {conversation} the end of the conversation, {activity} " +
+            "what the user does on this PC (a call or voice chat) and {people} the voices heard lately. Check-ins: each check adds " +
+            "the answer format (an ASIDE: line, BACK or OK).",
+            DefaultCheckInAsideInstructions, ["name", "heard", "conversation", "activity", "people"]),
+        new(CheckInAsideNote, CheckInGroup, "Check-in: holding back while you talk to someone else",
+            "Goes in the notes of every message while Martlet holds back because a check-in said the user talks to someone else, " +
+            "never in the conversation or its instructions, so prompt caches keep working. {about} is who the user talks to and " +
+            "how, in a few words, and {silent} the word Martlet answers to stay quiet.",
+            DefaultCheckInAsideNoteInstructions, ["about", "silent"]),
         new(CheckInOthers, CheckInGroup, "Check-in: someone else is here",
             "What Someone else is here checks, when Martlet hears a voice that isn't the user's. {people} lists the voices heard " +
             "lately (names only, never what they said). Check-ins: each check adds the answer format (a REMIND: line or OK).",
@@ -504,7 +512,8 @@ public static partial class PromptCatalog
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
             "or KEEP (move the eyes), a REMIND: line or OK (a reminder for the next reply), a SAY: line or OK (Martlet brings it " +
-            "up), a KNOW: line or OK (adds to what Martlet knows), a PLAN: line or OK (thinks ahead for the next reply). Emptied, " +
+            "up), a KNOW: line or OK (adds to what Martlet knows), a PLAN: line or OK (thinks ahead for the next reply), an ASIDE: " +
+            "line, BACK or OK (holds Martlet back while you talk to someone else). Emptied, " +
             "each check sends only its prompt and facts, so the " +
             "prompt must then ask for the answer format itself.",
             DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),

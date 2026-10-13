@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;

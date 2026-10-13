@@ -463,7 +463,7 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
         Assert.Empty(pool.Smarts);
         Assert.Empty(pool.RunsOnByKind);
         Assert.Equal(ThinkingSmarts.Fast, pool.SmartsOf(pool.Members[0]));
-        Assert.All(ThinkingPoolSettings.JobKinds, kind => Assert.Equal(ThinkingRunsOn.Any, pool.RunsOn(kind)));
+        Assert.All(new[] { "think-longer", "digest", "check-in" }, kind => Assert.Equal(ThinkingRunsOn.Any, pool.RunsOn(kind)));
     }
 
     [Fact]
