@@ -99,7 +99,7 @@ internal sealed partial class LiveConversationController
 /// <summary>Research's model work as Thinking pool Research jobs (the lowest priority): a member that takes long jobs, never the
 /// conversation's own route, so it never pushes the conversation out of a local model's cache. A pool without such a member
 /// answers "no member" at once.</summary>
-internal sealed class PoolGuideThinker(Func<ThinkingPool> pool) : IGuideThinker
+internal sealed class PoolGuideThinker(Func<DesktopThinkingPool> pool) : IGuideThinker
 {
     public bool CanThink => pool().CanRun(ThinkingJobKind.Research);
 

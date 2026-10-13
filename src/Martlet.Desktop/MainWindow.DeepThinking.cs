@@ -622,16 +622,9 @@ public partial class MainWindow
             "version for jobs over a minute.", new Thickness(0, 8, 0, 0)));
         return stack;
     }
-    /// <summary>The kinds of pool job on the Runs on card, by kind name, in plain words.</summary>
-    private static readonly (string Kind, string Label)[] RunsOnKinds =
-    [
-        ("think-longer", "Thinking longer and a song's lyrics"), ("research", "Web research"), ("check-in", "Check-ins"),
-        ("memory", "Remembering"), ("naming", "Naming"), ("touch-zones", "Touch zones"), ("digest", "Screen and sound summaries"),
-        ("end-of-turn-judge", "Are you done talking (judge)"), ("barge-in-judge", "Did you interrupt (judge)")
-    ];
-
-    /// <summary>Runs on: for each kind of job, which machines in the pool may take it (Any member, Prefer smart, Smart only or
-    /// These members). Each check-in can choose its own on its card.</summary>
+    /// <summary>Runs on: for each kind of job (<see cref="ThinkingJobKinds.Rows"/>, by its saved key and the label that names all
+    /// the work it controls), which machines in the pool may take it (Any member, Prefer smart, Smart only or These members).
+    /// Each check-in can choose its own on its card.</summary>
     private Border RunsOnCard(ThinkingPoolSettings pool)
     {
         var stack = new List<UIElement>
@@ -643,9 +636,10 @@ public partial class MainWindow
                 "its simple fallback. These members uses only the machines you tick. Each machine's Smarts is above. Your " +
                 "conversation's own replies never change.", new Thickness(0, 0, 0, 8))
         };
-        foreach (var (kind, label) in RunsOnKinds)
+        foreach (var (kind, label) in ThinkingJobKinds.Rows.Select(row => (row.Key, row.Label)))
         {
             var heading = new TextBlock { Text = label, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 2) };
+            AutomationProperties.SetAutomationId(heading, "ThinkingPoolRunsOnLabel-" + kind);
             stack.Add(heading);
             Func<ThinkingRunsOn?>? read = null;
             var (view, current) = RunsOnPicker("ThinkingPoolRunsOn-" + kind, "ThinkingPoolRunsOnMember-" + kind, label, pool.RunsOn(kind),

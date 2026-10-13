@@ -15,10 +15,12 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- **The Thinking pool's Runs on card names all the work each choice controls**: *Touch zones* now says it also measures the eyes and writes a found character's personality, *Naming* says it also covers touch temperament, *Remembering* names tidying memory and the memory brief, and *Web research* names app guide research. ([#853](https://github.com/throndir2/Martlet/pull/853))
 - **Martlet ignores text it misreads on your screen for a moment**: when the text reader gets a letter wrong once (say "App1e" for "Apple"), Martlet no longer treats it as new text, so it doesn't look or comment because of it, and the wrong text never goes to the model. New text counts once two reads agree, and a ticking timer still shows. ([#836](https://github.com/throndir2/Martlet/pull/836))
 
 ### Fixed
 
+- **Recommended setup opens again when your model apps serve models Martlet doesn't list**: choosing Recommended setup on Home said how many changes Martlet recommends, but the review never opened when Ollama, LM Studio or another model app on your PC had a model outside Martlet's own list. The review now opens, and if it ever can't, Home says why instead of doing nothing. ([#850](https://github.com/throndir2/Martlet/pull/850))
 - **A paired computer's model that passed Test vision now helps with pictures in the Thinking pool**: Martlet now trusts Test vision there, not only the model's name, so such a model gets screen summaries, touch zones and check-ins with a screenshot, and one that failed Test vision gets none. A model its provider retired no longer gets any pictures or tool calls. ([#847](https://github.com/throndir2/Martlet/pull/847))
 - **Vision lists every model that gets your pictures**: a cloud model in the Thinking pool (such as NVIDIA Build) that makes your screen summaries now shows under Companion › Vision's image models, with what it gets the pictures for. Hearing does the same for recordings. The screen summary line, *What Martlet sends* and Companion › Thinking also name these models, and the Thinking pool no longer says a model that sees reads only text. ([#839](https://github.com/throndir2/Martlet/pull/839))
 - **Screen summaries on cloud models time out less often**: a summary of your screen now has 30 seconds instead of 15 to get its answer, so a slow cloud endpoint such as NVIDIA Build still finishes it instead of showing *Timed out*. ([#838](https://github.com/throndir2/Martlet/pull/838))

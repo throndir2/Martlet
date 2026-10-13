@@ -58,26 +58,26 @@ summaries*), covers both.
 
 A Thinking pool job has a kind (`ThinkingJobKind`). Its key is in kebab-case.
 The key is saved in `thinking-pool.json` (Runs on) and written in status files
-and logs. A helper job (`HelperJobKind`) has a name in snake_case, written in
-`helper-jobs.json`. On the Thinking pool, each helper job runs as one job
-kind. All keys and names in this table are kept names.
+and logs. A helper job (`HelperJobKind`) has a key in the same format, written
+in `helper-jobs.json` (an older Martlet wrote `action_naming`). On the Thinking
+pool, each helper job runs as one job kind. All keys in this table are kept
+names.
 
-| Job kind | Key | Label on Companion › Thinking pool | Priority | Quick or long | Helper jobs that run as this kind (name) |
+| Job kind | Key | Label on Companion › Thinking pool › Runs on | Priority | Quick or long | Helper jobs that run as this kind (key) |
 | --- | --- | --- | --- | --- | --- |
 | `BargeInJudge` | `barge-in-judge` | Did you interrupt (judge) | 70 | quick | |
 | `EndOfTurnJudge` | `end-of-turn-judge` | Are you done talking (judge) | 60 | quick | |
 | `Digest` | `digest` | Screen and sound summaries | 50 | quick | |
 | `ThinkLonger` | `think-longer` | Thinking longer and a song's lyrics | 40 | long | |
-| `TouchZones` | `touch-zones` | Touch zones | 35 | long | `TouchZones` (`touch_zones`), `Eyes` (`eyes`, at priority 20), `CharacterWriting` (`character_writing`) |
-| `Memory` | `memory` | Remembering | 20 | long | `Memory` (`memory`), `MemoryUpkeep` (`memory_upkeep`), `MemoryBrief` (`memory_brief`, at priority 10) |
-| `Naming` | `naming` | Naming | 20 | long | `ActionNaming` (`action_naming`), `Temperament` (`temperament`) |
+| `TouchZones` | `touch-zones` | Touch zones, measuring the eyes and writing a character's personality | 35 | long | `TouchZones` (`touch-zones`), `Eyes` (`eyes`, at priority 20), `CharacterWriting` (`character-writing`) |
+| `Memory` | `memory` | Remembering, learning names, tidying memory and the memory brief | 20 | long | `Memory` (`memory`), `MemoryUpkeep` (`memory-upkeep`), `MemoryBrief` (`memory-brief`, at priority 10) |
+| `Naming` | `naming` | Naming emotes and motions, and touch temperament | 20 | long | `ActionNaming` (`action-naming`), `Temperament` (`temperament`) |
 | `CheckIn` | `check-in` | Check-ins | 20 | long | |
-| `Research` | `research` | Web research | 10 | long | |
+| `Research` | `research` | Web research and app guide research | 10 | long | |
 
-So the *Touch zones* check box also controls measuring the eyes, and *Naming*
-also controls the touch temperament. The facts in this table come from
-`ThinkingJobKinds`, `RunsOnKinds` and `ThinkingPoolHelpers`; see
-[Thinking job kinds](DECISION_MAP.md#thinking-job-kinds-keys-labels-and-priorities).
+Each label names all the work its kind controls. The facts in this table are
+the rows of `ThinkingJobKinds.Rows` (`src\Martlet.Conversation\ThinkingJobKinds.cs`);
+see [Thinking job kinds](DECISION_MAP.md#thinking-job-kinds-keys-labels-and-priorities).
 
 ## Computers, members and endpoints
 
@@ -101,6 +101,6 @@ also controls the touch temperament. The facts in this table come from
 `DeepThinking` in code (`DeepThinkingSettings`, `MainWindow.DeepThinking.cs`,
 `CompanionTab.DeepThinking`) is the old name of the Thinking pool. Its UI name
 is *Thinking pool*. The desktop class that holds the pool's job board is
-`Martlet.Desktop.ThinkingPool` (`src\Martlet.Desktop\ThinkingPool.cs`); a
-rename to `DesktopThinkingPool` is in progress, so that its name is different
-from the domain file `src\Martlet.Conversation\ThinkingPool.cs`.
+`DesktopThinkingPool` (`src\Martlet.Desktop\DesktopThinkingPool.cs`). Its name
+is different from the domain file `src\Martlet.Conversation\ThinkingPool.cs`,
+which has the pool's rules (`ThinkingJobBoard`).
