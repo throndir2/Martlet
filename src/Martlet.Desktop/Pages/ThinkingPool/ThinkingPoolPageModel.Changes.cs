@@ -247,7 +247,7 @@ internal sealed partial class ThinkingPoolPageModel
                     await Task.Run(() => vault.Delete(oldBinding), CancellationToken.None);
                 }
             services.ReloadThinkingPool();
-            var plan = pool.Plan(services.Settings?.Setup?.Routes ?? [], WorkSharingRoster.Settings(services.DataDirectory), WorkSharingRoster.Device).Plan;
+            var plan = pool.Plan(services.Settings?.Setup?.Routes ?? [], WorkSharingRoster.Shared.Settings(services.DataDirectory), WorkSharingRoster.Device).Plan;
             ErrorLog.Info($"Thinking pool: now {pool.Places.DescribeAll()}; {(plan.Available ? "in parallel with the conversation" : "can't run there")}. {plan.Why}");
             var turnedOn = !ThinkLongerSettings.Of(services.Settings?.Generation).On && await SetThinkLongerAsync(true);
             services.ShowStatus(done + (turnedOn ? " Thinking longer is on again." : "") +

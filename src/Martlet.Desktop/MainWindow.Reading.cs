@@ -367,7 +367,6 @@ public partial class MainWindow
             ActionText.Text = "Couldn't save the Reading list on this PC.";
             return false;
         }
-        WorkSharingRoster.Forget();
         ErrorLog.Info("Pools: " + done);
         ActionText.Text = done;
         // Rebuilt after the click's own event finishes, so the control that changed isn't replaced under it.

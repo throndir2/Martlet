@@ -49,13 +49,13 @@ internal sealed class HostTextClient : IHostTextClient
                 yield return delta;
             yield break;
         }
-        IReadOnlyList<HostTextTarget> targets = [.. WorkSharingRoster.Order(WorkSharingRoster.DataDirectory, WorkSharingJobs.Thinking,
+        IReadOnlyList<HostTextTarget> targets = [.. WorkSharingRoster.Shared.Order(WorkSharingRoster.Shared.DataDirectory, WorkSharingJobs.Thinking,
                 HostRoles.Ollama, model.UpstreamModelId, target.HostId)
             .Select(place => place.Host is not { } host || host.HostId == target.HostId ? target
                 : WorkSharingRoster.TextTarget(host, target.RouteId) with { Background = target.Background })];
         // Background work on the conversation's route (remembering after a reply) gives way to the live turn.
         await using var deltas = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Thinking, targets, t => t.HostId,
-                (t, token) => WorkSharingRoster.Watched(t.HostId, "thinking",
+                (t, token) => WorkSharingRoster.Shared.Watched(t.HostId, "thinking",
                     ReplyAsync(t, model, input, limits, ids, epoch, deadline, generation, token, false), token), WorkSharingRoster.Classify,
                 deadline, null, cancellationToken, target.Background ? WorkPriority.Background : WorkPriority.Live)
             .GetAsyncEnumerator(cancellationToken);

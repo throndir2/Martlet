@@ -27,7 +27,7 @@ internal sealed partial class ThinkingPoolPageModel
         Route = settings.ThinkingRoute();
         Pool = ThinkingPoolSettings.Load(services.DataDirectory);
         Routes = settings?.Setup?.Routes ?? [];
-        Sharing = WorkSharingRoster.Settings(services.DataDirectory);
+        Sharing = WorkSharingRoster.Shared.Settings(services.DataDirectory);
         PoolPlan = Pool.Plan(Routes, Sharing, WorkSharingRoster.Device);
         // Thinking longer, research and a song's lyrics go only to the members that take long jobs.
         LongJobs = Pool.ForLongJobs();

@@ -137,7 +137,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
                 }
                 // Encoded once, below normal priority: the conversation's own work on this PC comes first.
                 jpeg ??= await LowPriority.RunAsync(() => Jpeg(bgra, width, height), t, "Martlet screen reading").ConfigureAwait(false);
-                var (route, lines) = await WorkSharingRoster.WatchedOnce(host.HostId, "reading", read(host, jpeg, t)).ConfigureAwait(false);
+                var (route, lines) = await WorkSharingRoster.Shared.WatchedOnce(host.HostId, "reading", read(host, jpeg, t)).ConfigureAwait(false);
                 return ($"{host.HostId}'s Reading role" + (OptionalExtras.ReadingModelOf(route.ModelId) is { } model ? $" ({model.Name})" : ""), lines);
             }, wait, token).ConfigureAwait(false)).Result;
             last = engine;

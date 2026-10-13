@@ -40,7 +40,6 @@ public sealed class ReadingPoolTests : IDisposable
     private void Save(params PoolMember[] members)
     {
         Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Reading, new PoolList { Area = PoolAreas.Reading.Id, Members = members }));
-        WorkSharingRoster.Forget();
     }
 
     private static HostRoute Route(string model) => new(Audio2FaceHostConnection.OcrRouteId, "/martlet/v1/inference/ocr", "ocr", "1",

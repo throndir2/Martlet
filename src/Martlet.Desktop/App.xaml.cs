@@ -25,6 +25,10 @@ public partial class App : Application
     /// <summary>The account signed in on this device (null when the data folder couldn't be opened).</summary>
     internal AccountSession? Accounts { get; private set; }
 
+    /// <summary>Account security for <see cref="Accounts"/>: made at start (the Unlock before the main window) or by the main
+    /// window; it signs out and encrypts again when Martlet closes.</summary>
+    internal AccountSecurityService? AccountSecurity { get; set; }
+
     private static AccountSession? OpenAccounts(string dataDirectory)
     {
         try { return AccountSession.OpenForThisLogin(dataDirectory); }
@@ -149,9 +153,9 @@ public partial class App : Application
                 {
                     // Continue as ...? at first start and the Unlock of the account in use, before it loads (W12). Closing
                     // these windows must not end Martlet: none is the main window.
-                    AccountSecurityService.Current = new AccountSecurityService(opened, store.DataDirectory);
+                    AccountSecurity = new AccountSecurityService(opened, store.DataDirectory);
                     ShutdownMode = ShutdownMode.OnExplicitShutdown;
-                    var unlocked = AccountSecurityService.Current.AtStart();
+                    var unlocked = AccountSecurity.AtStart();
                     ShutdownMode = ShutdownMode.OnMainWindowClose;
                     if (!unlocked)
                     {
@@ -231,7 +235,7 @@ public partial class App : Application
     {
         SystemParameters.StaticPropertyChanged -= SystemAppearanceChanged;
         // Remember me off signs out; encrypted accounts are encrypted again (W12).
-        try { AccountSecurityService.Current?.OnExit(); }
+        try { AccountSecurity?.OnExit(); }
         catch (Exception error) when (!ErrorLog.IsFatal(error)) { ErrorLog.Warn("Accounts: closing account security didn't finish", error); }
         instance?.Dispose();
         ErrorLog.MarkCleanExit();

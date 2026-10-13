@@ -67,7 +67,7 @@ internal sealed partial class LiveConversationController
     internal static SenseSetup LoadSenseSetup(string directory, ModelAbilities? abilities)
     {
         var hosts = new Dictionary<string, SenseHost>(StringComparer.Ordinal);
-        foreach (var host in WorkSharingRoster.Hosts(directory))
+        foreach (var host in WorkSharingRoster.Shared.Hosts(directory))
         {
             try
             {

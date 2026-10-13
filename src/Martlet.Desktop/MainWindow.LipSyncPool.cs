@@ -111,7 +111,7 @@ public partial class MainWindow
                     ActionText.Text = "Enter a loopback address with a port, such as http://127.0.0.1:52000/.";
                     return;
                 }
-                if (store is null || WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.LipSync) is not { } list ||
+                if (store is null || WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.LipSync) is not { } list ||
                     list.Find(member.Key) is not { } current) return;
                 var value = endpoint.AbsoluteUri == OwnLipSyncEndpoint().AbsoluteUri ? null : endpoint.AbsoluteUri;
                 SavePoolList(options, list, list.With(current.WithSetting(PoolSettingKeys.Endpoint, value)),
@@ -210,13 +210,13 @@ public partial class MainWindow
     /// <summary>This PC's own Audio2Face service address: the list's This PC setting, or the character's endpoint.</summary>
     private Uri LipSyncThisPcEndpoint(PoolMember? member = null)
     {
-        member ??= store is null ? null : WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.LipSync)?.Find(PoolMember.ThisPcKey);
+        member ??= store is null ? null : WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.LipSync)?.Find(PoolMember.ThisPcKey);
         return member?.Setting(PoolSettingKeys.Endpoint) is { } text && Uri.TryCreate(text, UriKind.Absolute, out var uri) ? uri : OwnLipSyncEndpoint();
     }
 
     /// <summary>Whether this PC's own Audio2Face service is in use or on in the list, so its port is worth a look.</summary>
     private bool LipSyncLooksHere() => NetworkMap.LipSync(homeAvatar) == LipSyncHandler.ThisPc ||
-        store is not null && WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.LipSync)?.Find(PoolMember.ThisPcKey) is { Off: false };
+        store is not null && WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.LipSync)?.Find(PoolMember.ThisPcKey) is { Off: false };
 
     /// <summary>The older choice as a list key: "off" (voice loudness), "this-pc" (this PC's own service) or "host:&lt;id&gt;";
     /// null for a host a friend shares with this PC, which never goes in your shared list.</summary>
@@ -233,12 +233,11 @@ public partial class MainWindow
     private PoolList? EnsureLipSyncPool()
     {
         if (store is null) return null;
-        if (WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.LipSync) is { } list)
+        if (WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.LipSync) is { } list)
         {
             // A graphics card of a computer is one row for its computer here: a host runs one Audio2Face relay.
             var rows = LipSyncSharing.OneRowPerComputer(list);
             if (rows == list || !PoolSettings.SaveFor(store.DataDirectory, PoolAreas.LipSync, rows)) return list;
-            WorkSharingRoster.Forget();
             QueueSettingsSync();
             return rows;
         }
@@ -246,7 +245,6 @@ public partial class MainWindow
         // A host a friend shares with this PC stays this PC's own choice.
         made = made with { Members = [.. made.Members.Where(m => m.HostId is null || FindHost(m.HostId) is not null)] };
         if (made.Members.Count == 0 || !PoolSettings.SaveFor(store.DataDirectory, PoolAreas.LipSync, made)) return null;
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
         ErrorLog.Info($"Pools: made the Lip-sync list from the older choice: {string.Join(", ", made.Members.Select(m => m.Key))}.");
         return made;
@@ -257,7 +255,7 @@ public partial class MainWindow
     private void FollowLipSyncChoiceIntoPool(string key)
     {
         if (store is null) return;
-        if (WorkSharingRoster.Pool(store.DataDirectory, PoolAreas.LipSync) is not { } list)
+        if (WorkSharingRoster.Shared.Pool(store.DataDirectory, PoolAreas.LipSync) is not { } list)
         {
             EnsureLipSyncPool();
             return;
@@ -278,7 +276,6 @@ public partial class MainWindow
             next = list.With((list.Find(member.Key) ?? member) with { Off = false }).Move(member.Key, -PoolSettings.MaximumMembers);
         }
         if (!PoolSettings.SaveFor(store.DataDirectory, PoolAreas.LipSync, next)) return;
-        WorkSharingRoster.Forget();
         QueueSettingsSync();
         ErrorLog.Info($"Pools: lip-sync's list follows the choice {key}: {string.Join(", ", next.Members.Select(m => m.Key + (m.Off ? " (off)" : "")))}.");
     }

@@ -260,7 +260,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         var targets = Targets(target);
         await using var frames = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Speaking, targets, t => t.Key,
                 (t, token) => t.Host is { } host
-                    ? WorkSharingRoster.Watched(host.HostId, "speaking", SpeakAsync(host, reference, input, ids, epoch, deadline, style, token), token)
+                    ? WorkSharingRoster.Shared.Watched(host.HostId, "speaking", SpeakAsync(host, reference, input, ids, epoch, deadline, style, token), token)
                     // A cloud member of the Speaking list, in its turn: the members before it are busy or don't answer.
                     : PoolCloud.SpeakAsync(dataDirectory, t.Cloud!, input, ids, epoch, deadline, token),
                 WorkSharingRoster.Classify, deadline, null, cancellationToken)
@@ -280,7 +280,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
     private IReadOnlyList<Stop> Targets(HostSpeechTarget target)
     {
         if (SpeechEngines.ForRoute(target.RouteId) is not { } engine) return [new(target, null)];
-        return [.. WorkSharingRoster.Places(dataDirectory, WorkSharingJobs.Speaking, engine.HostRoleKind, null, target.HostId,
+        return [.. WorkSharingRoster.Shared.Places(dataDirectory, WorkSharingJobs.Speaking, engine.HostRoleKind, null, target.HostId,
                 m => PoolCloud.Usable(dataDirectory, SetupRole.Tts, m))
             .Select(place => place.Cloud is { } cloud ? new Stop(null, cloud)
                 : new Stop(place.Host is not { } host || host.HostId == target.HostId && place.Model is null ? target

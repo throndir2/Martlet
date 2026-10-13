@@ -53,7 +53,7 @@ internal static class LiveSituation
 internal static class SituationPreferences
 {
     internal static RecommendationPreferences Load(string? dataDirectory) => dataDirectory is null ? new()
-        : WorkSharingRoster.Cached(System.IO.Path.Combine(dataDirectory, RecommendationPreferences.FileName),
+        : WorkSharingRoster.Shared.Cached(System.IO.Path.Combine(dataDirectory, RecommendationPreferences.FileName),
             () => RecommendationPreferences.Load(dataDirectory));
 
     /// <summary>Whether this PC (<paramref name="device"/>) is used for games: the owner's answer, else Martlet's

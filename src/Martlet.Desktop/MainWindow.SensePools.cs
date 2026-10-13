@@ -87,10 +87,7 @@ public partial class MainWindow
         var area = SenseLists.Area(kind);
         var image = kind == SenseKind.Image;
         var inputs = SenseInputs(kind);
-        var hadList = store is not null && WorkSharingRoster.Pool(store.DataDirectory, area) is not null;
         var setup = SavedSenseSetup();
-        // Made from sense-models.json just now: the list control reads the new file.
-        if (!hadList && setup.List(kind) is not null) WorkSharingRoster.Forget();
         var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var keys = PoolKeys.Load(store?.DataDirectory);
@@ -190,7 +187,7 @@ public partial class MainWindow
     private UIElement? SenseMemberSettings(SenseKind kind, PoolListOptions options, PoolMember member, SetupRoute? thinking, PoolKeys keys)
     {
         var area = options.Area;
-        var list = WorkSharingRoster.Pool(store?.DataDirectory, area) ?? new PoolList { Area = area.Id };
+        var list = WorkSharingRoster.Shared.Pool(store?.DataDirectory, area) ?? new PoolList { Area = area.Id };
         var i = list.Members.ToList().FindIndex(m => m.Key == member.Key);
         var id = $"Pool-{area.Id}";
         void Save(PoolMember next, string done) => SavePoolList(options, list, list.With(next), done);
@@ -302,7 +299,7 @@ public partial class MainWindow
             return;
         }
         tabEdited = false;
-        var list = WorkSharingRoster.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
+        var list = WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
         SavePoolList(options, list, list.With(next), $"{member.Name}'s settings for {area.Title} are saved.");
     }
 
@@ -467,7 +464,7 @@ public partial class MainWindow
                 throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
             tabEdited = false;
             senseCloudShown.Remove(kind);
-            var list = WorkSharingRoster.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
+            var list = WorkSharingRoster.Shared.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
             SavePoolList(options, list, list.With(member), $"{provider.Name} ({model}) is now in the {area.Title} list." +
                 (entered.Length > 0 ? " Its API key is saved in Windows Credential Manager." : ""));
             // Ask its server quietly what the model takes, as for a first model.

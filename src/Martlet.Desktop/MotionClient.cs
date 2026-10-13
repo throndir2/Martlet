@@ -48,8 +48,8 @@ internal static class MotionClient
     internal static IReadOnlyList<(PoolMember Member, string HostId)> Members(string dataDirectory)
     {
         var hosts = Paired(dataDirectory);
-        var own = WorkSharingRoster.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
-        return MotionPool.Members(WorkSharingRoster.Pool(dataDirectory, PoolAreas.Motion), Settings(dataDirectory), ClusterSync.LoadPlan(dataDirectory),
+        var own = WorkSharingRoster.Shared.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        return MotionPool.Members(WorkSharingRoster.Shared.Pool(dataDirectory, PoolAreas.Motion), Settings(dataDirectory), ClusterSync.LoadPlan(dataDirectory),
             WorkSharingRoster.Device, own, [.. hosts.Select(h => h.HostId)]);
     }
 

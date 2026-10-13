@@ -55,10 +55,10 @@ internal static class PoolCloud
         var area = role == SetupRole.Tts ? PoolAreas.Speaking : PoolAreas.Listening;
         var job = HostJob.For(role)!;
         // The route the job kept aside when it moved to a computer, when this member is that route.
-        var saved = WorkSharingRoster.Cached(Path.Combine(directory, job.SavedFile), () => new Saved(JobSavedRoute.Load(directory, job.SavedFile))).Route;
+        var saved = WorkSharingRoster.Shared.Cached(Path.Combine(directory, job.SavedFile), () => new Saved(JobSavedRoute.Load(directory, job.SavedFile))).Route;
         var savedMember = saved is null ? null : MemberOf(saved);
         var fromSaved = savedMember?.Key == member.Key ? saved : null;
-        var keys = WorkSharingRoster.Cached(Path.Combine(directory, PoolKeys.FileName), () => PoolKeys.Load(directory));
+        var keys = WorkSharingRoster.Shared.Cached(Path.Combine(directory, PoolKeys.FileName), () => PoolKeys.Load(directory));
         var credential = keys.For(area.Id, member.Key) ?? fromSaved?.CredentialId;
         var voice = member.Setting(PoolSettingKeys.Voice) ?? fromSaved?.VoiceId;
         if (credential is not { } id || role == SetupRole.Tts && string.IsNullOrEmpty(voice)) return null;
