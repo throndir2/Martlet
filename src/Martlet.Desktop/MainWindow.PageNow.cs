@@ -298,7 +298,7 @@ public partial class MainWindow
         var voices = localVoices.Roster.Live;
         var problem = localVoices.Enabled && !localVoices.Included
             ? "Voice recognition files are missing from this Martlet installation. Reinstall Martlet to recognize voices."
-            : localVoices.LoadError;
+            : localVoices.RecognitionProblem ?? localVoices.LoadError;
         return PageNowCard(PeopleNow(localVoices.Active, voices.Count, voices.Count(v => v.Named)), null, "PeopleNow", problem);
     }
 

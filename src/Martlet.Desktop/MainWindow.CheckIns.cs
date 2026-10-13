@@ -438,9 +438,12 @@ public partial class MainWindow
         bool acted = false, kept = false;
         string? member = null, gathered = null, scriptHash = null, broken = null;
         var previous = checkInRuns.GetValueOrDefault(checkIn.Id);
-        // The tools of its chosen sets that this PC runs, for every member the pool tries during this run.
-        var tools = checkIn.ToolSets.Count > 0
-            ? new CheckInToolHost(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, homeSettings?.Companion?.ActivePersonaId.ToString(),
+        // The tools of its chosen sets that this PC runs, for every member the pool tries during this run. Optional sets (lookups
+        // such as People) only when a member that calls tools can take it; without one it runs without them.
+        var offered = CheckIns.Offered(checkIn, conversation?.ThinkingPool.CanRun(ThinkingJobKind.CheckIn,
+            checkIn.Needs | ThinkingCapability.Tools, checkIn.RunsOn) == true || CheckInFixture() is not null);
+        var tools = offered.Count > 0
+            ? new CheckInToolHost(offered, new(checkIn.Id, checkIn.Name, homeSettings?.Companion?.ActivePersonaId.ToString(),
                 DateTimeOffset.Now), CheckInToolHandlers())
             : null;
         // Thinking ahead stops when another reply ends first (CheckInExchangeEnded).

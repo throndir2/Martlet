@@ -5,12 +5,13 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 /// <summary>The Thinking pool members that get pictures (or recordings) besides the models in Companion › Vision's (or
-/// Companion › Hearing's) list. A member whose model sees (or hears) takes screen summaries (or PC sound descriptions) as a quick
-/// job, and touch zones, the character's eyes and check-ins with a screenshot (or check-ins with a recording) as long jobs. Both
-/// pages show these members under their list (<c>Pool-vision-Also-&lt;n&gt;</c>, <c>Pool-hearing-Also-&lt;n&gt;</c>), so one page
-/// names every model that gets your pictures or recordings, cloud providers and servers included. What a member can do comes from
-/// <see cref="ThinkingPoolCapabilities"/> and what it may take from the pool's settings, with the same rules as the job board
-/// (<see cref="ThinkingJobBoard"/>), so the pages say the same thing whether a conversation runs or not.</summary>
+/// Companion › Hearing's) list: the jobs in <see cref="SenseJobRouting.Rows"/> that go to a pool member. A member whose model sees
+/// (or hears) takes screen summaries (or PC sound descriptions) as a quick job, and touch zones, the character's eyes and check-ins
+/// with a screenshot (or check-ins with a recording) as long jobs. Both pages show these members under their list
+/// (<c>Pool-vision-Also-&lt;n&gt;</c>, <c>Pool-hearing-Also-&lt;n&gt;</c>), so one page names every model that gets your pictures or
+/// recordings, cloud providers and servers included. What a member can do comes from <see cref="ThinkingPoolCapabilities"/> and
+/// what it may take from the pool's settings, with the same rules as the job board (<see cref="ThinkingJobBoard"/>), so the pages
+/// say the same thing whether a conversation runs or not.</summary>
 internal static class SensePoolUsers
 {
     /// <summary>One member whose model sees (or hears): whether it is on, takes quick and long jobs, may receive pictures and
@@ -28,7 +29,8 @@ internal static class SensePoolUsers
         public bool Gets => Summaries || Long;
     }
 
-    internal static ThinkingCapability Needs(SenseKind kind) => kind == SenseKind.Image ? ThinkingCapability.Vision : ThinkingCapability.Audio;
+    /// <summary>What a member's model must take for <paramref name="kind"/>'s jobs (<see cref="SenseJobRow.Sense"/>).</summary>
+    internal static ThinkingCapability Needs(SenseKind kind) => SenseJobRouting.Of(kind)[0].Sense;
 
     /// <summary>Every member of <paramref name="pool"/>, on or off, whose model takes <paramref name="kind"/>, in the pool's order.</summary>
     internal static IReadOnlyList<User> For(SenseKind kind, ThinkingPoolSettings pool, ModelAbilities? abilities)
@@ -41,27 +43,34 @@ internal static class SensePoolUsers
             digest.Allows(m.Key, pool.SmartsOf(m))))];
     }
 
+    /// <summary>Whether <paramref name="user"/> takes <paramref name="row"/>'s job now: a quick job (summaries) or a long one.</summary>
+    internal static bool Takes(User user, SenseJobRow row) => row.PoolKind is not null && (row.Quick ? user.Summaries : user.Long);
+
+    /// <summary>The first of <paramref name="users"/> that takes <paramref name="row"/>'s job now, or null (the saved pool's choice
+    /// when no conversation runs: <see cref="MainWindow.SenseDecisionFor"/>).</summary>
+    internal static User? First(SenseJobRow row, IReadOnlyList<User> users) => users.FirstOrDefault(u => Takes(u, row));
+
     private static string Inputs(SenseKind kind) => kind == SenseKind.Image ? "pictures" : "recordings";
     private static string Takes(SenseKind kind) => kind == SenseKind.Image ? "sees pictures" : "hears recordings";
 
     /// <summary>"a", "a and b", "a, b and c".</summary>
-    internal static string Names(IEnumerable<User> users)
-    {
-        var names = users.Select(u => u.Name).Distinct(StringComparer.Ordinal).ToArray();
-        return names.Length <= 1 ? names.FirstOrDefault() ?? "" : $"{string.Join(", ", names[..^1])} and {names[^1]}";
-    }
+    internal static string Names(IEnumerable<User> users) => SenseJobRouting.Join(users.Select(u => u.Name));
 
-    /// <summary>What <paramref name="user"/> gets the pictures (or recordings) for. With <paramref name="senseModel"/> (an image or
-    /// audio model of its own takes them), summaries go to that model first.</summary>
+    /// <summary>What <paramref name="user"/> gets the pictures (or recordings) for: the jobs in <see cref="SenseJobRouting.Rows"/> that
+    /// go to a pool member, quick ones first. With <paramref name="senseModel"/> (an image or audio model of its own takes them), a job
+    /// whose order tries that model first says so.</summary>
     internal static string Uses(SenseKind kind, User user, bool senseModel)
     {
-        var image = kind == SenseKind.Image;
-        var uses = new List<string>();
-        if (user.Summaries)
-            uses.Add((image ? "screen summaries" : "descriptions of PC sounds") + (senseModel ? $" when your {(image ? "image" : "audio")} model can't take them" : ""));
-        if (user.Long) uses.Add(image ? "touch zones, the character's eyes and check-ins with a screenshot" : "check-ins with a recording");
+        var rows = SenseJobRouting.Of(kind).Where(r => Takes(user, r)).ToArray();
+        var model = kind == SenseKind.Image ? "image" : "audio";
+        var uses = rows.Where(r => r.Quick).Select(r => r.Name + (senseModel && FirstBefore(r) ? $" when your {model} model can't take them" : "")).ToList();
+        if (rows.Where(r => !r.Quick).SelectMany(r => r.Names).ToArray() is { Length: > 0 } slow) uses.Add(SenseJobRouting.Join(slow));
         return string.Join(", and ", uses);
     }
+
+    // Whether the row's order tries the image or audio model before a pool member.
+    private static bool FirstBefore(SenseJobRow row) =>
+        row.Order.ToList().IndexOf(SenseTaker.SenseModel) is >= 0 and var model && model < row.Order.ToList().IndexOf(SenseTaker.PoolMember);
 
     /// <summary>A member's line under the list (<c>Pool-vision-Also-&lt;n&gt;</c>): where it runs, then what it gets the pictures
     /// (or recordings) for, or why it gets none.</summary>

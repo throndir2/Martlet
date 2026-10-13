@@ -159,7 +159,7 @@ internal static class HostRoles
             Audio2FaceHostConnection.SongRouteId, "singing",
             "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer). " +
             "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle."),
-        new(Pictures, "Draws", "Pictures", "an NVIDIA GPU with at least 8 GB",
+        new(Pictures, "Draws", "Picture making", "an NVIDIA GPU with at least 8 GB",
             Audio2FaceHostConnection.PictureRouteId, "pictures",
             "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle."),
         new(Ocr, "Reads", "Reading", "Docker; RapidOCR runs on the processor, PP-OCRv5 on the processor or an NVIDIA GPU",

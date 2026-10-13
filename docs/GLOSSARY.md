@@ -16,7 +16,7 @@ To find who decides something, see the [decision map](DECISION_MAP.md).
 
 | Concept | Code name | UI name | Other names you will find |
 | --- | --- | --- | --- |
-| The model that writes every reply | Thinking route (`SetupRole.Llm`) | Thinking, Thinking's own model | "the text model", "the conversation model" |
+| The model that writes every reply | Thinking route (`SetupRole.Llm`; find it with `SetupRouteLookup.ThinkingRoute()`) | Thinking, Thinking's own model | "the text model", "the conversation model" |
 | A Thinking model that also sees and hears, so it takes pictures and recordings in the reply's own request | `SensePath.Thinking` | a Thinking model that sees (or hears) | "omni model". Do not use "omni model" in new text |
 | A model of its own that describes pictures in words for Thinking | image model (`SenseKind.Image`, `ImageModel...`) | image model | "vision model", "VLM". Use "vision model" only for `VisionModelCatalog`, the list of model names that see |
 | A model of its own that describes recordings in words for Thinking | audio model (`SenseKind.Audio`, `AudioModel...`) | audio model | |
@@ -35,12 +35,20 @@ To find who decides something, see the [decision map](DECISION_MAP.md).
 | Pictures that Martlet **sees**: your screen, your camera, and pictures of the character for touch zones and the eyes | picture (`Image` on a job, `SenseKind.Image`, `PictureDescriptions`, `LiveConversationController.Pictures.cs`) | pictures, your pictures | |
 | Pictures that Martlet **makes** when you ask (ComfyUI or a cloud provider) | picture making: `PoolAreas.PictureMaking`, `PictureMakingPool`, `PictureMakingPoolMembers`, `IPictureMaker` and the `*PictureMaker` classes, namespaces `Martlet.*.Pictures` | Picture making (Companion › Picture making) | Area ID, lane and host role `pictures`; `pictures.json`; `CompanionTab.Pictures` (automation ID `CompanionTab-Pictures`); automation IDs `Pool-pictures-...` and `Pictures...`; MCP tools `pictures_status`, `pictures_check`, `draw_picture`; `MARTLET_PICTURES_FIXTURE` |
 
-Rename in progress: until it merges, the UI name of picture making is still
-*Pictures* (Companion › Pictures).
+The UI calls the picture making page, its list and its host role *Picture
+making* (Companion › Picture making, the Picture making list, the Picture
+making role). Martlet 0.76.0 and older called them *Pictures*.
+
+Some older code names still say "Pictures" for picture making:
+`HostRoles.Pictures`, `PlanComponent.Pictures` (saved in the recommended
+setup's memory), `WorkSharing.Pictures`, `BackgroundDuties.Pictures`,
+`PicturesSettings`, `PicturesCheck`, `PictureClient` and
+`MainWindow.Pictures.cs`. They mean picture making. New code uses
+`PictureMaking`.
 
 A file or class in a `Pictures` namespace or folder is about picture making.
 Code about the pictures Martlet sees is in `Martlet.Conversation`
-(`SenseRouting`, `SensePool`) and in the desktop's `...Pictures.cs`,
+(`SenseRouting`, `SensePool`) and in the desktop's `LiveConversation...Pictures.cs`,
 `PictureDescriptions.cs` and `ScreenDigest.cs` files.
 
 ## Summaries of the screen and of sounds

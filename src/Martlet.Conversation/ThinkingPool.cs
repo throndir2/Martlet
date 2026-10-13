@@ -766,12 +766,13 @@ public sealed class ThinkingJobBoard
                 "and the others come back when their computers answer again.");
         if (online.Length > 0 && !online.Any(m => m.Can.HasFlag(ThinkingCapability.Vision)))
             notes.Add(members.Any(m => m.Can.HasFlag(ThinkingCapability.Vision))
-                ? "No member that answers now sees pictures: screen summaries use their simple rules until one does."
-                : "No member sees pictures: screen summaries use their simple rules. Add a member with a vision model.");
+                ? "No member that answers now sees pictures: screen summaries go only to your image model (Companion › Vision) until one does."
+                : "No member sees pictures: screen summaries go only to your image model (Companion › Vision). Add a member with a vision model.");
         if (online.Length > 0 && !online.Any(m => m.Can.HasFlag(ThinkingCapability.Audio)))
             notes.Add(members.Any(m => m.Can.HasFlag(ThinkingCapability.Audio))
-                ? "No member that answers now hears recordings: sound summaries use the transcript only until one does."
-                : "No member hears recordings: sound summaries use the transcript only.");
+                ? "No member that answers now hears recordings: PC sound descriptions go to your audio model (Companion › Hearing), else " +
+                  "the sound tagger on this PC, until one does."
+                : "No member hears recordings: PC sound descriptions go to your audio model (Companion › Hearing), else the sound tagger on this PC.");
         // Members that see or hear but are external and may not receive pictures and recordings (the owner's box unticked).
         var withheld = online.Where(m => !m.Media && (m.Can & ThinkingPoolMedia.Needs) != 0).ToArray();
         string[] lost = [.. online.Any(m => m.Can.HasFlag(ThinkingCapability.Vision)) &&

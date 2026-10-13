@@ -205,8 +205,7 @@ internal sealed partial class LiveConversationController
         lock (quickLock) clips = quickState == QuickSoundState.Ready && quickSet is { } set ? set.Clips : [];
         if (clips.Count == 0) return;
         var configured = operation.Authorization.Configuration;
-        bool refused;
-        lock (gate) refused = reasoningRefused.Contains(configured.ToolModelKey());
+        var refused = routing.RefusesReasoning(configured);
         var thinking = configured.Routes.ThinkingRoute();
         var reasoning = refused || GenerationSettings.ThinkingSteps(configured.Generation) && thinking is not null &&
             GenerationSupport.Use(thinking.RouteType, thinking.Origin, GenerationSetting.Reasoning) != GenerationSettingUse.Unused;

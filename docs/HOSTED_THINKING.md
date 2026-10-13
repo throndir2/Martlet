@@ -91,7 +91,7 @@ inside every limit above (Gemini's inline limit is 20 MB a request).
 **Default when Thinking can't run on this PC:** NVIDIA Build with
 `google/diffusiongemma-26b-a4b-it`, and Listening (Parakeet speech-to-text) on
 this PC's CPU so Thinking gets the transcript. One free `nvapi-` key also
-covers Pictures (NVIDIA's FLUX models). It is Martlet's fastest measured free
+covers Picture making (NVIDIA's FLUX models). It is Martlet's fastest measured free
 hosted model, sees screenshots and calls tools, and no recording leaves the PC.
 
 **When the owner wants Thinking to hear** (no transcription before the reply,
@@ -256,10 +256,10 @@ default hears but sends the recording only after the owner allows it.
 
 | Option | Preset id | Base URL | Model ID | Hears | Sees | Tools | Free | Same key covers |
 |---|---|---|---|---|---|---|---|---|
-| NVIDIA Build default | `nvidia-build` | `https://integrate.api.nvidia.com/v1` | `google/diffusiongemma-26b-a4b-it` | no | yes | yes | yes (40/min) | Pictures (FLUX) |
+| NVIDIA Build default | `nvidia-build` | `https://integrate.api.nvidia.com/v1` | `google/diffusiongemma-26b-a4b-it` | no | yes | yes | yes (40/min) | Picture making (FLUX) |
 | Google Gemini | `google-gemini` | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3.5-flash-lite` | yes (opt-in) | yes | yes | yes (limits in AI Studio) | - |
-| NVIDIA Build omni | `nvidia-build` | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | yes (opt-in) | yes | listed | yes (40/min) | Pictures (FLUX) |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` | `google/gemma-4-26b-a4b-it` | no | yes | yes | no (`:free` 50/day) | Pictures (paid) |
+| NVIDIA Build omni | `nvidia-build` | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | yes (opt-in) | yes | listed | yes (40/min) | Picture making (FLUX) |
+| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` | `google/gemma-4-26b-a4b-it` | no | yes | yes | no (`:free` 50/day) | Picture making (paid) |
 
 A Thinking option that doesn't hear needs Listening (speech-to-text) placed on
 this PC or the network; one that hears still needs it whenever the owner hasn't

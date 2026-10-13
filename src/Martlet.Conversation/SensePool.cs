@@ -99,11 +99,11 @@ public static class SensePool
     }
 
     /// <summary>Runs one job of <paramref name="kind"/> on the first of <paramref name="members"/> that takes it
-    /// (<see cref="WorkQueue.RunAsync"/>, lane <see cref="Lane"/>): <paramref name="attempt"/> sends it to one member. A member that
-    /// is busy is passed over for the next; when every member that answered is busy the job waits for whichever frees first, until
-    /// <paramref name="until"/>. A member that is unavailable or keeps its graphics card for a live turn is passed over. The answer
-    /// is the member's, or the last member's reason when none took it. Canceling <paramref name="token"/> throws
-    /// <see cref="OperationCanceledException"/>.</summary>
+    /// (<see cref="PoolRunner{TStop}"/> through <see cref="WorkQueue"/>, lane <see cref="Lane"/>, background priority):
+    /// <paramref name="attempt"/> sends it to one member. A member that is busy is passed over for the next; when every member that
+    /// answered is busy the job waits for whichever frees first, until <paramref name="until"/>. A member that is unavailable or
+    /// keeps its graphics card for a live turn is passed over. The answer is the member's, or the last member's reason when none
+    /// took it. Canceling <paramref name="token"/> throws <see cref="OperationCanceledException"/>.</summary>
     public static async Task<(SenseAnswer Answer, SensePoolRoute Route)> RunAsync(SenseKind kind, IReadOnlyList<DeepThinkingSettings> members,
         Func<DeepThinkingSettings, CancellationToken, Task<SenseAttempt>> attempt, DateTimeOffset until, TimeProvider? clock,
         CancellationToken token, WorkQueue? queue = null)
@@ -114,56 +114,45 @@ public static class SensePool
         var time = clock ?? TimeProvider.System;
         var began = time.GetTimestamp();
         var started = began;
-        int busy = 0, unavailable = 0;
-        DeepThinkingSettings? served = null;
-        // Waited: from the job's start to the start of the attempt that took it (or to the end, when none took it).
-        SensePoolRoute Route() => new(served?.Key, served?.Describe(), served is null ? -1 : IndexOf(members, served), busy, unavailable,
-            served is null ? time.GetElapsedTime(began) : time.GetElapsedTime(began, started));
+        PassedOn? last = null;
+        // When no member took the job: the busy and unavailable tries up to and with the last member that passed it on.
+        SensePoolRoute NoneTook()
+        {
+            var (busy, unavailable) = last is { Tried: var tried, Attempt.Refusal: var refusal }
+                ? (tried.Busy + (refusal == WorkRefusal.Busy ? 1 : 0), tried.Unavailable + (refusal == WorkRefusal.Busy ? 0 : 1)) : (0, 0);
+            return new(null, null, -1, busy, unavailable, time.GetElapsedTime(began));
+        }
         try
         {
-            var answer = await (queue ?? WorkQueue.Shared).RunAsync(Lane(kind), members, m => m.Key, async (member, t) =>
-            {
-                started = time.GetTimestamp();
-                var tried = await attempt(member, t).ConfigureAwait(false);
-                switch (tried.Refusal)
+            var run = await new PoolRunner<DeepThinkingSettings>(Lane(kind), m => m.Key,
+                error => error is PassedOn passed ? passed.Attempt.Refusal : WorkRefusal.None, WorkPriority.Background, queue, time)
+                .RunAsync(members, async (member, tried, t) =>
                 {
-                    case WorkRefusal.None:
-                        served = member;
-                        return tried.Answer;
-                    case WorkRefusal.Busy:
-                        busy++;
-                        break;
-                    default:
-                        unavailable++;
-                        break;
-                }
-                throw new PassedOn(tried);
-            }, error => error is PassedOn passed ? passed.Attempt.Refusal : WorkRefusal.None, until, time, token,
-                WorkPriority.Background).ConfigureAwait(false);
-            return (answer, Route());
+                    started = time.GetTimestamp();
+                    var answer = await attempt(member, t).ConfigureAwait(false);
+                    if (answer.Refusal == WorkRefusal.None) return answer.Answer;
+                    throw last = new PassedOn(answer, tried);
+                }, until, token).ConfigureAwait(false);
+            // Waited: from the job's start to the start of the attempt that took it.
+            return (run.Result, new(run.Stop.Key, run.Stop.Describe(), run.Position, run.Busy, run.Unavailable,
+                time.GetElapsedTime(began, started)));
         }
-        catch (PassedOn last) when (!token.IsCancellationRequested)
+        catch (PassedOn passed) when (!token.IsCancellationRequested)
         {
-            return (last.Attempt.Answer, Route());
+            return (passed.Attempt.Answer, NoneTook());
         }
         catch (WorkPreemptedException) when (!token.IsCancellationRequested)
         {
             // Every member that answered keeps its graphics card for a live conversation turn: the job ends without words.
             return (SenseAnswer.Failed(members.Count == 1 ? $"{members[0].Describe()} keeps its graphics card for a live conversation"
-                : "every model that could take it keeps its graphics card for a live conversation"), Route());
+                : "every model that could take it keeps its graphics card for a live conversation"), NoneTook());
         }
     }
 
-    private static int IndexOf(IReadOnlyList<DeepThinkingSettings> members, DeepThinkingSettings member)
-    {
-        for (var i = 0; i < members.Count; i++)
-            if (ReferenceEquals(members[i], member)) return i;
-        return -1;
-    }
-
     // A member passed the job on (busy, unavailable, held for a live turn); the queue tries the next.
-    private sealed class PassedOn(SenseAttempt attempt) : Exception("The model passed the sense job on.")
+    private sealed class PassedOn(SenseAttempt attempt, PoolTry tried) : Exception("The model passed the sense job on.")
     {
         public SenseAttempt Attempt { get; } = attempt;
+        public PoolTry Tried { get; } = tried;
     }
 }

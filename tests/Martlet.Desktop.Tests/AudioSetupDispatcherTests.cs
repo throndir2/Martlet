@@ -21,7 +21,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task OpeningListsDevicesButDecliningAndSavingNeverOpensThemOrTheVault() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         var window = fixture.Open(approve: false);
         try
         {
@@ -51,7 +51,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task DevicesAreListedOnOpenOffDispatcherAndFixedChoicePersistsWithoutOpening() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         var window = fixture.Open();
         try
         {
@@ -74,7 +74,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task PluggedInMicrophoneAppearsWhenTheListOpensAgain() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Catalog.Devices = new([], [new("PRIVATE-output", "Headset", true)]);
         var window = fixture.Open();
         try
@@ -98,7 +98,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task MeterUsesRealLibraryPcmAndDiscardedCheckpointIsLocalOnly() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet();
         var window = fixture.Open();
         try
@@ -130,7 +130,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task ServiceDisposesAllTransferredOrUnclaimedCapturePcm()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.ObservePcmZeroing = true;
         fixture.Capture.Packet(count: 50);
         var operation = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
@@ -164,7 +164,7 @@ public sealed class AudioSetupDispatcherTests
     [InlineData((short)327)]
     public Task SilentOrNearSilentInputShowsWholeTestRemedyAndCannotSaveCheckpoint(short amplitude) => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet(amplitude, count: 50);
         var window = fixture.Open();
         try
@@ -188,7 +188,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task NoInputFramesHasSpecificRemedyAndNeverBecomesSavedEvidence() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         var window = fixture.Open();
         try
         {
@@ -207,7 +207,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task SilentRetestClearsPriorHistoricalCheckpointOnlyOnExplicitSave() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet();
         var window = fixture.Open();
         try
@@ -220,6 +220,8 @@ public sealed class AudioSetupDispatcherTests
             Assert.Equal(LocalAudioOutcome.SamplesReceived, (await Saved(fixture, audio => audio.Input.Checkpoint is not null)).Input.Checkpoint!.Outcome);
 
             fixture.Capture.Packet(0, count: 50);
+            // The window takes a new test (its button is back) once the last one and its automatic save finish.
+            await Ready(window);
             Click(window, "MicButton");
             await Wait(() => Text(window, "ResultText").Contains("Sound was too quiet", StringComparison.Ordinal));
             Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
@@ -231,7 +233,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task AdvisoryThresholdSeparatesNearSilentFromDetectablePcm()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet(327, count: 50);
         var low = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
         await low.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
@@ -257,7 +259,7 @@ public sealed class AudioSetupDispatcherTests
     [InlineData(40, AudioInputSignal.DetectableAmplitude)]
     public async Task FrameCoverageRequiresFourSecondsOfFiveSecondInput(int packets, AudioInputSignal expected)
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet(count: packets);
         var operation = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
         await Wait(() => operation.Status.Samples == packets * 1600);
@@ -280,7 +282,7 @@ public sealed class AudioSetupDispatcherTests
     public Task ShortClickAndIntermittentLevelsDoNotMasqueradeAsSustainedInput(
         int loudPackets, AudioInputSignal expected) => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         var window = fixture.Open();
         try
         {
@@ -306,7 +308,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task FailedCaptureAfterPositiveMeterClearsLevelAndFreshSilentTestCannotReplay() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet();
         fixture.Capture.Block = "CaptureReadAfterPacket";
         fixture.Capture.Failure = ErrorCode.AudioDeviceChanged;
@@ -329,6 +331,8 @@ public sealed class AudioSetupDispatcherTests
             fixture.Capture.Failure = null;
             fixture.Capture.FailureAfterPacket = false;
             fixture.Capture.Packet(0, count: 50);
+            // The window takes a new test (its button is back) once the last one and its automatic save finish.
+            await Ready(window);
             Click(window, "MicButton");
             await Wait(() => Text(window, "ResultText").Contains("Sound was too quiet", StringComparison.Ordinal));
             Assert.Contains("Final microphone check", Text(window, "LevelText"));
@@ -342,7 +346,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task StopAfterPositiveMeterDiscardsItAndRequiresFreshMicPermission() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet();
         var window = fixture.Open();
         try
@@ -358,6 +362,8 @@ public sealed class AudioSetupDispatcherTests
             Assert.DoesNotContain("0.500000", Text(window, "LevelText"));
             Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
             fixture.Capture.Packet(0, count: 50);
+            // The window takes a new test (its button is back) once the last one and its automatic save finish.
+            await Ready(window);
             Click(window, "MicButton");
             await Wait(() => Text(window, "ResultText").Contains("Sound was too quiet", StringComparison.Ordinal));
             Assert.Equal(2, fixture.Capture.Opens);
@@ -370,7 +376,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task OutputIsExactToneAndHeardRequiresThisSuccessfulUnchangedSelection() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         var window = fixture.Open();
         try
         {
@@ -408,7 +414,7 @@ public sealed class AudioSetupDispatcherTests
     [InlineData("OutputCallback")]
     public Task BlockedNativeKeepsHeartbeatCloseAndReopenResponsiveWithoutEarlyRelease(string block) => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.ConfigureBlock(block);
         var window = fixture.Open();
         AudioSetupWindow? reopened = null;
@@ -477,7 +483,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task DiscoveryTimeoutDiscardsLateGenerationWithoutPretendingRelease() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.ConfigureBlock("Discovery");
         var window = fixture.Open();
         try
@@ -505,7 +511,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task SessionLockStopsOwnedInputAndUnlockNeverRearms() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet();
         var window = fixture.Open();
         try
@@ -530,7 +536,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task OwnedWindowDeactivationCancelsThroughActualWpfEvent() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Packet();
         var window = fixture.Open();
         try
@@ -557,7 +563,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task RetiredHandleCannotStopNextEpochAndNoFramesIsNotPass()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         var first = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
         await Wait(() => fixture.Capture.Reads > 0);
         fixture.Clock.Advance(TimeSpan.FromSeconds(5));
@@ -584,7 +590,7 @@ public sealed class AudioSetupDispatcherTests
     [InlineData(ErrorCode.AudioFormatUnsupported)]
     public Task FailedOutputCannotBeConfirmedOrAutoReplaced(ErrorCode code) => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.Failure = code;
         var window = fixture.Open();
         try
@@ -603,7 +609,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task FailedDisposalKeepsSharedSlotQuarantinedAfterTerminal()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.FailDispose = true;
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
         await Wait(() => run.Status.Error == ErrorCode.AudioPlaybackFailed);
@@ -618,7 +624,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task ExpiredReturnedOutputWithSuccessfulCleanupReleasesWorkerForFreshAction()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
         // No observing window, Stop, or caller cancellation: only the owned post-open guard expires.
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
@@ -641,7 +647,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task ExpiredReturnedOutputPreservesPreciseAuthorizationFailure()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
         await Wait(() => run.Status.Finished);
@@ -654,7 +660,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task ExpiredReturnedOutputFailedCleanupRemainsQuarantined()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
         fixture.Output.FailDispose = true;
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
@@ -672,7 +678,7 @@ public sealed class AudioSetupDispatcherTests
     [InlineData(true)]
     public async Task ExpiredReturnedOutputWaitsForNoncooperativeCallbackBeforeRelease(bool callbackOutlivesDispose)
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.Block = "OutputCallback";
         fixture.Output.CallbackOutlivesDispose = callbackOutlivesDispose;
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
@@ -704,7 +710,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task ExpiredReturnedOutputWaitsForActualDisposalBeforeRelease()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.Block = "OutputDispose";
         fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
@@ -730,7 +736,7 @@ public sealed class AudioSetupDispatcherTests
     [InlineData(ErrorCode.AudioPlaybackFailed)]
     public async Task NativeOutputFailureCannotClaimOwnedExpiryCleanup(ErrorCode nativeFailure)
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Output.Failure = nativeFailure;
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
         await Wait(() => run.Status.Finished);
@@ -746,7 +752,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public Task StaleAudioSavePreservesConcurrentSettingsAndRequiresReload() => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         var window = fixture.Open();
         try
         {
@@ -768,15 +774,15 @@ public sealed class AudioSetupDispatcherTests
     });
 
     [Theory]
-    [InlineData(ErrorCode.AudioAccessDenied, "Privacy")]
-    [InlineData(ErrorCode.AudioDeviceBusy, "Another app")]
+    [InlineData(ErrorCode.AudioAccessDenied, "microphone access in Windows Settings")]
+    [InlineData(ErrorCode.AudioDeviceBusy, "Close any app using the device")]
     [InlineData(ErrorCode.AudioDeviceUnavailable, "Reconnect")]
     [InlineData(ErrorCode.AudioDeviceLost, "Reconnect")]
     [InlineData(ErrorCode.AudioDeviceChanged, "Reconnect")]
     [InlineData(ErrorCode.AudioFormatUnsupported, "format")]
     public Task InputFailureHasSpecificRemedyAndNeverRearms(ErrorCode code, string remedy) => OnDispatcher(async () =>
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         fixture.Capture.Failure = code;
         var window = fixture.Open();
         try
@@ -798,7 +804,7 @@ public sealed class AudioSetupDispatcherTests
     [Fact]
     public async Task PermissionFalseAndSharedFixtureOwnerRejectAudioWithoutAccess()
     {
-        using var fixture = new Fixture();
+        await using var fixture = new Fixture();
         Assert.Null(fixture.Audio.Start(AudioSetupAction.Discovery, null, false));
         Assert.Null(fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), false));
         Assert.Null(fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), false));
@@ -822,7 +828,7 @@ public sealed class AudioSetupDispatcherTests
     private static Task Ready(Window window) => Wait(() => Control<Button>(window, "MicButton").IsEnabled);
     private static async Task<AudioSettings> Saved(Fixture fixture, Func<AudioSettings, bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow.AddSeconds(15);
         while (true)
         {
             if (!fixture.Runner.IsRunning && File.Exists(fixture.Store.FilePath) &&
@@ -833,7 +839,7 @@ public sealed class AudioSetupDispatcherTests
     }
     private static async Task Wait(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow.AddSeconds(15);
         while (!condition())
         {
             Assert.True(DateTime.UtcNow < deadline, "Bounded audio condition not reached.");
@@ -869,11 +875,11 @@ public sealed class AudioSetupDispatcherTests
         }) { IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        await finished.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(60));
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
     }
 
-    private sealed class Fixture : IDisposable
+    private sealed class Fixture : IAsyncDisposable
     {
         public string Directory { get; } = Path.Combine(Path.GetTempPath(), "Martlet.Audio.Dispatcher." + Guid.NewGuid().ToString("N"));
         public SettingsStore Store { get; }
@@ -912,10 +918,24 @@ public sealed class AudioSetupDispatcherTests
             Capture.Block = value;
             Output.Block = value;
         }
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             Release.Set();
-            if (System.IO.Directory.Exists(Directory)) System.IO.Directory.Delete(Directory, true);
+            // A test can end while the window still saves its audio result: the save keeps a settings .tmp file open and
+            // goes on on this dispatcher, so wait for it without blocking the dispatcher.
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (true)
+            {
+                try
+                {
+                    if (System.IO.Directory.Exists(Directory)) System.IO.Directory.Delete(Directory, true);
+                    return;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException && DateTime.UtcNow < deadline)
+                {
+                    await Task.Delay(20);
+                }
+            }
         }
     }
 

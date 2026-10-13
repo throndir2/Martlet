@@ -274,10 +274,12 @@ reads the entire conversation again before every reply (on a 12B model, about
   more of the oldest exchanges than it must (and forgets them), so the next
   several replies start at the same exchange instead of moving by one every
   reply.
-- After a reply, remembering and learning names share one request; on a
-  Thinking model on this PC it continues the reply's own conversation (its
-  tools described again, never run), so the model's cache still holds it for
-  the next reply (see [Memory](MEMORY.md#automatic-recall-and-remembering)).
+- After a reply, remembering and learning names are two requests of their own,
+  one after the other (names first); on a Thinking model on this PC each
+  continues the reply's own conversation (its tools described again, never
+  run), so the model's cache still holds it for the next reply (see
+  [Memory](MEMORY.md#automatic-recall-and-remembering) and
+  [Learning names](VOICES.md#what-happens-in-a-conversation)).
 - While **Thinking longer** is on (the default) and Deep thinking can run where
   it is set to think, every reply on a route that does function calling is
   offered `think_longer` and `cancel_thinking`, always both, first and in the
@@ -782,13 +784,16 @@ a changed key needs a migration of the saved files.
 | `ThinkLonger` | `think-longer` | 40 | no | stops | |
 | `TouchZones` | `touch-zones` | 35 | no | waits | `touch-zones`, `eyes` (at 20), `character-writing` |
 | `Memory` | `memory` | 20 (`Helper`) | no | stops | `memory`, `memory-upkeep`, `memory-brief` (at 10) |
-| `Naming` | `naming` | 20 (`Helper`) | no | stops | `action-naming`, `temperament` |
+| `Naming` | `naming` | 20 (`Helper`) | no | stops | `speaker-naming`, `action-naming`, `temperament` |
 | `CheckIn` | `check-in` | 20 (`Helper`) | no | stops | |
 | `Research` (web and app guides) | `research` | 10 | no | stops | |
 
 Helper jobs use these kinds through `HelperJobs` and `ThinkingPoolHelpers`.
 Remembering after a reply, tidying memory and the memory brief are `Memory`
-jobs. Emote naming and touch temperament are `Naming` jobs. Touch-zone
+jobs. Learning the names of the people speaking after a reply
+([Learning names](VOICES.md#what-happens-in-a-conversation), with the
+[People tools](VOICES.md#people-tools) when Martlet wasn't sure who spoke and a
+member calls tools), emote naming and touch temperament are `Naming` jobs. Touch-zone
 detection, measuring the eyes (vision) and writing a character's personality
 in *Find a character* are `TouchZones` jobs. When the pool can't do one, the conversation's Thinking model does it
 after the reply finishes speaking
@@ -1756,8 +1761,8 @@ own character and runs its own conversation.
 | How I react (`reactions`) | After your touches, at most every 5 min | Did the character's feelings toward you change (it got angry, hurt or shy, or it warmed up)? Its personality, the end of the conversation and [how you touched it lately](#check-in-triggers). | Its [Touch reactions](#how-i-react) tools change how it reacts to your touches for a while. Its answer is only a short line for the log. |
 | Welcome back (`welcome`, off) | 30 min | You came back after 10 minutes or more away: should Martlet welcome you back? How long you were away and what happened meanwhile, what you do now, the personality. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
 | Unanswered question (`unanswered`, off) | 5 min | Martlet asked you something, you're at the PC and didn't answer for 2 minutes: follow up once, softly, or let it go? The end of the conversation, what Martlet said lately, what you do now. It waits while you're on a call. | A `SAY:` line: Martlet says it on its own. `OK` changes nothing. |
-| Talking to someone else (`aside`) | At most once a minute, right after always listening hears you | Are you talking to someone else, not to Martlet (someone in the room, a call on this PC, or a phone Martlet can't see)? What it heard you say in the last 10 minutes with who spoke and whether Martlet answered, the end of the conversation, what you do on this PC and the voices heard lately. | An `ASIDE:` line: Martlet [holds back](#talking-to-someone-else) while that lasts. `BACK` ends it. `OK` changes nothing. |
-| Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
+| Talking to someone else (`aside`) | At most once a minute, right after always listening hears you | Are you talking to someone else, not to Martlet (someone in the room, a call on this PC, or a phone Martlet can't see)? What it heard you say in the last 10 minutes with who spoke and whether Martlet answered, the end of the conversation, what you do on this PC and the voices heard lately. It may call the [People tools](VOICES.md#people-tools) to look up who the voices are. | An `ASIDE:` line: Martlet [holds back](#talking-to-someone-else) while that lasts. `BACK` ends it. `OK` changes nothing. |
+| Someone else is here (`others`, off) | 10 min | Martlet heard a voice that isn't yours: is someone else here? The voices heard in the last 10 minutes, the personality. It may call the [People tools](VOICES.md#people-tools) to look up who the voices are. | A `REMIND:` line (don't share private things about you in front of others) goes in the notes of the next message. `OK` changes nothing. |
 | Describe touches (`touches`) | At most once a minute, right after your touches end | What have you been doing to the character, told vividly as the story so far, true to its personality? How you touched it in the last 10 minutes, the end of the conversation, the personality, the emotes it shows and `{adult}` (explicit only while Adult content is on). | A `KNOW:` line goes with the next reply as [background it may draw on](#describe-touches). `OK` changes nothing. |
 | Think ahead (`ahead`) | At most once a minute, right after a reply ends | As the character, before you answer: how is the conversation going, what will you likely say next, and what does it want to say then? Its personality and the end of the conversation. | A `PLAN:` line, the character's [own thoughts ahead](#think-ahead), goes in the notes of the next message, unless another reply ends first. `OK` changes nothing. |
 
@@ -1792,8 +1797,8 @@ built-in check-in can be recreated, and changed, as your own.
 | How I react | Its personality, the conversation, how you touched the character | A personality is active; it starts when your touches end (any touch trigger) |
 | Welcome back | What happened while you were away, what you are doing, its personality | You came back |
 | Unanswered question | The conversation, what Martlet said in the last hour, what you are doing | Martlet asked something you didn't answer, not on a call |
-| Talking to someone else | What Martlet heard you say, the conversation, what you are doing, who is here | Something new was said; it starts when you say something ([below](#talking-to-someone-else)) |
-| Someone else is here | Who is here, its personality | Someone else spoke |
+| Talking to someone else | What Martlet heard you say, the conversation, what you are doing, who is here; the People tools | Something new was said; it starts when you say something ([below](#talking-to-someone-else)) |
+| Someone else is here | Who is here, its personality; the People tools | Someone else spoke |
 | Describe touches | How you touched the character, the conversation, its personality, emotes and gaze | The character shows; it starts when your touches end |
 | Think ahead | Its personality, the conversation | You talked lately, something new was said; it starts when a reply ends ([below](#think-ahead)) |
 | Act on what was said | The latest exchange (or every exchange since it last ran), reminders and background work | Something new was said; it starts when a reply ends ([below](#act-on-what-was-said)) |
@@ -2213,7 +2218,8 @@ member that can handle what it needs (`CheckIns.Needs`): text always, plus
 *Sees pictures* (vision) and *Hears recordings* (audio) when you tick them. A
 screenshot ticks *Sees pictures* and a recording ticks *Hears recordings* on
 their own, and they can't be unticked then. A check-in with tool sets also needs
-a member that calls tools (`ThinkingCapability.Tools`): an OpenAI-compatible
+a member that calls tools (`ThinkingCapability.Tools`), unless every set it ticks
+is optional (only looks things up, such as People: see below): an OpenAI-compatible
 endpoint (Chat Completions function calling), the same rule as the
 conversation's own tools; a paired computer's Ollama gateway calls none. The
 job's `Needs` go to the
@@ -2240,13 +2246,17 @@ does and its tools. Martlet offers:
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
 | Discord calls and camera (`discord`) | `call_on_discord`, `set_camera_background` | Call a Discord friend you asked for, or change Martlet's webcam background in your Discord call ([Discord](DISCORD.md)). Offered only while Martlet can call someone or is in your Discord calls. Replaces the reply's tools of the same names. |
 | Memory (`memory`) | `memory_find`, `memory_remember`, `memory_update`, `memory_forget` | Find, remember, correct, give to someone else and forget facts, as `manage_memories` does ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. |
-| Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Pictures](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
+| Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Picture making](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
 | Background work (`background-work`) | `think_longer`, `research` | Start a background think or web research on the last exchange, which Martlet brings up when done. Takes over the reply's `think_longer` and `research` ([Thinking longer](#thinking-longer-and-background-work)). Offered only while Thinking longer is on and Deep thinking can think. |
+| People (`people`) | `people_list`, `people_lately` | Look up the people in the voice list (Companion › People): each voice's names (the one used first, typed or learned), whether it is you or linked to someone's account, how often and when it was last heard, and who spoke lately. Read-only; never voiceprints, clips or audio ([People tools](VOICES.md#people-tools)). Takes over no reply tool. Optional: a check-in gets them only when a member that calls tools can take it, and runs without them otherwise. Offered on a PC with a data folder. Talking to someone else and Someone else is here tick it. |
 
 A set can also take over reply tools (`CheckInToolSet.Replaces`): see [Act on what was said](#act-on-what-was-said).
 
 **How a run calls tools.** The job offers the tools of the chosen sets that
-this PC runs (`ThinkingJob.Tools` and `ToolHost`). The member's model calls
+this PC runs (`ThinkingJob.Tools` and `ToolHost`). An optional set
+(`CheckInToolSet.Optional`: People) is offered only when a member that calls
+tools can take the check-in (`CheckIns.Offered`); without one the run goes to
+any member without those tools, and its message doesn't say it may call tools. The member's model calls
 them in a bounded loop: at most 4 rounds (`CheckIns.MaximumToolRounds`) and 8
 calls in all (`CheckIns.MaximumToolCalls`), over every member the pool tries.
 After the eighth call, each call gets an error that says to answer without
@@ -2607,8 +2617,8 @@ saved facts (best lexical matches for the current input, then the newest) as one
 labeled background block inside the same input budget; the full store, path and
 consent UUIDs are never uploaded. If the store can't be read, the reply goes
 ahead without memory and the status says why. After a completed reply, the
-exchange is sent once more, as one extra text-only request (shared with
-learning names when both are due), to the same Thinking model, which picks out
+exchange is sent once more, as one extra text-only request (learning names has
+a request of its own), to the same Thinking model, which picks out
 lasting facts to save locally (shown under the reply and
 listed in Memory). Screen glances are never remembered. The exchanges kept in
 mind for the next replies stay in memory only; separately, while memory and

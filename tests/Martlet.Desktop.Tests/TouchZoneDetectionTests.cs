@@ -1,4 +1,5 @@
 using Martlet.Avatar.Hosting;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop.Tests;
@@ -619,6 +620,20 @@ public sealed class TouchZoneDetectionTests
         Assert.Equal((0.1, 0.2, 0.3, 0.4), (Math.Round(same.X, 9), Math.Round(same.Y, 9), Math.Round(same.Width, 9), Math.Round(same.Height, 9)));
     }
 
+    // Detect zones' line from the decision for a helper job with a picture (SenseJobRouting), with a pool member and an image model
+    // of its own by name.
+    private static (bool CanSee, string Line, string? Off) Sight(SetupRoute? thinking, string? poolMember, bool fixture = false,
+        DeepThinkingSettings? imageModel = null)
+    {
+        var senses = imageModel is null ? new SenseModels() : new SenseModels { Image = new() { Source = SenseSource.Own, Own = imageModel } };
+        var decision = SenseJobRouting.Decide(SenseJobKind.HelperPicture,
+            SenseJobInputs.For(SenseKind.Image, senses, thinking, null) with { PoolName = poolMember });
+        return MainWindow.TouchZonesSight(decision, thinking, null, fixture);
+    }
+
+    private static readonly DeepThinkingSettings LocalEyes =
+        new() { Place = DeepThinkingPlace.Endpoint, Origin = GenerationSupport.LocalOllamaChatBaseUrl, ModelId = "qwen2.5vl:7b" };
+
     [Fact]
     public void DetectZonesIsOffOnlyWithoutAModelThatCanSeeAndSaysWhy()
     {
@@ -627,24 +642,24 @@ public sealed class TouchZoneDetectionTests
             Role = SetupRole.Llm, ProviderAlias = "openai", Origin = "https://api.openai.com", ModelId = model, ConfigurationRevision = Guid.NewGuid()
         };
 
-        var none = MainWindow.TouchZonesSight(null, null, null, fixture: false);
+        var none = Sight(null, null);
         Assert.False(none.CanSee);
         Assert.Contains("no model that can see pictures", none.Off, StringComparison.Ordinal);
-        var textOnly = MainWindow.TouchZonesSight(Thinking("llama3.1:8b"), null, null, fixture: false);
+        var textOnly = Sight(Thinking("llama3.1:8b"), null);
         Assert.False(textOnly.CanSee);
         Assert.Contains("text-only", textOnly.Off, StringComparison.Ordinal);
 
         // A model that sees, or one Martlet can't tell about, keeps it on with no note.
-        var seeing = MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, null, fixture: false);
+        var seeing = Sight(Thinking("gpt-4o"), null);
         Assert.True(seeing.CanSee);
         Assert.Null(seeing.Off);
-        Assert.True(MainWindow.TouchZonesSight(Thinking("my-own-model"), null, null, fixture: false).CanSee);
+        Assert.True(Sight(Thinking("my-own-model"), null).CanSee);
         // A Thinking pool member that sees takes the pictures even when the Thinking model is text-only.
-        var pooled = MainWindow.TouchZonesSight(Thinking("llama3.1:8b"), null, "diva (qwen2.5vl:7b)", fixture: false);
+        var pooled = Sight(Thinking("llama3.1:8b"), "diva (qwen2.5vl:7b)");
         Assert.True(pooled.CanSee);
         Assert.Null(pooled.Off);
         Assert.StartsWith("diva (qwen2.5vl:7b) in your Thinking pool can see pictures", pooled.Line, StringComparison.Ordinal);
-        Assert.True(MainWindow.TouchZonesSight(null, null, null, fixture: true).CanSee);
+        Assert.True(Sight(null, null, fixture: true).CanSee);
     }
 
     [Fact]
@@ -656,18 +671,17 @@ public sealed class TouchZoneDetectionTests
         };
 
         // A text-only Thinking model with an image model of its own (Companion › Vision): the image model finds the zones.
-        var eyes = MainWindow.TouchZonesSight(Thinking("llama3.1:8b"), null, null, fixture: false, imageModel: "Ollama on this PC (qwen2.5vl:7b)");
+        var eyes = Sight(Thinking("llama3.1:8b"), null, imageModel: LocalEyes);
         Assert.True(eyes.CanSee);
         Assert.Null(eyes.Off);
         Assert.Equal("Your image model, Ollama on this PC (qwen2.5vl:7b) (Companion › Vision), finds the zones: pictures go to it, not to the " +
             "Thinking model.", eyes.Line);
         // A Thinking pool member that sees still goes first.
-        var pooled = MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, "diva (qwen2.5vl:7b)", fixture: false, imageModel: "Ollama on this PC (qwen2.5vl:7b)");
+        var pooled = Sight(Thinking("gpt-4o"), "diva (qwen2.5vl:7b)", imageModel: LocalEyes);
         Assert.Equal("diva (qwen2.5vl:7b) in your Thinking pool can see pictures, so it finds the zones first. Otherwise your image model, " +
             "Ollama on this PC (qwen2.5vl:7b), does.", pooled.Line);
-        // Without an image model of its own, nothing changes.
-        Assert.Equal(MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, null, fixture: false).Line,
-            MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, null, fixture: false, imageModel: null).Line);
+        // Without an image model of its own, the Thinking model's advice.
+        Assert.Equal(LiveConversationConfiguration.VisionAdvice(Thinking("gpt-4o"), null), Sight(Thinking("gpt-4o"), null).Line);
     }
 
     // A still renderer as the touch zones picture needs it: it records what it was started with and asked, and answers with a

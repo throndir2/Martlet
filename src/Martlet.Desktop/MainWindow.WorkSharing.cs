@@ -94,6 +94,7 @@ public partial class MainWindow
         "hearing" => CompanionTab.Hearing,
         "reading" => CompanionTab.Reading,
         "motion" => CompanionTab.Motion,
+        "voice-recognition" => CompanionTab.People,
         _ => null
     };
 
@@ -102,11 +103,7 @@ public partial class MainWindow
     private FrameworkElement PoolSummaryRow(PoolArea area)
     {
         var list = WorkSharingRoster.Pool(store?.DataDirectory, area);
-        var on = list?.Members.Where(m => !m.Off).ToArray() ?? [];
-        var detail = list is null ? (area.ConversationFirst ? "Its own model only: a reply waits for it when it is busy." : "Nothing in its list yet.")
-            : on.Length == 0 ? (area.Required ? $"Nothing is on. Instead: {area.WhenEmpty}."
-                : area.ConversationFirst ? "Its own model only: a reply waits for it when it is busy." : "Off: nothing in its list is on.")
-            : (area.ConversationFirst ? "Its own model first, then " : "In order: ") + string.Join(", ", on.Select(m => m.Name)) + ".";
+        var detail = PoolListSummary.Describe(area, list, list?.NoneOn != false ? SenseInstead(area) : null, names: true);
         var row = NetworkRowFrame();
         if (PoolTab(area) is { } tab)
         {

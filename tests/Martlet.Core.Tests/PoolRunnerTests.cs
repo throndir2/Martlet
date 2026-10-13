@@ -123,4 +123,24 @@ public sealed class PoolRunnerTests
             ? Task.FromException<string>(new Refused(WorkRefusal.Unavailable)) : Task.FromResult(stop), 1, CancellationToken.None);
         Assert.Equal(("d", (int?)null, 1), (free.Stop, free.Ahead, free.Unavailable));
     }
+
+    [Fact]
+    public async Task A_stream_is_taken_by_the_stop_whose_first_item_arrives()
+    {
+        var queue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(5) };
+        static async IAsyncEnumerable<string> Items(string stop)
+        {
+            await Task.Yield();
+            if (stop == "a") throw new Refused(WorkRefusal.Busy);
+            yield return stop + "1";
+            yield return stop + "2";
+        }
+        List<(string Stop, int Position, int Busy)> noted = [];
+        List<string> items = [];
+        await foreach (var item in Runner(queue).StreamAsync(["a", "b"], (stop, _, _) => Items(stop), TimeSpan.Zero,
+            (stop, tried) => noted.Add((stop, tried.Position, tried.Busy)), CancellationToken.None))
+            items.Add(item);
+        Assert.Equal(["b1", "b2"], items);
+        Assert.Equal([("b", 1, 1)], noted);
+    }
 }

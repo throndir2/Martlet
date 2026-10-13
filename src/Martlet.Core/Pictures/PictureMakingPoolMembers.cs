@@ -135,15 +135,15 @@ public static class PictureMakingPoolMembers
         _ => provider ?? "a cloud provider"
     };
 
-    /// <summary>Where the member draws, in plain words: "this PC's Pictures role", "m3-host's Pictures role", "ComfyUI at
+    /// <summary>Where the member draws, in plain words: "this PC's Picture making role", "m3-host's Picture making role", "ComfyUI at
     /// http://lab:8188", "OpenRouter (google/...)".</summary>
     public static string Describe(PoolMember member)
     {
         ArgumentNullException.ThrowIfNull(member);
         return member.Kind switch
         {
-            PoolMemberKind.ThisPc => "this PC's Pictures role",
-            PoolMemberKind.Computer => $"{member.HostId}'s Pictures role",
+            PoolMemberKind.ThisPc => "this PC's Picture making role",
+            PoolMemberKind.Computer => $"{member.HostId}'s Picture making role",
             PoolMemberKind.Address => $"ComfyUI at {member.Address}",
             _ => ProviderName(member.Provider) + (member.Model is null ? "" : $" ({member.Model})")
         };
