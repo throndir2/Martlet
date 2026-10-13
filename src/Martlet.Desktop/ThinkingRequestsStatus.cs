@@ -8,18 +8,7 @@ namespace Martlet.Desktop;
 /// <summary>Plain words for the Thinking requests page and its status file: kinds, states, sources and times.</summary>
 internal static class ThinkingRequestWords
 {
-    internal static string Kind(ThinkingJobKind kind) => kind switch
-    {
-        ThinkingJobKind.BargeInJudge => "Barge-in judge",
-        ThinkingJobKind.EndOfTurnJudge => "End-of-turn judge",
-        ThinkingJobKind.Digest => "Summary",
-        ThinkingJobKind.ThinkLonger => "Think longer",
-        ThinkingJobKind.TouchZones => "Touch zones",
-        ThinkingJobKind.Memory => "Memory",
-        ThinkingJobKind.Naming => "Naming",
-        ThinkingJobKind.CheckIn => "Check-in",
-        _ => "Research"
-    };
+    internal static string Kind(ThinkingJobKind kind) => ThinkingJobKinds.Row(kind).TypeName;
 
     internal static string State(ThinkingRequestInfo request) => request.State switch
     {
@@ -65,7 +54,8 @@ internal static class ThinkingRequestWords
 internal sealed partial class LiveConversationController
 {
     /// <summary>thinking-requests.json in the data directory: every Thinking request kept, with its timings, and the totals by
-    /// kind (never a request's text, answer or topic), which MCP's thinking_requests reads.</summary>
+    /// kind (never a request's text, input, answer or topic: only the input's and the answer's lengths), which MCP's
+    /// thinking_requests reads.</summary>
     internal const string RequestsStatusFile = "thinking-requests.json";
 
     /// <summary>How long after a change thinking-requests.json is written (changes in between go in the same write).</summary>
@@ -142,7 +132,7 @@ internal sealed partial class LiveConversationController
                     ms = Ms(a.Duration(r.Finished ?? now)), ending = a.Ending
                 }),
                 retries = r.Retries, preemptions = r.Preemptions, member = r.Last?.Member, model = r.Last?.Model,
-                answerCharacters = r.AnswerLength, cut = r.Cut,
+                answerCharacters = r.AnswerLength, cut = r.Cut, inputCharacters = r.Input?.Length, inputs = r.Asks,
                 timeoutMs = r.Start.Timeout is { } timeout ? Ms(timeout) : (double?)null, dropWhenStale = r.Start.DropWhenStale,
                 maxOutputTokens = r.Start.MaxOutputTokens, reasoning = r.Start.Reasoning, tools = r.Start.Tools
             })

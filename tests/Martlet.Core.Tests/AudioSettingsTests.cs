@@ -25,7 +25,9 @@ public sealed class AudioSettingsTests
         Assert.DoesNotContain("PRIVATE", json);
         Assert.DoesNotContain(input.ConfigurationRevision.ToString(), json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("STALE", status.Describe());
-        Assert.Contains("not fixture", AudioSetupDiagnostics.Describe(status.Audio));
+        var described = AudioSetupDiagnostics.Describe(status.Audio);
+        Assert.Contains("Microphone: chosen device, tested.", described);
+        Assert.DoesNotContain("PRIVATE", described);
     }
 
     [Fact]

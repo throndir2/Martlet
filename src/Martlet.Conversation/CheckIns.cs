@@ -25,7 +25,11 @@ public enum CheckInOutcome
     Tools = 5,
     /// <summary>Puts the answer's "PLAN:" line (the character's own thoughts ahead: what the user will likely say next and what it
     /// means to say then) in the notes of the next message, once, while no newer exchange ended (<see cref="CheckIns.PlanAge"/>).</summary>
-    Plan = 6
+    Plan = 6,
+    /// <summary>An "ASIDE:" line (the user talks to someone else, not to Martlet: who and how, in a few words) makes Martlet hold
+    /// back while that side conversation lasts (<see cref="CheckInAside"/>): every request carries a note to stay quiet ([pass])
+    /// unless the user talks to it. "BACK" ends it.</summary>
+    HoldBack = 7
 }
 
 /// <summary>What a check-in gets to know besides the day and time. A fact whose placeholder the prompt names ({conversation},
@@ -67,7 +71,11 @@ public enum CheckInFacts
     /// <summary>The newest exchange of the conversation in full (what the user said and the character's reply), or every exchange
     /// since this check-in last ran (at most <see cref="CheckIns.MaximumLatest"/>), so a check-in that waited its pace misses
     /// nothing (<see cref="CheckInState.Since"/>).</summary>
-    Latest = 8192
+    Latest = 8192,
+    /// <summary>What always listening heard the user say lately, each with when, who spoke, the other voices and the sound of this
+    /// PC with it, and whether Martlet answered or stayed quiet; and whether Martlet holds back now (<see cref="CheckInState.Heard"/>,
+    /// <see cref="CheckInState.Aside"/>).</summary>
+    Heard = 16384
 }
 
 /// <summary>When a check-in runs: each condition chosen must hold, or it waits and says why on its card.</summary>
@@ -136,10 +144,11 @@ public sealed partial record CheckIn(string Id, string Name, string Does, CheckI
     public CheckInFacts Facts { get; init; }
     public CheckInConditions Conditions { get; init; }
     /// <summary>What a Thinking pool member must handle to take the check-in: text, and pictures or recordings when the owner
-    /// asks for them or the check-in sends a screenshot or a recording, and tool calls when it has <see cref="ToolSets"/>.</summary>
+    /// asks for them or the check-in sends a screenshot or a recording, and tool calls when it has <see cref="ToolSets"/> that
+    /// aren't all <see cref="CheckInToolSet.Optional"/>.</summary>
     public ThinkingCapability Needs
     {
-        get => needs | (ToolSets.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
+        get => needs | (CheckInToolSets.NeedTools(ToolSets) ? ThinkingCapability.Tools : ThinkingCapability.None);
         init => needs = value;
     }
     private readonly ThinkingCapability needs = ThinkingCapability.Text;
@@ -336,7 +345,8 @@ public static partial class CheckIns
 
     /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Lingering emotes every minute, Saying the same things every 10,
     /// Staying in character every 15); How I react on, after your touches (at most every 5 minutes); Welcome back, Unanswered
-    /// question, On a call and Someone else is here off until the owner turns them on; Describe touches on, started by touches at
+    /// question and Someone else is here off until the owner turns them on; Talking to someone else on, right after always
+    /// listening hears the user, at most once a minute; Describe touches on, started by touches at
     /// most once a minute; Think ahead and Act on what was said on, after each reply, at most once a minute. Each is only data (a
     /// prompt, facts, conditions, triggers, tool sets and an outcome) that the owner can
     /// change on its card or copy as their own.</summary>
@@ -392,16 +402,22 @@ public static partial class CheckIns
             PromptId = PromptCatalog.CheckInUnanswered, Facts = CheckInFacts.Conversation | CheckInFacts.Said | CheckInFacts.Activity,
             Conditions = CheckInConditions.Unanswered | CheckInConditions.NotOnCall
         },
-        new(Call, "On a call", "When a call or voice chat starts or ends on this PC, reminds Martlet in its next reply to keep " +
-            "quiet and short during it, or that it may talk as usual again.", CheckInOutcome.Note, false, 2)
+        new(Aside, "Talking to someone else", "Right after always listening hears you, checks whether you're talking to someone " +
+            "else and not to Martlet: someone in the room, a call on this PC, or a phone Martlet can't see (it then hears only your " +
+            "side). While that goes on, Martlet holds back and stays quiet, and it talks again when you talk to it or that " +
+            "conversation ends. No reply waits for it.", CheckInOutcome.HoldBack, true, 1)
         {
-            PromptId = PromptCatalog.CheckInCall, Facts = CheckInFacts.Activity, Conditions = CheckInConditions.ActivityChanged
+            PromptId = PromptCatalog.CheckInAside,
+            Facts = CheckInFacts.Heard | CheckInFacts.Conversation | CheckInFacts.Activity | CheckInFacts.People,
+            Conditions = CheckInConditions.SomethingNew, Triggers = CheckInTriggers.Spoke,
+            // Who the voices are, when a member calls tools; it runs without them otherwise (an optional set).
+            ToolSets = [PeopleTools.SetId]
         },
         new(Others, "Someone else is here", "When Martlet hears a voice that isn't yours, reminds it in its next reply not to share " +
             "private things it knows about you in front of others.", CheckInOutcome.Note, false, 10)
         {
             PromptId = PromptCatalog.CheckInOthers, Facts = CheckInFacts.People | CheckInFacts.Persona,
-            Conditions = CheckInConditions.SomeoneElse
+            Conditions = CheckInConditions.SomeoneElse, ToolSets = [PeopleTools.SetId]
         },
         new(DescribeTouches, "Describe touches", "Right after you touch the character, describes vividly what you have been doing " +
             "to it, true to its personality, so Martlet's next reply can draw on it. The touch reaction never waits for it.",
@@ -522,6 +538,7 @@ public static partial class CheckIns
             CheckInOutcome.Tools => "Your own check-in: Martlet lets it use its tools.",
             CheckInOutcome.Context => "Your own check-in: what it describes adds to what Martlet knows in its next reply.",
             CheckInOutcome.Plan => "Your own check-in: what it thinks ahead goes with Martlet's next reply.",
+            CheckInOutcome.HoldBack => "Your own check-in: Martlet holds back while it says you talk to someone else.",
             _ => "Your own check-in: what it says reminds Martlet in its next reply."
         }, custom.Outcome, custom.On, custom.EveryMinutes)
         {
@@ -533,9 +550,18 @@ public static partial class CheckIns
         };
 
     /// <summary>What a Thinking pool member must handle to take <paramref name="custom"/>: text, what the owner chose, pictures
-    /// for a screenshot, recordings for a recording and tool calls for tool sets.</summary>
+    /// for a screenshot, recordings for a recording and tool calls for tool sets that aren't all optional.</summary>
     public static ThinkingCapability Needs(CustomCheckIn custom) => Needs(custom.Needs, custom.Screenshot, custom.Recording) |
-        (custom.ToolSets.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
+        (CheckInToolSets.NeedTools(custom.ToolSets) ? ThinkingCapability.Tools : ThinkingCapability.None);
+
+    /// <summary>The tool sets a run of <paramref name="checkIn"/> is offered: all it ticks when the pool has a member that calls
+    /// tools for it (<paramref name="poolCallsTools"/>), otherwise only those that aren't <see cref="CheckInToolSet.Optional"/>
+    /// (a check-in with such sets waits for a member that calls tools anyway).</summary>
+    public static IReadOnlyList<string> Offered(CheckIn checkIn, bool poolCallsTools)
+    {
+        ArgumentNullException.ThrowIfNull(checkIn);
+        return poolCallsTools ? checkIn.ToolSets : [.. checkIn.ToolSets.Where(id => CheckInToolSets.Find(id) is not { Optional: true })];
+    }
 
     /// <summary>What a member must handle: text, what the owner <paramref name="chose"/>, pictures for a screenshot and recordings
     /// for a recording.</summary>
@@ -630,8 +656,9 @@ public static partial class CheckIns
     /// may call their tools for up to <see cref="MaximumToolRounds"/> rounds.</summary>
     public static ThinkingJob? Prepare(CheckIn checkIn, CheckInState state, PromptSettings? prompts, CheckInToolHost? tools = null)
     {
-        if (Message(checkIn, state, prompts) is not { } text) return null;
         var offered = tools?.Tools ?? [];
+        // The message says it may call tools only when this run offers some.
+        if (Message(offered.Count > 0 ? checkIn : checkIn with { ToolSets = [] }, state, prompts) is not { } text) return null;
         return new()
         {
             Kind = ThinkingJobKind.CheckIn, Label = $"Check-in: {checkIn.Name}", Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
@@ -664,7 +691,7 @@ public static partial class CheckIns
         ("persona", CheckInFacts.Persona), ("work", CheckInFacts.Work), ("screen", CheckInFacts.Screen), ("sound", CheckInFacts.Sound),
         ("presence", CheckInFacts.Presence), ("said", CheckInFacts.Said), ("replies", CheckInFacts.Replies),
         ("touches", CheckInFacts.Touches), ("activity", CheckInFacts.Activity), ("people", CheckInFacts.People),
-        ("away", CheckInFacts.WhileAway), ("exchange", CheckInFacts.Latest)
+        ("away", CheckInFacts.WhileAway), ("exchange", CheckInFacts.Latest), ("heard", CheckInFacts.Heard)
     ];
 
     /// <summary>The facts <paramref name="template"/> places itself with their placeholders.</summary>
@@ -693,7 +720,7 @@ public static partial class CheckIns
             ("work", Work(state)), ("screen", Screen(state)), ("sound", Sound(state)), ("presence", Presence(state)),
             ("said", Said(state).Count > 0 ? SaidLately.Lines(Said(state), state.Now) : "(nothing)"),
             ("replies", RepliesText(state)), ("touches", Touches(state)), ("activity", Activity(state)), ("people", People(state)),
-            ("away", Away(state)), ("exchange", Latest(state))
+            ("away", Away(state)), ("exchange", Latest(state)), ("heard", Heard(state))
         ]);
         var facts = string.Join("\n\n", new[] { Facts(checkIn.Facts & ~Placed(template), state), Gathered(checkIn, state) }
             .Where(part => part.Length > 0));
@@ -712,6 +739,10 @@ public static partial class CheckIns
             CheckInOutcome.Plan => "If there is nothing worth thinking ahead about, write only: OK\nOtherwise write one line that " +
                 $"starts with PLAN: and gives {who}'s own thoughts ahead, in the first person: what it expects the user to say or " +
                 "ask next and what it means to say then, briefly and in its own voice.",
+            CheckInOutcome.HoldBack => $"If the user is talking to someone else now, not to {who}, write one line that starts with " +
+                "ASIDE: and says in a few words who they talk to and how, like: ASIDE: on the phone with their mom\n" +
+                $"If they talk to {who} again, or that other conversation is over, write only: BACK\n" +
+                "If you can't tell, or nothing changed, write only: OK",
             _ => $"If nothing needs doing now, write only: OK\nOtherwise write one line to {who} that starts with REMIND: and says " +
                 "what to keep in mind or do in its next reply."
         };
@@ -757,6 +788,19 @@ public static partial class CheckIns
                 {
                     if (Starts(line, "USUAL")) return new(true, [], null, true);
                     if (Starts(line, "KEEP") || Starts(line, "OK")) return CheckInVerdict.Nothing;
+                }
+                return CheckInVerdict.Unreadable;
+            case CheckInOutcome.HoldBack:
+                foreach (var line in lines.Reverse())
+                {
+                    if (Starts(line, "ASIDE"))
+                    {
+                        var about = line[5..].TrimStart(':', '-', ' ', '\u2013', '\u2014').Trim().Trim('"', '\u201C', '\u201D').Trim();
+                        if (about.Length == 0) about = "someone else";
+                        return NothingSaid(about) ? CheckInVerdict.Nothing : new(true, [], Clip(about, MaximumAsideCharacters), true);
+                    }
+                    if (Starts(line, "BACK")) return new(true, [], null, true);
+                    if (Starts(line, "OK") || Starts(line, "KEEP")) return CheckInVerdict.Nothing;
                 }
                 return CheckInVerdict.Unreadable;
             default:
@@ -894,6 +938,7 @@ public static partial class CheckIns
         if (facts.HasFlag(CheckInFacts.People)) parts.Add(People(state));
         if (facts.HasFlag(CheckInFacts.WhileAway)) parts.Add(Away(state));
         if (facts.HasFlag(CheckInFacts.Latest)) parts.Add(Latest(state));
+        if (facts.HasFlag(CheckInFacts.Heard)) parts.Add(Heard(state));
         return string.Join("\n\n", parts);
     }
 
@@ -990,13 +1035,13 @@ public static partial class CheckIns
             .Select(word => word.Trim('{', '}', '[', ']', '(', ')', '/', '.', ':', '!', '"', '\'', '*', '`'))
             .Where(word => word.Length > 0)];
 
-    // A REMIND:, SAY:, KNOW: or PLAN: line that says there is nothing to do.
+    // A REMIND:, SAY:, KNOW:, PLAN: or ASIDE: line that says there is nothing to do.
     private static bool NothingSaid(string text)
     {
         var plain = text.Trim().TrimEnd('.', '!').Trim().ToLowerInvariant();
         return plain.Length == 0 || plain is "ok" or "okay" or "none" or "nothing" or "n/a" or "na" or "no" or "keep" or "no reminder" or
             "nothing needed" or "no need" or "nothing to remind" or "nothing to say" or "nothing to bring up" or "nothing new" or
-            "nothing to add" or "nothing to plan" or "nothing to plan ahead" or "no plan";
+            "nothing to add" or "nothing to plan" or "nothing to plan ahead" or "no plan" or "nobody" or "no one";
     }
 
     private static string OneLine(string text) => Spaces().Replace(text, " ").Trim();

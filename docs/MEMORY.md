@@ -531,7 +531,7 @@ so the time to the first spoken word does not change.
   changed. Forgetting a fact forgets its earlier versions too. A full store
   keeps the correction and skips the history copy. Corrections typed in the
   Memory window keep no history (they are usually typing mistakes).
-- **Tidying memory** (a helper job, `memory_upkeep`, Companion › Prompts ›
+- **Tidying memory** (a helper job, `memory-upkeep`, Companion › Prompts ›
   *Tidying memory*; cleanup in a separate background step, as in
   [Letta](https://arxiv.org/abs/2504.13171), and add, update or no change
   decisions, as in [Mem0](https://arxiv.org/abs/2504.19413)). About 30 seconds
@@ -665,7 +665,7 @@ nothing.
   Companion › Prompts › *Writing the memory brief*. The model gets the facts
   the user saved first, then the newest, at most 300 facts and 9,000 bytes,
   each with whose it is and its date, and the names the user goes by (their
-  own voices). The job is a helper job (`memory_brief`) at the Thinking pool's
+  own voices). The job is a helper job (`memory-brief`) at the Thinking pool's
   lowest priority. Without a free pool member, it runs on the conversation's
   Thinking model only once no reply runs or speaks and you aren't talking,
   and only when that model is in the cloud. A Thinking model on this PC or on

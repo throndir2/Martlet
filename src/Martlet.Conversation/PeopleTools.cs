@@ -30,7 +30,11 @@ public static class PeopleTools
             $$$"""{"type":"object","properties":{"query":{"type":"string","description":"A name, part of one, or a voice tag like V3. Empty lists everyone, most recently heard first (at most {{{MaximumListed}}})."}},"additionalProperties":false}"""),
         new(Lately, "Lists who spoke lately: the voices heard in the last minutes, most recent first, with their names.",
             $$$"""{"type":"object","properties":{"minutes":{"type":"integer","minimum":1,"maximum":{{{MaximumLatelyMinutes}}},"description":"How far back to look, in minutes (default {{{DefaultLatelyMinutes}}})."}},"additionalProperties":false}""")
-    ]);
+    ])
+    {
+        // They only read the list: a check-in runs without them when no member calls tools.
+        Optional = true
+    };
 
     /// <summary>One answer of the set's tools: <see cref="Result"/> for the model (its first line holds only counts, so it can
     /// show on the card and in check-ins-status.json) and the voices it listed.</summary>

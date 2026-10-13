@@ -15,6 +15,11 @@ public sealed record CheckInToolSet(string Id, string Name, string Does, IReadOn
     /// none of them, and the check-in does that work after the reply instead. Empty: the reply keeps all its tools.</summary>
     public IReadOnlyList<string> Replaces { get; init; } = [];
 
+    /// <summary>Its tools only look things up (they change nothing), so they are a help, never the check-in's work: a check-in
+    /// that ticks only such sets doesn't need a member that calls tools. It gets them when the pool has a member that calls
+    /// tools for it, and runs without them otherwise (<see cref="CheckIns.Offered"/>).</summary>
+    public bool Optional { get; init; }
+
     public override string ToString() => $"{nameof(CheckInToolSet)} {Id}";
 }
 
@@ -75,6 +80,10 @@ public static class CheckInToolSets
     public static IReadOnlyList<CheckInToolSet> All { get; } = [Character, NextReply, ReminderSet, TouchReactions.Set, DiscordCheckInTools.Set, MemoryToolSet.Set, CreationsCheckIn.Set, BackgroundWorkTools.Set, PeopleTools.Set];
 
     public static CheckInToolSet? Find(string? id) => id is null ? null : All.FirstOrDefault(s => s.Id == id);
+
+    /// <summary>Whether a check-in that ticks <paramref name="ids"/> needs a member that calls tools: when one of them isn't an
+    /// <see cref="CheckInToolSet.Optional"/> set (a set this Martlet doesn't know counts as one that needs it).</summary>
+    public static bool NeedTools(IEnumerable<string> ids) => ids.Any(id => Find(id) is not { Optional: true });
 
     /// <summary>Whether <paramref name="id"/> is a set ID's shape: 1-40 lowercase ASCII letters, digits and hyphens.</summary>
     public static bool IsId(string? id) =>

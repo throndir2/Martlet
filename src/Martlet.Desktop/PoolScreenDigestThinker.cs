@@ -4,9 +4,9 @@ using Martlet.Core.Settings;
 namespace Martlet.Desktop;
 
 /// <summary>Screen summaries as Thinking pool digest jobs: a member that sees, never the conversation's own route
-/// (<see cref="ThinkingPool"/>). The job waits for a free member and runs at most <see cref="Timeout"/>, so its answer comes
+/// (<see cref="DesktopThinkingPool"/>). The job waits for a free member and runs at most <see cref="Timeout"/>, so its answer comes
 /// before <see cref="ScreenDigestTiming.Stale"/>; a job no member took in time is dropped.</summary>
-internal sealed class PoolScreenDigestThinker(Func<ThinkingPool> pool) : IScreenDigestThinker
+internal sealed class PoolScreenDigestThinker(Func<DesktopThinkingPool> pool) : IScreenDigestThinker
 {
     internal static TimeSpan Timeout => ScreenDigestTiming.JobTime;
     internal const string Instructions =

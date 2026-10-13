@@ -39,7 +39,10 @@ public sealed class PeopleToolsTests
         Assert.Same(PeopleTools.Set, set);
         Assert.Equal(new[] { PeopleTools.List, PeopleTools.Lately }, set.Tools.Select(t => t.Name).ToArray());
         Assert.Empty(set.Replaces);
+        Assert.True(set.Optional);
         Assert.True(CheckInToolSets.IsId(set.Id));
+        // Only the People set is optional: every other set is the check-in's work, so it needs a member that calls tools.
+        Assert.Equal([PeopleTools.SetId], CheckInToolSets.All.Where(s => s.Optional).Select(s => s.Id));
     }
 
     [Fact]

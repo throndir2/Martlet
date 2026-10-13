@@ -24,7 +24,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_click");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_scroll");
         var type = tools.Single(tool => tool.GetProperty("name").GetString() == "ui_type").GetProperty("inputSchema").GetProperty("properties");
-        Assert.Equal(["backspace", "delete", "left", "right", "home", "end"],
+        Assert.Equal(["backspace", "delete", "left", "right", "home", "end", "escape"],
             type.GetProperty("keys").GetProperty("items").GetProperty("enum").EnumerateArray().Select(key => key.GetString()));
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_touch");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_pose");
@@ -380,6 +380,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains("signals: the facts and the check-ins", checkInSteps);
         Assert.Contains("signals: hours and the per-hour cap saved and read back", checkInSteps);
         Assert.Contains("think ahead", checkInSteps);
+        Assert.Contains("talking to someone else", checkInSteps);
     }
 
     [Fact]

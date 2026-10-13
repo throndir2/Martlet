@@ -31,8 +31,9 @@ public sealed class DiagnosticTests
             p => Assert.Equal(EvidenceProvenance.NotRun, p.Provenance));
         Assert.DoesNotContain(typeof(FoundationStatusService).Assembly.GetReferencedAssemblies(), a =>
             a.Name is "PresentationFramework" or "NAudio" or "System.Net.Http");
+        // Martlet.Core owns network code (router port mapping, pool errors), so only UI and audio stay out of it.
         Assert.DoesNotContain(typeof(SettingsStore).Assembly.GetReferencedAssemblies(), a =>
-            a.Name is "PresentationFramework" or "NAudio" or "System.Net.Http");
+            a.Name is "PresentationFramework" or "NAudio");
         Assert.Contains("No AI conversation", ReportFormatter.Human(report));
         Assert.Equal(report.ExitCode, ContractJson.Read<DoctorReport>(ContractJson.Write(report)).ExitCode);
     }

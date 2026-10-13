@@ -193,7 +193,10 @@ voice(s) saved, 3 listed.*), because a check-in card shows it.
 
 Any check-in can tick **People** under *It may use these tools*
 ([Check-in tool sets](CONVERSATION.md#check-in-tool-sets)); a PC with a data
-folder runs it, whether recognition is on or off. Learning names gets the same
+folder runs it, whether recognition is on or off. *Talking to someone else* and
+*Someone else is here* tick it by default. The set is optional: a check-in gets
+the tools only when a Thinking pool member that calls tools can take it, and it
+runs without them otherwise. Learning names gets the same
 tools when Martlet wasn't sure who spoke and a Thinking pool member that takes
 Naming jobs calls tools; the conversation's own Thinking model never gets them
 there. The live reply doesn't get them, so the start of every reply's request

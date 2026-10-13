@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Martlet.Conversation;
 using Martlet.Desktop;
 using Martlet.Providers;
 
@@ -76,7 +77,7 @@ public sealed class HelperJobsTests
             var status = File.ReadAllText(Path.Combine(directory, HelperJobs.StatusFile));
             Assert.Contains("\"kind\":\"memory\",\"route\":\"fallback\"", status);
             Assert.Contains("\"outcome\":\"failed: OutputTokenLimit\"", status);
-            Assert.Contains("\"kind\":\"action_naming\",\"route\":\"fallback\"", status);
+            Assert.Contains("\"kind\":\"action-naming\",\"route\":\"fallback\"", status);
             Assert.Equal(2, helpers.Last.Count);
         }
         finally { Directory.Delete(directory, recursive: true); }
@@ -120,7 +121,7 @@ public sealed class HelperJobsTests
             posted.Enqueue(job);
             return Task.FromResult(fail ? Martlet.Conversation.ThinkingAnswer.Failed("broken") : Martlet.Conversation.ThinkingAnswer.Done("answer from " + member.Name));
         });
-        var adapter = new ThinkingPoolHelpers(() => new ThinkingPool(board));
+        var adapter = new ThinkingPoolHelpers(() => new DesktopThinkingPool(board));
 
         Assert.True(adapter.Has(HelperCapability.Text));
         Assert.False(adapter.Has(HelperCapability.Vision));
@@ -194,7 +195,7 @@ public sealed class HelperJobsTests
         Assert.Equal(0, fixture.Llm.Calls);
         var fact = Assert.Single((await fixture.Memory.InspectAsync(revision)).Facts);
         Assert.Equal("diet, food, meat, cooking", fact.SearchWords);
-        Assert.Equal("memory_upkeep", HelperJobs.Name(fixture.Controller.Helpers.Last.Single(r => r.Kind == HelperJobKind.MemoryUpkeep).Kind));
+        Assert.Equal("memory-upkeep", HelperJobs.Name(fixture.Controller.Helpers.Last.Single(r => r.Kind == HelperJobKind.MemoryUpkeep).Kind));
 
         // Nothing is left to do: the next pass asks nothing.
         Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
@@ -238,12 +239,12 @@ public sealed class HelperJobsTests
             posted.Enqueue(job);
             return Task.FromResult(Martlet.Conversation.ThinkingAnswer.Done("NOTHING"));
         });
-        var adapter = new ThinkingPoolHelpers(() => new ThinkingPool(board));
+        var adapter = new ThinkingPoolHelpers(() => new DesktopThinkingPool(board));
         Assert.False(adapter.CallsTools(HelperJobKind.SpeakerNaming));
         members.Add(caller);
         Assert.True(adapter.CallsTools(HelperJobKind.SpeakerNaming));
         Assert.Equal(Martlet.Conversation.ThinkingJobKind.Naming, ThinkingPoolHelpers.Kind(HelperJobKind.SpeakerNaming));
-        Assert.Equal("speaker_naming", HelperJobs.Name(HelperJobKind.SpeakerNaming));
+        Assert.Equal("speaker-naming", HelperJobs.Name(HelperJobKind.SpeakerNaming));
         Assert.Equal(HelperJobPriority.Low, HelperJobs.PriorityOf(HelperJobKind.SpeakerNaming));
 
         var host = new Martlet.Conversation.CheckInToolHost([Martlet.Conversation.PeopleTools.SetId],
