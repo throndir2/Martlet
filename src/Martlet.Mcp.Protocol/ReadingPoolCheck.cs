@@ -6,9 +6,9 @@ using Martlet.Core.Reading;
 namespace Martlet.Mcp;
 
 /// <summary>reading_check's pool (docs/READING.md#the-reading-pool): Companion › Reading's list on this PC (pools-local.json,
-/// <see cref="PoolAreas.Reading"/>; until the page saves one, the list made from reading.json). Each read goes through the queue
-/// (<see cref="WorkQueue"/>, lane reading) at background priority to the list's places in order (<see cref="ReadingPool.Targets"/>),
-/// as the desktop's PoolScreenTextReader does. <see cref="Status"/> gives the list and those places for a data directory from its
+/// <see cref="PoolAreas.Reading"/>; until the page saves one, the list made from reading.json). Each read goes through the pool
+/// runner (<see cref="PoolRunner{TPlace}"/>, lane reading) at background priority to the list's places in order
+/// (<see cref="ReadingPool.Targets"/>), as the desktop's PoolScreenTextReader does. <see cref="Status"/> gives the list and those places for a data directory from its
 /// files; <see cref="RunAsync"/> rehearses the production list code, planner and queue with simulated computers that read one
 /// screenshot at a time and turn another away at once (job.busy), NOT real hosts. Nothing leaves the process.</summary>
 internal static class ReadingPoolCheck
@@ -124,8 +124,8 @@ internal static class ReadingPoolCheck
         var started = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var by = await queue.RunAsync(WorkSharingJobs.Reading, order, r => r.Id, (r, t) => r.ReadAsync(t), Classify,
-                DateTimeOffset.UtcNow + wait, null, CancellationToken.None, WorkPriority.Background);
+            var by = (await new PoolRunner<Reader>(PoolAreas.Reading.Id, r => r.Id, Classify, WorkPriority.Background, queue)
+                .RunAsync(order, (r, _, t) => r.ReadAsync(t), wait, CancellationToken.None)).Result;
             return new(by, Math.Round(started.Elapsed.TotalMilliseconds - work.TotalMilliseconds), null);
         }
         catch (WorkPreemptedException) { return new(null, Math.Round(started.Elapsed.TotalMilliseconds), "later"); }

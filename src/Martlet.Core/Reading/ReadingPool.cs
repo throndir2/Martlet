@@ -2,11 +2,6 @@ using Martlet.Core.Cluster;
 
 namespace Martlet.Core.Reading;
 
-/// <summary>One place a screen read can go (<see cref="ReadingPool.Targets"/>): Windows OCR on this PC (<see cref="HostId"/> null) or a
-/// paired computer's Reading role. <see cref="Key"/> is its "computer" in <see cref="WorkQueue"/>: "this-pc" for Windows OCR,
-/// "host:&lt;id&gt;" for a computer (each computer once, whichever member named it). <see cref="Member"/> is the list's member.</summary>
-public sealed record ReadingTarget(string Key, string? HostId, PoolMember Member);
-
 /// <summary>Companion › Reading's list (<see cref="PoolAreas.Reading"/>, docs/READING.md#the-reading-pool): the places that read the
 /// text on the screen, in order. <see cref="PoolMemberKind.ThisPc"/> reads with Windows OCR on this PC (setting
 /// <c>engine</c> = <see cref="WindowsOcr"/>, the default) or with Martlet's Reading role on this PC's own host service
@@ -31,12 +26,7 @@ public static class ReadingPool
 
     /// <summary>The paired computer whose Reading role <paramref name="member"/> reads with: its own, or for this PC with the
     /// role, <paramref name="ownHost"/> (this PC's own host service). Null for Windows OCR, or this PC without a host service.</summary>
-    public static string? HostOf(PoolMember member, string? ownHost) => member.Kind switch
-    {
-        PoolMemberKind.ThisPc => UsesWindows(member) ? null : ownHost,
-        PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
-        _ => null
-    };
+    public static string? HostOf(PoolMember member, string? ownHost) => UsesWindows(member) ? null : PoolRouting.HostOf(member, ownHost);
 
     /// <summary>Where <paramref name="member"/> reads, in words: "Windows OCR on this PC", "the Reading role on this PC" or
     /// "gpu-pc's Reading role".</summary>
@@ -88,21 +78,15 @@ public static class ReadingPool
         };
     }
 
-    /// <summary>The places companion PC <paramref name="device"/> tries for a read, first to last (<see cref="PoolRouting.Order"/>):
-    /// the members that are on and kept for it, Windows OCR as This PC, and each computer once that is paired here
-    /// (<paramref name="paired"/>); This PC with the role is <paramref name="ownHost"/>.</summary>
-    public static IReadOnlyList<ReadingTarget> Targets(PoolList list, string device, string? ownHost, Func<string, bool> paired)
+    /// <summary>The stops companion PC <paramref name="device"/> tries for a read, first to last (<see cref="PoolRouting.Stops(PoolArea, PoolList?, string, Func{PoolMember, PoolStop?})"/>):
+    /// the members that are on and kept for it, Windows OCR as This PC (<see cref="PoolStop.HostId"/> null), and each computer
+    /// once that is paired here (<paramref name="paired"/>); This PC with the role is <paramref name="ownHost"/>. A stop's key in
+    /// <see cref="WorkQueue"/> is "this-pc" for Windows OCR and "host:&lt;id&gt;" for a computer, whichever member named it.</summary>
+    public static IReadOnlyList<PoolStop> Targets(PoolList list, string device, string? ownHost, Func<string, bool> paired)
     {
         ArgumentNullException.ThrowIfNull(list);
         ArgumentNullException.ThrowIfNull(paired);
-        bool Usable(PoolMember member) => UsesWindows(member) || HostOf(member, ownHost) is { } host && paired(host);
-        List<ReadingTarget> targets = [];
-        foreach (var member in PoolRouting.Order(Area, list, device, Usable).Members)
-        {
-            var host = HostOf(member, ownHost);
-            var key = host is null ? PoolMember.ThisPcKey : "host:" + host;
-            if (targets.All(t => t.Key != key)) targets.Add(new(key, host, member));
-        }
-        return targets;
+        return PoolRouting.Stops(Area, list, device, member => UsesWindows(member) ? new PoolStop(member, null)
+            : HostOf(member, ownHost) is { } host && paired(host) ? new PoolStop(member, host) { Key = "host:" + host } : null);
     }
 }
