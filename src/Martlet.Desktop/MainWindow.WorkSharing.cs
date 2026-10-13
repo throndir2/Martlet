@@ -94,6 +94,7 @@ public partial class MainWindow
         "hearing" => CompanionTab.Hearing,
         "reading" => CompanionTab.Reading,
         "motion" => CompanionTab.Motion,
+        "voice-recognition" => CompanionTab.People,
         _ => null
     };
 
