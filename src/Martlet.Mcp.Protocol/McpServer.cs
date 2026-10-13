@@ -375,7 +375,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
             "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
             "the Parakeet model that hears you on this PC's processor when that route (a paired host or OpenAI) fails, or why none " +
-            "(standIn), sharing (the voice list always syncs with your paired hosts, whatever Keep Martlet the same on all my " +
+            "(standIn), recognitionWhere (Companion > People > Where it runs: the Voice recognition list in pools.json, its members, " +
+            "the places this PC tries in order with this PC's processor last as the fallback, and desktop: the running desktop's " +
+            "voice-recognition-state.json with this PC's engine state, problem, failures, retry time, reloads and speed, the last " +
+            "recognition's place, milliseconds and the places passed over, and each computer's last answer or rest), sharing (the voice list always syncs with your paired hosts, whatever Keep Martlet the same on all my " +
             "computers says: state, hosts, and friendHostsNeverUsed for hosts a friend shares), " +
             "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
             "(from the saved personas) or a placeholder such as \"no name yet\", and the most names one voice has; and clips: whether " +
@@ -474,6 +477,22 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
         {
             martletDirectory = new { type = "string" },
             wavFiles = new { type = "array", items = new { type = "string" } }
+        }),
+        Tool("voice_recognition_check", "Companion > People > Where it runs (docs/VOICES.md#where-voice-recognition-runs): rehearse " +
+            "the Voice recognition list with the production code and SIMULATED computers and engine (NOT real hosts): the order a " +
+            "companion PC tries (each computer once, this PC's processor always last as the fallback, also with no list, an empty " +
+            "list or nothing on), the list shared by two simulated computers, the request (operation, sample_rate, pcm16_base64) and " +
+            "the answer checks (256 numbers of length 1, times within the audio, sane counts; a bad answer is refused), routing " +
+            "through the work queue (a computer that answers in time recognizes; a busy one passes it to this PC at once; a slow one " +
+            "loses to this PC after its head start and rests; a bad answer or an unreachable computer is passed over), and keeping " +
+            "this PC's engine running (one failure: loaded again at once; repeated failures: it rests, tries again in 5 s, a computer " +
+            "after it recognizes, and the check brings it back). With optional absolute martletDirectory it also runs the real engine " +
+            "of that Martlet folder through the keeper: loadMs, analyzeMs of 3 s of a tone, routedMs (the same through the router " +
+            "with this PC alone, the default list), msPerSecond and the head start a computer " +
+            "gets. Nothing is recorded, played or sent; no data directory is used. For a data directory's own list and the running " +
+            "desktop's state, see voices_status's recognitionWhere.", new
+        {
+            martletDirectory = new { type = "string" }
         }),
         Tool("f5_voices", "List Martlet's starter voices (key, name, female, cute, licence, transcript, format; each clip is checked " +
             "against its SHA-256 and F5's reference rules; a new voice list starts with them, after which they are ordinary voices) and " +
@@ -2823,6 +2842,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                 "voices_naming_check" => VoiceNamingCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "reply")),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
+                "voice_recognition_check" => await VoiceRecognitionCheck.RunAsync(
+                    OptionalString(arguments, "martletDirectory") is not null ? MartletDirectory(arguments) : null, cancellation),
                 "f5_voices" => F5Voices(arguments),
                 "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
             "voice_tags" => VoiceTagsCheck(arguments),
@@ -3136,6 +3157,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             },
             parakeet = Martlet.Sherpa.SherpaComponents.InstalledParakeetModels(speech).Count > 0,
             parakeetModels = ParakeetCheck.Status(directory, speech),
+            // Companion › People › Where it runs: the Voice recognition list, the places this PC tries and the running desktop's
+            // own state (voice-recognition-state.json: this PC's engine, the last recognition, the computers tried).
+            recognitionWhere = VoiceRecognitionCheck.Status(directory),
             roster,
             clips = Clips()
         };

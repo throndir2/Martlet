@@ -396,6 +396,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         // People's link line: how many voices link to people's accounts and how many are the signed-in person's (counts only).
         "PeopleLinkStatus",
+        // People's line under Recognize voices: where the last voice was recognized and how long it took ("Last voice recognized
+        // by gpu-pc's Voice recognition role in 45 ms (3.2 s of speech, at 14:02).") or what the Voice recognition list means,
+        // the Check it now button's label (PeopleRecognitionCheck; pressing it sends a test tone through the list, so it needs
+        // --allow-ui-effects) and what the check found (PeopleRecognitionCheckResult).
+        // The list itself reads through the Pool- prefix (Pool-voice-recognition-...). Host IDs, times and fixed wording.
+        "PeopleRecognitionWhere", "PeopleRecognitionCheckResult", "PeopleRecognitionCheck",
         // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
         // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
         // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed

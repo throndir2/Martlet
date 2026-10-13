@@ -619,6 +619,14 @@ public partial class MainWindow
         // A better setup for your computers, found after one came back or stayed away (MainWindow.RecommendedSetup.cs).
         if (RecommendedSetupIssue() is { } better) Add(better.Id, better.Level, better.Title, better.Detail, better.Fixes);
 
+        // Voice recognition on this PC stopped working (VoiceEngineKeeper): Martlet reloads it and tries again by itself.
+        if (localVoices.RecognitionFailure is { } recognition)
+            Add("voice-recognition", HealthLevel.Warning, "Voice recognition stopped working on this PC",
+                recognition + (localVoices.RecognitionTargets.Any(t => !t.Here)
+                    ? " Until then, the computers in your Voice recognition list recognize who is talking when they answer."
+                    : " Until then, Martlet doesn't know who is talking."),
+                [new("retry", "Try again now", () => RetryVoiceRecognitionAsync().Forget()), Open(CompanionTab.People, "Open People")]);
+
         // Updates.
         if (failedInstallMessage is { } installProblem)
             Add("update-failed", HealthLevel.Warning, "The last update didn't install", installProblem,
