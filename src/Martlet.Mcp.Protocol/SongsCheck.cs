@@ -77,7 +77,7 @@ internal static class SongsCheck
     /// for). The desktop also needs singing set up (Companion › Voice › Singing).</summary>
     internal static object WithoutTools(string dataDirectory, AppSettings? settings)
     {
-        var route = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = settings.ThinkingRoute();
         var carriesTools = route?.RouteType is null or SetupRouteType.ChatCompletions or SetupRouteType.OpenAi;
         var rejected = route is not null && ThinkLongerCheck.ToolsRejected(dataDirectory, $"{route.RouteType}|{route.Origin}|{route.ModelId}");
         var prompt = SongTags.Instructions(settings?.Prompts);

@@ -152,7 +152,8 @@ public sealed partial class OwnerTests : NativeTest
     public void Public_owner_never_exposes_mutable_authority_certificate_or_snapshot_import()
     {
         var properties = typeof(DurableGatewayHost).GetProperties().Select(property => property.Name).ToArray();
-        Assert.Equal(["Enabled", "Identity"], properties.OrderBy(value => value).ToArray());
+        // Exposure and NetworkState are the owner's outside-home choices and the network binding (docs/NETWORK.md).
+        Assert.Equal(["Enabled", "Exposure", "Identity", "NetworkState"], properties.OrderBy(value => value).ToArray());
         Assert.DoesNotContain(typeof(DurableGatewayHost).GetMethods(), method =>
             method.Name.Contains("Import", StringComparison.Ordinal) || method.Name.Contains("Export", StringComparison.Ordinal));
         Assert.Equal(["Authenticate"], typeof(IGatewayRequestCredentials).GetMethods().Select(method => method.Name).ToArray());

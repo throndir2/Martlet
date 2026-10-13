@@ -38,7 +38,7 @@ public static class ComponentRanking
         new(PlanComponent.SmartHome, 10, ComponentNecessity.Optional, "Smart home",
             "Controls your lights and devices through Home Assistant. Home Assistant runs on a processor, always on, on a Linux computer or your own hub."),
         new(PlanComponent.Singing, 11, ComponentNecessity.Optional, "Singing", "Sings songs on request. Needs a large NVIDIA card."),
-        new(PlanComponent.Pictures, 12, ComponentNecessity.Optional, "Pictures", "Draws pictures on request. Needs a large NVIDIA card.")
+        new(PlanComponent.Pictures, 12, ComponentNecessity.Optional, "Picture making", "Draws pictures on request. Needs a large NVIDIA card.")
     ];
 
     public static ComponentInfo Of(PlanComponent component) => All.First(info => info.Component == component);

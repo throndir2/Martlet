@@ -42,7 +42,7 @@ public partial class MainWindow
         var id = SenseId(kind);
         var setup = SavedSenseSetup();
         var senses = setup.Senses;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var route = SenseRouting.For(kind, senses, thinking, abilities);
         var place = senses.Place(kind);
@@ -86,18 +86,13 @@ public partial class MainWindow
         if (senses.Place(kind) is { ModelId: { } model } own && !SenseRouting.IsThinking(own, thinking))
         {
             var origin = own.Place == DeepThinkingPlace.Host ? own.HostOrigin : own.Origin;
-            return ModelKnown(kind, model, abilities.Find(origin, model), image ? Said(SenseRouting.Sees(own, abilities))
-                : Said(SenseRouting.Hears(own, abilities)));
+            return ModelKnown(kind, model, abilities.Find(origin, model), ModelSenses.For(own, abilities).Known(kind));
         }
         if (thinking is null) return null;
         if (!image && !HearingModelCatalog.CarriesAudio(thinking.RouteType))
             return $"{thinking.ModelId} gets no recordings on this route: only an OpenAI-compatible endpoint or one of your computers takes them.";
-        return ModelKnown(kind, thinking.ModelId, abilities.Find(thinking.Origin, thinking.ModelId),
-            image ? Said(SenseRouting.ThinkingSees(thinking, abilities)) : Said(SenseRouting.ThinkingHears(thinking, abilities)));
+        return ModelKnown(kind, thinking.ModelId, abilities.Find(thinking.Origin, thinking.ModelId), ModelSenses.For(thinking, abilities).Known(kind));
     }
-
-    private static bool? Said(VisionSupport support) => support switch { VisionSupport.Supported => true, VisionSupport.Unsupported => false, _ => null };
-    private static bool? Said(HearingSupport support) => support switch { HearingSupport.Supported => true, HearingSupport.Unsupported => false, _ => null };
 
     /// <summary>What <paramref name="model"/> is known to do for <paramref name="kind"/>: what Martlet found out
     /// (<paramref name="found"/>, with its last check: model-abilities.json keeps one source and date for each model), else
@@ -304,11 +299,10 @@ public partial class MainWindow
         return panel;
     }
 
-    /// <summary>Whether a model in Ollama on this PC takes <paramref name="kind"/>: what Ollama said (model-abilities.json), else
-    /// its name; null when neither says.</summary>
-    private static bool? LocalTakes(SenseKind kind, string model, ModelAbilities abilities) => kind == SenseKind.Image
-        ? Said(VisionModelCatalog.ForRoute(LocalOllamaBaseUrl, model, abilities))
-        : Said(HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, LocalOllamaBaseUrl, model, abilities));
+    /// <summary>Whether a model in Ollama on this PC takes <paramref name="kind"/> (<see cref="ModelSenses"/>, as an endpoint on this
+    /// PC): what Ollama said (model-abilities.json), else its name; null when neither says.</summary>
+    private static bool? LocalTakes(SenseKind kind, string model, ModelAbilities abilities) =>
+        ModelSenses.For(SetupRouteType.ChatCompletions, LocalOllamaBaseUrl, model, abilities).Known(kind);
 
     private static string LocalShort(SenseKind kind, bool? takes) => takes switch
     {

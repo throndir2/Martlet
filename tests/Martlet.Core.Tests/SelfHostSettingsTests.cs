@@ -17,9 +17,11 @@ public sealed class SelfHostSettingsTests : IDisposable
     {
         var settings = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Stt, "whisper-1", null);
         var route = settings.Setup!.Routes.Single();
-        Assert.Contains("Stt: route selected; consent missing or invalidated", SetupSettings.Describe(settings));
+        Assert.Contains("Speech-to-text: OpenAI; ready when you use it; review required; key missing.", SetupSettings.Describe(settings));
+        Assert.Contains("Stt: route selected; consent missing or invalidated; review in Setup; key not configured",
+            SetupStatus.From(settings)!.Describe());
         settings = SetupSettings.ReplaceRoute(settings, route with { Consent = route.Selection() });
-        Assert.Contains("Stt: route selected; destination choice recorded, NOT per-turn authorization; credential not configured",
+        Assert.Contains("Speech-to-text: OpenAI; ready when you use it; selection saved; key missing.",
             SetupSettings.Describe(settings));
         Assert.Contains("Stt: route selected; destination selected, not per-turn permission; key not configured",
             SetupStatus.From(settings)!.Describe());

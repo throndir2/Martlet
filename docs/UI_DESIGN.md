@@ -518,8 +518,8 @@ window ends it unless Martlet is listening or watching, which only hides it.
         it up and sing there), then the song choices: quality, and the voice
         match (SoulX-Singer or VevoSing) as a second option picker. See
         [Singing](SINGING.md).
-    11. *Pictures*: Now (with *Check* and *Draw a test picture*), then
-        **Where it draws**: Off, Martlet's Pictures role, your own ComfyUI,
+    11. *Picture making*: Now (with *Check* and *Draw a test picture*), then
+        **Where it draws**: Off, Martlet's Picture making role, your own ComfyUI,
         OpenRouter or NVIDIA Build; each option's details hold its computer,
         address and workflow, or model and key, and the button that uses it.
   - **Who it is**:

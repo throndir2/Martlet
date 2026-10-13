@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Settings;
 using Martlet.Core.Creations;
 using Martlet.Discord.Calls;
 
@@ -166,7 +167,7 @@ public partial class MainWindow
     private bool callPictureDrawing;
     private (DateTime Written, System.Windows.Media.ImageSource? Image)? callPicturePreview;
 
-    /// <summary>The camera picture: a file, a picture from Creations or one drawn from an instruction where Companion › Pictures
+    /// <summary>The camera picture: a file, a picture from Creations or one drawn from an instruction where Companion › Picture making
     /// draws, with a small preview of the saved one.</summary>
     private StackPanel CallPicturePanel(DiscordCallPreferences saved)
     {
@@ -234,7 +235,7 @@ public partial class MainWindow
         var state = Note(callPictureState ?? (saved.CameraBackground == DiscordCameraBackground.Picture ? $"The camera shows {saved.CameraDescription}."
             : discordCalls.HasPicture ? "Choose Picture above to use the saved picture again."
             : dataDirectory is not null && PictureClient.IsSetUp(dataDirectory) ? "No picture chosen yet."
-            : "No picture chosen yet. Set up Companion › Pictures to have Martlet draw one."), new Thickness(0, 2, 0, 0));
+            : "No picture chosen yet. Set up Companion › Picture making to have Martlet draw one."), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(state, "DiscordCallCameraPictureStatus");
         panel.Children.Add(state);
         return panel;
@@ -289,7 +290,7 @@ public partial class MainWindow
         catch (Exception error) when (CreationStore.IsFailure(error)) { UsedCallPicture("Couldn't read that picture: " + error.Message, null); }
     }
 
-    /// <summary>Draws a 16:9 picture from <paramref name="instruction"/> where Companion › Pictures draws, keeps it in Creations and
+    /// <summary>Draws a 16:9 picture from <paramref name="instruction"/> where Companion › Picture making draws, keeps it in Creations and
     /// puts the camera on it. A cloud provider asks first, since a picture costs money.</summary>
     private async Task DrawCallPictureAsync(string instruction)
     {
@@ -305,7 +306,7 @@ public partial class MainWindow
         if (PictureClient.FirstPaid(dataDirectory) is { } paid && !PictureClient.Fixture &&
             !ConfirmationDialog.Confirm(this, $"Draw the camera background? It may go to {paid}, which may cost money.", "Draw a camera background", "Draw", "Cancel"))
             return;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var maker = PictureClient.For(dataDirectory, homeSettings?.Profile.Id ?? Guid.Empty, thinking);
         if (maker is null) return;
         callPictureDrawing = true;
@@ -315,7 +316,7 @@ public partial class MainWindow
         try
         {
             var availability = await maker.GetAvailabilityAsync(lifetime.Token);
-            if (!availability.Available) problem = availability.Reason ?? "Pictures aren't available right now.";
+            if (!availability.Available) problem = availability.Reason ?? "Picture making isn't available right now.";
             else
             {
                 var request = new Martlet.Core.Pictures.PictureRequest { Prompt = text, Shape = Martlet.Core.Pictures.PictureShape.Wide };

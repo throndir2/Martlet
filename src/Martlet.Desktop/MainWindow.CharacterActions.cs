@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
@@ -104,7 +105,7 @@ public partial class MainWindow
             return;
         }
         if (avatar.IsShowing && conversation is not null && !namingCharacterActions && characterActions.Current is not null &&
-            (homeSettings?.Setup?.Routes.Any(r => r.Role == SetupRole.Llm) == true || conversation.Helpers.PoolHas(HelperCapability.Text)) &&
+            (homeSettings.ThinkingRoute() is not null || conversation.Helpers.PoolHas(HelperCapability.Text)) &&
             characterActions.ClaimAutomaticNaming())
             NameCharacterActionsAsync().Forget();
 

@@ -166,17 +166,6 @@ public partial class MainWindow
         return Card([.. children]);
     }
 
-    private static DockPanel TerminalRow(string label, UIElement control)
-    {
-        var row = new DockPanel { Margin = new Thickness(0, 8, 0, 0), LastChildFill = true };
-        var name = new TextBlock { Text = label, Width = 90, VerticalAlignment = control is ComboBox ? VerticalAlignment.Center : VerticalAlignment.Top };
-        DockPanel.SetDock(name, Dock.Left);
-        row.Children.Add(name);
-        if (control is ComboBox box) box.HorizontalAlignment = HorizontalAlignment.Left;
-        row.Children.Add(control);
-        return row;
-    }
-
     /// <summary>The terminal's state in words, and whether it is a problem that keeps it from working.</summary>
     private (string Text, bool Problem) TerminalStatus(McpToolService service, TerminalSettings saved)
     {
@@ -184,7 +173,7 @@ public partial class MainWindow
         var shell = TerminalRunner.Name(saved.Shell);
         if (TerminalRunner.Find(saved.Shell) is null) return ($"On, but {shell} isn't installed on this PC. Choose another shell.", true);
         if (!System.IO.Directory.Exists(saved.StartFolder)) return ("On, but the start folder doesn't exist any more. Choose another.", true);
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         if (route is null) return ("On. Set up Thinking so Martlet can use it.", true);
         if (route.RouteType is not (SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
             return ("On, but your Thinking model can't use tools here. Use OpenAI or a Chat Completions endpoint (such as Ollama on " +

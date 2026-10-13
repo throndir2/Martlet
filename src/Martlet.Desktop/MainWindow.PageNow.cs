@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Settings;
 using Martlet.Conversation;
 using Martlet.Discord;
 using Martlet.Messaging;
@@ -297,7 +298,7 @@ public partial class MainWindow
         var voices = localVoices.Roster.Live;
         var problem = localVoices.Enabled && !localVoices.Included
             ? "Voice recognition files are missing from this Martlet installation. Reinstall Martlet to recognize voices."
-            : localVoices.LoadError;
+            : localVoices.RecognitionProblem ?? localVoices.LoadError;
         return PageNowCard(PeopleNow(localVoices.Active, voices.Count, voices.Count(v => v.Named)), null, "PeopleNow", problem);
     }
 
@@ -307,7 +308,7 @@ public partial class MainWindow
         string? problem = null;
         if (service.ConfigurationError is { } error) problem = $"mcp.json has a problem, so no servers run: {error}";
         else if (terminal.Enabled && TerminalStatus(service, terminal) is (var why, true)) problem = why;
-        else if (service.HasEnabledServers && homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Llm) is
+        else if (service.HasEnabledServers && homeSettings.ThinkingRoute() is
                  { RouteType: not (Martlet.Core.Settings.SetupRouteType.OpenAi or Martlet.Core.Settings.SetupRouteType.ChatCompletions) })
             problem = "Your Thinking model can't use tools here. Use OpenAI or a Chat Completions endpoint (such as Ollama on this PC) in Companion › Thinking.";
         return PageNowCard(ToolsNow(service.Servers.Count(s => !s.Disabled), service.Servers.Count, terminal.Enabled), null, "ToolsNow", problem);

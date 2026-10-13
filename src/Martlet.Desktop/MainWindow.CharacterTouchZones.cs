@@ -341,7 +341,7 @@ public partial class MainWindow
         // From the saved setup, so it is right before the talk window opens.
         conversation?.ReadThinkingPoolOnce();
         var seer = conversation?.ThinkingPool.Find(ThinkingJobKind.TouchZones, ThinkingCapability.Text | ThinkingCapability.Vision);
-        var sight = TouchZonesSight(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), SavedModelAbilities(),
+        var sight = TouchZonesSight(homeSettings.ThinkingRoute(), SavedModelAbilities(),
             seer is null ? null : seer.Name + (seer.Model is { Length: > 0 } model ? $" ({model})" : ""),
             Environment.GetEnvironmentVariable(CharacterTouchZoneService.FixtureVariable) is { Length: > 0 }, HelperImageModel());
         var vision = Note(sight.Line, new Thickness(0, 0, 0, 4));

@@ -120,7 +120,7 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>Thinking runs on this PC (Ollama or another OpenAI-compatible server on loopback). Such a server keeps only a
     /// few conversations in its prompt cache, so a request with another start would push the conversation out of it.</summary>
-    internal bool LocalThinking => LocalOllama || Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.ChatCompletions } chat &&
+    internal bool LocalThinking => LocalOllama || Routes.ThinkingRoute() is { RouteType: SetupRouteType.ChatCompletions } chat &&
         Uri.TryCreate(chat.Origin, UriKind.Absolute, out var origin) && origin.IsLoopback;
 
     /// <summary>Whether a text-only request fits a reply's limits and context size, as <see cref="Request"/> fits a reply.</summary>
@@ -162,8 +162,8 @@ internal sealed class LiveConversationConfiguration
         Generation = settings.Generation;
         Prompts = PromptSettings.ForPersonal(settings.Prompts, settings.Generation);
         Fallback = settings.ThinkingFallback is { } fallback &&
-            !fallback.Same(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)) ? fallback : null;
-        var thinking = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+            !fallback.Same(Routes.ThinkingRoute()) ? fallback : null;
+        var thinking = Routes.ThinkingRoute();
         LocalOllama = MainWindow.IsLocalOllama(thinking);
         var thinkingRoute = thinking?.RouteType;
         var limited = LocalOllama
@@ -269,7 +269,7 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>Whether the fallback sends a key: its own, or the Thinking route's when it is the same endpoint.</summary>
     internal bool FallbackHasKey => Fallback is { } fallback &&
-        (fallback.CredentialId is not null || fallback.UsesThinkingKey(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)));
+        (fallback.CredentialId is not null || fallback.UsesThinkingKey(Routes.ThinkingRoute()));
 
     internal TextFallback? TextFallback() =>
         Fallback is { } fallback ? new(new(fallback.Origin, !FallbackHasKey), FallbackSelection()!) : null;
@@ -285,7 +285,7 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>Whether replies can offer tools: OpenAI and Chat Completions routes do function calling, a host's gateway doesn't,
     /// and a model Martlet found unable to call tools (its server's metadata or Test tools) isn't offered them.</summary>
-    internal bool SupportsTools => Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is
+    internal bool SupportsTools => Routes.ThinkingRoute() is
         { RouteType: SetupRouteType.ChatCompletions or SetupRouteType.OpenAi } && Tools() != ToolSupport.Unsupported;
 
     /// <summary>Identifies the Thinking model for remembering that it rejected tools.</summary>
@@ -424,7 +424,7 @@ internal sealed class LiveConversationConfiguration
 
     internal string Disclosure(bool voice)
     {
-        var llm = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var llm = Routes.ThinkingRoute();
         var chat = IsChat(llm);
         var stt = Routes.SingleOrDefault(r => r.Role == SetupRole.Stt);
         var sttHost = IsHostStt(stt) && stt!.Gateway is { } sttGateway ? sttGateway : null;
@@ -566,7 +566,7 @@ internal sealed class LiveConversationConfiguration
     /// at most <see cref="GenerationSettings.MaximumHostContextTokens"/>, so a larger saved context size is sent capped.</summary>
     internal GenerationSettings ReplyGeneration => GenerationSettings.WithReasoning(
         Generation is { ContextTokens: > GenerationSettings.MaximumHostContextTokens } &&
-        Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)?.RouteType == SetupRouteType.GatewayOllama
+        Routes.ThinkingRoute()?.RouteType == SetupRouteType.GatewayOllama
             ? Generation with { ContextTokens = Context.Tokens } : Generation);
 
     private static string? Join(params string?[] parts) =>
@@ -740,24 +740,16 @@ internal sealed class LiveConversationConfiguration
         return string.IsNullOrWhiteSpace(own) ? null : VisionHistory.Without(own.Trim());
     }
 
-    internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
+    internal VisionSupport Vision() => Vision(Routes.ThinkingRoute(), Abilities);
 
-    /// <summary>Whether the Thinking model sees: what its server's metadata said when it was chosen or checked
-    /// (<paramref name="abilities"/>), otherwise its name.</summary>
-    internal static VisionSupport Vision(SetupRoute? thinking, ModelAbilities? abilities = null) =>
-        thinking is null ? VisionSupport.Unknown
-        : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities) is not null);
-
-    /// <summary>The Thinking route's model when its server retired it: found on that route (an HTTP 410 Gone answer) or in
-    /// Martlet's built-in list; null otherwise or for a route that isn't a Chat Completions endpoint.</summary>
-    internal static RetiredModel? Retired(SetupRoute? thinking, ModelAbilities? abilities) =>
-        thinking is not null && IsChat(thinking) ? ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId, abilities) : null;
+    /// <summary>Whether the Thinking model sees (<see cref="ModelSenses"/>).</summary>
+    internal static VisionSupport Vision(SetupRoute? thinking, ModelAbilities? abilities = null) => ModelSenses.For(thinking, abilities).Sees;
 
     /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
-    internal string VisionAdvice() => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
+    internal string VisionAdvice() => VisionAdvice(Routes.ThinkingRoute(), Abilities);
 
     /// <summary>Whether Martlet can see with this setup, for where pictures go now (<paramref name="image"/>, docs/SENSE_MODELS.md).</summary>
-    internal string VisionAdvice(SenseRoute? image) => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities, image);
+    internal string VisionAdvice(SenseRoute? image) => VisionAdvice(Routes.ThinkingRoute(), Abilities, image);
 
     /// <summary>As <see cref="VisionAdvice(SetupRoute?, ModelAbilities?)"/>, for where pictures go now (<paramref name="image"/>,
     /// SenseRouting): the Thinking model's own advice while it takes the pictures; with an image model of its own, which model
@@ -775,7 +767,7 @@ internal sealed class LiveConversationConfiguration
     internal static string VisionAdvice(SetupRoute? route, ModelAbilities? abilities = null)
     {
         if (route is null) return "Set up Thinking so Martlet can see.";
-        if (Retired(route, abilities) is { } retired)
+        if (ModelSenses.Retired(route, abilities) is { } retired)
             return $"{retired.Server} retired this Thinking model. {retired.Remedy}";
         var found = abilities?.Find(route.Origin, route.ModelId) is { Sees: not null } ability ? $" ({Said(ability)})" : "";
         return Vision(route, abilities) switch
@@ -795,23 +787,15 @@ internal sealed class LiveConversationConfiguration
         };
     }
 
-    /// <summary>Whether the Thinking model can hear the user's recording: Chat Completions endpoints (the <c>input_audio</c>
-    /// content part) and a paired computer's Ollama take audio (OpenAI's Responses route takes none), then what was found out
-    /// about the model (its server's metadata, Test hearing or a refused recording), then its name.</summary>
-    internal HearingSupport Hearing() => Hearing(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
+    /// <summary>Whether the Thinking model can hear the user's recording (<see cref="ModelSenses"/>): Chat Completions endpoints
+    /// (the <c>input_audio</c> content part) and a paired computer's Ollama take audio (OpenAI's Responses route takes none).</summary>
+    internal HearingSupport Hearing() => Hearing(Routes.ThinkingRoute(), Abilities);
 
-    internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) =>
-        thinking is null ? HearingSupport.Unknown
-        : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities, Retired(thinking, abilities) is not null);
+    internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) => ModelSenses.For(thinking, abilities).Hears;
 
-    /// <summary>Whether the Thinking model calls tools (<see cref="RouteAbilities.Tools"/>): OpenAI's models and a Chat
-    /// Completions model Martlet didn't find unable to; a paired computer's gateway takes none.</summary>
-    internal ToolSupport Tools()
-    {
-        var thinking = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
-        return thinking is null ? ToolSupport.Unknown
-            : RouteAbilities.Tools(thinking.RouteType, thinking.Origin, thinking.ModelId, Abilities, Retired(thinking, Abilities) is not null);
-    }
+    /// <summary>Whether the Thinking model calls tools (<see cref="ModelSenses"/>): OpenAI's models and a Chat Completions model
+    /// Martlet didn't find unable to; a paired computer's gateway takes none.</summary>
+    internal ToolSupport Tools() => ModelSenses.For(Routes.ThinkingRoute(), Abilities).Tools;
 
     // Where what Martlet knows about a model came from, in a few words: "Ollama on this PC says so, checked 3 Oct".
     private static string Said(ModelAbility ability, ModelFact fact = ModelFact.Sees)
@@ -905,11 +889,11 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>A recording sent to the Thinking route stays on this PC (<see cref="HearingModelCatalog.StaysOnThisPc"/>): only
     /// then may Thinking hear the user's voice without their tick.</summary>
-    internal bool RecordingStaysOnThisPc() => Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is { } thinking &&
+    internal bool RecordingStaysOnThisPc() => Routes.ThinkingRoute() is { } thinking &&
         HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId);
 
     internal string ScreenDisclosure(ChattinessChoice chattiness, WatchSource source) =>
-        ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source) +
+        ScreenDisclosure(Routes.ThinkingRoute(), chattiness, source) +
         (Fallback is { } fallback ? $" If Thinking fails, images go to the fallback, {FallbackName(fallback)}, instead." : "");
 
     /// <summary>What vision captures and sends, and where: shown in Companion › Vision before it is turned on. While Martlet

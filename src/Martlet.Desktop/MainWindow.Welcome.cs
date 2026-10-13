@@ -260,7 +260,7 @@ public partial class MainWindow
     }
 
     private IReadOnlyCollection<string> ConfiguredProviders() =>
-        DefaultSetup.ConfiguredProviders(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), homeSettings?.ThinkingFallback);
+        DefaultSetup.ConfiguredProviders(homeSettings.ThinkingRoute(), homeSettings?.ThinkingFallback);
 
     private void RenderWelcomePlan()
     {
@@ -373,7 +373,7 @@ public partial class MainWindow
     private void WizardAccept_Click(object sender, RoutedEventArgs e)
     {
         if (welcomePlan is not { } plan) return;
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         if (plan.ThinkingHosted?.Option.ProviderId == "nvidia-build" && thinking is null)
         {
             welcomeNeedsKey = true;
@@ -395,7 +395,7 @@ public partial class MainWindow
             "1. Press Open build.nvidia.com below and sign in, or create a free NVIDIA account with your email and confirm the email NVIDIA sends.\n" +
             "2. On the API Keys page choose Generate API Key. Accept NVIDIA's trial terms if asked; some accounts must verify a phone number.\n" +
             "3. Copy the key now: it starts with nvapi- and isn't shown again.\n" +
-            "4. Paste it below, tick the box and press Save key. Windows Credential Manager keeps it; Martlet never shows it again. The same key also works for Pictures.\n" +
+            "4. Paste it below, tick the box and press Save key. Windows Credential Manager keeps it; Martlet never shows it again. The same key also works for Picture making.\n" +
             "Want Thinking to hear your voice? Google Gemini can, with a free Google key: choose it later in Companion › Thinking.";
         WizardKeyStatus.Text = "";
         ShowTour(TourKey);
@@ -431,7 +431,7 @@ public partial class MainWindow
                 null, WizardKeyBox, consent: true);
             await RefreshHomeAsync();
             if (closing) return;
-            var saved = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var saved = homeSettings.ThinkingRoute();
             if (saved?.Origin != ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl || saved.CredentialId is null)
             {
                 WizardKeyStatus.Text = string.IsNullOrWhiteSpace(ActionText.Text) ? "The key wasn't saved. Try again." : ActionText.Text;

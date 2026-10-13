@@ -96,7 +96,7 @@ internal static class GatewayGpus
         GatewayInferenceKind.Transcription => "Listening",
         GatewayInferenceKind.Audio2Face => "Lip-sync",
         GatewayInferenceKind.Song => "Singing",
-        GatewayInferenceKind.Picture => "Pictures",
+        GatewayInferenceKind.Picture => "Picture making",
         GatewayInferenceKind.Ocr => "Reading",
         GatewayInferenceKind.Motion => "Motion",
         GatewayInferenceKind.VoiceRecognition => "Voice recognition",

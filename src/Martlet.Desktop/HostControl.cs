@@ -86,8 +86,6 @@ internal static class HostRoles
     internal const string Ocr = "ocr";
     internal const string Motion = "motion";
     internal const string VoiceRecognition = "voice-recognition";
-    /// <summary>The gateway route of the voice recognition role (Martlet.Gateway's VoiceRecognitionRouteId).</summary>
-    internal const string VoiceRecognitionRouteId = "martlet.gateway.voice-recognition.v1";
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -162,7 +160,7 @@ internal static class HostRoles
             Audio2FaceHostConnection.SongRouteId, "singing",
             "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer). " +
             "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle."),
-        new(Pictures, "Draws", "Pictures", "an NVIDIA GPU with at least 8 GB",
+        new(Pictures, "Draws", "Picture making", "an NVIDIA GPU with at least 8 GB",
             Audio2FaceHostConnection.PictureRouteId, "pictures",
             "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle."),
         new(Ocr, "Reads", "Reading", "Docker; RapidOCR runs on the processor, PP-OCRv5 on the processor or an NVIDIA GPU",
@@ -174,7 +172,7 @@ internal static class HostRoles
             "Makes body motions for VRM characters on that host with Tencent's HY-Motion 1.0, from the English descriptions Martlet " +
             "writes. The description goes there. It downloads about 20 GB and frees the graphics card when idle."),
         new(VoiceRecognition, "Recognizes voices", "Voice recognition", "Docker; it uses an NVIDIA GPU when there is one, otherwise the processor",
-            VoiceRecognitionRouteId, "voice recognition",
+            Audio2FaceHostConnection.VoiceRecognitionRouteId, "voice recognition",
             "Recognizes who is speaking on that host, with the same voice models as this PC, so its voiceprints match your voice " +
             "list. The speech Martlet hears goes there one utterance at a time, is analyzed in memory and is not kept.")
     ];

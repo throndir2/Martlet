@@ -279,16 +279,20 @@ directly. Speaking, Listening and Thinking take one row per computer and no
 graphics card: a host runs one route per engine.
 Lip-sync goes to a pool of the places that run Audio2Face through the same
 queue, without a card here ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)).
-Pictures go through each PC's Pictures list (`PicturePool`, lane `pictures`): a
+Pictures go through each PC's Picture making list (`PictureMakingPool`, lane `pictures`): a
 computer whose ComfyUI already draws a picture is passed over for a free one,
 and when all are busy the picture waits in the shortest queue
-([Pictures](PICTURES.md#more-than-one-picture-computer)).
+([Picture making](PICTURES.md#more-than-one-picture-computer)).
 Songs go through the singing pool (`SingingPool`, lane `singing`): a computer
 that sings another song is passed over for a free one, and when all are busy
 the song waits on the shortest line ([Singing](SINGING.md#the-singing-pool)).
 Reading the screen goes through each PC's Reading list on Companion › Reading
 (lane `reading`): Windows OCR on this PC and your computers' Reading role, in
-order ([the Reading pool](READING.md#the-reading-pool)). Thinking with Ollama on a companion PC itself talks to that Ollama
+order ([the Reading pool](READING.md#the-reading-pool)). Recognizing who
+speaks goes through the Voice recognition list on Companion › People (lane
+`voice-recognition`): your computers' Voice recognition role and this PC's
+processor, which always takes it when no computer answers in time
+([where voice recognition runs](VOICES.md#where-voice-recognition-runs)). Thinking with Ollama on a companion PC itself talks to that Ollama
 directly, so the queue can't see those replies; Ollama queues them. The
 Devices card's status line (`WorkSharingStatus`) and the desktop log
 (`Sharing work: Speaking went to m3-host (1 busy) after 240 ms.`) say when a
@@ -307,7 +311,7 @@ never adds conversation latency. See
 ### Pools: one ordered list of members per area
 
 Each area whose requests can go to more than one place (Speaking, Listening,
-Thinking, lip-sync, pictures, singing, vision, hearing, reading and motion) uses one
+Thinking, lip-sync, pictures, singing, vision, hearing, reading, motion and voice recognition) uses one
 contract, `Martlet.Core.Cluster.Pools` (src\Martlet.Core\Cluster\Pools.cs).
 The area's own page shows and edits its list. There is no separate on/off
 switch and no single-computer choice.
@@ -320,12 +324,13 @@ switch and no single-computer choice.
 | Order | The list order is the order a request tries the members in |
 | On and off | A member that is `off` keeps its place and its settings and takes no work |
 | Kept for | `PoolMember.OnlyFor`: the companion PCs (device IDs) that may use the member; empty means every one |
-| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings) |
+| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings that go with a reply, while background jobs with a picture or a recording go to Thinking pool models that see or hear, [as SENSE_MODELS.md says](SENSE_MODELS.md#the-image-and-audio-pools); for voice recognition, this PC's processor, also when no computer in the list answers in time) |
 | Area (`PoolAreas`) | Its ID (also its `WorkQueue` lane), page, member kinds, host role, required or optional, shared or per PC. Thinking has `ConversationFirst`: the conversation's own model always goes first and is not a member |
 | Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision, hearing and reading). An area with no list yet makes it once from its older choices (`PoolMigration`) |
 | Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
 | Cloud consent | `PoolMember.Consent` binds the owner's agreement (data leaves this PC, requests may cost money) to the area and the member key. A cloud member without a matching agreement takes no work |
-| Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the member key |
+| Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). `PoolRouting.Stops(area, list, device, stop)` turns them into stops (`PoolStop`: the member, its paired computer from `PoolRouting.HostOf`, and its key in `WorkQueue`), each key once. The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the stop's key |
+| Runner | `PoolRunner<TStop>` (src\Martlet.Core\Cluster\PoolRunner.cs) is the one runner for ordered pools: the first stop that takes the request does it, a busy or unavailable stop is passed over, every stop busy means a wait (`RunAsync`: for the first stop to free; `RunOrWaitInLineAsync`: in the shortest of the stops' own lines, for singing hosts and ComfyUI), and a real failure ends the request. Its result (`PoolRun`) says which stop took the request, its position and how many stops were busy or unavailable first. Each pool gives only its rules: lane, key, `classify`, priority and one stop's attempt |
 | Cloud refusals | `PoolRefusals.Http`: 429 and 503 are busy (try the next, then wait); 401, 403, 404, 408 and other 5xx are unavailable (try the next); the rest is a real failure |
 
 An area adds itself in four steps:
@@ -335,9 +340,9 @@ An area adds itself in four steps:
 2. Make its first list from its older choices with `PoolMigration` (or its
    own code), then save it with `PoolSettings.SaveFor`.
 3. On the request path, read the list from local files only (cache it and
-   read it again only when the file changed), call `PoolRouting.Order`, and
-   send the request through `WorkQueue.Shared`. When `PoolOrder.Fallback` is
-   true, run the area's fallback.
+   read it again only when the file changed), call `PoolRouting.Stops` (or
+   `PoolRouting.Order`), and send the request through `PoolRunner<TStop>`.
+   When `PoolOrder.Fallback` is true, run the area's fallback.
 4. Show the list on the area's page with the shared list control,
    `PoolListCard(new PoolListOptions { Area = ..., Status = ..., Settings = ... })`
    (src\Martlet.Desktop\MainWindow.Pools.cs). Give it each member's state line

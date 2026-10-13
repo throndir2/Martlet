@@ -41,7 +41,7 @@ public partial class MainWindow
         var setup = SavedSenseSetup();
         // Made from sense-models.json just now: the list control reads the new file.
         if (!hadList && setup.List(kind) is not null) WorkSharingRoster.Forget();
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var keys = PoolKeys.Load(store?.DataDirectory);
         var hosts = SenseLists.ReadHosts(store?.DataDirectory);
@@ -115,8 +115,12 @@ public partial class MainWindow
                 : $"{model} can't be used as it is");
         else
         {
-            var said = image ? SenseRouting.Sees(place, abilities) switch { VisionSupport.Supported => "sees pictures", VisionSupport.Unsupported => "doesn't see pictures", _ => "not known yet whether it sees" }
-                : SenseRouting.Hears(place, abilities) switch { HearingSupport.Supported => "hears recordings", HearingSupport.Unsupported => "doesn't hear recordings", _ => "not known yet whether it hears" };
+            var said = ModelSenses.For(place, abilities).Known(kind) switch
+            {
+                true => image ? "sees pictures" : "hears recordings",
+                false => image ? "doesn't see pictures" : "doesn't hear recordings",
+                null => image ? "not known yet whether it sees" : "not known yet whether it hears"
+            };
             parts.Add($"{model}: {said}");
             if (SenseRouting.IsThinking(place, thinking)) parts.Add($"it is Thinking's own model, so Thinking takes the {SenseInputs(kind)} itself");
             else if (!member.Off && chosen?.Key == place.Key) parts.Add($"in use: it takes the {SenseInputs(kind)} first");
@@ -475,7 +479,7 @@ public partial class MainWindow
             }
         }
         conversation?.ReloadSenseModels();
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var setup = SavedSenseSetup();
         var route = SenseRouting.For(kind, setup.Senses, thinking, SavedModelAbilities());
         ErrorLog.Info($"{(kind == SenseKind.Image ? "Image" : "Audio")} models: {SenseNow(kind, setup.Senses, setup.For(kind).Count, thinking)} {route.Why}");

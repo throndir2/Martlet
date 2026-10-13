@@ -127,7 +127,7 @@ These are acceptance criteria for every screen.
 ┌──────────┬──────────────────────────────────────────────────────────┐
 │ Home     │  Needs attention (fixes), Health tiles, Start talking    │
 │ Companion│  How it works: Thinking · Listening · Voice · Lip-sync   │
-│          │  Optional extras: Thinking pool · Singing · Pictures ·   │
+│          │  Optional extras: Thinking pool · Singing · Picture making ·   │
 │          │    Vision · Reading                                      │
 │          │  Who it is: Personality · Lorebook · Memory              │
 │          │  How it looks: Character · Speech bubbles · Emotes and   │
@@ -146,7 +146,7 @@ These are acceptance criteria for every screen.
 - **Companion**: a side list of pages in five groups. *How it works* holds
   the job pages Martlet needs, in priority order (Thinking, then Listening,
   Voice and Lip-sync; each asks where the job runs); *Optional extras* holds
-  the jobs Martlet works without (Thinking pool, Singing, Pictures, Vision and
+  the jobs Martlet works without (Thinking pool, Singing, Picture making, Vision and
   Reading); *Who it is* holds the
   personality and what it knows; *How it looks* holds the desktop character
   (its model, speech bubbles, emotes and motions, eyes and touch, each on a

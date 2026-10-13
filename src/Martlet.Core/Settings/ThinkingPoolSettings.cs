@@ -222,14 +222,10 @@ public sealed record ThinkingPoolSettings
         return this with { Smarts = next };
     }
 
-    /// <summary>The Thinking pool job kinds by the names status files use (as ThinkingJobKinds.Name gives them): the keys of
-    /// <see cref="RunsOnByKind"/>.</summary>
-    public static IReadOnlyList<string> JobKinds { get; } =
-        ["barge-in-judge", "end-of-turn-judge", "digest", "think-longer", "touch-zones", "memory", "naming", "research", "check-in"];
-
-    /// <summary>Where each kind of job runs (Runs on, by kind name from <see cref="JobKinds"/>), where the owner changed it from
-    /// Any member. A check-in's own Runs on (on its card) comes before the check-in kind's. A file saved before this existed
-    /// reads as Any member for every kind; a kind this Martlet doesn't know is kept and not used.</summary>
+    /// <summary>Where each kind of job runs (Runs on, by the kind's saved key: Martlet.Conversation's ThinkingJobKinds.Rows is the
+    /// one list of kinds and keys), where the owner changed it from Any member. A check-in's own Runs on (on its card) comes before
+    /// the check-in kind's. A file saved before this existed reads as Any member for every kind; a kind this Martlet doesn't know
+    /// is kept and not used.</summary>
     public IReadOnlyDictionary<string, ThinkingRunsOn> RunsOnByKind
     {
         get => runsOn;
@@ -469,7 +465,7 @@ public static class ThinkingPoolWarnings
             SetupRoute[] shared = member.Place == DeepThinkingPlace.Host
                 ? [.. live.Where(r => SelfHostSetup.IsGateway(r.RouteType) && r.Gateway?.HostId == member.HostId)]
                 : member.OnThisPc ? [.. live.Where(IsThisPc)] : [];
-            if (shared.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } thinking && !OwnCard(member, thinking, gpus))
+            if (shared.ThinkingRoute() is { } thinking && !OwnCard(member, thinking, gpus))
                 warnings.Add(SameServer(member, thinking)
                     ? $"{name} runs in the same Ollama server as the conversation's Thinking model ({thinking.ModelId}): replies may start later while it works, and Martlet checks both fit first."
                     : $"{name} shares {(member.Place == DeepThinkingPlace.Host ? member.HostId : "this PC")} and its graphics card with the conversation's Thinking model: replies may start later while it works.");

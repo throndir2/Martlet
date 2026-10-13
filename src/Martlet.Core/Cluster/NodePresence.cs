@@ -272,7 +272,7 @@ public static class NodePresenceNotices
         "deep-thinking" or "deep-thinking-2" or "deep-thinking-3" or "deep-thinking-4" => "Thinking pool",
         "audio2face" => "Lip-sync",
         "singing" => "Singing",
-        "pictures" => "Pictures",
+        "pictures" => "Picture making",
         "ocr" => "Reading",
         "voice-recognition" => "Voice recognition",
         _ => SpeechEngines.ForRoleKind(kind) is not null ? "Speaking pool" : null

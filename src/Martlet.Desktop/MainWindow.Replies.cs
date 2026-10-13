@@ -111,7 +111,7 @@ public partial class MainWindow
 
     private void RenderRepliesTab(Panel page)
     {
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         var saved = homeSettings?.Generation;
         var place = route is null ? null : PlaceName(route);
 

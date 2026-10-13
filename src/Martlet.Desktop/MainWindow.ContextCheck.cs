@@ -124,7 +124,7 @@ public partial class MainWindow
     /// <summary>Companion › Replies' Check model limit: asks, says what it found and shows the context line again.</summary>
     private async Task CheckContextFromRepliesAsync()
     {
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         if (route is null || !CanCheckContext(route)) return;
         if (checkingContext)
         {
@@ -157,7 +157,7 @@ public partial class MainWindow
     /// found to the status line when nothing newer replaced it.</summary>
     private async Task CheckNewModelContextAsync(bool load = false)
     {
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         if (route is null || !CanCheckContext(route) || checkingContext) return;
         checkingContext = true;
         var shown = ActionText.Text;

@@ -222,12 +222,13 @@ public static class PoolAreas
         Id = ClusterJobs.LipSync, Title = "Lip-sync", Page = "Companion › Lip-sync", HostRole = "audio2face",
         Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer], Required = true, Fallback = "Voice loudness on this PC"
     };
-    /// <summary>Pictures: Martlet's pictures role on this PC's host service or a paired computer (one ComfyUI per computer, so
-    /// no card members), a ComfyUI the owner runs at an address, or a cloud provider ("openrouter", "nvidia-build"). Each PC
-    /// keeps its own list. Member settings: workflow, checkpoint and file (a custom workflow in the data directory).</summary>
-    public static readonly PoolArea Pictures = new()
+    /// <summary>Picture making (pictures Martlet draws when asked; docs/GLOSSARY.md): Martlet's pictures role on this PC's host
+    /// service or a paired computer (one ComfyUI per computer, so no card members), a ComfyUI the owner runs at an address, or a
+    /// cloud provider ("openrouter", "nvidia-build"). Each PC keeps its own list. Member settings: workflow, checkpoint and file (a
+    /// custom workflow in the data directory). The ID, lane and host role stay "pictures": they are saved and sent to hosts.</summary>
+    public static readonly PoolArea PictureMaking = new()
     {
-        Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures",
+        Id = "pictures", Title = "Picture making", Page = "Companion › Picture making", HostRole = "pictures",
         Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
     };
     public static readonly PoolArea Singing = new()
@@ -236,7 +237,8 @@ public static class PoolAreas
     };
     /// <summary>Vision and Hearing: the image model and the audio model, which put pictures and recordings into words for Thinking.
     /// Each PC keeps its own list (which models fit beside Thinking depends on its hardware). An empty list means no model of its
-    /// own: the conversation's own model (Thinking) takes the pictures or recordings itself, as before pools.</summary>
+    /// own. <see cref="PoolArea.Fallback"/> is then true for the pictures and recordings of a reply only; which model takes each
+    /// background job is picture and recording routing (docs/DECISION_MAP.md).</summary>
     public static readonly PoolArea Vision = new()
     {
         Id = "vision", Title = "Vision", Page = "Companion › Vision", Kinds = AllKinds, Shared = false, Required = true,
@@ -262,8 +264,17 @@ public static class PoolAreas
         Id = "motion", Title = "Motion", Page = "Companion › Motion", HostRole = "motion",
         Kinds = [PoolMemberKind.ThisPc, PoolMemberKind.Computer]
     };
+    /// <summary>Recognizing who speaks (<see cref="Martlet.Core.Speakers.VoiceRecognitionPool"/>, docs/VOICES.md#where-voice-recognition-runs):
+    /// this PC's processor, or a paired computer or card that runs the <c>voice-recognition</c> role. The list is the same on all
+    /// the owner's computers. Required: with nothing on, or when no computer answers in time, this PC's processor recognizes.</summary>
+    public static readonly PoolArea VoiceRecognition = new()
+    {
+        Id = "voice-recognition", Title = "Voice recognition", Page = "Companion › People", HostRole = "voice-recognition",
+        Kinds = Local, Required = true, Fallback = "This PC's processor"
+    };
 
-    public static IReadOnlyList<PoolArea> All { get; } = [Speaking, Listening, Thinking, LipSync, Pictures, Singing, Vision, Hearing, Reading, Motion];
+    public static IReadOnlyList<PoolArea> All { get; } =
+        [Speaking, Listening, Thinking, LipSync, PictureMaking, Singing, Vision, Hearing, Reading, Motion, VoiceRecognition];
 
     public static PoolArea? Find(string? id) => All.FirstOrDefault(a => a.Id == id);
 }
@@ -496,7 +507,8 @@ public sealed record PoolOrder(PoolArea Area, IReadOnlyList<PoolMember> Members,
 }
 
 /// <summary>Which pool members a companion PC tries, in order. Deterministic and instant (no network). A request then goes
-/// through <see cref="WorkQueue"/> with the area's ID as its lane and each member's <see cref="PoolMember.Key"/> as its
+/// through the pool runner (<see cref="PoolRunner{TStop}"/>) and <see cref="WorkQueue"/> with the area's ID as its lane and each
+/// stop's <see cref="PoolStop.Key"/> as its
 /// computer (<c>hostOf</c>), so cloud members and addresses queue the same way as host IDs: a busy member (a computer turning a
 /// second request away, a cloud provider's rate limit: <see cref="PoolRefusals"/>) is passed over for the next, and when every
 /// one is busy the request waits for whichever frees first.</summary>
@@ -512,6 +524,34 @@ public static class PoolRouting
         var order = members.Where(m => !m.Off && area.Takes(m.Kind) && m.Allows(device) && m.Consented(area.Id) && (usable?.Invoke(m) ?? true))
             .ToArray();
         return new(area, order, list is not null, members.All(m => m.Off));
+    }
+
+    /// <summary>The paired computer <paramref name="member"/> runs on: for This PC, this PC's own host service
+    /// (<paramref name="own"/>, null without one); for a computer or one of its cards, that computer; null for an address or a
+    /// cloud provider.</summary>
+    public static string? HostOf(PoolMember member, string? own)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return member.Kind switch
+        {
+            PoolMemberKind.ThisPc => own,
+            PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
+            _ => null
+        };
+    }
+
+    /// <summary>The stops companion PC <paramref name="device"/> tries for a request of <paramref name="area"/>, first to last:
+    /// the members that <see cref="Order"/> keeps and that <paramref name="stop"/> puts somewhere (the area's own rule: where the
+    /// member runs and its key in <see cref="WorkQueue"/>; null: it can't take the request here now). Each
+    /// <see cref="PoolStop.Key"/> is in the order once, at its first place. The request then goes through
+    /// <see cref="PoolRunner{TStop}"/>. No network.</summary>
+    public static IReadOnlyList<PoolStop> Stops(PoolArea area, PoolList? list, string device, Func<PoolMember, PoolStop?> stop)
+    {
+        ArgumentNullException.ThrowIfNull(stop);
+        List<PoolStop> stops = [];
+        foreach (var member in Order(area, list, device, m => stop(m) is not null).Members)
+            if (stop(member) is { } found && stops.All(s => s.Key != found.Key)) stops.Add(found);
+        return stops;
     }
 
     /// <summary>The paired computers (host IDs) a host request of <paramref name="area"/> tries, first to last: the list's members
@@ -533,16 +573,7 @@ public static class PoolRouting
     {
         ArgumentNullException.ThrowIfNull(area);
         ArgumentNullException.ThrowIfNull(runs);
-        string? Resolve(PoolMember member)
-        {
-            var id = member.Kind switch
-            {
-                PoolMemberKind.ThisPc => own,
-                PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
-                _ => null
-            };
-            return id is not null && (id == planned || runs.Contains(id)) ? id : null;
-        }
+        string? Resolve(PoolMember member) => HostOf(member, own) is { } id && (id == planned || runs.Contains(id)) ? id : null;
         bool Usable(PoolMember member) => member.Kind is PoolMemberKind.ThisPc or PoolMemberKind.Computer or PoolMemberKind.Gpu
             ? Resolve(member) is not null : usable?.Invoke(member) ?? false;
         List<PoolStop> stops = [];
@@ -558,12 +589,13 @@ public static class PoolRouting
     }
 }
 
-/// <summary>One stop on a request's way (<see cref="PoolRouting.Stops"/>): a member and, for one on a paired computer or this
-/// PC's own host service, its host ID. <see cref="Key"/> is its key in <see cref="WorkQueue"/>: the host ID, or the member's
-/// own key (a cloud provider, an address).</summary>
+/// <summary>One stop on a request's way (<see cref="PoolRouting.Stops(PoolArea, PoolList?, string, Func{PoolMember, PoolStop?})"/>):
+/// a member and, for one on a paired computer or this PC's own host service, its host ID. <see cref="Key"/> is its key in
+/// <see cref="WorkQueue"/>: by default the host ID, or the member's own key (a cloud provider, an address); an area with its own
+/// key rule sets it (Reading: <c>host:&lt;id&gt;</c>; Singing and Lip-sync: the member's key).</summary>
 public sealed record PoolStop(PoolMember Member, string? HostId)
 {
-    public string Key => HostId ?? Member.Key;
+    public string Key { get; init; } = HostId ?? Member.Key;
 }
 
 /// <summary>What a cloud or address member's failure before its first answer means in <see cref="WorkQueue"/>: a rate limit

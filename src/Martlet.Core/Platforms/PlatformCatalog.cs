@@ -404,7 +404,7 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "singing needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "singing needs an NVIDIA GPU; phones and tablets have none")
         ]),
-        new("pictures", Feature, "Pictures: ComfyUI with Z-Image Turbo",
+        new("pictures", Feature, "Picture making: ComfyUI with Z-Image Turbo",
         [
             Works(Linux, Host, "", Nvidia8), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia8),
             Impossible(Mac, Host, "the pictures worker is built for NVIDIA CUDA"),

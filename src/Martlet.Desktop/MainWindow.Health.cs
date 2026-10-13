@@ -128,7 +128,7 @@ public partial class MainWindow
     /// <summary>Starts a local check when the Thinking route changed since the last one (a new choice in Companion, a sync).</summary>
     private void FollowLocalServices()
     {
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var key = thinking is null ? "" : $"{thinking.RouteType}|{thinking.Origin}|{thinking.ModelId}|{thinking.Enabled}";
         if (key == localCheckKey) return;
         localCheckKey = key;
@@ -162,7 +162,7 @@ public partial class MainWindow
             var state = LocalOllamaState.NotUsed;
             webView2Missing = Prerequisites.IsMissing(Prerequisites.WebView2);
             microphoneBlocked = Prerequisites.IsMissing(Prerequisites.Microphone);
-            var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var thinking = homeSettings.ThinkingRoute();
             if (IsLocalOllama(thinking) && thinking!.Enabled != false)
             {
                 IReadOnlyList<string>? models;
@@ -417,7 +417,7 @@ public partial class MainWindow
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
         }
         if (RetiredFallbackIssue(SavedModelAbilities()) is { } fallbackRetired && !dismissedHealth.Contains(fallbackRetired.Id)) issues.Add(fallbackRetired);
-        if (llm is not null && LiveConversationConfiguration.Retired(llm, SavedModelAbilities()) is { } retired)
+        if (llm is not null && Martlet.Conversation.ModelSenses.Retired(llm, SavedModelAbilities()) is { } retired)
             Add("thinking-retired", HealthLevel.Problem, "Your thinking model was retired",
                 $"This model is no longer available{(retired.Since is { } since ? $" ({retired.Server} said so on {since.LocalDateTime:d MMM})" : "")}. " +
                 RetiredProposal(llm.Origin, llm.ModelId, retired),
@@ -619,6 +619,14 @@ public partial class MainWindow
         // A better setup for your computers, found after one came back or stayed away (MainWindow.RecommendedSetup.cs).
         if (RecommendedSetupIssue() is { } better) Add(better.Id, better.Level, better.Title, better.Detail, better.Fixes);
 
+        // Voice recognition on this PC stopped working (VoiceEngineKeeper): Martlet reloads it and tries again by itself.
+        if (localVoices.RecognitionFailure is { } recognition)
+            Add("voice-recognition", HealthLevel.Warning, "Voice recognition stopped working on this PC",
+                recognition + (localVoices.RecognitionTargets.Any(t => !t.Here)
+                    ? " Until then, the computers in your Voice recognition list recognize who is talking when they answer."
+                    : " Until then, Martlet doesn't know who is talking."),
+                [new("retry", "Try again now", () => RetryVoiceRecognitionAsync().Forget()), Open(CompanionTab.People, "Open People")]);
+
         // Updates.
         if (failedInstallMessage is { } installProblem)
             Add("update-failed", HealthLevel.Warning, "The last update didn't install", installProblem,
@@ -766,7 +774,7 @@ public partial class MainWindow
     {
         var top = issues.FirstOrDefault(i => i.Level == HealthLevel.Problem);
         var warnings = issues.Count(i => i.Level == HealthLevel.Warning);
-        var llm = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var llm = homeSettings.ThinkingRoute();
         AdvisorButton.Visibility = issues.Any(i => i.Id == "thinking-setup") ? Visibility.Visible : Visibility.Collapsed;
         ConnectComputersButton.Visibility = issues.Any(i => i.Id == "thinking-setup" && i.Fixes.Any(f => f.Id == "network"))
             ? Visibility.Visible : Visibility.Collapsed;

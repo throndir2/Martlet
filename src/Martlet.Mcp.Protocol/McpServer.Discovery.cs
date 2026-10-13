@@ -15,133 +15,6 @@ internal sealed partial class McpServer
     private const string DataDirectoryNote = "dataDirectory: optional absolute path of a Martlet data folder; default the current " +
         "Windows user's (%LOCALAPPDATA%\\Martlet), the one the installed Martlet uses.";
 
-    /// <summary>The tools for assistants that use and configure Martlet, first in every list.</summary>
-    private static readonly object[] AssistantTools =
-    [
-        Tool("martlet_guide", "Start here. Explains what Martlet is and what this server can do, gives the common tasks step by step " +
-            "(make or change a character, change settings, use the running app, find a problem) and lists every tool with a short " +
-            "summary. topic: overview (default), characters, settings, app, diagnose or tools (every tool by area). search: words to " +
-            "find tools by name or description. tool: one tool's full description and input schema (also for tools not listed, " +
-            "which martlet_call runs). Read-only.", new
-        {
-            topic = new { type = "string", @enum = new[] { "overview", "characters", "settings", "app", "diagnose", "tools" } },
-            search = new { type = "string", maxLength = 200 },
-            tool = new { type = "string", maxLength = 64 }
-        }),
-        Tool("martlet_call", "Run any Martlet MCP tool by name with its arguments, including the diagnostic and self-test tools " +
-            "that are not in the tool list. Find them and their arguments with martlet_guide (search, or tool for one tool's " +
-            "schema). Returns that tool's result.", new
-        {
-            tool = new { type = "string", maxLength = 64 },
-            arguments = new { type = "object" }
-        }, ["tool"]),
-        Tool("characters_list", "List Martlet's characters: each personality (name, whether Martlet is it now, how long its " +
-            "instructions are, and the instructions themselves with includeText) with its character profile (its look and voice), " +
-            "plus the looks (character models) and voices a character can use, and the limits. Use the names or IDs with the " +
-            "other character_* tools. " + DataDirectoryNote + " Read-only.", new
-        {
-            includeText = new { type = "boolean" },
-            dataDirectory = new { type = "string" }
-        }),
-        Tool("character_find_looks", "Find looks (3D VRM character models) online for a character you name: the VRoid Hub models " +
-            "their creators let anyone download and use as a character, the linked VRoid Hub account's own and hearted models, and " +
-            "the free (CC0 and CC-BY) models of the Open Source Avatars registry. Each look has its creator, source, license, every " +
-            "condition of use, whether Martlet may use it, a picture and page address, and its look key: give that key as look to " +
-            "character_create or character_update. vroidhub:<id> looks are shown from VRoid Hub with the owner's linked account and " +
-            "never saved; osa:<project>/<avatar> looks are downloaded once and join the owner's characters. Only the query goes to " +
-            "VRoid Hub and GitHub. sources: vroidhub, osa or both (default). " + DataDirectoryNote + " Read-only.", new
-        {
-            query = new { type = "string", maxLength = 100 },
-            count = new { type = "integer", minimum = 1, maximum = 50 },
-            sources = new { type = "array", items = new { type = "string", @enum = new[] { "vroidhub", "osa" } } },
-            dataDirectory = new { type = "string" }
-        }, ["query"]),
-        Tool("character_find_on_web", "The backup finder for a character's look or voice, when character_find_looks finds no model " +
-            "Martlet can use or the character needs a voice: searches the web (DuckDuckGo) for pages that may have a model of it " +
-            "(VRM, Live2D, MMD or VRChat; Booth, VRoid Hub, nizima, Sketchfab...) and pages with recordings of its voice (voice " +
-            "lines on wikis, clips), plus searches on those sites to open. Martlet downloads nothing from them: the owner opens " +
-            "them, checks the terms, downloads what they may use and adds it in the app (Companion › Character › Add a character; " +
-            "Companion › Voice › Add a voice). models and voices choose what to look for (both by default). Only the query leaves " +
-            "this PC. Read-only.", new
-        {
-            query = new { type = "string", maxLength = 100 },
-            models = new { type = "boolean" },
-            voices = new { type = "boolean" }
-        }, ["query"]),
-        Tool("character_create", "Make a new character in Martlet: a personality (name and personality, the instructions that say who " +
-            "the character is and how it talks, up to 8,192 characters) and a character profile that gives it a look and a voice " +
-            "(look: 'builtin', a look's name or ID from characters_list, or a look key from character_find_looks; voice: a voice's " +
-            "name or ID; both optional, profile " +
-            "false makes only the personality). Or import a SillyTavern, Chub or other Tavern character card with cardPath (an " +
-            "absolute path to a PNG, JSON or CHARX card; name and personality then override the card's), which also keeps the card's " +
-            "keyword lorebook entries for it. Martlet becomes the new character at once unless use is false; a running Martlet " +
-            "follows by itself. Needs the server started with --allow-changes. " + DataDirectoryNote, new
-        {
-            name = new { type = "string", maxLength = 64 },
-            personality = new { type = "string", maxLength = 8192 },
-            cardPath = new { type = "string" },
-            look = new { type = "string", maxLength = 128 },
-            voice = new { type = "string", maxLength = 128 },
-            profile = new { type = "boolean" },
-            use = new { type = "boolean" },
-            dataDirectory = new { type = "string" }
-        }),
-        Tool("character_update", "Change a character: character is its name, ID or profile key (from characters_list); name renames " +
-            "it, personality replaces its instructions, look and voice change its profile's look and voice (look may also be a look " +
-            "key from character_find_looks; 'keep' keeps whatever " +
-            "Martlet uses now; a character without a profile gets one). Needs --allow-changes. " + DataDirectoryNote, new
-        {
-            character = new { type = "string", maxLength = 128 },
-            name = new { type = "string", maxLength = 64 },
-            personality = new { type = "string", maxLength = 8192 },
-            look = new { type = "string", maxLength = 128 },
-            voice = new { type = "string", maxLength = 128 },
-            dataDirectory = new { type = "string" }
-        }, ["character"]),
-        Tool("character_use", "Switch Martlet to a character (its name, ID or profile key): Martlet talks with its personality from " +
-            "the next reply. A profile's look and voice change on this PC when the profile is used in the app; the result says how " +
-            "(followUp). Needs --allow-changes. " + DataDirectoryNote, new
-        {
-            character = new { type = "string", maxLength = 128 },
-            dataDirectory = new { type = "string" }
-        }, ["character"]),
-        Tool("character_delete", "Delete a character (its name, ID or profile key): its personality and its profiles. profileOnly " +
-            "removes only the profile and keeps the personality. Martlet keeps at least one personality; looks and voices stay. " +
-            "Needs --allow-changes. " + DataDirectoryNote, new
-        {
-            character = new { type = "string", maxLength = 128 },
-            profileOnly = new { type = "boolean" },
-            dataDirectory = new { type = "string" }
-        }, ["character"]),
-        Tool("settings_get", "Read Martlet's settings (settings.json) or one part of them by path (snake_case, dots and [index], for " +
-            "example generation, generation.temperature or companion.personas[0].name). Without a path it also lists the parts and " +
-            "which of them settings_set may change. Returns the revision to pass to settings_set. Holds no API keys. " +
-            DataDirectoryNote + " Read-only.", new
-        {
-            path = new { type = "string", maxLength = 256 },
-            dataDirectory = new { type = "string" }
-        }),
-        Tool("settings_schema", "Show what a part of Martlet's settings can hold: the JSON schema of settings.json at path (property " +
-            "names, types, allowed values; for example generation or memory), cut short below depth levels (default 2 for the whole " +
-            "file, 4 for a path). Read-only.", new
-        {
-            path = new { type = "string", maxLength = 256 },
-            depth = new { type = "integer", minimum = 1, maximum = 12 }
-        }),
-        Tool("settings_set", "Change one part of Martlet's settings: path (as for settings_get) and value (any JSON; null removes it, " +
-            "which puts an optional value back to its default). Changes companion (personalities and profiles), generation (how " +
-            "replies are made), prompts and memory; where Martlet thinks, listens and speaks, its API keys and devices change only " +
-            "in the app, because they need the owner's consent. Checked by Martlet's own settings rules before it is saved; revision " +
-            "(from settings_get) refuses the change if the settings changed since. A running Martlet follows by itself. Needs " +
-            "--allow-changes. " + DataDirectoryNote, new
-        {
-            path = new { type = "string", maxLength = 256 },
-            value = new { },
-            revision = new { type = "string", maxLength = 128 },
-            dataDirectory = new { type = "string" }
-        }, ["path", "value"])
-    ];
-
     /// <summary>The tools listed by default, in order, with a title and MCP's behavior hints. The rest are listed with
     /// --all-tools and always run by name (martlet_call, scripts\Invoke-MartletMcp.ps1).</summary>
     private static readonly (string Name, string Title, bool? ReadOnly, bool? Destructive, bool? Idempotent)[] Listed =
@@ -172,18 +45,31 @@ internal sealed partial class McpServer
         ("ui_scroll", "Scroll a page in the Martlet app", true, null, true)
     ];
 
-    private static readonly Lazy<JsonObject[]> Catalog = new(() =>
-        [.. AssistantTools.Concat(Tools).Select(tool => JsonSerializer.SerializeToNode(tool)!.AsObject())]);
+    private (string Area, McpTool[] Tools)[]? groups;
+    private Dictionary<string, McpTool>? byName;
+    private JsonObject[]? catalog;
+    private JsonArray? listedTools, everyTool;
 
-    private static readonly Lazy<JsonArray> ListedTools = new(() => new JsonArray([.. Listed.Select(entry => (JsonNode)Hinted(entry))]));
+    /// <summary>The tools by martlet_guide area (<see cref="ToolGroups"/>), made once for this server.</summary>
+    private (string Area, McpTool[] Tools)[] Groups => groups ??= ToolGroups();
 
-    private static readonly Lazy<JsonArray> EveryTool = new(() => new JsonArray([.. Catalog.Value.Select(tool =>
+    /// <summary>The tool with this name, or null. Two tools with one name fail here.</summary>
+    private McpTool? FindTool(string name) =>
+        (byName ??= Groups.SelectMany(group => group.Tools).ToDictionary(tool => tool.Name, StringComparer.Ordinal)).GetValueOrDefault(name);
+
+    /// <summary>Every tool's definition as tools/list shows it, in the order of the guide's areas.</summary>
+    private JsonObject[] Catalog => catalog ??=
+        [.. Groups.SelectMany(group => group.Tools).Select(tool => JsonSerializer.SerializeToNode(tool.Definition)!.AsObject())];
+
+    private JsonArray ListedTools => listedTools ??= new JsonArray([.. Listed.Select(entry => (JsonNode)Hinted(entry))]);
+
+    private JsonArray EveryTool => everyTool ??= new JsonArray([.. Catalog.Select(tool =>
         Listed.FirstOrDefault(entry => entry.Name == (string)tool["name"]!) is { Name: not null } entry
-            ? Hinted(entry) : (JsonNode)tool.DeepClone())]));
+            ? Hinted(entry) : (JsonNode)tool.DeepClone())]);
 
-    private static JsonObject Hinted((string Name, string Title, bool? ReadOnly, bool? Destructive, bool? Idempotent) entry)
+    private JsonObject Hinted((string Name, string Title, bool? ReadOnly, bool? Destructive, bool? Idempotent) entry)
     {
-        var tool = Catalog.Value.FirstOrDefault(t => (string)t["name"]! == entry.Name)?.DeepClone().AsObject()
+        var tool = Catalog.FirstOrDefault(t => (string)t["name"]! == entry.Name)?.DeepClone().AsObject()
             ?? throw new InvalidOperationException($"The listed tool {entry.Name} has no definition.");
         tool["title"] = entry.Title;
         var hints = new JsonObject { ["title"] = entry.Title };
@@ -198,9 +84,9 @@ internal sealed partial class McpServer
         return tool;
     }
 
-    private JsonArray ToolList() => allTools ? EveryTool.Value : ListedTools.Value;
+    private JsonArray ToolList() => allTools ? EveryTool : ListedTools;
 
-    private static bool IsTool(string name) => Catalog.Value.Any(tool => (string)tool["name"]! == name);
+    private bool IsTool(string name) => FindTool(name) is not null;
 
     /// <summary>The Martlet version this server was built as (Directory.Build.props), without the commit.</summary>
     internal static string Version =>
@@ -221,7 +107,7 @@ internal sealed partial class McpServer
         "- The running app: ui_connect, ui_snapshot, ui_click and the other ui_* tools.\n" +
         "- Diagnostics: doctor_status, doctor_list, doctor_run, logs_tail.\n" +
         (allTools ? "- Every tool is listed (--all-tools).\n"
-            : $"- {Catalog.Value.Length - Listed.Length} more tools (status, checks and self-tests) are not listed; find them with " +
+            : $"- {Catalog.Length - Listed.Length} more tools (status, checks and self-tests) are not listed; find them with " +
               "martlet_guide (search) and run them with martlet_call.\n") +
         "Tools use the current Windows user's Martlet data folder (%LOCALAPPDATA%\\Martlet) unless you pass dataDirectory.\n" +
         (allowChanges ? "Changes are on (--allow-changes): character_* and settings_set save to Martlet's settings, and a running Martlet follows them.\n"
@@ -235,7 +121,7 @@ internal sealed partial class McpServer
     {
         if (tool is not null)
         {
-            var found = Catalog.Value.FirstOrDefault(t => string.Equals((string)t["name"]!, tool.Trim(), StringComparison.OrdinalIgnoreCase))
+            var found = Catalog.FirstOrDefault(t => string.Equals((string)t["name"]!, tool.Trim(), StringComparison.OrdinalIgnoreCase))
                 ?? throw new ArgumentException($"No Martlet tool is called '{tool}'. Use martlet_guide with search to find one.");
             var name = (string)found["name"]!;
             return new
@@ -250,7 +136,7 @@ internal sealed partial class McpServer
         {
             var words = search.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (words.Length == 0) throw new ArgumentException("search needs at least one word.");
-            var matches = Catalog.Value
+            var matches = Catalog
                 .Select(t => (Name: (string)t["name"]!, Description: (string)t["description"]!))
                 .Select(t => (t.Name, t.Description, Score: words.Sum(word =>
                     (t.Name.Contains(word, StringComparison.OrdinalIgnoreCase) ? 3 : 0) +
@@ -288,7 +174,7 @@ internal sealed partial class McpServer
                 version = Version,
                 changes = allowChanges ? "on (--allow-changes)" : "off: start the server with --allow-changes to make or change characters and settings",
                 uiEffects = desktop.AllowsEffects ? "on (--allow-ui-effects)" : "off: ui_* tools only navigate and read until the server starts with --allow-ui-effects",
-                toolsListed = allTools ? $"all {Catalog.Value.Length} (--all-tools)" : $"{Listed.Length} of {Catalog.Value.Length}; martlet_call runs the rest",
+                toolsListed = allTools ? $"all {Catalog.Length} (--all-tools)" : $"{Listed.Length} of {Catalog.Length}; martlet_call runs the rest",
                 dataDirectory = new { path = DefaultDataDirectory, exists = Directory.Exists(DefaultDataDirectory), note = DataDirectoryNote },
                 runningApp = DesktopAutomation.RunningDesktops() is { Length: > 0 } running
                     ? new { running = true, processIds = running, note = "ui_connect connects to it." }
@@ -296,7 +182,7 @@ internal sealed partial class McpServer
             },
             recipes = shownRecipes,
             areas = chosen == "tools"
-                ? Catalog.Value.GroupBy(t => Area((string)t["name"]!)).OrderBy(g => AreaOrder(g.Key)).Select(g => new
+                ? Catalog.GroupBy(t => Area((string)t["name"]!)).OrderBy(g => AreaOrder(g.Key)).Select(g => new
                 {
                     area = g.Key,
                     tools = g.Select(t => new
@@ -305,7 +191,7 @@ internal sealed partial class McpServer
                         listed = allTools || Listed.Any(e => e.Name == (string)t["name"]!)
                     }).ToArray()
                 }).ToArray()
-                : (object)Catalog.Value.GroupBy(t => Area((string)t["name"]!)).OrderBy(g => AreaOrder(g.Key))
+                : (object)Catalog.GroupBy(t => Area((string)t["name"]!)).OrderBy(g => AreaOrder(g.Key))
                     .Select(g => new { area = g.Key, tools = g.Count() }).ToArray(),
             more = chosen == "tools" ? null
                 : "martlet_guide with topic tools lists every tool by area; search finds tools; tool shows one tool's arguments."
@@ -368,32 +254,11 @@ internal sealed partial class McpServer
         return first.Length <= 220 ? first : first[..217].TrimEnd() + "...";
     }
 
-    private static readonly string[] Areas =
-        ["Start here", "Characters", "Settings", "The app's window", "Diagnostics and logs", "Voice and listening", "Thinking and models",
-         "Computers, network and accounts", "Apps, home and memory", "Other"];
+    /// <summary>The place of an area in the guide: the order of <see cref="ToolGroups"/>.</summary>
+    private int AreaOrder(string area) => Array.FindIndex(Groups, group => group.Area == area);
 
-    private static int AreaOrder(string area) => Array.IndexOf(Areas, area) is var index and >= 0 ? index : Areas.Length;
-
-    private static string Area(string name)
-    {
-        bool Starts(params string[] prefixes) => prefixes.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal));
-        bool Has(params string[] parts) => parts.Any(part => name.Contains(part, StringComparison.Ordinal));
-        if (Starts("martlet_")) return "Start here";
-        if (Starts("ui_") || name is "character_touch" or "character_stroke" or "character_face" or "character_picture" or "character_pose" or
-            "character_zones" or "character_mouth" or "character_look" or "character_animation") return "The app's window";
-        if (Starts("character", "f5_", "motion_")) return "Characters";
-        if (Starts("settings_", "prompts_", "api_keys_", "recommended_setup", "setup_run", "chattiness")) return "Settings";
-        if (Starts("doctor_", "logs_", "latency_", "thinking_trace", "companion_status")) return "Diagnostics and logs";
-        if (Has("voice", "parakeet", "hearing", "listening", "echo", "utterance", "barge_in", "turn_judge", "early_reply", "spoken_reply",
-                "quick_sound", "singing", "song", "elevenlabs", "audio2face", "lip_sync", "speaking", "pc_audio", "sound_digest")) return "Voice and listening";
-        if (Has("thinking", "think_longer", "model", "ollama", "sense_", "live_floor", "context", "research", "helper_jobs", "said_lately",
-                "screen_digest", "vision", "active_app", "pc_activity", "reading", "pictures", "image")) return "Thinking and models";
-        if (Has("host", "network", "node_", "cluster", "nearby", "account", "signin", "role_lab", "outside", "exposure", "api_selftest",
-                "gpu_", "mac_host", "app_update", "virtualization", "pc_scope", "work_sharing", "household", "settings_sync")) return "Computers, network and accounts";
-        if (Has("discord", "messaging", "terminal", "smart_home", "home_assistant", "reminders", "check_ins", "creations", "conversation_history",
-                "memory", "mcp_", "app_guides")) return "Apps, home and memory";
-        return "Other";
-    }
+    /// <summary>A tool's martlet_guide area: the group (Tools\<Area>Tools.cs) that registers it.</summary>
+    private string Area(string name) => Groups.First(group => group.Tools.Any(tool => tool.Name == name)).Area;
 
     /// <summary>martlet_call: runs another tool by name, returning its result as if it was called directly.</summary>
     private async Task<object> CallByNameAsync(JsonElement arguments, CancellationToken cancellation)

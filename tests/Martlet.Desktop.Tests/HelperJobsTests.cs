@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Martlet.Conversation;
 using Martlet.Desktop;
 using Martlet.Providers;
 
@@ -76,7 +77,7 @@ public sealed class HelperJobsTests
             var status = File.ReadAllText(Path.Combine(directory, HelperJobs.StatusFile));
             Assert.Contains("\"kind\":\"memory\",\"route\":\"fallback\"", status);
             Assert.Contains("\"outcome\":\"failed: OutputTokenLimit\"", status);
-            Assert.Contains("\"kind\":\"action_naming\",\"route\":\"fallback\"", status);
+            Assert.Contains("\"kind\":\"action-naming\",\"route\":\"fallback\"", status);
             Assert.Equal(2, helpers.Last.Count);
         }
         finally { Directory.Delete(directory, recursive: true); }
@@ -120,7 +121,7 @@ public sealed class HelperJobsTests
             posted.Enqueue(job);
             return Task.FromResult(fail ? Martlet.Conversation.ThinkingAnswer.Failed("broken") : Martlet.Conversation.ThinkingAnswer.Done("answer from " + member.Name));
         });
-        var adapter = new ThinkingPoolHelpers(() => new ThinkingPool(board));
+        var adapter = new ThinkingPoolHelpers(() => new DesktopThinkingPool(board));
 
         Assert.True(adapter.Has(HelperCapability.Text));
         Assert.False(adapter.Has(HelperCapability.Vision));
@@ -194,7 +195,7 @@ public sealed class HelperJobsTests
         Assert.Equal(0, fixture.Llm.Calls);
         var fact = Assert.Single((await fixture.Memory.InspectAsync(revision)).Facts);
         Assert.Equal("diet, food, meat, cooking", fact.SearchWords);
-        Assert.Equal("memory_upkeep", HelperJobs.Name(fixture.Controller.Helpers.Last.Single(r => r.Kind == HelperJobKind.MemoryUpkeep).Kind));
+        Assert.Equal("memory-upkeep", HelperJobs.Name(fixture.Controller.Helpers.Last.Single(r => r.Kind == HelperJobKind.MemoryUpkeep).Kind));
 
         // Nothing is left to do: the next pass asks nothing.
         Assert.Null(await fixture.Controller.MemoryUpkeepPassAsync(CancellationToken.None));
@@ -260,15 +261,15 @@ public sealed class HelperJobsTests
     public void The_thinking_pool_page_says_which_members_wait_while_you_talk()
     {
         var pool = new Martlet.Core.Settings.ThinkingPoolSettings();
-        Assert.Equal("", MainWindow.LiveFloorLine(pool with { UseConversationModelWhenEmpty = false }, 0, []));
+        Assert.Equal("", ThinkingPoolPageModel.LiveFloorLine(pool with { UseConversationModelWhenEmpty = false }, 0, []));
         Assert.StartsWith("While you talk with Martlet, thinking longer and research on the conversation model wait",
-            MainWindow.LiveFloorLine(pool, 0, []));
+            ThinkingPoolPageModel.LiveFloorLine(pool, 0, []));
         Assert.Equal("No member shares the conversation's computer, so pool work never waits while you talk with Martlet.",
-            MainWindow.LiveFloorLine(pool, 2, []));
+            ThinkingPoolPageModel.LiveFloorLine(pool, 2, []));
         Assert.StartsWith("While you talk with Martlet, this PC starts no new pool work, because it shares the conversation's computer.",
-            MainWindow.LiveFloorLine(pool, 2, ["this PC"]));
+            ThinkingPoolPageModel.LiveFloorLine(pool, 2, ["this PC"]));
         Assert.StartsWith("While you talk with Martlet, this PC and diva start no new pool work, because they share",
-            MainWindow.LiveFloorLine(pool, 3, ["this PC", "diva"]));
+            ThinkingPoolPageModel.LiveFloorLine(pool, 3, ["this PC", "diva"]));
     }
 
     [Fact]
@@ -280,12 +281,12 @@ public sealed class HelperJobsTests
         };
         var empty = new Martlet.Core.Settings.ThinkingPoolSettings();
         Assert.Equal("The Thinking pool is off: no machine is on. Thinking longer and research use the conversation model meanwhile. " +
-            "Add a machine below.", MainWindow.PoolSummary(empty, 0));
+            "Add a machine below.", ThinkingPoolPageModel.PoolSummary(empty, 0));
         var off = empty.Add(local).TurnOff(local.Key);
         Assert.Equal("The Thinking pool is off: no machine is on. 1 machine is turned off. The conversation model isn't used either, " +
             "so Martlet doesn't think in the background. Tick On to use one again.",
-            MainWindow.PoolSummary(off with { UseConversationModelWhenEmpty = false }, 0));
-        Assert.Equal("1 machine is on, with 2 usable slots in all.", MainWindow.PoolSummary(off.TurnOn(local.Key), 2));
+            ThinkingPoolPageModel.PoolSummary(off with { UseConversationModelWhenEmpty = false }, 0));
+        Assert.Equal("1 machine is on, with 2 usable slots in all.", ThinkingPoolPageModel.PoolSummary(off.TurnOn(local.Key), 2));
     }
 
     [Fact]
@@ -293,16 +294,16 @@ public sealed class HelperJobsTests
     {
         var pool = new Martlet.Core.Settings.ThinkingPoolSettings();
         Assert.Equal("More important requests may stop less important ones; a request stopped 3 times becomes more important. " +
-            "A failed request is tried once more.", MainWindow.PriorityLine(pool, null));
+            "A failed request is tried once more.", ThinkingPoolPageModel.PriorityLine(pool, null));
         Assert.Equal("Requests wait for a free slot and never stop each other. A failed request isn't tried again.",
-            MainWindow.PriorityLine(pool with { PreemptLowerPriority = false, RetriesOnFailure = 0 }, null));
+            ThinkingPoolPageModel.PriorityLine(pool with { PreemptLowerPriority = false, RetriesOnFailure = 0 }, null));
         var status = new Martlet.Conversation.ThinkingPoolStatus([], 2, 1, false, new Dictionary<string, int>(), new Dictionary<string, int>(), [])
         {
             StoppedForPriority = 4, Raised = 1, Retried = 2
         };
         Assert.Equal("More important requests may stop less important ones; a request stopped once becomes more important. " +
             "A failed request is tried up to 5 more times. Since Martlet started: 4 stopped, 1 made more important, 2 tried again.",
-            MainWindow.PriorityLine(pool with { RaisePriorityAfterStops = 1, RetriesOnFailure = 5 }, status));
+            ThinkingPoolPageModel.PriorityLine(pool with { RaisePriorityAfterStops = 1, RetriesOnFailure = 5 }, status));
     }
 
     [Fact]
