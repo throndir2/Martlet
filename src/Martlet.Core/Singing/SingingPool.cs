@@ -82,14 +82,10 @@ public static class SingingPool
         IReadOnlyList<string> paired, IReadOnlyList<WorkPlace> singers)
     {
         ArgumentNullException.ThrowIfNull(paired);
-        string? HostOf(PoolMember member) => (member.Kind switch
-        {
-            PoolMemberKind.ThisPc => own,
-            PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
-            _ => null
-        }) is { } id && paired.Contains(id, StringComparer.Ordinal) ? id : null;
+        // A song's key in the queue is the member's key (a card of a computer is its own stop).
         if (list is not null)
-            return [.. PoolRouting.Order(PoolAreas.Singing, list, device, m => HostOf(m) is not null).Members.Select(m => (m, HostOf(m)!))];
+            return [.. PoolRouting.Stops(PoolAreas.Singing, list, device, m => PoolRouting.HostOf(m, own) is { } host &&
+                paired.Contains(host, StringComparer.Ordinal) ? new PoolStop(m, host) { Key = m.Key } : null).Select(s => (s.Member, s.HostId!))];
         return [.. Order(saved, paired, singers).Select(id => (id == own ? PoolMember.ThisPc() : PoolMember.Computer(id), id))];
     }
 
@@ -158,12 +154,13 @@ public static class SingingPool
     };
 
     /// <summary>Makes a <paramref name="match"/> song on the first of <paramref name="members"/> that takes it (see the class
-    /// summary) through <paramref name="queue"/>. <paramref name="look"/> reads a computer's singing status (null: it doesn't
-    /// sing); <paramref name="sing"/> makes the song there, waiting in its line when it has one. <paramref name="classify"/>
-    /// says what other failures mean (a gateway's refusals); <see cref="SongException"/>s are read by <see cref="Classify"/>.
-    /// <paramref name="hostOf"/> is a member's key in the queue (a pool member's <see cref="PoolMember.Key"/>);
-    /// <paramref name="nameOf"/> its name in messages and <see cref="SungOn{T}.HostId"/> (the computer; default: the key).
-    /// Throws the last refusal when no computer took the song.</summary>
+    /// summary) through <paramref name="queue"/> (<see cref="PoolRunner{TStop}.RunOrWaitInLineAsync"/>, every busy computer's
+    /// line in turn). <paramref name="look"/> reads a computer's singing status (null: it doesn't sing); <paramref name="sing"/>
+    /// makes the song there, waiting in its line when it has one. <paramref name="classify"/> says what other failures mean (a
+    /// gateway's refusals); <see cref="SongException"/>s are read by <see cref="Classify"/>. <paramref name="hostOf"/> is a
+    /// member's key in the queue (a pool member's <see cref="PoolMember.Key"/>); <paramref name="nameOf"/> its name in messages
+    /// and <see cref="SungOn{T}.HostId"/> (the computer; default: the key). Throws the last refusal when no computer took the
+    /// song.</summary>
     public static async Task<SungOn<T>> RunAsync<TTarget, T>(WorkQueue queue, IReadOnlyList<TTarget> members, Func<TTarget, string> hostOf,
         Func<TTarget, CancellationToken, Task<SingerState?>> look, Func<TTarget, CancellationToken, Task<T>> sing, SongVoiceMatch match,
         Func<Exception, WorkRefusal>? classify, TimeProvider? clock, CancellationToken token, Func<TTarget, string>? nameOf = null)
@@ -174,10 +171,7 @@ public static class SingingPool
         ArgumentNullException.ThrowIfNull(look);
         ArgumentNullException.ThrowIfNull(sing);
         if (members.Count == 0) throw new SongException(SongErrorCodes.Unavailable, "No computer is set up for Singing.");
-        var time = clock ?? TimeProvider.System;
         var name = nameOf ?? hostOf;
-        var index = members.Select((member, i) => (hostOf(member), i)).GroupBy(p => p.Item1, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().i, StringComparer.Ordinal);
         WorkRefusal Refuse(Exception error)
         {
             if (error is SongException || classify is null) return Classify(error);
@@ -185,47 +179,25 @@ public static class SingingPool
             return refusal != WorkRefusal.None ? refusal : Classify(error);
         }
 
-        // First: a computer that sings nothing now. Busy ones are remembered with their lines, for the second pass.
-        var busy = new Dictionary<string, (TTarget Member, int Ahead)>(StringComparer.Ordinal);
-        string? took = null;
-        async Task<T> Free(TTarget member, CancellationToken t)
+        async Task<T> Sing(TTarget member, PoolTry tried, CancellationToken t)
         {
-            var id = hostOf(member);
-            var state = await look(member, t).ConfigureAwait(false);
-            if (Refusal(name(member), state, match) is { } refusal) throw refusal;
-            if (state!.Ahead > 0)
+            if (tried.Ahead is null)
             {
-                lock (busy) busy[id] = (member, state.Ahead);
-                throw new SongException(SongErrorCodes.Busy, $"{name(member)} is singing another song.");
+                // First: a computer that sings nothing now. A busy one says how many songs are before a new one, for the line.
+                var state = await look(member, t).ConfigureAwait(false);
+                if (Refusal(name(member), state, match) is { } refusal) throw refusal;
+                if (state!.Ahead > 0)
+                {
+                    tried.Line(state.Ahead);
+                    throw new SongException(SongErrorCodes.Busy, $"{name(member)} is singing another song.");
+                }
             }
-            took = id;
             return await sing(member, t).ConfigureAwait(false);
         }
-        try
-        {
-            var made = await queue.RunAsync(Lane, members, hostOf, Free, Refuse, time.GetUtcNow(), time, token, WorkPriority.Background)
-                .ConfigureAwait(false);
-            return new(made, name(members.First(m => hostOf(m) == took)), false, 0);
-        }
-        catch (Exception error) when (error is not OperationCanceledException && Refuse(error) != WorkRefusal.None && Waiting(busy) > 0) { }
 
-        // Every computer that can sing it is busy: wait in line on the one with the fewest songs before it.
-        (TTarget Member, int Ahead)[] line;
-        lock (busy) line = [.. busy.Values.OrderBy(b => b.Ahead).ThenBy(b => index.GetValueOrDefault(hostOf(b.Member)))];
-        async Task<T> Wait(TTarget member, CancellationToken t)
-        {
-            took = hostOf(member);
-            return await sing(member, t).ConfigureAwait(false);
-        }
-        var queued = await queue.RunAsync(Lane, line.Select(b => b.Member).ToArray(), hostOf, Wait, Refuse, time.GetUtcNow(), time, token,
-            WorkPriority.Background).ConfigureAwait(false);
-        var chosen = line.First(b => hostOf(b.Member) == took);
-        return new(queued, name(chosen.Member), true, chosen.Ahead);
-    }
-
-    private static int Waiting<TTarget>(Dictionary<string, (TTarget, int)> busy)
-    {
-        lock (busy) return busy.Count;
+        var run = await new PoolRunner<TTarget>(Lane, hostOf, Refuse, WorkPriority.Background, queue, clock)
+            .RunOrWaitInLineAsync(members, Sing, int.MaxValue, token).ConfigureAwait(false);
+        return new(run.Result, name(run.Stop), run.Ahead is not null, run.Ahead ?? 0);
     }
 
     private static string Name(SongVoiceMatch match) => match == SongVoiceMatch.VevoSing ? "VevoSing" : "SoulX-Singer";

@@ -85,4 +85,42 @@ public sealed class PoolRunnerTests
             Attempt((_, _) => WorkRefusal.Unavailable), TimeSpan.Zero, CancellationToken.None));
         Assert.Equal(WorkRefusal.Unavailable, none.Refusal);
     }
+
+    [Fact]
+    public async Task Every_stop_busy_waits_in_the_shortest_line_once_free_stops_are_tried()
+    {
+        var queue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(5) };
+        List<string> asked = [];
+        Func<string, PoolTry, CancellationToken, Task<string>> Attempt(bool shortLineFull) => (stop, tried, _) =>
+        {
+            lock (asked) asked.Add(tried.Ahead is null ? stop : $"{stop} in line");
+            if (tried.Ahead is { } ahead)
+                return stop == "c" && shortLineFull ? Task.FromException<string>(new Refused(WorkRefusal.Busy))
+                    : Task.FromResult($"{stop} behind {ahead}");
+            switch (stop)
+            {
+                case "a": tried.Line(2); return Task.FromException<string>(new Refused(WorkRefusal.Busy));
+                case "b": return Task.FromException<string>(new Refused(WorkRefusal.Unavailable));
+                default: tried.Line(1); return Task.FromException<string>(new Refused(WorkRefusal.Busy));
+            }
+        };
+
+        var queued = await Runner(queue).RunOrWaitInLineAsync(["a", "b", "c"], Attempt(false), 1, CancellationToken.None);
+        Assert.Equal(("c", 2, 1, "c behind 1"), (queued.Stop, queued.Position, queued.Ahead, queued.Result));
+        Assert.Equal((2, 1), (queued.Busy, queued.Unavailable));
+        Assert.Equal(["a", "b", "c", "c in line"], asked);
+
+        // The shortest line turns it away: with one line it gives up, with more it tries the next shortest.
+        asked.Clear();
+        await Assert.ThrowsAsync<Refused>(() => Runner(queue).RunOrWaitInLineAsync(["a", "b", "c"], Attempt(true), 1, CancellationToken.None));
+        asked.Clear();
+        var next = await Runner(queue).RunOrWaitInLineAsync(["a", "b", "c"], Attempt(true), int.MaxValue, CancellationToken.None);
+        Assert.Equal(("a", 0, 2), (next.Stop, next.Position, next.Ahead));
+        Assert.Equal(["a", "b", "c", "c in line", "a in line"], asked);
+
+        // A free stop takes it at once, without a line.
+        var free = await Runner(queue).RunOrWaitInLineAsync(["b", "d"], (stop, tried, _) => stop == "b"
+            ? Task.FromException<string>(new Refused(WorkRefusal.Unavailable)) : Task.FromResult(stop), 1, CancellationToken.None);
+        Assert.Equal(("d", (int?)null, 1), (free.Stop, free.Ahead, free.Unavailable));
+    }
 }
