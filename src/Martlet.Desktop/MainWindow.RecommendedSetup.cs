@@ -62,10 +62,17 @@ public partial class MainWindow
         ActionText.Text = "Working out the recommended setup for your computers...";
         var scan = await ScanRecommendedSetupAsync(use);
         if (closing || scan is not { } found) return;
+        try { ShowRecommendedSetup(found.Build, found.Recommendation); }
+        catch (Exception error) when (!ErrorLog.IsFatal(error))
+        {
+            // Never a click that seems to do nothing: Home says the review couldn't open, and the log keeps why.
+            ErrorLog.Error("Recommended setup: couldn't open the review.", error);
+            ActionText.Text = $"Martlet couldn't open the recommended setup: {error.Message} Details are in Martlet's log.";
+            return;
+        }
         ActionText.Text = found.Recommendation.AlreadyOptimal
             ? found.Recommendation.BetterSetupAvailable ? BetterSetupTitle : RecommendedSetupReview.OptimalTitle
             : $"Martlet recommends {found.Recommendation.Changes.Count} change{(found.Recommendation.Changes.Count == 1 ? "" : "s")}. Review them before anything changes.";
-        ShowRecommendedSetup(found.Build, found.Recommendation);
     }
 
     /// <summary>The catalog the last recommendation planned with: Martlet's options with the numbers measured on your computers
