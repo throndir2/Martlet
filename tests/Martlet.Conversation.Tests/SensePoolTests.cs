@@ -139,13 +139,19 @@ public sealed class SensePoolTests
     [Fact]
     public async Task A_busy_pool_gives_up_at_the_deadline_with_the_last_reason()
     {
-        var (answer, route) = await Run((member, _) => Task.FromResult(SenseAttempt.Busy($"{member.HostId} is busy")),
-            TimeSpan.FromMilliseconds(80));
+        var asked = 0;
+        var (answer, route) = await Run((member, _) =>
+        {
+            Interlocked.Increment(ref asked);
+            return Task.FromResult(SenseAttempt.Busy($"{member.HostId} is busy"));
+        }, TimeSpan.FromMilliseconds(80));
 
         Assert.Null(answer.Text);
         Assert.EndsWith("is busy", answer.Problem);
         Assert.Null(route.Member);
         Assert.Equal(-1, route.Position);
+        // Every try that found a member busy is counted, also when none took the job.
+        Assert.Equal((asked, 0), (route.Busy, route.Unavailable));
     }
 
     [Fact]
@@ -172,8 +178,9 @@ public sealed class SensePoolTests
         Assert.Equal(("Words from ripley.", 1, 1), (answer.Text, route.Position, route.Unavailable));
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        var (held, _) = await Run((member, _) => Task.FromResult(SenseAttempt.Held($"{member.HostId} keeps its card")));
+        var (held, heldRoute) = await Run((member, _) => Task.FromResult(SenseAttempt.Held($"{member.HostId} keeps its card")));
         Assert.Contains("keeps its graphics card for a live conversation", held.Problem);
+        Assert.Equal((0, 3), (heldRoute.Busy, heldRoute.Unavailable));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2));
     }
 
