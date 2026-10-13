@@ -3795,7 +3795,14 @@ NVIDIA CUDA roles) with *built only for 64-bit Intel or AMD (x86_64)* and
 with an ARM64 build (`arm64=<overlay>`, like the `stt` role's whisper.cpp arm64
 image) gets that overlay as `compose.arch.yaml`, runs on the CPU even when the
 GPU is asked for, and `describe` offers no GPU option
-(`arm64-overlay-runs-on-cpu`). Last, `warm` on its own fixture host (fake
+(`arm64-overlay-runs-on-cpu`). The real `voice-recognition` role's files
+(`deploy/host/roles/voice-recognition`, copied into the container) are read the
+same way: on an x86_64 host with the fake 8192 MiB card `describe` offers
+`role.accelerator=gpu cpu` and its one model
+(`wespeaker-en-voxceleb-resnet34-lm`), and on the `aarch64` shim it offers no
+GPU option and an add gets `compose.arch.yaml`, no `compose.gpu.yaml`,
+`MARTLET_ACCELERATOR=cpu` and the model in `.env` (`voice-recognition-role`).
+Last, `warm` on its own fixture host (fake
 `docker` and `systemctl`) starts the stopped gateway (`systemctl --user start`),
 runs `compose up -d --no-build` for every installed role, then the warm step of
 `fixture-warm` with its saved choice filled in (`warm-it m2`; its `post_start`

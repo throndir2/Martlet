@@ -85,6 +85,9 @@ internal static class HostRoles
     internal const string Pictures = "pictures";
     internal const string Ocr = "ocr";
     internal const string Motion = "motion";
+    internal const string VoiceRecognition = "voice-recognition";
+    /// <summary>The gateway route of the voice recognition role (Martlet.Gateway's VoiceRecognitionRouteId).</summary>
+    internal const string VoiceRecognitionRouteId = "martlet.gateway.voice-recognition.v1";
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -169,7 +172,11 @@ internal static class HostRoles
         new(Motion, "Moves", "Motion", "an NVIDIA GPU with at least 24 GB (optional; not for use in the EU, the UK or South Korea)",
             Audio2FaceHostConnection.MotionRouteId, "motion",
             "Makes body motions for VRM characters on that host with Tencent's HY-Motion 1.0, from the English descriptions Martlet " +
-            "writes. The description goes there. It downloads about 20 GB and frees the graphics card when idle.")
+            "writes. The description goes there. It downloads about 20 GB and frees the graphics card when idle."),
+        new(VoiceRecognition, "Recognizes voices", "Voice recognition", "Docker; it uses an NVIDIA GPU when there is one, otherwise the processor",
+            VoiceRecognitionRouteId, "voice recognition",
+            "Recognizes who is speaking on that host, with the same voice models as this PC, so its voiceprints match your voice " +
+            "list. The speech Martlet hears goes there one utterance at a time, is analyzed in memory and is not kept.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

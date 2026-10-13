@@ -99,6 +99,7 @@ internal static class GatewayGpus
         GatewayInferenceKind.Picture => "Pictures",
         GatewayInferenceKind.Ocr => "Reading",
         GatewayInferenceKind.Motion => "Motion",
+        GatewayInferenceKind.VoiceRecognition => "Voice recognition",
         _ => "Watching"
     };
 

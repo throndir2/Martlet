@@ -1,0 +1,35 @@
+Third-party components used by the Martlet voice recognition worker image (installed or downloaded when the image is built;
+none are redistributed in this repository).
+
+sherpa-onnx 1.13.8 and sherpa-onnx-core 1.13.8 (k2-fsa)
+  https://github.com/k2-fsa/sherpa-onnx
+  License: Apache-2.0. sherpa-onnx-core includes ONNX Runtime 1.28.2 (Microsoft, MIT).
+
+sherpa-onnx 1.13.8, CUDA 12 build (graphics card image only; includes ONNX Runtime 1.28.2 with its CUDA provider)
+  https://huggingface.co/csukuangfj2/sherpa-onnx-wheels (revision 4de10716b1043c13380c79f3f12127a6c6429650)
+  License: Apache-2.0 (sherpa-onnx); MIT (ONNX Runtime)
+
+NVIDIA CUDA 12 runtime, cuBLAS, cuFFT, cuRAND, NVRTC, nvJitLink and cuDNN 9 (graphics card image only, from PyPI)
+  https://pypi.org/project/nvidia-cudnn-cu12/ and the other nvidia-*-cu12 packages
+  License: NVIDIA's software license agreements shipped in each package
+
+NumPy 2.5.3
+  https://numpy.org
+  License: BSD-3-Clause
+
+WeSpeaker ResNet34-LM speaker embedding model, trained on VoxCeleb (wespeaker_en_voxceleb_resnet34_LM.onnx,
+SHA-256 e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012)
+  By the WeSpeaker authors, https://github.com/wenet-e2e/wespeaker
+  ONNX conversion by the sherpa-onnx contributors:
+  https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx
+  License: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/
+  No changes were made to the model.
+
+pyannote segmentation 3.0 (pyannote-segmentation-3-0/model.onnx,
+SHA-256 220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079)
+  https://huggingface.co/pyannote/segmentation-3.0, Copyright (c) 2023 CNRS. MIT License.
+  ONNX export from https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0
+  (revision 9403a6902bb58e3d5ae8c7e77c3422de279db2e0); its MIT license (Copyright (c) 2022 CNRS) is in the image beside it
+  as pyannote-segmentation-3-0/LICENSE. No changes were made.
+
+These are the same model files as Martlet's desktop ships (src/Martlet.Sherpa/VOICE-RECOGNITION-NOTICES.txt).

@@ -17,7 +17,7 @@ public static class SharedGpu
     [
         ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Thinking pool"), ("deep-thinking-2", "Thinking pool (card 2)"),
         ("deep-thinking-3", "Thinking pool (card 3)"), ("deep-thinking-4", "Thinking pool (card 4)"), ("stt", "Listening"),
-        ("singing", "Singing"), ("pictures", "Pictures"), ("ocr", "Reading"), ("motion", "Motion")
+        ("singing", "Singing"), ("pictures", "Pictures"), ("ocr", "Reading"), ("motion", "Motion"), ("voice-recognition", "Voice recognition")
     ];
 
     /// <summary>Whether host role <paramref name="kind"/> running <paramref name="model"/> never uses the graphics card, so it

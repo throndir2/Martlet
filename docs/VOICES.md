@@ -16,6 +16,11 @@ kept is a few clips of voices you haven't named yet (see below). Voices
 are recognized and learned only from the microphone, never from
 [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays).
 
+A paired Martlet host can do the same work on its NVIDIA graphics card or its
+processor with the `voice-recognition` host role
+([Voice recognition host](VOICE_RECOGNITION_HOST.md)). It uses the same models
+and the same steps, so its voiceprints match the ones made on this PC.
+
 ## Companion › People
 
 - **Recognize voices in conversations.** On unless you turned it off

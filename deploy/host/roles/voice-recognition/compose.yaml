@@ -1,0 +1,21 @@
+# Martlet voice recognition host service, loopback-only behind the Martlet gateway: the desktop's speaker recognition (pyannote
+# segmentation 3.0 and WeSpeaker ResNet34-LM in sherpa-onnx 1.13.8), built on this host from workers/voice-recognition
+# (host/Dockerfile: hash-pinned packages, both models baked in and SHA-256 checked). It answers on 127.0.0.1:50091 in the gateway's
+# network namespace, and the Martlet gateway is the single LAN entry point. This is the processor build; compose.gpu.yaml
+# switches to the CUDA build for an NVIDIA GPU. Audio is analyzed in memory and never stored.
+
+services:
+  voice-recognition:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/voice-recognition
+      dockerfile: host/Dockerfile
+      args:
+        ACCELERATOR: cpu
+    image: martlet-voice-recognition:1
+    pull_policy: build
+    restart: unless-stopped
+    init: true
+    environment:
+      MARTLET_VOICE_RECOGNITION_PORT: "50091"
+      MARTLET_VOICE_RECOGNITION_ACCELERATOR: ${MARTLET_ACCELERATOR:-cpu}
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}

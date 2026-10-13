@@ -101,6 +101,8 @@ internal static class GatewayInferenceJson
                     ParseOcr(fields["payload"], route),
                 GatewayInferenceKind.Motion =>
                     ParseMotion(fields["payload"], route),
+                GatewayInferenceKind.VoiceRecognition =>
+                    ParseVoiceRecognition(fields["payload"], route),
                 _ => throw new GatewayProtocolException("request.invalid")
             };
             return new(
@@ -838,6 +840,41 @@ internal static class GatewayInferenceJson
                     image[3] == 0x47 && image[4] == 0x0D && image[5] == 0x0A && image[6] == 0x1A && image[7] == 0x0A,
                 _ => false
             };
+    }
+
+    // One operation on the host's voice recognition relay: status, or up to a minute of 16 kHz mono PCM16 to analyze (who spoke)
+    // or to make one voiceprint of. Nothing else is accepted (the host serves the models its role installed).
+    private static GatewayVoiceRecognitionPayload ParseVoiceRecognition(JsonElement element, GatewayInferenceRoute route)
+    {
+        GatewayRules.Require(element.ValueKind == JsonValueKind.Object, "request.invalid");
+        var operation = element.TryGetProperty("operation", out var operationElement) &&
+            operationElement.ValueKind == JsonValueKind.String ? operationElement.GetString() : null;
+        switch (operation)
+        {
+            case "status":
+                _ = Object(element, ["operation"], []);
+                return new(GatewayVoiceRecognitionOperation.Status);
+            case "analyze" or "voiceprint":
+            {
+                var fields = Object(element, ["operation", "sample_rate", "pcm16_base64"], []);
+                GatewayRules.Require(Integer(fields, "sample_rate", 8_000, 48_000) ==
+                    GatewayInferenceRoute.VoiceRecognitionSampleRate, "request.invalid");
+                var encoded = Text(fields, "pcm16_base64", ((route.MaximumInputBytes + 2) / 3 + 1) * 4);
+                byte[] pcm;
+                try { pcm = Convert.FromBase64String(encoded); }
+                catch (FormatException) { throw new GatewayProtocolException("request.invalid"); }
+                if (Convert.ToBase64String(pcm) != encoded || pcm.Length is 0 || pcm.Length % 2 != 0 ||
+                    pcm.Length > route.MaximumInputBytes)
+                {
+                    CryptographicOperations.ZeroMemory(pcm);
+                    throw new GatewayProtocolException(pcm.Length > route.MaximumInputBytes ? "request.too_large" : "request.invalid");
+                }
+                return new(operation == "analyze" ? GatewayVoiceRecognitionOperation.Analyze : GatewayVoiceRecognitionOperation.Voiceprint,
+                    pcm);
+            }
+            default:
+                throw new GatewayProtocolException("request.invalid");
+        }
     }
 
     // One operation on the host's HY-Motion relay. A generate carries only an English prompt, its length in seconds and an

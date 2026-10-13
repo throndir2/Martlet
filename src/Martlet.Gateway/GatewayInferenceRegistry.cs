@@ -81,7 +81,8 @@ public sealed partial class GatewayInferenceRouteRegistry
     /// listed here.</summary>
     internal static bool FriendsMayUse(GatewayInferenceRoute route) => route.Kind is GatewayInferenceKind.OllamaChat or
         GatewayInferenceKind.F5Synthesis or GatewayInferenceKind.Audio2Face or GatewayInferenceKind.Transcription or
-        GatewayInferenceKind.Ocr or GatewayInferenceKind.PerceptionOcr or GatewayInferenceKind.PerceptionVlm;
+        GatewayInferenceKind.Ocr or GatewayInferenceKind.PerceptionOcr or GatewayInferenceKind.PerceptionVlm or
+        GatewayInferenceKind.VoiceRecognition;
 
     internal bool TryGetByPath(
         string path,
@@ -305,6 +306,8 @@ public sealed partial class GatewayInferenceRouteRegistry
                 worker is IOcrGatewayInferenceWorker,
             GatewayInferenceKind.Motion =>
                 worker is IMotionGatewayInferenceWorker,
+            GatewayInferenceKind.VoiceRecognition =>
+                worker is IVoiceRecognitionGatewayInferenceWorker,
             _ => false
         }, "worker.invalid");
 

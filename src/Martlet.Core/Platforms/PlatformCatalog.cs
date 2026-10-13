@@ -432,6 +432,14 @@ public static class PlatformCatalog
             Impossible(Mac, You, "Windows OCR runs only on Windows"), Impossible(Linux, You, "Windows OCR runs only on Windows"),
             Impossible(Ios, You, "Windows OCR runs only on Windows"), Impossible(Android, You, "Windows OCR runs only on Windows")
         ]),
+        new("voice-recognition", Feature, "Voice recognition: who is speaking, with the same voice models as the PC you talk to (on an NVIDIA card or the processor)",
+        [
+            Works(Linux, Host, "on an NVIDIA GPU (x86_64) or the processor (x86_64 or ARM64)"),
+            Works(Win, Host, "through Docker Desktop (This PC's host service)"),
+            NotPlanned(Mac, Host, "a Mac running Docker or Ubuntu is a Linux host"),
+            NotPlanned(Ios, Host, "phones and tablets don't recognize voices for other computers"),
+            NotPlanned(Android, Host, "phones and tablets don't recognize voices for other computers")
+        ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
             Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
@@ -555,6 +563,7 @@ public static class PlatformCatalog
         "pictures" => "pictures",
         "motion" => "motion",
         "ocr" => "ocr",
+        "voice-recognition" => "voice-recognition",
         "audio2face" => "audio2face",
         _ => null
     };
