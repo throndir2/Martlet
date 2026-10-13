@@ -85,30 +85,36 @@ recordings* rows) and Companion › Listening.
 **What it decides:** whether one model takes pictures, recordings and tool
 calls, and what Martlet does when it can't tell ("unknown").
 
-**Moving.** Today five places decide, with different rules for paired
-computers, retired models and "unknown". The planned owner is `ModelSenses`
-(`src\Martlet.Conversation\ModelSenses.cs`): one rule for the Thinking route,
-a Vision or Hearing list member, a Thinking pool member and Ollama on this PC.
+**Owner:** `ModelSenses` (`src\Martlet.Conversation\ModelSenses.cs`): one
+rule for the Thinking route, a Vision or Hearing list member, a Thinking pool
+member and Ollama on this PC. `ModelSenses.For` gives the facts (sees, hears,
+calls tools) in one order for every place: what the route carries, a retired
+model, what Martlet found out (a paired computer's model by its gateway's
+origin), then the name. `ModelSenses.Takes` (`SenseUse`) is the one table for
+"unknown": a list member is tried, Thinking's reply tries pictures but not
+recordings, and a Thinking pool job needs a known yes
+([What a model takes](SENSE_MODELS.md#what-a-model-takes)).
 
-| Place that decides today | For which models |
+| Caller | For which models |
 | --- | --- |
-| `SenseRouting.Sees`, `SenseRouting.Hears` (`src\Martlet.Conversation\SenseRouting.cs`) | Vision and Hearing list members |
-| `SenseRouting.ThinkingSees`, `SenseRouting.ThinkingHears` | The Thinking route |
-| `LiveConversationConfiguration.Vision` (`src\Martlet.Desktop\LiveConversationConfiguration.cs`) | The Thinking route (a second copy) |
-| `ThinkingPoolCapabilities.For` (`src\Martlet.Conversation\ThinkingPool.cs`) | Thinking pool members, also tool calls |
+| `SenseRouting.For`, `SensePool.Refuses` (`src\Martlet.Conversation`) | The Thinking route and Vision and Hearing list members |
+| `LiveConversationConfiguration.Vision`, `Hearing`, `Tools` (`src\Martlet.Desktop\LiveConversationConfiguration.cs`) | The Thinking route in a running conversation |
+| `ThinkingPoolCapabilities.For` (`src\Martlet.Conversation\ThinkingPool.cs`) | Thinking pool members (recordings only on an endpoint) |
 | `MainWindow.LocalTakes` (`src\Martlet.Desktop\MainWindow.SenseModels.cs`) | Ollama on this PC |
+| `ModelSenses.Retired` | A retired Thinking model's message (Health, Companion › Thinking) |
 
 **Facts they read:** `ModelAbilities` (`model-abilities.json`,
 `src\Martlet.Core\Settings\ModelAbilities.cs`: server metadata, Test vision,
 Test hearing, refusals), then the model's name (`VisionModelCatalog`,
 `HearingModelCatalog`, `src\Martlet.Providers`).
 
-**Tests:** `SenseRoutingTests` and `ThinkingPoolTests`
+**Tests:** `ModelSensesTests`, `SenseRoutingTests` and `ThinkingPoolTests`
 (Martlet.Conversation.Tests); `ModelAbilitiesTests` (Martlet.Core.Tests);
 `VisionModelCatalogTests` and `ModelAbilityDetectionTests`
 (Martlet.Providers.Tests).
 
-**MCP:** `model_ability_check`, `hearing_check`, `sense_models_status`,
+**MCP:** `sense_models_check` (`one-rule-for-every-place`),
+`model_ability_check`, `hearing_check`, `sense_models_status`,
 `thinking_pool_status` (each member's `can`).
 
 ## Which Thinking pool member takes a job (Thinking pool job routing)
@@ -128,8 +134,8 @@ Its parts:
 | What a member can do | See [sense capability](#whether-a-model-sees-hears-or-calls-tools-sense-capability) |
 | Slots, the kept fast slot and the live floor | `BackgroundPlaces` and the board's `MayStartNow` and `CanRunBeside` |
 | Priority, stops for priority and retries | `ThinkingPriority`, `ThinkingPoolPolicy` |
-| The members, from the settings | `LiveConversationController.PoolMembers` in `src\Martlet.Desktop\ThinkingPool.cs` |
-| The desktop's handle on the board | `Martlet.Desktop.ThinkingPool` in `src\Martlet.Desktop\ThinkingPool.cs` (a rename to `DesktopThinkingPool` is in progress) |
+| The members, from the settings | `LiveConversationController.PoolMembers` in `src\Martlet.Desktop\DesktopThinkingPool.cs` |
+| The desktop's handle on the board | `DesktopThinkingPool` (`src\Martlet.Desktop\DesktopThinkingPool.cs`), from `LiveConversationController.ThinkingPool` |
 
 **Tests:** `ThinkingPoolTests` (Martlet.Conversation.Tests);
 `ThinkingPoolSettingsTests` (Martlet.Core.Tests); `ThinkingPoolPresenceTests`
@@ -145,21 +151,24 @@ helper jobs in [MEMORY.md](MEMORY.md).
 
 **What it decides:** the job kinds of the Thinking pool, the key of each kind
 in saved files and logs, its label on Companion › Thinking pool, its priority,
-and which helper jobs run as which kind.
+whether it is quick, what it needs, what the live floor does to it, and which
+helper jobs run as which kind.
 
-**Moving.** Today the facts are in several lists that nothing keeps the same:
-`ThinkingJobKind`, `ThinkingJobKinds.Name`, `ThinkingJobKinds.Priority` and
-`ThinkingPriority` (`src\Martlet.Conversation\ThinkingPool.cs`); `RunsOnKinds`
-(`src\Martlet.Desktop\MainWindow.DeepThinking.cs`); `HelperJobs.Name`
-(`src\Martlet.Desktop\HelperJobs.cs`); `ThinkingPoolHelpers.Kind` and
-`ThinkingPoolHelpers.Priority`. The planned owner is one row for each kind in
-`ThinkingJobKinds.Rows` (`src\Martlet.Conversation\ThinkingJobKinds.cs`).
+**Owner:** one row for each kind in `ThinkingJobKinds.Rows`
+(`src\Martlet.Conversation\ThinkingJobKinds.cs`), with the enums
+`ThinkingJobKind`, `ThinkingPriority` and `HelperJobKind`. These read it:
+`ThinkingJobKinds.Name`, `Priority` and `IsFast`; `LiveFloorRules.Stops` and
+`ServesTheTurn`; the Runs on card (`src\Martlet.Desktop\MainWindow.DeepThinking.cs`);
+`ThinkingRequestWords.Kind`; `HelperJobs.Name` and `PriorityOf`; and
+`ThinkingPoolHelpers.Kind` and `Priority`. To add a kind, add its enum value
+and its row. A key is saved, so a changed key needs a migration.
 The keys are in the [glossary](GLOSSARY.md#thinking-pool-job-keys).
 
-**Tests:** `ThinkingPoolTests` (Martlet.Conversation.Tests),
-`HelperJobsTests` (Martlet.Desktop.Tests).
+**Tests:** `ThinkingJobKindsTests` and `ThinkingPoolTests`
+(Martlet.Conversation.Tests), `HelperJobsTests` (Martlet.Desktop.Tests).
 
-**MCP:** `thinking_pool_status` (`jobs` by kind), `helper_jobs_status`.
+**MCP:** `thinking_pool_status` (`kinds`: the table; `jobs` by kind),
+`thinking_pool_check` (step *kinds*), `helper_jobs_status`.
 
 ## Pool summary text
 

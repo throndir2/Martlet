@@ -38,7 +38,7 @@ internal static class SenseModelsCheck
             thinking = thinking is null ? null : new
             {
                 model = thinking.ModelId, route = thinking.RouteType?.ToString(),
-                sees = SenseRouting.ThinkingSees(thinking, abilities).ToString(), hears = SenseRouting.ThinkingHears(thinking, abilities).ToString()
+                sees = ModelSenses.For(thinking, abilities).Sees.ToString(), hears = ModelSenses.For(thinking, abilities).Hears.ToString()
             },
             oneModel = senses.OneModel, allThinking = senses.AllThinking,
             senses = new[] { SenseKind.Image, SenseKind.Audio }.Select(kind =>
@@ -55,7 +55,7 @@ internal static class SenseModelsCheck
                     {
                         where = own.Describe(), place = own.Place.ToString(), model = own.ModelId, hostId = own.HostId, onThisPc = own.OnThisPc,
                         ownKey = own.CredentialId is not null, usesThinkingKey = own.UsesThinkingKey(thinking),
-                        sees = SenseRouting.Sees(own, abilities).ToString(), hears = SenseRouting.Hears(own, abilities).ToString(),
+                        sees = ModelSenses.For(own, abilities).Sees.ToString(), hears = ModelSenses.For(own, abilities).Hears.ToString(),
                         found = found is null ? null : new { sees = found.Sees, hears = found.Hears, source = found.Source, checkedAt = found.CheckedAt }
                     },
                     path = route.Path.ToString(), model = route.Model?.Describe(), unknown = route.Unknown, why = route.Why,
@@ -181,6 +181,30 @@ internal static class SenseModelsCheck
             var unknown = SenseRouting.For(SenseKind.Image, new SenseModels { Image = Own(Endpoint("my-own-model")) }, textOnly, null);
             Check("abilities-win", refused.Path == SensePath.None && unknown is { Path: SensePath.Described, Unknown: true },
                 $"refused: {refused.Path}; unknown model: {unknown.Path} (tried)");
+        }
+        // 10b. One rule for every place (ModelSenses): a paired computer's Test vision counts for the Vision list and the Thinking pool
+        //      alike, and a model Martlet can't tell about is tried from the list but gets no Thinking pool picture jobs.
+        {
+            const string divaGateway = "https://diva.local:9443";
+            ModelAbilities Tested(string model, bool sees) => new ModelAbilities().With(new()
+            {
+                Origin = divaGateway, ModelId = model, Sees = sees, Source = ModelAbility.TestRequest, CheckedAt = DateTimeOffset.UtcNow
+            });
+            bool Places(DeepThinkingSettings model, ModelAbilities? abilities, out string said)
+            {
+                var list = SenseRouting.For(SenseKind.Image, new SenseModels { Image = Own(model) }, textOnly, abilities).Path;
+                var pool = ThinkingPoolCapabilities.For(model, abilities).HasFlag(ThinkingCapability.Vision);
+                said = $"{model.ModelId}: list {list}, pool {(pool ? "sees" : "no pictures")}";
+                return list == SensePath.Described && pool;
+            }
+            var passed = Places(Host("diva", "house-eyes"), Tested("house-eyes", true), out var passedSaid);
+            var failed = Places(Host("diva", "qwen2.5vl:7b"), Tested("qwen2.5vl:7b", false), out var failedSaid);
+            var cloud = Endpoint("acme/house-model", "https://openrouter.ai/api/v1");
+            var cloudList = SenseRouting.For(SenseKind.Image, new SenseModels { Image = Own(cloud) }, textOnly, null);
+            var cloudPool = ThinkingPoolCapabilities.For(cloud, null).HasFlag(ThinkingCapability.Vision);
+            Check("one-rule-for-every-place", passed && !failed && cloudList is { Path: SensePath.Described, Unknown: true } && !cloudPool,
+                $"passed Test vision: {passedSaid}; failed Test vision: {failedSaid}; unknown cloud model: list {cloudList.Path} (tried), " +
+                $"pool {(cloudPool ? "sees" : "no pictures")}");
         }
         // 11. sense-models.json round trip, and an unreadable file reads as the text model for both. Then the lists are made from it
         //     once (Vision and Hearing, pools-local.json), read back without writing, and a damaged list file reads as the text model.
@@ -352,11 +376,11 @@ internal static class SenseModelsCheck
             var lanes = new SenseLanes(_ => route, async (_, _, job, token) =>
             {
                 lock (ran) ran.Add(job.Purpose);
-                if (job.Purpose == "touch_zones" && Interlocked.Increment(ref helperRuns) == 1) await Task.Delay(Timeout.Infinite, token);
+                if (job.Purpose == "touch-zones" && Interlocked.Increment(ref helperRuns) == 1) await Task.Delay(Timeout.Infinite, token);
                 if (job.Purpose == "eyes") await gate.Task.WaitAsync(token);
                 return SenseAnswer.Done(job.Purpose + " done");
             });
-            var helper = lanes.RunAsync(SenseKind.Image, Job("touch_zones", priority: -10) with { DropWhenStale = false }, cancellation);
+            var helper = lanes.RunAsync(SenseKind.Image, Job("touch-zones", priority: -10) with { DropWhenStale = false }, cancellation);
             await WaitAsync(() => ran.Count == 1, cancellation);
             var reply = await lanes.RunAsync(SenseKind.Image, Job("reply picture", key: "picture", priority: 10), cancellation);
             var helped = await helper;
@@ -368,7 +392,7 @@ internal static class SenseModelsCheck
             gate.SetResult();
             var both = await Task.WhenAll(measuring, summary);
             Check("lanes-yield", reply.Succeeded && helped.Succeeded && waited && both.All(r => r.Succeeded) &&
-                string.Join(", ", ran) == "touch_zones, reply picture, touch_zones, eyes, summary",
+                string.Join(", ", ran) == "touch-zones, reply picture, touch-zones, eyes, summary",
                 $"ran {string.Join(", ", ran)}; the summary waited behind the eyes: {waited}");
         }
 

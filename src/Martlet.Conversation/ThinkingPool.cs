@@ -4,62 +4,10 @@ using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
-/// <summary>What a Thinking pool job is for. The kind sets its default <see cref="ThinkingPriority"/> and whether it is a fast
-/// kind (<see cref="ThinkingJobKinds.IsFast"/>) that may take the slot the pool keeps free. <see cref="CheckIn"/> is one of
-/// Martlet's check-ins (<see cref="CheckIns"/>): a short question about what lingers, at the helpers' priority.</summary>
-public enum ThinkingJobKind { BargeInJudge, EndOfTurnJudge, Digest, ThinkLonger, TouchZones, Memory, Naming, Research, CheckIn }
-
-/// <summary>Which job a free slot takes first: the highest value first, then the oldest.</summary>
-public enum ThinkingPriority
-{
-    Research = 10,
-    Helper = 20,
-    TouchZones = 35,
-    ThinkLonger = 40,
-    Digest = 50,
-    EndOfTurnJudge = 60,
-    BargeInJudge = 70
-}
-
 /// <summary>What a job needs from a member, and what a member can do: text, pictures (vision), recordings (audio) and tool calls
 /// (tools: only members on an OpenAI-compatible endpoint, which does function calling; a paired computer's gateway doesn't).</summary>
 [Flags]
 public enum ThinkingCapability { None = 0, Text = 1, Vision = 2, Audio = 4, Tools = 8 }
-
-/// <summary>The rules of each <see cref="ThinkingJobKind"/>.</summary>
-public static class ThinkingJobKinds
-{
-    public static IReadOnlyList<ThinkingJobKind> All { get; } = Enum.GetValues<ThinkingJobKind>();
-
-    public static ThinkingPriority Priority(ThinkingJobKind kind) => kind switch
-    {
-        ThinkingJobKind.BargeInJudge => ThinkingPriority.BargeInJudge,
-        ThinkingJobKind.EndOfTurnJudge => ThinkingPriority.EndOfTurnJudge,
-        ThinkingJobKind.Digest => ThinkingPriority.Digest,
-        ThinkingJobKind.ThinkLonger => ThinkingPriority.ThinkLonger,
-        ThinkingJobKind.TouchZones => ThinkingPriority.TouchZones,
-        ThinkingJobKind.Memory or ThinkingJobKind.Naming or ThinkingJobKind.CheckIn => ThinkingPriority.Helper,
-        _ => ThinkingPriority.Research
-    };
-
-    /// <summary>Fast kinds (the judges and the digests) may take the last free slot of the pool. Every other kind leaves it
-    /// free when the pool has two or more slots, so a fast job never waits behind long work.</summary>
-    public static bool IsFast(ThinkingJobKind kind) => kind is ThinkingJobKind.BargeInJudge or ThinkingJobKind.EndOfTurnJudge or ThinkingJobKind.Digest;
-
-    /// <summary>The kind's name in status files and logs: barge-in-judge, think-longer...</summary>
-    public static string Name(ThinkingJobKind kind) => kind switch
-    {
-        ThinkingJobKind.BargeInJudge => "barge-in-judge",
-        ThinkingJobKind.EndOfTurnJudge => "end-of-turn-judge",
-        ThinkingJobKind.Digest => "digest",
-        ThinkingJobKind.ThinkLonger => "think-longer",
-        ThinkingJobKind.TouchZones => "touch-zones",
-        ThinkingJobKind.Memory => "memory",
-        ThinkingJobKind.Naming => "naming",
-        ThinkingJobKind.CheckIn => "check-in",
-        _ => "research"
-    };
-}
 
 /// <summary>How a job asks the board for a slot: its kind, its priority (highest first) and whether it must leave the pool's
 /// last free slot for fast kinds (<see cref="KeepLastFree"/>). <see cref="Pool"/> is the whole pool the last-slot rule counts
@@ -846,29 +794,21 @@ public sealed class ThinkingJobBoard
     public override string ToString() => nameof(ThinkingJobBoard);
 }
 
-/// <summary>What a Thinking pool member can do, from what Martlet knows of its model: pictures as Martlet's vision catalog and
-/// model abilities say, recordings only on an OpenAI-compatible endpoint whose model hears (a paired computer's Ollama takes no
-/// recordings), and tool calls only on an OpenAI-compatible endpoint (Chat Completions function calling; a paired computer's
-/// gateway has none) whose model Martlet didn't find unable to call tools.</summary>
+/// <summary>What a Thinking pool member can do (<see cref="ModelSenses"/>, <see cref="SenseUse.Pool"/>): pictures and recordings
+/// only when its model is known to take them, the same facts for a model on an endpoint and on a paired computer (Test vision
+/// counts there too). Recordings only on an OpenAI-compatible endpoint: the pool's runner doesn't check whether a paired computer's
+/// Martlet is new enough for recordings, as the Hearing list's does. Tool calls unless its model is known not to call them (a
+/// paired computer's gateway carries none).</summary>
 public static class ThinkingPoolCapabilities
 {
     public static ThinkingCapability For(DeepThinkingSettings member, ModelAbilities? abilities = null)
     {
         ArgumentNullException.ThrowIfNull(member);
+        var senses = ModelSenses.For(member, abilities);
         var can = ThinkingCapability.Text;
-        switch (member.Place)
-        {
-            case DeepThinkingPlace.Endpoint:
-                if (RouteAbilities.Tools(SetupRouteType.ChatCompletions, member.Origin, member.ModelId, abilities) != ToolSupport.Unsupported)
-                    can |= ThinkingCapability.Tools;
-                if (VisionModelCatalog.ForRoute(member.Origin, member.ModelId, abilities) == VisionSupport.Supported) can |= ThinkingCapability.Vision;
-                if (HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, member.Origin, member.ModelId, abilities) == HearingSupport.Supported)
-                    can |= ThinkingCapability.Audio;
-                break;
-            case DeepThinkingPlace.Host:
-                if (VisionModelCatalog.Classify(member.ModelId) == VisionSupport.Supported) can |= ThinkingCapability.Vision;
-                break;
-        }
+        if (senses.CallsTools) can |= ThinkingCapability.Tools;
+        if (senses.Takes(SenseKind.Image, SenseUse.Pool)) can |= ThinkingCapability.Vision;
+        if (member.Place == DeepThinkingPlace.Endpoint && senses.Takes(SenseKind.Audio, SenseUse.Pool)) can |= ThinkingCapability.Audio;
         return can;
     }
 }

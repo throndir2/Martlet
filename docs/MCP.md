@@ -520,12 +520,23 @@ Nemotron are Smart, others are Standard. The *Runs on* card has
 `check-in`, `memory`, `naming`, `touch-zones`, `digest`, `end-of-turn-judge`,
 `barge-in-judge`) with *Any member* (the default), *Prefer smart*, *Smart only*
 and *These members*, and `ThinkingPoolRunsOnMember-<kind>-<n>` for each member
-under *These members*. Each check-in card has `CheckInRunsOn-<id>` (first
+under *These members*. `ThinkingPoolRunsOnLabel-<kind>` (read-only text) is the
+kind's label, which names all the work the kind controls (for example
+`ThinkingPoolRunsOnLabel-touch-zones` reads *Touch zones, measuring the eyes
+and writing a character's personality*). The kinds, their keys and their labels
+come from one table, `ThinkingJobKinds.Rows`
+([Job kinds](CONVERSATION.md#job-kinds)). Each check-in card has `CheckInRunsOn-<id>` (first
 *Like other check-ins*) and `CheckInRunsOnMember-<id>-<n>` under *More
 settings*. All of them save `thinking-pool.json` or `check-ins.json`, so they
 need `--allow-ui-effects`. `thinking_pool_status` gives each member `smarts`,
-`smartsGuess` and `smartsChosen`, and `runsOn` for each kind (`mode`, `members`
-and `may`, the members the kind may use). `thinking-pool-status.json` gives each
+`smartsGuess` and `smartsChosen`, `runsOn` for each kind (`mode`, `members`
+and `may`, the members the kind may use), and `kinds`: the table of job kinds
+in the card's order, each with its saved `key`, `label`, `type` (its name on
+the Thinking requests page), `priority`, `fast`, `needs` (the most its jobs ask
+of a member), `whileLive` (`Starts`, `Waits` or `Stops`) and `helpers` (each
+helper job that runs as the kind, with its `key`, `priority` and `ownerWaits`).
+The `thinking_pool_check` step *kinds* checks that every kind has one row, the
+keys are unique and in one format, and every helper job is in one row. `thinking-pool-status.json` gives each
 member `smarts` and `smartsGuessed`, `runsOn` for each kind, and `placements`:
 the latest jobs with the member each went to, its smarts, the outcome and `why`
 (for example *Prefer smart: no Smart member came free within 30 s, so a
@@ -735,7 +746,11 @@ the `last` job's `member`, `name`, `position`, `chosen`, `busy`,
 
 `sense_models_check` rehearses the production routing (`SenseRouting`) over
 the combinations of text, image and audio models with fixture model names (a
-paired computer's model that hears takes recordings), the `sense-models.json`
+paired computer's model that hears takes recordings), the one rule for what a
+model takes (`one-rule-for-every-place`, `ModelSenses`: a paired computer's
+Test vision counts for the Vision list and the Thinking pool alike, and a
+model Martlet can't tell about is tried from the list but gets no Thinking
+pool picture jobs), the `sense-models.json`
 round trip and the lists made from it once (`lists-made-once`; a damaged list
 file reads as the text model), and the production lines (`SenseLanes`) with a
 simulated runner, NOT models: no model of its own, one job at a time, a newer
@@ -1781,7 +1796,7 @@ production code (`MemoryBriefService`, the `HelperJobs` router and the
 `memory-brief` shared-settings section) on a disposable memory store, with a
 fixture Thinking pool member whose answers are FIXTURE - NOT AI. Its `steps`
 show that two facts write nothing; a third has the pool member write the brief
-(route `pool`, kind `memory_brief`, priority `Low`) from each fact with whose it
+(route `pool`, kind `memory-brief`, priority `Low`) from each fact with whose it
 is; the first message of a conversation carries it and the next don't; a
 forgotten fact holds it back (`waiting`) until it is written again without it a
 minute later; your own text stays; off sends nothing; *Write it again*
@@ -6201,9 +6216,13 @@ computers**): Home's Recommended setup then plans the fixture network that
 `recommended_setup_status` plans with `fixture: "network"` (also on a PC
 alone), and Reconfigure applies it to simulated computers. Also set
 `MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK` to `offline` to plan the
-`fixture: "offline"` network instead, or to `better` for the `fixture:
+`fixture: "offline"` network instead, to `better` for the `fixture:
 "better"` network (a host that thinks with Gemma 4 E2B; put a
-`model-speed.json` in the data directory to plan with measured first words). Each role change
+`model-speed.json` in the data directory to plan with measured first words), or
+to `served` for the `fixture: "served"` network (model apps on this PC serve
+models that Martlet's own list doesn't have). If the review can't open, Home's
+status line (`Settings action result`) reads *Martlet couldn't open the
+recommended setup: ...* and the log keeps why. Each role change
 takes that many seconds and writes `FIXTURE` lines; nothing is installed,
 contacted, saved or shared, and the run shows on this PC's Home
 (`HomeConfiguringStatus`) only.
@@ -6393,24 +6412,30 @@ $env:MARTLET_SIMULATE_SITUATION = 'gaming'
 
 `helper_jobs_status` (optional absolute `dataDirectory`, default the current
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
-(`memory`: remembering and learning names after a reply; `action_naming`:
+(`memory`: remembering and learning names after a reply; `action-naming`:
 naming a character's emotes; `temperament`: deciding its touch temperament;
-`touch_zones`: finding its touch zones; `eyes`: measuring its eyes;
-`memory_brief`: writing the [memory brief](MEMORY.md#the-memory-brief)) the last
+`touch-zones`: finding its touch zones; `eyes`: measuring its eyes;
+`character-writing`: writing a character's personality in *Find a character*;
+`memory-upkeep`: tidying memory; `memory-brief`: writing the
+[memory brief](MEMORY.md#the-memory-brief)) the last
 `route` (`pool` with the `member` that ran it and its model, or `fallback`: the
 conversation's own Thinking model after the reply finished speaking),
 `priority`, `outcome` (`answered`, `no answer` or `failed: <why>`), `at` and
 `waitedMs` (how long the fallback waited for the reply). It never holds a prompt
 or an answer. `state` is `none` until the desktop runs a helper job with that
-data directory. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
+data directory. These keys use the same format as the Thinking pool's job
+kinds (lower-case words with hyphens); a `helper-jobs.json` written by an
+older Martlet has underscores (`action_naming`) until the next helper job
+writes it again. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
 Memory, Naming and TouchZones kinds (the eyes as a TouchZones job at the helpers'
-low priority, the memory brief as a Memory job at the lowest priority);
+low priority, the memory brief as a Memory job at the lowest priority;
+`ThinkingJobKinds.Rows` says which helper job runs as which kind);
 `thinking_pool_status` shows the pool itself.
 `helper_jobs_check` (no arguments) rehearses the desktop's production router
 (`HelperJobs`) with a fixture pool and fixture answers (NOT AI): memory and
 naming go to a free text member, touch zones wait for a running reply and fall
 back while no member can see, then go to a vision member, tidying memory
-(`memory_upkeep`) runs on a free text member and, when none is free, waits
+(`memory-upkeep`) runs on a free text member and, when none is free, waits
 instead of falling back, and memory falls back
 when no member is free. It returns each step with `passed` and the status file
 it wrote. See [helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool).
@@ -10314,14 +10339,20 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (or `SafeClickPrefixes` for a
+  `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
   family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
-  `SafeValuePrefixes`) so snapshots return their text (a value pattern's value,
-  a text block's text, or a status button's accessible name).
+  `SafeValuePrefixes`) in the same file so snapshots return their text (a value
+  pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
+- **One line for each ID:** write each entry as
+  `new("<ID>", "<page>", "<what it does or shows>")`, for example
+  `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Thinking pool.")`.
+  Say why it is safe ("saves nothing", "never the key"). Name controls that you
+  leave out on purpose in a comment line next to it
+  (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
