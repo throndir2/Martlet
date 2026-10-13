@@ -41,10 +41,12 @@ public sealed partial class FootprintCatalog
         ?? (ServedModels.ModelOf(id) is { } model ? ServedModels.Option(model, Models) : null);
 
     /// <summary>This catalog plus a Thinking option for each model in <paramref name="served"/> that Martlet's own options
-    /// don't already run (<see cref="ServedModels.Usable"/>).</summary>
+    /// don't already run (<see cref="ServedModels.Usable"/>). A model this catalog already has as a served option is not added
+    /// again, so calling it twice gives the same catalog.</summary>
     public FootprintCatalog WithServed(IEnumerable<ServedModel>? served)
     {
-        var added = ServedModels.Usable(served, this).Select(m => ServedModels.Option(m, Models)).ToList();
+        var added = ServedModels.Usable(served, this).Select(m => ServedModels.Option(m, Models))
+            .Where(o => !options.Any(known => string.Equals(known.Id, o.Id, StringComparison.Ordinal))).ToList();
         return added.Count == 0 ? this : new(options.Concat(added)) { Models = Models, From = From, Measurements = Measurements };
     }
 

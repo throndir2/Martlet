@@ -275,7 +275,7 @@ public sealed class ScreenDigestTests
             started.TrySetResult();
             return await answer.Task.WaitAsync(token);
         }, clock);
-        var thinker = new PoolScreenDigestThinker(() => new ThinkingPool(board));
+        var thinker = new PoolScreenDigestThinker(() => new DesktopThinkingPool(board));
         var sheet = ScreenDigestSheet.Encode(Solid(16, 8, 1, 2, 3), 16, 8);
         var job = new ScreenDigestJob("What changed?", sheet, 2, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "changes");
 
@@ -295,7 +295,7 @@ public sealed class ScreenDigestTests
             await Task.Delay(Timeout.Infinite, token);
             return ThinkingAnswer.Done("never");
         }, clock);
-        var late = new PoolScreenDigestThinker(() => new ThinkingPool(never)).DigestAsync(job, CancellationToken.None);
+        var late = new PoolScreenDigestThinker(() => new DesktopThinkingPool(never)).DigestAsync(job, CancellationToken.None);
         await slow.Task.WaitAsync(TimeSpan.FromSeconds(10));
         clock.Advance(ScreenDigestTiming.JobTime + TimeSpan.FromSeconds(1));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => late.WaitAsync(TimeSpan.FromSeconds(10)));
@@ -351,7 +351,7 @@ public sealed class ScreenDigestTests
             (ran, where) = (job, m.Id);
             return Task.FromResult(ThinkingAnswer.Done("They opened a game."));
         });
-        var thinker = new PoolScreenDigestThinker(() => new ThinkingPool(board));
+        var thinker = new PoolScreenDigestThinker(() => new DesktopThinkingPool(board));
         var sheet = ScreenDigestSheet.Encode(Solid(16, 8, 1, 2, 3), 16, 8);
         var job = new ScreenDigestJob("What changed?", sheet, 2, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "changes");
 

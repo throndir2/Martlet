@@ -6205,9 +6205,13 @@ computers**): Home's Recommended setup then plans the fixture network that
 `recommended_setup_status` plans with `fixture: "network"` (also on a PC
 alone), and Reconfigure applies it to simulated computers. Also set
 `MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK` to `offline` to plan the
-`fixture: "offline"` network instead, or to `better` for the `fixture:
+`fixture: "offline"` network instead, to `better` for the `fixture:
 "better"` network (a host that thinks with Gemma 4 E2B; put a
-`model-speed.json` in the data directory to plan with measured first words). Each role change
+`model-speed.json` in the data directory to plan with measured first words), or
+to `served` for the `fixture: "served"` network (model apps on this PC serve
+models that Martlet's own list doesn't have). If the review can't open, Home's
+status line (`Settings action result`) reads *Martlet couldn't open the
+recommended setup: ...* and the log keeps why. Each role change
 takes that many seconds and writes `FIXTURE` lines; nothing is installed,
 contacted, saved or shared, and the run shows on this PC's Home
 (`HomeConfiguringStatus`) only.
@@ -10318,14 +10322,20 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (or `SafeClickPrefixes` for a
+  `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
   family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
-  `SafeValuePrefixes`) so snapshots return their text (a value pattern's value,
-  a text block's text, or a status button's accessible name).
+  `SafeValuePrefixes`) in the same file so snapshots return their text (a value
+  pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
+- **One line for each ID:** write each entry as
+  `new("<ID>", "<page>", "<what it does or shows>")`, for example
+  `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Thinking pool.")`.
+  Say why it is safe ("saves nothing", "never the key"). Name controls that you
+  leave out on purpose in a comment line next to it
+  (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.

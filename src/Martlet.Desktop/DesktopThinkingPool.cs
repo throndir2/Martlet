@@ -10,12 +10,13 @@ namespace Martlet.Desktop;
 /// <summary>The Thinking pool in the desktop: the job board (<see cref="ThinkingJobBoard"/>) over the pool's members
 /// (Companion › Thinking pool, thinking-pool.json), sharing its slots with the conversation's background jobs (think_longer and
 /// research). Get it from <see cref="LiveConversationController.ThinkingPool"/>. Post a job with <see cref="RunAsync"/>; ask
-/// <see cref="CanRun"/> first to choose a fallback without posting. Pool jobs never use the conversation's own Thinking route.</summary>
-internal sealed class ThinkingPool
+/// <see cref="CanRun"/> first to choose a fallback without posting. Pool jobs never use the conversation's own Thinking route.
+/// The pool's rules are in Martlet.Conversation's ThinkingPool.cs (docs/DECISION_MAP.md, Thinking pool job routing).</summary>
+internal sealed class DesktopThinkingPool
 {
     private readonly ThinkingJobBoard board;
 
-    internal ThinkingPool(ThinkingJobBoard board) => this.board = board;
+    internal DesktopThinkingPool(ThinkingJobBoard board) => this.board = board;
 
     /// <summary>Whether a member can take a job of <paramref name="kind"/> needing <paramref name="needs"/> (no slot taken), on
     /// <paramref name="where"/> (null: the kind's Runs on).</summary>
@@ -35,7 +36,7 @@ internal sealed class ThinkingPool
 
     internal ThinkingJobBoard Board => board;
 
-    public override string ToString() => nameof(ThinkingPool);
+    public override string ToString() => nameof(DesktopThinkingPool);
 }
 
 internal sealed partial class LiveConversationController
@@ -46,16 +47,16 @@ internal sealed partial class LiveConversationController
 
     private ThinkingPoolSettings thinkingPool = new();
     private ModelAbilities? poolAbilities;
-    private ThinkingPool? pool;
+    private DesktopThinkingPool? pool;
     private readonly ConcurrentDictionary<string, ConcurrentBag<ThinkSlot>> poolSlots = new(StringComparer.Ordinal);
 
-    /// <summary>The Thinking pool: post background model jobs here (<see cref="ThinkingPool.RunAsync"/>).</summary>
-    internal ThinkingPool ThinkingPool => pool ??= NewThinkingPool();
+    /// <summary>The Thinking pool: post background model jobs here (<see cref="DesktopThinkingPool.RunAsync"/>).</summary>
+    internal DesktopThinkingPool ThinkingPool => pool ??= NewThinkingPool();
 
     /// <summary>What the pool does now, or null before any job or status made it (Companion › Thinking pool's Busy pool line).</summary>
     internal ThinkingPoolStatus? PoolStatusNow() => Volatile.Read(ref pool)?.Status();
 
-    private ThinkingPool NewThinkingPool()
+    private DesktopThinkingPool NewThinkingPool()
     {
         var board = new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock)
         {
