@@ -156,13 +156,13 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.76.0
+## 🆕 What's new in 0.77.0
 
-- 👀 **Choose how often Martlet reads your screen**: Companion › Reading › **Read the screen** goes up to twice a second, so a new score or message reaches Martlet much sooner.
-- ⚡ **PP-OCRv5 mobile on a graphics card**: a computer with an NVIDIA graphics card can run the recommended reading model there, much faster than on the processor. It stays optional.
-- 🔎 **Martlet finds things by meaning, not only by words**: memories, game guides and research reports that say the same thing in other words are found too.
-- 🌍 **More languages when Martlet remembers**: memory, app guides and earlier conversations now find matches in Spanish, French, German, Portuguese, Italian, Chinese, Japanese and Korean.
-- 🧠 **A memory that keeps itself tidy**: Martlet keeps a short profile of you, keeps what used to be true as history, and merges facts that say the same thing in the background.
+- 🤫 **Martlet stays quiet while you talk to someone else**: the new *Talking to someone else* check-in notices a conversation in the room or on a call, and Martlet holds back until you talk to it again.
+- 🎙️ **Voice recognition on your other computers**: the new *Voice recognition* role recognizes who is speaking on another computer's NVIDIA graphics card or processor, and Companion › People › Where it runs chooses the order.
+- 👥 **Check-ins know the people Martlet knows by voice**: a new *People* tool set lets a check-in see the names, how often each voice was heard and who spoke lately.
+- 💃 **Companion › Motion controls your VRM character's body motions**: turn motion off, or choose which of your computers make new motions and in what order.
+- 🔍 **See what each Thinking request sent**: select a request to see its input beside its output.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

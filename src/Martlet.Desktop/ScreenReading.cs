@@ -125,6 +125,10 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
         var tried = targets[0];
         try
         {
+            // The wait is for a place to take the read: when the first place needs the JPEG anyway, it is encoded before the wait
+            // starts, below normal priority, which on a busy PC can take longer than the whole wait.
+            if (targets[0].Host is not null)
+                jpeg = await LowPriority.RunAsync(() => Jpeg(bgra, width, height), token, "Martlet screen reading").ConfigureAwait(false);
             var (engine, lines) = (await new PoolRunner<(PoolStop Target, PairedHost? Host)>(PoolAreas.Reading.Id, p => p.Target.Key,
                 WorkSharingRoster.Classify, WorkPriority.Background, queue).RunAsync(targets, async (p, _, t) =>
             {
