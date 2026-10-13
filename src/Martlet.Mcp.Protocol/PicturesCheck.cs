@@ -17,7 +17,7 @@ namespace Martlet.Mcp;
 /// the FIXTURE - NOT AI maker, or a ComfyUI at an address (<see cref="ComfyHttpApi"/>, <see cref="ComfyPictureMaker"/> and
 /// <see cref="ComfyWorkflows"/>), then keeps it as a picture creation in a data directory and reads it back the way the talk
 /// window shows it; or (place pool) rehearses the Pictures list's routing on simulated ComfyUI computers
-/// (<see cref="PicturePoolCheck"/>). Cloud providers are never called here (a picture costs money).</summary>
+/// (<see cref="PictureMakingPoolCheck"/>). Cloud providers are never called here (a picture costs money).</summary>
 internal static class PicturesCheck
 {
     internal static object Status(string dataDirectory)
@@ -72,7 +72,7 @@ internal static class PicturesCheck
     // pictures role). Read-only: it never saves the list.
     private static object Pool(string dataDirectory, PicturesSettings settings)
     {
-        var area = PoolAreas.Pictures;
+        var area = PoolAreas.PictureMaking;
         var device = Martlet.Diagnostics.LocalLogs.ThisDeviceId(dataDirectory);
         var (paired, own) = PairedHosts(dataDirectory);
         var saved = PoolSettings.LoadFor(dataDirectory, area);
@@ -81,13 +81,13 @@ internal static class PicturesCheck
         var keys = PoolKeys.Load(dataDirectory);
         return new
         {
-            area = area.Id, lane = PicturePool.Lane, file = PoolSettings.File(area.Shared), configured = saved is not null, off = order.Off,
+            area = area.Id, lane = PictureMakingPool.Lane, file = PoolSettings.File(area.Shared), configured = saved is not null, off = order.Off,
             device, ownHost = own,
             members = list.Members.Select(m => new
             {
                 key = m.Key, kind = m.Kind.ToString(), name = m.Name, off = m.Off, onlyFor = m.OnlyFor, settings = m.Settings,
                 consented = m.Consented(area.Id), ownKeySaved = m.Kind == PoolMemberKind.Cloud ? keys.For(area.Id, m.Key) is not null : (bool?)null,
-                place = PicturePoolMembers.Place(m, own, keys.For(area.Id, m.Key))?.Describe()
+                place = PictureMakingPoolMembers.Place(m, own, keys.For(area.Id, m.Key))?.Describe()
             }),
             tries = order.Members.Select(m => m.Key), pooled = order.Members.Count > 1
         };
@@ -99,8 +99,8 @@ internal static class PicturesCheck
         try { plan = ClusterPlan.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, "cluster.json"))); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { plan = ClusterPlan.Empty; }
         var others = settings.Place == PicturePlace.Host
-            ? PicturePoolMembers.Others(plan, paired, own, settings.HostId, WorkSharingSettings.Load(dataDirectory), device) : [];
-        return PicturePoolMembers.Migrate(settings, others, DateTimeOffset.UtcNow);
+            ? PictureMakingPoolMembers.Others(plan, paired, own, settings.HostId, WorkSharingSettings.Load(dataDirectory), device) : [];
+        return PictureMakingPoolMembers.Migrate(settings, others, DateTimeOffset.UtcNow);
     }
     // The paired host IDs in hosts.json other than hosts a friend shares, and the one saved as this PC's own (Docker Desktop here).
     private static (string[] Hosts, string? Own) PairedHosts(string dataDirectory)
@@ -129,7 +129,7 @@ internal static class PicturesCheck
         place = (place ?? "fixture").ToLowerInvariant();
         if (place is "openrouter" or "nvidia" or "nvidia-build")
             throw new ArgumentException("pictures_check never calls a paid cloud provider. Use the desktop's Draw a test picture, which asks first.");
-        if (place == "pool") return await PicturePoolCheck.RunAsync(cancellation);
+        if (place == "pool") return await PictureMakingPoolCheck.RunAsync(cancellation);
         var workflow = (workflowName ?? "z-image-turbo").ToLowerInvariant() switch
         {
             "z-image-turbo" or "zimageturbo" => PictureWorkflow.ZImageTurbo,
