@@ -466,7 +466,7 @@ public partial class MainWindow
             case CompanionTab.Memory: RenderMemoryTab(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: RenderRepliesTab(body); break;
-            case CompanionTab.CheckIns: RenderCheckInsTab(body); break;
+            case CompanionTab.CheckIns: CheckInsPage.Render(body); break;
             case CompanionTab.DeepThinking: ThinkingPoolPage.Render(body); break;
             case CompanionTab.Singing: RenderSingingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
@@ -1861,49 +1861,8 @@ public partial class MainWindow
             Row(PageButton("Open conversations", History_Click, id: "OpenHistory")));
     }
 
-    // The small builders (Card, Heading, Note, Warning, Row, PageButton, TerminalRow and TakeKey) are in Pages\PageKit.cs.
-
-    // ---------- dense editor rows (Companion › Emotes and motions, and Touch's touch zones and touch temperament) ----------
-
-    /// <summary>Where a dense row's fields start, under its name: an empty check box is 29 pixels wide (its box and the gap its
-    /// template keeps before content), then a 6-pixel gap.</summary>
-    private const double RowIndent = 35;
-
-    /// <summary>The check box that turns a dense row on, before its name.</summary>
-    private static CheckBox RowSwitch(bool on) =>
-        new() { IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, RowIndent - 29, 0) };
-
-    /// <summary>Makes a text box, choice or button one of a dense row's compact controls: 32 pixels tall, on the row's centre line.</summary>
-    private static T Compact<T>(T control) where T : Control
-    {
-        control.SetResourceReference(StyleProperty, control switch
-        {
-            TextBox => "CompactTextBox", ComboBox => "CompactComboBox", _ => "CompactButton"
-        });
-        if (control is Button) control.MinWidth = 56;
-        return control;
-    }
-
-    /// <summary>A short muted label in a dense row, on the centre line of the control it names. Labels that start a row's lines get
-    /// the same <paramref name="width"/>, so the boxes after them line up.</summary>
-    private static Label RowLabel(string text, UIElement target, double left = 0, double right = 6, double width = 0)
-    {
-        var label = new Label
-        {
-            Content = text, Target = target, Padding = new Thickness(left, 0, right, 0), VerticalAlignment = VerticalAlignment.Center,
-            MinWidth = width
-        };
-        label.SetResourceReference(ForegroundProperty, "MutedBrush");
-        return label;
-    }
-
-    /// <summary>Items of a dense row that stay together when the row wraps, such as a label and its box.</summary>
-    private static StackPanel RowGroup(params UIElement[] items)
-    {
-        var group = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 18, 6) };
-        foreach (var item in items) group.Children.Add(item);
-        return group;
-    }
+    // The small builders (Card, Heading, Note, Warning, Row, PageButton, TerminalRow and TakeKey) and the dense editor rows
+    // (RowIndent, RowSwitch, Compact, RowLabel and RowGroup) are in Pages\PageKit.cs.
 
     /// <summary>A text box with a grey <paramref name="hint"/> over it while it is empty. The hint starts where typed text starts:
     /// the box's style (and so its padding) applies only once it is on the page, so the caret's first place sets the hint's margin.</summary>
