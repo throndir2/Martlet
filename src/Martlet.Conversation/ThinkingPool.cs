@@ -481,7 +481,7 @@ public sealed class ThinkingJobBoard
         {
             Task = job.Label, Origin = job.Origin, Priority = (int)(job.Priority ?? ThinkingJobKinds.Priority(job.Kind)), Needs = job.Required,
             Timeout = job.Timeout, DropWhenStale = job.DropWhenStale, MaxOutputTokens = job.MaxOutputTokens, Reasoning = job.Reasoning,
-            Tools = job.Tools.Count
+            Tools = job.Tools.Count, Input = ThinkingRequestInput.Of(job)
         });
         try
         {
