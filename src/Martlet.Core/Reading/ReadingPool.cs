@@ -26,7 +26,7 @@ public static class ReadingPool
 
     /// <summary>The paired computer whose Reading role <paramref name="member"/> reads with: its own, or for this PC with the
     /// role, <paramref name="ownHost"/> (this PC's own host service). Null for Windows OCR, or this PC without a host service.</summary>
-    public static string? HostOf(PoolMember member, string? ownHost) => UsesWindows(member) ? null : PoolPlaces.HostOf(member, ownHost);
+    public static string? HostOf(PoolMember member, string? ownHost) => UsesWindows(member) ? null : PoolRouting.HostOf(member, ownHost);
 
     /// <summary>Where <paramref name="member"/> reads, in words: "Windows OCR on this PC", "the Reading role on this PC" or
     /// "gpu-pc's Reading role".</summary>
@@ -78,15 +78,15 @@ public static class ReadingPool
         };
     }
 
-    /// <summary>The places companion PC <paramref name="device"/> tries for a read, first to last (<see cref="PoolPlaces.Order"/>):
-    /// the members that are on and kept for it, Windows OCR as This PC (<see cref="PoolPlace.HostId"/> null), and each computer
-    /// once that is paired here (<paramref name="paired"/>); This PC with the role is <paramref name="ownHost"/>. A place's key in
+    /// <summary>The stops companion PC <paramref name="device"/> tries for a read, first to last (<see cref="PoolRouting.Stops(PoolArea, PoolList?, string, Func{PoolMember, PoolStop?})"/>):
+    /// the members that are on and kept for it, Windows OCR as This PC (<see cref="PoolStop.HostId"/> null), and each computer
+    /// once that is paired here (<paramref name="paired"/>); This PC with the role is <paramref name="ownHost"/>. A stop's key in
     /// <see cref="WorkQueue"/> is "this-pc" for Windows OCR and "host:&lt;id&gt;" for a computer, whichever member named it.</summary>
-    public static IReadOnlyList<PoolPlace> Targets(PoolList list, string device, string? ownHost, Func<string, bool> paired)
+    public static IReadOnlyList<PoolStop> Targets(PoolList list, string device, string? ownHost, Func<string, bool> paired)
     {
         ArgumentNullException.ThrowIfNull(list);
         ArgumentNullException.ThrowIfNull(paired);
-        return PoolPlaces.Order(Area, list, device, member => UsesWindows(member) ? new PoolPlace(member, null, PoolMember.ThisPcKey)
-            : HostOf(member, ownHost) is { } host && paired(host) ? new PoolPlace(member, host, "host:" + host) : null);
+        return PoolRouting.Stops(Area, list, device, member => UsesWindows(member) ? new PoolStop(member, null)
+            : HostOf(member, ownHost) is { } host && paired(host) ? new PoolStop(member, host) { Key = "host:" + host } : null);
     }
 }

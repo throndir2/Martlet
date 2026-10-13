@@ -325,8 +325,8 @@ switch and no single-computer choice.
 | Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision, hearing and reading). An area with no list yet makes it once from its older choices (`PoolMigration`) |
 | Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |
 | Cloud consent | `PoolMember.Consent` binds the owner's agreement (data leaves this PC, requests may cost money) to the area and the member key. A cloud member without a matching agreement takes no work |
-| Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). `PoolPlaces.Order(area, list, device, place)` turns them into places (`PoolPlace`: the member, its paired computer from `PoolPlaces.HostOf`, and its key in `WorkQueue`), each key once. The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the place's key |
-| Runner | `PoolRunner<TPlace>` (src\Martlet.Core\Cluster\PoolRunner.cs) is the one runner for ordered pools: the first place that takes the request does it, a busy or unavailable place is passed over, every place busy means a wait, and a real failure ends the request. Its result (`PoolRun`) says which place took the request, its position and how many places were busy or unavailable first. Each pool gives only its rules: lane, key, `classify`, priority and one place's attempt |
+| Routing | `PoolRouting.Order(area, list, device, usable)` gives the members to try: on, a kind the area takes, kept for this PC, agreed to and usable now (the area's own check). `PoolRouting.Stops(area, list, device, stop)` turns them into stops (`PoolStop`: the member, its paired computer from `PoolRouting.HostOf`, and its key in `WorkQueue`), each key once. The request then goes through `WorkQueue.Shared` with lane `area.Id` and `hostOf` = the stop's key |
+| Runner | `PoolRunner<TStop>` (src\Martlet.Core\Cluster\PoolRunner.cs) is the one runner for ordered pools: the first stop that takes the request does it, a busy or unavailable stop is passed over, every stop busy means a wait, and a real failure ends the request. Its result (`PoolRun`) says which stop took the request, its position and how many stops were busy or unavailable first. Each pool gives only its rules: lane, key, `classify`, priority and one stop's attempt |
 | Cloud refusals | `PoolRefusals.Http`: 429 and 503 are busy (try the next, then wait); 401, 403, 404, 408 and other 5xx are unavailable (try the next); the rest is a real failure |
 
 An area adds itself in four steps:
@@ -336,8 +336,8 @@ An area adds itself in four steps:
 2. Make its first list from its older choices with `PoolMigration` (or its
    own code), then save it with `PoolSettings.SaveFor`.
 3. On the request path, read the list from local files only (cache it and
-   read it again only when the file changed), call `PoolPlaces.Order` (or
-   `PoolRouting.Order`), and send the request through `PoolRunner<TPlace>`.
+   read it again only when the file changed), call `PoolRouting.Stops` (or
+   `PoolRouting.Order`), and send the request through `PoolRunner<TStop>`.
    When `PoolOrder.Fallback` is true, run the area's fallback.
 4. Show the list on the area's page with the shared list control,
    `PoolListCard(new PoolListOptions { Area = ..., Status = ..., Settings = ... })`

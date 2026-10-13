@@ -35,8 +35,8 @@ public static class MotionPool
         ArgumentNullException.ThrowIfNull(paired);
         // A motion waits for a computer (its key in the queue is the host ID), so each computer is in the order once.
         if (list is not null)
-            return [.. PoolPlaces.Order(PoolAreas.Motion, list, device, m => PoolPlaces.HostOf(m, own) is { } host &&
-                paired.Contains(host, StringComparer.Ordinal) ? new PoolPlace(m, host, host) : null).Select(p => (p.Member, p.HostId!))];
+            return [.. PoolRouting.Stops(PoolAreas.Motion, list, device, m => PoolRouting.HostOf(m, own) is { } host &&
+                paired.Contains(host, StringComparer.Ordinal) ? new PoolStop(m, host) : null).Select(s => (s.Member, s.HostId!))];
         return settings.Place switch
         {
             MotionPlace.Off => [],
@@ -99,7 +99,7 @@ public static class MotionPool
         if (hosts.Count == 0) throw new MotionException(MotionErrorCodes.Unavailable, "No computer in the Motion list is on.");
         var run = await new PoolRunner<string>(Lane, host => host, Classify, WorkPriority.Background, queue, clock)
             .RunAsync(hosts, (host, _, t) => make(host, t), LongestWait, token).ConfigureAwait(false);
-        return (run.Result, run.Place);
+        return (run.Result, run.Stop);
     }
 
     private static PoolMember Member(string host, string? own) => host == own ? PoolMember.ThisPc() : PoolMember.Computer(host);

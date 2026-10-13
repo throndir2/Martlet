@@ -496,7 +496,8 @@ public sealed record PoolOrder(PoolArea Area, IReadOnlyList<PoolMember> Members,
 }
 
 /// <summary>Which pool members a companion PC tries, in order. Deterministic and instant (no network). A request then goes
-/// through <see cref="WorkQueue"/> with the area's ID as its lane and each member's <see cref="PoolMember.Key"/> as its
+/// through the pool runner (<see cref="PoolRunner{TStop}"/>) and <see cref="WorkQueue"/> with the area's ID as its lane and each
+/// stop's <see cref="PoolStop.Key"/> as its
 /// computer (<c>hostOf</c>), so cloud members and addresses queue the same way as host IDs: a busy member (a computer turning a
 /// second request away, a cloud provider's rate limit: <see cref="PoolRefusals"/>) is passed over for the next, and when every
 /// one is busy the request waits for whichever frees first.</summary>
@@ -512,6 +513,34 @@ public static class PoolRouting
         var order = members.Where(m => !m.Off && area.Takes(m.Kind) && m.Allows(device) && m.Consented(area.Id) && (usable?.Invoke(m) ?? true))
             .ToArray();
         return new(area, order, list is not null, members.All(m => m.Off));
+    }
+
+    /// <summary>The paired computer <paramref name="member"/> runs on: for This PC, this PC's own host service
+    /// (<paramref name="own"/>, null without one); for a computer or one of its cards, that computer; null for an address or a
+    /// cloud provider.</summary>
+    public static string? HostOf(PoolMember member, string? own)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        return member.Kind switch
+        {
+            PoolMemberKind.ThisPc => own,
+            PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
+            _ => null
+        };
+    }
+
+    /// <summary>The stops companion PC <paramref name="device"/> tries for a request of <paramref name="area"/>, first to last:
+    /// the members that <see cref="Order"/> keeps and that <paramref name="stop"/> puts somewhere (the area's own rule: where the
+    /// member runs and its key in <see cref="WorkQueue"/>; null: it can't take the request here now). Each
+    /// <see cref="PoolStop.Key"/> is in the order once, at its first place. The request then goes through
+    /// <see cref="PoolRunner{TStop}"/>. No network.</summary>
+    public static IReadOnlyList<PoolStop> Stops(PoolArea area, PoolList? list, string device, Func<PoolMember, PoolStop?> stop)
+    {
+        ArgumentNullException.ThrowIfNull(stop);
+        List<PoolStop> stops = [];
+        foreach (var member in Order(area, list, device, m => stop(m) is not null).Members)
+            if (stop(member) is { } found && stops.All(s => s.Key != found.Key)) stops.Add(found);
+        return stops;
     }
 
     /// <summary>The paired computers (host IDs) a host request of <paramref name="area"/> tries, first to last: the list's members
@@ -533,16 +562,7 @@ public static class PoolRouting
     {
         ArgumentNullException.ThrowIfNull(area);
         ArgumentNullException.ThrowIfNull(runs);
-        string? Resolve(PoolMember member)
-        {
-            var id = member.Kind switch
-            {
-                PoolMemberKind.ThisPc => own,
-                PoolMemberKind.Computer or PoolMemberKind.Gpu => member.HostId,
-                _ => null
-            };
-            return id is not null && (id == planned || runs.Contains(id)) ? id : null;
-        }
+        string? Resolve(PoolMember member) => HostOf(member, own) is { } id && (id == planned || runs.Contains(id)) ? id : null;
         bool Usable(PoolMember member) => member.Kind is PoolMemberKind.ThisPc or PoolMemberKind.Computer or PoolMemberKind.Gpu
             ? Resolve(member) is not null : usable?.Invoke(member) ?? false;
         List<PoolStop> stops = [];
@@ -558,12 +578,13 @@ public static class PoolRouting
     }
 }
 
-/// <summary>One stop on a request's way (<see cref="PoolRouting.Stops"/>): a member and, for one on a paired computer or this
-/// PC's own host service, its host ID. <see cref="Key"/> is its key in <see cref="WorkQueue"/>: the host ID, or the member's
-/// own key (a cloud provider, an address).</summary>
+/// <summary>One stop on a request's way (<see cref="PoolRouting.Stops(PoolArea, PoolList?, string, Func{PoolMember, PoolStop?})"/>):
+/// a member and, for one on a paired computer or this PC's own host service, its host ID. <see cref="Key"/> is its key in
+/// <see cref="WorkQueue"/>: by default the host ID, or the member's own key (a cloud provider, an address); an area with its own
+/// key rule sets it (Reading: <c>host:&lt;id&gt;</c>; Singing and Lip-sync: the member's key).</summary>
 public sealed record PoolStop(PoolMember Member, string? HostId)
 {
-    public string Key => HostId ?? Member.Key;
+    public string Key { get; init; } = HostId ?? Member.Key;
 }
 
 /// <summary>What a cloud or address member's failure before its first answer means in <see cref="WorkQueue"/>: a rate limit

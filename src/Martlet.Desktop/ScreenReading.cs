@@ -125,7 +125,7 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
         var tried = targets[0];
         try
         {
-            var (engine, lines) = (await new PoolRunner<(PoolPlace Target, PairedHost? Host)>(PoolAreas.Reading.Id, p => p.Target.Key,
+            var (engine, lines) = (await new PoolRunner<(PoolStop Target, PairedHost? Host)>(PoolAreas.Reading.Id, p => p.Target.Key,
                 WorkSharingRoster.Classify, WorkPriority.Background, queue).RunAsync(targets, async (p, _, t) =>
             {
                 tried = p;
@@ -175,11 +175,11 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
         }
     }
 
-    private static string Name((PoolPlace Target, PairedHost? Host) place) => place.Host?.HostId ?? "This PC";
+    private static string Name((PoolStop Target, PairedHost? Host) place) => place.Host?.HostId ?? "This PC";
 
     /// <summary>The places a read tries, first to last (<see cref="ReadingList.Targets"/>): the list's members that are on, kept
     /// for this PC and paired here, Windows OCR as This PC, each computer once.</summary>
-    internal IReadOnlyList<(PoolPlace Target, PairedHost? Host)> Targets()
+    internal IReadOnlyList<(PoolStop Target, PairedHost? Host)> Targets()
     {
         var targets = ReadingList.Targets(dataDirectory);
         return targets.Count > 0 ? targets
