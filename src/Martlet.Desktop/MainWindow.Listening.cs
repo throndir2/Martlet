@@ -52,7 +52,7 @@ public partial class MainWindow
     private List<GpuLoad> GpuLoads()
     {
         var loads = new List<GpuLoad>();
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         if (IsLocalOllama(thinking)) loads.Add(new($"Ollama {thinking!.ModelId}", ListeningAdvisor.OllamaModelGb(thinking.ModelId)));
         if (ThisPcHost() is { } thisPc && hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers is { } offers)
         {
@@ -172,13 +172,6 @@ public partial class MainWindow
             thisPc is null ? null : PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), link: true, id: "SetupCheckLocal-listening")));
         return Card([.. stack]);
     }
-    private static TextBlock Warning(string text)
-    {
-        var warning = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
-        warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        return warning;
-    }
-
     // ---------- Listening › This PC › Parakeet ----------
 
     /// <summary>The Parakeet model downloading now, or null.</summary>

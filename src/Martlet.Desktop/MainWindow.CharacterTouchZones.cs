@@ -344,7 +344,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(status, "TouchZonesStatus");
         stack.Add(status);
         // From the saved setup, so it is right before the talk window opens.
-        var sight = TouchZonesSight(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm),
+        var sight = TouchZonesSight(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings.ThinkingRoute(),
             SavedModelAbilities(), Environment.GetEnvironmentVariable(CharacterTouchZoneService.FixtureVariable) is { Length: > 0 });
         var vision = Note(sight.Line, new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(vision, "TouchZonesVision");

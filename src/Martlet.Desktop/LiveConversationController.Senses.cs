@@ -124,7 +124,7 @@ internal sealed partial class LiveConversationController
         var configured = Configuration;
         var known = configured is null ? (bool?)null
             : row.Kind == SenseKind.Image ? ModelSenses.Known(configured.Vision()) : ModelSenses.Known(configured.Hearing());
-        var inputs = SenseJobInputs.For(SenseRoute(row.Kind), configured?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), known) with
+        var inputs = SenseJobInputs.For(SenseRoute(row.Kind), configured?.Routes.ThinkingRoute(), known) with
         {
             ThisPc = row.Order.Contains(SenseTaker.ThisPc) && (SoundTaggerHere ?? Martlet.Sherpa.SoundTagger.Included())
         };
@@ -140,7 +140,7 @@ internal sealed partial class LiveConversationController
     /// window loads the settings (null), a model of its own still goes by what Martlet found out about it (model-abilities.json),
     /// and a kind that goes to the text model says to set up Thinking.</summary>
     internal SenseRoute SenseRoute(SenseKind kind, LiveConversationConfiguration? configured) =>
-        SenseRouting.For(kind, SenseModels, configured?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm),
+        SenseRouting.For(kind, SenseModels, configured?.Routes.ThinkingRoute(),
             configured?.Abilities ?? Volatile.Read(ref poolAbilities),
             configured?.Vision() ?? VisionSupport.Unknown, configured?.Hearing() ?? HearingSupport.Unknown);
 
@@ -200,7 +200,7 @@ internal sealed partial class LiveConversationController
     /// cache. No request and no file read.</summary>
     internal IReadOnlyList<DeepThinkingSettings> SenseMembers(SenseKind kind, DeepThinkingSettings chosen)
     {
-        var thinking = Configuration?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = Configuration?.Routes.ThinkingRoute();
         return SensePool.Members(kind, chosen, Volatile.Read(ref senseSetup)?.For(kind), thinking, SenseAbilities,
             member => floorRules.Resources.Shares(SensePlace(kind, member)));
     }
@@ -213,7 +213,7 @@ internal sealed partial class LiveConversationController
     {
         var configured = Configuration;
         var routes = configured?.Routes ?? [];
-        var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = routes.ThinkingRoute();
         var name = model.Describe();
         if (model is { Place: DeepThinkingPlace.Host, HostId: { } host } && HostPresence.IsOffline(host))
             return SenseAttempt.Unavailable($"{host} is offline");

@@ -204,7 +204,7 @@ internal static class CheckInsCheck
             ["c1"] = "SAY: They've been at it for hours; suggest a short stretch break.",
             [CheckIns.Welcome] = "SAY: Welcome back! Your trip plan finished while you were away.",
             [CheckIns.Unanswered] = "SAY: No pressure, but I'm still curious what you think!",
-            [CheckIns.Call] = "REMIND: They just joined a call; stay quiet and keep any reply very short until it ends.",
+            [CheckIns.Aside] = "ASIDE: FIXTURE on the phone with their mom",
             [CheckIns.Others] = "REMIND: Someone else is here; don't share private things about the user.",
             [CheckIns.DescribeTouches] = "KNOW: FIXTURE: Their slow strokes keep sliding from your tail down to your groin.",
             [CheckIns.Reactions] = "Sulking for a while after being teased, so touches are less welcome.",
@@ -363,6 +363,7 @@ internal static class CheckInsCheck
         await DescribeTouchesAsync(Step, now, facts, cancellation);
         await ThinkAheadAsync(Step, now, facts, cancellation);
         Signals(Step, now, facts);
+        await AsideAsync(Step, now, facts, cancellation);
         await ToolsAsync(Step, facts, cancellation);
         await ReactionsAsync(Step, facts, cancellation);
         return new { passed = ok, steps };
@@ -590,13 +591,14 @@ internal static class CheckInsCheck
             var (read, state) = CheckInSettings.Read(folder);
             var all = CheckIns.All(read);
             var refused = false;
-            try { new CheckInSettings().With(custom with { Triggers = (CheckInTriggers)32 }).Validate(); }
+            try { new CheckInSettings().With(custom with { Triggers = (CheckInTriggers)64 }).Validate(); }
             catch (Martlet.Core.Contracts.ContractException) { refused = true; }
             step("triggers: saved and read back", wrote && state == "loaded" && all.Single(c => c.Id == "c4").Triggers == custom.Triggers &&
                 all.Single(c => c.Id == CheckIns.Gaze).Triggers == CheckInTriggers.TouchesEnded &&
                 CheckIns.All(null).All(c => c.Triggers == (c.Id == CheckIns.DescribeTouches ? CheckInTriggers.TouchesEnded
                     : c.Id == CheckIns.Reactions ? CheckIns.ByTouches
-                    : c.Id is CheckIns.Actions or CheckIns.Ahead ? CheckInTriggers.ExchangeEnded : CheckInTriggers.None)) && refused,
+                    : c.Id is CheckIns.Actions or CheckIns.Ahead ? CheckInTriggers.ExchangeEnded
+                    : c.Id == CheckIns.Aside ? CheckInTriggers.Spoke : CheckInTriggers.None)) && refused,
                 new { state, c4 = all.Single(c => c.Id == "c4").Triggers.ToString(), gaze = all.Single(c => c.Id == CheckIns.Gaze).Triggers.ToString(), unknownRefused = refused });
         }
         finally
@@ -715,7 +717,7 @@ internal static class CheckInsCheck
             new { handedOff = handed.Select(h => $"{h.Tool} ({h.SetId})"), guidance });
     }
     // The built-in check-ins that wait for a signal: off until the owner turns them on.
-    private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Unanswered or CheckIns.Call or CheckIns.Others;
+    private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Unanswered or CheckIns.Others;
 
     /// <summary>9. Signals (FIXTURE facts, canned answers, NOT AI): each signal condition waits and runs on the production
     /// <see cref="CheckIns.Wait"/>, the new facts are worded as the check reads them, the four signal check-ins ask and read their
@@ -745,8 +747,8 @@ internal static class CheckInsCheck
             ["came back: before the last run"] = CheckIns.Wait(Built(CheckIns.Welcome), state with { CameBackAt = now.AddMinutes(-40) }, ran with { At = now.AddMinutes(-35) }),
             ["on a call"] = CheckIns.Wait(Own(CheckInConditions.NotOnCall), state, null),
             ["not on a call"] = CheckIns.Wait(Own(CheckInConditions.NotOnCall), state with { OnCall = false }, null),
-            ["activity changed"] = CheckIns.Wait(Built(CheckIns.Call), state, null),
-            ["activity same since the last run"] = CheckIns.Wait(Built(CheckIns.Call), state with { ActivityChangedAt = now.AddMinutes(-4) }, ran with { Recent = [] }),
+            ["activity changed"] = CheckIns.Wait(Own(CheckInConditions.ActivityChanged), state, null),
+            ["activity same since the last run"] = CheckIns.Wait(Own(CheckInConditions.ActivityChanged), state with { ActivityChangedAt = now.AddMinutes(-4) }, ran with { Recent = [] }),
             ["between 8 AM and 10 PM at 10:17 PM"] = CheckIns.Wait(Own(CheckInConditions.Between), state, null),
             ["between 10 PM and 6 AM at 10:17 PM"] = CheckIns.Wait(Own(CheckInConditions.Between) with { FromHour = 22, UntilHour = 6 }, state, null),
             ["unanswered"] = CheckIns.Wait(Built(CheckIns.Unanswered), question, null),
@@ -782,13 +784,13 @@ internal static class CheckInsCheck
         {
             [CheckIns.Welcome] = CheckIns.Message(Built(CheckIns.Welcome), state, null) ?? "",
             [CheckIns.Unanswered] = CheckIns.Message(Built(CheckIns.Unanswered), question with { Activity = "" }, null) ?? "",
-            [CheckIns.Call] = CheckIns.Message(Built(CheckIns.Call), state, null) ?? "",
+            [CheckIns.Aside] = CheckIns.Message(Built(CheckIns.Aside), state, null) ?? "",
             [CheckIns.Others] = CheckIns.Message(Built(CheckIns.Others), state, null) ?? ""
         };
-        var verdicts = new[] { CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others }
+        var verdicts = new[] { CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others }
             .ToDictionary(id => id, id => CheckIns.Read(Built(id), id switch
             {
-                CheckIns.Welcome => "SAY: Welcome back!", CheckIns.Unanswered => "OK", CheckIns.Call => "REMIND: Stay quiet during the call.",
+                CheckIns.Welcome => "SAY: Welcome back!", CheckIns.Unanswered => "OK", CheckIns.Aside => "ASIDE: FIXTURE in a Discord call.",
                 _ => "REMIND: Someone else is here; keep private things private."
             }, state));
         step("signals: the facts and the check-ins", messages[CheckIns.Welcome].Contains("after 25 min away", StringComparison.Ordinal) &&
@@ -796,14 +798,14 @@ internal static class CheckInsCheck
             messages[CheckIns.Welcome].Contains("starts with SAY:", StringComparison.Ordinal) &&
             messages[CheckIns.Unanswered].Contains("So, which boss is next?", StringComparison.Ordinal) &&
             messages[CheckIns.Unanswered].Contains("doesn't seem to be doing anything with sound", StringComparison.Ordinal) &&
-            messages[CheckIns.Call].Contains("in a call in Discord", StringComparison.Ordinal) &&
-            messages[CheckIns.Call].Contains("before, they were playing a game (FIXTURE Quest)", StringComparison.Ordinal) &&
-            messages[CheckIns.Call].Contains("starts with REMIND:", StringComparison.Ordinal) &&
+            messages[CheckIns.Aside].Contains("in a call in Discord", StringComparison.Ordinal) &&
+            messages[CheckIns.Aside].Contains("before, they were playing a game (FIXTURE Quest)", StringComparison.Ordinal) &&
+            messages[CheckIns.Aside].Contains("starts with ASIDE:", StringComparison.Ordinal) &&
             messages[CheckIns.Others].Contains("- FIXTURE Owner (the user's own voice), 2 min ago", StringComparison.Ordinal) &&
             messages[CheckIns.Others].Contains("- a voice Martlet doesn't know, 1 min ago", StringComparison.Ordinal) &&
             messages[CheckIns.Others].Contains("Someone other than the user seems to be here.", StringComparison.Ordinal) &&
             verdicts[CheckIns.Welcome] is { Act: true } && verdicts[CheckIns.Unanswered] is { Act: false, Readable: true } &&
-            verdicts[CheckIns.Call] is { Act: true } && verdicts[CheckIns.Others] is { Act: true } &&
+            verdicts[CheckIns.Aside] is { Act: true, Text: "FIXTURE in a Discord call." } && verdicts[CheckIns.Others] is { Act: true } &&
             CheckIns.Placed("{activity} {people} {away}") == (CheckInFacts.Activity | CheckInFacts.People | CheckInFacts.WhileAway),
             new { messages, verdicts = verdicts.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable }) });
 
@@ -834,6 +836,107 @@ internal static class CheckInsCheck
             try { Directory.Delete(folder, recursive: true); }
             catch (IOException) { }
         }
+    }
+
+    /// <summary>9b. Talking to someone else (FIXTURE words and voices, a canned answer, NOT AI): the built-in check-in is on and
+    /// starts when always listening hears the user (at most once a minute, never on a reply alone), its message carries what was
+    /// heard with who spoke and whether Martlet answered, the activity, the voices and the conversation, the answer is read on a
+    /// production job board (ASIDE:, BACK, OK), and the hold goes on a production context board with every request while the
+    /// user keeps talking, until <see cref="CheckIns.AsideQuiet"/> of quiet. The retired On a call's saved choice is dropped.</summary>
+    private static async Task AsideAsync(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts, CancellationToken cancellation)
+    {
+        var aside = CheckIns.All(null).Single(c => c.Id == CheckIns.Aside);
+        // A one-sided phone call Martlet can't see: only the user's voice, answers to questions Martlet never asked.
+        var phone = facts with
+        {
+            Exchanges = [.. facts.Exchanges, new("FIXTURE: Hello? Oh, hi Mom.", "[pass]"), new("FIXTURE: Yeah, uh-huh. No, I already ate.", "Ooh, what did you have?")],
+            Exchanged = 6, Activity = "", OnCall = false,
+            Voices = [new("FIXTURE Owner", true, now.AddSeconds(-20)) { Id = "v1" }], OwnerVoiceKnown = true,
+            Heard =
+            [
+                new(now.AddSeconds(-50), "FIXTURE: Hello? Oh, hi Mom.", false) { Speaker = "FIXTURE Owner", Recognized = true, Owner = true },
+                new(now.AddSeconds(-20), "FIXTURE: Yeah, uh-huh. No, I already ate.", true) { Speaker = "FIXTURE Owner", Recognized = true, Owner = true }
+            ]
+        };
+        var fired = CheckIns.SpokeTrigger(now.AddSeconds(-1), answered: true);
+        var waits = new Dictionary<string, string?>
+        {
+            ["nothing heard"] = CheckIns.Wait(aside, phone, null),
+            ["heard you, while the reply is busy"] = CheckIns.Wait(aside, phone with { Quiet = TimeSpan.Zero }, null, fired: fired),
+            ["heard you, ran 20 s ago"] = CheckIns.Wait(aside, phone, new(now.AddSeconds(-20), 5, "you don't seem to be talking to someone else", false), fired: fired),
+            ["a reply ended only"] = CheckIns.Wait(aside, phone, null, fired: CheckIns.ExchangeTrigger(now))
+        };
+        var job = CheckIns.Prepare(aside, phone, null);
+        BackgroundPlace member = new("endpoint:fixture-aside", "FIXTURE member") { Slots = 1, Model = "fixture-model" };
+        const string answer = "<think>Only the user's voice, a greeting to Mom, answers to questions nobody here asked.</think>\n" +
+            "ASIDE: FIXTURE on the phone with their mom";
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [member], (_, _, _) => Task.FromResult(ThinkingAnswer.Done(answer)));
+        var result = job is null ? null : await board.RunAsync(job, cancellation);
+        var verdict = CheckIns.Read(aside, result?.Text, phone);
+
+        // The hold: its note goes with every request (not once) while the user keeps talking, and ends after quiet minutes.
+        var context = new ContextBoard();
+        var source = CheckIns.Source(aside.Id);
+        var hold = CheckIns.HoldBack(null, verdict.Text ?? "x", aside.Id, now);
+        context.Post(source, CheckIns.AsideNote(null, hold)!, hold.Heard, CheckIns.AsideQuiet);
+        var first = context.Snapshot(now.AddSeconds(10));
+        context.MarkSent(first);
+        var second = context.Snapshot(now.AddSeconds(20));
+        var longer = CheckIns.Spoke(hold, now.AddMinutes(2))!;
+        context.Post(source, CheckIns.AsideNote(null, longer)!, longer.Heard, CheckIns.AsideQuiet);
+        var stillTalking = context.Snapshot(now.AddMinutes(4));
+        var quiet = context.Snapshot(now.AddMinutes(5).AddSeconds(1));
+        var ended = CheckIns.Spoke(longer, now.AddMinutes(6));
+        var renewed = CheckIns.HoldBack(longer, "FIXTURE still on the phone", "c1", now.AddMinutes(3));
+        var heard = CheckIns.Heard(phone with { Aside = hold });
+        var answers = new Dictionary<string, CheckInVerdict>
+        {
+            ["BACK"] = CheckIns.Read(aside, "They said bye and hung up.\nBACK", phone),
+            ["OK"] = CheckIns.Read(aside, "OK", phone),
+            ["ASIDE: nobody"] = CheckIns.Read(aside, "ASIDE: nobody", phone),
+            ["REMIND: instead"] = CheckIns.Read(aside, "REMIND: Hush.", phone)
+        };
+        var emptied = CheckIns.AsideNote(new Martlet.Core.Settings.PromptSettings
+        {
+            Overrides = new Dictionary<string, string> { [Martlet.Core.Settings.PromptCatalog.CheckInAsideNote] = "" }
+        }, hold);
+        var retired = new CheckInSettings { BuiltIn = new Dictionary<string, CheckInChoice> { ["call"] = new(true, 2), [CheckIns.Gaze] = new(false, 5) } };
+        var retiredRead = false;
+        try
+        {
+            retired.Validate();
+            retiredRead = retired.Choice("call") is null && retired.Choice(CheckIns.Gaze) is { On: false };
+        }
+        catch (Martlet.Core.Contracts.ContractException) { }
+        var message = job?.Text ?? "";
+        step("talking to someone else", aside is { On: true, EveryMinutes: 1, Outcome: CheckInOutcome.HoldBack, Triggers: CheckInTriggers.Spoke } &&
+            aside.Facts == (CheckInFacts.Heard | CheckInFacts.Conversation | CheckInFacts.Activity | CheckInFacts.People) &&
+            waits["nothing heard"] == "it waits for you to say something" && waits["heard you, while the reply is busy"] is null &&
+            waits["heard you, ran 20 s ago"] == "next in 40 s" && waits["a reply ended only"] == waits["nothing heard"] &&
+            job is { Kind: ThinkingJobKind.CheckIn, Reasoning: false } && LiveFloorRules.Stops(ThinkingJobKind.CheckIn) &&
+            message.Contains("FIXTURE Owner (the user's own voice): \"FIXTURE: Hello? Oh, hi Mom.\" (Mira stayed quiet)", StringComparison.Ordinal) &&
+            message.Contains("(Mira answered)", StringComparison.Ordinal) && message.Contains("Mira doesn't hold back now.", StringComparison.Ordinal) &&
+            message.Contains("doesn't seem to be doing anything with sound", StringComparison.Ordinal) &&
+            message.Contains("Only the user seems to be here.", StringComparison.Ordinal) &&
+            message.Contains("User: FIXTURE: Yeah, uh-huh.", StringComparison.Ordinal) && message.Contains("starts with ASIDE:", StringComparison.Ordinal) &&
+            message.Contains("write only: BACK", StringComparison.Ordinal) && !message.Contains("{heard}", StringComparison.Ordinal) &&
+            result is { Succeeded: true } && verdict is { Act: true, Text: "FIXTURE on the phone with their mom" } &&
+            first.Sources.Contains(source) && first.Text!.Contains("talking to someone else now, not to you (FIXTURE on the phone with their mom)", StringComparison.Ordinal) &&
+            first.Text.Contains("reply only [pass]", StringComparison.Ordinal) && second.Sources.Contains(source) &&
+            stillTalking.Sources.Contains(source) && !quiet.Sources.Contains(source) && ended is null &&
+            renewed.Since == now && renewed.By == aside.Id && renewed.About == "FIXTURE still on the phone" &&
+            heard.Contains("Mira holds back now (since 10:17 PM, 0 s ago), because the user seems to be talking to someone else: FIXTURE on the phone with their mom.", StringComparison.Ordinal) &&
+            answers["BACK"] is { Act: true, Text: null, Readable: true } && answers["OK"] is { Act: false, Readable: true } &&
+            answers["ASIDE: nobody"] is { Act: false, Readable: true } && answers["REMIND: instead"] is { Readable: false } &&
+            emptied is null && retiredRead,
+            new
+            {
+                waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), message, verdict.Act, verdict.Text,
+                firstRequestNotes = first.Text, secondRequestSources = second.Sources, afterTwoMoreMinutesOfTalk = stillTalking.Sources,
+                afterQuiet = quiet.Sources, quietMinutes = CheckIns.AsideQuiet.TotalMinutes, heardWhileHolding = heard,
+                answers = answers.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable, v.Value.Text }),
+                retiredOnACallDropped = retiredRead
+            });
     }
 
     /// <summary>11. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools

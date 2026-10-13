@@ -73,7 +73,7 @@ public partial class MainWindow
     ];
 
     private static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
-    private static readonly CloudProvider CustomCloud = new("Custom OpenAI-compatible server", "", true, null, false);
+    internal static readonly CloudProvider CustomCloud = new("Custom OpenAI-compatible server", "", true, null, false);
     /// <summary>The Thinking providers, each with the model it suggests now: the model catalog's pick when it is loaded
     /// (<see cref="PlanningCatalog.SuggestedModel"/>), else the preset's default.</summary>
     internal static IReadOnlyList<CloudProvider> ThinkingProviders =>
@@ -466,7 +466,7 @@ public partial class MainWindow
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.CheckIns: RenderCheckInsTab(body); break;
-            case CompanionTab.DeepThinking: RenderDeepThinkingTab(body); break;
+            case CompanionTab.DeepThinking: ThinkingPoolPage.Render(body); break;
             case CompanionTab.Singing: RenderSingingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: RenderPicturesTab(body); break;
@@ -860,7 +860,7 @@ public partial class MainWindow
         }
         finally { testingLocalModel = false; }
         if (closing) return;
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         var inUse = IsLocalOllama(route) && route!.ModelId == model;
         if (result is not null)
         {
@@ -969,7 +969,7 @@ public partial class MainWindow
             $"Martlet now uses {model} in Ollama on this PC." +
             (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $" Download {model} to use it." : ""));
         // Ollama says how much context it gives the model once it has loaded it (Test model does); nothing leaves this PC.
-        if (!closing && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))
+        if (!closing && IsLocalOllama(homeSettings.ThinkingRoute()))
             CheckNewModelContextAsync().Forget();
         return saved;
     }
@@ -1012,7 +1012,7 @@ public partial class MainWindow
                 }
             }
             ollamaModels = models;
-            var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var thinking = homeSettings.ThinkingRoute();
             var keeps = thinking is null || IsLocalOllama(thinking) && thinking.ModelId == model ? ""
                 : $" Thinking keeps using {(IsLocalOllama(thinking) ? thinking.ModelId : NetworkMap.ProviderName(thinking))} until it's ready.";
             var download = !LocalOllama.Serves(models, model);
@@ -1420,7 +1420,7 @@ public partial class MainWindow
             // A new Thinking model: ask its server how much context it takes, so replies stay within it. Choosing a model Martlet
             // found retired tries it again; another HTTP 410 marks it retired again.
             if (!closing && role == SetupRole.Llm && provider.Chat &&
-                homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } chosen && chosen.Origin == url && chosen.ModelId == model)
+                homeSettings.ThinkingRoute() is { } chosen && chosen.Origin == url && chosen.ModelId == model)
             {
                 ForgetRetired(chosen.Origin, model, "you chose it again");
                 CheckNewModelContextAsync().Forget();
@@ -1429,24 +1429,6 @@ public partial class MainWindow
         }
         catch (ContractException error) { ActionText.Text = error.Message; }
         finally { key?.Dispose(); }
-    }
-
-    private static SecretLease TakeKey(PasswordBox box)
-    {
-        using var secure = box.SecurePassword;
-        var chars = new char[secure.Length];
-        var pointer = Marshal.SecureStringToGlobalAllocUnicode(secure);
-        try
-        {
-            Marshal.Copy(pointer, chars, 0, chars.Length);
-            return new SecretLease(chars);
-        }
-        finally
-        {
-            box.Clear();
-            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(chars.AsSpan()));
-            Marshal.ZeroFreeGlobalAllocUnicode(pointer);
-        }
     }
 
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
@@ -1878,53 +1860,7 @@ public partial class MainWindow
             Row(PageButton("Open conversations", History_Click, id: "OpenHistory")));
     }
 
-    // ---------- small builders ----------
-
-    private Border Card(params UIElement[] children)
-    {
-        var stack = new StackPanel();
-        foreach (var child in children) stack.Children.Add(child);
-        var card = new Border { Child = stack };
-        card.SetResourceReference(StyleProperty, "CardStyle");
-        return card;
-    }
-
-    private static TextBlock Heading(string text)
-    {
-        var heading = new TextBlock { Text = text, Margin = new Thickness(0, 0, 0, 6) };
-        heading.SetResourceReference(StyleProperty, "SectionHeading");
-        return heading;
-    }
-
-    private static TextBlock Note(string text, Thickness margin)
-    {
-        var note = new TextBlock { Text = text, Margin = margin };
-        note.SetResourceReference(StyleProperty, "Muted");
-        note.TextWrapping = TextWrapping.Wrap;
-        return note;
-    }
-
-    private static WrapPanel Row(params Button?[] buttons)
-    {
-        var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-        foreach (var button in buttons.OfType<Button>())
-        {
-            button.Margin = new Thickness(0, 0, 10, 6);
-            row.Children.Add(button);
-        }
-        return row;
-    }
-
-    private static Button PageButton(string label, Action run, bool primary = false, bool link = false, string? id = null)
-    {
-        var button = new Button { Content = label, MinWidth = link ? 0 : 96 };
-        if (primary) button.SetResourceReference(StyleProperty, "PrimaryButton");
-        else if (link) button.SetResourceReference(StyleProperty, "LinkButton");
-        AutomationProperties.SetName(button, label);
-        if (id is not null) AutomationProperties.SetAutomationId(button, id);
-        button.Click += (_, _) => run();
-        return button;
-    }
+    // The small builders (Card, Heading, Note, Warning, Row, PageButton, TerminalRow and TakeKey) are in Pages\PageKit.cs.
 
     // ---------- dense editor rows (Companion › Emotes and motions, and Touch's touch zones and touch temperament) ----------
 

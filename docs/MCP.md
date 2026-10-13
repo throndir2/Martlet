@@ -934,7 +934,10 @@ of the test words, reads Test hearing's word with Windows speech recognition
 limited to the test words (when this PC has an English recognizer), and answers
 anything else with fixed text, streamed when asked. `status` lists the recent
 requests by model, the kinds of parts they carried and what the lab answered,
-never their content. It ends with the MCP server.
+never their content. Each chat completion also has `start`: short SHA-256s of
+its `Tools` and of each of its `Messages` as sent. Compare two runs to see
+whether the start of each request stayed byte-identical, so prompt caches still
+match. It ends with the MCP server.
 
 ```powershell
 # Add lab/sees to the image models in a disposable desktop and test it (it is first in an empty list).
@@ -985,7 +988,8 @@ a think stopped and going on from what it wrote (in place as the unfinished
 assistant message, or again with it as context), research waiting for the
 conversation instead of being refused, the conversation model's own place held
 above Idle, and the work queue stopping this PC's background request for a live
-reply. The desktop log's `Live floor:` lines say each change, and the reply
+reply (once, also when the stopped request takes 100 ms to free the computer).
+The desktop log's `Live floor:` lines say each change, and the reply
 latency line ends with what the floor held and stopped
 (`latency_report` returns it as `liveFloor`).
 
@@ -1166,7 +1170,7 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
 back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
-Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+Pictures list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
 simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
 or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
@@ -1338,13 +1342,15 @@ before you read or change these), each group with its own *?*
 and the placeholders in `Help-CheckInPrompt-<id>` or `Help-CheckInTask-<id>`):
 `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`),
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`,
+`Latest`, `Heard`),
 `CheckInWhen-<id>-<condition>` (when it runs: `CharacterShows`, `EmoteShown`,
 `GazeChosen`, `Talked`, `SomethingNew`, `Persona`, `Replies`, `NewReplies`,
 `Sayings`, `SlowWhenKept`, `CameBack`, `NotOnCall`, `ActivityChanged`,
 `Between`, `Unanswered`, `Attention`, `SongEnded`, `ScriptChanged`,
 `SomeoneElse`), `CheckInTrigger-<id>-<trigger>` (what starts it at once:
-`TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`), its
+`TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`,
+`ExchangeEnded`, `Spoke`), its
 hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
 as *8 AM* and *10 PM*, used with `Between`) and its cap
 (`CheckInMostPerHour-<id>`: *No limit*, *Once an hour* or *2*, *3*, *4*, *6* or
@@ -1391,6 +1397,18 @@ Think ahead's run (*thoughts ahead wait for the next reply*), the second
 reply's `LiveTurnInputs` says *Last reply took your words and 1 context
 note.*, and the desktop log says *Context board: the request took 1 note
 (check-in-ahead; ...)*.
+
+[Talking to someone else](CONVERSATION.md#talking-to-someone-else) is
+checked on the desktop the same way. Launch with a fixture file that holds
+`ASIDE: FIXTURE on the phone with their mom`, open `CompanionTab-CheckIns`
+and click `CheckInRun-aside`: `check_ins_status`'s `desktop.aside` says
+`holding` true with `since`, `until` (3 minutes later) and `aboutCharacters`,
+`CheckInStatus-aside` says *Martlet holds back while you talk to someone
+else*, and the desktop log says *Check-ins: Talking to someone else says you
+talk to someone else, so Martlet holds back ...*. Write `BACK` to the file and
+click it again: `holding` is false and the status says *Martlet talks as usual
+again*. Its trigger box `CheckInTrigger-aside-Spoke` (*You say something*) is
+checked; that trigger needs always listening and a microphone.
 
 [Check-in triggers](CONVERSATION.md#check-in-triggers) are driven live with
 `character_touch` and `character_stroke` (both need `--allow-ui-effects` and
@@ -6630,7 +6648,7 @@ and let go (*too_old*) after waiting 10 minutes. `passed` and each step's
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
-*GazeUsual*, *Note*, *Say*, *Context* or *Tools*, built-in `prompt`, the owner's `task`, the
+*GazeUsual*, *Note*, *Say*, *Context*, *Tools*, *Plan* or *HoldBack*, built-in `prompt`, the owner's `task`, the
 `facts` and `conditions` (such as *Said, Replies* or *CharacterShows,
 EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
 Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
@@ -6648,7 +6666,10 @@ reply tools [Act on what was said](CONVERSATION.md#act-on-what-was-said) takes o
 `poolCallsTools`, whether the configured Thinking pool has a member that takes
 check-ins and calls tools; `handedOff`, each `tool` with its `checkIn` and `set`;
 `why` in plain words; and `lastProblem`, what the last run after an exchange
-couldn't do, or null), `pool` with
+couldn't do, or null), `aside` (whether Martlet [holds
+back](CONVERSATION.md#talking-to-someone-else) now: `holding`, the check-in
+`by`, `since`, `until` and `aboutCharacters`, never who the user talks to),
+`pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
 `recording`, `recordingSeconds`, `script`, `triggers`, `pending` (the trigger
@@ -6660,8 +6681,8 @@ the `result`, the first line of the tool's answer at most 120 characters, and
 `failed`); `sound` with `microphoneKept`, `microphoneHeard`,
 `pcKept` and `pcHeard`; `signals` with `attentionWatched` (Martlet watches
 for flashing taskbar buttons and notifications because a check-in that is on
-waits for them), `activityKnown`, `cameBackMinutesAgo` and `voicesLately` (a
-count); never what was said, answered, reminded, taken or printed, what the
+waits for them), `activityKnown`, `cameBackMinutesAgo`, `voicesLately` and
+`heardLately` (counts); never what was said, answered, reminded, taken or printed, what the
 user does or who spoke) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
@@ -6723,7 +6744,7 @@ after the prompt when it is ticked but not placed, and that facts past
 `intimate`, `often`), `filled` and the FIXTURE message. Three
 `triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
 with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
-check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, and Think ahead and Act on what was said on `ExchangeEnded`),
+check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, Think ahead and Act on what was said on `ExchangeEnded`, and Talking to someone else on `Spoke`),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
 touches there, fire all four triggers once they settle; the ledger still holds
@@ -6777,12 +6798,27 @@ back, a call, a change in what you do, the hours past midnight, an unanswered
 question asked once, a flashing taskbar button, a song that ended, someone
 else's voice, a check-in with no script to compare, the per-hour cap, and a
 script whose output hash didn't change, which *Check now* still asks),
-`signals: the facts and the check-ins` (Welcome back, Unanswered question, On a
-call and Someone else is here send `{away}`, `{activity}` and `{people}` and
-read `SAY:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
+`signals: the facts and the check-ins` (Welcome back, Unanswered question,
+Talking to someone else and Someone else is here send `{away}`, `{activity}`
+and `{people}` and read `SAY:`, `ASIDE:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
 and read back` (equal hours, a cap of 5 and an unknown condition refused).
-The settings step also checks that these four built-in check-ins are off by
-default. Three `tools:`
+The settings step also checks that the three built-in check-ins that wait for
+a signal (Welcome back, Unanswered question, Someone else is here) are off by
+default. `talking to someone else` checks [Talking to someone
+else](CONVERSATION.md#talking-to-someone-else) with a FIXTURE one-sided phone
+call and a canned answer: it is on, runs at most once a minute, holds Martlet
+back (`HoldBack`) and starts on `Spoke`; it waits with no trigger and on a
+reply's end alone, runs while the reply is busy and waits during its
+cooldown; its message has what always listening heard (who spoke, whether
+Martlet answered or stayed quiet, whether Martlet holds back), the
+conversation, what the user does, the voices and the `ASIDE:`/`BACK` format; a
+fixture member's `ASIDE:` line after a `<think>` block is read on a production
+job board; its note goes on a production context board as `check-in-aside`
+with every request (not once), lasts while the user keeps talking and is gone
+3 minutes after they stop; `BACK`, `OK`, `ASIDE: nobody` and a `REMIND:` line
+read as they should; an emptied *Check-in: holding back while you talk to
+someone else* prompt posts nothing; and a saved choice for the retired On a
+call (`call`) is dropped. Three `tools:`
 steps check [tool sets](CONVERSATION.md#check-in-tool-sets): `tools: sets saved
 and read back` (an own check-in's and a built-in choice's sets kept; an unknown
 set and the same set twice refused), `tools: the job offers them` (the job
@@ -10368,16 +10404,21 @@ observe them:
   Say why it is safe ("saves nothing", "never the key"). Name controls that you
   leave out on purpose in a comment line next to it
   (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
-- **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
-  `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
-  arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
+- **Headless capabilities:** add a `Tool(...)` registration to the file of the
+  tool's `martlet_guide` area, `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs`
+  (for example `VoiceTools.cs` or `ThinkingTools.cs`; `McpServer.ToolGroups`
+  lists them). A registration is the tool's name, description, input schema
+  (strict, bounded arguments, ID-based results), handler and, when it needs
+  one, its `ToolPermission` (`Changes` makes the server refuse it without
+  `--allow-changes`). Put code that only that tool uses in the same file. Or
+  add a Doctor probe that `doctor_run` reaches.
   Keep tools local, read-only by default and free of network, audio and
   credential effects unless gated like `--allow-ui-effects` (or, for tools that
   save the owner's settings, `--allow-changes`). Begin each description with one
   sentence that says what the tool does: `martlet_guide` shows it as the tool's
   summary and searches the description.
 - **Tools for assistants:** a tool that an assistant needs to use or configure
-  Martlet goes in `AssistantTools` and `Listed` in
+  Martlet also goes in `Listed` in
   `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
   hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
   the short list small: other tools run through `martlet_call`.

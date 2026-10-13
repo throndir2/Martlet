@@ -83,7 +83,7 @@ public partial class MainWindow
     /// <see cref="SenseJobKind.HelperPicture"/>: a Thinking pool member that can see, else the image model of its own while pictures
     /// go to it, else the Thinking model unless it is known to be text-only (or a FIXTURE - NOT AI stand-in answers).</summary>
     private (bool CanSee, string Line, string? Off) EyesSight() =>
-        TouchZonesSight(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm),
+        TouchZonesSight(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings.ThinkingRoute(),
             SavedModelAbilities(), CharacterEyeService.Fixture);
 
     private string EyesStatusText() => characterEyes.ModelId is null ? "Reading the character..."

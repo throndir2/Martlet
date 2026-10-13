@@ -112,7 +112,8 @@ public static partial class PromptCatalog
     public const string CheckInTouches = "check_in_touches";
     public const string CheckInWelcome = "check_in_welcome";
     public const string CheckInUnanswered = "check_in_unanswered";
-    public const string CheckInCall = "check_in_call";
+    public const string CheckInAside = "check_in_aside";
+    public const string CheckInAsideNote = "check_in_aside_note";
     public const string CheckInOthers = "check_in_others";
     public const string CheckInReactions = "check_in_reactions";
     public const string CheckInActions = "check_in_actions";

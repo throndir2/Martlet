@@ -36,7 +36,7 @@ public partial class MainWindow
     /// conversation decides it: the pool member from the conversation's own Thinking pool (the board its jobs go to).</summary>
     internal SenseDecision SavedSenseDecision(SenseJobKind job)
     {
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var senses = SavedSenses();
         conversation?.ReadThinkingPoolOnce();
@@ -91,7 +91,7 @@ public partial class MainWindow
         var setup = SavedSenseSetup();
         // Made from sense-models.json just now: the list control reads the new file.
         if (!hadList && setup.List(kind) is not null) WorkSharingRoster.Forget();
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var keys = PoolKeys.Load(store?.DataDirectory);
         var hosts = SenseLists.ReadHosts(store?.DataDirectory);
@@ -530,7 +530,7 @@ public partial class MainWindow
             }
         }
         conversation?.ReloadSenseModels();
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var setup = SavedSenseSetup();
         var route = SenseRouting.For(kind, setup.Senses, thinking, SavedModelAbilities());
         ErrorLog.Info($"{(kind == SenseKind.Image ? "Image" : "Audio")} models: {SenseNow(kind, setup.Senses, setup.For(kind).Count, thinking)} {route.Why}");

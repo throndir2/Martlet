@@ -81,7 +81,7 @@ internal sealed partial class LiveConversationController
         ConversationRequest reply, BoundedTextInput input, CorrelationIds ids, long epoch, bool held, CancellationToken token)
     {
         var routes = configured.Routes;
-        var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = routes.ThinkingRoute();
         var limits = dataDirectory is null ? null : ModelLimits.Load(dataDirectory);
         var targets = new Dictionary<string, DeepThinkTarget>(StringComparer.Ordinal);
         // A member whose computer is offline now can't answer (HostPresence).

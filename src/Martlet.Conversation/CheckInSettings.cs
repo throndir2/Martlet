@@ -89,8 +89,15 @@ public sealed record CheckInSettings
 
     public int SchemaVersion { get; init; } = 1;
 
-    /// <summary>The built-in check-ins the owner changed, by ID.</summary>
-    public IReadOnlyDictionary<string, CheckInChoice> BuiltIn { get => builtIn; init => builtIn = value ?? new Dictionary<string, CheckInChoice>(); }
+    /// <summary>The built-in check-ins the owner changed, by ID. Choices for a retired check-in (<see cref="CheckIns.Retired"/>)
+    /// are dropped as they are read.</summary>
+    public IReadOnlyDictionary<string, CheckInChoice> BuiltIn
+    {
+        get => builtIn;
+        init => builtIn = value is null ? new Dictionary<string, CheckInChoice>()
+            : value.Keys.Any(CheckIns.Retired) ? value.Where(e => !CheckIns.Retired(e.Key)).ToDictionary(e => e.Key, e => e.Value, StringComparer.Ordinal)
+            : value;
+    }
     private readonly IReadOnlyDictionary<string, CheckInChoice> builtIn = new Dictionary<string, CheckInChoice>();
 
     /// <summary>The owner's own check-ins, in the order they were added; at most <see cref="CheckIns.MaximumCustom"/>.</summary>
@@ -163,8 +170,8 @@ public sealed record CheckInSettings
         CheckInRecording recording, int recordingSeconds, string? script, IReadOnlyList<string> toolSets)
     {
         ContractRules.Require(Enum.IsDefined(outcome),
-            "A check-in reminds Martlet, has it bring something up, adds to what it knows, thinks ahead for its next reply, turns " +
-            "off emotes, moves the eyes or lets its tools act.");
+            "A check-in reminds Martlet, has it bring something up, adds to what it knows, thinks ahead for its next reply, holds " +
+            "it back while you talk to someone else, turns off emotes, moves the eyes or lets its tools act.");
         ContractRules.Require((facts & ~CheckIns.KnownFacts) == 0, "A check-in gets only the facts Martlet offers.");
         ContractRules.Require((conditions & ~CheckIns.KnownConditions) == 0, "A check-in waits only for the conditions Martlet offers.");
         ContractRules.Require(((int)needs & ~(int)(ThinkingCapability.Text | ThinkingCapability.Vision | ThinkingCapability.Audio)) == 0,

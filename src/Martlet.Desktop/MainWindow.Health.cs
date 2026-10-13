@@ -128,7 +128,7 @@ public partial class MainWindow
     /// <summary>Starts a local check when the Thinking route changed since the last one (a new choice in Companion, a sync).</summary>
     private void FollowLocalServices()
     {
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var key = thinking is null ? "" : $"{thinking.RouteType}|{thinking.Origin}|{thinking.ModelId}|{thinking.Enabled}";
         if (key == localCheckKey) return;
         localCheckKey = key;
@@ -162,7 +162,7 @@ public partial class MainWindow
             var state = LocalOllamaState.NotUsed;
             webView2Missing = Prerequisites.IsMissing(Prerequisites.WebView2);
             microphoneBlocked = Prerequisites.IsMissing(Prerequisites.Microphone);
-            var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var thinking = homeSettings.ThinkingRoute();
             if (IsLocalOllama(thinking) && thinking!.Enabled != false)
             {
                 IReadOnlyList<string>? models;
@@ -766,7 +766,7 @@ public partial class MainWindow
     {
         var top = issues.FirstOrDefault(i => i.Level == HealthLevel.Problem);
         var warnings = issues.Count(i => i.Level == HealthLevel.Warning);
-        var llm = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var llm = homeSettings.ThinkingRoute();
         AdvisorButton.Visibility = issues.Any(i => i.Id == "thinking-setup") ? Visibility.Visible : Visibility.Collapsed;
         ConnectComputersButton.Visibility = issues.Any(i => i.Id == "thinking-setup" && i.Fixes.Any(f => f.Id == "network"))
             ? Visibility.Visible : Visibility.Collapsed;

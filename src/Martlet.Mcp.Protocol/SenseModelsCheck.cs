@@ -24,7 +24,7 @@ internal static class SenseModelsCheck
     internal static async Task<object> StatusAsync(string dataDirectory, CancellationToken cancellation)
     {
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
-        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = loaded.Settings.ThinkingRoute();
         var abilities = ModelAbilities.Load(dataDirectory);
         // The Vision and Hearing lists (pools-local.json) when there are any, else sense-models.json; nothing is written here (the
         // desktop makes the lists once). Members kept for some companion PCs are left out: MCP isn't one of them.

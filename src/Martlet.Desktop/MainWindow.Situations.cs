@@ -123,7 +123,7 @@ public partial class MainWindow
     /// what it is made from changes (the saved Thinking route, the host's pairing and route, the If Thinking fails settings).</summary>
     private void FollowSituationRoute(SituationDecision decision)
     {
-        var saved = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var saved = homeSettings.ThinkingRoute();
         // A FIXTURE network's hosts are made up, so its decisions only show; the conversation keeps its route.
         var wanted = decision.Moves && saved is not null && simulatedSituation?.Network is null
             ? $"{decision.Key}|{saved.ConfigurationRevision}|{SituationIdentity(decision.Place!)}" : null;
@@ -208,7 +208,7 @@ public partial class MainWindow
             return fixture with { Away = away };
         }
         var own = WorkSharingRoster.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm && r.Enabled != false);
+        var route = homeSettings.ThinkingRoute() is { Enabled: not false } enabled ? enabled : null;
         var home = LiveHome.None;
         string? homeHost = null;
         if (route is not null)
@@ -274,7 +274,7 @@ public partial class MainWindow
     /// (once a game); otherwise keeps a loaded model loaded (Ollama's keep-alive), so the change back is quick. Loopback only.</summary>
     private void KeepSituationCard(SituationDecision decision, SituationFacts facts)
     {
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         if (situationCardBusy || route is null || !IsLocalOllama(route) ||
             situationCardAt != 0 && System.Diagnostics.Stopwatch.GetElapsedTime(situationCardAt) < SituationCardEvery) return;
         situationCardAt = System.Diagnostics.Stopwatch.GetTimestamp();

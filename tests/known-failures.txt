@@ -27,9 +27,8 @@ Martlet.Desktop.Tests.SupportIntegrationTests.BusyTerminalObservationIsCountedDr
 Martlet.Desktop.Tests.SupportIntegrationTests.DestinationAndSelectionChangesDuringConfirmationInvalidateApproval
 Martlet.Desktop.Tests.SupportIntegrationTests.MainSupportCanBePresentedInsideEachShownModalWorkflow
 Martlet.Desktop.Tests.SupportIntegrationTests.RecordingAccessFailureAndUnsupportedNetworkScopeNeverCreateAlternateStorage
-# Bounded-deadline tests that time out on a busy PC; both fail on origin/main 7f088d1 alone (CPU ~97% busy).
+# A bounded-deadline test that times out on a busy PC; fails on origin/main 7f088d1 alone (CPU ~97% busy).
 Martlet.Desktop.Tests.AudioSetupDispatcherTests.FailedCaptureAfterPositiveMeterClearsLevelAndFreshSilentTestCannotReplay
-Martlet.Launcher.Tests.LauncherIntegrationTests.InvalidOrLateHandshakeFailsClosed
 
 # Create real symbolic links, which Windows allows only with Developer Mode or as administrator.
 Martlet.Launcher.Tests.LauncherReviewRegressionTests.EvidenceRootCannotHideInsidePayloadThroughAncestorLink  # env: symlink privilege
@@ -55,3 +54,6 @@ Martlet.Desktop.Tests.SupportIntegrationTests.FaultedSnapshotDeleteKeepsExactPar
 Martlet.Desktop.Tests.SupportIntegrationTests.PassiveReportOnlyUiRequiresExactDefaultNoConfirmation
 Martlet.Desktop.Tests.SupportIntegrationTests.ShownOwnerCloseRetiresOwnedSupportEvenWithoutChildClosing
 Martlet.Desktop.Tests.SupportIntegrationTests.WrongDigestUnapprovedAndExistingDestinationPreserveTargets
+# Fails alone on origin/main f27f8efd on 2026-10-13: the Motion host role (deploy/host/roles/motion) has no planner option
+# yet. Fix: https://github.com/throndir2/Martlet/issues/860
+Martlet.Core.Tests.Planning.FootprintCatalogTests.EveryHostRoleThatDoesAPartHasAnOption

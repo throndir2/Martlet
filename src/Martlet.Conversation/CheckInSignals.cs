@@ -65,9 +65,9 @@ public sealed partial record CheckInRun
 
 public static partial class CheckIns
 {
-    public const string Welcome = "welcome", Unanswered = "unanswered", Call = "call", Others = "others";
+    public const string Welcome = "welcome", Unanswered = "unanswered", Others = "others";
     /// <summary>Every fact Martlet offers.</summary>
-    public const CheckInFacts KnownFacts = (CheckInFacts)((1 << 14) - 1);
+    public const CheckInFacts KnownFacts = (CheckInFacts)((1 << 15) - 1);
     /// <summary>Every condition Martlet offers.</summary>
     public const CheckInConditions KnownConditions = (CheckInConditions)((1 << 19) - 1);
     public const int DefaultFromHour = 8, DefaultUntilHour = 22;
