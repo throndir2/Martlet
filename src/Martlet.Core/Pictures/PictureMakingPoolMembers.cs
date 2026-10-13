@@ -3,7 +3,7 @@ using Martlet.Core.Cluster;
 namespace Martlet.Core.Pictures;
 
 /// <summary>
-/// Pictures' pool members (<see cref="PoolAreas.Pictures"/>, docs/PICTURES.md#more-than-one-picture-computer): each member of
+/// Pictures' pool members (<see cref="PoolAreas.PictureMaking"/>, docs/PICTURES.md#more-than-one-picture-computer): each member of
 /// the list is one place a picture can be drawn, with its own settings. Martlet's pictures role on this PC's host service
 /// (<see cref="PoolMemberKind.ThisPc"/>) or a paired computer (<see cref="PoolMemberKind.Computer"/>), a ComfyUI the owner runs
 /// (<see cref="PoolMemberKind.Address"/>), each with a <see cref="PoolSettingKeys.Workflow"/> (z-image-turbo, checkpoint or
@@ -12,7 +12,7 @@ namespace Martlet.Core.Pictures;
 /// once from the older one-place choice (pictures.json, <see cref="Migrate"/>), and each member reads as that one-place choice
 /// again (<see cref="Place"/>), so the picture makers stay the same.
 /// </summary>
-public static class PicturePoolMembers
+public static class PictureMakingPoolMembers
 {
     public const string OpenRouter = "openrouter", NvidiaBuild = "nvidia-build";
     public const string ZImageTurbo = "z-image-turbo", Checkpoint = "checkpoint", Custom = "custom";
@@ -41,8 +41,8 @@ public static class PicturePoolMembers
         {
             PicturePlace.Host => settings.HostId is { } host ? PoolMember.Computer(host) : PoolMember.ThisPc(),
             PicturePlace.ComfyUi => PoolMember.Service(settings.Address!),
-            PicturePlace.OpenRouter => PoolMember.Cloud(OpenRouter, settings.Model).WithConsent(PoolAreas.Pictures.Id, settings.ChosenAt ?? at),
-            PicturePlace.NvidiaBuild => PoolMember.Cloud(NvidiaBuild, settings.Model).WithConsent(PoolAreas.Pictures.Id, settings.ChosenAt ?? at),
+            PicturePlace.OpenRouter => PoolMember.Cloud(OpenRouter, settings.Model).WithConsent(PoolAreas.PictureMaking.Id, settings.ChosenAt ?? at),
+            PicturePlace.NvidiaBuild => PoolMember.Cloud(NvidiaBuild, settings.Model).WithConsent(PoolAreas.PictureMaking.Id, settings.ChosenAt ?? at),
             _ => null
         };
         return member is null || !settings.Comfy ? member : WithWorkflow(member, settings.Workflow, settings.Checkpoint,
@@ -65,7 +65,7 @@ public static class PicturePoolMembers
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(others);
-        var list = new PoolList { Area = PoolAreas.Pictures.Id };
+        var list = new PoolList { Area = PoolAreas.PictureMaking.Id };
         if (From(settings, at) is not { } chosen) return list;
         list = list.With(chosen);
         if (settings.Place != PicturePlace.Host) return list;
@@ -107,7 +107,7 @@ public static class PicturePoolMembers
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(paired);
         ArgumentNullException.ThrowIfNull(sharing);
-        return [.. plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == PoolAreas.Pictures.HostRole) && n.HostId != chosen &&
+        return [.. plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == PoolAreas.PictureMaking.HostRole) && n.HostId != chosen &&
                 paired.Contains(n.HostId) && sharing.Allows(n.HostId, device))
             .OrderBy(n => n.HostId == own ? 0 : 1)
             .ThenBy(n => plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId))

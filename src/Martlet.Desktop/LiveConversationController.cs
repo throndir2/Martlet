@@ -3949,7 +3949,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // cloud provider).
         var planned = BackgroundDuties.Painter(dataDirectory);
         BackgroundPlaceLease? painter = planned is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
-        void Moved(PicturePoolMember member)
+        void Moved(PictureMakingPoolMember member)
         {
             if (member.HostId is not { } host)
             {
@@ -3960,7 +3960,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (place.Id == Volatile.Read(ref painter)?.Place.Id) return;
             Interlocked.Exchange(ref painter, jobs.Places.Hold(place, job.Id))?.Dispose();
         }
-        if (maker is PicturePool pool) pool.Placed += Moved;
+        if (maker is PictureMakingPool pool) pool.Placed += Moved;
         try
         {
             job.Report(BackgroundJobState.Running, "Checking where it's drawn");
@@ -3998,7 +3998,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         finally
         {
-            if (maker is PicturePool placed) placed.Placed -= Moved;
+            if (maker is PictureMakingPool placed) placed.Placed -= Moved;
             Interlocked.Exchange(ref painter, null)?.Dispose();
             PictureClient.FreeLater(maker);
             (maker as IDisposable)?.Dispose();

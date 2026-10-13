@@ -1260,7 +1260,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
             "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
             "does; with saveDirectory (absolute) it writes the picture there. Place \"pool\" instead rehearses the Pictures list's " +
-            "routing (PicturePool and WorkQueue) on simulated ComfyUI computers (FIXTURE): busy, absent or unsuitable computers " +
+            "routing (PictureMakingPool and WorkQueue) on simulated ComfyUI computers (FIXTURE): busy, absent or unsuitable computers " +
             "passed over, all busy waiting in the shortest queue, two pictures on two computers and the first list made from " +
             "pictures.json; it returns ok and each step. Never calls a paid cloud provider.", new
         {

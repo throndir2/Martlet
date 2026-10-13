@@ -1140,7 +1140,7 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
 back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
-Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+Pictures list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
 simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
 or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
