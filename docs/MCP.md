@@ -1499,6 +1499,45 @@ tombstones) and `clips` (`keep`: People's *Keep the last 20 clips* choice,
 `voices` and `clips`: how many clips of voices not named yet are kept). It never
 returns names, voiceprints or audio and runs no model.
 
+`voices_status`'s `recognitionWhere` is Companion › People › *Where it runs*
+([where voice recognition runs](VOICES.md#where-voice-recognition-runs)): the
+area facts (`area`, `page`, `file` *pools.json*, `shared` and `required` true,
+`whenEmpty` *This PC's processor*, `hostRole` and `lane` *voice-recognition*),
+`list` (*saved* or *none saved: this PC's processor*), its `members` (`key`,
+`name`, `kind`, `on`, `recognizes`, `onlyFor`, `paired`), `tries` (the places
+this PC tries in order, each `key`, `hostId` and `fallback`: this PC's
+processor added last because the list doesn't have it on), a `summary` line and
+`desktop`: the running desktop's `voice-recognition-state.json` (null before
+the desktop wrote one). `desktop` has `enabled`, `problem` (People's problem
+line, or null), `engine` (`state` *notloaded*, *ready* or *failed*, `loaded`,
+`problem`, `failures` in a row, `failed_at`, `retry_at`, `worked_at`,
+`reloads` and `ms_per_second`, this PC's measured speed), `last` (the last
+recognition's `key`, `where`, `milliseconds`, `seconds` of speech, `raced`,
+`passed`: the places passed over and why, and `at`), `hosts` (each computer
+tried since the desktop started: `host_id`, `answered_at`, `milliseconds`,
+`problem` and `rest_until`) and `tries`.
+
+`voice_recognition_check` rehearses the Voice recognition list with the
+production code (`VoiceRecognitionPool`, `VoiceRecognitionRouter`,
+`VoiceEngineKeeper`, `SpeakerAnswers` and the host request
+`VoiceRecognitionPayload`) and SIMULATED computers and engine, NOT real hosts.
+Its `steps` (each `passed` with `detail`; `ok` is all of them) check the order
+(each computer once, this PC's processor always last as the fallback, also with
+no list, an empty list or nothing on), the list shared by two simulated
+computers, the request (`operation`, `sample_rate` 16000, `pcm16_base64`), the
+answer checks (a good answer is read; 255 numbers, a voiceprint not of length 1,
+a time after the audio, fewer voices than speakers or an error answer are
+refused), routing (a computer that answers in time recognizes and this PC does
+nothing; a busy one passes it to this PC at once; a bad answer, an unreachable
+computer or a slow one is passed over and rests, and a slow one loses to this
+PC after its head start) and keeping the engine running (one failure: loaded
+again at once; repeated failures: it rests, tries again in 5 s, a computer after
+this PC recognizes, the failure is reported while it rests, and the check
+brings it back). With an optional absolute `martletDirectory`, `real` runs that
+folder's engine through the keeper: `loadMs`, `analyzeMs` for 3 s of a tone,
+`routedMs` (the same through the router with this PC alone, the default list),
+`msPerSecond` and `headStartMs`. Nothing is recorded, played or sent.
+
 `voices_naming_check` rehearses [learning names](VOICES.md#what-happens-in-a-conversation)
 with the production checks and changes (`CompanionNames`, `VoiceUpdates` and the
 voice list's name rules) on a fixture voice list in memory: V1 is the owner
@@ -7673,7 +7712,24 @@ saves `recommended-setup.json` and asks again, so it needs
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleNow` (its Now line: *Voice recognition on: 3 voices known, 2 with a name.*,
 *Off: Martlet doesn't check who is talking.*) and `PeopleNowProblem` (the
-installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus`,
+installation lacks the voice recognition files, the voices couldn't be read, or
+*Voice recognition on this PC stopped working: ... Martlet loads it again and
+tries at 15:05.*), `PeopleRecognitionWhere` (where the last voice was recognized
+and how long it took: *Last voice recognized by this PC's processor in 149 ms
+(3 s of speech, at 15:05).*, or what the Voice recognition list means),
+`PeopleRecognitionCheck` (*Check it now*: it sends a test tone through the
+list, so it needs `--allow-ui-effects`) and `PeopleRecognitionCheckResult`
+(*Checked at 15:05: this PC's processor recognized the test tone in 149 ms.*,
+or *... nothing could recognize the test tone.* with the reason). *Where it
+runs* is the shared pool list (`Pool-voice-recognition-Summary`,
+`-Member-<i>` with each member's state: *ready; about 47 ms for each second of
+speech*, *stopped working: ...*, *runs Voice recognition; last answered in 45
+ms* or *left out until 15:06 (...); this PC recognizes instead*; `-On-<i>`,
+`-AddThisPc`, `-AddHost-<host>` and the other list controls). While this PC's
+engine has failed, Home shows `HealthIssue-voice-recognition` (*Warning: Voice
+recognition stopped working on this PC. ...*) with
+`HealthFix-voice-recognition-retry` (*Try again now*: loads the engine again,
+so it needs `--allow-ui-effects`) and `HealthOpen-voice-recognition-open-people`. `PeopleSyncStatus`,
 `PeopleVoiceCount` and `PeopleLinkStatus` (counts only: *1 of 3 voices is linked to people's accounts. Your
 account has 1 voice. ...*, or before this PC knows its account whether a voice is marked as yours), and Listening › This PC shows its speech recognizers as an
 option picker: `Picker-Listening-<model ID>` for each Parakeet model (inside
