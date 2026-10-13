@@ -71,7 +71,7 @@ internal sealed class SmartTurnJudge : IEndOfTurnJudge, IDisposable
 /// reads the quick transcript and answers COMPLETE or INCOMPLETE. Used only when Smart Turn on this PC is missing or fails
 /// (<see cref="EndOfTurnJudges.WithFallback"/>). Without a quick transcript (Parakeet isn't Listening) or an answer within
 /// <see cref="Budget"/> it fails, and the plain pause decides.</summary>
-internal sealed class PoolTurnJudge(Func<ThinkingPool?> pool) : IEndOfTurnJudge
+internal sealed class PoolTurnJudge(Func<DesktopThinkingPool?> pool) : IEndOfTurnJudge
 {
     /// <summary>The pool's whole time, from the quick transcript to its answer: well inside the plain pause after the judge is asked.</summary>
     internal static readonly TimeSpan Budget = TimeSpan.FromMilliseconds(500);
