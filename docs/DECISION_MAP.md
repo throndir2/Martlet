@@ -151,21 +151,24 @@ helper jobs in [MEMORY.md](MEMORY.md).
 
 **What it decides:** the job kinds of the Thinking pool, the key of each kind
 in saved files and logs, its label on Companion › Thinking pool, its priority,
-and which helper jobs run as which kind.
+whether it is quick, what it needs, what the live floor does to it, and which
+helper jobs run as which kind.
 
-**Moving.** Today the facts are in several lists that nothing keeps the same:
-`ThinkingJobKind`, `ThinkingJobKinds.Name`, `ThinkingJobKinds.Priority` and
-`ThinkingPriority` (`src\Martlet.Conversation\ThinkingPool.cs`); `RunsOnKinds`
-(`src\Martlet.Desktop\MainWindow.DeepThinking.cs`); `HelperJobs.Name`
-(`src\Martlet.Desktop\HelperJobs.cs`); `ThinkingPoolHelpers.Kind` and
-`ThinkingPoolHelpers.Priority`. The planned owner is one row for each kind in
-`ThinkingJobKinds.Rows` (`src\Martlet.Conversation\ThinkingJobKinds.cs`).
+**Owner:** one row for each kind in `ThinkingJobKinds.Rows`
+(`src\Martlet.Conversation\ThinkingJobKinds.cs`), with the enums
+`ThinkingJobKind`, `ThinkingPriority` and `HelperJobKind`. These read it:
+`ThinkingJobKinds.Name`, `Priority` and `IsFast`; `LiveFloorRules.Stops` and
+`ServesTheTurn`; the Runs on card (`src\Martlet.Desktop\MainWindow.DeepThinking.cs`);
+`ThinkingRequestWords.Kind`; `HelperJobs.Name` and `PriorityOf`; and
+`ThinkingPoolHelpers.Kind` and `Priority`. To add a kind, add its enum value
+and its row. A key is saved, so a changed key needs a migration.
 The keys are in the [glossary](GLOSSARY.md#thinking-pool-job-keys).
 
-**Tests:** `ThinkingPoolTests` (Martlet.Conversation.Tests),
-`HelperJobsTests` (Martlet.Desktop.Tests).
+**Tests:** `ThinkingJobKindsTests` and `ThinkingPoolTests`
+(Martlet.Conversation.Tests), `HelperJobsTests` (Martlet.Desktop.Tests).
 
-**MCP:** `thinking_pool_status` (`jobs` by kind), `helper_jobs_status`.
+**MCP:** `thinking_pool_status` (`kinds`: the table; `jobs` by kind),
+`thinking_pool_check` (step *kinds*), `helper_jobs_status`.
 
 ## Pool summary text
 

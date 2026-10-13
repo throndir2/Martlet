@@ -376,11 +376,11 @@ internal static class SenseModelsCheck
             var lanes = new SenseLanes(_ => route, async (_, _, job, token) =>
             {
                 lock (ran) ran.Add(job.Purpose);
-                if (job.Purpose == "touch_zones" && Interlocked.Increment(ref helperRuns) == 1) await Task.Delay(Timeout.Infinite, token);
+                if (job.Purpose == "touch-zones" && Interlocked.Increment(ref helperRuns) == 1) await Task.Delay(Timeout.Infinite, token);
                 if (job.Purpose == "eyes") await gate.Task.WaitAsync(token);
                 return SenseAnswer.Done(job.Purpose + " done");
             });
-            var helper = lanes.RunAsync(SenseKind.Image, Job("touch_zones", priority: -10) with { DropWhenStale = false }, cancellation);
+            var helper = lanes.RunAsync(SenseKind.Image, Job("touch-zones", priority: -10) with { DropWhenStale = false }, cancellation);
             await WaitAsync(() => ran.Count == 1, cancellation);
             var reply = await lanes.RunAsync(SenseKind.Image, Job("reply picture", key: "picture", priority: 10), cancellation);
             var helped = await helper;
@@ -392,7 +392,7 @@ internal static class SenseModelsCheck
             gate.SetResult();
             var both = await Task.WhenAll(measuring, summary);
             Check("lanes-yield", reply.Succeeded && helped.Succeeded && waited && both.All(r => r.Succeeded) &&
-                string.Join(", ", ran) == "touch_zones, reply picture, touch_zones, eyes, summary",
+                string.Join(", ", ran) == "touch-zones, reply picture, touch-zones, eyes, summary",
                 $"ran {string.Join(", ", ran)}; the summary waited behind the eyes: {waited}");
         }
 
