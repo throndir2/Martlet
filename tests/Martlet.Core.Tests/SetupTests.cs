@@ -352,7 +352,7 @@ public sealed class SetupTests : IDisposable
             native.OnDelete = () => blocker = new FileStream(Store.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var failed = await Service.RemoveDetachedAsync(detached.Settings, detached.Save.Revision, detached.Settings.Setup!.PendingRemovals.Single());
             Assert.False(failed.Save.Saved);
-            Assert.Contains("key is removed", failed.Summary);
+            Assert.Contains("The key was removed, but Martlet could not save the cleanup.", failed.Summary);
             Assert.Empty(native.Keys);
             Assert.Single((await Store.LoadAsync()).Settings!.Setup!.PendingRemovals);
         }

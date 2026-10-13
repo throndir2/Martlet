@@ -125,7 +125,6 @@ public sealed partial class CheckInsTests
     {
         Assert.DoesNotContain(CheckIns.All(null), c => c.Id == "call");
         Assert.True(CheckIns.Retired("call"));
-        Assert.True(PromptCatalog.Retired("check_in_call"));
         Assert.Null(PromptCatalog.Find("check_in_call"));
         var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
         try

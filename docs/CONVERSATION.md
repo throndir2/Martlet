@@ -2011,7 +2011,7 @@ never kept in the conversation, so prompt caches keep working.
 It replaces the earlier *On a call* check-in (`call`), which only reminded
 Martlet once to keep quiet during a call on this PC. A saved choice for
 `call` and an edited *Check-in: on a call* prompt are dropped when Martlet
-reads them (`CheckIns.Retired`, `PromptCatalog.Retired`). *Someone else is
+reads them (`CheckIns.Retired`, `PromptEditRules.Retired`). *Someone else is
 here* (`others`) stays: it is about privacy in front of others, not about
 when to talk.
 

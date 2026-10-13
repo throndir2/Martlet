@@ -12,6 +12,7 @@ Each release's section here is also its notes on GitHub.
 
 - **Martlet stays quiet while you talk to someone else**: a new check-in, *Talking to someone else* (on by default), notices when you talk to someone in the room, in a call, or on a phone Martlet can't see (from what you say, such as "hello?" and "uh-huh", and the voices it hears). Martlet then holds back until you talk to it again or that conversation ends, instead of answering words that weren't for it. No reply waits for it. It replaces the *On a call* check-in. (PR_LINK)
 - **Companion › Motion controls your VRM character's body motions**: turn motion off, choose which of your computers make new motions and in what order, keep one for one companion PC, and set the Motion role up on a computer from the list. A motion goes to the first computer that isn't busy, and Martlet tells you when your character is a Live2D model, which can't play them. Your other computers follow the same list. ([#835](https://github.com/throndir2/Martlet/pull/835))
+- **Thinking requests show what each request sent**: select a request to see its input (the instructions, the earlier messages and the message it sent its model) beside its output, and close the details again with **Close** or Esc. ([#845](https://github.com/throndir2/Martlet/pull/845))
 
 ### Changed
 
@@ -19,6 +20,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- **Recommended setup opens again when your model apps serve models Martlet doesn't list**: choosing Recommended setup on Home said how many changes Martlet recommends, but the review never opened when Ollama, LM Studio or another model app on your PC had a model outside Martlet's own list. The review now opens, and if it ever can't, Home says why instead of doing nothing. ([#850](https://github.com/throndir2/Martlet/pull/850))
+- **A paired computer's model that passed Test vision now helps with pictures in the Thinking pool**: Martlet now trusts Test vision there, not only the model's name, so such a model gets screen summaries, touch zones and check-ins with a screenshot, and one that failed Test vision gets none. A model its provider retired no longer gets any pictures or tool calls. ([#847](https://github.com/throndir2/Martlet/pull/847))
 - **Vision lists every model that gets your pictures**: a cloud model in the Thinking pool (such as NVIDIA Build) that makes your screen summaries now shows under Companion › Vision's image models, with what it gets the pictures for. Hearing does the same for recordings. The screen summary line, *What Martlet sends* and Companion › Thinking also name these models, and the Thinking pool no longer says a model that sees reads only text. ([#839](https://github.com/throndir2/Martlet/pull/839))
 - **Screen summaries on cloud models time out less often**: a summary of your screen now has 30 seconds instead of 15 to get its answer, so a slow cloud endpoint such as NVIDIA Build still finishes it instead of showing *Timed out*. ([#838](https://github.com/throndir2/Martlet/pull/838))
 - When a smaller model answers and then adds "[pass]", the reply no longer shows "[pass]" at its end, and its words are still said. ([#837](https://github.com/throndir2/Martlet/pull/837))

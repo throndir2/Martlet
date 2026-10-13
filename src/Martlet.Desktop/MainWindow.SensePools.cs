@@ -115,8 +115,12 @@ public partial class MainWindow
                 : $"{model} can't be used as it is");
         else
         {
-            var said = image ? SenseRouting.Sees(place, abilities) switch { VisionSupport.Supported => "sees pictures", VisionSupport.Unsupported => "doesn't see pictures", _ => "not known yet whether it sees" }
-                : SenseRouting.Hears(place, abilities) switch { HearingSupport.Supported => "hears recordings", HearingSupport.Unsupported => "doesn't hear recordings", _ => "not known yet whether it hears" };
+            var said = ModelSenses.For(place, abilities).Known(kind) switch
+            {
+                true => image ? "sees pictures" : "hears recordings",
+                false => image ? "doesn't see pictures" : "doesn't hear recordings",
+                null => image ? "not known yet whether it sees" : "not known yet whether it hears"
+            };
             parts.Add($"{model}: {said}");
             if (SenseRouting.IsThinking(place, thinking)) parts.Add($"it is Thinking's own model, so Thinking takes the {SenseInputs(kind)} itself");
             else if (!member.Off && chosen?.Key == place.Key) parts.Add($"in use: it takes the {SenseInputs(kind)} first");
