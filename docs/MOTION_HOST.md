@@ -147,26 +147,64 @@ model choice from the client, and clips larger than 4 MiB are refused.
 
 ## Where Martlet makes motions
 
-The `motion` shared setting (`motion.json`) is the same on all the owner's computers. `Automatic` (the default) uses the
-first paired computer that the shared plan says runs the motion role, so adding the role turns motion on. `Host` names one
-computer, and `Off` turns motion off. A computer that is not paired with the chosen host keeps the choice and says why it
-cannot make motions there. In the desktop, `MotionClient` (`src/Martlet.Desktop/MotionClient.cs`) builds the motion maker
-from this choice and frees the graphics card three minutes after the last motion. `MARTLET_MOTION_FIXTURE=1` makes it use
-the FIXTURE - NOT AI wave maker.
+### The motion pool
 
-MCP: `motion_status` reads the choice and the motion computer from a data directory, and `motion_check` makes one motion
-(fixture, a worker on loopback, or a paired host's route) and saves the `.vrma` file ([MCP](MCP.md#motion)).
+Companion › Motion (under *Optional extras*) controls motion, the same way as the other pooled areas
+([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). Its list, *Where Martlet makes motions*, is the motion pool
+(`PoolAreas.Motion`, area `motion` in `pools.json`). The list is the same on all the owner's computers.
+
+- **Members.** A member is *This PC* (each companion PC's own host service) or one of your paired computers. A host runs one
+  motion route on one card, so a graphics card is not a member of its own. Hosts that friends share are never used.
+- **Order.** A motion goes to the first member that isn't making another motion. A member that is busy (`motion.busy`), doesn't
+  answer or isn't set up is passed over for the next. When every member is busy, the motion waits for the first to finish.
+  A motion that fails on its computer is not made again elsewhere.
+- **On and off.** Each member has its own **On** box and keeps its place when it is off. With no member on, motion is off:
+  Martlet makes no new motions, but the motions it kept still play by their tags.
+- **Kept for.** Each member can be kept for one companion PC, as in every pool list.
+- **Set up.** A member's **Settings** say where Motion stands there. **Set up Motion here** runs `martlet-host add motion` with
+  the role's own dialog, which shows the model choice and Tencent's license terms. This PC without its host service sets
+  that up first, in the same window. A computer that gets the role from anywhere else (Devices, a fix card) joins the list
+  at its end.
+
+`MotionPool` (`src/Martlet.Core/Motion/MotionPool.cs`) gives the order from local files only, and sends each motion through
+`WorkQueue.Shared` (lane `motion`, background priority). In the desktop, `MotionClient` and `PoolMotionMaker`
+(`src/Martlet.Desktop/MotionClient.cs`) make the maker from the list. Martlet frees the graphics card of each computer that
+made a motion three minutes after its last motion. Every member that is on is kept away from background thinks (its duty is
+`motions`). `MARTLET_MOTION_FIXTURE=1` makes Martlet use the FIXTURE - NOT AI wave maker.
+
+### Before the list: the older choice
+
+The `motion` shared setting (`motion.json`) was the first choice, and it still applies while no Motion list exists.
+`Automatic` (the default) uses every paired computer that the shared plan says runs the motion role (this PC's own host
+service first), so adding the role turns motion on. `Host` names one computer, and `Off` turns motion off. A computer that is
+not paired with the chosen host keeps the choice and says why it cannot make motions there.
+
+When Companion › Motion opens for the first time, Martlet makes the list once from this choice (`MotionPool.FirstList`): the
+chosen computer first, then the other computers that run Motion; with `Off`, the same computers, each turned off. The list
+takes every computer the shared plan says runs Motion, not only the pairings of the PC that makes it, because the list is
+shared: each companion PC then uses the ones it is paired with. With `Automatic` and no computer that runs Motion yet,
+Martlet makes no list, so adding the role later still turns motion on.
+
+A computer that is making another motion still counts as ready, so a motion waits for it in the queue instead of failing.
+
+MCP: `motion_status` reads the Motion list, the computers a motion tries and the older choice from a data directory.
+`motion_pool_check` rehearses the pool with simulated computers. `motion_check` makes one motion (fixture, a worker on
+loopback, or a paired host's route) and saves the `.vrma` file ([MCP](MCP.md#motion)).
 
 ## Motions in conversation
 
 Martlet uses this role in conversation for a VRM character
 ([Motions in conversation](AVATARS.md#motions-in-conversation)). While motions are set up and the character shown is a VRM,
-replies get `body_motion`: a motion the character has plays at once, and a new one is made here in the background, kept as
-a shared `motion` creation and played on the character when it is ready. A motion job holds this computer away from
-background thinks (its duty is `motions`), and Martlet frees the graphics card three minutes after the last motion. Every VRM
-character on every computer of the account then does a kept motion again by its tag, without this role. Martlet also makes
-five starter motions once (`cheer`, `clap`, `deep_bow`, `stretch` and `facepalm`) when this role is first ready. MCP
-`kept_motions_status` and `kept_motions_check` check that part ([MCP](MCP.md#body-motions)).
+replies get `body_motion`: a motion the character has plays at once, and a new one is made in the background on the motion
+pool, kept as a shared `motion` creation and played on the character when it is ready. A motion job holds the first computer
+of the list away from background thinks (its duty is `motions`), and Martlet frees the graphics card three minutes after the
+last motion. Every VRM character on every computer of the account then does a kept motion again by its tag, without this
+role. Martlet also makes five starter motions once (`cheer`, `clap`, `deep_bow`, `stretch` and `facepalm`) when this role is
+first ready. MCP `kept_motions_status` and `kept_motions_check` check that part ([MCP](MCP.md#body-motions)).
+
+A Live2D character doesn't get `body_motion`: HY-Motion makes motions for a humanoid skeleton, which only VRM models have.
+With a Live2D character, the Motion list stays as it is and is used again when you choose a VRM character. Companion › Motion
+says which kind the character is (`MotionCharacter`).
 
 ## Licenses and use
 

@@ -93,6 +93,7 @@ public partial class MainWindow
         "vision" => CompanionTab.Vision,
         "hearing" => CompanionTab.Hearing,
         "reading" => CompanionTab.Reading,
+        "motion" => CompanionTab.Motion,
         _ => null
     };
 

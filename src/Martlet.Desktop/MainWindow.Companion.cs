@@ -23,7 +23,7 @@ namespace Martlet.Desktop;
 /// TabIntro and RenderTab.</summary>
 internal enum CompanionTab
 {
-    Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Hearing, Profiles, Personality, Prompts, Lorebook,
+    Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Hearing, Motion, Profiles, Personality, Prompts, Lorebook,
     AppGuides, Memory, People, Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, SmartHome, Discord, Messaging
 }
 
@@ -123,7 +123,7 @@ public partial class MainWindow
     {
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.DeepThinking or CompanionTab.Singing or CompanionTab.Pictures or CompanionTab.Vision or CompanionTab.Reading or
-            CompanionTab.Hearing or CompanionTab.SmartHome => CompanionGroup.Extras,
+            CompanionTab.Hearing or CompanionTab.SmartHome or CompanionTab.Motion => CompanionGroup.Extras,
         CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.AppGuides or CompanionTab.Memory or
             CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Character or CompanionTab.SpeechBubbles or CompanionTab.Emotes or CompanionTab.Eyes or CompanionTab.Touch => CompanionGroup.HowItLooks,
@@ -181,6 +181,7 @@ public partial class MainWindow
         CompanionTab.CheckIns => "Check-ins",
         CompanionTab.Tools => "Tools",
         CompanionTab.Pictures => "Pictures",
+        CompanionTab.Motion => "Motion",
         CompanionTab.SmartHome => "Smart home",
         CompanionTab.Discord => "Discord",
         CompanionTab.Messaging => "Messaging",
@@ -215,6 +216,7 @@ public partial class MainWindow
         CompanionTab.CheckIns => "\uE73E",
         CompanionTab.Tools => "\uE90F",
         CompanionTab.Pictures => "\uE8B9",
+        CompanionTab.Motion => "\uE805",
         CompanionTab.SmartHome => "\uEC26",
         CompanionTab.Discord => "\uE902",
         CompanionTab.Messaging => "\uE724",
@@ -250,6 +252,7 @@ public partial class MainWindow
         CompanionTab.CheckIns => "Every few minutes the Thinking pool checks what Martlet left on and said, and reminds it of what it forgot: small models forget a lot.",
         CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
         CompanionTab.Pictures => Extra(section, "Martlet draws pictures when you ask: on your own graphics card or with a cloud provider."),
+        CompanionTab.Motion => Extra(section, "Martlet makes new whole-body motions for VRM characters while you talk, on a computer with a 24 GB NVIDIA graphics card."),
         CompanionTab.SmartHome => Extra(section, "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask."),
         CompanionTab.Discord => "Put Martlet on Discord: set up its bot, connect it, invite it to servers and choose where it chats.",
         CompanionTab.Messaging => "Talk to Martlet from Telegram or WhatsApp on your phone, with the same memory and personality, while Martlet runs on this PC.",
@@ -467,6 +470,7 @@ public partial class MainWindow
             case CompanionTab.Singing: RenderSingingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: RenderPicturesTab(body); break;
+            case CompanionTab.Motion: RenderMotionTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
             case CompanionTab.Discord: RenderDiscordTab(body); break;
             case CompanionTab.Messaging: RenderMessagingTab(body); break;

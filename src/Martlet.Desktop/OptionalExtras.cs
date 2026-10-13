@@ -18,7 +18,7 @@ internal static class OptionalExtras
     internal static readonly IReadOnlyList<CompanionTab> FallbackOrder =
     [
         CompanionTab.Vision, CompanionTab.Reading, CompanionTab.Hearing, CompanionTab.DeepThinking, CompanionTab.SmartHome,
-        CompanionTab.Singing, CompanionTab.Pictures
+        CompanionTab.Singing, CompanionTab.Pictures, CompanionTab.Motion
     ];
 
     /// <summary>The part of the priority list (<see cref="ComponentRanking"/>) an Optional extras page sets, when the list has it.</summary>
@@ -53,6 +53,7 @@ internal static class OptionalExtras
             CompanionTab.SmartHome => "Martlet doesn't control your smart home",
             CompanionTab.Singing => "Martlet doesn't sing",
             CompanionTab.Pictures => "Martlet doesn't draw pictures",
+            CompanionTab.Motion => "Martlet makes no new body motions; the ones it kept still play",
             _ => "It doesn't run"
         };
     }

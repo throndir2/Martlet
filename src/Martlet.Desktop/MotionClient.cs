@@ -2,14 +2,16 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json.Nodes;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Cluster;
 using Martlet.Core.Motion;
 
 namespace Martlet.Desktop;
 
 /// <summary>
-/// The motion maker Martlet uses (docs/MOTION_HOST.md): Martlet's <c>motion</c> host role (HY-Motion 1.0) on the paired computer
-/// the shared motion choice names (<see cref="MotionSettings"/>, motion.json), or, by default, on the first paired computer the
-/// shared plan says runs the role. Setting <c>MARTLET_MOTION_FIXTURE=1</c> before Martlet starts makes it use the FIXTURE - NOT AI
+/// The motion maker Martlet uses (docs/MOTION_HOST.md): Martlet's <c>motion</c> host role (HY-Motion 1.0) on the motion pool
+/// (<see cref="MotionPool"/>): the Motion list on Companion › Motion (pools.json, shared), or, before that list exists, the
+/// older shared choice (<see cref="MotionSettings"/>, motion.json: every paired computer the shared plan says runs the role, one
+/// computer, or off). Setting <c>MARTLET_MOTION_FIXTURE=1</c> before Martlet starts makes it use the FIXTURE - NOT AI
 /// <see cref="FixtureMotionMaker"/>.
 /// </summary>
 internal static class MotionClient
@@ -41,46 +43,66 @@ internal static class MotionClient
         }
     }
 
-    /// <summary>The paired computer that makes motions (<see cref="MotionSettings.MotionHost"/>: the chosen one, or the first one
-    /// the shared plan says runs the motion role among this PC's pairings, never a host a friend shares), or null. Reads
-    /// files only, never the network, so a motion job can keep background thinks off that computer.</summary>
-    internal static string? HostId(string dataDirectory) =>
-        Settings(dataDirectory).MotionHost(ClusterSync.LoadPlan(dataDirectory), [.. Paired(dataDirectory).Select(h => h.HostId)]);
+    /// <summary>The motion pool from this PC's files, without the network (<see cref="MotionPool.Members"/>): each member with the
+    /// paired computer it makes motions on, in the order a motion tries them. Never a host a friend shares.</summary>
+    internal static IReadOnlyList<(PoolMember Member, string HostId)> Members(string dataDirectory)
+    {
+        var hosts = Paired(dataDirectory);
+        var own = WorkSharingRoster.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        return MotionPool.Members(WorkSharingRoster.Pool(dataDirectory, PoolAreas.Motion), Settings(dataDirectory), ClusterSync.LoadPlan(dataDirectory),
+            WorkSharingRoster.Device, own, [.. hosts.Select(h => h.HostId)]);
+    }
 
-    /// <summary>Whether motions can be asked for: the fixture is on, or the motion choice names a computer (files only).</summary>
-    internal static bool IsSetUp(string dataDirectory) => Fixture || HostId(dataDirectory) is not null;
+    /// <summary>The paired computers that make motions, in the order a motion tries them (files only, never the network), so a
+    /// motion job can keep background thinks off them.</summary>
+    internal static IReadOnlyList<string> Hosts(string dataDirectory) => [.. Members(dataDirectory).Select(m => m.HostId)];
 
-    /// <summary>The motion maker for the shared choice, or null while motion is off or no computer runs the role. Dispose it after
+    /// <summary>The computer a motion tries first, or null while motion is off or no computer makes motions.</summary>
+    internal static string? HostId(string dataDirectory) => Hosts(dataDirectory).FirstOrDefault();
+
+    /// <summary>Whether motions can be asked for: the fixture is on, or the motion pool has a computer (files only).</summary>
+    internal static bool IsSetUp(string dataDirectory) => Fixture || Hosts(dataDirectory).Count > 0;
+
+    /// <summary>The motion maker for the motion pool, or null while motion is off or no computer runs the role. Dispose it after
     /// use, or hand it to <see cref="FreeLater"/>, which disposes it.</summary>
     internal static IMotionMaker? For(string dataDirectory)
     {
         if (Fixture) return new FixtureMotionMaker(TimeSpan.FromMilliseconds(300));
-        return HostId(dataDirectory) is { } host ? new HostMotionMaker(dataDirectory, host) : null;
+        return Hosts(dataDirectory) is { Count: > 0 } hosts ? new PoolMotionMaker(dataDirectory, hosts) : null;
     }
 
-    /// <summary>Frees the motion computer's graphics card now (unloads HY-Motion); false when it couldn't (not set up, not
-    /// reachable, or making a motion).</summary>
+    /// <summary>Frees the graphics card of every computer in the motion pool now (unloads HY-Motion); false when none could
+    /// (not set up, not reachable, or making a motion).</summary>
     internal static async Task<bool> FreeAsync(string dataDirectory, CancellationToken cancellationToken)
     {
-        if (HostId(dataDirectory) is not { } host) return false;
-        using var maker = new HostMotionMaker(dataDirectory, host);
-        try
+        var freed = false;
+        foreach (var host in Hosts(dataDirectory))
         {
-            await maker.FreeAsync(cancellationToken).ConfigureAwait(false);
-            return true;
+            using var maker = new HostMotionMaker(dataDirectory, host);
+            try
+            {
+                await maker.FreeAsync(cancellationToken).ConfigureAwait(false);
+                freed = true;
+            }
+            catch (MotionException error)
+            {
+                ErrorLog.Info($"Motion: couldn't free the graphics card on {maker.Where} ({error.Message}).");
+            }
         }
-        catch (MotionException error)
-        {
-            ErrorLog.Info($"Motion: couldn't free the graphics card on {maker.Where} ({error.Message}).");
-            return false;
-        }
+        return freed;
     }
 
-    /// <summary>After a motion on Martlet's motion role: frees the graphics card of the computer that made it once
+    /// <summary>After a motion on Martlet's motion role: frees the graphics card of each computer that made one once
     /// <see cref="FreeAfter"/> passes without another motion there, so the voice, listening and a local Thinking model get it
     /// back. Each computer has its own wait. Disposes <paramref name="maker"/>.</summary>
     internal static void FreeLater(IMotionMaker maker)
     {
+        if (maker is PoolMotionMaker pool)
+        {
+            foreach (var used in pool.Used) FreeLater(new HostMotionMaker(pool.DataDirectory, used));
+            pool.Dispose();
+            return;
+        }
         if (maker is not HostMotionMaker host)
         {
             (maker as IDisposable)?.Dispose();
@@ -133,10 +155,79 @@ internal static class MotionClient
 }
 
 /// <summary>
+/// The motion pool as one <see cref="IMotionMaker"/> (<see cref="MotionPool"/>): availability asks each computer in order until
+/// one is ready; a motion goes through <see cref="WorkQueue.Shared"/> (lane <c>motion</c>), so a computer making another motion
+/// is passed over for the next one, and when every one is busy the motion waits for the first to finish. <see cref="Used"/>
+/// names the computers that made a motion, so their graphics cards are freed later.
+/// </summary>
+internal sealed class PoolMotionMaker(string dataDirectory, IReadOnlyList<string> hosts) : IMotionMaker, IDisposable
+{
+    private readonly Dictionary<string, HostMotionMaker> makers = new(StringComparer.Ordinal);
+    private readonly HashSet<string> used = new(StringComparer.Ordinal);
+    private readonly object gate = new();
+
+    internal string DataDirectory => dataDirectory;
+
+    /// <summary>The computers in the order a motion tries them.</summary>
+    internal IReadOnlyList<string> Hosts => hosts;
+
+    /// <summary>The computers that made a motion with this maker.</summary>
+    internal IReadOnlyList<string> Used
+    {
+        get { lock (gate) return [.. used]; }
+    }
+
+    public string Where => hosts.Count == 1 ? $"{hosts[0]}'s Motion role" : $"the Motion list ({hosts.Count} computers, {hosts[0]} first)";
+
+    public async Task<MotionMakerAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
+    {
+        MotionMakerAvailability? first = null;
+        foreach (var host in hosts)
+        {
+            var availability = await Maker(host).GetAvailabilityAsync(cancellationToken).ConfigureAwait(false);
+            if (availability.Available) return availability;
+            first ??= availability;
+        }
+        return first ?? MotionMakerAvailability.Unavailable("No computer in the Motion list is on.");
+    }
+
+    public async Task<MotionResult> GenerateAsync(MotionRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        request.Validate();
+        var (made, host) = await MotionPool.RunAsync(WorkQueue.Shared, hosts, (id, token) => Maker(id).GenerateAsync(request, token), null,
+            cancellationToken).ConfigureAwait(false);
+        lock (gate) used.Add(host);
+        if (host != hosts[0]) ErrorLog.Info($"Motion: {hosts[0]} couldn't take the motion now, so {host} made it.");
+        return made;
+    }
+
+    private HostMotionMaker Maker(string host)
+    {
+        lock (gate)
+        {
+            if (!makers.TryGetValue(host, out var maker)) makers[host] = maker = new HostMotionMaker(dataDirectory, host, busyRetries: hosts.Count > 1 ? 4 : 40);
+            return maker;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (gate)
+        {
+            foreach (var maker in makers.Values) maker.Dispose();
+            makers.Clear();
+        }
+    }
+}
+
+/// <summary>
 /// Martlet's <c>motion</c> host role (HY-Motion 1.0) on one paired computer, through its gateway (route
 /// <c>martlet.gateway.motion.v1</c>): status, generate (the VRMA clip comes back in base64 pieces and a summary) and free.
+/// <paramref name="busyRetries"/>: how many times a request waits a quarter second while the gateway runs another request on the
+/// route (a status poll, or another companion PC's motion) before it says the computer is busy.
 /// </summary>
-internal sealed class HostMotionMaker(string dataDirectory, string hostId) : IMotionMaker, IDisposable
+internal sealed class HostMotionMaker(string dataDirectory, string hostId, int busyRetries = 40) : IMotionMaker, IDisposable
 {
     private (PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)? open;
 
@@ -157,6 +248,11 @@ internal sealed class HostMotionMaker(string dataDirectory, string hostId) : IMo
                 "loading" => MotionMakerAvailability.Unavailable($"{Where} is starting."),
                 var state => MotionMakerAvailability.Unavailable($"{Where} isn't ready ({state ?? "no state"}).")
             };
+        }
+        catch (MotionException error) when (error.Code == MotionErrorCodes.Busy)
+        {
+            // Making another motion (the route holds one request at a time): it can take this one next; the queue waits for it.
+            return new(true, null, Where);
         }
         catch (MotionException error)
         {
@@ -204,7 +300,7 @@ internal sealed class HostMotionMaker(string dataDirectory, string hostId) : IMo
                 return [.. answer.Select(element => JsonNode.Parse(element.GetRawText()) as JsonObject ?? throw Invalid())];
             }
             // The gateway runs one request per route at a time: a status poll can hold it for a moment.
-            catch (Audio2FaceHostException error) when (error.Code == "job.busy" && attempt < 40)
+            catch (Audio2FaceHostException error) when (error.Code == "job.busy" && attempt < busyRetries)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(250), token).ConfigureAwait(false);
             }

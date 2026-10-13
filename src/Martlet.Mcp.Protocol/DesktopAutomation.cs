@@ -53,6 +53,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DevicesViewMap", "DevicesViewList",
         // Home's Configuring indicators (companion and host PC) only open the Devices map.
         "HomeConfiguring", "HostConfiguring",
+        // Companion › Motion's "Kept motions and Make a motion" only opens Companion › Emotes and motions.
+        "MotionOpenEmotes",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
@@ -313,6 +315,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Pictures: a place's Settings ("Pool-pictures-Settings-0") only shows or hides its settings, and its Connect
         // ("PicturesComfyConnect-0") only reads that ComfyUI's version, checkpoints and models.
         "Pool-pictures-Settings-", "PicturesComfyConnect-",
+        // Companion › Motion's list: a member's Settings ("Pool-motion-Settings-0") only shows or hides where Motion stands there and
+        // its Set up Motion here button, which installs the role, so it needs --allow-ui-effects.
+        "Pool-motion-Settings-",
         // Companion › Vision's and Hearing's lists: a member's Settings ("Pool-vision-Settings-0") only shows or hides its model and
         // settings, and A cloud provider or server ("Pool-hearing-AddCloud") only shows the cloud form, whose Add to the list commits.
         "Pool-vision-Settings-", "Pool-hearing-Settings-", "Pool-vision-AddCloud", "Pool-hearing-AddCloud"];
@@ -618,6 +623,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // list itself reads through "Pool-" and each member's settings through the "Reading" prefixes below. The text read from a
         // real screen (ReadingTestText) is never returned.
         "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingTest", "ReadingEvery", "ReadingEveryStatus",
+        // Companion › Motion (under Optional extras): whether and where Martlet makes body motions (MotionNow: "Martlet makes body
+        // motions on m3-host (or the first free one of 2 computers)." or "Off. ..."), whether the character shown can play them
+        // (MotionCharacter: a VRM can; a Live2D model can't), the link to Emotes and motions (MotionOpenEmotes, which only opens
+        // that page) and what the Motion role is (MotionAbout, fixed text). The list reads through the Pool- prefix below, and a
+        // member's Settings add where Motion stands there ("Pool-motion-State-host:m3-host") and the Set up Motion here button's
+        // label ("Pool-motion-SetUp-host:m3-host", which needs --allow-ui-effects).
+        "MotionNow", "MotionCharacter", "MotionOpenEmotes", "MotionAbout",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Record your own voice: its intro, what the microphone is doing or why the last line wasn't kept ("Line 2 recorded.
         // Next, record line 3.", "Only 0.8 seconds of speech was heard on line 1. ..."), how many lines are recorded and how

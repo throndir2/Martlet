@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- **Companion › Motion controls your VRM character's body motions**: turn motion off, choose which of your computers make new motions and in what order, keep one for one companion PC, and set the Motion role up on a computer from the list. A motion goes to the first computer that isn't busy, and Martlet tells you when your character is a Live2D model, which can't play them. Your other computers follow the same list. ([#835](https://github.com/throndir2/Martlet/pull/835))
+
 ## [0.76.0] - 2026-10-12
 
 ### Added

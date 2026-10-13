@@ -186,4 +186,47 @@ public sealed class OptionalExtrasTests
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
+
+    [Fact]
+    public void Motion_says_where_it_runs_that_only_a_vrm_plays_it_and_its_list_wins_over_the_older_choice()
+    {
+        var older = new Martlet.Core.Motion.MotionSettings();
+        Assert.Equal("Martlet makes body motions on m3-host (or the first free one of 2 computers).",
+            MainWindow.MotionNow(listed: true, noneOn: false, older, ["m3-host", "this PC"], fixture: false));
+        Assert.Equal("Martlet makes body motions on m3-host.", MainWindow.MotionNow(listed: false, noneOn: false, older, ["m3-host"], fixture: false));
+        Assert.Equal("Off. Martlet makes no new body motions; the ones it kept still play. No computer in the list is on.",
+            MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: false));
+        Assert.StartsWith("Off. ", MainWindow.MotionNow(listed: false, noneOn: false,
+            new Martlet.Core.Motion.MotionSettings { Place = Martlet.Core.Motion.MotionPlace.Off }, [], fixture: false));
+        Assert.StartsWith("Not set up yet.", MainWindow.MotionNow(listed: false, noneOn: false, older, [], fixture: false));
+        Assert.StartsWith("No computer in the list can make motions", MainWindow.MotionNow(listed: true, noneOn: false, older, [], fixture: false));
+        Assert.Contains("FIXTURE - NOT AI", MainWindow.MotionNow(listed: true, noneOn: true, older, [], fixture: true));
+        Assert.Contains("Live2D", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Live2D));
+        Assert.Contains("only on VRM characters", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Live2D));
+        Assert.StartsWith("Your character is a VRM", MainWindow.MotionCharacter(Martlet.Avatars.AvatarRenderer.Vrm));
+
+        var directory = Path.Combine(Path.GetTempPath(), "martlet-motion-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            // The older choice names one computer: motions are asked for (and say why when it isn't paired here).
+            Assert.True(new Martlet.Core.Motion.MotionSettings { Place = Martlet.Core.Motion.MotionPlace.Host, HostId = "gpu-x" }.Save(directory));
+            WorkSharingRoster.Forget();
+            Assert.True(MotionClient.IsSetUp(directory));
+            Assert.Equal(["gpu-x"], MotionClient.Hosts(directory));
+            // A Motion list with nothing on turns motion off, whatever motion.json says.
+            Assert.True(Martlet.Core.Cluster.PoolSettings.SaveFor(directory, Martlet.Core.Cluster.PoolAreas.Motion, new Martlet.Core.Cluster.PoolList
+            {
+                Area = "motion", Members = [Martlet.Core.Cluster.PoolMember.Computer("gpu-x") with { Off = true }]
+            }));
+            WorkSharingRoster.Forget();
+            Assert.False(MotionClient.IsSetUp(directory));
+            Assert.Null(MotionClient.For(directory));
+        }
+        finally
+        {
+            WorkSharingRoster.Forget();
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
 }

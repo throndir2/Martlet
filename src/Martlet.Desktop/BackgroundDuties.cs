@@ -6,7 +6,7 @@ namespace Martlet.Desktop;
 /// <summary>The other work each of your computers is kept free for, by the computer's name, so the background broker
 /// (<see cref="BackgroundPlaces"/>) puts thinks on a general computer first and on these only when the general ones are busy:
 /// the computer that sings (Companion › Singing), the one that draws pictures (Companion › Pictures, a paired
-/// computer's pictures role) and the one that makes body motions (a paired computer's motion role). Read from this PC's files
+/// computer's pictures role) and the ones that make body motions (the Motion list's computers, Companion › Motion). Read from this PC's files
 /// without the network, so asking costs nothing. A new kind of on-demand work on a computer adds its computer here.</summary>
 internal static class BackgroundDuties
 {
@@ -25,7 +25,7 @@ internal static class BackgroundDuties
         }
         foreach (var host in Singers(dataDirectory)) Add(host, Singing);
         Add(PainterHost(dataDirectory), Pictures);
-        Add(MotionClient.HostId(dataDirectory), Motions);
+        foreach (var host in MotionClient.Hosts(dataDirectory)) Add(host, Motions);
         return kept.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value, StringComparer.Ordinal);
     }
 
