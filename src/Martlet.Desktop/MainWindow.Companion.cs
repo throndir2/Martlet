@@ -73,7 +73,7 @@ public partial class MainWindow
     ];
 
     private static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
-    private static readonly CloudProvider CustomCloud = new("Custom OpenAI-compatible server", "", true, null, false);
+    internal static readonly CloudProvider CustomCloud = new("Custom OpenAI-compatible server", "", true, null, false);
     /// <summary>The Thinking providers, each with the model it suggests now: the model catalog's pick when it is loaded
     /// (<see cref="PlanningCatalog.SuggestedModel"/>), else the preset's default.</summary>
     internal static IReadOnlyList<CloudProvider> ThinkingProviders =>
@@ -466,7 +466,7 @@ public partial class MainWindow
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.CheckIns: RenderCheckInsTab(body); break;
-            case CompanionTab.DeepThinking: RenderDeepThinkingTab(body); break;
+            case CompanionTab.DeepThinking: ThinkingPoolPage.Render(body); break;
             case CompanionTab.Singing: RenderSingingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: RenderPicturesTab(body); break;
@@ -1431,24 +1431,6 @@ public partial class MainWindow
         finally { key?.Dispose(); }
     }
 
-    private static SecretLease TakeKey(PasswordBox box)
-    {
-        using var secure = box.SecurePassword;
-        var chars = new char[secure.Length];
-        var pointer = Marshal.SecureStringToGlobalAllocUnicode(secure);
-        try
-        {
-            Marshal.Copy(pointer, chars, 0, chars.Length);
-            return new SecretLease(chars);
-        }
-        finally
-        {
-            box.Clear();
-            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(chars.AsSpan()));
-            Marshal.ZeroFreeGlobalAllocUnicode(pointer);
-        }
-    }
-
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
     /// confirmed choice. A key the route no longer uses is set aside (listed under Keys from before), and a key set aside
     /// earlier for the chosen destination is used again, so switching providers never waits on old keys. With
@@ -1878,53 +1860,7 @@ public partial class MainWindow
             Row(PageButton("Open conversations", History_Click, id: "OpenHistory")));
     }
 
-    // ---------- small builders ----------
-
-    private Border Card(params UIElement[] children)
-    {
-        var stack = new StackPanel();
-        foreach (var child in children) stack.Children.Add(child);
-        var card = new Border { Child = stack };
-        card.SetResourceReference(StyleProperty, "CardStyle");
-        return card;
-    }
-
-    private static TextBlock Heading(string text)
-    {
-        var heading = new TextBlock { Text = text, Margin = new Thickness(0, 0, 0, 6) };
-        heading.SetResourceReference(StyleProperty, "SectionHeading");
-        return heading;
-    }
-
-    private static TextBlock Note(string text, Thickness margin)
-    {
-        var note = new TextBlock { Text = text, Margin = margin };
-        note.SetResourceReference(StyleProperty, "Muted");
-        note.TextWrapping = TextWrapping.Wrap;
-        return note;
-    }
-
-    private static WrapPanel Row(params Button?[] buttons)
-    {
-        var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-        foreach (var button in buttons.OfType<Button>())
-        {
-            button.Margin = new Thickness(0, 0, 10, 6);
-            row.Children.Add(button);
-        }
-        return row;
-    }
-
-    private static Button PageButton(string label, Action run, bool primary = false, bool link = false, string? id = null)
-    {
-        var button = new Button { Content = label, MinWidth = link ? 0 : 96 };
-        if (primary) button.SetResourceReference(StyleProperty, "PrimaryButton");
-        else if (link) button.SetResourceReference(StyleProperty, "LinkButton");
-        AutomationProperties.SetName(button, label);
-        if (id is not null) AutomationProperties.SetAutomationId(button, id);
-        button.Click += (_, _) => run();
-        return button;
-    }
+    // The small builders (Card, Heading, Note, Warning, Row, PageButton, TerminalRow and TakeKey) are in Pages\PageKit.cs.
 
     // ---------- dense editor rows (Companion › Emotes and motions, and Touch's touch zones and touch temperament) ----------
 
