@@ -20,6 +20,9 @@ public static class WorkSharingJobs
     /// <summary>Drawing pictures (Companion › Picture making): each PC's Picture making list (<see cref="PoolAreas.PictureMaking"/>). Not in
     /// <see cref="All"/>: Companion › Picture making keeps its own list, not a Devices › Sharing work card.</summary>
     public const string Pictures = "pictures";
+    /// <summary>Recognizing who speaks (Companion › People): the Voice recognition list (<see cref="PoolAreas.VoiceRecognition"/>).
+    /// Not in <see cref="All"/>: People keeps its own list, not a Devices › Sharing work card.</summary>
+    public const string VoiceRecognition = "voice-recognition";
     public static readonly IReadOnlyList<string> All = [Speaking, Thinking, Listening, DeepThinking];
 
     /// <summary>Speaking, Listening, Reading and Lip-sync are shared unless turned off: each request stands alone. Thinking is
@@ -36,6 +39,7 @@ public static class WorkSharingJobs
         LipSync => "Lip-sync",
         Reading => "Reading",
         Pictures => "Picture making",
+        VoiceRecognition => "Voice recognition",
         _ => job
     };
 }

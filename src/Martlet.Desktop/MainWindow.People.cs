@@ -21,6 +21,7 @@ public partial class MainWindow
 
     private void InitializeVoiceSync()
     {
+        InitializeVoiceRecognition();
         voiceSyncTimer.Tick += (_, _) => SyncVoicesAsync().Forget();
         localVoices.Changed += () => Dispatcher.BeginInvoke(() =>
         {
@@ -133,6 +134,7 @@ public partial class MainWindow
         peopleStale = false;
         page.Children.Add(PeopleNowCard());
         page.Children.Add(RecognitionCard());
+        if (localVoices.Available) page.Children.Add(VoiceRecognitionPoolCard());
         page.Children.Add(SharingCard());
         page.Children.Add(VoiceListCard());
     }
@@ -148,10 +150,12 @@ public partial class MainWindow
             return Card([.. children]);
         }
         children.AddRange(OnOffChoices("PeopleRecognize", "PeopleRecognizeOff", "Recognize voices in conversations",
-            "Martlet learns people's voices and names as you talk. Voice matching happens on this PC.",
+            "Martlet learns people's voices and names as you talk. Voice matching happens on this PC; the voiceprints come from " +
+            "this PC or a computer in the list below.",
             "Martlet doesn't check who is talking. Saved voices are kept.", localVoices.Enabled,
             localVoices.Included ? null : "Reinstall Martlet to recognize voices: its voice recognition files are missing.",
             on => { if (on != localVoices.Enabled) SetRecognition(on); }));
+        children.Add(VoiceRecognitionWhere());
         var clips = new CheckBox
         {
             Content = $"Keep the last {VoiceClips.MaximumClips} clips of voices you haven't named, so you can hear who they are",
