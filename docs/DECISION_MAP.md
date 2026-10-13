@@ -244,7 +244,7 @@ unavailable member passes the request to the next. `PoolRefusals` says which
 answers count as busy. Each area keeps only its own rule for where a member
 runs. Reading (`ReadingPool`, run in `src\Martlet.Desktop\ScreenReading.cs`), `MotionPool`, `SingingPool` and
 `PictureMakingPool` use the runner. Vision and Hearing use `SensePool` (see
-[picture routing](#which-model-looks-at-a-picture-picture-routing)).
+[picture and recording routing](#which-model-takes-a-picture-or-a-recording-picture-and-recording-routing)).
 
 **Tests:** `PoolsTests` and `PoolRunnerTests` (Martlet.Core.Tests);
 `PictureMakingPoolTests` (Martlet.Providers.Tests).
