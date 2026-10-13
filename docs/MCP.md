@@ -1276,7 +1276,7 @@ Martlet knows, or its thoughts ahead, go in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
 each run with words and counts only (`Check-ins:`).
 
-Companion › Check-ins reads through `ui_value`: `CheckInsNow` (how many are on
+Companion › Check-ins reads through `ui_snapshot`: `CheckInsNow` (how many are on
 and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
@@ -1317,7 +1317,7 @@ answer, inputs and tools back; On and Every stay). Each check-in has *Copy as yo
 (`CheckInCopy-<id>`), which adds an own check-in (off) with the same prompt and
 choices. The script and prompt boxes
 (`CheckInScript-<id>`, `CheckInPrompt-<id>`) have automation IDs, but
-`ui_value` never reads them: the owner's words stay on the page.
+`ui_snapshot` never reads them: the owner's words stay on the page.
 `CheckInsOpenPool` only opens a page. The boxes and choices, the name, task,
 prompt and script boxes, *Use built-in settings*, *Copy as your own*, *Add a
 check-in* (`CheckInAdd`)
@@ -10318,4 +10318,7 @@ observe them:
   `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
   hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
   the short list small: other tools run through `martlet_call`.
-- **Docs:** update this page with the new tools, IDs and status fields.
+- **Docs:** update this page with the new tools, IDs and status fields. Write
+  each tool's name as `name`: `McpDocsAgreementTests` (Martlet.Desktop.Tests)
+  fails when a tool is not named on this page, or when the page names a tool
+  (`ui_*`, `*_status`, `*_check`, `*_selftest`...) that the server does not have.

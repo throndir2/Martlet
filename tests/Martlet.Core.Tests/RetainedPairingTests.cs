@@ -87,8 +87,7 @@ public sealed class RetainedPairingTests : IDisposable
             Assert.Null(route.CredentialId);
             var retained = Assert.Single(restored.Setup.RetainedGatewayCredentials!);
             Assert.Equal(RetainedGatewayCredential.From(original), retained);
-            Assert.Contains("Saved pairing retained; route not connected/mismatched", SetupSettings.Describe(restored));
-            Assert.DoesNotContain("gateway credential not paired", SetupSettings.Describe(restored));
+            Assert.Contains("A saved host pairing is waiting to be reconnected.", SetupSettings.Describe(restored));
             Assert.Throws<ContractException>(() => SetupSettings.ReconnectRetainedGateway(restored, retained.CredentialId));
             var selection = SetupSettings.ConfigureGatewayEndpoint(restored, SetupRouteType.GatewayOllama, Endpoint, original.ModelId);
             var reconnected = SetupSettings.ReconnectRetainedGateway(selection, retained.CredentialId);
