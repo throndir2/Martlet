@@ -279,7 +279,7 @@ directly. Speaking, Listening and Thinking take one row per computer and no
 graphics card: a host runs one route per engine.
 Lip-sync goes to a pool of the places that run Audio2Face through the same
 queue, without a card here ([the lip-sync pool](AVATARS.md#the-lip-sync-pool)).
-Pictures go through each PC's Pictures list (`PicturePool`, lane `pictures`): a
+Pictures go through each PC's Pictures list (`PictureMakingPool`, lane `pictures`): a
 computer whose ComfyUI already draws a picture is passed over for a free one,
 and when all are busy the picture waits in the shortest queue
 ([Pictures](PICTURES.md#more-than-one-picture-computer)).
@@ -320,7 +320,7 @@ switch and no single-computer choice.
 | Order | The list order is the order a request tries the members in |
 | On and off | A member that is `off` keeps its place and its settings and takes no work |
 | Kept for | `PoolMember.OnlyFor`: the companion PCs (device IDs) that may use the member; empty means every one |
-| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings) |
+| Empty list | An optional area is off when no member is on. A required area (`PoolArea.Required`) then runs its fallback on this PC's processor (`PoolArea.Fallback`, for example voice loudness for lip-sync; for vision and hearing, Thinking's own model takes the pictures or recordings that go with a reply, while background jobs with a picture or a recording go to Thinking pool models that see or hear, [as SENSE_MODELS.md says](SENSE_MODELS.md#the-image-and-audio-pools)) |
 | Area (`PoolAreas`) | Its ID (also its `WorkQueue` lane), page, member kinds, host role, required or optional, shared or per PC. Thinking has `ConversationFirst`: the conversation's own model always goes first and is not a member |
 | Storage and sync | `pools.json`, the `pools` shared setting, for areas the same on all computers. `pools-local.json` (never shared) for areas that each PC chooses itself (pictures, vision, hearing and reading). An area with no list yet makes it once from its older choices (`PoolMigration`) |
 | Cloud keys | Each PC keeps a cloud member's key in Windows Credential Manager; `pool-keys.json` (never shared) maps area and member key to the credential ID. Without one, the member borrows the area's own route key for the same provider, or this PC skips it |

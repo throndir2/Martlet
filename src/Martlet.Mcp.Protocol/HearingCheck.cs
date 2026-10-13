@@ -32,14 +32,11 @@ internal static partial class HearingCheck
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var model = modelId ?? thinking?.ModelId ?? "gemini-2.5-flash";
         var modelHearing = HearingModelCatalog.Classify(model);
-        // The production decision (HearingModelCatalog.ForRoute): Chat Completions routes and a paired computer's Ollama take audio
-        // (OpenAI's Responses route doesn't), then what model-abilities.json says, then the name.
+        // The production decision (ModelSenses): Chat Completions routes and a paired computer's Ollama take audio (OpenAI's
+        // Responses route doesn't), a retired model none, then what model-abilities.json says, then the name.
         var abilities = ModelAbilities.Load(dataDirectory);
         var saved = thinking is null || modelId is not null ? null : abilities.Find(thinking.Origin, thinking.ModelId);
-        var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null
-            : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
-                thinking.RouteType == SetupRouteType.ChatCompletions &&
-                ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId, abilities) is not null);
+        var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null : ModelSenses.For(thinking, abilities).Hears;
         var choice = HearVoiceChoice(dataDirectory);
         // Where a recording goes now (docs/SENSE_MODELS.md): to Thinking, or with an audio model of its own to that model.
         var (senses, sensesFile) = SenseSetup.Read(dataDirectory);

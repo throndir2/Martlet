@@ -152,17 +152,17 @@ public sealed partial class CheckInsTests
         Assert.Contains("after 25 min away", welcome);
         Assert.Contains("starts with SAY:", welcome);
         Assert.Contains("Mira is playful", welcome);
-        var call = CheckIns.Message(Built(CheckIns.Call), state, null)!;
-        Assert.Contains("If a call or voice chat just started", call);
-        Assert.Contains("starts with REMIND:", call);
+        var aside = CheckIns.Message(Built(CheckIns.Aside), state, null)!;
+        Assert.Contains("in a call in Discord", aside);
+        Assert.Contains("starts with ASIDE:", aside);
         var others = CheckIns.Message(Built(CheckIns.Others), state, null)!;
         Assert.Contains("- Sam (the user's own voice), 2 min ago", others);
         Assert.Contains("not to share private things", others);
         Assert.Contains("follow up once", CheckIns.Message(Built(CheckIns.Unanswered), state, null)!);
         Assert.Equal("Welcome back!", CheckIns.Read(Built(CheckIns.Welcome), "SAY: Welcome back!", state).Text);
         Assert.False(CheckIns.Read(Built(CheckIns.Unanswered), "OK", state).Act);
-        Assert.Equal("Stay quiet.", CheckIns.Read(Built(CheckIns.Call), "REMIND: Stay quiet.", state).Text);
-        Assert.All(new[] { CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others },
+        Assert.Equal("in a Discord call", CheckIns.Read(Built(CheckIns.Aside), "ASIDE: in a Discord call", state).Text);
+        Assert.All(new[] { CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Aside, CheckIns.Others },
             id => Assert.Equal(PromptCatalog.CheckInGroup, PromptCatalog.Find(Built(id).PromptId!)!.Group));
     }
 
@@ -222,7 +222,7 @@ public sealed partial class CheckInsTests
         Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", FromHour = 9, UntilHour = 9 }).Validate());
         Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", UntilHour = 24 }).Validate());
         Assert.Throws<ContractException>(() => new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "Bad", MostPerHour = 5 }).Validate());
-        Assert.Throws<ContractException>(() => new CheckInSettings().With(CheckIns.Call, new CheckInChoice(true, 2) { MostPerHour = -1 }).Validate());
+        Assert.Throws<ContractException>(() => new CheckInSettings().With(CheckIns.Others, new CheckInChoice(true, 2) { MostPerHour = -1 }).Validate());
         new CheckInSettings().With(new CustomCheckIn { Id = "c1", Name = "All", Facts = CheckIns.KnownFacts, Conditions = CheckIns.KnownConditions }).Validate();
     }
 }

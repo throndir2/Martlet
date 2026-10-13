@@ -5,6 +5,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
+using Martlet.Conversation;
 using Martlet.Core.Characters;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;

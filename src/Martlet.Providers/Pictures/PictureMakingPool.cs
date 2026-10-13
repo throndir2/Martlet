@@ -6,17 +6,17 @@ using Martlet.Core.Pictures;
 
 namespace Martlet.Providers.Pictures;
 
-/// <summary>One place in a <see cref="PicturePool"/>: its ID (the pool member's key: "host:&lt;id&gt;", "address:&lt;url&gt;",
+/// <summary>One place in a <see cref="PictureMakingPool"/>: its ID (the pool member's key: "host:&lt;id&gt;", "address:&lt;url&gt;",
 /// "cloud:&lt;provider&gt;/&lt;model&gt;"), the picture maker with that member's own settings (workflow, checkpoint or model) and,
 /// for Martlet's pictures role, the paired computer it draws on.</summary>
-public sealed record PicturePoolMember(string Id, IPictureMaker Maker, string? HostId = null);
+public sealed record PictureMakingPoolMember(string Id, IPictureMaker Maker, string? HostId = null);
 
 /// <summary>Where a pool's picture went: the member, its place in the order, how many members were busy or couldn't draw it
 /// first, and, when every member was busy, how many pictures it waited behind in that member's ComfyUI queue.</summary>
-public sealed record PicturePoolRoute(string Id, int Position, int Busy, int Unavailable, int? QueuedBehind);
+public sealed record PictureMakingPoolRoute(string Id, int Position, int Busy, int Unavailable, int? QueuedBehind);
 
 /// <summary>
-/// Draws each picture on the first member of Pictures' ordered list (<see cref="PoolAreas.Pictures"/>) that is free
+/// Draws each picture on the first member of Pictures' ordered list (<see cref="PoolAreas.PictureMaking"/>) that is free
 /// (docs/PICTURES.md#more-than-one-picture-computer), through Martlet's queue for shared work (<see cref="WorkQueue"/>, lane
 /// <see cref="Lane"/> and each member's key, background priority: pictures are never live work). A ComfyUI member whose queue
 /// already holds pictures (another companion PC's, or this PC's) is busy and passed over for the next, and so is a cloud
@@ -27,19 +27,19 @@ public sealed record PicturePoolRoute(string Id, int Position, int Busy, int Una
 /// that member does alone: no extra request. <see cref="Chosen"/> and <see cref="Route"/> say where it went;
 /// <see cref="Placed"/> is raised when a member takes it.
 /// </summary>
-public sealed class PicturePool : IPictureMaker, IDisposable
+public sealed class PictureMakingPool : IPictureMaker, IDisposable
 {
-    /// <summary>The <see cref="WorkQueue"/> lane of pictures (<see cref="PoolAreas.Pictures"/>' ID).</summary>
-    public static string Lane => PoolAreas.Pictures.Id;
+    /// <summary>The <see cref="WorkQueue"/> lane of pictures (<see cref="PoolAreas.PictureMaking"/>' ID).</summary>
+    public static string Lane => PoolAreas.PictureMaking.Id;
     private static readonly TimeSpan Recheck = TimeSpan.FromSeconds(30);
-    private readonly IReadOnlyList<PicturePoolMember> members;
+    private readonly IReadOnlyList<PictureMakingPoolMember> members;
     private readonly WorkQueue queue;
     private readonly TimeProvider clock;
     private readonly ConcurrentDictionary<string, (PictureMakerAvailability Availability, long At)> checks = new(StringComparer.Ordinal);
-    private PicturePoolMember? chosen;
-    private PicturePoolRoute? route;
+    private PictureMakingPoolMember? chosen;
+    private PictureMakingPoolRoute? route;
 
-    public PicturePool(IReadOnlyList<PicturePoolMember> members, WorkQueue? queue = null, TimeProvider? clock = null)
+    public PictureMakingPool(IReadOnlyList<PictureMakingPoolMember> members, WorkQueue? queue = null, TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(members);
         if (members.Count == 0) throw new ArgumentException("A picture pool needs at least one member.", nameof(members));
@@ -52,16 +52,16 @@ public sealed class PicturePool : IPictureMaker, IDisposable
     }
 
     /// <summary>The members, in the order a picture tries them.</summary>
-    public IReadOnlyList<PicturePoolMember> Members => members;
+    public IReadOnlyList<PictureMakingPoolMember> Members => members;
 
     /// <summary>The member that took the last picture; null before one did.</summary>
-    public PicturePoolMember? Chosen => Volatile.Read(ref chosen);
+    public PictureMakingPoolMember? Chosen => Volatile.Read(ref chosen);
 
     /// <summary>How the last picture found its member; null before one did.</summary>
-    public PicturePoolRoute? Route => Volatile.Read(ref route);
+    public PictureMakingPoolRoute? Route => Volatile.Read(ref route);
 
     /// <summary>Raised when a member takes a picture (again, on another member, when the first stopped answering).</summary>
-    public event Action<PicturePoolMember>? Placed;
+    public event Action<PictureMakingPoolMember>? Placed;
 
     public string Where => Chosen?.Maker.Where ?? (members.Count == 1 ? members[0].Maker.Where
         : $"{members[0].Maker.Where} (or {string.Join(" or ", members.Skip(1).Take(3).Select(m => m.HostId ?? m.Maker.Where))}" +
@@ -124,7 +124,7 @@ public sealed class PicturePool : IPictureMaker, IDisposable
 
     // One member's try: it can draw (availability), is free (its ComfyUI queue is empty, unless the picture waits there on
     // purpose: queuedBehind), then draws. A failure before the picture is kept is a refusal: the next member tries.
-    private async Task<PictureResult> DrawAsync(PicturePoolMember member, PictureRequest request, IProgress<PictureProgress>? progress,
+    private async Task<PictureResult> DrawAsync(PictureMakingPoolMember member, PictureRequest request, IProgress<PictureProgress>? progress,
         Attempt attempt, int? queuedBehind, CancellationToken token)
     {
         var availability = await CheckAsync(member, fresh: false, token).ConfigureAwait(false);
@@ -167,7 +167,7 @@ public sealed class PicturePool : IPictureMaker, IDisposable
         }
     }
 
-    private void Choose(PicturePoolMember member, PicturePoolRoute how)
+    private void Choose(PictureMakingPoolMember member, PictureMakingPoolRoute how)
     {
         Volatile.Write(ref chosen, member);
         Volatile.Write(ref route, how);
@@ -182,7 +182,7 @@ public sealed class PicturePool : IPictureMaker, IDisposable
     }
 
     // A member's availability, asked again after Recheck (or always, when fresh).
-    private async Task<PictureMakerAvailability> CheckAsync(PicturePoolMember member, bool fresh, CancellationToken token)
+    private async Task<PictureMakerAvailability> CheckAsync(PictureMakingPoolMember member, bool fresh, CancellationToken token)
     {
         var now = clock.GetTimestamp();
         if (!fresh && checks.TryGetValue(member.Id, out var known) && clock.GetElapsedTime(known.At, now) < Recheck) return known.Availability;

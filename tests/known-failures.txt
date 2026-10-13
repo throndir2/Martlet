@@ -8,15 +8,6 @@
 # Burn-down: https://github.com/throndir2/Martlet/issues/332
 
 # Assertions that no longer match the product's current text or behavior.
-Martlet.Core.Tests.AudioSettingsTests.SelectionChangeInvalidatesOnlyChangedCheckpointAndReportsNoIdentity
-Martlet.Core.Tests.ConfigurationRecoveryTests.SnapshotRefusalMatrixPreservesDestination
-Martlet.Core.Tests.MemorySettingsTests.RecoveryNeverReenablesOrCopiesMemoryFacts
-Martlet.Core.Tests.RetainedPairingTests.SnapshotIdentitiesNeverReplaceCurrentPairing
-Martlet.Core.Tests.SelfHostSettingsTests.CurrentOpenAiAccessibleSummariesPreserveExistingSetupAndStatusContract
-Martlet.Core.Tests.SetupTests.PostDeleteSaveFailureKeepsRetryMarkerAndExplainsIrreversibility
-# Martlet.Core references System.Net.Http (Cluster/Pools.cs and Singing/SingingPool.cs catch HttpRequestException); fails on a
-# clean origin/main fe75cf64 alone.
-Martlet.Core.Tests.DiagnosticTests.ServiceConstructionAndFirstStatusUseNoAdaptersAndWriteNothing
 Martlet.Desktop.Tests.AppearanceTests.EveryDesktopWindowInheritsSharedTheme
 Martlet.Desktop.Tests.AudioSetupDispatcherTests.InputFailureHasSpecificRemedyAndNeverRearms
 # Intermittent on a loaded PC ("Bounded audio condition not reached"; a settings .tmp file still open when the fixture is
@@ -36,11 +27,8 @@ Martlet.Desktop.Tests.SupportIntegrationTests.BusyTerminalObservationIsCountedDr
 Martlet.Desktop.Tests.SupportIntegrationTests.DestinationAndSelectionChangesDuringConfirmationInvalidateApproval
 Martlet.Desktop.Tests.SupportIntegrationTests.MainSupportCanBePresentedInsideEachShownModalWorkflow
 Martlet.Desktop.Tests.SupportIntegrationTests.RecordingAccessFailureAndUnsupportedNetworkScopeNeverCreateAlternateStorage
-Martlet.Doctor.Tests.DoctorCommandTests.HelpSharesActualSupportDefaultsWithoutAddingAnExportCommand
-Martlet.Gateway.Persistence.Tests.OwnerTests.Public_owner_never_exposes_mutable_authority_certificate_or_snapshot_import
-# Bounded-deadline tests that time out on a busy PC; both fail on origin/main 7f088d1 alone (CPU ~97% busy).
+# A bounded-deadline test that times out on a busy PC; fails on origin/main 7f088d1 alone (CPU ~97% busy).
 Martlet.Desktop.Tests.AudioSetupDispatcherTests.FailedCaptureAfterPositiveMeterClearsLevelAndFreshSilentTestCannotReplay
-Martlet.Launcher.Tests.LauncherIntegrationTests.InvalidOrLateHandshakeFailsClosed
 
 # Create real symbolic links, which Windows allows only with Developer Mode or as administrator.
 Martlet.Launcher.Tests.LauncherReviewRegressionTests.EvidenceRootCannotHideInsidePayloadThroughAncestorLink  # env: symlink privilege
@@ -58,8 +46,7 @@ Martlet.Desktop.Tests.CharacterGestureTests.EveryVoiceSoundAndToneHasAGlobalEmot
 # 2026-10-10, found by the W8 account settings change).
 Martlet.Desktop.Tests.McpServerTests.SaidLatelyAndCheckInsRehearsalsPassWithTheProductionCode
 # Fail alone on origin/main 58005289 on 2026-10-11 (3 of 3 runs, shown without the raise-arbitrary-limits changes): support
-# export owner/cleanup callbacks (NullReferenceException or false asserts) and a duplicate served option id.
-Martlet.Desktop.Tests.ServedModelsSetupTests.The_served_fixture_thinks_with_the_biggest_served_model_that_fits_and_the_review_names_the_app
+# export owner/cleanup callbacks (NullReferenceException or false asserts).
 Martlet.Desktop.Tests.SupportIntegrationTests.BlockedExportAndCancellationCallbacksKeepOwnerAcrossCloseAndReopen
 Martlet.Desktop.Tests.SupportIntegrationTests.CancellationInsideCommittedRenameRetainsRealLocalReceiptAfterObserverCloses
 Martlet.Desktop.Tests.SupportIntegrationTests.ExportIoFailureAndFailedCloseRemainOwnedUntilExplicitCleanup

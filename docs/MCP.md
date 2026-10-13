@@ -520,12 +520,23 @@ Nemotron are Smart, others are Standard. The *Runs on* card has
 `check-in`, `memory`, `naming`, `touch-zones`, `digest`, `end-of-turn-judge`,
 `barge-in-judge`) with *Any member* (the default), *Prefer smart*, *Smart only*
 and *These members*, and `ThinkingPoolRunsOnMember-<kind>-<n>` for each member
-under *These members*. Each check-in card has `CheckInRunsOn-<id>` (first
+under *These members*. `ThinkingPoolRunsOnLabel-<kind>` (read-only text) is the
+kind's label, which names all the work the kind controls (for example
+`ThinkingPoolRunsOnLabel-touch-zones` reads *Touch zones, measuring the eyes
+and writing a character's personality*). The kinds, their keys and their labels
+come from one table, `ThinkingJobKinds.Rows`
+([Job kinds](CONVERSATION.md#job-kinds)). Each check-in card has `CheckInRunsOn-<id>` (first
 *Like other check-ins*) and `CheckInRunsOnMember-<id>-<n>` under *More
 settings*. All of them save `thinking-pool.json` or `check-ins.json`, so they
 need `--allow-ui-effects`. `thinking_pool_status` gives each member `smarts`,
-`smartsGuess` and `smartsChosen`, and `runsOn` for each kind (`mode`, `members`
-and `may`, the members the kind may use). `thinking-pool-status.json` gives each
+`smartsGuess` and `smartsChosen`, `runsOn` for each kind (`mode`, `members`
+and `may`, the members the kind may use), and `kinds`: the table of job kinds
+in the card's order, each with its saved `key`, `label`, `type` (its name on
+the Thinking requests page), `priority`, `fast`, `needs` (the most its jobs ask
+of a member), `whileLive` (`Starts`, `Waits` or `Stops`) and `helpers` (each
+helper job that runs as the kind, with its `key`, `priority` and `ownerWaits`).
+The `thinking_pool_check` step *kinds* checks that every kind has one row, the
+keys are unique and in one format, and every helper job is in one row. `thinking-pool-status.json` gives each
 member `smarts` and `smartsGuessed`, `runsOn` for each kind, and `placements`:
 the latest jobs with the member each went to, its smarts, the outcome and `why`
 (for example *Prefer smart: no Smart member came free within 30 s, so a
@@ -562,9 +573,11 @@ pool jobs (the judges, summaries, check-ins, memory, naming and touch zones)
 and the conversation's background work on the same slots (thinking longer and
 research). The requests that wait or run come first, then the newest ended
 ones. The journal (`ThinkingRequests`) keeps every request that has not ended
-and the last 200 that ended, plus totals by kind. It keeps no request's text.
-It keeps each ended request's output (what it answered, its first 16,000
-characters) for this PC's page only. The output never goes in a log, a status
+and the last 200 that ended, plus totals by kind. It keeps no request's text in
+a log or a status file. For this PC's page only, it keeps each request's input
+(what it sent its model, read into text the first time it shows, at most
+32,000 characters) and each ended request's output (what it answered, its
+first 16,000 characters). The input and the output never go in a log, a status
 file or an MCP result.
 
 `thinking_requests` (`dataDirectory`, and the optional filters `state`, `kind`
@@ -581,7 +594,9 @@ request gives its `id` (`tr-<n>`), `kind`, `source` (`Pool`, `Conversation` or
 `posted`, `started` and `finished` times, `firstWaitMs`, `waitedMs`, `ranMs`
 and `totalMs`, and each try in `attempts` (`member`, `model`, `started`,
 `ended`, `ms` and `ending`). It also gives `retries`, `preemptions`,
-`answerCharacters`, `cut` and the request's limits. The filters are:
+`answerCharacters`, `cut`, `inputCharacters` (the input's length, or null
+when it isn't known yet), `inputs` (how many inputs a think or research job
+sent; 0 for a pool job) and the request's limits. The filters are:
 
 - `state`: `active` (waiting, running or paused), `done`, `problems` (ended
   other than succeeded or canceled, or with a retry or a stop for the
@@ -596,15 +611,27 @@ waiting. 5 ended since Martlet started (1 with a problem): they waited 2.0 s
 and ran 2.0 s on average.* `ThinkingRequestsPool` gives the pool's slots now,
 `ThinkingRequestsEmpty` the empty state, and `NavThinkingRequestsCount` how
 many requests wait or run (shown only when some do). Each row
-`ThinkingRequest-tr-<n>` is a safe click: it only selects the request, and
-`ThinkingRequestDetail` then gives the request in full (type, task, companion,
-needs, times, timings, tries, limits and the answer's length). Beside it,
-`ThinkingRequestOutput` shows what the request answered. The output is private:
-MCP never returns it. `ThinkingRequestOutputState` (a safe value) gives only
-its length, for example *Output: 98 characters.*, or why there is none
+`ThinkingRequest-tr-<n>` is a safe click: it only selects the request and
+shows its details. `ThinkingRequestDetailTitle` gives the request's ID, type
+and task, and `ThinkingRequestDetail` gives the request in full (type, task,
+companion, needs, times, timings, tries, limits and the answer's length).
+Beside it, `ThinkingRequestInput` shows what the request sent its model (the
+instructions, the earlier messages, the message with its notes, an unfinished
+answer it goes on with, and the picture, recording and tools that went with
+it), and `ThinkingRequestOutput` shows what the request answered. The input and
+the output are private: MCP never returns them. `ThinkingRequestInputState` (a
+safe value) gives only the input's length, for example *Input: 1,240
+characters.*, *Input: 52 characters, never sent.* or *Input: 9,800 characters,
+the newest of 4 requests it sent.* (each research step and each new try of a
+think sends a new input), or why there is none (*Input: none yet. It shows here
+when the request is sent.*). An input longer than 32,000 characters keeps its
+start and its end: *Input: 120,000 characters, 88,000 in the middle left out
+here.* `ThinkingRequestOutputState` (a safe value) gives only the output's
+length, for example *Output: 98 characters.*, or why there is none
 (*Output: none yet. It shows here when the request ends.*, *Output: none. It
 ended: failed.*). A long output reads *Output: the first 16,000 of 40,000
-characters*. The filters
+characters*. `ThinkingRequestDetailClose` (*Close*, or Esc) is a safe click: it
+only hides the details again. The filters
 `ThinkingRequestsFilter-all`, `-active` and `-problems`, the
 `ThinkingRequestsTimingExpander` (*Timing by type*) and `ThinkingRequestsKind`
 (it only opens) are safe clicks. `ThinkingRequestsTiming` is a safe value.
@@ -617,8 +644,9 @@ for (private): MCP never returns it.
 Setting `MARTLET_SIMULATE_THINKING_REQUESTS` to a number (1-50) before you
 launch the desktop posts that number of simulated requests once the window
 shows. They wait, run on made-up members (*gpu-box (simulated)* and *laptop
-(simulated)*), retry, fail and end over about half a minute. Each one that
-succeeds has a made-up output. No model is asked and nothing is sent. The
+(simulated)*), retry, fail and end over about half a minute. Each one has a
+made-up input, and each one that succeeds has a made-up output. No model is
+asked and nothing is sent. The
 desktop log says *Posting N simulated Thinking requests*.
 
 The `requests` steps of `thinking_pool_check` run the production job board with
@@ -718,7 +746,11 @@ the `last` job's `member`, `name`, `position`, `chosen`, `busy`,
 
 `sense_models_check` rehearses the production routing (`SenseRouting`) over
 the combinations of text, image and audio models with fixture model names (a
-paired computer's model that hears takes recordings), the `sense-models.json`
+paired computer's model that hears takes recordings), the one rule for what a
+model takes (`one-rule-for-every-place`, `ModelSenses`: a paired computer's
+Test vision counts for the Vision list and the Thinking pool alike, and a
+model Martlet can't tell about is tried from the list but gets no Thinking
+pool picture jobs), the `sense-models.json`
 round trip and the lists made from it once (`lists-made-once`; a damaged list
 file reads as the text model), and the production lines (`SenseLanes`) with a
 simulated runner, NOT models: no model of its own, one job at a time, a newer
@@ -887,7 +919,10 @@ of the test words, reads Test hearing's word with Windows speech recognition
 limited to the test words (when this PC has an English recognizer), and answers
 anything else with fixed text, streamed when asked. `status` lists the recent
 requests by model, the kinds of parts they carried and what the lab answered,
-never their content. It ends with the MCP server.
+never their content. Each chat completion also has `start`: short SHA-256s of
+its `Tools` and of each of its `Messages` as sent. Compare two runs to see
+whether the start of each request stayed byte-identical, so prompt caches still
+match. It ends with the MCP server.
 
 ```powershell
 # Add lab/sees to the image models in a disposable desktop and test it (it is first in an empty list).
@@ -1119,7 +1154,7 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
 back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
-Pictures list's routing (`PicturePool`, `WorkQueue` and `ComfyPictureMaker`) on
+Pictures list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
 simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
 or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
@@ -1276,7 +1311,7 @@ Martlet knows, or its thoughts ahead, go in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
 each run with words and counts only (`Check-ins:`).
 
-Companion › Check-ins reads through `ui_value`: `CheckInsNow` (how many are on
+Companion › Check-ins reads through `ui_snapshot`: `CheckInsNow` (how many are on
 and the member that takes them first, or why they can't run), `CheckInsLast`
 (the last check-in that ran, when, on which member and what came of it, never
 what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
@@ -1291,13 +1326,15 @@ before you read or change these), each group with its own *?*
 and the placeholders in `Help-CheckInPrompt-<id>` or `Help-CheckInTask-<id>`):
 `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`),
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`,
+`Latest`, `Heard`),
 `CheckInWhen-<id>-<condition>` (when it runs: `CharacterShows`, `EmoteShown`,
 `GazeChosen`, `Talked`, `SomethingNew`, `Persona`, `Replies`, `NewReplies`,
 `Sayings`, `SlowWhenKept`, `CameBack`, `NotOnCall`, `ActivityChanged`,
 `Between`, `Unanswered`, `Attention`, `SongEnded`, `ScriptChanged`,
 `SomeoneElse`), `CheckInTrigger-<id>-<trigger>` (what starts it at once:
-`TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`), its
+`TouchesEnded`, `IntimateTouch`, `StrokeAcrossZones`, `KeepsComingBack`,
+`ExchangeEnded`, `Spoke`), its
 hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
 as *8 AM* and *10 PM*, used with `Between`) and its cap
 (`CheckInMostPerHour-<id>`: *No limit*, *Once an hour* or *2*, *3*, *4*, *6* or
@@ -1317,7 +1354,7 @@ answer, inputs and tools back; On and Every stay). Each check-in has *Copy as yo
 (`CheckInCopy-<id>`), which adds an own check-in (off) with the same prompt and
 choices. The script and prompt boxes
 (`CheckInScript-<id>`, `CheckInPrompt-<id>`) have automation IDs, but
-`ui_value` never reads them: the owner's words stay on the page.
+`ui_snapshot` never reads them: the owner's words stay on the page.
 `CheckInsOpenPool` only opens a page. The boxes and choices, the name, task,
 prompt and script boxes, *Use built-in settings*, *Copy as your own*, *Add a
 check-in* (`CheckInAdd`)
@@ -1344,6 +1381,18 @@ Think ahead's run (*thoughts ahead wait for the next reply*), the second
 reply's `LiveTurnInputs` says *Last reply took your words and 1 context
 note.*, and the desktop log says *Context board: the request took 1 note
 (check-in-ahead; ...)*.
+
+[Talking to someone else](CONVERSATION.md#talking-to-someone-else) is
+checked on the desktop the same way. Launch with a fixture file that holds
+`ASIDE: FIXTURE on the phone with their mom`, open `CompanionTab-CheckIns`
+and click `CheckInRun-aside`: `check_ins_status`'s `desktop.aside` says
+`holding` true with `since`, `until` (3 minutes later) and `aboutCharacters`,
+`CheckInStatus-aside` says *Martlet holds back while you talk to someone
+else*, and the desktop log says *Check-ins: Talking to someone else says you
+talk to someone else, so Martlet holds back ...*. Write `BACK` to the file and
+click it again: `holding` is false and the status says *Martlet talks as usual
+again*. Its trigger box `CheckInTrigger-aside-Spoke` (*You say something*) is
+checked; that trigger needs always listening and a microphone.
 
 [Check-in triggers](CONVERSATION.md#check-in-triggers) are driven live with
 `character_touch` and `character_stroke` (both need `--allow-ui-effects` and
@@ -1764,7 +1813,7 @@ production code (`MemoryBriefService`, the `HelperJobs` router and the
 `memory-brief` shared-settings section) on a disposable memory store, with a
 fixture Thinking pool member whose answers are FIXTURE - NOT AI. Its `steps`
 show that two facts write nothing; a third has the pool member write the brief
-(route `pool`, kind `memory_brief`, priority `Low`) from each fact with whose it
+(route `pool`, kind `memory-brief`, priority `Low`) from each fact with whose it
 is; the first message of a conversation carries it and the next don't; a
 forgotten fact holds it back (`waiting`) until it is written again without it a
 minute later; your own text stays; off sends nothing; *Write it again*
@@ -6184,9 +6233,13 @@ computers**): Home's Recommended setup then plans the fixture network that
 `recommended_setup_status` plans with `fixture: "network"` (also on a PC
 alone), and Reconfigure applies it to simulated computers. Also set
 `MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK` to `offline` to plan the
-`fixture: "offline"` network instead, or to `better` for the `fixture:
+`fixture: "offline"` network instead, to `better` for the `fixture:
 "better"` network (a host that thinks with Gemma 4 E2B; put a
-`model-speed.json` in the data directory to plan with measured first words). Each role change
+`model-speed.json` in the data directory to plan with measured first words), or
+to `served` for the `fixture: "served"` network (model apps on this PC serve
+models that Martlet's own list doesn't have). If the review can't open, Home's
+status line (`Settings action result`) reads *Martlet couldn't open the
+recommended setup: ...* and the log keeps why. Each role change
 takes that many seconds and writes `FIXTURE` lines; nothing is installed,
 contacted, saved or shared, and the run shows on this PC's Home
 (`HomeConfiguringStatus`) only.
@@ -6376,24 +6429,30 @@ $env:MARTLET_SIMULATE_SITUATION = 'gaming'
 
 `helper_jobs_status` (optional absolute `dataDirectory`, default the current
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
-(`memory`: remembering and learning names after a reply; `action_naming`:
+(`memory`: remembering and learning names after a reply; `action-naming`:
 naming a character's emotes; `temperament`: deciding its touch temperament;
-`touch_zones`: finding its touch zones; `eyes`: measuring its eyes;
-`memory_brief`: writing the [memory brief](MEMORY.md#the-memory-brief)) the last
+`touch-zones`: finding its touch zones; `eyes`: measuring its eyes;
+`character-writing`: writing a character's personality in *Find a character*;
+`memory-upkeep`: tidying memory; `memory-brief`: writing the
+[memory brief](MEMORY.md#the-memory-brief)) the last
 `route` (`pool` with the `member` that ran it and its model, or `fallback`: the
 conversation's own Thinking model after the reply finished speaking),
 `priority`, `outcome` (`answered`, `no answer` or `failed: <why>`), `at` and
 `waitedMs` (how long the fallback waited for the reply). It never holds a prompt
 or an answer. `state` is `none` until the desktop runs a helper job with that
-data directory. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
+data directory. These keys use the same format as the Thinking pool's job
+kinds (lower-case words with hyphens); a `helper-jobs.json` written by an
+older Martlet has underscores (`action_naming`) until the next helper job
+writes it again. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
 Memory, Naming and TouchZones kinds (the eyes as a TouchZones job at the helpers'
-low priority, the memory brief as a Memory job at the lowest priority);
+low priority, the memory brief as a Memory job at the lowest priority;
+`ThinkingJobKinds.Rows` says which helper job runs as which kind);
 `thinking_pool_status` shows the pool itself.
 `helper_jobs_check` (no arguments) rehearses the desktop's production router
 (`HelperJobs`) with a fixture pool and fixture answers (NOT AI): memory and
 naming go to a free text member, touch zones wait for a running reply and fall
 back while no member can see, then go to a vision member, tidying memory
-(`memory_upkeep`) runs on a free text member and, when none is free, waits
+(`memory-upkeep`) runs on a free text member and, when none is free, waits
 instead of falling back, and memory falls back
 when no member is free. It returns each step with `passed` and the status file
 it wrote. See [helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool).
@@ -6573,7 +6632,7 @@ and let go (*too_old*) after waiting 10 minutes. `passed` and each step's
 data directory (optional absolute `dataDirectory`): `settings` from
 `check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
 `id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
-*GazeUsual*, *Note*, *Say*, *Context* or *Tools*, built-in `prompt`, the owner's `task`, the
+*GazeUsual*, *Note*, *Say*, *Context*, *Tools*, *Plan* or *HoldBack*, built-in `prompt`, the owner's `task`, the
 `facts` and `conditions` (such as *Said, Replies* or *CharacterShows,
 EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
 Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
@@ -6591,7 +6650,10 @@ reply tools [Act on what was said](CONVERSATION.md#act-on-what-was-said) takes o
 `poolCallsTools`, whether the configured Thinking pool has a member that takes
 check-ins and calls tools; `handedOff`, each `tool` with its `checkIn` and `set`;
 `why` in plain words; and `lastProblem`, what the last run after an exchange
-couldn't do, or null), `pool` with
+couldn't do, or null), `aside` (whether Martlet [holds
+back](CONVERSATION.md#talking-to-someone-else) now: `holding`, the check-in
+`by`, `since`, `until` and `aboutCharacters`, never who the user talks to),
+`pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
 `recording`, `recordingSeconds`, `script`, `triggers`, `pending` (the trigger
@@ -6603,8 +6665,8 @@ the `result`, the first line of the tool's answer at most 120 characters, and
 `failed`); `sound` with `microphoneKept`, `microphoneHeard`,
 `pcKept` and `pcHeard`; `signals` with `attentionWatched` (Martlet watches
 for flashing taskbar buttons and notifications because a check-in that is on
-waits for them), `activityKnown`, `cameBackMinutesAgo` and `voicesLately` (a
-count); never what was said, answered, reminded, taken or printed, what the
+waits for them), `activityKnown`, `cameBackMinutesAgo`, `voicesLately` and
+`heardLately` (counts); never what was said, answered, reminded, taken or printed, what the
 user does or who spoke) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
@@ -6666,7 +6728,7 @@ after the prompt when it is ticked but not placed, and that facts past
 `intimate`, `often`), `filled` and the FIXTURE message. Three
 `triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
 with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
-check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, and Think ahead and Act on what was said on `ExchangeEnded`),
+check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger, Think ahead and Act on what was said on `ExchangeEnded`, and Talking to someone else on `Spoke`),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
 touches there, fire all four triggers once they settle; the ledger still holds
@@ -6720,12 +6782,27 @@ back, a call, a change in what you do, the hours past midnight, an unanswered
 question asked once, a flashing taskbar button, a song that ended, someone
 else's voice, a check-in with no script to compare, the per-hour cap, and a
 script whose output hash didn't change, which *Check now* still asks),
-`signals: the facts and the check-ins` (Welcome back, Unanswered question, On a
-call and Someone else is here send `{away}`, `{activity}` and `{people}` and
-read `SAY:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
+`signals: the facts and the check-ins` (Welcome back, Unanswered question,
+Talking to someone else and Someone else is here send `{away}`, `{activity}`
+and `{people}` and read `SAY:`, `ASIDE:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
 and read back` (equal hours, a cap of 5 and an unknown condition refused).
-The settings step also checks that these four built-in check-ins are off by
-default. Three `tools:`
+The settings step also checks that the three built-in check-ins that wait for
+a signal (Welcome back, Unanswered question, Someone else is here) are off by
+default. `talking to someone else` checks [Talking to someone
+else](CONVERSATION.md#talking-to-someone-else) with a FIXTURE one-sided phone
+call and a canned answer: it is on, runs at most once a minute, holds Martlet
+back (`HoldBack`) and starts on `Spoke`; it waits with no trigger and on a
+reply's end alone, runs while the reply is busy and waits during its
+cooldown; its message has what always listening heard (who spoke, whether
+Martlet answered or stayed quiet, whether Martlet holds back), the
+conversation, what the user does, the voices and the `ASIDE:`/`BACK` format; a
+fixture member's `ASIDE:` line after a `<think>` block is read on a production
+job board; its note goes on a production context board as `check-in-aside`
+with every request (not once), lasts while the user keeps talking and is gone
+3 minutes after they stop; `BACK`, `OK`, `ASIDE: nobody` and a `REMIND:` line
+read as they should; an emptied *Check-in: holding back while you talk to
+someone else* prompt posts nothing; and a saved choice for the retired On a
+call (`call`) is dropped. Three `tools:`
 steps check [tool sets](CONVERSATION.md#check-in-tool-sets): `tools: sets saved
 and read back` (an own check-in's and a built-in choice's sets kept; an unknown
 set and the same set twice refused), `tools: the job offers them` (the job
@@ -10193,7 +10270,7 @@ character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). `ui_type` types
 the way a person does, one key at a time: with `id` that text box takes the
 keyboard focus first; without `id` the keys go to the control that has the
 focus. Each character of `text` (at most 100), then each of `keys`
-(`backspace`, `delete`, `left`, `right`, `home`, `end`), is a key message posted
+(`backspace`, `delete`, `left`, `right`, `home`, `end`, `escape`), is a key message posted
 to that Martlet window only (`window` names one; the main window by default),
 one every `stepMs` (default 50). It returns `focused`, the automation ID of the
 control that has the keyboard focus afterwards. `ui_snapshot` marks that control
@@ -10297,14 +10374,20 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (or `SafeClickPrefixes` for a
+  `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
   family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
-  `SafeValuePrefixes`) so snapshots return their text (a value pattern's value,
-  a text block's text, or a status button's accessible name).
+  `SafeValuePrefixes`) in the same file so snapshots return their text (a value
+  pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
+- **One line for each ID:** write each entry as
+  `new("<ID>", "<page>", "<what it does or shows>")`, for example
+  `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Thinking pool.")`.
+  Say why it is safe ("saves nothing", "never the key"). Name controls that you
+  leave out on purpose in a comment line next to it
+  (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
@@ -10318,4 +10401,7 @@ observe them:
   `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
   hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
   the short list small: other tools run through `martlet_call`.
-- **Docs:** update this page with the new tools, IDs and status fields.
+- **Docs:** update this page with the new tools, IDs and status fields. Write
+  each tool's name as `name`: `McpDocsAgreementTests` (Martlet.Desktop.Tests)
+  fails when a tool is not named on this page, or when the page names a tool
+  (`ui_*`, `*_status`, `*_check`, `*_selftest`...) that the server does not have.

@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using Martlet.Core.Settings;
+using Martlet.Conversation;
 using Martlet.Memory;
 using Martlet.Providers;
 

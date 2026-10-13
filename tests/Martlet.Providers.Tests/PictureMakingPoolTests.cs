@@ -5,7 +5,7 @@ using Martlet.Providers.Pictures;
 
 namespace Martlet.Providers.Tests;
 
-public sealed class PicturePoolTests
+public sealed class PictureMakingPoolTests
 {
     private static readonly PictureRequest Request = new() { Prompt = "a fox in the snow" };
 
@@ -17,7 +17,7 @@ public sealed class PicturePoolTests
         Assert.True((await pool.GetAvailabilityAsync(CancellationToken.None)).Available);
         var result = await pool.GenerateAsync(Request, null, CancellationToken.None);
         Assert.Equal("a ComfyUI", result.Where);
-        Assert.Equal(new PicturePoolRoute("host:a", 0, 0, 0, null), pool.Route);
+        Assert.Equal(new PictureMakingPoolRoute("host:a", 0, 0, 0, null), pool.Route);
         Assert.Equal(0, b.Requests);
     }
 
@@ -30,7 +30,7 @@ public sealed class PicturePoolTests
         pool.Placed += member => placed.Add(member.Id);
         var result = await pool.GenerateAsync(Request, null, CancellationToken.None);
         Assert.Equal("b ComfyUI", result.Where);
-        Assert.Equal(new PicturePoolRoute("host:b", 1, 1, 0, null), pool.Route);
+        Assert.Equal(new PictureMakingPoolRoute("host:b", 1, 1, 0, null), pool.Route);
         Assert.Equal(["host:b"], placed);
         Assert.Equal(0, a.Prompts);
         Assert.Equal("b", pool.Chosen!.HostId);
@@ -44,7 +44,7 @@ public sealed class PicturePoolTests
         using var pool = Pool([down, lacking, rejecting, good], PictureWorkflow.Checkpoint, "c.safetensors");
         var result = await pool.GenerateAsync(Request, null, CancellationToken.None);
         Assert.Equal("good ComfyUI", result.Where);
-        Assert.Equal(new PicturePoolRoute("host:good", 3, 0, 3, null), pool.Route);
+        Assert.Equal(new PictureMakingPoolRoute("host:good", 3, 0, 3, null), pool.Route);
         Assert.Equal(0, lacking.Prompts);
         Assert.Equal(0, rejecting.Drawn);
     }
@@ -86,13 +86,13 @@ public sealed class PicturePoolTests
     public async Task A_busy_or_refusing_cloud_member_passes_the_picture_on()
     {
         var b = new Comfy("b");
-        using var pool = new PicturePool([
+        using var pool = new PictureMakingPool([
             new("cloud:openrouter/x", new Failing(PictureErrorCodes.Busy)),
             new("cloud:nvidia-build/y", new Failing(PictureErrorCodes.NotAuthorized)),
             new("host:b", Maker(b), "b")], new WorkQueue());
         var result = await pool.GenerateAsync(Request, null, CancellationToken.None);
         Assert.Equal("b ComfyUI", result.Where);
-        Assert.Equal(new PicturePoolRoute("host:b", 2, 1, 1, null), pool.Route);
+        Assert.Equal(new PictureMakingPoolRoute("host:b", 2, 1, 1, null), pool.Route);
     }
 
     [Fact]
@@ -105,15 +105,15 @@ public sealed class PicturePoolTests
         Assert.False((await down.GetAvailabilityAsync(CancellationToken.None)).Available);
 
         var b = new Comfy("b");
-        using var refused = new PicturePool([new("cloud:openrouter/x", new Failing(PictureErrorCodes.Refused)), new("host:b", Maker(b), "b")], new WorkQueue());
+        using var refused = new PictureMakingPool([new("cloud:openrouter/x", new Failing(PictureErrorCodes.Refused)), new("host:b", Maker(b), "b")], new WorkQueue());
         Assert.Equal(PictureErrorCodes.Refused,
             (await Assert.ThrowsAsync<PictureException>(() => refused.GenerateAsync(Request, null, CancellationToken.None))).Code);
         Assert.Equal(0, b.Requests);
     }
 
-    private static PicturePool Pool(IReadOnlyList<Comfy> computers, PictureWorkflow workflow = PictureWorkflow.ZImageTurbo, string? checkpoint = null,
+    private static PictureMakingPool Pool(IReadOnlyList<Comfy> computers, PictureWorkflow workflow = PictureWorkflow.ZImageTurbo, string? checkpoint = null,
         WorkQueue? queue = null) =>
-        new([.. computers.Select(c => new PicturePoolMember("host:" + c.Id, Maker(c, workflow, checkpoint), c.Id))], queue ?? new WorkQueue());
+        new([.. computers.Select(c => new PictureMakingPoolMember("host:" + c.Id, Maker(c, workflow, checkpoint), c.Id))], queue ?? new WorkQueue());
 
     private static ComfyPictureMaker Maker(Comfy computer, PictureWorkflow workflow = PictureWorkflow.ZImageTurbo, string? checkpoint = null) =>
         new(computer, workflow, checkpoint, poll: TimeSpan.FromMilliseconds(2));

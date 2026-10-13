@@ -59,6 +59,20 @@ public sealed class ServedModelsTests
     }
 
     [Fact]
+    public void AddingTheServedModelsTwiceKeepsOneOptionEach()
+    {
+        ServedModel[] served = [LmStudio("qwen3-32b", 19.8), LmStudio("llama3.3:70b", 42.5)];
+        var once = FootprintCatalog.Default.WithServed(served);
+        var twice = once.WithServed(served);
+
+        Assert.Same(once, twice);
+        Assert.Equal(2, once.Options.Count(o => ServedModels.IsServed(o)));
+        // The review asks for today's choice with a catalog that already has the served models.
+        var request = Alone(Nvidia(32), ServedModels.OptionId("qwen3-32b"), served);
+        Assert.Equal(ServedModels.OptionId("qwen3-32b"), NetworkRecommender.TodayChoice(request, ClusterJobs.Thinking, once));
+    }
+
+    [Fact]
     public void AModelTheOwnerAlreadyRunsBecomesThinkingOnAPcAlone()
     {
         var request = Alone(Nvidia(24), "gemma4:e2b", LmStudio("qwen3-14b", 9), LmStudio("nomic-embed-text-v1.5", 0.3));
