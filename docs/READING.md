@@ -102,7 +102,8 @@ list without saving it.
 
 Martlet keeps the connection to each computer open between reads, and drops it
 when that computer fails. The JPEG of a screenshot is made only when a computer
-reads it. The desktop log (`Sharing work: Reading went to m3-host (1 busy).`)
+reads it; when the first member is a computer, it is made before the 3-second
+wait starts, so a busy PC does not spend the wait on it. The desktop log (`Sharing work: Reading went to m3-host (1 busy).`)
 and the Devices card's status line say when a read went past the first member.
 **Qualification:** the list, its order and the queue are checked locally
 (`ReadingPoolTests` in Martlet.Core.Tests and Martlet.Desktop.Tests, MCP
