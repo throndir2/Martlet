@@ -1696,6 +1696,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         context.Clear();
         saidLately.Clear();
+        heardLately.Clear();
         lastKept = null;
         lastCache = null;
         conversationId = Guid.NewGuid();
@@ -2627,6 +2628,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (terminal.State == ConversationState.Completed && !passed && !string.IsNullOrWhiteSpace(turn.Content.Text))
                 Interlocked.Exchange(ref askedAt, AsksSomething(turn.Content.Text) ? clock.GetTimestamp() : 0);
             var exchangeEnded = false;
+            var spoke = false;
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)
@@ -2658,6 +2660,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             context.Add(Saw(said)!, kept, Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)));
                             // The check-ins that run after each exchange read it now (a pass said nothing to act on).
                             exchangeEnded = !passed;
+                            // What always listening heard, answered or not, for Talking to someone else.
+                            spoke = operation.Spoken && !operation.OnItsOwn &&
+                                NoteHeardLocked(operation, operation.PcAudio ? operation.UserWords : input!.UserText, passed);
                             // The record of conversations keeps the user's own words (never what the PC played) and the reply,
                             // written in the background after the reply. A pass wasn't said to Martlet, and glances never get here.
                             if (!passed && this.history is { } historyRecord && historyRecord.Active(configured.Memory) &&
@@ -2710,6 +2715,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.Publish(new(passed ? "listen.passed" : "runtime." + terminal.State, Finished: true, Quarantined: terminal.Quarantined,
                 Policy: PolicyReason.DispatchAccepted, ProviderFailure: terminal.ProviderFailure, AudioFailure: terminal.Playback?.Error?.Code));
             if (exchangeEnded) ExchangeEnded?.Invoke();
+            if (spoke) Spoke?.Invoke(!passed);
             await turn.OwnershipRelease.ConfigureAwait(false);
             if (turn.Snapshot.Quarantined)
             {
@@ -2915,7 +2921,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         await Task.WhenAll(spoken.Select(words => words.Ready)).ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         var real = spoken.Any(words => words is { Text.Length: > 0, Ignored: null });
         var (said, sent, userWords) = SpokenWords.Kept(spoken, VoicePromptContext.Prefix(operation.Heard), operation.Sent);
-        bool filled = false, recorded = false, remembering = false;
+        bool filled = false, recorded = false, remembering = false, spoke = false;
         lock (gate)
         {
             if (disposed) return;
@@ -2923,6 +2929,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // A picture that came with the message stays noted after its words (VisionHistory).
             if (current) filled = context.Fill(keep.Exchange, keep.SawLine is null ? said : VisionHistory.After(said, keep.SawLine),
                 sent is not null ? keep.SawLine is null ? operation.WithBoardKept(sent.KeptUserText) : VisionHistory.After(operation.WithBoardKept(sent.KeptUserText)!, keep.SawLine) : null);
+            // What always listening heard, answered or not, for Talking to someone else (only real words).
+            spoke = filled && real && !keep.Cut && NoteHeardLocked(operation, userWords, keep.Passed);
             if (!keep.Passed && history is { } historyRecord && historyRecord.Active(keep.Configured.Memory))
             {
                 historyRecord.Record(keep.Conversation, HistoryInputKind.Spoken, userWords, keep.Reply,
@@ -2950,6 +2958,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             (keep.Passed ? " (Martlet had stayed quiet)" : "") + ".");
         // Its words are in the conversation now, so the check-ins that run after each exchange can read them.
         if (filled && !keep.Passed) ExchangeEnded?.Invoke();
+        if (spoke) Spoke?.Invoke(!keep.Passed);
     }
 
     /// <summary>The desktop log's line for the words of what went straight to Thinking, once speech-to-text beside the reply has
@@ -4649,6 +4658,39 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         var ownerKnown = voices?.Yours.Count > 0;
         lock (gate) return ([.. voicesLately.Where(v => now - v.At <= CheckIns.PeopleWindow)], ownerKnown);
+    }
+
+    // What always listening heard the user say lately, answered or not, for Talking to someone else: in memory only, forgotten
+    // with the conversation.
+    private readonly List<CheckInHeard> heardLately = [];
+
+    /// <summary>Raised (off the UI thread) once what always listening heard is in the conversation, whether Martlet answered it
+    /// (true) or stayed quiet: the main window fires the <see cref="CheckInTriggers.Spoke"/> check-ins with it.</summary>
+    internal event Action<bool>? Spoke;
+
+    // Notes what always listening heard (its words, who spoke, the other voices and this PC's sound with it, and whether Martlet
+    // answered); false when it has no words of the user's.
+    private bool NoteHeardLocked(LiveConversationOperation operation, string? words, bool passed)
+    {
+        if (string.IsNullOrWhiteSpace(words)) return false;
+        var at = clock.GetLocalNow();
+        var speaker = operation.Heard?.Speaker;
+        heardLately.Add(new(at, words, !passed)
+        {
+            Speaker = speaker?.Voice is { Named: true } named ? named.DisplayName : null, Recognized = speaker?.Voice is not null,
+            Owner = speaker?.Mine == true, OtherVoices = operation.Heard?.Others.Count ?? 0, Overlap = operation.Heard?.Overlap == true,
+            PcPlayed = operation.PcAudio
+        });
+        heardLately.RemoveAll(h => at - h.At > CheckIns.HeardWindow);
+        if (heardLately.Count > 2 * CheckIns.MaximumHeard) heardLately.RemoveRange(0, heardLately.Count - 2 * CheckIns.MaximumHeard);
+        return true;
+    }
+
+    /// <summary>What always listening heard the user say within <see cref="CheckIns.HeardWindow"/>, oldest first, for a check-in.
+    /// In memory only.</summary>
+    internal IReadOnlyList<CheckInHeard> RecentHeard(DateTimeOffset now)
+    {
+        lock (gate) return [.. heardLately.Where(h => now - h.At <= CheckIns.HeardWindow)];
     }
 
     /// <summary>Starts recognizing who spoke in the utterance on this PC while it is transcribed. The samples are a private
