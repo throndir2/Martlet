@@ -4,62 +4,10 @@ using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
-/// <summary>What a Thinking pool job is for. The kind sets its default <see cref="ThinkingPriority"/> and whether it is a fast
-/// kind (<see cref="ThinkingJobKinds.IsFast"/>) that may take the slot the pool keeps free. <see cref="CheckIn"/> is one of
-/// Martlet's check-ins (<see cref="CheckIns"/>): a short question about what lingers, at the helpers' priority.</summary>
-public enum ThinkingJobKind { BargeInJudge, EndOfTurnJudge, Digest, ThinkLonger, TouchZones, Memory, Naming, Research, CheckIn }
-
-/// <summary>Which job a free slot takes first: the highest value first, then the oldest.</summary>
-public enum ThinkingPriority
-{
-    Research = 10,
-    Helper = 20,
-    TouchZones = 35,
-    ThinkLonger = 40,
-    Digest = 50,
-    EndOfTurnJudge = 60,
-    BargeInJudge = 70
-}
-
 /// <summary>What a job needs from a member, and what a member can do: text, pictures (vision), recordings (audio) and tool calls
 /// (tools: only members on an OpenAI-compatible endpoint, which does function calling; a paired computer's gateway doesn't).</summary>
 [Flags]
 public enum ThinkingCapability { None = 0, Text = 1, Vision = 2, Audio = 4, Tools = 8 }
-
-/// <summary>The rules of each <see cref="ThinkingJobKind"/>.</summary>
-public static class ThinkingJobKinds
-{
-    public static IReadOnlyList<ThinkingJobKind> All { get; } = Enum.GetValues<ThinkingJobKind>();
-
-    public static ThinkingPriority Priority(ThinkingJobKind kind) => kind switch
-    {
-        ThinkingJobKind.BargeInJudge => ThinkingPriority.BargeInJudge,
-        ThinkingJobKind.EndOfTurnJudge => ThinkingPriority.EndOfTurnJudge,
-        ThinkingJobKind.Digest => ThinkingPriority.Digest,
-        ThinkingJobKind.ThinkLonger => ThinkingPriority.ThinkLonger,
-        ThinkingJobKind.TouchZones => ThinkingPriority.TouchZones,
-        ThinkingJobKind.Memory or ThinkingJobKind.Naming or ThinkingJobKind.CheckIn => ThinkingPriority.Helper,
-        _ => ThinkingPriority.Research
-    };
-
-    /// <summary>Fast kinds (the judges and the digests) may take the last free slot of the pool. Every other kind leaves it
-    /// free when the pool has two or more slots, so a fast job never waits behind long work.</summary>
-    public static bool IsFast(ThinkingJobKind kind) => kind is ThinkingJobKind.BargeInJudge or ThinkingJobKind.EndOfTurnJudge or ThinkingJobKind.Digest;
-
-    /// <summary>The kind's name in status files and logs: barge-in-judge, think-longer...</summary>
-    public static string Name(ThinkingJobKind kind) => kind switch
-    {
-        ThinkingJobKind.BargeInJudge => "barge-in-judge",
-        ThinkingJobKind.EndOfTurnJudge => "end-of-turn-judge",
-        ThinkingJobKind.Digest => "digest",
-        ThinkingJobKind.ThinkLonger => "think-longer",
-        ThinkingJobKind.TouchZones => "touch-zones",
-        ThinkingJobKind.Memory => "memory",
-        ThinkingJobKind.Naming => "naming",
-        ThinkingJobKind.CheckIn => "check-in",
-        _ => "research"
-    };
-}
 
 /// <summary>How a job asks the board for a slot: its kind, its priority (highest first) and whether it must leave the pool's
 /// last free slot for fast kinds (<see cref="KeepLastFree"/>). <see cref="Pool"/> is the whole pool the last-slot rule counts

@@ -18,7 +18,7 @@ namespace Martlet.Desktop;
 /// <summary>
 /// Companion › Pictures (docs/PICTURES.md, an optional extra): where Martlet draws when you ask (draw_picture). In the standard
 /// order: Now (where it draws, with Check and Draw a test picture, which try the list), then the Pictures list
-/// (<see cref="PoolAreas.Pictures"/>, this PC's own pools-local.json, shown with the shared list control
+/// (<see cref="PoolAreas.PictureMaking"/>, this PC's own pools-local.json, shown with the shared list control
 /// <see cref="PoolListCard"/>): the places a picture tries in order, each with its own settings. A place is Martlet's
 /// <c>pictures</c> host role on this PC or another of your computers (ComfyUI with Z-Image Turbo, set up from its settings with
 /// the same martlet-host flow as every role), a ComfyUI you run at an address, or OpenRouter or NVIDIA Build (paid; added with
@@ -53,14 +53,14 @@ public partial class MainWindow
     // What Connect found on each ComfyUI place, by its member key.
     private readonly Dictionary<string, string> picturesComfyState = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonObject> picturesComfyStatus = new(StringComparer.Ordinal);
-    private string picturesCloudProvider = PicturePoolMembers.OpenRouter;
+    private string picturesCloudProvider = PictureMakingPoolMembers.OpenRouter;
     // What the last Add of a cloud provider did, or why it didn't (never a key).
     private string? picturesCloudState;
 
     private void RenderPicturesTab(Panel page)
     {
         var directory = store?.DataDirectory;
-        var list = directory is null ? new PoolList { Area = PoolAreas.Pictures.Id } : PictureClient.List(directory);
+        var list = directory is null ? new PoolList { Area = PoolAreas.PictureMaking.Id } : PictureClient.List(directory);
         IReadOnlyList<PoolMember> order = directory is null ? [] : PictureClient.Order(directory).Members;
         var on = PictureClient.Fixture || order.Count > 0;
 
@@ -81,7 +81,7 @@ public partial class MainWindow
 
         page.Children.Add(PoolListCard(new PoolListOptions
         {
-            Area = PoolAreas.Pictures,
+            Area = PoolAreas.PictureMaking,
             Heading = "Where it draws",
             Intro = "The places that draw pictures, in order. A picture goes to the first one that is free; when all are busy, it waits " +
                 "for the one with the shortest line. Each place keeps its own settings: open Settings to set up the Pictures role there " +
@@ -90,7 +90,7 @@ public partial class MainWindow
             Status = PictureMemberStatus,
             Settings = PictureMemberSettings,
             CanAdd = host => !host.Shared && HostCan(host.HostId, HostRoles.Pictures) is not { Allowed: false },
-            NewMember = member => member.Kind == PoolMemberKind.Cloud ? member : member.WithSetting(PoolSettingKeys.Workflow, PicturePoolMembers.ZImageTurbo),
+            NewMember = member => member.Kind == PoolMemberKind.Cloud ? member : member.WithSetting(PoolSettingKeys.Workflow, PictureMakingPoolMembers.ZImageTurbo),
             AddCloud = PictureCloudAddForm,
             Saved = PicturesListSavedAsync
         }));
@@ -102,9 +102,9 @@ public partial class MainWindow
         if (order.Count == 0)
             return list.Members.Count == 0 ? $"Off. {OptionalExtras.OffMeans(CompanionTab.Pictures)}. Add a place below to turn pictures on."
                 : "Off: no place in the Pictures list is on and usable on this PC.";
-        var first = $"Martlet draws on {PicturePoolMembers.Describe(order[0])}.";
+        var first = $"Martlet draws on {PictureMakingPoolMembers.Describe(order[0])}.";
         return order.Count == 1 ? first
-            : first + $" When it is busy, {string.Join(" or ", order.Skip(1).Select(PicturePoolMembers.Describe))} draws instead (it tries them in this order).";
+            : first + $" When it is busy, {string.Join(" or ", order.Skip(1).Select(PictureMakingPoolMembers.Describe))} draws instead (it tries them in this order).";
     }
 
     // A place's position in the saved list, for its settings' automation IDs.
@@ -133,7 +133,7 @@ public partial class MainWindow
         picturesCheck = null;
         picturesTestImage = null;
         if (store is null) return;
-        var area = PoolAreas.Pictures.Id;
+        var area = PoolAreas.PictureMaking.Id;
         var keys = PoolKeys.Load(store.DataDirectory);
         var profile = homeSettings?.Profile.Id ?? Guid.Empty;
         var vault = new WindowsCredentialStore();
@@ -143,12 +143,12 @@ public partial class MainWindow
             if (keys.For(area, member.Key) is not { } id) continue;
             keys = keys.With(area, member.Key, null);
             changed = true;
-            if (profile != Guid.Empty && PicturePoolMembers.Place(member, null, null) is { } place)
+            if (profile != Guid.Empty && PictureMakingPoolMembers.Place(member, null, null) is { } place)
             {
                 var binding = place.Binding(profile, id);
                 await Task.Run(() => vault.Delete(binding), CancellationToken.None);
             }
-            ErrorLog.Info($"Pictures: removed {PicturePoolMembers.Describe(member)}'s own key with it.");
+            ErrorLog.Info($"Pictures: removed {PictureMakingPoolMembers.Describe(member)}'s own key with it.");
         }
         if (changed && !keys.Save(store.DataDirectory)) throw new IOException("Couldn't save pool-keys.json.");
     }
@@ -159,7 +159,7 @@ public partial class MainWindow
     {
         var parts = new List<string>();
         if (member.Kind is PoolMemberKind.ThisPc or PoolMemberKind.Computer) parts.Add(PictureRoleState(member).Text);
-        if (PicturePoolMembers.WorkflowText(member) is { } workflow) parts.Add("draws with " + workflow);
+        if (PictureMakingPoolMembers.WorkflowText(member) is { } workflow) parts.Add("draws with " + workflow);
         if (member.Kind == PoolMemberKind.Cloud) parts.Add("each picture may cost money; " + PictureKeyText(member));
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }
@@ -229,14 +229,14 @@ public partial class MainWindow
     // A ComfyUI place's workflow: Z-Image Turbo, a checkpoint (Connect lists them) or its own Export (API) file.
     private void PictureWorkflowEditor(PoolMember member, int i, Panel stack)
     {
-        var name = PicturePoolMembers.Describe(member);
+        var name = PictureMakingPoolMembers.Describe(member);
         var status = picturesComfyStatus.GetValueOrDefault(member.Key);
         IReadOnlyList<string> checkpoints = status?["models"]?["checkpoints"] is JsonArray files ? [.. files.Select(f => f?.ToString()).OfType<string>()] : [];
         var workflow = new ComboBox { MinHeight = 30, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
         workflow.Items.Add(new ComboBoxItem { Content = "Z-Image Turbo (its three files in ComfyUI's models folders)", Tag = PictureWorkflow.ZImageTurbo });
         workflow.Items.Add(new ComboBoxItem { Content = "A checkpoint (Stable Diffusion 1.5 or XL)", Tag = PictureWorkflow.Checkpoint });
         workflow.Items.Add(new ComboBoxItem { Content = "My own workflow (Export (API) file)", Tag = PictureWorkflow.Custom });
-        workflow.SelectedIndex = (int)(PicturePoolMembers.Workflow(member.Setting(PoolSettingKeys.Workflow)) ?? PictureWorkflow.ZImageTurbo);
+        workflow.SelectedIndex = (int)(PictureMakingPoolMembers.Workflow(member.Setting(PoolSettingKeys.Workflow)) ?? PictureWorkflow.ZImageTurbo);
         AutomationProperties.SetName(workflow, $"Workflow on {name}");
         AutomationProperties.SetAutomationId(workflow, $"PicturesWorkflow-{i}");
         var checkpoint = new ComboBox { MinHeight = 30, MinWidth = 300, MaxWidth = 420, HorizontalAlignment = HorizontalAlignment.Left, IsEditable = true,
@@ -291,15 +291,15 @@ public partial class MainWindow
         }
         var list = PictureClient.List(store.DataDirectory);
         if (list.Find(member.Key) is not { } current) return;
-        var next = PicturePoolMembers.WithWorkflow(current, workflow, checkpoint, file);
-        SavePictureList(list.With(next), $"{Capitalized(PicturePoolMembers.Describe(next))} now draws with {PicturePoolMembers.WorkflowText(next)}.");
+        var next = PictureMakingPoolMembers.WithWorkflow(current, workflow, checkpoint, file);
+        SavePictureList(list.With(next), $"{Capitalized(PictureMakingPoolMembers.Describe(next))} now draws with {PictureMakingPoolMembers.WorkflowText(next)}.");
     }
 
     /// <summary>Asks a ComfyUI place what it has: its version, checkpoints and whether Z-Image Turbo is there. Reads only.</summary>
     private async Task ConnectComfyAsync(PoolMember member)
     {
         if (store is null) return;
-        var where = PicturePoolMembers.Describe(member);
+        var where = PictureMakingPoolMembers.Describe(member);
         IComfyApi api;
         try
         {
@@ -349,12 +349,12 @@ public partial class MainWindow
                 throw new ContractException(ErrorCode.InvalidContract, "That file isn't a ComfyUI workflow.");
             // Fails clearly for a UI-format workflow (nodes/links) or one with nowhere to put the description.
             _ = ComfyWorkflows.Fill(workflow, new PictureRequest { Prompt = "test" }, 1);
-            var file = PicturePoolMembers.WorkflowFileFor(member);
+            var file = PictureMakingPoolMembers.WorkflowFileFor(member);
             if (!PicturesSettings.SaveWorkflow(store.DataDirectory, workflow, file)) throw new IOException("Couldn't save the workflow in Martlet's data folder.");
             var list = PictureClient.List(store.DataDirectory);
             if (list.Find(member.Key) is not { } current) return;
-            var next = PicturePoolMembers.WithWorkflow(current, PictureWorkflow.Custom, null, file);
-            SavePictureList(list.With(next), $"Loaded your workflow ({workflow.Count} nodes) for {PicturePoolMembers.Describe(member)}; it draws with it now.");
+            var next = PictureMakingPoolMembers.WithWorkflow(current, PictureWorkflow.Custom, null, file);
+            SavePictureList(list.With(next), $"Loaded your workflow ({workflow.Count} nodes) for {PictureMakingPoolMembers.Describe(member)}; it draws with it now.");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ContractException or PictureException)
         {
@@ -366,7 +366,7 @@ public partial class MainWindow
 
     private string PictureKeyText(PoolMember member)
     {
-        var name = PicturePoolMembers.ProviderName(member.Provider);
+        var name = PictureMakingPoolMembers.ProviderName(member.Provider);
         var place = store is null ? null : PictureClient.CloudPlace(store.DataDirectory, member);
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         return place?.CredentialId is not null ? $"its own {name} key is saved"
@@ -377,7 +377,7 @@ public partial class MainWindow
     // A cloud place's settings: its key (its model is part of the place: another model is another place).
     private void PictureKeyEditor(PoolMember member, int i, Panel stack)
     {
-        var name = PicturePoolMembers.ProviderName(member.Provider);
+        var name = PictureMakingPoolMembers.ProviderName(member.Provider);
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, $"{name} API key for pictures");
         AutomationProperties.SetAutomationId(key, $"PicturesKey-{i}");
@@ -399,10 +399,10 @@ public partial class MainWindow
     private async Task SavePictureKeyAsync(PoolMember member, PasswordBox box)
     {
         if (store is null || closing) return;
-        var name = PicturePoolMembers.ProviderName(member.Provider);
+        var name = PictureMakingPoolMembers.ProviderName(member.Provider);
         var profile = homeSettings?.Profile.Id ?? Guid.Empty;
         if (profile == Guid.Empty) { ActionText.Text = "Set up Martlet first, then add the key."; return; }
-        if (PicturePoolMembers.Place(member, null, null) is not { } place) return;
+        if (PictureMakingPoolMembers.Place(member, null, null) is not { } place) return;
         using (var entered = box.SecurePassword)
             if (entered.Length == 0) { ActionText.Text = $"Paste your {name} API key first."; return; }
         var key = TakeKey(box);
@@ -416,15 +416,15 @@ public partial class MainWindow
             if (error != CredentialError.None) throw new InvalidOperationException(CredentialMessages.Describe(error));
             written = binding;
             var keys = PoolKeys.Load(store.DataDirectory);
-            var old = keys.For(PoolAreas.Pictures.Id, member.Key);
-            if (!keys.With(PoolAreas.Pictures.Id, member.Key, id).Save(store.DataDirectory)) throw new InvalidOperationException("Couldn't save the key's reference on this PC.");
+            var old = keys.For(PoolAreas.PictureMaking.Id, member.Key);
+            if (!keys.With(PoolAreas.PictureMaking.Id, member.Key, id).Save(store.DataDirectory)) throw new InvalidOperationException("Couldn't save the key's reference on this PC.");
             written = null;
             if (old is { } oldId)
             {
                 var oldBinding = place.Binding(profile, oldId);
                 await Task.Run(() => vault.Delete(oldBinding), CancellationToken.None);
             }
-            ErrorLog.Info($"Pictures: saved an own key for {PicturePoolMembers.Describe(member)}.");
+            ErrorLog.Info($"Pictures: saved an own key for {PictureMakingPoolMembers.Describe(member)}.");
             ActionText.Text = $"Saved the {name} key for pictures in Windows Credential Manager.";
         }
         catch (OperationCanceledException) { }
@@ -442,13 +442,13 @@ public partial class MainWindow
     private UIElement PictureCloudAddForm()
     {
         var provider = picturesCloudProvider;
-        var name = PicturePoolMembers.ProviderName(provider);
-        var draft = new PicturesSettings { Place = provider == PicturePoolMembers.NvidiaBuild ? PicturePlace.NvidiaBuild : PicturePlace.OpenRouter };
+        var name = PictureMakingPoolMembers.ProviderName(provider);
+        var draft = new PicturesSettings { Place = provider == PictureMakingPoolMembers.NvidiaBuild ? PicturePlace.NvidiaBuild : PicturePlace.OpenRouter };
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var choice = new ComboBox { MinHeight = 30, MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Left };
-        choice.Items.Add(new ComboBoxItem { Content = "OpenRouter", Tag = PicturePoolMembers.OpenRouter });
-        choice.Items.Add(new ComboBoxItem { Content = "NVIDIA Build", Tag = PicturePoolMembers.NvidiaBuild });
-        choice.SelectedIndex = provider == PicturePoolMembers.NvidiaBuild ? 1 : 0;
+        choice.Items.Add(new ComboBoxItem { Content = "OpenRouter", Tag = PictureMakingPoolMembers.OpenRouter });
+        choice.Items.Add(new ComboBoxItem { Content = "NVIDIA Build", Tag = PictureMakingPoolMembers.NvidiaBuild });
+        choice.SelectedIndex = provider == PictureMakingPoolMembers.NvidiaBuild ? 1 : 0;
         AutomationProperties.SetName(choice, "Cloud provider for pictures");
         AutomationProperties.SetAutomationId(choice, "PicturesCloudProvider");
         choice.SelectionChanged += (_, _) =>
@@ -479,7 +479,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(state, "PicturesCloudState");
         var stack = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
         stack.Children.Add(new TextBlock { Text = "A cloud provider", FontWeight = FontWeights.SemiBold });
-        stack.Children.Add(Note(provider == PicturePoolMembers.NvidiaBuild
+        stack.Children.Add(Note(provider == PictureMakingPoolMembers.NvidiaBuild
             ? "NVIDIA's FLUX models (build.nvidia.com), with the same nvapi- key as NVIDIA Build's chat models."
             : "Any OpenRouter model that draws (openrouter.ai/models, output: image). Martlet asks for one picture at about 1K in the shape it chose.",
             new Thickness(0, 2, 0, 8)));
@@ -498,7 +498,7 @@ public partial class MainWindow
     private async Task AddPictureCloudAsync(string provider, string model, PasswordBox keyBox, bool consent)
     {
         if (store is null || closing) return;
-        var name = PicturePoolMembers.ProviderName(provider);
+        var name = PictureMakingPoolMembers.ProviderName(provider);
         if (!consent)
         {
             ActionText.Text = picturesCloudState = $"Tick the box to agree, then press Add {name}.";
@@ -506,7 +506,7 @@ public partial class MainWindow
             return;
         }
         var directory = store.DataDirectory;
-        var area = PoolAreas.Pictures.Id;
+        var area = PoolAreas.PictureMaking.Id;
         var profile = homeSettings?.Profile.Id ?? Guid.Empty;
         var vault = new WindowsCredentialStore();
         SecretLease? key = null;
@@ -518,8 +518,8 @@ public partial class MainWindow
             var member = PoolMember.Cloud(provider, model).WithConsent(area, DateTimeOffset.UtcNow);
             var list = PictureClient.List(directory);
             if (list.Find(member.Key) is not null)
-                throw new ContractException(ErrorCode.InvalidContract, $"{PicturePoolMembers.Describe(member)} is in the Pictures list already.");
-            var place = PicturePoolMembers.Place(member, null, null)!;
+                throw new ContractException(ErrorCode.InvalidContract, $"{PictureMakingPoolMembers.Describe(member)} is in the Pictures list already.");
+            var place = PictureMakingPoolMembers.Place(member, null, null)!;
             var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
             using (var entered = keyBox.SecurePassword)
                 if (entered.Length > 0) key = TakeKey(keyBox);
@@ -543,9 +543,9 @@ public partial class MainWindow
             }
             written = null;
             picturesCheck = null;
-            var done = $"{PicturePoolMembers.Describe(member)} is now last in the Pictures list. Move it up to draw there sooner." +
+            var done = $"{PictureMakingPoolMembers.Describe(member)} is now last in the Pictures list. Move it up to draw there sooner." +
                 (key is null ? "" : " Its API key is saved in Windows Credential Manager.");
-            ErrorLog.Info($"Pictures: added {PicturePoolMembers.Describe(member)} to the Pictures list (the owner agreed to pay).");
+            ErrorLog.Info($"Pictures: added {PictureMakingPoolMembers.Describe(member)} to the Pictures list (the owner agreed to pay).");
             ActionText.Text = picturesCloudState = done;
         }
         catch (OperationCanceledException) { }
@@ -673,7 +673,7 @@ public partial class MainWindow
             return;
         }
         member = member is null
-            ? (thisPc ? PoolMember.ThisPc() : PoolMember.Computer(hostId)).WithSetting(PoolSettingKeys.Workflow, PicturePoolMembers.ZImageTurbo)
+            ? (thisPc ? PoolMember.ThisPc() : PoolMember.Computer(hostId)).WithSetting(PoolSettingKeys.Workflow, PictureMakingPoolMembers.ZImageTurbo)
             : member with { Off = false };
         SavePictureList(list.With(member), done);
     }
@@ -725,7 +725,7 @@ public partial class MainWindow
         {
             if (!test)
             {
-                IReadOnlyList<IPictureMaker> places = maker is PicturePool pool ? [.. pool.Members.Select(m => m.Maker)] : [maker];
+                IReadOnlyList<IPictureMaker> places = maker is PictureMakingPool pool ? [.. pool.Members.Select(m => m.Maker)] : [maker];
                 List<string> lines = [];
                 foreach (var place in places)
                 {

@@ -135,16 +135,16 @@ public sealed class PoolsTests
         var directory = Path.Combine(Path.GetTempPath(), "martlet-pools-" + Guid.NewGuid().ToString("N"));
         try
         {
-            Assert.Null(PoolSettings.LoadFor(directory, PoolAreas.Pictures));
-            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Pictures, new PoolList
+            Assert.Null(PoolSettings.LoadFor(directory, PoolAreas.PictureMaking));
+            Assert.True(PoolSettings.SaveFor(directory, PoolAreas.PictureMaking, new PoolList
             {
-                Area = PoolAreas.Pictures.Id, Members = [PoolMember.Service("http://lab:8188/").WithSetting(PoolSettingKeys.Workflow, "custom")]
+                Area = PoolAreas.PictureMaking.Id, Members = [PoolMember.Service("http://lab:8188/").WithSetting(PoolSettingKeys.Workflow, "custom")]
             }));
             Assert.True(PoolSettings.SaveFor(directory, PoolAreas.Speaking, new PoolList { Area = PoolAreas.Speaking.Id, Members = [PoolMember.ThisPc()] }));
             Assert.True(PoolSettings.Saved(directory, shared: false));
             Assert.True(PoolSettings.Saved(directory, shared: true));
-            Assert.False(PoolSettings.Load(directory).Has(PoolAreas.Pictures.Id));
-            Assert.Equal("custom", PoolSettings.LoadFor(directory, PoolAreas.Pictures)!.Members[0].Setting(PoolSettingKeys.Workflow));
+            Assert.False(PoolSettings.Load(directory).Has(PoolAreas.PictureMaking.Id));
+            Assert.Equal("custom", PoolSettings.LoadFor(directory, PoolAreas.PictureMaking)!.Members[0].Setting(PoolSettingKeys.Workflow));
             Assert.Equal(["this-pc"], PoolSettings.LoadFor(directory, PoolAreas.Speaking)!.Members.Select(m => m.Key));
 
             var id = Guid.NewGuid();

@@ -34,9 +34,10 @@ internal static class PromptEditRules
     }
 
     /// <summary>Prompts an older Martlet had (the Thinking model's character palettes, the response styles a reply was
-    /// picked from, and the glances' Earlier remarks, which What you said lately replaced); their saved edits are dropped.</summary>
+    /// picked from, the glances' Earlier remarks, which What you said lately replaced, and the On a call check-in's, which
+    /// Talking to someone else replaced); their saved edits are dropped.</summary>
     public static bool Retired(string id) => id is "character_theme" or "style" or "style_helpful" or "style_sarcastic" or
-        "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks";
+        "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks" or "check_in_call";
 
     /// <summary><paramref name="edits"/> as this Martlet reads them: without edits of retired prompts and without the {style}
     /// lines of an old Persona edit. Edits that need neither are returned as they are.</summary>

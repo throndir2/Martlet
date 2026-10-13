@@ -66,7 +66,7 @@ internal sealed partial class McpServer
             "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
             "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
             "does; with saveDirectory (absolute) it writes the picture there. Place \"pool\" instead rehearses the Pictures list's " +
-            "routing (PicturePool and WorkQueue) on simulated ComfyUI computers (FIXTURE): busy, absent or unsuitable computers " +
+            "routing (PictureMakingPool and WorkQueue) on simulated ComfyUI computers (FIXTURE): busy, absent or unsuitable computers " +
             "passed over, all busy waiting in the shortest queue, two pictures on two computers and the first list made from " +
             "pictures.json; it returns ok and each step. Never calls a paid cloud provider.", new
         {
@@ -358,8 +358,8 @@ internal sealed partial class McpServer
             "credentials.", new { },
             async (_, cancellation) => await SaidLatelyCheck.RunAsync(cancellation)),
         Tool("helper_jobs_status", "Where Martlet's helper jobs ran last, from a data directory's helper-jobs.json (written by the " +
-            "desktop): for each kind (memory: remembering and learning names after a reply; action_naming: naming a character's " +
-            "emotes; touch_zones: finding its touch zones in one picture; character_writing: writing a character's personality in " +
+            "desktop): for each kind (memory: remembering and learning names after a reply; action-naming: naming a character's " +
+            "emotes; touch-zones: finding its touch zones in one picture; character-writing: writing a character's personality in " +
             "Find a character) its priority, whether it ran on a Thinking pool member " +
             "(route pool, with the member) or on the conversation's own Thinking model after the reply finished speaking (route " +
             "fallback, with how long it waited for the reply), how it ended and when. Never a prompt or answer. Read-only.", new
@@ -418,7 +418,8 @@ internal sealed partial class McpServer
             "pool is off: poolOff); whether thinking longer " +
             "and research use the conversation model when no member takes long jobs; the usable slots " +
             "and whether one is kept free for fast jobs (judges and summaries); each job kind's priority, whether it is fast and " +
-            "whether a member that takes that kind can run it (the cheap CanRun answer); guidance (such as 1 slot: long thinking can delay screen and " +
+            "whether a member that takes that kind can run it (the cheap CanRun answer); kinds: the one table of job kinds (each " +
+            "kind's saved key, Runs on label, priority, needs, live floor rule and the helper jobs that run as it); guidance (such as 1 slot: long thinking can delay screen and " +
             "sound summaries); warnings about likely slowdowns (a member beside the conversation's Thinking model or the voice); " +
             "Backup Thinking's choices (on or off, the delay or automatic, each member's Backup for slow replies box and whether " +
             "it is a paid cloud provider) and the member it would ask now for a reply that is taken; " +

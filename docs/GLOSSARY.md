@@ -33,11 +33,10 @@ To find who decides something, see the [decision map](DECISION_MAP.md).
 | Concept | Code name | UI name | Kept names |
 | --- | --- | --- | --- |
 | Pictures that Martlet **sees**: your screen, your camera, and pictures of the character for touch zones and the eyes | picture (`Image` on a job, `SenseKind.Image`, `PictureDescriptions`, `LiveConversationController.Pictures.cs`) | pictures, your pictures | |
-| Pictures that Martlet **makes** when you ask (ComfyUI or a cloud provider) | picture making: `PoolAreas.PictureMaking`, `PictureMakingPool`, `IPictureMaker` and the `*PictureMaker` classes, namespaces `Martlet.*.Pictures` | Picture making (Companion › Picture making) | Area ID, lane and host role `pictures`; `pictures.json`; `CompanionTab.Pictures` (automation ID `CompanionTab-Pictures`); automation IDs `Pool-pictures-...` and `Pictures...`; MCP tools `pictures_status`, `pictures_check`, `draw_picture`; `MARTLET_PICTURES_FIXTURE` |
+| Pictures that Martlet **makes** when you ask (ComfyUI or a cloud provider) | picture making: `PoolAreas.PictureMaking`, `PictureMakingPool`, `PictureMakingPoolMembers`, `IPictureMaker` and the `*PictureMaker` classes, namespaces `Martlet.*.Pictures` | Picture making (Companion › Picture making) | Area ID, lane and host role `pictures`; `pictures.json`; `CompanionTab.Pictures` (automation ID `CompanionTab-Pictures`); automation IDs `Pool-pictures-...` and `Pictures...`; MCP tools `pictures_status`, `pictures_check`, `draw_picture`; `MARTLET_PICTURES_FIXTURE` |
 
-Rename in progress: until it merges, the code names for picture making are
-still `PoolAreas.Pictures` and `PicturePool`, and the UI name is still
-*Pictures*.
+Rename in progress: until it merges, the UI name of picture making is still
+*Pictures* (Companion › Pictures).
 
 A file or class in a `Pictures` namespace or folder is about picture making.
 Code about the pictures Martlet sees is in `Martlet.Conversation`
@@ -58,26 +57,26 @@ summaries*), covers both.
 
 A Thinking pool job has a kind (`ThinkingJobKind`). Its key is in kebab-case.
 The key is saved in `thinking-pool.json` (Runs on) and written in status files
-and logs. A helper job (`HelperJobKind`) has a name in snake_case, written in
-`helper-jobs.json`. On the Thinking pool, each helper job runs as one job
-kind. All keys and names in this table are kept names.
+and logs. A helper job (`HelperJobKind`) has a key in the same format, written
+in `helper-jobs.json` (an older Martlet wrote `action_naming`). On the Thinking
+pool, each helper job runs as one job kind. All keys in this table are kept
+names.
 
-| Job kind | Key | Label on Companion › Thinking pool | Priority | Quick or long | Helper jobs that run as this kind (name) |
+| Job kind | Key | Label on Companion › Thinking pool › Runs on | Priority | Quick or long | Helper jobs that run as this kind (key) |
 | --- | --- | --- | --- | --- | --- |
 | `BargeInJudge` | `barge-in-judge` | Did you interrupt (judge) | 70 | quick | |
 | `EndOfTurnJudge` | `end-of-turn-judge` | Are you done talking (judge) | 60 | quick | |
 | `Digest` | `digest` | Screen and sound summaries | 50 | quick | |
 | `ThinkLonger` | `think-longer` | Thinking longer and a song's lyrics | 40 | long | |
-| `TouchZones` | `touch-zones` | Touch zones | 35 | long | `TouchZones` (`touch_zones`), `Eyes` (`eyes`, at priority 20), `CharacterWriting` (`character_writing`) |
-| `Memory` | `memory` | Remembering | 20 | long | `Memory` (`memory`), `MemoryUpkeep` (`memory_upkeep`), `MemoryBrief` (`memory_brief`, at priority 10) |
-| `Naming` | `naming` | Naming | 20 | long | `ActionNaming` (`action_naming`), `Temperament` (`temperament`) |
+| `TouchZones` | `touch-zones` | Touch zones, measuring the eyes and writing a character's personality | 35 | long | `TouchZones` (`touch-zones`), `Eyes` (`eyes`, at priority 20), `CharacterWriting` (`character-writing`) |
+| `Memory` | `memory` | Remembering, learning names, tidying memory and the memory brief | 20 | long | `Memory` (`memory`), `MemoryUpkeep` (`memory-upkeep`), `MemoryBrief` (`memory-brief`, at priority 10) |
+| `Naming` | `naming` | Naming emotes and motions, and touch temperament | 20 | long | `ActionNaming` (`action-naming`), `Temperament` (`temperament`) |
 | `CheckIn` | `check-in` | Check-ins | 20 | long | |
-| `Research` | `research` | Web research | 10 | long | |
+| `Research` | `research` | Web research and app guide research | 10 | long | |
 
-So the *Touch zones* check box also controls measuring the eyes, and *Naming*
-also controls the touch temperament. The facts in this table come from
-`ThinkingJobKinds`, `RunsOnKinds` and `ThinkingPoolHelpers`; see
-[Thinking job kinds](DECISION_MAP.md#thinking-job-kinds-keys-labels-and-priorities).
+Each label names all the work its kind controls. The facts in this table are
+the rows of `ThinkingJobKinds.Rows` (`src\Martlet.Conversation\ThinkingJobKinds.cs`);
+see [Thinking job kinds](DECISION_MAP.md#thinking-job-kinds-keys-labels-and-priorities).
 
 ## Computers, members and endpoints
 
@@ -95,6 +94,8 @@ also controls the touch temperament. The facts in this table come from
 | A service the owner runs at an http or https address, as a pool member | `PoolMemberKind.Address`, key `address:<url>` | address | |
 | A cloud provider as a pool member | `PoolMemberKind.Cloud`, key `cloud:<provider>[@<origin>][/<model>]` | cloud provider | |
 | One entry in an ordered pool list | member (`PoolMember`) | member | "place". Kept names: `DeepThinkingSettings` (the settings of a Thinking pool member, an image model or an audio model), `DeepThinkingPlace` (where its model runs), `BackgroundPlace` (a member on the Thinking pool's job board), and *place* on the Picture making page |
+| A member that can take a request here now, with the computer it runs on and its key in `WorkQueue` | stop (`PoolStop`, `PoolRouting.Stops`) | (not shown) | `ReadingTarget` (removed) |
+| The code that tries a request on the stops in order (busy or unavailable: the next stop) | pool runner (`PoolRunner<TStop>`, result `PoolRun`) | (not shown) | |
 | A role's chosen provider, model and key | route (`SetupRoute`) | (the page's choice, for example Thinking) | |
 | One job that a member runs at the same time as others | slot | slot | |
 
