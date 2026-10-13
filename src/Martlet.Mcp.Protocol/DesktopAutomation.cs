@@ -210,11 +210,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // so they need --allow-ui-effects.
         "NavTasks", "HostRunHide", "TasksClear",
         // Thinking requests (NavThinkingRequests): All, Waiting or running and With problems only filter the list, Timing by
-        // type only expands, and the type box only opens (choosing a type is ui_select and only filters). Clear finished
-        // (ThinkingRequestsClear) forgets requests and Copy (ThinkingRequestsCopy) writes the clipboard, so they need
-        // --allow-ui-effects.
+        // type only expands, the type box only opens (choosing a type is ui_select and only filters) and Close
+        // (ThinkingRequestDetailClose) only hides the selected request's details. Clear finished (ThinkingRequestsClear) forgets
+        // requests and Copy (ThinkingRequestsCopy) writes the clipboard, so they need --allow-ui-effects.
         "NavThinkingRequests", "ThinkingRequestsFilter-all", "ThinkingRequestsFilter-active", "ThinkingRequestsFilter-problems",
-        "ThinkingRequestsTimingExpander", "ThinkingRequestsKind",
+        "ThinkingRequestsTimingExpander", "ThinkingRequestsKind", "ThinkingRequestDetailClose",
         // Companion › Discord › Friends and calls: What Discord allows only expands. Approve, Decline, Call, Remove, Add, the
         // may-call boxes and Update picture now change things or contact Discord, so they need --allow-ui-effects.
         "DiscordFriendsAbout",
@@ -1084,11 +1084,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TasksSummary", "TasksEmpty", "NavTasksCount", "HostRunHideHint", "CancelTaskQuestion",
         // Thinking requests: how many run and wait and the averages (ThinkingRequestsSummary), the pool's slots now
         // (ThinkingRequestsPool), the empty state, the navigation rail's count of waiting and running requests, Timing by type,
-        // the selected request in full (type, task, companion, member, tries and timings; never its text or answer) and the line
-        // over its output (ThinkingRequestOutputState: how many characters, or why there is none). ThinkingRequestTopic (what the
-        // conversation asked for) and ThinkingRequestOutput (what the request answered) are private: they are never returned.
+        // the selected request's title (ID, type and task) and the request in full (type, task, companion, member, tries and
+        // timings; never its text or answer), and the lines over its input and its output (ThinkingRequestInputState and
+        // ThinkingRequestOutputState: how many characters, or why there are none). ThinkingRequestTopic (what the conversation
+        // asked for), ThinkingRequestInput (what the request sent its model) and ThinkingRequestOutput (what it answered) are
+        // private: they are never returned.
         "ThinkingRequestsSummary", "ThinkingRequestsPool", "ThinkingRequestsEmpty", "NavThinkingRequestsCount", "ThinkingRequestDetail",
-        "ThinkingRequestsTiming", "ThinkingRequestOutputState"
+        "ThinkingRequestsTiming", "ThinkingRequestOutputState", "ThinkingRequestInputState", "ThinkingRequestDetailTitle"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -1617,11 +1619,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new { updated = id };
     }
 
-    /// <summary>The keys ui_type presses besides characters, with their virtual-key codes (all but Backspace are extended keys).</summary>
+    /// <summary>The keys ui_type presses besides characters, with their virtual-key codes (all but Backspace and Escape are
+    /// extended keys).</summary>
     internal static readonly IReadOnlyDictionary<string, (int Code, bool Extended)> TypeKeys = new Dictionary<string, (int, bool)>(StringComparer.Ordinal)
     {
         ["backspace"] = (0x08, false), ["delete"] = (0x2E, true), ["left"] = (0x25, true), ["right"] = (0x27, true),
-        ["home"] = (0x24, true), ["end"] = (0x23, true)
+        ["home"] = (0x24, true), ["end"] = (0x23, true), ["escape"] = (0x1B, false)
     };
 
     internal const int MaximumTyped = 100, MaximumTypeStepMs = 1000;

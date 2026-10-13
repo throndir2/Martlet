@@ -749,7 +749,8 @@
             <!-- Thinking requests: every request for the Thinking pool's slots (judges, summaries, check-ins, memory, naming, touch
                  zones, thinking longer, research): what it is for, the companion it is for, where it runs, its tries and how long it
                  waited and ran (MainWindow.ThinkingRequests.cs, ThinkingRequests.cs). -->
-            <Grid x:Name="ThinkingRequestsPage" Visibility="Collapsed" Margin="36,30,36,16" AutomationProperties.AutomationId="ThinkingRequestsPage">
+            <Grid x:Name="ThinkingRequestsPage" Visibility="Collapsed" Margin="36,30,36,16" AutomationProperties.AutomationId="ThinkingRequestsPage"
+                  KeyDown="ThinkingRequestsPage_KeyDown">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -768,7 +769,7 @@
                     <StackPanel>
                         <TextBlock Text="Thinking requests" Style="{DynamicResource PageTitle}"/>
                         <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
-                                   Text="Everything your companions ask the Thinking pool to do: what it is for, where it runs, how long it waits and runs, and what it answers."/>
+                                   Text="Everything your companions ask the Thinking pool to do: what it is for, where it runs, how long it waits and runs, what it sends and what it answers."/>
                     </StackPanel>
                 </DockPanel>
                 <StackPanel Grid.Row="1" Margin="0,0,0,10">
@@ -872,11 +873,15 @@
                         </StackPanel>
                     </Border>
                 </Grid>
-                <!-- The selected request: everything known about it (left) and what it answered (right). The output is private,
-                     as the topic: it shows here only, never in a log, a status file or MCP (ThinkingRequestOutputState gives its
-                     length only). -->
-                <Grid Grid.Row="5" x:Name="ThinkingRequestDetailPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                <!-- The selected request: its title and Close (or Esc), everything known about it (left), what it sent its model
+                     (middle) and what it answered (right). The input and the output are private, as the topic: they show here only,
+                     never in a log, a status file or MCP (ThinkingRequestInputState and ThinkingRequestOutputState give their
+                     lengths only). -->
+                <Grid Grid.Row="5" x:Name="ThinkingRequestDetailPanel" Visibility="Collapsed" Margin="0,8,0,0"
+                      AutomationProperties.AutomationId="ThinkingRequestDetailPanel">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
                         <ColumnDefinition Width="*"/>
@@ -884,17 +889,37 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="210"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="230"/>
                     </Grid.RowDefinitions>
-                    <TextBlock x:Name="ThinkingRequestTopic" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed"
+                    <DockPanel Grid.ColumnSpan="5" Margin="0,0,0,4">
+                        <Button x:Name="ThinkingRequestDetailCloseButton" DockPanel.Dock="Right" Click="ThinkingRequestDetailClose_Click" Padding="10,3"
+                                VerticalAlignment="Center" ToolTip="Close the details (Esc)"
+                                AutomationProperties.AutomationId="ThinkingRequestDetailClose" AutomationProperties.Name="Close the request's details">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{DynamicResource Icon}" Text="&#xE711;" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <AccessText Text="Cl_ose" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="ThinkingRequestDetailTitle" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Margin="0,0,12,0" AutomationProperties.AutomationId="ThinkingRequestDetailTitle"/>
+                    </DockPanel>
+                    <TextBlock x:Name="ThinkingRequestTopic" Grid.Row="1" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed"
                                AutomationProperties.AutomationId="ThinkingRequestTopic"/>
-                    <TextBlock Grid.Row="1" Text="Details" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <TextBlock Grid.Row="1" Grid.Column="2" x:Name="ThinkingRequestOutputState" FontWeight="SemiBold" Margin="0,0,0,4"
-                               TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="ThinkingRequestOutputState"/>
-                    <TextBox Grid.Row="2" x:Name="ThinkingRequestDetail" IsReadOnly="True" TextWrapping="Wrap"
+                    <TextBlock Grid.Row="2" Text="Details" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <TextBlock Grid.Row="2" Grid.Column="2" x:Name="ThinkingRequestInputState" FontWeight="SemiBold" Margin="0,0,0,4"
+                               TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="ThinkingRequestInputState"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                    <TextBlock Grid.Row="2" Grid.Column="4" x:Name="ThinkingRequestOutputState" FontWeight="SemiBold" Margin="0,0,0,4"
+                               TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="ThinkingRequestOutputState"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                    <TextBox Grid.Row="3" x:Name="ThinkingRequestDetail" IsReadOnly="True" TextWrapping="Wrap"
                              VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"
                              AutomationProperties.AutomationId="ThinkingRequestDetail" AutomationProperties.Name="The selected request in full"/>
-                    <TextBox Grid.Row="2" Grid.Column="2" x:Name="ThinkingRequestOutput" IsReadOnly="True" TextWrapping="Wrap"
+                    <TextBox Grid.Row="3" Grid.Column="2" x:Name="ThinkingRequestInputBox" IsReadOnly="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" FontSize="12.5"
+                             AutomationProperties.AutomationId="ThinkingRequestInput" AutomationProperties.Name="What the selected request sent its model"/>
+                    <TextBox Grid.Row="3" Grid.Column="4" x:Name="ThinkingRequestOutput" IsReadOnly="True" TextWrapping="Wrap"
                              VerticalScrollBarVisibility="Auto" FontSize="12.5"
                              AutomationProperties.AutomationId="ThinkingRequestOutput" AutomationProperties.Name="What the selected request answered"/>
                 </Grid>
