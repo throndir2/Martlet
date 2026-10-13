@@ -156,12 +156,13 @@ other computers. See [Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-pa
 
 </details>
 
-## 🆕 What's new in 0.75.0
+## 🆕 What's new in 0.76.0
 
-- 📚 **Reading up on a game no longer downloads its whole wiki**: Martlet first reads at most 200 pages (about 5 minutes and 10 MB on a big wiki) and tells you when its guide is ready.
-- 🎯 **The game's own pages first**: on a wiki about a whole series, such as the Borderlands Wiki, Martlet reads the pages about your game first and skips pages about the other games.
-- 🧠 **More pages chosen with what you're doing in mind**: afterwards, a Thinking pool helper picks up to 300 more pages worth reading, with your screen, the sounds and what you said lately in mind, and only those are downloaded.
-- 🧹 **Shrink an old guide**: press **Read again** on Companion › App guides to replace a guide Martlet read whole before.
+- 👀 **Choose how often Martlet reads your screen**: Companion › Reading › **Read the screen** goes up to twice a second, so a new score or message reaches Martlet much sooner.
+- ⚡ **PP-OCRv5 mobile on a graphics card**: a computer with an NVIDIA graphics card can run the recommended reading model there, much faster than on the processor. It stays optional.
+- 🔎 **Martlet finds things by meaning, not only by words**: memories, game guides and research reports that say the same thing in other words are found too.
+- 🌍 **More languages when Martlet remembers**: memory, app guides and earlier conversations now find matches in Spanish, French, German, Portuguese, Italian, Chinese, Japanese and Korean.
+- 🧠 **A memory that keeps itself tidy**: Martlet keeps a short profile of you, keeps what used to be true as history, and merges facts that say the same thing in the background.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

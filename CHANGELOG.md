@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-10-12
+
 ### Added
 
 - **Choose how often Martlet reads your screen**: Companion › Reading › **Read the screen** goes from every 10 seconds up to twice a second (every 3 seconds is the default, as before). Martlet reads on its own pace now, not only after each look, so with a fast reader such as a graphics card it sees a new score or message much sooner. The newest read also shows how long after the one before it came. ([#833](https://github.com/throndir2/Martlet/pull/833))
