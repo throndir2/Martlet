@@ -7,7 +7,7 @@ namespace Martlet.Desktop;
 /// touch temperament as Naming jobs, and touch zones, measuring the eyes and writing a character as TouchZones jobs. A job the
 /// pool can't finish (no member, none free in time, failed or timed out) returns null, so the conversation's own Thinking model
 /// does it after the reply, as before.</summary>
-internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobPool
+internal sealed class ThinkingPoolHelpers(Func<DesktopThinkingPool> pool) : IHelperJobPool
 {
     internal static ThinkingJobKind Kind(HelperJobKind kind) => ThinkingJobKinds.Helper(kind).Pool.Kind;
 

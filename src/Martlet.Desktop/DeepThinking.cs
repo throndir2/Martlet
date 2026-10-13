@@ -97,7 +97,7 @@ internal sealed class DeepThinkTarget
 
     public override string ToString() => nameof(DeepThinkTarget);
 
-    /// <summary>A Thinking pool job's request (<see cref="ThinkingPool"/>): its own output budget and the time it may take,
+    /// <summary>A Thinking pool job's request (<see cref="DesktopThinkingPool"/>): its own output budget and the time it may take,
     /// Thinking steps as the job asks (null: the model's own default), and the job's tools (a check-in's tool sets) for up to
     /// <paramref name="toolRounds"/> rounds, or none.</summary>
     internal ConversationRequest OneShot(BoundedTextInput input, int maxOutputTokens, bool? reasoning, TimeSpan time,
