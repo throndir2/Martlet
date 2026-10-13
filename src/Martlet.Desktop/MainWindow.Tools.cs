@@ -173,7 +173,7 @@ public partial class MainWindow
         var shell = TerminalRunner.Name(saved.Shell);
         if (TerminalRunner.Find(saved.Shell) is null) return ($"On, but {shell} isn't installed on this PC. Choose another shell.", true);
         if (!System.IO.Directory.Exists(saved.StartFolder)) return ("On, but the start folder doesn't exist any more. Choose another.", true);
-        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = homeSettings.ThinkingRoute();
         if (route is null) return ("On. Set up Thinking so Martlet can use it.", true);
         if (route.RouteType is not (SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
             return ("On, but your Thinking model can't use tools here. Use OpenAI or a Chat Completions endpoint (such as Ollama on " +

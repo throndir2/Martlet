@@ -272,7 +272,7 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
     {
         ArgumentNullException.ThrowIfNull(deep);
         ArgumentNullException.ThrowIfNull(routes);
-        var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = routes.ThinkingRoute();
         if (deep.SameAs(thinking))
             return thinking is null ? new(false, "Set up Thinking first.")
                 : IsThisPc(thinking)
@@ -292,7 +292,7 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
             var shared = routes.Where(r => r.Enabled != false && IsThisPc(r) && r.Role is SetupRole.Llm or SetupRole.Tts).ToArray();
             return shared.Length > 0
                 ? new(true, $"It runs on this PC alongside the conversation and shares the graphics card with {Jobs(shared)}, so replies " +
-                    "may start a little later while it thinks.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
+                    "may start a little later while it thinks.", Rank: shared.ThinkingRoute() is not null ? 2 : 1)
                 : new(true, "It runs on this PC while the conversation's models run elsewhere, so a think runs alongside the conversation.", Rank: 1);
         }
         if (deep.Place == DeepThinkingPlace.Host)
@@ -303,13 +303,13 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
                 return shared.Length > 0
                     ? deep.Card > 1
                         ? new(true, $"{deep.HostId}'s Thinking pool model on its graphics card {deep.Card} runs beside {Jobs(shared)} there, " +
-                            "so a think runs alongside the conversation.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
+                            "so a think runs alongside the conversation.", Rank: shared.ThinkingRoute() is not null ? 2 : 1)
                         : new(true, $"{deep.HostId}'s Thinking pool role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
-                            "alongside the conversation and shares its graphics card.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
+                            "alongside the conversation and shares its graphics card.", Rank: shared.ThinkingRoute() is not null ? 2 : 1)
                     : new(true, $"{deep.HostId}'s Thinking pool role does none of the conversation's jobs, so a think runs there alongside the conversation.");
             // A member on the computer's Ollama role uses the model that answers you. That server answers one request at a time and
             // keeps one conversation in its prompt cache, so a pool job there would make replies wait and start them from scratch.
-            if (shared.Any(r => r.Role == SetupRole.Llm))
+            if (shared.ThinkingRoute() is not null)
                 return new(false, $"{deep.HostId} also answers you with this model (Thinking for the conversation), so Martlet keeps pool " +
                     "jobs off it: it answers one request at a time, and a pool job there would make your replies wait. To think on " +
                     $"{deep.HostId} too, add the Thinking pool role there (a second model beside it); otherwise untick In the pool.");
@@ -360,7 +360,7 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
     {
         ArgumentNullException.ThrowIfNull(deep);
         ArgumentNullException.ThrowIfNull(routes);
-        var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = routes.ThinkingRoute();
         return new([.. deep.Places.Select(place => new DeepThinkingSpot(place, Kept(place, sharing, device) ??
             Present(place, DeepThinkingPlan.For(place, routes), offline), place.Computer(thinking)))]);
     }

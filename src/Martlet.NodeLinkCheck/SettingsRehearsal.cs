@@ -97,7 +97,7 @@ internal static class SettingsRehearsal
                     var persona = s.Companion!.ActivePersona;
                     return s with { Companion = s.Companion.Update(persona.Id, "Martlet", "Martlet is cheerful and remembers the owner's projects.") };
                 });
-                var bRoute = (await b.SettingsAsync()).Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
+                var bRoute = (await b.SettingsAsync()).ThinkingRoute()!;
                 return (bRoute.Origin == NvidiaBuild && b.Key(await b.SettingsAsync(), SetupRole.Llm) == NvidiaKey,
                     "B: NVIDIA Build; A: OpenRouter, google/gemma-4-26b-a4b-it, own personality text");
             });
@@ -117,7 +117,7 @@ internal static class SettingsRehearsal
                 var result = await a.SyncAsync(hosts, token);
                 var thinking = result.Document.Find(AppSettingsSections.Thinking);
                 var applied = string.Join(", ", result.Applied.Select(x => x.Key));
-                var route = (await a.SettingsAsync()).Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
+                var route = (await a.SettingsAsync()).ThinkingRoute()!;
                 return (thinking is { UpdatedBy: "lab-desktop-a" } && route.Origin == OpenRouter && result.Recorded.Contains(AppSettingsSections.Companion) &&
                         !result.Applied.Any(x => x.Key == AppSettingsSections.Thinking),
                     $"recorded {string.Join(", ", result.Recorded)}; A kept OpenRouter (took: {(applied.Length == 0 ? "nothing" : applied)})");
@@ -125,13 +125,13 @@ internal static class SettingsRehearsal
 
             await Run("B follows: OpenRouter, the same model and A's key in its own credential store, the choice recorded as made; its NVIDIA key is set aside, not deleted", async () =>
             {
-                var oldKey = (await b.SettingsAsync()).Setup!.Routes.Single(r => r.Role == SetupRole.Llm).CredentialId;
+                var oldKey = (await b.SettingsAsync()).ThinkingRoute()!.CredentialId;
                 var result = await b.SyncAsync(hosts, token);
                 var settings = await b.SettingsAsync();
-                var route = settings.Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
+                var route = settings.ThinkingRoute()!;
                 var persona = settings.Companion!.ActivePersona;
                 var aPersona = (await a.SettingsAsync()).Companion!.ActivePersona;
-                var pending = settings.Setup.PendingRemovals.Any(p => p.CredentialId == oldKey);
+                var pending = settings.Setup!.PendingRemovals.Any(p => p.CredentialId == oldKey);
                 return (route is { RouteType: SetupRouteType.ChatCompletions, Origin: OpenRouter, ModelId: "google/gemma-4-26b-a4b-it" } &&
                         route.Consent == route.Selection() && b.Key(settings, SetupRole.Llm) == OpenRouterKey && pending && b.Vault.Has(NvidiaKey) &&
                         persona.Id == aPersona.Id && persona.Text == aPersona.Text,
@@ -155,7 +155,7 @@ internal static class SettingsRehearsal
                 var first = await d.SyncAsync([h3], token);
                 var again = await e.SyncAsync([h3], token);
                 var settings = await d.SettingsAsync();
-                var route = settings.Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
+                var route = settings.ThinkingRoute()!;
                 return (route.Origin == OpenRouter && d.Key(settings, SetupRole.Llm) == OpenRouterKey && !first.Recorded.Contains(AppSettingsSections.Thinking) &&
                         again.Applied.Count == 0,
                     $"the NVIDIA Build PC took {route.Origin} with the OpenRouter key and shared nothing over it; the OpenRouter PC took nothing back");
@@ -167,7 +167,7 @@ internal static class SettingsRehearsal
                 await a.SyncAsync(hosts, token);
                 var writes = b.Vault.Writes;
                 await b.SyncAsync(hosts, token);
-                var route = (await b.SettingsAsync()).Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
+                var route = (await b.SettingsAsync()).ThinkingRoute()!;
                 return (route.ModelId == "anthropic/claude-sonnet-5" && b.Vault.Writes == writes && b.Key(await b.SettingsAsync(), SetupRole.Llm) == OpenRouterKey,
                     $"B uses {route.ModelId}; credentials written on B: {b.Vault.Writes - writes}");
             });
@@ -273,7 +273,7 @@ internal static class SettingsRehearsal
             await Run("New computer C took everything else on its first sync: OpenRouter with the key, the personality, replies, prompts and memory off; its defaults overrode nothing", async () =>
             {
                 var settings = await c.SettingsAsync();
-                var route = settings.Setup!.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+                var route = settings.ThinkingRoute();
                 var aDoc = await a.ReadAsync(h1, token);
                 var byC = aDoc.Settings.Where(s => s.UpdatedBy == "lab-desktop-c").Select(s => s.Key).ToArray();
                 return (route?.Origin == OpenRouter && c.Key(settings, SetupRole.Llm) == RotatedKey && settings.Companion!.ActivePersona.Text == "Martlet is playful and curious." &&

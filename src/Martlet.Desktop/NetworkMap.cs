@@ -454,7 +454,7 @@ internal static class NetworkMap
             }
         }
 
-        if (inputs.Role == DeviceRole.Companion && routes.All(r => r.Role != SetupRole.Llm))
+        if (inputs.Role == DeviceRole.Companion && routes.ThinkingRoute() is null)
         {
             var missing = Node("missing:brain", NodeKind.Missing, "Conversation model", "Not chosen yet", CloudGlyph);
             missing.Worsen(NodeHealth.Attention, "Choose one");
@@ -663,7 +663,7 @@ internal static class NetworkMap
             if (check?.Offers?.Keys.FirstOrDefault(HostRoles.Speaks) is { } voiceKind &&
                 SharedGpu.Warning(local ? "This PC" : id, SharedGpu.OnWindows(local, hardware), SpeechEngines.ForRoleKind(voiceKind)?.Name,
                     SharedGpu.Neighbours(check.Offers.Keys, local && MainWindow.IsLocalOllama(
-                        inputs.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)), check.Offers)) is { } sharedGpu)
+                        inputs.Settings.ThinkingRoute()), check.Offers)) is { } sharedGpu)
                 target.SharedGpu = sharedGpu;
             // Home Assistant runs on the host's own network (no gateway route); the host reports it in its machine report.
             if (HomeAssistantHosts.Runs(hardware))

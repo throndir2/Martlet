@@ -18,7 +18,7 @@ public partial class MainWindow
 {
     private void RenderHearingPage(Panel page)
     {
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = homeSettings.ThinkingRoute();
         var abilities = SavedModelAbilities();
         var audio = SenseRouting.For(SenseKind.Audio, SavedSenses(), thinking, abilities);
         var on = HearingOn(thinking, audio);
@@ -40,7 +40,7 @@ public partial class MainWindow
             : Talk.HearVoice != false ? null : PageButton("Turn hearing on", () =>
             {
                 SaveTalk(Talk with { HearVoice = null }, render: true);
-                var nowOn = HearingOn(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), audio);
+                var nowOn = HearingOn(homeSettings.ThinkingRoute(), audio);
                 ActionText.Text = nowOn ? "Hearing is on: your voice stays on this PC."
                     : "Your recording would leave this PC, so hearing waits for your tick under Hear how you say it.";
             }, primary: true, id: "HearingToggle");

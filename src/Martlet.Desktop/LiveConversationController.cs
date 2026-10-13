@@ -3392,7 +3392,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             return new(checkIn is null ? ThinkLonger.Unavailable(none) : BackgroundWorkTools.NotStarted("Deep thinking can't run right now") + "\n" + none, true);
         }
         places = runsOn.Places;
-        var thinkingRoute = configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinkingRoute = configured.Routes.ThinkingRoute();
         var start = jobs.Start(ThinkLonger.Kind(settings, ThinkLonger.Slots(places)) with { SmartFirst = runsOn.SmartFirst }, ThinkLonger.Label(task!), async (job, token) =>
         {
             // The place the broker picked for it: a free slot on the place sharing least with the conversation and kept free
@@ -3922,7 +3922,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         const string server = "Martlet";
         var maker = dataDirectory is null ? null
-            : PictureClient.For(dataDirectory, configured.Profile, configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+            : PictureClient.For(dataDirectory, configured.Profile, configured.Routes.ThinkingRoute());
         if (maker is null)
         {
             tools?.Record(server, tool, "not started: pictures off", arguments.About, false);
@@ -4180,11 +4180,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var effort = configured.ThinkLonger.HowHard;
         if (deep.Separate)
         {
-            var target = DeepThinkTarget.For(deep.Single, effort, configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm),
+            var target = DeepThinkTarget.For(deep.Single, effort, configured.Routes.ThinkingRoute(),
                 ModelLimits.Load(dataDirectory));
             var separate = target.Request(ThinkLonger.Fit(full, target.Bounds), effort, left, continuing);
             var own = new DeepThinkAuthorization(target, separate, configured.Profile,
-                configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), vault, clock, clock.GetUtcNow() + left + TimeSpan.FromSeconds(5));
+                configured.Routes.ThinkingRoute(), vault, clock, clock.GetUtcNow() + left + TimeSpan.FromSeconds(5));
             bind(own);
             return (separate, own);
         }
