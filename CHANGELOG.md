@@ -12,6 +12,10 @@ Each release's section here is also its notes on GitHub.
 
 - **Companion › Motion controls your VRM character's body motions**: turn motion off, choose which of your computers make new motions and in what order, keep one for one companion PC, and set the Motion role up on a computer from the list. A motion goes to the first computer that isn't busy, and Martlet tells you when your character is a Live2D model, which can't play them. Your other computers follow the same list. ([#835](https://github.com/throndir2/Martlet/pull/835))
 
+### Changed
+
+- **Martlet ignores text it misreads on your screen for a moment**: when the text reader gets a letter wrong once (say "App1e" for "Apple"), Martlet no longer treats it as new text, so it doesn't look or comment because of it, and the wrong text never goes to the model. New text counts once two reads agree, and a ticking timer still shows. ([#836](https://github.com/throndir2/Martlet/pull/836))
+
 ## [0.76.0] - 2026-10-12
 
 ### Added

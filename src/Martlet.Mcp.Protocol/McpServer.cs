@@ -1234,7 +1234,9 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "(NOT real hosts): the list's order, off when nothing is on, a busy computer passed over, a wait for the first to free, " +
             "a friend's host left for its owner. pace (with dataDirectory): Companion › Reading › Read the screen (talk-preferences.json's " +
             "ReadEveryMs: how often a full-size picture is read, 3000 by default). paceCheck: the production read pace for each choice " +
-            "over a simulated minute (reads of a changing screen with a fast and a slow reader, and of a still screen). Never " +
+            "over a simulated minute (reads of a changing screen with a fast and a slow reader, and of a still screen). settleCheck: " +
+            "the production OCR flicker filter (ScreenText.Settle) over simulated reads: a misread once never counts, new text counts " +
+            "at its second read, a timer counts as a live value, another window drops the old text. Never " +
             "captures the real screen.", new
         {
             dataDirectory = new { type = "string" },

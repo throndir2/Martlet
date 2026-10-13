@@ -49,7 +49,7 @@ public sealed class ScreenReadingTests
         Assert.Equal((32, 16), fake.Size);
         Assert.Equal((32, 16), (read!.Width, read.Height));
         Assert.Null(full.CopyPixels());
-        Assert.EndsWith("(32 x 16 screenshot).", read.Describe(), StringComparison.Ordinal);
+        Assert.Contains("(32 x 16 screenshot).", read.Describe(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public sealed class ScreenReadingTests
     public async Task Reader_reads_one_screenshot_at_a_time_and_skips_a_still_screen_until_a_while_passed()
     {
         var clock = new Clock();
-        var fake = new FakeReader(["HEALTH 87"], ["HEALTH 87"], ["VICTORY"]) { Gate = new() };
+        var fake = new FakeReader(["HEALTH 87"], ["HEALTH 87"], ["HEALTH 87"], ["VICTORY"], ["VICTORY"]) { Gate = new() };
         using var reader = new ScreenReader(fake, clock);
 
         var first = reader.Offer(() => Picture(40));
@@ -115,7 +115,16 @@ public sealed class ScreenReadingTests
         fake.Gate.SetResult();
         var read = await first!;
         Assert.Equal("HEALTH 87", read!.Text);
+        Assert.Equal("", read.Steady);
+        Assert.Equal(1, read.Pending);
         Assert.Equal(0, read.Change);
+        Assert.EndsWith("1 line waits for the next read to count.", read.Describe(), StringComparison.Ordinal);
+
+        // A first read waits for a second: the same picture is read once more at once, then counts.
+        clock.Advance(reader.Every);
+        var confirmed = await reader.Offer(() => Picture(40))!;
+        Assert.Equal("HEALTH 87", confirmed!.Steady);
+        Assert.Equal(0, confirmed.Pending);
 
         // The same picture again soon: not read; after a while, or once it changed, it is.
         clock.Advance(reader.Every);
@@ -127,10 +136,40 @@ public sealed class ScreenReadingTests
         clock.Advance(reader.Every);
         var changed = await reader.Offer(() => Picture(200))!;
         Assert.Equal("VICTORY", changed!.Text);
+        // New text counts only once a second read agrees, so the first read of it changes nothing yet.
+        Assert.Equal("", changed.Steady);
         Assert.Equal(1, changed.Change);
         Assert.Same(changed, reader.Latest);
-        Assert.Equal(3, fake.Calls);
         Assert.Contains("Read 1 line with the test reader", changed.Describe(), StringComparison.Ordinal);
+        clock.Advance(reader.Every);
+        var counts = await reader.Offer(() => Picture(200))!;
+        Assert.Equal("VICTORY", counts!.Steady);
+        Assert.Equal(1, counts.Change);
+        Assert.Equal(5, fake.Calls);
+    }
+
+    [Fact]
+    public async Task A_character_misread_once_never_counts_and_changes_nothing()
+    {
+        var clock = new Clock();
+        var fake = new FakeReader(["Apple pie", "HEALTH 87"], ["Apple pie", "HEALTH 87"], ["App1e pie", "HEALTH 87"],
+            ["Apple pie", "HEALTH 87"]);
+        using var reader = new ScreenReader(fake, clock);
+        var pictures = 0;
+        ScreenFrame Next() => Picture((byte)(pictures++ % 2 == 0 ? 40 : 200));
+        var reads = new List<ScreenRead>();
+        for (var i = 0; i < 4; i++)
+        {
+            reads.Add((await reader.Offer(Next)!)!);
+            clock.Advance(reader.Every);
+        }
+
+        Assert.Equal("Apple pie\nHEALTH 87", reads[1].Steady);
+        Assert.Equal("App1e pie\nHEALTH 87", reads[2].Text);
+        Assert.Equal("Apple pie\nHEALTH 87", reads[2].Steady);
+        Assert.Equal(0, reads[2].Change);
+        Assert.Equal("Apple pie\nHEALTH 87", reads[3].Steady);
+        Assert.Equal(0, reads[3].Change);
     }
 
     [Fact]

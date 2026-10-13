@@ -12,17 +12,23 @@ using Martlet.Discord.Calls;
 
 namespace Martlet.Desktop;
 
-/// <summary>One read of the text on a screenshot: the lines in reading order, their text, how much the text changed since the
-/// read before (0 to 1; 0 for the first read), how long it took, which engine read it, when, the screenshot's size and how long
-/// after the read before it started (null for the first).</summary>
+/// <summary>One read of the text on a screenshot: the lines in reading order, their text, how much the text that counts changed
+/// since the read before (0 to 1; 0 for the first read), how long it took, which engine read it, when, the screenshot's size and
+/// how long after the read before it started (null for the first). While Martlet watches, <see cref="Settled"/> holds the lines
+/// that count (<see cref="ScreenText.Settle"/>: OCR's flicker taken out) and <see cref="Pending"/> how many wait for the next
+/// read; a single read (Read my screen now) has no <see cref="Settled"/> and all its lines count.</summary>
 internal sealed record ScreenRead(IReadOnlyList<ReadLine> Lines, string Text, double Change, TimeSpan Took, string Engine, DateTimeOffset At,
-    int Width = 0, int Height = 0, TimeSpan? Gap = null)
+    int Width = 0, int Height = 0, TimeSpan? Gap = null, IReadOnlyList<ReadLine>? Settled = null, int Pending = 0)
 {
+    /// <summary>The text that counts: what a look's message, the screen digest and the look pacer use.</summary>
+    internal string Steady { get; } = Settled is null ? Text : ScreenText.Join(Settled);
+
     /// <summary>The read in words, for Companion › Reading and the talk window's vision tooltip.</summary>
     internal string Describe() =>
         $"Read {Lines.Count} {(Lines.Count == 1 ? "line" : "lines")} with {Engine} in {Took.TotalMilliseconds:0} ms at {At.ToLocalTime():t}" +
         (Width > 0 && Height > 0 ? $" ({Width} x {Height} screenshot)" : "") +
-        (Gap is { } gap ? $", {gap.TotalSeconds:0.0} s after the read before." : ".");
+        (Gap is { } gap ? $", {gap.TotalSeconds:0.0} s after the read before." : ".") +
+        (Pending > 0 ? $" {Pending} {(Pending == 1 ? "line waits" : "lines wait")} for the next read to count." : "");
 }
 
 /// <summary>Why the text on the screen couldn't be read (Windows has no OCR language, the host doesn't answer). <see cref="Busy"/>:
@@ -308,7 +314,8 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
 /// reply's path. On its own pace (<see cref="ScreenReadPace"/>, Companion › Reading › Read the screen), apart from the looks'
 /// screenshots: at most once per <see cref="Every"/> it takes a full-size picture and reads it when no read is running and the
 /// picture changed, or the last read is older than <see cref="ScreenReadPace.Refresh"/>. Each read keeps only its text; the
-/// pixels are zeroed when it ends.
+/// pixels are zeroed when it ends. OCR's flicker is taken out (<see cref="ScreenText.Settle"/>): a line counts once two reads
+/// in a row have it, so after a read with lines that wait, the next picture is read even when it looks the same (once).
 /// </summary>
 internal sealed class ScreenReader : IDisposable
 {
@@ -318,6 +325,8 @@ internal sealed class ScreenReader : IDisposable
     private readonly CancellationTokenSource lifetime = new();
     private Task<ScreenRead?>? running;
     private long? lastRead;
+    private IReadOnlyList<ReadLine>? earlier;
+    private volatile bool confirm;
     private volatile ScreenRead? latest;
     private volatile string? problem;
 
@@ -370,12 +379,15 @@ internal sealed class ScreenReader : IDisposable
             }
             if (full is null) return null;
             var (width, height) = (full.Width, full.Height);
-            if (lifetime.IsCancellationRequested || !pace.Read(full.Signature, always: latest is null))
+            // A read with lines that wait is checked by the next picture, even one that looks the same: once in a row.
+            var confirming = confirm;
+            confirm = false;
+            if (lifetime.IsCancellationRequested || !pace.Read(full.Signature, always: latest is null || confirming))
             {
                 full.Clear();
                 return null;
             }
-            return full.TakePixels() is { } taken ? await ReadAsync(taken, width, height).ConfigureAwait(false) : null;
+            return full.TakePixels() is { } taken ? await ReadAsync(taken, width, height, confirming).ConfigureAwait(false) : null;
         });
     }
 
@@ -387,7 +399,7 @@ internal sealed class ScreenReader : IDisposable
         return new(lines, ScreenText.Join(lines), 0, clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow(), width, height);
     }
 
-    private async Task<ScreenRead?> ReadAsync(byte[] pixels, int width, int height)
+    private async Task<ScreenRead?> ReadAsync(byte[] pixels, int width, int height, bool confirming)
     {
         var started = clock.GetTimestamp();
         TimeSpan? gap = lastRead is { } before ? clock.GetElapsedTime(before, started) : null;
@@ -397,9 +409,13 @@ internal sealed class ScreenReader : IDisposable
             var lines = ScreenText.Order(await reader.ReadAsync(pixels, width, height, lifetime.Token).ConfigureAwait(false));
             var text = ScreenText.Join(lines);
             var prior = latest;
-            var read = new ScreenRead(lines, text, prior is null ? 0 : ScreenText.Change(prior.Text, text),
-                clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow(), width, height, gap);
+            var settled = ScreenText.Settle(lines, prior?.Lines, prior?.Settled, earlier);
+            earlier = prior?.Lines;
+            var change = prior is null ? 0 : ScreenText.Change(prior.Steady, ScreenText.Join(settled.Lines));
+            var read = new ScreenRead(lines, text, change, clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow(), width, height, gap,
+                settled.Lines, settled.Pending);
             latest = read;
+            confirm = settled.Pending > 0 && !confirming;
             problem = null;
             return read;
         }

@@ -1022,6 +1022,18 @@ choice matches. It uses simulated time and pictures only, **NOT the real
 screen**. In that simulated minute, twice a second gives 120 reads with fast
 reads and 30 with slow ones, where the old 3-second pace gives 20.
 
+`settleCheck` runs the production flicker filter (`ScreenText.Settle`, see
+[Reading](READING.md#what-martlet-does-with-the-text)) over eight simulated
+reads of a game screen. Each step gives the `read` lines, the lines that
+`counts`, the `pending` lines that wait for the next read and the `change` of
+the text that counts (what the look pacer hears). The steps are: a first read
+(nothing counts yet), the same read (all lines count), OCR reading "Apple" as
+"App1e" once while a timer ticks (nothing changes, `change` 0), the timer going
+on (it counts as a live value), "VICTORY" in two reads (it counts at the
+second), and another window (the old text goes at once). `settleCheck.ok` is
+true when every step matches. It uses simulated lines only, **NOT the real
+screen**.
+
 On the test machine (a 24-thread processor, Docker Desktop), the workers read
 the drawn desktops as follows:
 
