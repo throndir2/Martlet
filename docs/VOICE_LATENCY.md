@@ -638,8 +638,8 @@ carrying the recording and only the stand-in text, never the transcript.
 that continues a whole earlier one (a request diverging anywhere reads all of
 it again: 0 cached tokens). A reply that carried a recording is never continued
 by the next reply on either path, because the recording isn't sent again; the
-after-reply request (remembering and learning names), which continues the
-reply's request with the transcript in place of the recording, is what the next
+after-reply requests (remembering, and learning names), which continue the
+reply's request with the transcript in place of the recording, are what the next
 reply continues, so replies 2-8 read 78-92 % of their input from the cache. With
 remembering off, every reply after a recording reads its whole input again on
 both paths. Sending each earlier recording again would keep the reply-to-reply

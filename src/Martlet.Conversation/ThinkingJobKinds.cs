@@ -24,7 +24,7 @@ public enum ThinkingPriority
 /// (<see cref="ThinkingJobKinds.Helper"/>).</summary>
 public enum HelperJobKind
 {
-    /// <summary>Remembering and learning names after a reply.</summary>
+    /// <summary>Remembering after a reply.</summary>
     Memory,
     /// <summary>Naming a character's emotes and motions.</summary>
     ActionNaming,
@@ -40,7 +40,10 @@ public enum HelperJobKind
     /// low priority).</summary>
     MemoryUpkeep,
     /// <summary>Writing the memory brief from the remembered facts (lowest priority).</summary>
-    MemoryBrief
+    MemoryBrief,
+    /// <summary>Learning names after a reply: who the people speaking are, from their voices and their words (a Naming job,
+    /// with the People tools on a member that calls tools when Martlet wasn't sure who spoke).</summary>
+    SpeakerNaming
 }
 
 /// <summary>What the live floor (<see cref="LiveFloorRules"/>) does to a kind's jobs on a member that shares the conversation's
@@ -85,14 +88,15 @@ public static class ThinkingJobKinds
         new(ThinkingJobKind.CheckIn, "check-in", "Check-ins", "Check-in",
             ThinkingPriority.Helper, Fast: false, Text | ThinkingCapability.Vision | ThinkingCapability.Audio | ThinkingCapability.Tools,
             ThinkingJobWhileLive.Stops, []),
-        new(ThinkingJobKind.Memory, "memory", "Remembering, learning names, tidying memory and the memory brief", "Memory",
+        new(ThinkingJobKind.Memory, "memory", "Remembering, tidying memory and the memory brief", "Memory",
             ThinkingPriority.Helper, Fast: false, Text, ThinkingJobWhileLive.Stops,
             [new(HelperJobKind.Memory, "memory"), new(HelperJobKind.MemoryUpkeep, "memory-upkeep"),
                 // The brief is never urgent: it waits behind everything.
                 new(HelperJobKind.MemoryBrief, "memory-brief", ThinkingPriority.Research)]),
-        new(ThinkingJobKind.Naming, "naming", "Naming emotes and motions, and touch temperament", "Naming",
-            ThinkingPriority.Helper, Fast: false, Text, ThinkingJobWhileLive.Stops,
-            [new(HelperJobKind.ActionNaming, "action-naming"), new(HelperJobKind.Temperament, "temperament")]),
+        new(ThinkingJobKind.Naming, "naming", "Learning names, naming emotes and motions, and touch temperament", "Naming",
+            ThinkingPriority.Helper, Fast: false, Text | ThinkingCapability.Tools, ThinkingJobWhileLive.Stops,
+            [new(HelperJobKind.SpeakerNaming, "speaker-naming"), new(HelperJobKind.ActionNaming, "action-naming"),
+                new(HelperJobKind.Temperament, "temperament")]),
         new(ThinkingJobKind.TouchZones, "touch-zones", "Touch zones, measuring the eyes and writing a character's personality", "Touch zones",
             ThinkingPriority.TouchZones, Fast: false, Text | ThinkingCapability.Vision, ThinkingJobWhileLive.Waits,
             [new(HelperJobKind.TouchZones, "touch-zones", OwnerWaits: true),

@@ -30,7 +30,12 @@ public sealed partial class CheckInsTests
             (aside.On, aside.EveryMinutes, aside.Outcome, aside.PromptId, aside.Triggers, aside.Conditions));
         Assert.Equal(CheckInFacts.Heard | CheckInFacts.Conversation | CheckInFacts.Activity | CheckInFacts.People, aside.Facts);
         Assert.Equal(aside.Facts, CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInAside)));
+        // It may call the People tools to know who the voices are; they are optional, so it still needs only text.
+        Assert.Equal([PeopleTools.SetId], aside.ToolSets);
         Assert.Equal(ThinkingCapability.Text, aside.Needs);
+        var others = Built(CheckIns.Others);
+        Assert.Equal([PeopleTools.SetId], others.ToolSets);
+        Assert.Equal(ThinkingCapability.Text, others.Needs);
 
         var state = OnThePhone();
         var spoke = CheckIns.SpokeTrigger(Now.AddSeconds(-1), answered: false);
@@ -42,6 +47,38 @@ public sealed partial class CheckInsTests
         Assert.Equal("next in 40 s", CheckIns.Wait(aside, state, new(Now.AddSeconds(-20), 5, "nothing", false), fired: spoke));
         Assert.Equal(CheckIns.TriggerAge, CheckIns.Age(spoke));
         Assert.Equal("you to say something", CheckIns.TriggerWords(CheckInTriggers.Spoke));
+    }
+
+    // The People tools only look things up: a check-in that ticks only them runs on any member, and gets them only when a member
+    // that calls tools can take it.
+    [Fact]
+    public void OptionalToolSetsAreOfferedOnlyWhenAMemberCallsTools()
+    {
+        Assert.True(PeopleTools.Set.Optional);
+        Assert.False(CheckInToolSets.NeedTools([PeopleTools.SetId]));
+        Assert.True(CheckInToolSets.NeedTools([PeopleTools.SetId, CheckInToolSets.RemindersId]));
+        Assert.True(CheckInToolSets.NeedTools(["unknown-set"]));
+        var aside = Built(CheckIns.Aside);
+        Assert.Empty(CheckIns.Offered(aside, poolCallsTools: false));
+        Assert.Equal([PeopleTools.SetId], CheckIns.Offered(aside, poolCallsTools: true));
+        var mixed = aside with { ToolSets = [PeopleTools.SetId, CheckInToolSets.NextReplyId] };
+        Assert.True(mixed.Needs.HasFlag(ThinkingCapability.Tools));
+        Assert.Equal([CheckInToolSets.NextReplyId], CheckIns.Offered(mixed, poolCallsTools: false));
+
+        var state = OnThePhone();
+        var plain = CheckIns.Prepare(aside, state, null)!;
+        Assert.Empty(plain.Tools);
+        Assert.Equal(ThinkingCapability.Text, plain.Required);
+        Assert.DoesNotContain("You may call your tools", plain.Text);
+        var host = new CheckInToolHost(CheckIns.Offered(aside, poolCallsTools: true), new(aside.Id, aside.Name, null, Now),
+            new Dictionary<string, CheckInToolHandler>
+            {
+                [PeopleTools.SetId] = (call, context, token) => new(new ConversationToolResult("People: 0 voice(s) saved, 0 listed."))
+            });
+        var withTools = CheckIns.Prepare(aside, state, null, host)!;
+        Assert.Equal([PeopleTools.List, PeopleTools.Lately], withTools.Tools.Select(t => t.Name));
+        Assert.True(withTools.Required.HasFlag(ThinkingCapability.Tools));
+        Assert.Contains("You may call your tools first if they help.", withTools.Text);
     }
 
     [Fact]

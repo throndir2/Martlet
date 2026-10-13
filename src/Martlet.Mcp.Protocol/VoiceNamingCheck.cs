@@ -1,6 +1,8 @@
 using System.IO;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Core.Speakers;
+using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
@@ -92,6 +94,45 @@ internal static class VoiceNamingCheck
             same.Roster.Live.Count == 2, same.Applied.FirstOrDefault()?.Text ?? "nothing changed");
         Scenario("one-merge-per-exchange", same.Parsed.Refused.Any(r => r.Reason == "only one merge per exchange"),
             "a second SAME line in the same answer");
+
+        // A message Martlet couldn't attribute for sure: only V2 was heard for sure, and the speaker sounded most like V1.
+        var unsure = Build();
+        var spokeParsed = VoiceUpdates.Parse("SPOKE V1\nNAME V1: Bobby\nSPOKE V1", unsure.Tags, [unsure.Mislabeled.Id], FixtureCompanion,
+            [unsure.Owner.Id]);
+        var (spokeRoster, spokeApplied, _) = VoiceUpdates.Apply(unsure.Roster, spokeParsed.Updates, By, Start.AddMinutes(5));
+        var before = unsure.Roster.Resolve(unsure.Owner.Id)!;
+        var after = spokeRoster.Resolve(unsure.Owner.Id)!;
+        Scenario("spoke-labels-only", ReferenceEquals(spokeRoster, unsure.Roster) && spokeApplied.Count == 1 &&
+            spokeApplied[0].Kind == VoiceUpdateKind.Spoke && after.Centroid == before.Centroid && after.Samples.SequenceEqual(before.Samples) &&
+            after.Heard == before.Heard && Names(after).SequenceEqual(Names(before)),
+            spokeApplied.FirstOrDefault()?.Text ?? "nothing labeled");
+        Scenario("spoke-gives-no-name", spokeParsed.Refused.Any(r => r.Reason == "the voice wasn't heard in this message") &&
+            spokeParsed.Refused.Any(r => r.Reason == "only one SPOKE line per exchange"),
+            "NAME V1 for the voice the unsure speaker sounded like, and a second SPOKE line");
+        var known = VoiceUpdates.Parse("SPOKE V1", unsure.Tags, unsure.Heard, FixtureCompanion);
+        Scenario("spoke-refused-when-known", Refused(known, "Martlet knew who said the message"), "SPOKE V1 when Martlet recognized the speaker");
+        var other = VoiceUpdates.Parse("SPOKE V3", unsure.Tags, [unsure.Mislabeled.Id], FixtureCompanion, [unsure.Owner.Id]);
+        Scenario("spoke-refused-for-other-voice", Refused(other, "not a voice that could have said it"),
+            "SPOKE V3 when only V1 could have said it");
+
+        // The People check-in tools, on the same fixture (V1 is the owner, as before accounts).
+        var people = Build();
+        var listed = PeopleTools.Run(new TextToolCall("check", PeopleTools.List, "{}"), people.Roster, v => v.Owner, Start.AddMinutes(10));
+        var text = listed.Result.Output;
+        var first = text.Split('\n', 2)[0];
+        Scenario("people-list", !listed.Result.IsError && listed.Shown.Count == 3 &&
+            text.Contains("V1: goes by Robert first (typed by the owner); also Bob (learned).", StringComparison.Ordinal) &&
+            text.Contains("The signed-in user.", StringComparison.Ordinal) && text.Contains("V3: no name yet.", StringComparison.Ordinal) &&
+            text.Contains("Heard 1 time, last 8 minutes ago.", StringComparison.Ordinal),
+            first);
+        Scenario("people-private", !people.Roster.Live.Any(v => first.Contains(v.DisplayName, StringComparison.OrdinalIgnoreCase)) &&
+            !people.Roster.Live.SelectMany(v => v.Samples.Append(v.Centroid ?? "")).Any(print => print.Length > 0 && text.Contains(print, StringComparison.Ordinal)),
+            "the card's first line holds counts only; no voiceprint in the answer");
+        var found = PeopleTools.Run(new TextToolCall("check", PeopleTools.List, """{"query":"sam"}"""), people.Roster, v => v.Owner, Start.AddMinutes(10));
+        Scenario("people-find", found.Shown.Count == 1 && found.Shown[0].Id == people.Mislabeled.Id, found.Result.Output.Split('\n', 2)[0]);
+        var lately = PeopleTools.Run(new TextToolCall("check", PeopleTools.Lately, """{"minutes":9}"""), people.Roster, v => v.Owner, Start.AddMinutes(10));
+        Scenario("people-lately", lately.Shown.Select(v => v.Id).SequenceEqual([people.Speaker.Id, people.Mislabeled.Id]),
+            lately.Result.Output.Split('\n', 2)[0]);
 
         object? checkedAnswer = null;
         if (answer is not null)

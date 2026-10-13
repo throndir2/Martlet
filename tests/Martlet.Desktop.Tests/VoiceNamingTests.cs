@@ -1,3 +1,4 @@
+using Martlet.Conversation;
 using Martlet.Core.Speakers;
 using Martlet.Desktop;
 using Martlet.Memory;
@@ -64,7 +65,7 @@ public sealed class VoiceNamingTests
         Assert.Contains(Own, remembered);
         Assert.Contains("\nAva: Morning, sunshine.\n", remembered);
         Assert.EndsWith("\nUser: My dog is Biscuit.\nAva: What a lovely name!", remembered);
-        var both = AfterReply.Prompt([], naming, "Morning!", "Morning, sunshine.", "Hi, I'm Alex.", "Nice to meet you, Alex!", null, companion: "Ava");
+        var both = AfterReply.Prompt(null, naming, "Morning!", "Morning, sunshine.", "Hi, I'm Alex.", "Nice to meet you, Alex!", null, companion: "Ava");
         Assert.Contains(Own, both.Input.UserText);
         Assert.Contains("\nAva: Morning, sunshine.\n", both.Input.UserText);
         Assert.EndsWith("\nAva: Nice to meet you, Alex!", both.Input.UserText);
@@ -150,7 +151,7 @@ public sealed class VoiceNamingTests
     }
 
     [Fact]
-    public void AfterReplyAsksOnceWhenMemoryAndVoiceNamesAreBothDue()
+    public void RememberingAndLearningNamesAreTwoRequestsOfTheirOwn()
     {
         var (heard, _, unnamed) = Heard();
         var provenance = MemoryProvenance.Conversation(Guid.NewGuid(), Start);
@@ -166,21 +167,78 @@ public sealed class VoiceNamingTests
             Retention = MemoryRetention.UntilDeleted()
         };
 
-        var prompt = AfterReply.Prompt([fact], Naming(heard), "Earlier question.", "Earlier answer.",
-            "Hi, I'm Alex.", "Nice to meet you, Alex!", null);
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => AfterReply.Prompt([fact], Naming(heard), null, null, "Hi, I'm Alex.",
+            "Nice to meet you, Alex!", null));
 
-        Assert.False(prompt.Continued);
-        Assert.Equal(1, prompt.ShownFacts);
-        Assert.Equal(2, prompt.Voices.Count);
-        Assert.Contains("REMEMBER:", prompt.Input.Personality);
-        Assert.Contains("UPDATE <number>:", prompt.Input.Personality);
-        Assert.Contains("FORGET <number>", prompt.Input.Personality);
-        Assert.Contains("NAME V<number>:", prompt.Input.Personality);
-        Assert.Contains("CALL V<number>:", prompt.Input.Personality);
-        Assert.Contains("NOT V<number>:", prompt.Input.Personality);
-        Assert.Contains("SAME V<number>: V<number>", prompt.Input.Personality);
-        Assert.Contains("1. The user likes tea.", prompt.Input.UserText);
-        Assert.Contains(unnamed.Tag + ": no name yet (the one speaking to Martlet)", prompt.Input.UserText);
-        Assert.Contains($"User ({unnamed.Tag}): Hi, I'm Alex.", prompt.Input.UserText);
+        var remembering = AfterReply.Prompt([fact], null, "Earlier question.", "Earlier answer.", "Hi, I'm Alex.", "Nice to meet you, Alex!",
+            null, present: heard);
+        Assert.Equal(1, remembering.ShownFacts);
+        Assert.Contains("REMEMBER:", remembering.Input.Personality);
+        Assert.DoesNotContain("NAME V<number>:", remembering.Input.Personality);
+        Assert.Contains("1. The user likes tea.", remembering.Input.UserText);
+
+        var naming = AfterReply.Prompt(null, Naming(heard), "Earlier question.", "Earlier answer.", "Hi, I'm Alex.", "Nice to meet you, Alex!", null);
+        Assert.False(naming.Continued);
+        Assert.Equal(0, naming.ShownFacts);
+        Assert.Equal(2, naming.Voices.Count);
+        Assert.DoesNotContain("REMEMBER:", naming.Input.Personality);
+        Assert.Contains("Your only job is who the people speaking are.", naming.Input.Personality);
+        Assert.Contains("NAME V<number>:", naming.Input.Personality);
+        Assert.Contains("CALL V<number>:", naming.Input.Personality);
+        Assert.Contains("NOT V<number>:", naming.Input.Personality);
+        Assert.Contains("SAME V<number>: V<number>", naming.Input.Personality);
+        Assert.Contains("SPOKE V<number>", naming.Input.Personality);
+        Assert.DoesNotContain("Already remembered", naming.Input.UserText);
+        Assert.Contains(unnamed.Tag + ": no name yet (the one speaking to Martlet)", naming.Input.UserText);
+        Assert.Contains($"User ({unnamed.Tag}): Hi, I'm Alex.", naming.Input.UserText);
+    }
+
+    // A voice too close to call stays unattributed in the reply, but learning names reads the voice it sounded most like and the
+    // words: a SPOKE line labels who said the message, and nothing about that voice changes.
+    [Fact]
+    public void AnUnsureSpeakerMayBeLabeledButItsVoiceLearnsNothing()
+    {
+        var roster = VoiceRoster.Empty;
+        (roster, var kim) = roster.Add(Print(1), 3, "desk", Start);
+        (roster, var bob) = roster.Add(Print(2), 3, "desk", Start);
+        (roster, var quiet) = roster.Add(Print(3), 3, "desk", Start);
+        roster = roster.AddHeardName(kim!.Id, "Kim", "desk", Start).SetNames(bob!.Id, "Bob", [], "desk", Start)
+            .AddHeardName(quiet!.Id, "Lee", "desk", Start);
+        kim = roster.Resolve(kim.Id)!;
+        var unsure = new HeardVoices([new(null, VoiceMatchKind.Unsure, 0.6, 3, false) { Closest = kim }], false);
+        Assert.True(VoiceNaming.Worth(unsure, "what's the weather", "Sunny.", CompanionNames.Martlet));
+        Assert.False(VoiceNaming.Worth(new HeardVoices([new(null, VoiceMatchKind.Unsure, 0.3, 1, false)], false), "what's the weather",
+            "Sunny.", CompanionNames.Martlet));
+
+        // The words name Bob, so Bob is listed too; Lee isn't named and isn't.
+        var naming = VoiceNaming.Context(unsure, roster, "it's Bob, can you set a timer", CompanionNames.Martlet);
+        Assert.True(naming.Unattributed);
+        Assert.Equal(kim.Id, naming.Closest!.Id);
+        Assert.Equal(new[] { bob.Id }, naming.Others.Select(v => v.Id).ToArray());
+        var prompt = VoiceNaming.Prompt(naming, null, null, "it's Bob, can you set a timer", "Sure, Bob!");
+        Assert.Contains("Voices Martlet recognized for sure in the latest message: none.", prompt.Input.UserText);
+        Assert.Contains($"It sounds most like {kim.Tag}: goes by Kim, but not enough to be sure.", prompt.Input.UserText);
+        Assert.Contains("only for SAME and SPOKE lines", prompt.Input.UserText);
+        Assert.Contains("\nUser: it's Bob", prompt.Input.UserText);
+        Assert.DoesNotContain(PeopleTools.List, prompt.Input.UserText);
+        Assert.Contains(PeopleTools.List, VoiceNaming.Prompt(naming, null, null, "it's Bob", "Hi!", tools: true).Input.UserText);
+
+        var parsed = VoiceNaming.Parse($"SPOKE {bob.Tag}\nNAME {kim.Tag}: Kimmy\nSPOKE {quiet.Tag}", naming, "Sure, Bob!");
+        var spoke = Assert.Single(parsed.Updates);
+        Assert.Equal((VoiceUpdateKind.Spoke, bob.Id), (spoke.Kind, spoke.VoiceId));
+        Assert.Contains(parsed.Refused, r => r.Reason == "the voice wasn't heard in this message");
+        Assert.Contains(parsed.Refused, r => r.Reason == "not a voice that could have said it");
+        var (after, applied, refused) = VoiceUpdates.Apply(roster, parsed.Updates, "desk", Start.AddMinutes(1));
+        Assert.Same(roster, after);
+        Assert.Empty(refused);
+        Assert.Equal("Martlet wasn't sure whose voice that was; it thinks Bob (voice 2) said it.", Assert.Single(applied).Text);
+
+        // A voice the people tools showed may be named too; one Martlet heard for sure never.
+        naming.Saw([roster.Resolve(quiet.Id)!]);
+        Assert.Equal(quiet.Id, Assert.Single(VoiceNaming.Parse($"SPOKE {quiet.Tag}", naming, null).Updates).VoiceId);
+        var recognized = VoiceNaming.Context(new HeardVoices([new(kim, VoiceMatchKind.Known, 0.9, 3, false)], false), roster, "it's Bob",
+            CompanionNames.Martlet);
+        Assert.Empty(recognized.SpeakerIds);
+        Assert.Contains(VoiceNaming.Parse($"SPOKE {kim.Tag}", recognized, null).Refused, r => r.Reason == "Martlet knew who said the message");
     }
 }
