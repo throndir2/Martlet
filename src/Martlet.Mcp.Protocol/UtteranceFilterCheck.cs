@@ -4,6 +4,7 @@ using System.Text.Json;
 using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Providers;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -516,25 +517,13 @@ internal static class UtteranceFilterCheck
 
     // ---------- the saved choice and arguments ----------
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): WordCheck (0 Normal, 1 Relaxed, 2 Sensitive; Normal unless saved)
-    // and BargeIn (off unless saved on, as echo_check reads it).
+    // talk-preferences.json as the desktop reads it (TalkPreferences): WordCheck (0 Normal, 1 Relaxed, 2 Sensitive; Normal unless
+    // saved) and BargeIn (off unless saved on, as echo_check reads it).
     internal static (ListeningSensitivity WordCheck, string Source, bool BargeIn) Saved(string directory)
     {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            var root = document.RootElement;
-            var bargeIn = root.TryGetProperty("BargeIn", out var b) && b.ValueKind == JsonValueKind.True &&
-                root.TryGetProperty("Version", out var v) && v.ValueKind == JsonValueKind.Number && v.GetInt32() >= 3;
-            if (root.TryGetProperty("WordCheck", out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) &&
-                Enum.IsDefined((ListeningSensitivity)number))
-                return ((ListeningSensitivity)number, "saved", bargeIn);
-            return (ListeningSensitivity.Normal, "default", bargeIn);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return (ListeningSensitivity.Normal, "default", false);
-        }
+        var file = TalkPreferences.Read(directory);
+        var saved = file.Has(nameof(TalkPreferences.WordCheck)) && Enum.IsDefined(file.AsSaved!.WordCheck);
+        return (file.Preferences.WordCheck, saved ? "saved" : "default", file.Preferences.BargeIn);
     }
 
     private static string? Optional(JsonElement element, string property) =>

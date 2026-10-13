@@ -143,18 +143,7 @@ internal static class ScreenDigestCheck
 
     private static (bool On, string Source) Setting(string directory)
     {
-        var path = Path.Combine(directory, "talk-preferences.json");
-        if (!File.Exists(path)) return (true, "default (no talk-preferences.json)");
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            return document.RootElement.TryGetProperty("ScreenSummary", out var value) && value.ValueKind is JsonValueKind.False
-                ? (false, "talk-preferences.json")
-                : (true, document.RootElement.TryGetProperty("ScreenSummary", out _) ? "talk-preferences.json" : "default");
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return (true, "default (talk-preferences.json unreadable)");
-        }
+        var file = TalkPreferences.Read(directory);
+        return (file.Preferences.ScreenSummary, file.Source(nameof(TalkPreferences.ScreenSummary)));
     }
 }

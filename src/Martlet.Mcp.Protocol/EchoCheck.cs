@@ -5,6 +5,7 @@ using System.Text.Json;
 using Martlet.Audio;
 using Martlet.Core.Contracts;
 using Martlet.EchoCancellation;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -134,32 +135,20 @@ internal static class EchoCheck
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): ReduceEcho is on unless saved off.
+    // talk-preferences.json as the desktop reads it (TalkPreferences): ReduceEcho is on unless saved off.
     private static (bool On, string Source) ReduceEcho(string directory)
     {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            return document.RootElement.TryGetProperty("ReduceEcho", out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                ? (value.GetBoolean(), "saved") : (true, "default");
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return (true, "default"); }
+        var file = TalkPreferences.Read(directory);
+        return (file.Preferences.ReduceEcho, file.Has(nameof(TalkPreferences.ReduceEcho)) ? "saved" : "default");
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): barge-in is opt-in, off unless saved on; files older than
+    // talk-preferences.json as the desktop reads it (TalkPreferences): barge-in is opt-in, off unless saved on; files older than
     // version 3 had it on only because it was the old default, so they read as off ("reset").
     private static (bool On, string Source) BargeIn(string directory)
     {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            var root = document.RootElement;
-            if (!root.TryGetProperty("BargeIn", out var value) || value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                return (false, "default");
-            var version = root.TryGetProperty("Version", out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
-            return version < 3 ? (false, value.GetBoolean() ? "reset" : "saved") : (value.GetBoolean(), "saved");
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return (false, "default"); }
+        var file = TalkPreferences.Read(directory);
+        if (!file.Has(nameof(TalkPreferences.BargeIn))) return (false, "default");
+        return file.AsSaved!.Version < 3 ? (false, file.AsSaved.BargeIn ? "reset" : "saved") : (file.Preferences.BargeIn, "saved");
     }
 
     private static async Task<byte[]> RecordAsync(ICaptureDeviceFactory devices, CancellationToken cancellation)

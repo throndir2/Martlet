@@ -4,6 +4,8 @@ using System.Text.Json.Nodes;
 using Martlet.Core.Installation;
 using Martlet.Doctor;
 using Martlet.Mcp.Client;
+using Martlet.Mcp.Shared;
+using Martlet.Core.Settings;
 
 namespace Martlet.Mcp;
 
@@ -1061,28 +1063,20 @@ internal sealed partial class McpServer
         }
     }
 
-    /// <summary>Whether Martlet's voice is muted and how loud it is, from talk-preferences.json in a data directory
-    /// (Martlet.Desktop's TalkPreferences): SpeakReplies (Companion › Voice's Speak Martlet's replies aloud) is on unless saved
+    /// <summary>Whether Martlet's voice is muted and how loud it is, from talk-preferences.json in a data directory as the desktop
+    /// reads it (TalkPreferences): SpeakReplies (Companion › Voice's Speak Martlet's replies aloud) is on unless saved
     /// off, and Mute voice / Unmute voice on the character's right-click menu change the same choice; VoiceVolume (Companion ›
     /// Voice's Voice volume, 0 to 1) is full unless saved lower.</summary>
     private static object CharacterVoice(string directory)
     {
-        var path = Path.Combine(directory, "talk-preferences.json");
-        if (!File.Exists(path)) return new { state = "none", speakReplies = true, muted = false, volume = 1.0 };
-        try
+        var file = TalkPreferences.Read(directory);
+        var (speak, volume) = (file.Preferences.SpeakReplies, file.Preferences.VoiceVolume);
+        return file.State switch
         {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-                return new { state = "unreadable", speakReplies = true, muted = false, volume = 1.0, problem = "NotAnObject" };
-            var speak = !(document.RootElement.TryGetProperty("SpeakReplies", out var value) && value.ValueKind == JsonValueKind.False);
-            var volume = document.RootElement.TryGetProperty("VoiceVolume", out var saved) && saved.ValueKind == JsonValueKind.Number &&
-                saved.TryGetDouble(out var number) && double.IsFinite(number) ? Math.Clamp(number, 0, 1) : 1.0;
-            return new { state = "loaded", speakReplies = speak, muted = !speak, volume };
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return new { state = "unreadable", speakReplies = true, muted = false, volume = 1.0, problem = error.GetType().Name };
-        }
+            SettingsFileState.Missing => new { state = "none", speakReplies = speak, muted = !speak, volume },
+            SettingsFileState.Unreadable => (object)new { state = "unreadable", speakReplies = speak, muted = !speak, volume, problem = file.Problem },
+            _ => new { state = "loaded", speakReplies = speak, muted = !speak, volume }
+        };
     }
 
     /// <summary>character-placement.json in a data directory (Martlet.Desktop's CharacterPlacementStore): where the character

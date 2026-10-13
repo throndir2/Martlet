@@ -58,7 +58,7 @@ internal static class Appearance
 
     internal static AppearanceTheme Load(string directory)
     {
-        var path = Path.Combine(directory, "appearance.txt");
+        var path = Path.Combine(directory, ThemeFile);
         try
         {
             using var reader = new StreamReader(path);
@@ -82,10 +82,11 @@ internal static class Appearance
     internal static void Save(string directory, AppearanceTheme theme)
     {
         if (!Enum.IsDefined(theme)) throw new ArgumentOutOfRangeException(nameof(theme));
-        Write(directory, "appearance.txt", theme.ToString());
+        Write(directory, ThemeFile, theme.ToString());
     }
 
     private const string ColorsFile = "appearance-colors.json";
+    internal const string ThemeFile = "appearance.txt";
 
     private sealed record SavedColors(string Theme, Dictionary<string, string> Colors);
 

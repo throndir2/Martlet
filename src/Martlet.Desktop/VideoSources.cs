@@ -8,10 +8,6 @@ using System.Windows.Media.Imaging;
 
 namespace Martlet.Desktop;
 
-/// <summary>What Watch looks at: the user's screen, a camera Windows knows (webcam, capture card, virtual camera, a
-/// phone connected as a webcam) or a phone / network camera address.</summary>
-internal enum WatchKind { ActiveWindow, ActiveScreen, Camera, Url }
-
 /// <summary>One video source. <paramref name="Id"/> is the camera's Windows device link or the address;
 /// <paramref name="Name"/> is what the user and the model see (never the address, which may hold a password).</summary>
 internal sealed record WatchSource(WatchKind Kind, string Id = "", string Name = "")
@@ -43,9 +39,7 @@ internal sealed record WatchSource(WatchKind Kind, string Id = "", string Name =
         uri.Segments[^1].StartsWith("camera.", StringComparison.Ordinal) && uri.Segments[^1].Length > "camera.".Length;
 
     /// <summary>The address with any user name and password removed, safe to save in preferences.</summary>
-    internal static string WithoutCredentials(string address) =>
-        Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri) && uri.UserInfo.Length > 0
-            ? new UriBuilder(uri) { UserName = "", Password = "" }.Uri.ToString() : address.Trim();
+    internal static string WithoutCredentials(string address) => CameraAddress.WithoutCredentials(address);
 
     /// <summary>A typed camera address as Martlet reads it: quotes trimmed, and http:// added when no scheme or file is given.</summary>
     internal static string Normalize(string? text)

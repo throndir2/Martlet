@@ -106,6 +106,12 @@ also on a computer that the owner adds later.
   devices (microphone, speakers, cameras, screens), what is installed or
   measured there, its pairings and how it starts. Add a row with the reason to
   [What stays with each computer](docs/CLUSTER.md#what-stays-with-each-computer).
+- Register each settings file in `SettingsFiles`
+  (`src\Martlet.Core\Settings\SettingsFiles.cs`): its name, its scope (shared,
+  account or local), its store and, for what stays here, the reason from that
+  row. Read and write the file only through its store, also in MCP checks (for
+  example `TalkPreferences.Read` for `talk-preferences.json`), never with a
+  parser and defaults of their own.
 - When one list has both kinds (for example the Thinking pool), share the
   parts that are not about the computer and keep only the rest local.
 - A computer that cannot use a shared value yet keeps its own value, says why

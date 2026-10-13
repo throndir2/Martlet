@@ -7,6 +7,7 @@ using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Sherpa;
+using Martlet.Mcp.Shared;
 
 namespace Martlet.Mcp;
 
@@ -123,22 +124,12 @@ internal static class SoundDigestCheck
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearPc is off and DescribePcSounds on unless saved otherwise.
+    // talk-preferences.json as the desktop reads it (TalkPreferences): HearPc is off and DescribePcSounds on unless saved otherwise.
     private static Choices Saved(string directory)
     {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            var root = document.RootElement;
-            bool? Flag(string name) => root.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                ? value.GetBoolean() : null;
-            var describe = Flag("DescribePcSounds");
-            return new(Flag("HearPc") ?? false, describe ?? true, describe is null ? "default" : "saved");
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return new(false, true, "default");
-        }
+        var file = TalkPreferences.Read(directory);
+        return new(file.Preferences.HearPc, file.Preferences.DescribePcSounds,
+            file.Has(nameof(TalkPreferences.DescribePcSounds)) ? "saved" : "default");
     }
 
     // sound-digest.json (Martlet.Desktop's PcSoundDigest): the state, the judge, counts and times; never a line or a sound.
