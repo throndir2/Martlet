@@ -17,12 +17,15 @@ namespace Martlet.Desktop;
 /// newest read and Read my screen now, which reads the whole screen once with the list), then the list (the shared pool list,
 /// <see cref="PoolListCard"/>): This PC reads with Windows OCR (the default and recommended: on the processor, nothing leaves
 /// the PC) or with Martlet's <c>ocr</c> host role on this PC; a computer or one of its cards reads with its Reading role, set up
-/// with the same martlet-host flow as every role and reached through its gateway. The role runs one of three models
-/// (<see cref="OptionalExtras.ReadingModels"/>): PP-OCRv5 mobile on the processor (recommended), PP-OCRv5 server on an NVIDIA
-/// graphics card, or RapidOCR on the processor. A member's Settings choose its engine (This PC) or show its model and Set up or
-/// Switch there. With nothing on, reading is off. Then Compare them. Automation IDs: <c>ReadingNow</c>, <c>ReadingLast</c>, the
+/// with the same martlet-host flow as every role and reached through its gateway. The role runs one of its models
+/// (<see cref="OptionalExtras.ReadingModels"/>): PP-OCRv5 mobile on the processor (recommended) or on an NVIDIA graphics card,
+/// PP-OCRv5 server on an NVIDIA graphics card, or RapidOCR on the processor. A member's Settings choose its engine (This PC) or
+/// show its model and Set up or Switch there. With nothing on, reading is off. Then Compare them. Automation IDs: <c>ReadingNow</c>, <c>ReadingEvery</c> (Read
+/// the screen: how often, talk-preferences.json's ReadEveryMs, shared as part of how you talk), <c>ReadingEveryStatus</c>,
+/// <c>ReadingLast</c>, the
 /// list's <c>Pool-reading-...</c>, <c>ReadingEngine-&lt;windows-ocr|ocr&gt;</c>, <c>ReadingWindowsState</c>,
-/// <c>ReadingModel-&lt;place&gt;-&lt;model&gt;</c> (place: this-pc or the host; model: ppocrv5-mobile, ppocrv5-server or
+/// <c>ReadingModel-&lt;place&gt;-&lt;model&gt;</c> (place: this-pc or the host; model: ppocrv5-mobile, ppocrv5-mobile-gpu,
+/// ppocrv5-server or
 /// rapidocr-ppocrv4), <c>ReadingModelNote-&lt;place&gt;</c>, <c>ReadingHostState-&lt;place&gt;</c>, <c>ReadingSetUp-&lt;place&gt;</c>,
 /// <c>ReadingSwitch-&lt;place&gt;</c>, <c>PickerCompare-Reading</c>, <c>ReadingTest</c>, <c>ReadingTestState</c> and
 /// <c>ReadingTestText</c>.
@@ -82,11 +85,28 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(text, "ReadingTestText");
         var readNow = list.NoneOn ? null : PageButton("Read my screen now", () => ReadScreenNowAsync().Forget(), id: "ReadingTest");
         if (readNow is not null) readNow.IsEnabled = !readingTesting;
+        var every = new ComboBox
+        {
+            Width = 240, ItemsSource = ReadingEveryNames,
+            SelectedIndex = Math.Max(0, ScreenReadPace.ChoicesMs.ToList().IndexOf(ScreenReadPace.Normalize(Talk.ReadEveryMs)))
+        };
+        AutomationProperties.SetName(every, "How often Martlet reads the text on your screen while it watches");
+        AutomationProperties.SetAutomationId(every, "ReadingEvery");
+        every.SelectionChanged += (_, _) =>
+        {
+            if (every.SelectedIndex >= 0 && ScreenReadPace.ChoicesMs[every.SelectedIndex] is var ms && ms != Talk.ReadEveryMs)
+                SaveTalk(Talk with { ReadEveryMs = ms }, render: true);
+        };
+        var everyRow = Labeled("Read the screen", every);
+        everyRow.Margin = new Thickness(0, 10, 0, 0);
+        var everyNote = Note(ReadingEveryText(Talk.ReadEveryMs), new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(everyNote, "ReadingEveryStatus");
         page.Children.Add(Card(Heading("Now"), now,
-            HelpTip.Explain("While Martlet watches your screen, it reads the text on each changed screenshot, off to the side, so replies " +
-                "never wait for it. New text (a score, \"Victory\", a new message) makes a look more likely, and each look gets the " +
-                "text it read. What you type or say never waits for it. The text is never kept in the conversation.",
-                new Thickness(0, 4, 0, 0), "Reading", "reading"), last, test, text, Row(readNow)));
+            HelpTip.Explain("While Martlet watches your screen, it takes a full-size picture for reading as often as you choose and " +
+                "reads it when it changed, off to the side, so replies never wait for it. New text (a score, \"Victory\", a new " +
+                "message) makes a look more likely, and each look gets the text it read. What you type or say never waits for it. " +
+                "The text is never kept in the conversation.",
+                new Thickness(0, 4, 0, 0), "Reading", "reading"), everyRow, everyNote, last, test, text, Row(readNow)));
 
         page.Children.Add(PoolListCard(new PoolListOptions
         {
@@ -120,6 +140,22 @@ public partial class MainWindow
         if (on.Count == 0) return $"Off. {OptionalExtras.OffMeans(CompanionTab.Reading)}.";
         return $"Martlet reads the text on your screen with {ReadingPool.Describe(on[0])} while it watches" +
             (on.Count > 1 ? $"; when that one is busy, the next of the {on.Count} in the list reads." : ".");
+    }
+
+    // Companion › Reading › Read the screen, in the order of ScreenReadPace.ChoicesMs.
+    private static readonly string[] ReadingEveryNames =
+        ["Twice a second", "Every second", "Every 2 seconds", "Every 3 seconds (recommended)", "Every 5 seconds", "Every 10 seconds"];
+
+    /// <summary>What Companion › Reading › Read the screen means, in words.</summary>
+    internal static string ReadingEveryText(int milliseconds)
+    {
+        var ms = ScreenReadPace.Normalize(milliseconds);
+        var pace = $"{ScreenReadPace.Describe(ms)}, Martlet takes a full-size picture of your screen and reads it when it changed " +
+            $"(a screen that stays the same is read again after {ScreenReadPace.Refresh.TotalSeconds:0} seconds). A read that takes " +
+            "longer sets the pace: one read at a time.";
+        return ms < ScreenReadPace.DefaultMs
+            ? pace + " Reading this often uses more of the processor or graphics card that reads; a graphics card in your Reading list keeps up best."
+            : pace;
     }
 
     private async Task CheckWindowsReadingAsync()
@@ -159,7 +195,7 @@ public partial class MainWindow
             var check = hostChecks.GetValueOrDefault(host.HostId);
             if (check?.Offers?.TryGetValue(HostRoles.Ocr, out var offer) == true)
             {
-                parts.Add("runs " + (OptionalExtras.ReadingModelOf(offer)?.Name ?? (string.IsNullOrEmpty(offer) ? "its reader" : offer)));
+                parts.Add("runs " + (ReadingRunning(member, offer)?.Name ?? (string.IsNullOrEmpty(offer) ? "its reader" : offer)));
                 if (OptionalExtras.ReadingModelOf(member.Setting(PoolSettingKeys.Model)) is { } wanted && wanted.Model != offer)
                     parts.Add($"its setting is {wanted.Name}: Switch in Settings");
             }
@@ -208,6 +244,11 @@ public partial class MainWindow
         return stack;
     }
 
+    /// <summary>The Reading role's model a member's computer runs: the member's saved model (with where it runs) when the computer
+    /// runs that model, else the model the computer offers (its offer names only the model).</summary>
+    private static OptionalExtras.ReadingRoleModel? ReadingRunning(PoolMember member, string? offer) =>
+        OptionalExtras.ReadingModelOf(member.Setting(PoolSettingKeys.Model)) is { } saved && saved.Model == offer ? saved : OptionalExtras.ReadingModelOf(offer);
+
     /// <summary>The Reading role's settings of a member: the model pills (choosing one only shows it), the model's note, where
     /// it stands on that computer, and Set up there (or Switch to the picked model).</summary>
     private List<UIElement> ReadingRolePanel(PoolMember member)
@@ -218,12 +259,14 @@ public partial class MainWindow
         var nvidia = target is not null && HardwareStore?.Find(target.HostId) is { } report
             ? report.Gpus.Any(g => g.IsNvidia) && report.NvidiaContainers != "no"
             : onThisPc && !ReferenceEquals(machine, MachineInfo.Unknown) ? machine.Gpus.Any(g => g.IsNvidia) : (bool?)null;
+        var running = ReadingRunning(member, offer);
         var chosen = OptionalExtras.ReadingModelOf(readingModels.GetValueOrDefault(place)) ?? OptionalExtras.ReadingModelOf(member.Setting(PoolSettingKeys.Model)) ??
-            OptionalExtras.ReadingModelOf(offer) ?? OptionalExtras.ReadingModels[0];
+            running ?? OptionalExtras.ReadingModels[0];
         if (chosen.NeedsNvidia && nvidia == false) chosen = OptionalExtras.ReadingModels[0];
         var stack = new List<UIElement>();
 
-        // The model: PP-OCRv5 mobile (recommended), PP-OCRv5 server (an NVIDIA graphics card only) or RapidOCR.
+        // The model: PP-OCRv5 mobile (recommended) on the processor or an NVIDIA graphics card, PP-OCRv5 server (an NVIDIA
+        // graphics card only) or RapidOCR.
         var models = new WrapPanel { Margin = new Thickness(0, 4, 0, 2) };
         foreach (var model in OptionalExtras.ReadingModels)
         {
@@ -231,7 +274,7 @@ public partial class MainWindow
             var pill = new RadioButton { Content = label, GroupName = "ReadingModel-" + place, IsChecked = model == chosen, IsEnabled = readingPending is null };
             pill.SetResourceReference(StyleProperty, "FilterPill");
             AutomationProperties.SetName(pill, $"{label} on {where}");
-            AutomationProperties.SetAutomationId(pill, $"ReadingModel-{place}-{model.Model}");
+            AutomationProperties.SetAutomationId(pill, $"ReadingModel-{place}-{model.Key}");
             if (model.NeedsNvidia && nvidia == false)
             {
                 var why = $"Needs an NVIDIA graphics card; {where} has none.";
@@ -242,17 +285,20 @@ public partial class MainWindow
             }
             pill.Checked += (_, _) =>
             {
-                if (readingModels.GetValueOrDefault(place) == model.Model) return;
-                readingModels[place] = model.Model;
+                if (readingModels.GetValueOrDefault(place) == model.Key) return;
+                readingModels[place] = model.Key;
                 RenderTab();
             };
             models.Children.Add(pill);
         }
         stack.Add(models);
-        var modelNote = Note(chosen.Model switch
+        var modelNote = Note(chosen.Key switch
         {
             "ppocrv5-mobile" => "PP-OCRv5 mobile runs on the processor, so it never takes the graphics card from the voice or thinking. " +
                 $"It reads a 1920 x 1080 screenshot in about 2 s and a 4K one in about 4 s, and it read every small line on a 4K screen. Download: {chosen.Download}.",
+            "ppocrv5-mobile-gpu" => "PP-OCRv5 mobile on an NVIDIA graphics card (driver 580 or newer): as accurate as on the processor, " +
+                "in much less time, so Martlet can read your screen more often. It shares the card with the voice and thinking " +
+                $"there. Download: {chosen.Download}.",
             "ppocrv5-server" => "PP-OCRv5 server is the most accurate model. It runs on an NVIDIA graphics card (driver 580 or newer) " +
                 $"beside the voice and thinking; on a processor it takes about a minute a screenshot. Download: {chosen.Download}.",
             _ => $"RapidOCR (PP-OCRv4) runs on the processor and is the smallest, but it misses more small text than PP-OCRv5. Download: {chosen.Download}."
@@ -261,8 +307,8 @@ public partial class MainWindow
         stack.Add(modelNote);
 
         var ready = target is not null && Offers(target, HostRoles.Ocr);
-        var runs = OptionalExtras.ReadingModelOf(offer)?.Name ?? (string.IsNullOrEmpty(offer) ? "its reader" : offer);
-        var other = ready && !string.IsNullOrEmpty(offer) && offer != chosen.Model;
+        var runs = running?.Name ?? (string.IsNullOrEmpty(offer) ? "its reader" : offer);
+        var other = ready && !string.IsNullOrEmpty(offer) && (running?.Key ?? offer) != chosen.Key;
         var pending = readingPending == place;
         var cannot = ready || onThisPc ? null
             : target is null ? $"{where} isn't paired with this PC."
@@ -372,13 +418,13 @@ public partial class MainWindow
         SaveReadingList(list =>
         {
             var members = list.Members.Select(m => hostId is null ? m.Kind == PoolMemberKind.ThisPc
-                    ? m.WithSetting(PoolSettingKeys.Engine, ReadingPool.Role).WithSetting(PoolSettingKeys.Model, model.Model) : m
-                : ReadingPool.HostOf(m, own) == hostId ? m.WithSetting(PoolSettingKeys.Model, model.Model) : m).ToList();
+                    ? m.WithSetting(PoolSettingKeys.Engine, ReadingPool.Role).WithSetting(PoolSettingKeys.Model, model.Key) : m
+                : ReadingPool.HostOf(m, own) == hostId ? m.WithSetting(PoolSettingKeys.Model, model.Key) : m).ToList();
             var next = list with { Members = members };
             // Set up from Devices or another page: the place joins the list at its end.
             if (members.All(m => hostId is null ? m.Kind != PoolMemberKind.ThisPc : ReadingPool.HostOf(m, own) != hostId))
-                next = next.With(hostId is null ? ReadingPool.ThisPcRole().WithSetting(PoolSettingKeys.Model, model.Model)
-                    : PoolMember.Computer(hostId).WithSetting(PoolSettingKeys.Model, model.Model));
+                next = next.With(hostId is null ? ReadingPool.ThisPcRole().WithSetting(PoolSettingKeys.Model, model.Key)
+                    : PoolMember.Computer(hostId).WithSetting(PoolSettingKeys.Model, model.Key));
             return next;
         }, $"Reading is ready on {where} with {model.Name}.");
     }

@@ -9,8 +9,9 @@ Set it up in **Companion › Reading**, an optional extra. The page lists the
 places that read your screen, in order: this PC's [Reading list](#the-reading-pool).
 The list stays on this PC (`pools-local.json` in Martlet's data folder).
 
-The page has the standard order: **Now** (what Martlet reads with, the newest
-read and **Read my screen now**), then *Where it reads* (the list), then
+The page has the standard order: **Now** (what Martlet reads with, **Read the
+screen**: how often it reads, the newest read and **Read my screen now**), then
+*Where it reads* (the list), then
 **Compare them**. Compare them shows Windows OCR and the Reading role side by
 side: where it runs, the download, the read time, the processor threads, the
 languages, how it reads game fonts, the cost and where screenshots go.
@@ -32,19 +33,24 @@ recognition. Most languages include it. If Windows has none, This PC's
 settings tell you what to add in Windows Settings › Time & language ›
 Language & region, and the next member of the list reads instead.
 
-The Reading role is often better with game fonts. It has three models:
+The Reading role is often better with game fonts. It has these models:
 
 | Model | Where it runs | Download | Read time (24-thread processor) | Accuracy on a drawn 4K desktop |
 | --- | --- | --- | --- | --- |
 | **PP-OCRv5 mobile** (recommended) | The processor | About 700 MB | About 2 s for 1920 x 1080, 4 s for 4K | All 192 lines |
+| **PP-OCRv5 mobile on the graphics card** | An NVIDIA graphics card (driver 580 or newer) | About 3.1 GB | Not measured on a card; much less than on a processor | All 192 lines (the same model) |
 | **PP-OCRv5 server** | An NVIDIA graphics card (driver 580 or newer) | About 3.1 GB | Not measured on a card; about a minute on a processor | The most accurate |
 | **RapidOCR** (PP-OCRv4) | The processor | About 200 MB | About 1 to 3 s | 112 of 192 lines |
 
 Windows OCR read 145 of the same 192 lines. PP-OCRv5 reads Chinese, English
 and Japanese. RapidOCR reads Chinese and English.
-The server model is for an NVIDIA graphics card only. On a processor, it is too
-slow for the gateway's 15 s limit, so the page disables it on a computer without
-one.
+The models that use a graphics card are for an NVIDIA graphics card only. The
+page disables them on a computer without one. On a processor, the server model
+is too slow for the gateway's 15 s limit. A graphics card is always optional:
+the processor models and Windows OCR stay available. To keep a processor
+fallback, put the computer with the graphics card first in the list and This
+PC with Windows OCR after it. When the first is busy or doesn't answer, the
+next one reads at once.
 
 To set up the Reading role on a computer:
 
@@ -105,26 +111,38 @@ and the Devices card's status line say when a read went past the first member.
 
 ## What Martlet does with the text
 
-1. Martlet captures the screen every 3 seconds while it watches
-   ([Watch my screen](SCREEN_COMMENTARY.md)).
-2. When the picture changed, or 9 seconds passed, Martlet reads the newest
-   screenshot. It does one read at a time, off the UI thread and away from any
-   reply. Nothing waits for a read.
+1. Martlet reads the screen at its own pace while it watches
+   ([Watch my screen](SCREEN_COMMENTARY.md)), apart from the looks'
+   screenshots (one every 3 seconds). **Read the screen** on Companion ›
+   Reading sets the pace: twice a second, every second, every 2, 3 (the
+   default), 5 or 10 seconds. The choice is part of how you talk, so it is the
+   same on all your computers (`talk-preferences.json`'s `ReadEveryMs`).
+2. At that pace, Martlet takes a full-size picture of the screen. It reads the
+   picture when it changed since the last read, or when 9 seconds passed. It
+   does one read at a time, off the UI thread and away from any reply, so a
+   read that takes longer than the pace sets the pace. Nothing waits for a
+   read. Reading more often finds new text sooner. It also uses more of the
+   processor or graphics card that reads, so a graphics card in your Reading
+   list keeps up best at twice a second.
 3. Martlet reads the screen at full size (at most 8192 pixels on the long
    edge). The vision model's look is downscaled to at most 1024 pixels for each
    monitor, and that makes normal 12-pixel text about 6 pixels high. OCR cannot
-   read text that small. So for each read, Martlet copies the same screen again
-   at full size, reads that copy and then clears it. In a test on a drawn
+   read text that small. So for each read, Martlet copies the screen at full
+   size, reads that copy and then clears it. In a test on a drawn
    1920 x 1080 desktop with 108 lines of 12-pixel text, Windows OCR read 102
    lines at full size in 138 ms, and no lines at 1024 x 576.
-4. Martlet compares the words with the last read. New text makes a look more
-   likely, even when the picture barely changed. The same words add nothing.
+4. Martlet compares the words with the text it saw at the look before. New
+   text makes a look more likely, even when the picture barely changed. The
+   same words add nothing. Reading more often does not make looks more likely.
 5. When Martlet takes a look on its own, the newest text (at most 10 seconds
    old) goes at the end of that look's message, after the glance prompt. The
    prompt is **Text on screen** on Companion › Prompts. Empty it to send no text.
    At most 60 lines and 1,500 characters go, in reading order.
 6. The conversation keeps only the look's short `[Screen]` line, never the text
    that was read.
+
+Companion › Reading's **Now** card shows the newest read: the lines, the
+engine, the read time and how long after the read before it started.
 
 Rules that keep conversations fast:
 
@@ -153,5 +171,7 @@ talk window's vision tooltip also shows the newest read while you watch.
 The MCP tool `reading_check` reads this PC's Reading list (`pool`) and reads a drawn test picture
 with known text through Windows OCR. It also reads a drawn 1920 x 1080 desktop
 of small text at full size and at 1024 x 576, to show why Martlet reads at full
-size, and a drawn 4K desktop. With `endpoint` it also sends the same pictures to
+size, and a drawn 4K desktop. With `dataDirectory`, `pace` gives the saved
+**Read the screen** choice. `paceCheck` runs the production read pace for each
+choice over a simulated minute. With `endpoint` it also sends the same pictures to
 a Reading worker on loopback. See [MCP](MCP.md#reading).

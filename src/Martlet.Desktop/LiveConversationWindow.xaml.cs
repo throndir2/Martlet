@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Reading;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
 using Martlet.Providers;
@@ -177,11 +178,14 @@ public partial class LiveConversationWindow : ThemedWindow
     // the last look went (lookFailed: shown on the line too) and what wanted your attention go in its tooltip. Checks every 3 s
     // never go into the history.
     private string? sight, lookNote, waitNote, captureNote, visionProblem, attentionNote;
-    // Companion › Reading: reads the text on each changed screenshot of the screen (never a camera) off the UI thread; what it
-    // read last (or why it couldn't) goes in the vision line's tooltip and the newest text goes with a glance. readingFile: when
-    // reading.json was written, so a new choice takes effect at the next capture.
+    // Companion › Reading: reads the text on the screen (never a camera) off the UI thread at its own pace (Read the screen); what
+    // it read last (or why it couldn't) goes in the vision line's tooltip and the newest text goes with a glance. readingFile:
+    // when the Reading list was written, so a new list takes effect at once (looked at no more than once a capture tick,
+    // readingChecked). fedRead: the read whose text change the pacer heard of last.
     private ScreenReader? reader;
     private DateTime readingFile;
+    private long readingChecked;
+    private ScreenRead? fedRead;
     private string? readNote;
     // Companion › Vision › Screen summary over time: the recent pictures that changed and the background summaries of them.
     private readonly ScreenDigester digest;
@@ -2722,8 +2726,10 @@ public partial class LiveConversationWindow : ThemedWindow
         reader?.Dispose();
         reader = null;
         readNote = null;
+        fedRead = null;
         var directory = controller.DataDirectory;
         readingFile = ReadingWritten(directory);
+        readingChecked = clock.GetTimestamp();
         if (watchSource.IsScreen) reader = ScreenReader.For(directory, clock);
     }
 
@@ -2734,14 +2740,21 @@ public partial class LiveConversationWindow : ThemedWindow
         catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { return default; }
     }
 
-    /// <summary>Reads the newest screenshot when Companion › Reading's reader is free and the picture changed (or a while
-    /// passed): the same look again at full size, off the UI thread, because the downscaled look is too small for OCR. The
-    /// read's text change feeds the pacer once it is done; nothing waits for it.</summary>
-    private void ReadScreen(ScreenFrame frame)
+    /// <summary>Runs on the UI timer while Martlet watches the screen: when Companion › Reading's reader is free and its pace
+    /// (Read the screen) allows, it takes the screen at full size off the UI thread, because a look's downscaled picture is too
+    /// small for OCR, and reads it when it changed (or a while passed). Nothing waits for it.</summary>
+    private void ReadScreen()
     {
-        if (ReadingWritten(controller.DataDirectory) != readingFile) StartReading();
+        if (!watchSource.IsScreen) return;
+        if (clock.GetElapsedTime(readingChecked) >= ScreenCommentaryPacer.Tick)
+        {
+            readingChecked = clock.GetTimestamp();
+            if (ReadingWritten(controller.DataDirectory) != readingFile) StartReading();
+        }
+        if (reader is null) return;
+        reader.Every = TimeSpan.FromMilliseconds(ScreenReadPace.Normalize(preferences.ReadEveryMs));
         var scope = watchSource.Scope;
-        if (reader?.Offer(frame, () => glancer.CaptureText(scope).Frame) is not { } reading) return;
+        if (reader.Offer(() => glancer.CaptureText(scope).Frame) is not { } reading) return;
         ReadDoneAsync(reader, reading).Forget();
     }
 
@@ -2749,14 +2762,19 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         var read = await reading;
         if (closed || !watching || pacer is null || !ReferenceEquals(from, reader)) return;
-        if (read is not null)
-        {
-            pacer.ObserveText(read.Change);
-            readNote = read.Describe();
-        }
+        if (read is not null) readNote = read.Describe();
         else if (from.Problem is { } problem) readNote = problem;
         else return;
         ScreenReader.LastReport = readNote;
+    }
+
+    /// <summary>At each capture, how much the text on the screen changed since the pacer last heard (the newest read against the
+    /// one it heard of before), so reading more often doesn't make looks more likely.</summary>
+    private void ObserveReadText()
+    {
+        if (pacer is null || reader?.Latest is not { } newest || ReferenceEquals(newest, fedRead)) return;
+        pacer.ObserveText(fedRead is null ? newest.Change : ScreenText.Change(fedRead.Text, newest.Text));
+        fedRead = newest;
     }
 
     /// <summary>The text Companion › Reading read on the screen in the last <see cref="SeenFreshness"/>, for a glance.</summary>
@@ -2863,6 +2881,8 @@ public partial class LiveConversationWindow : ThemedWindow
             DropAttentionFrame();
             waitNote = null;
         }
+        // Companion › Reading reads the screen at its own pace (Read the screen), apart from the looks' screenshots.
+        ReadScreen();
         if (glancing || clock.GetTimestamp() < nextGlance) return;
         nextGlance = clock.GetTimestamp() + (long)(ScreenCommentaryPacer.Tick.TotalSeconds * clock.TimestampFrequency);
         GlanceAsync().Forget();
@@ -2924,6 +2944,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 : !result.BehindMartlet ? $"Watching {source.Label}." : "Watching the window behind Martlet.";
             if (!twinkling) Motion.Blink(VisionDot);
             pacer.ObserveFrame(frame.Change);
+            ObserveReadText();
             var shot = KeyFor(frame);
             var changed = shot.Version != latestShot?.Version;
             DropLatest();
@@ -2932,7 +2953,6 @@ public partial class LiveConversationWindow : ThemedWindow
             latestShot = shot;
             digest.Observe(frame.Width, frame.Height, frame.Title, frame.Change, ReadText(), frame.CopyPixels,
                 ActiveApp.Label(frame.App, frame.FullScreen));
-            if (source.IsScreen) ReadScreen(frame);
             // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
             if (source.IsScreen) Gaze?.Observe(frame);
             // With an image model of its own, a changed picture is described ahead of time while you talk with Martlet (paced).

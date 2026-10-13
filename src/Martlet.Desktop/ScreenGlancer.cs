@@ -269,7 +269,8 @@ internal sealed class ScreenGlancer : IScreenGlancer
     }
 
     // The black check, painting over Martlet's own and private windows, and the change score. The program in front and whether
-    // it fills its monitor go with the picture. A text picture keeps the looks' own change score and gaze grid as they were.
+    // it fills its monitor go with the picture. A text picture keeps the looks' own change score and gaze grid as they were; its
+    // grey thumbnail tells reading whether it changed since the last read.
     private GlanceResult Finish(byte[] pixels, int width, int height, NativeRect area, string title, uint own, nint target,
         string? note, bool protectedContent, bool behind, int monitors, (string Name, bool FullScreen) app, bool text)
     {
@@ -285,11 +286,11 @@ internal sealed class ScreenGlancer : IScreenGlancer
             Array.Clear(pixels);
             return new(null, GlanceSkip.MartletInFront, note, BehindMartlet: behind, Monitors: monitors);
         }
+        signature = Signature(pixels, width, height);
         if (text)
             return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, 0,
-                new ScreenRect(area.Left, area.Top, area.Width, area.Height), app: app.Name, fullScreen: app.FullScreen),
+                new ScreenRect(area.Left, area.Top, area.Width, area.Height), app: app.Name, fullScreen: app.FullScreen, signature: signature),
                 GlanceSkip.None, note, protectedContent, behind, monitors);
-        signature = Signature(pixels, width, height);
         var change = previous is null ? 1.0 : signature.Zip(previous, (a, b) => Math.Abs(a - b)).Average() / 255.0;
         previous = signature;
         var grid = CharacterGaze.Grid(pixels, width, height);
