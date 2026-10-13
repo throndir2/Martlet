@@ -128,10 +128,12 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         return new(answer.Answer, answer.Failure, true);
     }
 
-    /// <summary>Runs one helper job. <paramref name="poolInput"/> is the request a pool member gets (made only when one can
-    /// take it; a request too large for it falls back), with <paramref name="tools"/> it may call (null: none);
-    /// <paramref name="fallback"/> asks the conversation's own Thinking model, after the reply finished speaking and while no
-    /// other reply runs.</summary>
+    /// <summary>Runs one helper job: a Thinking pool member first, then <paramref name="fallback"/>. For a job with a picture this is
+    /// <see cref="SenseJobRouting"/>'s order for <see cref="SenseJobKind.HelperPicture"/> (the pool, then what the fallback picks
+    /// from the same decision: the image model or Thinking). <paramref name="poolInput"/> is the request a pool member gets (made
+    /// only when one can take it; a request too large for it falls back), with <paramref name="tools"/> it may call (null: none);
+    /// <paramref name="fallback"/> asks the conversation's own Thinking model (or the image model), after the reply finished
+    /// speaking and while no other reply runs.</summary>
     internal async Task<HelperResult> RunAsync(HelperJobKind kind, string purpose, HelperCapability capability,
         Func<BoundedTextInput> poolInput, Func<CancellationToken, Task<(string? Answer, string? Failure)>> fallback,
         CancellationToken token, HelperTools? tools = null)

@@ -16,9 +16,10 @@ namespace Martlet.Desktop;
 /// shared pool list (<see cref="PoolListCard"/>, <c>Pool-vision-...</c> and <c>Pool-hearing-...</c>) with each member's model in
 /// its settings. A member is Ollama on this PC (this-pc), one of your computers (its Thinking pool role or its Ollama), one of its
 /// graphics cards, a server you run (an address) or a cloud provider with its model and key. The first one that takes the kind
-/// puts what it sees or hears into words for Thinking; the next ones take a job when it is busy. An empty list: the text model
-/// takes the pictures or recordings itself. Pictures and recordings go to a cloud provider only with the owner's agreement, and
-/// to a server outside this PC only when the owner allows it in its settings.</summary>
+/// puts what it sees or hears into words for Thinking; the next ones take a job when it is busy. Which model takes each job with
+/// a picture or a recording, also with an empty list, is <see cref="SenseJobRouting"/>'s decision; the page shows it
+/// (<see cref="SavedSenseDecision"/>). Pictures and recordings go to a cloud provider only with the owner's agreement, and to a
+/// server outside this PC only when the owner allows it in its settings.</summary>
 public partial class MainWindow
 {
     /// <summary>The sense pages whose cloud form is open.</summary>
@@ -30,6 +31,55 @@ public partial class MainWindow
 
     /// <summary>The choices <see cref="SenseRouting"/> reads, from the lists.</summary>
     internal SenseModels SavedSenses() => SavedSenseSetup().Senses;
+
+    /// <summary>Which model takes <paramref name="job"/> with the saved setup (<see cref="SenseJobRouting.Decide"/>), as the
+    /// conversation decides it: the pool member from the conversation's own Thinking pool (the board its jobs go to).</summary>
+    internal SenseDecision SavedSenseDecision(SenseJobKind job)
+    {
+        var thinking = homeSettings.ThinkingRoute();
+        var abilities = SavedModelAbilities();
+        var senses = SavedSenses();
+        conversation?.ReadThinkingPoolOnce();
+        var voice = true;
+        if (job == SenseJobKind.ReplyVoice)
+        {
+            var audio = SenseRouting.For(SenseKind.Audio, senses, thinking, abilities);
+            voice = (audio.Model is { } own ? Talk.HearVoiceFor(VoiceNotes.StaysOnThisPc(own)) : Talk.HearVoiceFor(thinking)).On;
+        }
+        var row = SenseJobRouting.Row(job);
+        return SenseDecisionFor(job, senses, thinking, abilities,
+            conversation is null && row.PoolKind is not null ? ThinkingPoolSettings.Load(store?.DataDirectory) : new(), conversation?.ThinkingPool,
+            row.Order.Contains(SenseTaker.ThisPc) && Martlet.Sherpa.SoundTagger.Included(), voice);
+    }
+
+    /// <summary>Which model takes <paramref name="job"/>: the reply's route from <paramref name="senses"/> and Thinking, the pool member
+    /// from <paramref name="live"/> (the conversation's Thinking pool) or, without one, the first member of the saved pool that takes
+    /// the job (<see cref="SensePoolUsers"/>, the job board's rules), and whether the sound tagger is here (<paramref name="thisPc"/>).</summary>
+    internal static SenseDecision SenseDecisionFor(SenseJobKind job, SenseModels senses, SetupRoute? thinking, ModelAbilities? abilities,
+        ThinkingPoolSettings pool, DesktopThinkingPool? live, bool thisPc, bool voiceAllowed = true)
+    {
+        var row = SenseJobRouting.Row(job);
+        var inputs = SenseJobInputs.For(row.Kind, senses, thinking, abilities) with { ThisPc = thisPc, VoiceAllowed = voiceAllowed };
+        if (row.PoolKind is { } kind)
+        {
+            if (live?.Find(kind, row.Needs) is { } place)
+                inputs = inputs with { PoolKey = place.Id, PoolName = SenseJobInputs.Member(place.Name, place.Model) };
+            else if (live is null && SensePoolUsers.First(row, SensePoolUsers.For(row.Kind, pool, abilities)) is { } user)
+                inputs = inputs with
+                {
+                    PoolKey = user.Member.Key, PoolName = SenseJobInputs.Member(user.Member.Computer(thinking), user.Member.Separate ? user.Member.ModelId : null)
+                };
+        }
+        return SenseJobRouting.Decide(job, inputs);
+    }
+
+    /// <summary>What happens to each picture (or recording) job while nothing in Companion › Vision's (or Hearing's) list is on, from
+    /// the decisions (<see cref="SenseJobRouting.Instead"/>); null for another area.</summary>
+    internal string? SenseInstead(PoolArea area) =>
+        area.Id == PoolAreas.Vision.Id || area.Id == PoolAreas.Hearing.Id
+            ? SenseJobRouting.Instead(SenseJobRouting.Of(area.Id == PoolAreas.Vision.Id ? SenseKind.Image : SenseKind.Audio)
+                .Select(row => SavedSenseDecision(row.Job)))
+            : null;
 
     /// <summary>The list card of <paramref name="kind"/>'s models.</summary>
     private Border SensePoolCard(SenseKind kind)
@@ -53,17 +103,18 @@ public partial class MainWindow
             Heading = image ? "Image models" : "Audio models",
             Intro = image
                 ? "The models that look at pictures of your screen and camera and describe them in words for Thinking, in order. The " +
-                  "first one that sees takes the pictures; the next ones take a picture when it is busy or can't. Empty: Thinking's own " +
-                  "model takes the pictures itself (an omni model such as Gemma 4 E2B sees them). A reply never waits for an image model."
+                  "first one that sees takes the pictures; the next ones take a picture when it is busy or can't. Empty: the line " +
+                  "below says which model takes each picture instead. A reply never waits for an image model."
                 : "The models that hear the recordings of your voice and of what this PC plays and describe them in words for Thinking, " +
                   "in order. The first one that hears takes the recordings; the next ones take one when it is busy or can't. Empty: " +
-                  "Thinking's own model takes them itself. A reply never waits for an audio model.",
+                  "the line below says which model takes each recording instead. A reply never waits for an audio model.",
             Status = member => SenseMemberStatus(kind, member, SenseLists.Model(member, area, id => hosts.GetValueOrDefault(id), keys), chosen,
                 thinking, abilities, keys),
             Settings = member => SenseMemberSettings(kind, options, member, thinking, keys),
             NewMember = member => SenseNewMember(kind, member, thinking),
             AddCloud = () => SenseCloudAdd(kind, options, thinking),
             Also = () => SensePoolAlso(kind, thinking, abilities),
+            Instead = () => SenseInstead(area),
             Saved = (before, after) => SenseListSavedAsync(kind, before, after)
         };
         return PoolListCard(options);

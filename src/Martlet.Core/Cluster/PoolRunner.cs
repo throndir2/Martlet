@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Martlet.Core.Cluster;
 
 /// <summary>One try of a request on one stop (<see cref="PoolRunner{TStop}"/>): the stop's position in the order, how many
@@ -109,6 +111,20 @@ public sealed class PoolRunner<TStop>(string lane, Func<TStop, string> keyOf, Fu
         return run.Taken(queued);
     }
 
+    /// <summary>Streams one request from the first of <paramref name="stops"/> that takes it (see the class summary): a stop has
+    /// taken it when its first item arrives. <paramref name="start"/> starts it on one stop. When every stop is busy, the request
+    /// waits for the first to free, for <paramref name="wait"/> at most. <paramref name="taken"/> is called once, with the stop
+    /// and its try, when the first item arrives. Throws the last refusal when no stop took it.</summary>
+    public IAsyncEnumerable<T> StreamAsync<T>(IReadOnlyList<TStop> stops, Func<TStop, PoolTry, CancellationToken, IAsyncEnumerable<T>> start,
+        TimeSpan wait, Action<TStop, PoolTry>? taken, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(stops);
+        ArgumentNullException.ThrowIfNull(start);
+        var run = new Run(stops, keyOf, classify);
+        return queue.StreamAsync(lane, stops, keyOf, (stop, t) => run.Stream(stop, start, taken, t), classify, clock.GetUtcNow() + wait,
+            clock, token, priority);
+    }
+
     // One request's tries: the busy and unavailable counts, the busy stops' lines and the stop that took it. The queue tries one
     // stop at a time.
     private sealed class Run(IReadOnlyList<TStop> stops, Func<TStop, string> keyOf, Func<Exception, WorkRefusal> classify)
@@ -142,6 +158,37 @@ public sealed class PoolRunner<TStop>(string lane, Func<TStop, string> keyOf, Fu
                 var (stop, tried) = taken ?? throw new InvalidOperationException("No stop took the request.");
                 return new(result, stop, tried.Position, busy, unavailable, tried.Ahead);
             }
+        }
+
+        // One stop's stream: started at once, as WorkQueue asks for it; counted when it refuses before its first item, and
+        // taken when its first item arrives.
+        public IAsyncEnumerable<T> Stream<T>(TStop stop, Func<TStop, PoolTry, CancellationToken, IAsyncEnumerable<T>> start,
+            Action<TStop, PoolTry>? noted, CancellationToken token)
+        {
+            var tried = Begin(stop, null);
+            return Tracked(stop, tried, start(stop, tried, token), noted);
+        }
+
+        private async IAsyncEnumerable<T> Tracked<T>(TStop stop, PoolTry tried, IAsyncEnumerable<T> source, Action<TStop, PoolTry>? noted,
+            [EnumeratorCancellation] CancellationToken token = default)
+        {
+            var items = source.GetAsyncEnumerator(token);
+            try
+            {
+                bool first;
+                try { first = await items.MoveNextAsync().ConfigureAwait(false); }
+                catch (Exception error)
+                {
+                    Count(error);
+                    throw;
+                }
+                if (!first) yield break;
+                lock (gate) taken = (stop, tried);
+                noted?.Invoke(stop, tried);
+                yield return items.Current;
+                while (await items.MoveNextAsync().ConfigureAwait(false)) yield return items.Current;
+            }
+            finally { await items.DisposeAsync().ConfigureAwait(false); }
         }
 
         // The busy stops' lines, shortest first (the first in the order on a tie), at most count of them.
