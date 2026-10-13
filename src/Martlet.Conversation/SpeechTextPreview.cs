@@ -34,7 +34,7 @@ public static class SpeechTextPreview
         var acted = new List<ReplyTag>();
         var voiceTags = engine?.Tags ?? [];
         var stripper = new VoiceTagStripper(characterTags, controlTags: controlTags, droppedControl: controls.Add, voiceTags: voiceTags,
-            removed: tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); });
+            removed: tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); }, quietMarker: SpeechSegmenter.QuietTag);
         var shown = stripper.Push(reply) + stripper.Finish();
         return new(spoken, pieces.Count(p => p.Text is null && p.Cues is null or { Count: 0 }), shown, cues, controls, acted,
             ReplyTag.Note(acted));

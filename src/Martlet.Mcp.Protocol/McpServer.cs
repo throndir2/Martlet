@@ -511,7 +511,8 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                         "words; tag; character offset). Other spellings of a tag count as it ([nod] or *nods* for {nod}, (sighs) for [sigh]): " +
                         "acted lists what the reply's tags did (each tag as the character or engine spells it, its kind, name and the other " +
                         "spelling written) and note the line the talk window shows under the reply (\"Tone: happy. Sound: laugh. Emotes: " +
-                        "nod.\"). Synthesizes and contacts nothing.", new
+                        "nod.\"). A [pass] after words is dropped from what is shown and spoken; quiet says whether the reply stays " +
+                        "quiet as a [pass]. Synthesizes and contacts nothing.", new
         {
             text = new { type = "string" }, engine = new { type = "string" }, dataDirectory = new { type = "string" },
             characterTags = new { type = "array", items = new { type = "string" } }, persona = new { type = "string" },
@@ -4096,6 +4097,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             prompt = Martlet.Core.Settings.VoiceTags.Instructions(engine, prompts),
             persona = persona?.Name, breaks = Breaks(breaks),
             spoken = preview.Spoken, suppressedPieces = preview.SuppressedPieces, shown = preview.Shown,
+            quiet = Martlet.Conversation.StayQuiet.IsQuiet(preview.Shown),
             characterCues = preview.Cues.Select(c => new { piece = c.Piece, tag = c.Tag, offset = c.Offset }).ToArray(),
             acted = preview.Acted.Select(tag => new { tag = tag.Tag, kind = tag.Kind.ToString(), name = tag.Name, written = tag.Written }).ToArray(),
             note = preview.Note

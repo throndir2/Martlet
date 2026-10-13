@@ -22,6 +22,8 @@ internal sealed record SpeechPiece(string? Text, IReadOnlyList<SpeechCue>? Cues 
 // tag (VoiceTags.Spellings: [nod] or *nods* for {nod}, (sighs) for [sigh]) counts as that tag, written as the engine or the
 // list spells it.
 // controlTags: tags that tell Martlet something about the reply ([chattiness:quiet]): dropped from the words, never a cue.
+// The stay-quiet marker (QuietTag, "[pass]") after words is dropped where it is, so "Okay [pass]" is still said; before any
+// words it is ordinary bracketed text, as before (a reply that starts with it is a pass and isn't said).
 // breaks: the persona's stops (Martlet.Core.Settings.SpeechBreaks). A stop that is off never ends a piece until the piece is
 // LongPiece characters long; then any sentence end ends it, so a piece stays short enough for the voice to say at once. A piece
 // of at most ShortEndingWords words (". Cutie!") joins the piece before it: each piece waits until more words than that follow
@@ -31,6 +33,8 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
     IReadOnlyList<string>? controlTags = null)
 {
     internal const int LongPiece = 100;
+    /// <summary>The stay-quiet marker as the model writes it.</summary>
+    internal const string QuietTag = "[" + StayQuiet.Marker + "]";
     private readonly bool periods = breaks?.Periods ?? true;
     private readonly bool questionMarks = breaks?.QuestionMarks ?? true;
     private readonly bool exclamationMarks = breaks?.ExclamationMarks ?? true;
@@ -38,10 +42,10 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
     private SpeechPiece? held;
     private readonly StringBuilder sentence = new();
     private readonly IReadOnlyList<VoiceTag> keep = tags ?? [];
-    private readonly VoiceTagSet known = VoiceTags.Recognized(tags, characterTags, controlTags);
+    private readonly VoiceTagSet known = VoiceTags.Recognized(tags, characterTags, [.. controlTags ?? [], QuietTag]);
     private readonly List<SpeechCue> cues = [];
     private readonly StringBuilder candidateTag = new();
-    private bool droppedTag;
+    private bool droppedTag, words;
     private bool pendingBoundary, fenced, suppressLine, atLineStart = true;
     private bool openingRun, markerAtLineStart, closingLine, closingWhitespace;
     private int markerRun, fenceLength, leadingSpaces, characters;
@@ -61,6 +65,16 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
                 if (known.Find(prefix) is { } whole)
                 {
                     candidateTag.Clear();
+                    // The marker after words is dropped where it is; before any words it is ordinary text, so its line stays
+                    // quiet as it always did.
+                    if (string.Equals(whole.Text, QuietTag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (words) droppedTag = true;
+                        else
+                            foreach (var replayed in prefix)
+                                foreach (var piece in Accept(replayed)) yield return piece;
+                        continue;
+                    }
                     foreach (var piece in AcceptTag(whole)) yield return piece;
                     continue;
                 }
@@ -178,6 +192,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
                 '|' or '\\' or '/' or ':' or '@' or '=' or '^' or '&' or '\t')
                 suppressLine = true;
             sentence.Append(c);
+            words |= !char.IsWhiteSpace(c);
             pendingBoundary = IsStop(c);
             // Enough words follow the waiting piece that they can't be a short ending to say with it.
             if (held is not null && MoreWords(sentence, shortEnding))

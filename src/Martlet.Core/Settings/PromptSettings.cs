@@ -167,7 +167,7 @@ public static class PromptCatalog
         "that song you asked for is ready, want to hear it?\"): the user's own words always come first, then whatever else is " +
         "worth a word right now. Never answer them one by one or list them. When the user talks to you, always answer them; " +
         "when the message holds none of their words and nothing in it is worth saying anything about, reply with exactly " +
-        "[{silent}].";
+        "[{silent}] and nothing else.";
 
     /// <summary>How a reply may use a notification it sees: its content shapes the heads-up, unless it looks personal.</summary>
     public const string NotificationContentRule =
