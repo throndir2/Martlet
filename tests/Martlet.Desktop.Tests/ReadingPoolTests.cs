@@ -149,8 +149,8 @@ public sealed class ReadingPoolTests : IDisposable
     public async Task Every_place_busy_gives_up_as_busy_after_the_wait()
     {
         Save(PoolMember.Computer("gpu-pc"), PoolMember.Computer("m3-host"));
-        // The wait starts before the first try encodes the JPEG, whose first use in a process can take seconds on a busy PC.
-        using (var warm = Reader((_, _, _) => Reads("rapidocr", "warm"), [])) await ReadAsync(warm);
+        // The JPEG is encoded before the wait starts (its first use in a process can take seconds on a busy PC), so the wait
+        // only covers the tries.
         List<string> tried = [];
         using var reader = Reader((_, _, _) => Refuses("job.busy"), tried, TimeSpan.FromMilliseconds(200));
 
