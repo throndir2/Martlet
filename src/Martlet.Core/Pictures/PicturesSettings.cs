@@ -16,7 +16,7 @@ public enum PicturePlace { Off, Host, ComfyUi, OpenRouter, NvidiaBuild }
 /// workflow exported with Export (API) (<see cref="PicturesSettings.WorkflowFile"/>).</summary>
 public enum PictureWorkflow { ZImageTurbo, Checkpoint, Custom }
 
-/// <summary>Companion › Pictures on this PC (pictures.json in the data folder; never shared, since which machine draws depends on
+/// <summary>Companion › Picture making on this PC (pictures.json in the data folder; never shared, since which machine draws depends on
 /// the computer you talk to). A cloud provider's own key is in Windows Credential Manager (<see cref="CredentialId"/>, a
 /// reference); without one it borrows Thinking's key for the same provider. A custom workflow is in pictures-workflow.json.</summary>
 public sealed record PicturesSettings
@@ -74,7 +74,7 @@ public sealed record PicturesSettings
     /// <summary>Where pictures are drawn, in words.</summary>
     public string Describe() => Place switch
     {
-        PicturePlace.Host => HostId is null ? "Martlet's Pictures role" : $"{HostId}'s Pictures role",
+        PicturePlace.Host => HostId is null ? "Martlet's Picture making role" : $"{HostId}'s Picture making role",
         PicturePlace.ComfyUi => $"ComfyUI at {Address}",
         PicturePlace.OpenRouter => $"OpenRouter ({Model})",
         PicturePlace.NvidiaBuild => $"NVIDIA Build ({Model})",

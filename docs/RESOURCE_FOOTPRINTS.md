@@ -25,7 +25,7 @@ string names what else is estimated.
 - **Graphics memory is not the same all the time.** A model in Ollama holds
   its weights, KV cache and compute buffers from the moment it loads, so its
   steady and peak are the same. PyTorch engines (the voices, Singing,
-  Pictures) load their weights first and then grow while they work: each
+  Picture making) load their weights first and then grow while they work: each
   request adds activations and buffers. PyTorch's allocator keeps freed memory
   for the next request unless the engine gives it back (Chatterbox only after
   it runs out; Singing between stages, and its worker reports
@@ -240,7 +240,7 @@ holds its own copy.
   0.30 GB, James 0.22 GB, Mark 0.32 GB, plus its TensorRT engine built on
   first start.
 
-### Singing and Pictures
+### Singing and Picture making
 
 | Option id | GPU (min card) | VRAM steady / peak | RAM | CPU | Disk | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -254,8 +254,8 @@ holds its own copy.
   ([Singing](SINGING.md)). Only while a song is made; the worker exits after
   five idle minutes, so steady use between songs is 0. Docker Desktop's WSL VM
   had 15.6 GB and was short of memory (RAM is an estimate).
-- **Pictures:** Z-Image Turbo bf16 files are 20,690,152,836 bytes
-  ([Pictures host](PICTURES_HOST.md)). ComfyUI runs `--lowvram`, so it fills
+- **Picture making:** Z-Image Turbo bf16 files are 20,690,152,836 bytes
+  ([Picture making host](PICTURES_HOST.md)). ComfyUI runs `--lowvram`, so it fills
   the card it has and offloads the rest (about 12 GB diffusion model and 8 GB
   text encoder) to system memory: bf16 wants 14-16 GB to stay on the card
   ([Thunder Compute guide](https://www.thundercompute.com/blog/z-image-turbo-comfyui)).
@@ -362,7 +362,7 @@ NVIDIA card (nvidia-smi denies access) and no Ollama, and no validation hosts
 are listed in `~\.martlet-dev\validation.json`. So every graphics card number
 above is either DIVA's earlier measurements (cited) or sourced/estimated:
 **NOT RUN** for Gemma 4 12B/26B, XTTS-v2, GPT-SoVITS and Audio2Face VRAM, the
-Live2D/VRM renderer, Pictures, host-role RAM and CPU, and Gemma on the
+Live2D/VRM renderer, Picture making, host-role RAM and CPU, and Gemma on the
 processor.
 
 ## How to re-measure

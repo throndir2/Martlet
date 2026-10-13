@@ -126,7 +126,7 @@ you when a better setup is available.
 | You need | |
 | --- | --- |
 | 🪟 **Windows** | Windows 10 (version 2004 or later) or Windows 11, 64-bit. Windows 11 on Arm PCs, such as Snapdragon X laptops, work through Windows' x64 emulation. |
-| 🎮 **Graphics card** | Optional. Any PC works with a cloud provider. A graphics card runs AI models on your own PC. Pictures, singing, Audio2Face and most cloned voices need an NVIDIA card, but Chatterbox Nano gives a cloned voice even on the processor. |
+| 🎮 **Graphics card** | Optional. Any PC works with a cloud provider. A graphics card runs AI models on your own PC. Picture making, singing, Audio2Face and most cloned voices need an NVIDIA card, but Chatterbox Nano gives a cloned voice even on the processor. |
 | 🌐 **Internet** | To download models and to use cloud services. With a setup on your own computers, your conversations stay on them. |
 | 💸 **Cost** | Martlet is free. Cloud providers can charge for use; Martlet walks you through free keys for NVIDIA Build and Google Gemini. |
 
@@ -406,7 +406,7 @@ the background while you keep talking.
 <details>
 <summary>Everything in <b>Creative side</b></summary>
 
-- **Pictures** with ComfyUI on your computers (Z-Image Turbo), your own ComfyUI, OpenRouter or NVIDIA Build.
+- **Picture making** with ComfyUI on your computers (Z-Image Turbo), your own ComfyUI, OpenRouter or NVIDIA Build.
 - **Songs**: she writes the lyrics and the music, sings in a voice you chose (with SoulX-Singer or VevoSing) and moves her lips while she sings.
 - **Web research**: she looks into a question in the background and writes a report.
 - Everything she makes waits for you in **Creations**. Ask her to sing a song again or to show you a picture.

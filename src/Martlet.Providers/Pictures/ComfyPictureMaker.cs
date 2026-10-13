@@ -35,8 +35,8 @@ public sealed class ComfyPictureMaker(IComfyApi api, PictureWorkflow workflow, s
         var state = status["state"]?.ToString();
         if (state is "not_provisioned") return PictureMakerAvailability.Unavailable($"{Where} hasn't finished downloading its picture model.");
         if (state is not "ready") return PictureMakerAvailability.Unavailable($"{Where} is still starting.");
-        if (workflow == PictureWorkflow.Custom && custom is null) return PictureMakerAvailability.Unavailable("Load your ComfyUI workflow in Companion › Pictures.");
-        if (workflow == PictureWorkflow.Checkpoint && checkpoint is null) return PictureMakerAvailability.Unavailable("Choose a checkpoint in Companion › Pictures.");
+        if (workflow == PictureWorkflow.Custom && custom is null) return PictureMakerAvailability.Unavailable("Load your ComfyUI workflow in Companion › Picture making.");
+        if (workflow == PictureWorkflow.Checkpoint && checkpoint is null) return PictureMakerAvailability.Unavailable("Choose a checkpoint in Companion › Picture making.");
         if (Missing(status) is { } missing) return PictureMakerAvailability.Unavailable(missing);
         return new(true, null, Where);
     }

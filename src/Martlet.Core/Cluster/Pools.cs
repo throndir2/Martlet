@@ -228,7 +228,7 @@ public static class PoolAreas
     /// custom workflow in the data directory). The ID, lane and host role stay "pictures": they are saved and sent to hosts.</summary>
     public static readonly PoolArea PictureMaking = new()
     {
-        Id = "pictures", Title = "Pictures", Page = "Companion › Pictures", HostRole = "pictures",
+        Id = "pictures", Title = "Picture making", Page = "Companion › Picture making", HostRole = "pictures",
         Kinds = [.. AllKinds.Where(k => k != PoolMemberKind.Gpu)], Shared = false
     };
     public static readonly PoolArea Singing = new()

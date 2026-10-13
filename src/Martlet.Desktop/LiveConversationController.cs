@@ -2998,7 +2998,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
-    /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
+    /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Picture making),
     /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation for the tools is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on, then reminders, call_on_discord and set_camera_background
@@ -3045,7 +3045,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             own.Add((songs[2], (call, token) => ValueTask.FromResult(StopSinging(call))));
             if (afterReply.Count == 0) guidance = Join(guidance, SongTools.Instructions(configured.Prompts));
         }
-        // draw_picture while pictures are set up (Companion › Pictures).
+        // draw_picture while pictures are set up (Companion › Picture making).
         if (configured.SupportsTools && dataDirectory is not null && PictureClient.IsSetUp(dataDirectory))
         {
             if (handedOff.Contains(PictureTools.DrawName)) afterReply.Add(PictureTools.DrawName);
@@ -3900,7 +3900,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     // ---------- pictures (draw_picture) ----------
 
-    /// <summary>draw_picture: starts the picture job where Companion › Pictures says and returns at once, telling the model to
+    /// <summary>draw_picture: starts the picture job where Companion › Picture making says and returns at once, telling the model to
     /// tell the user now unless it already did. The picture is kept as a creation and shown in the talk window when it's done.</summary>
     private ConversationToolResult DrawPicture(LiveConversationOperation operation, LiveConversationConfiguration configured, TextToolCall call)
     {
@@ -3926,7 +3926,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (maker is null)
         {
             tools?.Record(server, tool, "not started: pictures off", arguments.About, false);
-            return new(PictureTools.Unavailable("pictures aren't set up (Companion › Pictures)"), true);
+            return new(PictureTools.Unavailable("pictures aren't set up (Companion › Picture making)"), true);
         }
         var toldUser = operation is null || !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var author = new CreationAuthor
@@ -3954,7 +3954,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         CreationAuthor author, Func<Creation, CancellationToken, Task<string>>? then, CancellationToken token)
     {
         // The pictures computer is busy with this picture until it is drawn: no background think is placed there meanwhile. With
-        // more than one place in the Pictures list, the hold moves to the one that takes the picture (none for an address or a
+        // more than one place in the Picture making list, the hold moves to the one that takes the picture (none for an address or a
         // cloud provider).
         var planned = BackgroundDuties.Painter(dataDirectory);
         BackgroundPlaceLease? painter = planned is { } computer ? jobs.Places.Hold(computer, job.Id) : null;

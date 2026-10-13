@@ -180,7 +180,7 @@ public partial class MainWindow
         CompanionTab.Replies => "Replies",
         CompanionTab.CheckIns => "Check-ins",
         CompanionTab.Tools => "Tools",
-        CompanionTab.Pictures => "Pictures",
+        CompanionTab.Pictures => "Picture making",
         CompanionTab.Motion => "Motion",
         CompanionTab.SmartHome => "Smart home",
         CompanionTab.Discord => "Discord",
@@ -437,6 +437,7 @@ public partial class MainWindow
         var heading = new TextBlock { Text = TabTitle(section), Margin = new Thickness(0, 4, 0, 0) };
         heading.SetResourceReference(StyleProperty, "PageTitle");
         AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level1);
+        AutomationProperties.SetAutomationId(heading, "CompanionPageTitle");
         page.Children.Add(heading);
         var intro = Note(TabIntro(section), new Thickness(0, 4, 0, 18));
         AutomationProperties.SetAutomationId(intro, "CompanionIntro");

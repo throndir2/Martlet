@@ -1127,21 +1127,21 @@ Read my screen now (`ReadingTest`) captures the screen, so it needs
 screenshot it read, for example *(1920 x 1080 screenshot)*. The text it read
 (`ReadingTestText`) is never returned.
 
-### Pictures
+### Picture making
 
-While Companion › Pictures has a place (or `MARTLET_PICTURES_FIXTURE=1`), every
+While Companion › Picture making has a place (or `MARTLET_PICTURES_FIXTURE=1`), every
 reply on a route that does function calling also gets `draw_picture`
 (`description`, optional `title`, `shape`, `avoid`), after the song tools. It
 starts a `picture-N` background job and returns at once; the finished picture is
 kept as a `picture` creation and shown in the talk window (`LivePicture`, whose
 click opens `LivePictureViewer`), and `perform_creation` shows a kept one again.
-See [Pictures](PICTURES.md). The talk window's status says *Starting a picture in
+See [Picture making](PICTURES.md). The talk window's status says *Starting a picture in
 the background…* while it is called, and the desktop log notes `Pictures:`
 lines (where, size, seconds; never the description).
 
 The local server's `pictures_status` reads a data directory's `pictures.json`
 (place, workflow, checkpoint or model, whether an own key is saved; never a key),
-its Pictures list as `pool` (`pools-local.json`: `configured`, `off`, each
+its Picture making list as `pool` (`pools-local.json`: `configured`, `off`, each
 member's `key`, `kind`, `name`, `settings`, `consented`, `ownKeySaved` and the
 `place` it reads as; without a list yet, the list the desktop would make from
 `pictures.json`) and `tries` (the places a picture tries now, in order),
@@ -1155,16 +1155,16 @@ and `afterReply` (the Songs, pictures and creations check-in tool set, as
 reporting availability, every progress stage, the media type, size, SHA-256 and
 seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
 back, with `saveDirectory` it writes the file. `place` `pool` rehearses the
-Pictures list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
+Picture making list's routing (`PictureMakingPool`, `WorkQueue` and `ComfyPictureMaker`) on
 simulated ComfyUI computers (FIXTURE - NOT real hosts or models): a busy, absent
 or unsuitable computer is passed over, every one busy waits in the shortest
 queue, two pictures go to two computers, one computer gets no extra request, and
 the first list is made from `pictures.json`. It returns `ok` and each step. It
 never calls OpenRouter or NVIDIA
-Build (a picture costs money). Desktop automation: Companion › Pictures' *Where
+Build (a picture costs money). Desktop automation: Companion › Picture making's *Where
 it draws* is the shared pool list (`Pool-pictures-...`, see the pool list
 automation IDs): `Pool-pictures-Summary`, `Pool-pictures-Member-<i>` (a place,
-its kind and its state: whether the Pictures role is ready there, its workflow,
+its kind and its state: whether the Picture making role is ready there, its workflow,
 or a cloud provider's key status), `Pool-pictures-On-<i>`, `-Up-`, `-Down-`,
 `-Remove-`, `-OnlyFor-<i>`, `-AddThisPc`, `-AddHost-<host>`, `-Address` and
 `-AddAddress`. `Pool-pictures-Settings-<i>` (show or hide a place's settings),
@@ -7839,7 +7839,7 @@ memory, 3% memory, 6% processor.*; one number when the job does not grow),
 `DeviceAlsoFits-<n>` from `PlacementEngine.Afford` (*Room for another Deep
 thinking model (Gemma 4 12B) here.*). The **What your computers can run** card
 (`CapacityCard`) returns `CapacityCoverage` (*On your computers: Thinking
-(gpu-box). Online: Voice (OpenAI voice). Not set up: Singing, Pictures.*),
+(gpu-box). Online: Voice (OpenAI voice). Not set up: Singing, Picture making.*),
 `CapacityTotals` (*Totals across 2 computers: 32 GB graphics memory, 80 GB
 memory, ...*) and `CapacityFits` (*Your computers could also run 2 more Thinking
 models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).*). All are
@@ -8344,9 +8344,10 @@ priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
 `CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
 the jobs Martlet works without, each with an intro that starts with
 "Optional.": `CompanionTab-DeepThinking` (Thinking pool),
-`CompanionTab-Singing`, `CompanionTab-Pictures`, `CompanionTab-Vision`,
+`CompanionTab-Singing`, `CompanionTab-Pictures` (Picture making; its ID keeps the old name), `CompanionTab-Vision`,
 `CompanionTab-Reading` and `CompanionTab-Motion`. Every page shows its group as `CompanionGroupTitle`
-("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its intro as `CompanionIntro`.
+("HOW IT WORKS", "OPTIONAL EXTRAS", ...), its name as `CompanionPageTitle` (*Thinking*, *Picture making*,
+...) and its intro as `CompanionIntro`.
 
 The desktop character has its own group in Companion's side list, *How it
 looks*: `CompanionTab-Character` (the character model, showing and hiding it,
@@ -10055,7 +10056,7 @@ picture's `DiscordCallCameraFile` (*Choose a picture file...*, a file dialog),
 `DiscordCallCameraCreation` (*A picture from Creations...* and each picture
 creation on this PC; shown only when there is one, its titles never returned),
 `DiscordCallCameraPrompt` and `DiscordCallCameraDraw` (*Draw it*; shown only
-while Companion › Pictures has a place or `MARTLET_PICTURES_FIXTURE=1`, it
+while Companion › Picture making has a place or `MARTLET_PICTURES_FIXTURE=1`, it
 draws a 16:9 picture, keeps it as a `picture` creation and uses it) and
 `DiscordCallCameraPicture` (the saved picture's preview),
 `DiscordCallCamera` (*Open camera view* / *Close camera

@@ -253,7 +253,7 @@ public sealed partial class FootprintCatalog
         },
         new()
         {
-            Id = "pictures-comfyui", Component = PlanComponent.Pictures, DisplayName = "Pictures (ComfyUI)", HostRoleKind = "pictures",
+            Id = "pictures-comfyui", Component = PlanComponent.Pictures, DisplayName = "Picture making (ComfyUI)", HostRoleKind = "pictures",
             Gpu = GpuRequirement.Nvidia, MinGpuGb = 8, Platforms = DockerNvidia, Steady = new(7, 12, 2, 31), Peak = new(8, 20, 4, 31),
             QualityTier = 3,
             Source = $"Disk: 20.7 GB of pinned models (docs/PICTURES_HOST.md) plus image estimate; VRAM and RAM estimate for bf16 with --lowvram ({Doc})"

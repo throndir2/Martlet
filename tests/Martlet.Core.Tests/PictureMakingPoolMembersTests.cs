@@ -107,8 +107,8 @@ public sealed class PictureMakingPoolMembersTests
     [Fact]
     public void Members_read_in_plain_words()
     {
-        Assert.Equal("this PC's Pictures role", PictureMakingPoolMembers.Describe(PoolMember.ThisPc()));
-        Assert.Equal("m3-host's Pictures role", PictureMakingPoolMembers.Describe(PoolMember.Computer("m3-host")));
+        Assert.Equal("this PC's Picture making role", PictureMakingPoolMembers.Describe(PoolMember.ThisPc()));
+        Assert.Equal("m3-host's Picture making role", PictureMakingPoolMembers.Describe(PoolMember.Computer("m3-host")));
         Assert.Equal("ComfyUI at http://lab:8188/", PictureMakingPoolMembers.Describe(PoolMember.Service("http://lab:8188/")));
         Assert.Equal("NVIDIA Build (black-forest-labs/flux.1-schnell)",
             PictureMakingPoolMembers.Describe(PoolMember.Cloud(PictureMakingPoolMembers.NvidiaBuild, "black-forest-labs/flux.1-schnell")));

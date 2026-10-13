@@ -10,7 +10,7 @@ namespace Martlet.Conversation;
 public sealed record DrawArguments(string Description, string Title, string About, string? Avoid, PictureShape Shape);
 
 /// <summary>Martlet draws in conversation (docs/PICTURES.md): draw_picture draws a picture in the background where the owner set
-/// pictures up (Companion › Pictures) and shows it in the talk window when it is ready; the picture is kept as a creation, so
+/// pictures up (Companion › Picture making) and shows it in the talk window when it is ready; the picture is kept as a creation, so
 /// perform_creation shows it again later. Offered the same way in every request while pictures are set up, so the start of every
 /// request stays the same.</summary>
 public static class PictureTools
