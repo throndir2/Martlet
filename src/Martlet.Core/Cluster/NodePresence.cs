@@ -274,6 +274,7 @@ public static class NodePresenceNotices
         "singing" => "Singing",
         "pictures" => "Picture making",
         "ocr" => "Reading",
+        "voice-recognition" => "Voice recognition",
         _ => SpeechEngines.ForRoleKind(kind) is not null ? "Speaking pool" : null
     };
 

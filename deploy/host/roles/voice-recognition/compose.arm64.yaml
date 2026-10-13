@@ -1,0 +1,8 @@
+# ARM64 hosts (Raspberry Pi 5 class, Ampere, NVIDIA Grace, Apple silicon under Docker): martlet-host adds this overlay (role.conf
+# arm64=compose.arm64.yaml) and runs the role on the processor, as sherpa-onnx's CUDA build is for x86_64 only. The processor
+# build installs the aarch64 wheels pinned beside the x86_64 ones in host/requirements.lock.
+services:
+  voice-recognition:
+    build:
+      args:
+        ACCELERATOR: cpu

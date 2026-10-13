@@ -36,7 +36,8 @@ public enum GatewayInferenceKind
     Song,
     Picture,
     Ocr,
-    Motion
+    Motion,
+    VoiceRecognition
 }
 
 public enum GatewayInferenceEventKind
@@ -719,6 +720,57 @@ public sealed partial class GatewayInferenceRoute
     public const int MotionMaximumEventBytes = 180_000;
     public static readonly TimeSpan MotionMaximumDuration = TimeSpan.FromMinutes(8);
 
+    /// <summary>
+    /// The voice recognition host role's relay (<c>workers/voice-recognition</c>): the desktop's speaker recognition (pyannote
+    /// segmentation 3.0 and WeSpeaker ResNet34-LM in sherpa-onnx) on a host's NVIDIA graphics card or processor. <c>status</c>
+    /// reports readiness, the provider (cuda or cpu) and the model; <c>analyze</c> says who spoke in up to a minute of 16 kHz mono
+    /// PCM16 (each heard voice's 256-number voiceprint); <c>voiceprint</c> makes one voiceprint of all of it. One JSON text event
+    /// answers each. The audio stays in the host's memory.
+    /// </summary>
+    public static GatewayInferenceRoute VoiceRecognition(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision,
+        string modelSha256)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        GatewayRules.Sha256(modelSha256);
+        return new(
+            GatewayInferenceKind.VoiceRecognition,
+            GatewayRole.Voice,
+            VoiceRecognitionRouteId,
+            VoiceRecognitionPath,
+            VoiceRecognitionContractId,
+            VoiceRecognitionContractVersion,
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(VoiceRecognitionContractId, VoiceRecognitionContractVersion, workerId, modelId, modelRevision, modelSha256),
+            // Base64 PCM plus the request envelope.
+            maximumRequestBytes: (VoiceRecognitionMaximumPcmBytes + 2) / 3 * 4 + 8 * 1024,
+            maximumInputBytes: VoiceRecognitionMaximumPcmBytes,
+            maximumOutputBytes: VoiceRecognitionMaximumResultBytes + 4096,
+            maximumEventBytes: VoiceRecognitionMaximumResultBytes + 4096,
+            maximumEvents: 8,
+            maximumStreamBytes: 1024 * 1024,
+            maximumDuration: TimeSpan.FromSeconds(60),
+            GatewayCancellationCapability.RequestAbort);
+    }
+
+    public const string VoiceRecognitionRouteId = "martlet.gateway.voice-recognition.v1";
+    public const string VoiceRecognitionPath = "/martlet/v1/inference/voice-recognition";
+    public const string VoiceRecognitionContractId = "martlet.voice-recognition-relay";
+    public const string VoiceRecognitionContractVersion = "1.0";
+    public const int VoiceRecognitionSampleRate = 16_000;
+    /// <summary>At most a minute of 16 kHz mono signed 16-bit PCM (Martlet.Sherpa.SpeakerEngine.MaximumSeconds).</summary>
+    public const int VoiceRecognitionMaximumPcmBytes = VoiceRecognitionSampleRate * 2 * 60;
+    public const int VoiceRecognitionMaximumResultBytes = 256 * 1024;
+
     private static GatewayCancellationCapability Map(F5CancellationCapability capability) =>
         capability switch
         {
@@ -1132,6 +1184,33 @@ public sealed class GatewayMotionPayload : GatewayInferencePayload
     public override string ToString() => $"Gateway motion {Operation} (content omitted)";
 }
 
+public enum GatewayVoiceRecognitionOperation
+{
+    Status,
+    Analyze,
+    Voiceprint
+}
+
+/// <summary>One bounded operation against the host's voice recognition relay: <see cref="Pcm"/> (16 kHz mono signed 16-bit
+/// little-endian, at most a minute) belongs to <see cref="GatewayVoiceRecognitionOperation.Analyze"/> and
+/// <see cref="GatewayVoiceRecognitionOperation.Voiceprint"/>.</summary>
+public sealed class GatewayVoiceRecognitionPayload : GatewayInferencePayload
+{
+    private readonly byte[] pcm;
+
+    internal GatewayVoiceRecognitionPayload(GatewayVoiceRecognitionOperation operation, byte[]? pcm = null)
+    {
+        Operation = operation;
+        this.pcm = pcm ?? [];
+    }
+
+    public GatewayVoiceRecognitionOperation Operation { get; }
+    public int SampleRate => GatewayInferenceRoute.VoiceRecognitionSampleRate;
+    public ReadOnlyMemory<byte> Pcm => pcm;
+    internal override void Clear() => CryptographicOperations.ZeroMemory(pcm);
+    public override string ToString() => $"Gateway voice recognition {Operation} (audio omitted)";
+}
+
 public sealed class GatewayInferenceRequest
 {
     internal GatewayInferenceRequest(
@@ -1409,6 +1488,10 @@ public interface IMotionGatewayInferenceWorker : IGatewayInferenceWorker
 {
 }
 
+public interface IVoiceRecognitionGatewayInferenceWorker : IGatewayInferenceWorker
+{
+}
+
 internal static class GatewayInferenceEventValidator
 {
     internal static void Validate(
@@ -1457,13 +1540,13 @@ internal static class GatewayInferenceEventValidator
                 GatewayRules.Require(
                     request.Route.Kind is GatewayInferenceKind.OllamaChat or GatewayInferenceKind.Transcription
                         or GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr
-                        or GatewayInferenceKind.Motion &&
+                        or GatewayInferenceKind.Motion or GatewayInferenceKind.VoiceRecognition &&
                     payloadLength > 0 &&
                     item.ErrorCode is null &&
                     IsUtf8(item.Payload.Span) &&
                     HasNoF5Metadata(item) &&
                     (request.Route.Kind is not (GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr
-                        or GatewayInferenceKind.Motion) ||
+                        or GatewayInferenceKind.Motion or GatewayInferenceKind.VoiceRecognition) ||
                         IsJsonObject(item.Payload)),
                     "stream.invalid");
                 break;
@@ -1696,6 +1779,7 @@ internal static class GatewayInferenceEventValidator
                 case GatewayInferenceKind.Picture:
                 case GatewayInferenceKind.Ocr:
                 case GatewayInferenceKind.Motion:
+                case GatewayInferenceKind.VoiceRecognition:
                     GatewayRules.Require(dataEvents > 0, "stream.invalid");
                     break;
             }

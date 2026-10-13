@@ -725,6 +725,25 @@ internal static class GatewayClientJson
         return payload;
     }
 
+    private static Dictionary<string, object?> VoiceRecognitionPayload(GatewayVoiceRecognitionPayload voices)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["operation"] = voices.Operation switch
+            {
+                GatewayVoiceRecognitionOperation.Status => "status",
+                GatewayVoiceRecognitionOperation.Analyze => "analyze",
+                _ => "voiceprint"
+            }
+        };
+        if (voices.Operation != GatewayVoiceRecognitionOperation.Status)
+        {
+            payload["sample_rate"] = voices.SampleRate;
+            payload["pcm16_base64"] = Convert.ToBase64String(voices.Pcm.Span);
+        }
+        return payload;
+    }
+
     internal static byte[] Request(GatewayInferenceRequest request)
     {
         object payload = request.Payload switch
@@ -759,6 +778,7 @@ internal static class GatewayClientJson
             GatewayPicturePayload picture => PicturePayload(picture),
             GatewayOcrPayload ocr => OcrPayload(ocr),
             GatewayMotionPayload motion => MotionPayload(motion),
+            GatewayVoiceRecognitionPayload voices => VoiceRecognitionPayload(voices),
             _ => throw new GatewayProtocolException("request.invalid")
         };
         var document = new Dictionary<string, object?>

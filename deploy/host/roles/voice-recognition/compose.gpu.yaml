@@ -1,0 +1,17 @@
+# Added by martlet-host when Voice recognition runs on this host's NVIDIA GPU (needs Docker's NVIDIA support and an NVIDIA driver
+# for CUDA 12): the same image built with sherpa-onnx's CUDA 12 build and NVIDIA's CUDA and cuDNN libraries from PyPI. The
+# service checks that CUDA works before it uses it and otherwise runs on the processor; its status says which. No environment
+# key here: martlet-host adds CUDA_VISIBLE_DEVICES when the role is pinned to a card.
+services:
+  voice-recognition:
+    build:
+      args:
+        ACCELERATOR: gpu
+    image: martlet-voice-recognition-cuda:1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
