@@ -84,7 +84,7 @@ internal static class PictureMakingPoolCheck
         var others = PictureMakingPoolMembers.Others(plan, ["m1-host", "m2-host", "m3-host", "m4-host"], "m3-host", "m4-host",
             new WorkSharingSettings().With(new WorkSharingHost { HostId = "m1-host", OnlyFor = ["desk-9"] }), "desk-1");
         var migrated = PictureMakingPoolMembers.Migrate(older, others, DateTimeOffset.UtcNow);
-        Step("pictures.json becomes the Pictures list once: the chosen computer, then this PC's own, then the others that draw, " +
+        Step("pictures.json becomes the Picture making list once: the chosen computer, then this PC's own, then the others that draw, " +
              "each with the same workflow; one kept for another companion PC is left out",
             migrated.Members.Select(m => m.Key).SequenceEqual(["host:m4-host", "host:m3-host"]) &&
             migrated.Members.All(m => m.Setting(PoolSettingKeys.Checkpoint) == Checkpoint),
@@ -98,7 +98,7 @@ internal static class PictureMakingPoolCheck
             new { cloud = cloud.Members.Select(m => m.Key), unagreed = unagreed.Members.Select(m => m.Key) });
 
         var empty = PoolRouting.Order(PoolAreas.PictureMaking, new PoolList { Area = PoolAreas.PictureMaking.Id }, "desk-1");
-        Step("An empty Pictures list means pictures are off", empty.Off && empty.Members.Count == 0, new { empty.Off });
+        Step("An empty Picture making list means pictures are off", empty.Off && empty.Members.Count == 0, new { empty.Off });
 
         return new { ok, fixture = "simulated ComfyUI computers (FIXTURE - NOT real hosts or models)", lane = PictureMakingPool.Lane, steps };
     }
@@ -136,7 +136,7 @@ internal static class PictureMakingPoolCheck
         private readonly Dictionary<string, int> mine = new(StringComparer.Ordinal);
         private int requests;
         public string Id { get; } = id;
-        public string Where => $"{Id}'s Pictures role (simulated)";
+        public string Where => $"{Id}'s Picture making role (simulated)";
         public bool Down { get; init; }
         public int Others { get; init; }
         public IReadOnlyList<string> Checkpoints { get; init; } = [];

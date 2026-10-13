@@ -16,8 +16,8 @@ using Martlet.Providers.Pictures;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Companion › Pictures (docs/PICTURES.md, an optional extra): where Martlet draws when you ask (draw_picture). In the standard
-/// order: Now (where it draws, with Check and Draw a test picture, which try the list), then the Pictures list
+/// Companion › Picture making (docs/PICTURES.md, an optional extra): where Martlet draws when you ask (draw_picture). In the standard
+/// order: Now (where it draws, with Check and Draw a test picture, which try the list), then the Picture making list
 /// (<see cref="PoolAreas.PictureMaking"/>, this PC's own pools-local.json, shown with the shared list control
 /// <see cref="PoolListCard"/>): the places a picture tries in order, each with its own settings. A place is Martlet's
 /// <c>pictures</c> host role on this PC or another of your computers (ComfyUI with Z-Image Turbo, set up from its settings with
@@ -84,7 +84,7 @@ public partial class MainWindow
             Area = PoolAreas.PictureMaking,
             Heading = "Where it draws",
             Intro = "The places that draw pictures, in order. A picture goes to the first one that is free; when all are busy, it waits " +
-                "for the one with the shortest line. Each place keeps its own settings: open Settings to set up the Pictures role there " +
+                "for the one with the shortest line. Each place keeps its own settings: open Settings to set up the Picture making role there " +
                 "or choose its workflow. With nothing on, pictures are off. This list stays on this PC; the pictures are shared with " +
                 "all your computers.",
             Status = PictureMemberStatus,
@@ -101,7 +101,7 @@ public partial class MainWindow
         if (PictureClient.Fixture) return "FIXTURE - NOT AI: pictures come from the test picture maker (MARTLET_PICTURES_FIXTURE).";
         if (order.Count == 0)
             return list.Members.Count == 0 ? $"Off. {OptionalExtras.OffMeans(CompanionTab.Pictures)}. Add a place below to turn pictures on."
-                : "Off: no place in the Pictures list is on and usable on this PC.";
+                : "Off: no place in the Picture making list is on and usable on this PC.";
         var first = $"Martlet draws on {PictureMakingPoolMembers.Describe(order[0])}.";
         return order.Count == 1 ? first
             : first + $" When it is busy, {string.Join(" or ", order.Skip(1).Select(PictureMakingPoolMembers.Describe))} draws instead (it tries them in this order).";
@@ -111,13 +111,13 @@ public partial class MainWindow
     private int PictureMemberIndex(PoolMember member) =>
         store is null ? -1 : PictureClient.List(store.DataDirectory).Members.ToList().FindIndex(m => m.Key == member.Key);
 
-    /// <summary>Saves the Pictures list after a change made in a place's settings, and draws the page again after the click.</summary>
+    /// <summary>Saves the Picture making list after a change made in a place's settings, and draws the page again after the click.</summary>
     private void SavePictureList(PoolList next, string done)
     {
         if (store is null) return;
         if (!PictureClient.SaveList(store.DataDirectory, next))
         {
-            ActionText.Text = "Couldn't save the Pictures list on this PC. Check access to Martlet's data folder.";
+            ActionText.Text = "Couldn't save the Picture making list on this PC. Check access to Martlet's data folder.";
             return;
         }
         picturesCheck = null;
@@ -164,7 +164,7 @@ public partial class MainWindow
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }
 
-    /// <summary>Where Martlet's Pictures role stands for a this-PC or computer place: its words, whether it is ready, the paired
+    /// <summary>Where Martlet's Picture making role stands for a this-PC or computer place: its words, whether it is ready, the paired
     /// host and why it can't run there (null when it can, or Martlet can't tell yet).</summary>
     private (string Text, bool Ready, PairedHost? Host, string? Cannot) PictureRoleState(PoolMember member)
     {
@@ -174,13 +174,13 @@ public partial class MainWindow
         var key = thisPc ? PicturesThisPc : member.HostId;
         if (picturesPending == key) return ($"setting up on {where}...", false, host, null);
         if (!thisPc && host is null) return ($"{where} isn't paired with this PC", false, null, $"{where} isn't paired with this PC.");
-        if (host is not null && Offers(host, HostRoles.Pictures)) return ("Pictures role ready", true, host, null);
+        if (host is not null && Offers(host, HostRoles.Pictures)) return ("Picture making role ready", true, host, null);
         var cannot = thisPc ? ThisPcCannotDraw() : CannotHand(member.HostId!, HostRoles.Pictures, "pictures");
         if (cannot is not null) return ("can't draw there: " + cannot.TrimEnd('.'), false, host, cannot);
         if (picturesFailure is { } failed && picturesFailedOn == key) return ("setup failed: " + failed.TrimEnd('.'), false, host, null);
         if (host is null) return ("not set up yet (open Settings to set it up)", false, null, null);
         return (hostChecks.GetValueOrDefault(host.HostId)?.Reachable == false ? "not reachable right now"
-            : hostChecks.ContainsKey(host.HostId) ? "Pictures role not set up yet (open Settings to set it up)" : "not checked yet", false, host, null);
+            : hostChecks.ContainsKey(host.HostId) ? "Picture making role not set up yet (open Settings to set it up)" : "not checked yet", false, host, null);
     }
 
     private UIElement? PictureMemberSettings(PoolMember member)
@@ -205,7 +205,7 @@ public partial class MainWindow
                 var thisPc = member.Kind == PoolMemberKind.ThisPc;
                 var setUp = PageButton(picturesPending == (thisPc ? PicturesThisPc : member.HostId) ? "Setting up..." : "Set up",
                     () => SetUpPicturesAsync(thisPc ? null : state.Host).Forget(), primary: true, id: $"PicturesSetUp-{i}");
-                AutomationProperties.SetName(setUp, $"Set up Pictures on {(thisPc ? "this PC" : member.HostId)}");
+                AutomationProperties.SetName(setUp, $"Set up Picture making on {(thisPc ? "this PC" : member.HostId)}");
                 setUp.IsEnabled = picturesPending is null && state.Cannot is null && (thisPc || state.Host is not null);
                 if (state.Cannot is not null)
                 {
@@ -469,7 +469,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(keyStatus, "PicturesKeyStatus");
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8),
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                Text = $"I add {name} to the Pictures list. The description of each picture drawn there goes to {name}, and each picture may cost money." } };
+                Text = $"I add {name} to the Picture making list. The description of each picture drawn there goes to {name}, and each picture may cost money." } };
         AutomationProperties.SetAutomationId(consent, "PicturesConsent");
         model.TextChanged += (_, _) => { if (model.IsKeyboardFocusWithin) { tabEdited = true; consent.IsChecked = false; } };
         key.PasswordChanged += (_, _) => tabEdited = true;
@@ -518,7 +518,7 @@ public partial class MainWindow
             var member = PoolMember.Cloud(provider, model).WithConsent(area, DateTimeOffset.UtcNow);
             var list = PictureClient.List(directory);
             if (list.Find(member.Key) is not null)
-                throw new ContractException(ErrorCode.InvalidContract, $"{PictureMakingPoolMembers.Describe(member)} is in the Pictures list already.");
+                throw new ContractException(ErrorCode.InvalidContract, $"{PictureMakingPoolMembers.Describe(member)} is in the Picture making list already.");
             var place = PictureMakingPoolMembers.Place(member, null, null)!;
             var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
             using (var entered = keyBox.SecurePassword)
@@ -539,13 +539,13 @@ public partial class MainWindow
             if (!PictureClient.SaveList(directory, list.With(member)))
             {
                 if (id is not null) PoolKeys.Load(directory).With(area, member.Key, null).Save(directory);
-                throw new InvalidOperationException("Couldn't save the Pictures list on this PC.");
+                throw new InvalidOperationException("Couldn't save the Picture making list on this PC.");
             }
             written = null;
             picturesCheck = null;
-            var done = $"{PictureMakingPoolMembers.Describe(member)} is now last in the Pictures list. Move it up to draw there sooner." +
+            var done = $"{PictureMakingPoolMembers.Describe(member)} is now last in the Picture making list. Move it up to draw there sooner." +
                 (key is null ? "" : " Its API key is saved in Windows Credential Manager.");
-            ErrorLog.Info($"Pictures: added {PictureMakingPoolMembers.Describe(member)} to the Pictures list (the owner agreed to pay).");
+            ErrorLog.Info($"Pictures: added {PictureMakingPoolMembers.Describe(member)} to the Picture making list (the owner agreed to pay).");
             ActionText.Text = picturesCloudState = done;
         }
         catch (OperationCanceledException) { }
@@ -561,9 +561,9 @@ public partial class MainWindow
         }
     }
 
-    // ---------- Martlet's Pictures role ----------
+    // ---------- Martlet's Picture making role ----------
 
-    /// <summary>Why this PC can't run the Pictures role: no NVIDIA graphics card, or one with less than 8 GB; null when it can or
+    /// <summary>Why this PC can't run the Picture making role: no NVIDIA graphics card, or one with less than 8 GB; null when it can or
     /// Martlet hasn't read this PC's hardware yet.</summary>
     private string? ThisPcCannotDraw()
     {
@@ -582,16 +582,16 @@ public partial class MainWindow
     {
         if (store is null || setupService is null || closing || picturesPending is not null) return;
         var where = host is null ? "this PC" : host.HostId;
-        if (host is null && ThisPcCannotDraw() is { } cannot) { ActionText.Text = $"Pictures can't run on this PC. {cannot}"; return; }
+        if (host is null && ThisPcCannotDraw() is { } cannot) { ActionText.Text = $"Picture making can't run on this PC. {cannot}"; return; }
         var thisPc = ThisPcHost();
         if (!ConfirmationDialog.Confirm(this,
-                $"Set up Pictures on {where}?\n\n" +
+                $"Set up Picture making on {where}?\n\n" +
                 (host is null && thisPc is null
                     ? machine.DockerInstalled ? "Martlet first sets up its host service in Docker Desktop. "
                         : "Martlet first installs Docker Desktop (it asks for its own terms) and sets up its host service. "
                     : "") +
                 "It needs an NVIDIA graphics card with 8 GB+ (12 GB+ is faster) and is a large download; Martlet shows the progress.\n\n" +
-                PicturesTerms, "Set up Pictures"))
+                PicturesTerms, "Set up Picture making"))
             return;
         var answers = new Dictionary<string, string>(StringComparer.Ordinal) { ["choice.PICTURES_MODEL"] = "z-image-turbo" };
         picturesFailure = null;
@@ -605,7 +605,7 @@ public partial class MainWindow
                 if (closing) return;
                 if (done is null) picturesFailure = $"Setting it up on {host.HostId} stopped. Its run window has details.";
                 else if (await WaitForPicturesAsync(host, lifetime.Token) is { } why)
-                    picturesFailure = $"Setup finished, but Martlet can't see Pictures on {host.HostId} yet ({why}). Check it in a minute.";
+                    picturesFailure = $"Setup finished, but Martlet can't see Picture making on {host.HostId} yet ({why}). Check it in a minute.";
                 else UsePicturesHost(host.HostId, host.HostId, thisPc: false);
                 return;
             }
@@ -616,32 +616,32 @@ public partial class MainWindow
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
                 target = await HostLocal.EngineForChangeAsync(target, HostRoles.Pictures, run);
                 var inputs = await HostLocal.DescribeAsync(target, HostRoles.Pictures, run.Output, run.Token);
-                var chosen = HostInputDialog.WithGpu(run, "this PC", "Pictures", inputs, answers) ?? throw new OperationCanceledException();
-                run.Status("Installing Pictures on this PC (a large download)...");
-                var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Pictures], SetupProgress(run, "Pictures", why => stopped ??= why),
+                var chosen = HostInputDialog.WithGpu(run, "this PC", "Picture making", inputs, answers) ?? throw new OperationCanceledException();
+                run.Status("Installing Picture making on this PC (a large download)...");
+                var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Pictures], SetupProgress(run, "Picture making", why => stopped ??= why),
                     run.Token, answers: chosen);
                 if (exit != 0)
-                    throw new InvalidOperationException($"Installing Pictures stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
-                run.Status("Checking Pictures on this PC...");
+                    throw new InvalidOperationException($"Installing Picture making stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
+                run.Status("Checking Picture making on this PC...");
                 if (await WaitForPicturesAsync(pc, run.Token) is { } why)
-                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Pictures yet ({why}). Check this PC in a minute.");
+                    throw new InvalidOperationException(stopped = $"Setup finished, but Martlet can't see Picture making yet ({why}). Check this PC in a minute.");
                 Dispatcher.Invoke(() => UsePicturesHost(pc.HostId, "this PC", thisPc: true));
-                return "Pictures are ready on this PC. Ask Martlet to draw you something.";
+                return "Picture making is ready on this PC. Ask Martlet to draw you something.";
             }
             string? status;
             if (thisPc is not null)
-                status = await HostRunWindow.RunAsync(this, "Set up Pictures on this PC", run => Continue(run, thisPc)) ??
-                    (stopped is null ? "Pictures weren't set up. The run window has details." : $"Pictures weren't set up: {stopped}");
+                status = await HostRunWindow.RunAsync(this, "Set up Picture making on this PC", run => Continue(run, thisPc)) ??
+                    (stopped is null ? "Picture making wasn't set up. The run window has details." : $"Picture making wasn't set up: {stopped}");
             else
             {
                 (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,
-                    text => ActionText.Text = text, lifetime.Token, Continue, "Set up Pictures on this PC");
+                    text => ActionText.Text = text, lifetime.Token, Continue, "Set up Picture making on this PC");
                 await ReadMachineAsync();
             }
             if (!closing && status is not null)
             {
                 ActionText.Text = status;
-                if (!status.StartsWith("Pictures are ready", StringComparison.Ordinal)) picturesFailure = status;
+                if (!status.StartsWith("Picture making is ready", StringComparison.Ordinal)) picturesFailure = status;
             }
         }
         catch (OperationCanceledException) { }
@@ -658,18 +658,18 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The Pictures role is ready on <paramref name="hostId"/>: its place in the list is on (added last when it isn't
+    /// <summary>The Picture making role is ready on <paramref name="hostId"/>: its place in the list is on (added last when it isn't
     /// there yet).</summary>
     private void UsePicturesHost(string hostId, string where, bool thisPc)
     {
         if (store is null) return;
-        var done = $"Pictures are ready on {where}. Ask Martlet to draw you something.";
+        var done = $"Picture making is ready on {where}. Ask Martlet to draw you something.";
         var list = PictureClient.List(store.DataDirectory);
         var member = (thisPc ? list.Find(PoolMember.ThisPcKey) : null) ?? list.Find(PoolMember.Computer(hostId).Key);
         if (member is { Off: false })
         {
             ActionText.Text = done;
-            ErrorLog.Info($"Pictures: the Pictures role is ready on {where}.");
+            ErrorLog.Info($"Pictures: the Picture making role is ready on {where}.");
             return;
         }
         member = member is null

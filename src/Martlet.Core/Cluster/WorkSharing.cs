@@ -17,8 +17,8 @@ public static class WorkSharingJobs
     /// <summary>Lip-sync's lane in <see cref="WorkQueue"/> (<see cref="LipSyncSharing"/>). Not in <see cref="All"/>: its pool
     /// list lives on its own page, not a Devices › Sharing work card.</summary>
     public const string LipSync = ClusterJobs.LipSync;
-    /// <summary>Drawing pictures (Companion › Pictures): each PC's Pictures list (<see cref="PoolAreas.PictureMaking"/>). Not in
-    /// <see cref="All"/>: Companion › Pictures keeps its own list, not a Devices › Sharing work card.</summary>
+    /// <summary>Drawing pictures (Companion › Picture making): each PC's Picture making list (<see cref="PoolAreas.PictureMaking"/>). Not in
+    /// <see cref="All"/>: Companion › Picture making keeps its own list, not a Devices › Sharing work card.</summary>
     public const string Pictures = "pictures";
     public static readonly IReadOnlyList<string> All = [Speaking, Thinking, Listening, DeepThinking];
 
@@ -35,7 +35,7 @@ public static class WorkSharingJobs
         DeepThinking => "Thinking pool",
         LipSync => "Lip-sync",
         Reading => "Reading",
-        Pictures => "Pictures",
+        Pictures => "Picture making",
         _ => job
     };
 }

@@ -14,8 +14,8 @@ using Martlet.Providers.Pictures;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// The picture maker Martlet's conversation uses (docs/PICTURES.md), from this PC's Pictures list (<see cref="PoolAreas.PictureMaking"/>,
-/// pools-local.json, made once from Companion › Pictures' earlier choice, <see cref="PicturesSettings"/>): each member is ComfyUI
+/// The picture maker Martlet's conversation uses (docs/PICTURES.md), from this PC's Picture making list (<see cref="PoolAreas.PictureMaking"/>,
+/// pools-local.json, made once from Companion › Picture making's earlier choice, <see cref="PicturesSettings"/>): each member is ComfyUI
 /// on Martlet's <c>pictures</c> role through a paired computer's gateway (<see cref="GatewayComfyApi"/>), a ComfyUI the owner
 /// runs at an address, OpenRouter or NVIDIA Build (the key from Windows Credential Manager for each picture: the member's own,
 /// or Thinking's for the same provider). With more than one, a picture goes to the first that is free (<see cref="PictureMakingPool"/>).
@@ -49,7 +49,7 @@ internal static class PictureClient
         }
     }
 
-    /// <summary>This PC's Pictures list (<see cref="PoolAreas.PictureMaking"/>, pools-local.json), from the pool lists' cache (read
+    /// <summary>This PC's Picture making list (<see cref="PoolAreas.PictureMaking"/>, pools-local.json), from the pool lists' cache (read
     /// again only when the file changed, cheap enough for every reply). Without one yet, it is made from pictures.json
     /// (<see cref="Migrate"/>) and saved once it has a place; an empty one isn't saved, so a choice saved there later still
     /// counts.</summary>
@@ -61,12 +61,12 @@ internal static class PictureClient
             if (PoolSettings.LoadFor(dataDirectory, PoolAreas.PictureMaking) is { } saved) return saved;
             list = Migrate(dataDirectory, Settings(dataDirectory));
             if (list.Members.Count > 0 && SaveList(dataDirectory, list))
-                ErrorLog.Info($"Pictures: made the Pictures list from the earlier choice ({list.Members.Count} place{(list.Members.Count == 1 ? "" : "s")}).");
+                ErrorLog.Info($"Pictures: made the Picture making list from the earlier choice ({list.Members.Count} place{(list.Members.Count == 1 ? "" : "s")}).");
             return list;
         }
     }
 
-    /// <summary>Saves this PC's Pictures list (never shared).</summary>
+    /// <summary>Saves this PC's Picture making list (never shared).</summary>
     internal static bool SaveList(string dataDirectory, PoolList list)
     {
         var saved = PoolSettings.SaveFor(dataDirectory, PoolAreas.PictureMaking, list);
@@ -74,7 +74,7 @@ internal static class PictureClient
         return saved;
     }
 
-    /// <summary>The Pictures list for a one-place choice (<see cref="PictureMakingPoolMembers.Migrate"/>): that place; for Martlet's
+    /// <summary>The Picture making list for a one-place choice (<see cref="PictureMakingPoolMembers.Migrate"/>): that place; for Martlet's
     /// pictures role, then the other paired computers the shared plan (cluster.json) says run it, this PC's own host service
     /// first and then the rest, fewest jobs first, never a host a friend shares (it keeps pictures for its owner) or one kept for
     /// another companion PC (Devices › Sharing work).</summary>
@@ -99,7 +99,7 @@ internal static class PictureClient
             hosts is null ? null : member => member.Kind != PoolMemberKind.Computer || hosts.Any(h => h.HostId == member.HostId && !h.Shared));
     }
 
-    /// <summary>Whether draw_picture is offered: the fixture is on, or the Pictures list has a place that is on.</summary>
+    /// <summary>Whether draw_picture is offered: the fixture is on, or the Picture making list has a place that is on.</summary>
     internal static bool IsSetUp(string dataDirectory) => Fixture || Order(dataDirectory, paired: false).Members.Count > 0;
 
     /// <summary>The first cloud provider a picture may go to, in words ("OpenRouter (google/...)"), so a picture the owner asks for
@@ -118,7 +118,7 @@ internal static class PictureClient
         ? first.Kind == PoolMemberKind.ThisPc ? OwnHost(Paired(dataDirectory)) : first.Kind == PoolMemberKind.Computer ? first.HostId : null
         : null;
 
-    /// <summary>The picture maker for this PC's Pictures list, or null while it is off. One place: that place's maker, as before.
+    /// <summary>The picture maker for this PC's Picture making list, or null while it is off. One place: that place's maker, as before.
     /// More: a <see cref="PictureMakingPool"/> that draws on the first that is free. <paramref name="thinking"/> is Thinking's route,
     /// whose key a cloud provider borrows when it has none of its own.</summary>
     internal static IPictureMaker? For(string dataDirectory, Guid profile, SetupRoute? thinking)
@@ -159,7 +159,7 @@ internal static class PictureClient
         }
         catch (ContractException error)
         {
-            ErrorLog.Info($"Pictures: skipped {member.Name} in the Pictures list ({error.Message}).");
+            ErrorLog.Info($"Pictures: skipped {member.Name} in the Picture making list ({error.Message}).");
             return null;
         }
     }
@@ -200,9 +200,9 @@ internal static class PictureClient
         if (maker is PictureMakingPool { Route: { } route, Chosen: { } chosen })
         {
             if (route.QueuedBehind is { } ahead)
-                ErrorLog.Info($"Pictures: every place in the Pictures list was busy, so the picture waited behind {(ahead == int.MaxValue ? "others" : ahead)} on {chosen.Maker.Where}.");
+                ErrorLog.Info($"Pictures: every place in the Picture making list was busy, so the picture waited behind {(ahead == int.MaxValue ? "others" : ahead)} on {chosen.Maker.Where}.");
             else if (route.Position > 0 || route.Busy > 0 || route.Unavailable > 0)
-                ErrorLog.Info($"Pictures: drawn on {chosen.Maker.Where}, place {route.Position + 1} in the Pictures list ({route.Busy} busy, " +
+                ErrorLog.Info($"Pictures: drawn on {chosen.Maker.Where}, place {route.Position + 1} in the Picture making list ({route.Busy} busy, " +
                     $"{route.Unavailable} couldn't draw it first).");
             maker = chosen.Maker;
         }
@@ -251,7 +251,7 @@ internal static class PictureClient
 
 /// <summary>
 /// ComfyUI on a paired computer's <c>pictures</c> host role, through its gateway (route <c>martlet.gateway.picture.v1</c>,
-/// whose operations are <see cref="IComfyApi"/>'s). The computer named in Companion › Pictures draws; without one, the first
+/// whose operations are <see cref="IComfyApi"/>'s). The computer named in Companion › Picture making draws; without one, the first
 /// paired computer that offers the route. Pages of the picture come back as base64 events.
 /// </summary>
 internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IComfyApi, IDisposable
@@ -259,7 +259,7 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
     private const int PageBytes = 2 * 1024 * 1024;
     private (PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)? open;
 
-    public string Where => open is { } found ? $"{found.Host.HostId}'s Pictures role" : hostId is null ? "Martlet's Pictures role" : $"{hostId}'s Pictures role";
+    public string Where => open is { } found ? $"{found.Host.HostId}'s Picture making role" : hostId is null ? "Martlet's Picture making role" : $"{hostId}'s Picture making role";
 
     /// <summary>The computer this draws on: the one it opened, else the one it was made for (null: the first that offers it).</summary>
     public string? HostId => open?.Host.HostId ?? hostId;
@@ -337,7 +337,7 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
                     "request.invalid" or "request.too_large" => PictureErrorCodes.RequestInvalid,
                     "job.busy" => PictureErrorCodes.Busy,
                     _ => PictureErrorCodes.Unavailable
-                }, $"{host.HostId}'s Pictures role: {error.Message}", error);
+                }, $"{host.HostId}'s Picture making role: {error.Message}", error);
             }
             catch (Exception error) when (error is HttpRequestException or IOException)
             {
@@ -379,8 +379,8 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
             finally { connection?.Dispose(); }
         }
         throw new PictureException(PictureErrorCodes.Unavailable, hostId is null
-            ? "No paired computer runs the Pictures role. Set it up in Companion › Pictures."
-            : $"{hostId} doesn't run the Pictures role. Set it up there in Companion › Pictures.");
+            ? "No paired computer runs the Picture making role. Set it up in Companion › Picture making."
+            : $"{hostId} doesn't run the Picture making role. Set it up there in Companion › Picture making.");
     }
 
     private JsonObject Single(IReadOnlyList<JsonObject> answer)
