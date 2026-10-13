@@ -152,7 +152,8 @@ helper jobs run as which kind.
 (`src\Martlet.Conversation\ThinkingJobKinds.cs`), with the enums
 `ThinkingJobKind`, `ThinkingPriority` and `HelperJobKind`. These read it:
 `ThinkingJobKinds.Name`, `Priority` and `IsFast`; `LiveFloorRules.Stops` and
-`ServesTheTurn`; the Runs on card (`src\Martlet.Desktop\MainWindow.DeepThinking.cs`);
+`ServesTheTurn`; the Runs on card (`RunsOnCard`,
+`src\Martlet.Desktop\Pages\ThinkingPool\ThinkingPoolPage.BusyPool.cs`);
 `ThinkingRequestWords.Kind`; `HelperJobs.Name` and `PriorityOf`; and
 `ThinkingPoolHelpers.Kind` and `Priority`. To add a kind, add its enum value
 and its row. A key is saved, so a changed key needs a migration.
@@ -221,6 +222,52 @@ and `ThinkingPoolShareTests` (Martlet.Core.Tests).
 **What it decides:** which `SetupRoute` is the conversation's Thinking route
 (provider, model and key).
 
-**Moving.** Today each caller finds it again with `Role == SetupRole.Llm`
-(about 57 files). The planned owner is `SetupRouteLookup`
-(`src\Martlet.Core\Settings\SetupRouteLookup.cs`).
+**Owner:** `SetupRouteLookup.ThinkingRoute()`
+(`src\Martlet.Core\Settings\SetupRouteLookup.cs`). It gives the first route
+with `SetupRole.Llm`; `SetupSettings.Validate` allows only one route for each
+role. It never throws and does not check `Enabled`. Do not search the routes
+for `SetupRole.Llm` again in a caller.
+
+**Tests:** `SetupRouteLookupTests` (Martlet.Core.Tests).
+
+## Which member takes a request of an ordered pool
+
+**What it decides:** for an area with an ordered list (Speaking, Listening,
+lip-sync, picture making, singing, vision, hearing, reading, motion), which
+members a request tries, in which order, and what a busy or unavailable member
+does.
+
+**Owner:** `PoolRouting.Order` and `PoolRouting.Stops`
+(`src\Martlet.Core\Cluster\Pools.cs`) give the members to try. `PoolRunner`
+(`src\Martlet.Core\Cluster\PoolRunner.cs`) tries them in order: a busy or
+unavailable member passes the request to the next. `PoolRefusals` says which
+answers count as busy. Each area keeps only its own rule for where a member
+runs. Reading (`ReadingPool`, run in `src\Martlet.Desktop\ScreenReading.cs`), `MotionPool`, `SingingPool` and
+`PictureMakingPool` use the runner. Vision and Hearing use `SensePool` (see
+[picture routing](#which-model-looks-at-a-picture-picture-routing)).
+
+**Tests:** `PoolsTests` and `PoolRunnerTests` (Martlet.Core.Tests);
+`PictureMakingPoolTests` (Martlet.Providers.Tests).
+
+**MCP:** `reading_check` (its pool steps), `motion_pool_check`, `singing_pool_check`,
+`pictures_check` (`place` `pool`), `work_sharing_status`.
+
+**Docs:** [Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area).
+
+## What MCP may click and read, and where each tool is
+
+**What it decides:** which controls the MCP `ui_*` tools may click, and which
+status values they may read, without `--allow-ui-effects`; and in which
+`martlet_guide` area each MCP tool is.
+
+**Owner:** `AutomationPolicy` (`src\Martlet.Mcp.Protocol\AutomationPolicy.cs`):
+one line for each safe click and each safe value,
+`new("<ID>", "<page>", "<what it does or shows>")`. A tool is one `Tool(...)`
+registration in `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs`, and
+`ToolGroups()` (`src\Martlet.Mcp.Protocol\McpServer.cs`) puts each group in
+its guide area. A new control or tool goes there, and `docs\MCP.md` names it.
+
+**Tests:** `AutomationPolicyTests` and `McpDocsAgreementTests` (every tool is
+named in `docs\MCP.md` as `` `name` ``; Martlet.Desktop.Tests).
+
+**Docs:** [MCP.md](MCP.md).

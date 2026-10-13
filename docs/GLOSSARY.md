@@ -16,7 +16,7 @@ To find who decides something, see the [decision map](DECISION_MAP.md).
 
 | Concept | Code name | UI name | Other names you will find |
 | --- | --- | --- | --- |
-| The model that writes every reply | Thinking route (`SetupRole.Llm`) | Thinking, Thinking's own model | "the text model", "the conversation model" |
+| The model that writes every reply | Thinking route (`SetupRole.Llm`; find it with `SetupRouteLookup.ThinkingRoute()`) | Thinking, Thinking's own model | "the text model", "the conversation model" |
 | A Thinking model that also sees and hears, so it takes pictures and recordings in the reply's own request | `SensePath.Thinking` | a Thinking model that sees (or hears) | "omni model". Do not use "omni model" in new text |
 | A model of its own that describes pictures in words for Thinking | image model (`SenseKind.Image`, `ImageModel...`) | image model | "vision model", "VLM". Use "vision model" only for `VisionModelCatalog`, the list of model names that see |
 | A model of its own that describes recordings in words for Thinking | audio model (`SenseKind.Audio`, `AudioModel...`) | audio model | |
