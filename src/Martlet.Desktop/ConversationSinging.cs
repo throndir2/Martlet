@@ -46,7 +46,7 @@ internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
     public (SongSetup? Setup, string? Problem) Current()
     {
         if (!SongClient.IsSetUp(dataDirectory))
-            return (null, WorkSharingRoster.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
+            return (null, WorkSharingRoster.Shared.Pool(dataDirectory, Martlet.Core.Cluster.PoolAreas.Singing) is not null
                 ? "singing is off: no computer in Companion › Singing's list is on."
                 : SingingPreferences.Load(dataDirectory).Off ? "singing is off (Companion › Singing)."
                 : "singing isn't set up on any of your computers (Companion › Singing).");

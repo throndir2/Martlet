@@ -52,7 +52,7 @@ public partial class MainWindow : IThinkingPoolPageServices
         var (pool, state) = ThinkingPoolSettings.Read(store.DataDirectory);
         if (state == "unreadable") return null;
         var result = ThinkingPoolAutoJoin.For(pool, PoolHost(host, routes), NetworkMap.ThinkingHost(homeSettings),
-            WorkSharingRoster.Settings(store.DataDirectory), WorkSharingRoster.Device, Role == DeviceRole.Host, DateTimeOffset.Now);
+            WorkSharingRoster.Shared.Settings(store.DataDirectory), WorkSharingRoster.Device, Role == DeviceRole.Host, DateTimeOffset.Now);
         if (!result.Changed) return null;
         bool saved;
         try { saved = result.Pool.Save(store.DataDirectory); }

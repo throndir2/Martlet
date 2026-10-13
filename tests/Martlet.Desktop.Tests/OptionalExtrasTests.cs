@@ -211,7 +211,6 @@ public sealed class OptionalExtrasTests
             Directory.CreateDirectory(directory);
             // The older choice names one computer: motions are asked for (and say why when it isn't paired here).
             Assert.True(new Martlet.Core.Motion.MotionSettings { Place = Martlet.Core.Motion.MotionPlace.Host, HostId = "gpu-x" }.Save(directory));
-            WorkSharingRoster.Forget();
             Assert.True(MotionClient.IsSetUp(directory));
             Assert.Equal(["gpu-x"], MotionClient.Hosts(directory));
             // A Motion list with nothing on turns motion off, whatever motion.json says.
@@ -219,13 +218,11 @@ public sealed class OptionalExtrasTests
             {
                 Area = "motion", Members = [Martlet.Core.Cluster.PoolMember.Computer("gpu-x") with { Off = true }]
             }));
-            WorkSharingRoster.Forget();
             Assert.False(MotionClient.IsSetUp(directory));
             Assert.Null(MotionClient.For(directory));
         }
         finally
         {
-            WorkSharingRoster.Forget();
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }

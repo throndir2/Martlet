@@ -350,7 +350,7 @@ public partial class MainWindow
         {
             var title = WorkSharingJobs.Title(job);
             // A job with a pool list: the computer joins its list (or turns on in it), or leaves it.
-            if (PoolAreas.Find(job) is { } area && window.store is { } store && WorkSharingRoster.Pool(store.DataDirectory, area) is { } list)
+            if (PoolAreas.Find(job) is { } area && window.store is { } store && WorkSharingRoster.Shared.Pool(store.DataDirectory, area) is { } list)
             {
                 var key = PoolMember.Computer(machineId).Key;
                 var member = list.Find(key);
@@ -360,7 +360,6 @@ public partial class MainWindow
                 var joined = join ? $"{machineId} is now in the {title} list: it takes {title} when the ones before it are busy."
                     : $"{machineId} is no longer in the {title} list.";
                 if (!PoolSettings.SaveFor(store.DataDirectory, area, listed)) return Task.FromResult(SetupStepResult.Failed($"Couldn't save the {title} list on this PC."));
-                WorkSharingRoster.Forget();
                 ErrorLog.Info("Pools: " + joined);
                 window.QueueSettingsSync();
                 return Task.FromResult(SetupStepResult.Done(joined));

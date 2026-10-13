@@ -519,7 +519,9 @@ internal static class JobSavedRoute
     internal static void Save(string directory, string fileName, SetupRoute route)
     {
         Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory, fileName), ContractJson.Write(route, 65_536));
+        var path = Path.Combine(directory, fileName);
+        File.WriteAllBytes(path, ContractJson.Write(route, 65_536));
+        Martlet.Core.Settings.SettingsFiles.NotifySaved(path);
     }
 
     internal static SetupRoute? Load(string directory, string fileName)

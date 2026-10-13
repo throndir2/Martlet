@@ -716,7 +716,6 @@ public partial class MainWindow
             if (WorkSharingSettings.Parse(setting.Value) is not { } shared)
                 return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it."));
             if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
-            WorkSharingRoster.Forget();
             if (DevicesPage.IsVisible) RenderWorkSharing();
             return Task.FromResult(SharedApply.Done);
         });
@@ -760,7 +759,6 @@ public partial class MainWindow
             if (PoolSettings.Parse(setting.Value) is not { } shared)
                 return SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it.");
             if (!shared.Save(directory)) return SharedApply.Waiting("It couldn't be saved on this PC.");
-            WorkSharingRoster.Forget();
             // Speaking and Listening turn off (or on again) with their lists, as on the computer that changed them.
             try
             {

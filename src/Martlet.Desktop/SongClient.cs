@@ -84,7 +84,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
         var preferences = SingingPreferences.Load(dataDirectory);
         if (preferences.Off) return false;
         if (Environment.GetEnvironmentVariable(FixtureVariable) == "1") return true;
-        if (WorkSharingRoster.Pool(dataDirectory, PoolAreas.Singing) is not null) return Members(dataDirectory).Count > 0;
+        if (WorkSharingRoster.Shared.Pool(dataDirectory, PoolAreas.Singing) is not null) return Members(dataDirectory).Count > 0;
         if (preferences.Host is not { } host) return false;
         try { return HostRegistry.Load(dataDirectory).Any(h => h.HostId == host && !h.Shared); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
@@ -102,7 +102,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
         PairedHost[] hosts;
         try { hosts = [.. HostRegistry.Load(dataDirectory).Where(h => !h.Shared)]; }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return []; }
-        var list = WorkSharingRoster.Pool(dataDirectory, PoolAreas.Singing);
+        var list = WorkSharingRoster.Shared.Pool(dataDirectory, PoolAreas.Singing);
         WorkPlace[] singers = [];
         if (list is null)
         {
@@ -110,7 +110,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
             singers = [.. plan.Nodes.Where(n => !n.Removed && n.Roles.Any(r => r.Kind == HostRoles.Singing))
                 .Select(n => new WorkPlace(n.HostId, false, plan.Assignments.Count(a => ClusterJobs.All.Contains(a.Job) && a.HostId == n.HostId)))];
         }
-        var own = WorkSharingRoster.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        var own = WorkSharingRoster.Shared.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
         return [.. SingingPool.Members(list, WorkSharingRoster.Device, SingingPreferences.Load(dataDirectory).Host, own,
                 [.. hosts.Select(h => h.HostId)], singers)
             .Select(m => (m.Member, hosts.First(h => h.HostId == m.HostId)))];

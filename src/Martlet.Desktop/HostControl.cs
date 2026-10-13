@@ -276,6 +276,7 @@ internal static class HostRegistry
         {
             if (File.Exists(temporary)) File.Delete(temporary);
         }
+        Martlet.Core.Settings.SettingsFiles.NotifySaved(path);
     }
 
     /// <summary>The hosts with their outside addresses taken from <paramref name="roster"/> where it lists that host (with the

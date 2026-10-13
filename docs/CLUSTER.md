@@ -352,9 +352,11 @@ An area adds itself in four steps:
    IDs are `Pool-<area>-Summary`, `-Member-<i>`, `-On-<i>`, `-Up-<i>`,
    `-Down-<i>`, `-Remove-<i>`, `-Settings-<i>`, `-OnlyFor-<i>`, `-AddThisPc`,
    `-AddHost-<host>`, `-AddGpu-<host>-<card>`, `-Address` and `-AddAddress`. On
-   the desktop's request path, read the list with `WorkSharingRoster.Pool(directory,
-   area)` or `WorkSharingRoster.PoolMembers(area, usable)`: both read the file
-   again only when it changed.
+   the desktop's request path, read the list with `WorkSharingRoster.Shared.Pool(directory,
+   area)` or `WorkSharingRoster.Shared.PoolMembers(area, usable)`: both read the
+   file again only when it changed. Save a list only through its store
+   (`PoolSettings.SaveFor`): the store tells the roster (`SettingsFiles.Saved`),
+   so the next request reads the new list and the roster raises `Changed`.
 
 **Qualification:** the contract, its storage, migration, routing and the
 queue's handling of member keys are checked locally (`PoolsTests`). Each

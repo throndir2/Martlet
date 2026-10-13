@@ -23,12 +23,12 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
     private readonly Dictionary<string, (HostRoute Route, Audio2FaceHostConnection Connection)> open = new(StringComparer.Ordinal);
 
     /// <summary>The saved list, or none (this PC's processor).</summary>
-    internal static PoolList? Load(string? directory) => WorkSharingRoster.Pool(directory, PoolAreas.VoiceRecognition);
+    internal static PoolList? Load(string? directory) => WorkSharingRoster.Shared.Pool(directory, PoolAreas.VoiceRecognition);
 
     /// <summary>The places companion PC <paramref name="device"/> tries, first to last, ending with this PC's processor.</summary>
     internal static IReadOnlyList<VoiceRecognitionTarget> Targets(string? directory, string device)
     {
-        var hosts = directory is null ? [] : WorkSharingRoster.Hosts(directory);
+        var hosts = directory is null ? [] : WorkSharingRoster.Shared.Hosts(directory);
         return VoiceRecognitionPool.Targets(Load(directory), device, id => hosts.Any(h => h.HostId == id));
     }
 
@@ -40,13 +40,13 @@ internal sealed class VoiceRecognitionHosts(string? directory) : IDisposable
     /// doesn't answer or doesn't run the role refuses as unavailable; a bad answer is a failure of that computer.</summary>
     internal async Task<SpeakerAnalysis> AnalyzeAsync(VoiceRecognitionTarget target, float[] samples, CancellationToken token)
     {
-        var host = (directory is null ? [] : WorkSharingRoster.Hosts(directory)).FirstOrDefault(h => h.HostId == target.HostId)
+        var host = (directory is null ? [] : WorkSharingRoster.Shared.Hosts(directory)).FirstOrDefault(h => h.HostId == target.HostId)
             ?? throw new Audio2FaceHostException("host.unreachable", $"{target.HostId} isn't paired with this PC.");
         var pcm = SpeakerAnswers.Pcm16(samples);
         var (route, connection) = await OpenAsync(host, token).ConfigureAwait(false);
         try
         {
-            var answer = await WorkSharingRoster.WatchedOnce(host.HostId, "voice recognition",
+            var answer = await WorkSharingRoster.Shared.WatchedOnce(host.HostId, "voice recognition",
                 connection.VoiceRecognitionAnalyzeAsync(route, pcm, token)).ConfigureAwait(false);
             try { return SpeakerAnswers.Analysis(answer, samples.Length / (double)SpeakerEngine.SampleRate); }
             catch (SherpaException error) { throw new Audio2FaceHostException("response.invalid", $"{host.HostId}: {error.Message}"); }

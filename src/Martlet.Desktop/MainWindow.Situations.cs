@@ -81,7 +81,7 @@ public partial class MainWindow
         }
         var facts = SituationFactsNow();
         // The game watch runs only while it can matter: live Thinking on this PC's card, or this PC's own host service.
-        var ownHost = WorkSharingRoster.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        var ownHost = WorkSharingRoster.Shared.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
         FollowGameWatch(facts.PlaysGames && simulatedSituation is null && (facts.Home == LiveHome.ThisPc || ownHost is not null));
         facts = facts with { Game = simulatedSituation is { } fixture ? fixture.Game : gameWatch?.Game };
         situationFacts = facts;
@@ -207,7 +207,7 @@ public partial class MainWindow
             if (simulatedSituation.Away && fixture.Hosts.Count > 0) away.Add(fixture.HomeHost ?? fixture.Hosts[0].HostId);
             return fixture with { Away = away };
         }
-        var own = WorkSharingRoster.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        var own = WorkSharingRoster.Shared.OwnHostId ?? homeHosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
         var route = homeSettings.ThinkingRoute() is { Enabled: not false } enabled ? enabled : null;
         var home = LiveHome.None;
         string? homeHost = null;
@@ -223,7 +223,7 @@ public partial class MainWindow
         }
         if (simulatedSituation is { Away: true } && homeHost is not null) away.Add(homeHost);
         // Other paired hosts with a Thinking chat model that answer, the Thinking list's order first (When the Thinking model is busy).
-        var listed = WorkSharingRoster.Pool(directory, PoolAreas.Thinking)?.Members.Where(m => !m.Off && m.HostId is not null)
+        var listed = WorkSharingRoster.Shared.Pool(directory, PoolAreas.Thinking)?.Members.Where(m => !m.Off && m.HostId is not null)
             .Select(m => m.HostId!).ToList() ?? [];
         var hosts = homeHosts.Where(h => !h.Shared && h.HostId != own && h.HostId != homeHost && !HostPresence.IsOffline(h.HostId))
             .Select(h => (Host: h, Route: hostChecks.GetValueOrDefault(h.HostId) is { Reachable: true, Routes: { } routes }

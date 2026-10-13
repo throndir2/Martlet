@@ -182,6 +182,7 @@ internal static class ClusterSync
         {
             if (File.Exists(temporary)) File.Delete(temporary);
         }
+        Martlet.Core.Settings.SettingsFiles.NotifySaved(path);
     }
 
     /// <summary>Reads a paired host's routes and its copy of the plan over one pinned connection. Never throws for an

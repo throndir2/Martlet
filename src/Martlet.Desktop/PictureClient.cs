@@ -55,7 +55,7 @@ internal static class PictureClient
     /// counts.</summary>
     internal static PoolList List(string dataDirectory)
     {
-        if (WorkSharingRoster.Pool(dataDirectory, PoolAreas.PictureMaking) is { } list) return list;
+        if (WorkSharingRoster.Shared.Pool(dataDirectory, PoolAreas.PictureMaking) is { } list) return list;
         lock (Gate)
         {
             if (PoolSettings.LoadFor(dataDirectory, PoolAreas.PictureMaking) is { } saved) return saved;
@@ -70,7 +70,6 @@ internal static class PictureClient
     internal static bool SaveList(string dataDirectory, PoolList list)
     {
         var saved = PoolSettings.SaveFor(dataDirectory, PoolAreas.PictureMaking, list);
-        WorkSharingRoster.Forget();
         return saved;
     }
 
@@ -85,7 +84,7 @@ internal static class PictureClient
         {
             var hosts = Paired(dataDirectory);
             others = PictureMakingPoolMembers.Others(ClusterSync.LoadPlan(dataDirectory), [.. hosts.Where(h => !h.Shared).Select(h => h.HostId)],
-                OwnHost(hosts), settings.HostId, WorkSharingRoster.Settings(dataDirectory), WorkSharingRoster.Device);
+                OwnHost(hosts), settings.HostId, WorkSharingRoster.Shared.Settings(dataDirectory), WorkSharingRoster.Device);
         }
         return PictureMakingPoolMembers.Migrate(settings, others, DateTimeOffset.UtcNow);
     }
@@ -173,7 +172,7 @@ internal static class PictureClient
     // This PC's own host service: the one Martlet runs here, else a pairing saved as this PC's own; null: the first paired
     // computer that offers the pictures role.
     private static string? OwnHost(IReadOnlyList<PairedHost> hosts) =>
-        WorkSharingRoster.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
+        WorkSharingRoster.Shared.OwnHostId ?? hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId;
 
     /// <summary>The cloud provider's key: Pictures' own, or Thinking's for the same provider; null when there's none.</summary>
     internal static Task<string?> KeyAsync(PicturesSettings settings, Guid profile, SetupRoute? thinking, CancellationToken token)
