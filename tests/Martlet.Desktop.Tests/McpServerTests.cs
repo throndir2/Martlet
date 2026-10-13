@@ -380,6 +380,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains("signals: the facts and the check-ins", checkInSteps);
         Assert.Contains("signals: hours and the per-hour cap saved and read back", checkInSteps);
         Assert.Contains("think ahead", checkInSteps);
+        Assert.Contains("talking to someone else", checkInSteps);
     }
 
     [Fact]

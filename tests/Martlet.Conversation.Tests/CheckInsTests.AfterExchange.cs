@@ -16,7 +16,7 @@ public sealed partial class CheckInsTests
         Assert.Equal(CheckInToolSets.All.Where(s => s.Replaces.Count > 0).Select(s => s.Id), actions.ToolSets);
         Assert.Equal(CheckInFacts.Latest | CheckInFacts.Work, CheckIns.Placed(PromptSettings.Text(null, PromptCatalog.CheckInActions)));
         Assert.Equal("a reply to end", CheckIns.TriggerWords(CheckInTriggers.ExchangeEnded));
-        Assert.Equal(CheckIns.ByTouches | CheckInTriggers.ExchangeEnded, CheckIns.AllTriggers);
+        Assert.Equal(CheckIns.ByTouches | CheckInTriggers.ExchangeEnded | CheckInTriggers.Spoke, CheckIns.AllTriggers);
     }
 
     [Fact]
