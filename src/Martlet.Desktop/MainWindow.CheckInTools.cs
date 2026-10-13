@@ -34,8 +34,14 @@ public partial class MainWindow
                 ? live.CheckInMemoryAsync(call, context.CheckInName, token) : new(new ConversationToolResult("Memory: off.\nMemory is off.", true));
         // Background work only while Thinking longer is on and Deep thinking can think.
         if (conversation?.OffersBackgroundWork == true) handlers[BackgroundWorkTools.SetId] = BackgroundWorkToolAsync;
+        // The voice list (Companion › People) on a PC that keeps one (a data folder), whether recognition is on or off.
+        if (localVoices.Available) handlers[PeopleTools.SetId] = PeopleToolAsync;
         return handlers;
     }
+
+    // Reads the voice list as it is now; it never changes it and never gives voiceprints, clips or audio.
+    private ValueTask<ConversationToolResult> PeopleToolAsync(TextToolCall call, CheckInToolContext context, CancellationToken token) =>
+        new(PeopleTools.Run(call, localVoices.Roster, localVoices.IsYours, DateTimeOffset.UtcNow).Result);
 
     private ValueTask<ConversationToolResult> BackgroundWorkToolAsync(TextToolCall call, CheckInToolContext context, CancellationToken token) =>
         new(conversation is { } live ? live.StartBackgroundWork(call, context.CheckInName)

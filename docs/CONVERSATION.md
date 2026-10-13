@@ -274,10 +274,12 @@ reads the entire conversation again before every reply (on a 12B model, about
   more of the oldest exchanges than it must (and forgets them), so the next
   several replies start at the same exchange instead of moving by one every
   reply.
-- After a reply, remembering and learning names share one request; on a
-  Thinking model on this PC it continues the reply's own conversation (its
-  tools described again, never run), so the model's cache still holds it for
-  the next reply (see [Memory](MEMORY.md#automatic-recall-and-remembering)).
+- After a reply, remembering and learning names are two requests of their own,
+  one after the other (names first); on a Thinking model on this PC each
+  continues the reply's own conversation (its tools described again, never
+  run), so the model's cache still holds it for the next reply (see
+  [Memory](MEMORY.md#automatic-recall-and-remembering) and
+  [Learning names](VOICES.md#what-happens-in-a-conversation)).
 - While **Thinking longer** is on (the default) and Deep thinking can run where
   it is set to think, every reply on a route that does function calling is
   offered `think_longer` and `cancel_thinking`, always both, first and in the
@@ -770,7 +772,10 @@ thinks and research count against the same slots:
 | `Research` | 10 | no |
 
 Helper jobs use these kinds through `HelperJobs` and `ThinkingPoolHelpers`.
-Remembering after a reply is a `Memory` job. Emote naming and touch temperament
+Remembering after a reply is a `Memory` job. Learning the names of the people
+speaking after a reply ([Learning names](VOICES.md#what-happens-in-a-conversation),
+with the [People tools](VOICES.md#people-tools) when Martlet wasn't sure who
+spoke and a member calls tools), emote naming and touch temperament
 are `Naming` jobs, and touch-zone detection is a `TouchZones` job that needs
 vision. When the pool can't do one, the conversation's Thinking model does it
 after the reply finishes speaking
@@ -2151,6 +2156,7 @@ does and its tools. Martlet offers:
 | Memory (`memory`) | `memory_find`, `memory_remember`, `memory_update`, `memory_forget` | Find, remember, correct, give to someone else and forget facts, as `manage_memories` does ([Asking Martlet to change its memory](MEMORY.md#asking-martlet-to-change-its-memory)). Takes over the reply's `manage_memories`. Offered only while memory is on. |
 | Songs, pictures and creations (`songs-pictures`) | `sing_song`, `play_song`, `draw_picture`, `list_creations`, `perform_creation` | Make or sing a song, draw a picture, or perform or show something Martlet made, when you asked for it in the exchange. Same arguments, limits and gates as the reply's tools ([Singing](SINGING.md), [Pictures](PICTURES.md), [Creations](CREATIONS.md)). Takes over `sing_song`, `play_song`, `draw_picture` and `perform_creation` from the reply; `stop_singing` and `list_creations` stay on it. Offered on a PC with a data folder. |
 | Background work (`background-work`) | `think_longer`, `research` | Start a background think or web research on the last exchange, which Martlet brings up when done. Takes over the reply's `think_longer` and `research` ([Thinking longer](#thinking-longer-and-background-work)). Offered only while Thinking longer is on and Deep thinking can think. |
+| People (`people`) | `people_list`, `people_lately` | Look up the people in the voice list (Companion › People): each voice's names (the one used first, typed or learned), whether it is you or linked to someone's account, how often and when it was last heard, and who spoke lately. Read-only; never voiceprints, clips or audio ([People tools](VOICES.md#people-tools)). Takes over no reply tool. Offered on a PC with a data folder. |
 
 A set can also take over reply tools (`CheckInToolSet.Replaces`): see [Act on what was said](#act-on-what-was-said).
 
@@ -2516,8 +2522,8 @@ saved facts (best lexical matches for the current input, then the newest) as one
 labeled background block inside the same input budget; the full store, path and
 consent UUIDs are never uploaded. If the store can't be read, the reply goes
 ahead without memory and the status says why. After a completed reply, the
-exchange is sent once more, as one extra text-only request (shared with
-learning names when both are due), to the same Thinking model, which picks out
+exchange is sent once more, as one extra text-only request (learning names has
+a request of its own), to the same Thinking model, which picks out
 lasting facts to save locally (shown under the reply and
 listed in Memory). Screen glances are never remembered. The exchanges kept in
 mind for the next replies stay in memory only; separately, while memory and

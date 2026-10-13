@@ -18,7 +18,7 @@ namespace Martlet.Desktop;
 /// <summary>Background model work Martlet does on its own, besides replies and think_longer.</summary>
 internal enum HelperJobKind
 {
-    /// <summary>Remembering and learning names after a reply.</summary>
+    /// <summary>Remembering after a reply.</summary>
     Memory,
     /// <summary>Naming a character's emotes and motions.</summary>
     ActionNaming,
@@ -34,7 +34,10 @@ internal enum HelperJobKind
     /// low priority).</summary>
     MemoryUpkeep,
     /// <summary>Writing the memory brief from the remembered facts (lowest priority).</summary>
-    MemoryBrief
+    MemoryBrief,
+    /// <summary>Learning names after a reply: who the people speaking are, from their voices and their words (low priority; the
+    /// pool's Naming kind).</summary>
+    SpeakerNaming
 }
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
@@ -44,11 +47,20 @@ internal enum HelperCapability { Text, Vision }
 /// for touch zones.</summary>
 internal enum HelperJobPriority { Low, Normal }
 
-/// <summary>One helper job posted to the Thinking pool: its kind, the log's name for it and the one request it makes.</summary>
+/// <summary>Tools a helper job may call on a pool member that calls tools: their definitions, what runs them and how many
+/// rounds one attempt may use. The conversation's own model never gets them.</summary>
+internal sealed record HelperTools(IReadOnlyList<TextToolDefinition> Definitions, IConversationToolHost Host, int Rounds)
+{
+    public override string ToString() => $"{nameof(HelperTools)} ({Definitions.Count} tools)";
+}
+
+/// <summary>One helper job posted to the Thinking pool: its kind, the log's name for it and the one request it makes, with the
+/// tools it may call (null: none).</summary>
 internal sealed record HelperJob(HelperJobKind Kind, string Purpose, BoundedTextInput Input)
 {
     internal HelperCapability Capability => Input.Image is null ? HelperCapability.Text : HelperCapability.Vision;
     internal HelperJobPriority Priority => HelperJobs.PriorityOf(Kind);
+    internal HelperTools? Tools { get; init; }
     public override string ToString() => $"{nameof(HelperJob)} {{ Kind = {Kind}, Capability = {Capability} }}";
 }
 
@@ -60,6 +72,10 @@ internal interface IHelperJobPool
 {
     /// <summary>Whether a pool member can take a job that needs <paramref name="capability"/> (cheap, no request).</summary>
     bool Has(HelperCapability capability);
+
+    /// <summary>Whether a pool member that answers now can take a text job of <paramref name="kind"/> and call tools (cheap, no
+    /// request).</summary>
+    bool CallsTools(HelperJobKind kind) => false;
 
     /// <summary>Posts <paramref name="job"/>; a free member that can take it runs it. Null at once when no member can take it,
     /// so the caller uses the conversation's own Thinking model.</summary>
@@ -108,6 +124,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         HelperJobKind.CharacterWriting => "character_writing",
         HelperJobKind.MemoryUpkeep => "memory_upkeep",
         HelperJobKind.MemoryBrief => "memory_brief",
+        HelperJobKind.SpeakerNaming => "speaker_naming",
         _ => "touch_zones"
     };
 
@@ -119,6 +136,9 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
 
     /// <summary>Whether the pool has a member for <paramref name="capability"/> now.</summary>
     internal bool PoolHas(HelperCapability capability) => pool() is { } current && current.Has(capability);
+
+    /// <summary>Whether a pool member that answers now can take a text job of <paramref name="kind"/> and call tools.</summary>
+    internal bool PoolCallsTools(HelperJobKind kind) => pool() is { } current && current.CallsTools(kind);
 
     /// <summary>Runs one helper job only on a free Thinking pool member, never on the conversation's own model (tidying memory):
     /// null when the pool has no member that can take it or none was free, so the caller tries again later.</summary>
@@ -141,17 +161,18 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
     }
 
     /// <summary>Runs one helper job. <paramref name="poolInput"/> is the request a pool member gets (made only when one can
-    /// take it; a request too large for it falls back); <paramref name="fallback"/> asks the conversation's own Thinking
-    /// model, after the reply finished speaking and while no other reply runs.</summary>
+    /// take it; a request too large for it falls back), with <paramref name="tools"/> it may call (null: none);
+    /// <paramref name="fallback"/> asks the conversation's own Thinking model, after the reply finished speaking and while no
+    /// other reply runs.</summary>
     internal async Task<HelperResult> RunAsync(HelperJobKind kind, string purpose, HelperCapability capability,
         Func<BoundedTextInput> poolInput, Func<CancellationToken, Task<(string? Answer, string? Failure)>> fallback,
-        CancellationToken token)
+        CancellationToken token, HelperTools? tools = null)
     {
         var why = "the Thinking pool has no member";
         if (pool() is { } current && current.Has(capability))
         {
             HelperJob? job = null;
-            try { job = new(kind, purpose, poolInput()); }
+            try { job = new(kind, purpose, poolInput()) { Tools = tools }; }
             catch (Exception error) when (error is not OperationCanceledException) { why = "the request can't be made for the pool"; }
             if (job is not null)
             {

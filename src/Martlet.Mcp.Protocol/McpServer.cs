@@ -452,14 +452,30 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             seconds = new { type = "integer", minimum = 30, maximum = LongTalkCheck.MaximumSeconds },
             phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
         }),
+        Tool("voices_people", "Run the People check-in tools (Companion › Check-ins, tool set people; learning names uses them too) " +
+            "on a data directory's saved voice list, exactly as a check-in gets them: tool people_list (optional query: a name, part " +
+            "of one, or a tag like V3; at most 20 voices, most recently heard first) or people_lately (optional minutes, 1-10080, " +
+            "default 60). Returns the tool's answer: each voice's tag, the name Martlet uses first, its other names (typed by the " +
+            "owner or learned), whether it is the signed-in user (accounts\\session.json) or linked to an account, and how often and " +
+            "when it was last heard; firstLine is what a check-in card shows (counts only). Names are personal: this reads them from " +
+            "the data directory you give. Never voiceprints, clips or audio; read-only.", new
+        {
+            dataDirectory = new { type = "string" },
+            tool = new { type = "string", @enum = new[] { Martlet.Conversation.PeopleTools.List, Martlet.Conversation.PeopleTools.Lately } },
+            query = new { type = "string", maxLength = 100 },
+            minutes = new { type = "integer", minimum = 1, maximum = Martlet.Conversation.PeopleTools.MaximumLatelyMinutes }
+        }),
         Tool("voices_naming_check", "Rehearse learning names (Companion › People) with the production checks and changes on a fixture " +
             "voice list in memory: the companion's own names (persona names, \"You are ...\" in persona text, \"I'm ...\" in Martlet's " +
             "reply) are never given to a voice, a heard voice drops one it learned by mistake, a voice keeps many names and shows the " +
             "one it asked for (CALL), a wrong learned name is dropped (NOT) but never one the owner typed, names go only to voices " +
-            "heard, and two voices merge into the owner's (SAME) at most once per exchange. Optional dataDirectory supplies the saved " +
-            "personas' names (one more scenario); optional answer (a Thinking answer of NAME/CALL/NOT/SAME lines about V1-V3) and " +
-            "reply (Martlet's reply) are checked against the same fixture. Never reads or writes the saved voice list; no audio, model " +
-            "or network.", new
+            "heard, two voices merge into the owner's (SAME) at most once per exchange, and a SPOKE line (whose voice said a message " +
+            "Martlet wasn't sure of) only labels it: it is refused when Martlet knew who spoke or names a voice that couldn't have, " +
+            "and it never changes a name, voiceprint, sample or heard count. The people tools (people_list, people_lately) run on " +
+            "the same fixture: names with typed or learned, the user, heard counts, a first line with counts only and no voiceprint. " +
+            "Optional dataDirectory supplies the saved personas' names (one more scenario); optional answer (a Thinking answer of " +
+            "NAME/CALL/NOT/SAME lines about V1-V3) and reply (Martlet's reply) are checked against the same fixture. Never reads or " +
+            "writes the saved voice list; no audio, model or network.", new
         {
             dataDirectory = new { type = "string" },
             answer = new { type = "string" },
@@ -2822,6 +2838,7 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
                     cancellation),
                 "voices_naming_check" => VoiceNamingCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "reply")),
+                "voices_people" => VoicesPeople(arguments),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
                 "f5_voices" => F5Voices(arguments),
                 "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
@@ -3148,6 +3165,39 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { counts = []; }
             return new { keep = Choice("voice-clips.txt") ?? "on (default)", voices = counts.Length, clips = counts.Sum() };
         }
+    }
+
+    /// <summary>voices_people: the People check-in tools on the data directory's saved voice list, as a check-in gets them.</summary>
+    private static object VoicesPeople(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var tool = OptionalString(arguments, "tool") ?? Martlet.Conversation.PeopleTools.List;
+        if (tool is not (Martlet.Conversation.PeopleTools.List or Martlet.Conversation.PeopleTools.Lately))
+            throw new ArgumentException($"tool must be {Martlet.Conversation.PeopleTools.List} or {Martlet.Conversation.PeopleTools.Lately}.");
+        var path = Path.Combine(directory, "voices.json");
+        Martlet.Core.Speakers.VoiceRoster list;
+        string state;
+        try
+        {
+            (list, state) = File.Exists(path) ? (Martlet.Core.Speakers.VoiceRoster.Parse(File.ReadAllBytes(path)), "loaded")
+                : (Martlet.Core.Speakers.VoiceRoster.Empty, "none");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            return new { state = "unreadable", tool };
+        }
+        var call = new JsonObject();
+        if (OptionalString(arguments, "query") is { } query) call["query"] = query;
+        if (OptionalInt(arguments, "minutes") is { } minutes) call["minutes"] = minutes;
+        var signedIn = SignedInAccount(directory);
+        // As the desktop's LocalVoices.IsYours: linked to the signed-in account, or marked as the owner's before accounts.
+        var answer = Martlet.Conversation.PeopleTools.Run(new Martlet.Providers.TextToolCall("mcp", tool, call.ToJsonString()), list,
+            voice => signedIn is { } account ? voice.Account == account : voice.Owner, DateTimeOffset.UtcNow);
+        return new
+        {
+            state, tool, signedIn = signedIn is not null, isError = answer.Result.IsError,
+            firstLine = answer.Result.Output.Split('\n', 2)[0], shown = answer.Shown.Count, text = answer.Result.Output
+        };
     }
 
     /// <summary>The account signed in on this device (accounts\session.json), or null before accounts or when unreadable.</summary>

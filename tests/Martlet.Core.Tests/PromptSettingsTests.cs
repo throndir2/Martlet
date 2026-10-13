@@ -35,6 +35,18 @@ public sealed class PromptSettingsTests
         Assert.Null(PromptCatalog.Find("character_theme"));
     }
 
+    // Remembering and learning names are two requests of their own now: an edit of the old joined prompt is dropped.
+    [Fact]
+    public void TheJoinedRememberingAndLearningNamesPromptIsRetired()
+    {
+        var json = """{"overrides": {"after_reply": "Do both: {remembering} {naming}", "voice_naming": "Names only. {nothing}"}}""";
+        var settings = Martlet.Core.Contracts.ContractJson.Read<PromptSettings>(System.Text.Encoding.UTF8.GetBytes(json));
+        settings.Validate();
+        Assert.Equal([PromptCatalog.VoiceNaming], settings.Overrides.Keys);
+        Assert.Null(PromptCatalog.Find("after_reply"));
+        Assert.Contains("SPOKE V<number>", PromptCatalog.Default(PromptCatalog.VoiceNaming), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void EarlierRemarksEditsAreDroppedNowThatWhatYouSaidLatelyTakesTheirPlace()
     {

@@ -2694,12 +2694,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         var remembered = spokenOwn is null ? null
                             : operation.PcAudio ? VoicePromptContext.Prefix(operation.Heard) + spokenOwn : said;
                         var remember = operation.MemoryRequested && !passed && remembered is not null;
-                        var heard = !passed && remembered is not null && operation.Heard is { Known.Count: > 0 } known &&
+                        // Learning names also runs for a message whose voice Martlet wasn't sure of (VoiceNaming.Worth).
+                        var heard = !passed && remembered is not null && operation.Heard is { Voices.Count: > 0 } known &&
                             voices is { Active: true } && VoiceNaming.Worth(known, spokenOwn!, turn.Content.Text,
                                 operation.Authorization.Configuration.CompanionNames) ? known : null;
                         // Whose new facts are: the voices recognized in the message (the speaker's, unless another is named).
                         var present = remember && operation.Heard is { Known.Count: > 0 } recognized ? recognized : null;
-                        // The after-reply request continues the reply's request (instructions, tools, earlier messages and the
+                        // Each after-reply request continues the reply's request (instructions, tools, earlier messages and the
                         // message), then the reply as the next reply's history has it, whether or not the reply called tools.
                         if (remember || heard is not null)
                             EnqueueAfterReplyLocked(operation.Authorization.Configuration, remember, heard, earlier, remembered!,
@@ -2933,7 +2934,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (!keep.Passed && !keep.Cut && real && current)
             {
                 var remember = operation.MemoryRequested;
-                var heard = operation.Heard is { Known.Count: > 0 } known && voices is { Active: true } &&
+                var heard = operation.Heard is { Voices.Count: > 0 } known && voices is { Active: true } &&
                     VoiceNaming.Worth(known, userWords, keep.Reply, keep.Configured.CompanionNames) ? known : null;
                 var present = remember && operation.Heard is { Known.Count: > 0 } recognized ? recognized : null;
                 if (remember || heard is not null)
@@ -4836,10 +4837,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>Queues the one request after a reply: remembering (<paramref name="remember"/>) and learning the names of the
-    /// <paramref name="heard"/> voices, together when both are due. On a Thinking model on this PC it continues
-    /// <paramref name="sent"/>, the reply's own request, so the model's prompt cache keeps the conversation for the next reply.
-    /// New facts belong to the speaker among the <paramref name="present"/> voices (unless the model names another).</summary>
+    /// <summary>Queues what comes after a reply: learning the names of the <paramref name="heard"/> voices and remembering
+    /// (<paramref name="remember"/>), each in a Thinking request of its own, one after the other (names first, so the facts
+    /// remembered next already say the names learned). On a Thinking model on this PC each continues <paramref name="sent"/>,
+    /// the reply's own request, so the model's prompt cache keeps the conversation for the next reply. New facts belong to the
+    /// speaker among the <paramref name="present"/> voices (unless the model names another).</summary>
     private void EnqueueAfterReplyLocked(LiveConversationConfiguration configured, bool remember, HeardVoices? heard,
         IReadOnlyList<TextHistoryMessage> earlier, string user, string reply, BoundedTextInput? sent, HeardVoices? present = null)
     {
@@ -4861,7 +4863,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         string? EarlierReply, string User, string Reply, BoundedTextInput? Conversation, CancellationToken Token, HeardVoices? Present = null)
     {
         public override string ToString() => nameof(AfterReplyJob);
-        public string Purpose => Remember && Heard is not null ? "Remembering and learning names" : Remember ? "Remembering" : "Learning names";
     }
 
     private async Task AfterReplyAsync(Task previous, AfterReplyJob job)
@@ -4871,18 +4872,26 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? learned = null;
         try
         {
-            (report, learned) = await Task.Run(() => AfterReplyRunAsync(job)).ConfigureAwait(false);
-        }
-        catch (Exception error)
-        {
-            ErrorLog.Warn($"{job.Purpose} from a conversation exchange failed.", error);
-            if (job.Remember) report = new(Failure: "memory." + error.GetType().Name);
+            if (job.Heard is not null)
+            {
+                try { learned = await Task.Run(() => LearnNamesAsync(job)).ConfigureAwait(false); }
+                catch (Exception error) { ErrorLog.Warn($"{VoiceNaming.Purpose} from a conversation exchange failed.", error); }
+                if (learned is { Count: > 0 }) VoicesNamed?.Invoke(learned);
+            }
+            if (job.Remember)
+            {
+                try { report = await Task.Run(() => RememberAsync(job)).ConfigureAwait(false); }
+                catch (Exception error)
+                {
+                    ErrorLog.Warn("Remembering from a conversation exchange failed.", error);
+                    report = new(Failure: "memory." + error.GetType().Name);
+                }
+            }
         }
         finally
         {
             lock (gate) capturesPending--;
         }
-        if (learned is { Count: > 0 }) VoicesNamed?.Invoke(learned);
         if (!job.Remember) return;
         if (report is { Failure: { } failure })
         {
@@ -4899,96 +4908,131 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (report is not null) MemoryCaptured?.Invoke(report);
     }
 
-    private async Task<(MemoryCaptureReport? Report, IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? Learned)> AfterReplyRunAsync(
-        AfterReplyJob job)
+    /// <summary>Learning names: one Thinking request whose only job is who the people speaking are, from the voices Martlet
+    /// recognized (and, when it wasn't sure whose voice said the message, the one it sounded most like) and from what they
+    /// said. It goes to a Thinking pool member that takes naming jobs, at the helpers' priority and under the live floor, else to
+    /// the conversation's own Thinking model once the conversation is quiet. Only the checked lines change the voice list; a
+    /// SPOKE line only labels the message (no name, voiceprint or sample changes).</summary>
+    private async Task<IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>?> LearnNamesAsync(AfterReplyJob job)
     {
         var token = job.Token;
-        var remember = job.Remember;
-        MemoryCaptureReport? report = null;
-        IReadOnlyList<MemoryFact>? known = null;
-        IReadOnlyDictionary<Guid, string>? knownSpaces = null;
+        if (voices is not { } known || job.Heard is not { } heard) return null;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var naming = VoiceNaming.Context(heard, known.Roster, job.User, job.Configuration.CompanionNames);
+            // The people tools only when Martlet wasn't sure whose voice said the message (only a SPOKE line can use what they
+            // show) and a pool member that takes naming jobs calls tools. The conversation's own model never gets them.
+            var tools = naming.Unattributed && helpers.PoolCallsTools(HelperJobKind.SpeakerNaming) ? PeopleToolsFor(naming) : null;
+            var prompt = AfterReply.Prompt(null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts,
+                job.Conversation, job.Configuration.FitsContext, companion: job.Configuration.CharacterName);
+            // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
+            // own model continues the reply's request, after the reply finished speaking.
+            var (answer, failure, _) = await helpers.RunAsync(HelperJobKind.SpeakerNaming, VoiceNaming.Purpose, HelperCapability.Text,
+                () => VoiceNaming.Prompt(naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts,
+                    job.Configuration.CharacterName, tools is not null).Input,
+                worker => AskAsync(VoiceNaming.Purpose, job.Configuration, prompt.Input, worker), token, tools).ConfigureAwait(false);
+            if (answer is null)
+            {
+                if (failure is not null && !token.IsCancellationRequested)
+                    ErrorLog.Info($"{VoiceNaming.Purpose} got no answer ({failure}); no names changed.");
+                return null;
+            }
+            token.ThrowIfCancellationRequested();
+            var asked = VoiceNaming.Parse(answer, naming, job.Reply);
+            var (applied, refused) = known.Apply(asked.Updates);
+            // Why lines were left out, never the names (they are personal).
+            if (asked.Refused.Count + refused.Count > 0)
+                ErrorLog.Info($"{VoiceNaming.Purpose}: {applied.Count} change(s) made; left out: " +
+                    string.Join(", ", asked.Refused.Concat(refused).Select(r => r.Reason).Distinct()) + ".");
+            return applied;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception error) when (error is LiveActionException or ContractException or IOException or UnauthorizedAccessException or
+            InvalidOperationException)
+        {
+            ErrorLog.Info($"{VoiceNaming.Purpose} couldn't run ({(error is LiveActionException live ? live.Code : error.GetType().Name)}); " +
+                "no names changed.");
+            return null;
+        }
+    }
+
+    /// <summary>The people tools (<see cref="PeopleTools"/>) for one learning-names request: they read the voice list as it is
+    /// when called, and each voice they show may be named in the answer's SPOKE line.</summary>
+    private HelperTools PeopleToolsFor(VoiceNamingContext naming)
+    {
+        var host = new CheckInToolHost([PeopleTools.SetId], new(VoiceNaming.ToolCaller, VoiceNaming.Purpose, null, clock.GetUtcNow()),
+            new Dictionary<string, CheckInToolHandler>(StringComparer.Ordinal)
+            {
+                [PeopleTools.SetId] = (call, context, token) =>
+                {
+                    if (voices is not { } live) return new(new ConversationToolResult("People: voice recognition isn't available here.", true));
+                    var answer = PeopleTools.Run(call, live.Roster, live.IsYours, clock.GetUtcNow());
+                    naming.Saw(answer.Shown);
+                    return new(answer.Result);
+                }
+            });
+        return new(host.Tools, host, VoiceNaming.MaximumToolRounds);
+    }
+
+    /// <summary>Remembering: one Thinking request with the related facts already saved and the exchange. New facts belong to
+    /// the speaker among the voices recognized in the message, unless the model names another.</summary>
+    private async Task<MemoryCaptureReport?> RememberAsync(AfterReplyJob job)
+    {
+        const string Purpose = "Remembering";
+        var token = job.Token;
+        // Read after learning names, so the facts and the talk window use the names learned from this same exchange.
         var roster = voices?.Roster;
         // Whose new facts are: the speaker among the voices recognized in the message, when remembering has them.
         var speaker = job.Present?.Speaker?.Voice;
         try
         {
             token.ThrowIfCancellationRequested();
-            if (remember)
-            {
-                try
-                {
-                    // Facts that say related things in other words join the lexical matches (finding by meaning, after the reply).
-                    var similar = await MeaningFactsAsync(job.User, token).ConfigureAwait(false);
-                    var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
-                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token, similar), token).ConfigureAwait(false);
-                    (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
-                }
-                catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
-                    IOException or UnauthorizedAccessException or InvalidOperationException)
-                {
-                    // Memory can't be read now; learning names still goes ahead on its own.
-                    report = RememberingFailure(error, token);
-                    remember = false;
-                    if (job.Heard is null) return (report, null);
-                }
-            }
-            var naming = job.Heard is not null && voices is not null
-                ? VoiceNaming.Context(job.Heard, voices.Roster, job.User, job.Configuration.CompanionNames) : null;
-            var prompt = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
-                job.Configuration.Prompts, job.Conversation, job.Configuration.FitsContext, remember ? job.Present : null,
-                remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName);
-            var purpose = remember && job.Heard is not null ? "Remembering and learning names" : remember ? "Remembering" : "Learning names";
+            // Facts that say related things in other words join the lexical matches (finding by meaning, after the reply).
+            var similar = await MeaningFactsAsync(job.User, token).ConfigureAwait(false);
+            var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
+                MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token, similar), token).ConfigureAwait(false);
+            var (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
+            var people = MemoryPeople.Labels(known, roster);
+            var prompt = AfterReply.Prompt(known, null, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts,
+                job.Conversation, job.Configuration.FitsContext, job.Present, people, job.Configuration.CharacterName);
             // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
             // own model continues the reply's request as before, after the reply finished speaking.
             AfterReplyPrompt? pooled = null;
-            var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, purpose, HelperCapability.Text,
-                () => (pooled = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
-                    job.Configuration.Prompts, null, null, remember ? job.Present : null,
-                    remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName)).Input,
-                worker => AskAsync(purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
+            var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, Purpose, HelperCapability.Text,
+                () => (pooled = AfterReply.Prompt(known, null, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
+                    job.Configuration.Prompts, null, null, job.Present, people, job.Configuration.CharacterName)).Input,
+                worker => AskAsync(Purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
             if (onPool) prompt = pooled!;
-            if (answer is null)
-                return (remember && !token.IsCancellationRequested && failure is not null ? new(Failure: failure) : report, null);
-            IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? learned = null;
-            if (naming is not null && voices is not null)
+            if (answer is null) return !token.IsCancellationRequested && failure is not null ? new(Failure: failure) : null;
+            if (MemoryCapture.Parse(answer, prompt.ShownFacts, prompt.Voices, speaker?.Id) is not { Count: > 0 } operations) return null;
+            try
             {
-                token.ThrowIfCancellationRequested();
-                var asked = VoiceNaming.Parse(answer, naming, job.Reply);
-                var (applied, refused) = voices.Apply(asked.Updates);
-                learned = applied;
-                // Why lines were left out, never the names (they are personal).
-                if (asked.Refused.Count + refused.Count > 0)
-                    ErrorLog.Info($"Learning names: {applied.Count} change(s) made; left out: " +
-                        string.Join(", ", asked.Refused.Concat(refused).Select(r => r.Reason).Distinct()) + ".");
+                var shown = known.Take(prompt.ShownFacts).ToArray();
+                var changes = await RetryStoreAsync(() => memory!.RememberAsync(job.Configuration.Memory!.ConfigurationRevision, shown,
+                    operations, id => MemoryPeople.Canonical(id, roster), token, knownSpaces), token).ConfigureAwait(false);
+                // Whose each change is, as the talk window names them.
+                var whose = voices?.Roster ?? roster;
+                return changes.Count == 0 ? null
+                    : new(changes.Select(change => change with { Person = MemoryPeople.Label(change.VoiceId, whose) }).ToArray());
             }
-            if (remember && MemoryCapture.Parse(answer, prompt.ShownFacts, prompt.Voices, speaker?.Id) is { Count: > 0 } operations)
+            catch (Exception error) when (error is LiveActionException or DesktopMemoryException or MemoryException or
+                ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
             {
-                try
-                {
-                    var shown = known!.Take(prompt.ShownFacts).ToArray();
-                    var changes = await RetryStoreAsync(() => memory!.RememberAsync(job.Configuration.Memory!.ConfigurationRevision, shown,
-                        operations, id => MemoryPeople.Canonical(id, roster), token, knownSpaces), token).ConfigureAwait(false);
-                    // Whose each change is, as the talk window names them (with any name learned from this same answer).
-                    var whose = voices?.Roster ?? roster;
-                    report = changes.Count == 0 ? null
-                        : new(changes.Select(change => change with { Person = MemoryPeople.Label(change.VoiceId, whose) }).ToArray());
-                }
-                catch (Exception error) when (error is LiveActionException or DesktopMemoryException or MemoryException or
-                    ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
-                {
-                    report = RememberingFailure(error, token);
-                }
+                return RememberingFailure(error, token);
             }
-            return (report, learned);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            return (null, null);
+            return null;
         }
         catch (Exception error) when (error is LiveActionException or DesktopMemoryException or MemoryException or
             ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            return (remember ? RememberingFailure(error, token) : report, null);
+            return RememberingFailure(error, token);
         }
     }
 

@@ -8,10 +8,13 @@ namespace Martlet.Desktop;
 
 /// <summary>One voice heard in an utterance and what Martlet made of it. <see cref="Voice"/> is null when the voice could not
 /// be told apart (too little speech, or too close to call); <see cref="Added"/> means it was new and joined the list.
-/// <see cref="Mine"/>: the voice is the signed-in person's (<see cref="LocalVoices.IsYours"/>) as it was heard.</summary>
+/// <see cref="Mine"/>: the voice is the signed-in person's (<see cref="LocalVoices.IsYours"/>) as it was heard.
+/// <see cref="Closest"/>: for a voice too close to call (Unsure), the known voice it sounded most like; only learning names
+/// reads it, as a guess to check against the words, and nothing is ever learned from it.</summary>
 internal sealed record HeardVoice(KnownVoice? Voice, VoiceMatchKind Kind, double Score, double Seconds, bool Added)
 {
     internal bool Mine { get; init; }
+    internal KnownVoice? Closest { get; init; }
 }
 
 /// <summary>Who spoke in one utterance: <see cref="Speaker"/> is the voice with the most speech (the one talking to Martlet),
@@ -151,7 +154,7 @@ internal sealed class LocalVoices : IDisposable
                         heard.Add(new(added, added is null ? VoiceMatchKind.Unsure : VoiceMatchKind.New, match.Score, speaker.CleanSeconds, added is not null));
                         break;
                     default:
-                        heard.Add(new(null, match.Kind, match.Score, speaker.CleanSeconds, false));
+                        heard.Add(new(null, match.Kind, match.Score, speaker.CleanSeconds, false) { Closest = ClosestLocked(match) });
                         break;
                 }
             }
@@ -165,7 +168,7 @@ internal sealed class LocalVoices : IDisposable
                     spans.Add((match.Voice.Id, 0, samples.Length / (double)SpeakerEngine.SampleRate));
                     heard.Add(new(roster.Resolve(match.Voice.Id), match.Kind, match.Score, analysis.SpeechSeconds, false));
                 }
-                else heard.Add(new(null, match.Kind, match.Score, analysis.SpeechSeconds, false));
+                else heard.Add(new(null, match.Kind, match.Score, analysis.SpeechSeconds, false) { Closest = ClosestLocked(match) });
             }
             if (companion is not null)
                 for (var i = 0; i < heard.Count; i++)
@@ -226,6 +229,10 @@ internal sealed class LocalVoices : IDisposable
     private (byte[] Hash, SpeakerAnalysis Analysis)? identified;
     // A full list whose voices all have names was already noted in the log; noted again after a voice can be added.
     private bool listFullNoted;
+
+    // The known voice an Unsure match sounded most like (as the list has it now), for learning names only; null otherwise.
+    private KnownVoice? ClosestLocked(VoiceMatch match) =>
+        match.Kind == VoiceMatchKind.Unsure && match.Voice is { } voice ? roster.Resolve(voice.Id) : null;
 
     private static byte[] Hash(float[] samples) =>
         System.Security.Cryptography.SHA256.HashData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(samples.AsSpan()));

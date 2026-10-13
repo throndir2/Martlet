@@ -206,17 +206,124 @@ public sealed class HelperJobsTests
         internal bool Text { get; init; }
         internal bool Vision { get; init; }
         internal bool Free { get; init; } = true;
+        internal bool Tools { get; init; }
         internal string Answer { get; init; } = "pool answer";
+        internal Func<HelperJob, string>? AnswerFor { get; init; }
         internal ConcurrentQueue<HelperJob> Jobs { get; } = new();
 
         public bool Has(HelperCapability capability) => capability == HelperCapability.Vision ? Vision : Text;
+
+        public bool CallsTools(HelperJobKind kind) => Tools;
 
         public Task<HelperPoolAnswer?> TryRunAsync(HelperJob job, CancellationToken token)
         {
             if (!Free || !Has(job.Capability)) return Task.FromResult<HelperPoolAnswer?>(null);
             Jobs.Enqueue(job);
-            return Task.FromResult<HelperPoolAnswer?>(new(job.Capability == HelperCapability.Vision ? "vision-member" : "text-member", Answer, null));
+            return Task.FromResult<HelperPoolAnswer?>(new(job.Capability == HelperCapability.Vision ? "vision-member" : "text-member",
+                AnswerFor?.Invoke(job) ?? Answer, null));
         }
+    }
+
+    [Fact]
+    public async Task Learning_names_goes_to_a_naming_member_with_the_people_tools_when_one_calls_tools()
+    {
+        var caller = new Martlet.Conversation.BackgroundPlace("tools", "Tools PC")
+        {
+            Can = Martlet.Conversation.ThinkingCapability.Text | Martlet.Conversation.ThinkingCapability.Tools
+        };
+        var members = new List<Martlet.Conversation.BackgroundPlace>();
+        var posted = new ConcurrentQueue<Martlet.Conversation.ThinkingJob>();
+        var board = new Martlet.Conversation.ThinkingJobBoard(new Martlet.Conversation.BackgroundPlaces(), () => [.. members], (member, job, _) =>
+        {
+            posted.Enqueue(job);
+            return Task.FromResult(Martlet.Conversation.ThinkingAnswer.Done("NOTHING"));
+        });
+        var adapter = new ThinkingPoolHelpers(() => new ThinkingPool(board));
+        Assert.False(adapter.CallsTools(HelperJobKind.SpeakerNaming));
+        members.Add(caller);
+        Assert.True(adapter.CallsTools(HelperJobKind.SpeakerNaming));
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.Naming, ThinkingPoolHelpers.Kind(HelperJobKind.SpeakerNaming));
+        Assert.Equal("speaker_naming", HelperJobs.Name(HelperJobKind.SpeakerNaming));
+        Assert.Equal(HelperJobPriority.Low, HelperJobs.PriorityOf(HelperJobKind.SpeakerNaming));
+
+        var host = new Martlet.Conversation.CheckInToolHost([Martlet.Conversation.PeopleTools.SetId],
+            new("learning-names", "Learning names", null, DateTimeOffset.UtcNow),
+            new Dictionary<string, Martlet.Conversation.CheckInToolHandler>
+            {
+                [Martlet.Conversation.PeopleTools.SetId] = (call, context, token) =>
+                    new(new Martlet.Conversation.ConversationToolResult("People: 0 voice(s) saved, 0 listed."))
+            });
+        var answer = await adapter.TryRunAsync(new(HelperJobKind.SpeakerNaming, "Learning names", new BoundedTextInput("voices", "who"))
+        {
+            Tools = new(host.Tools, host, 2)
+        }, CancellationToken.None);
+
+        Assert.Equal("NOTHING", answer!.Answer);
+        var job = Assert.Single(posted);
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.Naming, job.Kind);
+        Assert.Equal(Martlet.Conversation.ThinkingPriority.Helper, Martlet.Conversation.ThinkingJobKinds.Priority(job.Kind));
+        Assert.Null(job.Priority);
+        Assert.Equal("Learning names", job.Label);
+        Assert.Equal([Martlet.Conversation.PeopleTools.List, Martlet.Conversation.PeopleTools.Lately], job.Tools.Select(t => t.Name));
+        Assert.Same(host, job.ToolHost);
+        Assert.Equal(2, job.MaxToolRounds);
+        Assert.True(job.Required.HasFlag(Martlet.Conversation.ThinkingCapability.Tools));
+        Assert.True(Martlet.Conversation.LiveFloorRules.Stops(job.Kind));
+    }
+
+    // Learning names is a request of its own (before remembering, which keeps its own), and a SPOKE line about a voice Martlet
+    // wasn't sure of only labels the message: the voice list stays exactly as it was.
+    [Fact]
+    public async Task Learning_names_is_its_own_request_and_a_spoke_line_only_labels_the_message()
+    {
+        await using var fixture = await LiveFixture.Create(voices: true);
+        Assert.True(fixture.Voices!.Active, "the voice recognition models are in the test's folder");
+        var now = DateTimeOffset.UtcNow;
+        var roster = Martlet.Core.Speakers.VoiceRoster.Empty;
+        (roster, var added) = roster.Add(Print(1), 3, "desk", now);
+        fixture.Voices.Merge(roster.AddHeardName(added!.Id, "Kim", "desk", now));
+        var kim = fixture.Voices.Roster.Resolve(added.Id)!;
+        await fixture.EnableMemory();
+        var pool = new FixturePool
+        {
+            Text = true, Tools = true,
+            AnswerFor = job => job.Kind == HelperJobKind.SpeakerNaming ? $"SPOKE {kim.Tag}\nNAME {kim.Tag}: Kimmy" : "REMEMBER: The user's dog is called Biscuit."
+        };
+        fixture.Controller.HelperPool = pool;
+        var named = new ConcurrentQueue<Martlet.Core.Speakers.VoiceUpdateResult>();
+        fixture.Controller.VoicesNamed += learned => { foreach (var result in learned) named.Enqueue(result); };
+        fixture.Answer("Biscuit is a lovely name.");
+        var heard = new HeardVoices([new(null, Martlet.Core.Speakers.VoiceMatchKind.Unsure, 0.6, 3, false) { Closest = kim }], false);
+        var before = fixture.Voices.Roster.Digest();
+
+        var first = fixture.Controller.Start("My dog is called Biscuit.", voice: false, microphone: false, approved: true, spoken: true, heard: heard);
+        await fixture.Finish(first);
+        await fixture.FinishRemembering();
+
+        Assert.Equal(1, fixture.Llm.Calls);
+        Assert.Equal(new[] { HelperJobKind.SpeakerNaming, HelperJobKind.Memory }, pool.Jobs.Select(j => j.Kind).ToArray());
+        var naming = pool.Jobs.First();
+        Assert.Equal("Learning names", naming.Purpose);
+        Assert.Contains("SPOKE V<number>", naming.Input.Personality);
+        Assert.DoesNotContain("REMEMBER:", naming.Input.Personality);
+        Assert.Contains($"It sounds most like {kim.Tag}: goes by Kim, but not enough to be sure.", naming.Input.UserText);
+        Assert.Contains(Martlet.Conversation.PeopleTools.List, naming.Input.UserText);
+        Assert.Equal([Martlet.Conversation.PeopleTools.List, Martlet.Conversation.PeopleTools.Lately], naming.Tools!.Definitions.Select(t => t.Name));
+        var remembering = pool.Jobs.Last();
+        Assert.Null(remembering.Tools);
+        Assert.Contains("REMEMBER:", remembering.Input.Personality);
+        Assert.DoesNotContain("NAME V<number>", remembering.Input.Personality);
+        var label = Assert.Single(named);
+        Assert.Equal(Martlet.Core.Speakers.VoiceUpdateKind.Spoke, label.Kind);
+        Assert.Equal(kim.Id, label.Voice.Id);
+        Assert.Equal(before, fixture.Voices.Roster.Digest());
+    }
+
+    private static float[] Print(int seed)
+    {
+        var random = new Random(seed);
+        return Martlet.Core.Speakers.VoicePrints.Normalize(Enumerable.Range(0, Martlet.Core.Speakers.VoicePrints.Dimension)
+            .Select(_ => (float)(random.NextDouble() - 0.5)).ToArray());
     }
 
     [Fact]
