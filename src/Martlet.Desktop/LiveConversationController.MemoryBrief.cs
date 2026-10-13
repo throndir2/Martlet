@@ -81,7 +81,7 @@ internal sealed partial class LiveConversationController
                 var loaded = await settings.LoadAsync(worker).ConfigureAwait(false);
                 if (LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory)) is not { } configured)
                     return (null, "Thinking isn't set up yet");
-                if (configured.LocalThinking || configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)?.RouteType == SetupRouteType.GatewayOllama)
+                if (configured.LocalThinking || configured.Routes.ThinkingRoute()?.RouteType == SetupRouteType.GatewayOllama)
                     return (null, "no Thinking pool member can take it, and the Thinking model on your computers keeps its memory for the conversation. " +
                         "Add one in Companion › Thinking pool");
                 return await AskThinkingAsync(MemoryBriefWriter.Purpose, instructions, text, worker).ConfigureAwait(false);

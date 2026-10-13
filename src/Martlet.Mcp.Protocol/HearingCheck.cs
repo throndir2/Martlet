@@ -29,7 +29,7 @@ internal static partial class HearingCheck
             catch (ContractException error) { throw new ArgumentException(error.Message); }
         }
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
-        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var thinking = loaded.Settings.ThinkingRoute();
         var model = modelId ?? thinking?.ModelId ?? "gemini-2.5-flash";
         var modelHearing = HearingModelCatalog.Classify(model);
         // The production decision (ModelSenses): Chat Completions routes and a paired computer's Ollama take audio (OpenAI's

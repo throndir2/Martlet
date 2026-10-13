@@ -79,7 +79,7 @@ internal static class ClusterSync
 
     /// <summary>This PC's Thinking route when it is Ollama on this PC itself (enabled), else null.</summary>
     internal static SetupRoute? OwnOllama(AppSettings? settings) =>
-        settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } route && MainWindow.IsLocalOllama(route) &&
+        settings.ThinkingRoute() is { } route && MainWindow.IsLocalOllama(route) &&
         route.Enabled != false ? route : null;
 
     /// <summary>Whether this PC does what the plan says. A job this PC does itself (<see cref="LocalJob.Here"/>) also matches

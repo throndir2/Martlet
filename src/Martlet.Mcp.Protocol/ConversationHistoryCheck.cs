@@ -25,7 +25,7 @@ internal static class ConversationHistoryCheck
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
         var memory = loaded.Settings?.Memory?.Enabled;
         var (keep, search, file) = Preferences(dataDirectory);
-        var route = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var route = loaded.Settings.ThinkingRoute();
         var supportsTools = route?.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.OpenAi;
         var active = memory == true && keep;
         var store = new ConversationHistory(Path.Combine(dataDirectory, ConversationHistory.DirectoryName));

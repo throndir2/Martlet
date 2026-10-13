@@ -24,7 +24,7 @@ internal sealed partial class ThinkingPoolPageModel
     {
         this.services = services;
         var settings = services.Settings;
-        Route = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        Route = settings.ThinkingRoute();
         Pool = ThinkingPoolSettings.Load(services.DataDirectory);
         Routes = settings?.Setup?.Routes ?? [];
         Sharing = WorkSharingRoster.Settings(services.DataDirectory);

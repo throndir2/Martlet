@@ -100,7 +100,7 @@ internal sealed partial class LiveConversationController
         var spot = pool.Find(job.Place!.Id)!;
         var place = spot.Settings;
         var where = place.Separate ? place.Describe() : thinkingModel;
-        var thinkingRoute = configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var thinkingRoute = configured.Routes.ThinkingRoute();
         using var guard = CancellationTokenSource.CreateLinkedTokenSource(token);
         var watch = Task.CompletedTask;
         string? pushed = null;

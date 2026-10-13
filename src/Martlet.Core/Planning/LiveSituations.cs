@@ -237,7 +237,7 @@ public static class SituationRoutes
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (situation is null || settings.Setup is not { } setup ||
-            setup.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is not { } saved || saved.ConfigurationRevision != situation.ForRoute ||
+            setup.Routes.ThinkingRoute() is not { } saved || saved.ConfigurationRevision != situation.ForRoute ||
             situation.Fallback is not null && settings.ThinkingFallback != situation.Fallback)
             return settings;
         var id = situation.Route.CredentialId;
