@@ -3616,7 +3616,10 @@ the data folder.
   (`InputSource.HandsFreeListening`, reason `ExplicitHandsFree`) with
   instructions that it hears an always-on microphone: it answers what is meant
   for it and replies `[pass]` (never shown or spoken; the message is marked
-  *Martlet stayed quiet*) when it wasn't meant for it or needs no answer. When
+  *Martlet stayed quiet*) when it wasn't meant for it or needs no answer. A
+  smaller model sometimes answers and then adds `[pass]` (*I didn't hear any
+  music. [pass]*): the answer stands and the `[pass]` is never shown, spoken or
+  kept. Only a reply that is `[pass]`, or starts with it, stays quiet. When
   what you said trails off ("so, um", "and", a trailing comma or dash), Martlet
   waits 1.5 s longer for the rest.
 - If you keep talking before Martlet says anything, that reply is dropped and,

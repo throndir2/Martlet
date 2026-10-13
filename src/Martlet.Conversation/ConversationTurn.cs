@@ -155,7 +155,7 @@ public sealed partial class ConversationTurn
         shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
             ? tag => WhenReleased(() => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask, cueClock)) : null,
             request.ControlTags, controls.Add, voiceTags,
-            tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); });
+            tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); }, SpeechSegmenter.QuietTag);
         captioner = request.Speech is null && owner.SpokenText is not null
             ? new SpeechSegmenter(BoundedSpeechInput.HardMaxUtf8Bytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
                 characterTags: request.CharacterTags, controlTags: request.ControlTags)
