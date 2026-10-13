@@ -16,6 +16,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 
+- **Companion › Pictures is now called Picture making**: the page where you choose where Martlet draws, its list and its role on your computers are now *Picture making*, so they aren't mixed up with the pictures Martlet sees on Companion › Vision. Your places and settings stay as they were. ([#866](https://github.com/throndir2/Martlet/pull/866))
 - **The Thinking pool's Runs on card names all the work each choice controls**: *Touch zones* now says it also measures the eyes and writes a found character's personality, *Naming* says it also covers touch temperament, *Remembering* names tidying memory and the memory brief, and *Web research* names app guide research. ([#853](https://github.com/throndir2/Martlet/pull/853))
 - **Martlet ignores text it misreads on your screen for a moment**: when the text reader gets a letter wrong once (say "App1e" for "Apple"), Martlet no longer treats it as new text, so it doesn't look or comment because of it, and the wrong text never goes to the model. New text counts once two reads agree, and a ticking timer still shows. ([#836](https://github.com/throndir2/Martlet/pull/836))
 
