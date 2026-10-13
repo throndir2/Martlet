@@ -16,7 +16,8 @@ namespace Martlet.Mcp;
 /// tools (error 400), lab/gone answers HTTP 410 Gone, the tool models call Test tools' made-up tool, read Test
 /// vision's word by comparing the picture with this PC's own drawings of the test words, read Test hearing's word with Windows
 /// speech recognition limited to the test words (when this PC has an English recognizer), and answer anything else with fixed
-/// text, streamed when asked. Its status counts the requests by model and the kinds of parts they carried, never their content.
+/// text, streamed when asked. Its status counts the requests by model and the kinds of parts they carried, with short SHA-256s of
+/// each request's tools and messages (whether the start of a request stayed byte-identical), never their content.
 /// It ends with this server.</summary>
 internal static class ModelLab
 {
@@ -94,6 +95,7 @@ internal static class ModelLab
         }
         if (request.Path != "/v1/chat/completions") return (404, "{\"error\":\"not found\"}");
         string? id, picture = null, recording = null, testWord = null;
+        RequestStart? start = null;
         bool stream, tools = false;
         var parts = new List<string>();
         try
@@ -101,6 +103,7 @@ internal static class ModelLab
             using var document = JsonDocument.Parse(request.Body);
             var root = document.RootElement;
             id = root.TryGetProperty("model", out var model) ? model.GetString() : null;
+            start = StartOf(root);
             stream = root.TryGetProperty("stream", out var streamed) && streamed.ValueKind == JsonValueKind.True;
             if (root.TryGetProperty("tools", out var offered) && offered.ValueKind == JsonValueKind.Array && offered.GetArrayLength() > 0)
             {
@@ -134,22 +137,22 @@ internal static class ModelLab
         string[] kinds = [.. parts.Distinct(StringComparer.Ordinal)];
         if (lab is null)
         {
-            Note(request.Path, id, kinds, "doesn't have that model");
+            Note(request.Path, id, kinds, "doesn't have that model", start);
             return (404, "{\"error\":{\"message\":\"model not found\"}}");
         }
         if (lab.Gone)
         {
-            Note(request.Path, id, kinds, "answered 410 Gone");
+            Note(request.Path, id, kinds, "answered 410 Gone", start);
             return (410, "{\"error\":{\"message\":\"This model reached its end of life and is no longer available.\"}}");
         }
         if (tools && lab.Tools == false)
         {
-            Note(request.Path, id, kinds, "refused the tools");
+            Note(request.Path, id, kinds, "refused the tools", start);
             return (400, "{\"error\":{\"message\":\"This model does not support tools.\",\"type\":\"invalid_request_error\"}}");
         }
         if (testWord is not null && lab.Tools == true && !stream)
         {
-            Note(request.Path, id, kinds, "called the test tool");
+            Note(request.Path, id, kinds, "called the test tool", start);
             return (200, JsonSerializer.Serialize(new
             {
                 id = "lab", @object = "chat.completion", model = id,
@@ -174,12 +177,12 @@ internal static class ModelLab
         }
         if (picture is not null && !lab.Sees)
         {
-            Note(request.Path, id, kinds, "refused the picture");
+            Note(request.Path, id, kinds, "refused the picture", start);
             return (400, "{\"error\":{\"message\":\"This model does not support image input.\",\"type\":\"invalid_request_error\"}}");
         }
         if (recording is not null && !lab.Hears)
         {
-            Note(request.Path, id, kinds, "refused the recording");
+            Note(request.Path, id, kinds, "refused the recording", start);
             return (400, "{\"error\":{\"message\":\"This model does not support audio input.\",\"type\":\"invalid_request_error\"}}");
         }
         var read = picture is not null ? Read(picture) : recording is not null ? Hear(recording) : null;
@@ -187,7 +190,7 @@ internal static class ModelLab
             : recording is not null ? "A lab description of the recording: someone speaks calmly (NOT AI)."
             : "A lab reply (NOT AI).");
         Note(request.Path, id, kinds, read is not null ? "read the test word"
-            : picture is not null ? "described the picture" : recording is not null ? "described the recording" : "answered");
+            : picture is not null ? "described the picture" : recording is not null ? "described the recording" : "answered", start);
         return (200, stream ? Streamed(text) : JsonSerializer.Serialize(new
         {
             id = "lab", @object = "chat.completion", model = id,
@@ -261,11 +264,23 @@ internal static class ModelLab
         }
     }
 
-    private static void Note(string path, string? model, string[] parts, string answer)
+    // Short SHA-256s of the request's tools and of each of its messages as sent: two runs show whether the start of every request stayed
+    // byte-identical, so prompt caches still match, without the content.
+    private sealed record RequestStart(string? Tools, string[] Messages);
+
+    private static RequestStart StartOf(JsonElement root) => new(
+        root.TryGetProperty("tools", out var tools) ? Short(tools.GetRawText()) : null,
+        root.TryGetProperty("messages", out var messages) && messages.ValueKind == JsonValueKind.Array
+            ? [.. messages.EnumerateArray().Select(message => Short(message.GetRawText()))] : []);
+
+    private static string Short(string json) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)))[..12].ToLowerInvariant();
+
+    private static void Note(string path, string? model, string[] parts, string answer, RequestStart? start = null)
     {
         lock (Gate)
         {
-            Seen.Add(new { at = DateTimeOffset.UtcNow, path, model, parts, answer });
+            Seen.Add(new { at = DateTimeOffset.UtcNow, path, model, parts, answer, start });
             if (Seen.Count > 200) Seen.RemoveAt(0);
         }
     }
