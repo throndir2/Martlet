@@ -10444,16 +10444,21 @@ observe them:
   Say why it is safe ("saves nothing", "never the key"). Name controls that you
   leave out on purpose in a comment line next to it
   (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
-- **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
-  `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
-  arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
+- **Headless capabilities:** add a `Tool(...)` registration to the file of the
+  tool's `martlet_guide` area, `src\Martlet.Mcp.Protocol\Tools\<Area>Tools.cs`
+  (for example `VoiceTools.cs` or `ThinkingTools.cs`; `McpServer.ToolGroups`
+  lists them). A registration is the tool's name, description, input schema
+  (strict, bounded arguments, ID-based results), handler and, when it needs
+  one, its `ToolPermission` (`Changes` makes the server refuse it without
+  `--allow-changes`). Put code that only that tool uses in the same file. Or
+  add a Doctor probe that `doctor_run` reaches.
   Keep tools local, read-only by default and free of network, audio and
   credential effects unless gated like `--allow-ui-effects` (or, for tools that
   save the owner's settings, `--allow-changes`). Begin each description with one
   sentence that says what the tool does: `martlet_guide` shows it as the tool's
   summary and searches the description.
 - **Tools for assistants:** a tool that an assistant needs to use or configure
-  Martlet goes in `AssistantTools` and `Listed` in
+  Martlet also goes in `Listed` in
   `src\Martlet.Mcp.Protocol\McpServer.Discovery.cs` (with a title and behavior
   hints), and in a recipe of `martlet_guide` when it starts a common task. Keep
   the short list small: other tools run through `martlet_call`.
