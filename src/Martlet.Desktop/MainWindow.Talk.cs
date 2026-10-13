@@ -1,12 +1,10 @@
 using System.IO;
-using System.Net.Http;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
-using Martlet.Home;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -20,9 +18,6 @@ public partial class MainWindow
     private TalkPreferences? talk;
     // A camera address exactly as typed (a password included), for this app session only; the saved copy has no password.
     private string? visionAddress;
-    private IReadOnlyList<CameraDevice>? visionCameras;
-    private IReadOnlyList<(HomeCamera Camera, Uri Snapshot)>? homeCameras;
-    private bool findingCameras, findingHomeCameras;
     // Companion › Listening's end-of-turn judge status line while the page shows it (it follows each decision).
     private TextBlock? turnJudgeStatus;
 
@@ -368,7 +363,8 @@ public partial class MainWindow
                 "what it hears. The last few seconds of sound stay in memory only; the line is never saved or remembered, and a " +
                 "reply never waits for it.", new Thickness(0, 0, 0, 8), "SoundDigest", "sound descriptions"),
             Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
-            .. ChattinessPicker("TalkPcChattiness")]);
+            .. ChattinessPicker.Create("TalkPcChattiness", () => Talk.ScreenChattiness, conversation?.DecidedChattiness,
+                choice => SaveTalk(Talk with { ScreenChattiness = choice }, render: true))]);
     }
 
     /// <summary>The sound judge the saved settings choose before a conversation runs, as <see cref="SenseJobRouting"/> decides
@@ -611,182 +607,10 @@ public partial class MainWindow
 
     // ---------- Vision ----------
 
-    private WatchSource VisionSource(TalkPreferences prefs) => (WatchKind)Math.Clamp(prefs.ScreenScope, 0, 3) switch
-    {
-        WatchKind.Camera => new(WatchKind.Camera, prefs.CameraId, prefs.CameraName),
-        WatchKind.Url when WatchSource.Normalize(visionAddress ?? prefs.VideoAddress) is { Length: > 0 } address =>
-            new(WatchKind.Url, address, WatchSource.SafeName(address)),
-        var kind => new(kind)
-    };
+    // Companion › Vision is VisionPage in Pages\Vision; MainWindow gives it its services in MainWindow.VisionPage.cs.
 
-    /// <summary>Companion › Vision (an optional extra, in the standard order): Now (whether vision is on, what Martlet looks at,
-    /// whether it can see, the image model's lines and Turn vision off or on), then the image models' list (empty: Thinking's own
-    /// model takes the pictures; MainWindow.SensePools.cs), then what it looks at, how chatty it is, its glances and screen summary,
-    /// and what it sends. Vision is on by default, at your whole screen. Pressing Start watching is the consent; What Martlet sends
-    /// says exactly what is captured and where it is sent.</summary>
-    private void RenderVisionPage(Panel page)
-    {
-        var prefs = Talk;
-        var thinking = homeSettings.ThinkingRoute();
-        var abilities = SavedModelAbilities();
-        // Martlet can see when its pictures go to Thinking or to an image model of its own (docs/SENSE_MODELS.md).
-        var image = SavedImageRoute(thinking, abilities);
-        var canSee = thinking is not null && image.Path != SensePath.None;
-        var source = VisionSource(prefs);
-        var chosen = source.IsScreen || source.Id.Length > 0;
-        var chattiness = ChattinessTags.Choice(prefs.ScreenChattiness);
-
-        var nowText = new TextBlock
-        {
-            Text = prefs.Watch
-                ? $"On. Martlet looks at {source.Label} occasionally. Comments: {CommentsLabel(chattiness)}."
-                : $"Off. {OptionalExtras.OffMeans(CompanionTab.Vision)}.",
-            FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
-        };
-        AutomationProperties.SetAutomationId(nowText, "VisionNow");
-        var now = new List<UIElement> { Heading("Now"), nowText };
-        if (prefs.Watch && !chosen) now.Add(Warning(source.Kind == WatchKind.Camera ? "Choose a camera below." : "Enter the camera address below."));
-        var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities, image);
-        var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
-        AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
-        now.Add(adviceText);
-        now.AddRange(SenseNowLines(SenseKind.Image));
-        // Turn vision off or on (VisionToggle): whether Martlet looks at all. The list below says which models take the pictures.
-        Button? turnOn = null;
-        if (prefs.Watch)
-            now.Add(Row(PageButton("Turn vision off", () =>
-            {
-                SaveTalk(Talk with { Watch = false }, render: true);
-                ActionText.Text = "Vision is off.";
-            }, primary: true, id: "VisionToggle")));
-        else
-        {
-            turnOn = PageButton("Turn vision on", () =>
-            {
-                SaveTalk(Talk with { Watch = true }, render: true);
-                ActionText.Text = "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look.";
-            }, primary: true, id: "VisionToggle");
-            turnOn.IsEnabled = canSee && chosen;
-            if (!turnOn.IsEnabled)
-            {
-                var why = !canSee ? advice : source.Kind == WatchKind.Camera ? "Choose a camera below first." : "Enter the camera address below first.";
-                turnOn.ToolTip = why;
-                ToolTipService.SetShowOnDisabled(turnOn, true);
-                AutomationProperties.SetHelpText(turnOn, why);
-            }
-            now.Add(Row(turnOn));
-        }
-        page.Children.Add(Card([.. now]));
-
-        page.Children.Add(SensePoolCard(SenseKind.Image));
-
-        var looks = new List<UIElement> { Heading("What Martlet looks at") };
-        foreach (var (kind, title, detail) in new[]
-        {
-            (WatchKind.ActiveWindow, "My active window", "The window you're using. Martlet skips its own windows, password managers and private browsers."),
-            (WatchKind.ActiveScreen, "My whole screen", "Every monitor, with the taskbar and pop-up notifications. Martlet greys out its own windows, " +
-                "password managers and private browsers, and looks right away when a notification pops up or a taskbar button flashes."),
-            (WatchKind.Camera, "A camera", "A webcam, a capture card or your phone connected as a webcam."),
-            (WatchKind.Url, "A phone or network camera address", "A snapshot or video stream address on your network.")
-        })
-        {
-            var option = Choice("VisionSource", title, detail, source.Kind == kind, "VisionSource-" + kind);
-            option.Checked += (_, _) => SaveTalk(Talk with { ScreenScope = (int)kind }, render: true);
-            looks.Add(option);
-        }
-        if (source.Kind == WatchKind.Camera)
-        {
-            var cameras = new List<CameraDevice>();
-            if (prefs.CameraId.Length > 0) cameras.Add(new(prefs.CameraId, prefs.CameraName.Length > 0 ? prefs.CameraName : "Saved camera"));
-            foreach (var camera in visionCameras ?? [])
-            {
-                cameras.RemoveAll(c => c.Id == camera.Id);
-                cameras.Add(camera);
-            }
-            var box = new ComboBox { Width = 360, DisplayMemberPath = nameof(CameraDevice.Name), ItemsSource = cameras,
-                SelectedItem = cameras.FirstOrDefault(c => c.Id == prefs.CameraId) };
-            AutomationProperties.SetName(box, "Which camera Martlet looks through");
-            AutomationProperties.SetAutomationId(box, "VisionCamera");
-            box.SelectionChanged += (_, _) =>
-            {
-                if (box.SelectedItem is CameraDevice picked && picked.Id != Talk.CameraId)
-                    SaveTalk(Talk with { CameraId = picked.Id, CameraName = picked.Name }, render: true);
-            };
-            var find = PageButton(findingCameras ? "Looking..." : "Find cameras", () => FindCamerasAsync().Forget(), id: "VisionFindCameras");
-            find.IsEnabled = !findingCameras;
-            find.Margin = new Thickness(10, 0, 0, 0);
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(28, 0, 0, 6) };
-            row.Children.Add(box);
-            row.Children.Add(find);
-            looks.Add(row);
-            looks.Add(Note(cameras.Count == 0 ? "Find cameras to choose one. Nothing opens until Martlet looks."
-                : "The camera opens only while Martlet looks.", new Thickness(28, 0, 0, 0)));
-        }
-        else if (source.Kind == WatchKind.Url)
-        {
-            var address = new TextBox { Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = visionAddress ?? prefs.VideoAddress,
-                Margin = new Thickness(28, 0, 0, 6) };
-            AutomationProperties.SetName(address, "Phone or network camera address");
-            AutomationProperties.SetAutomationId(address, "VisionAddress");
-            address.TextChanged += (_, _) =>
-            {
-                var typed = address.Text.Trim();
-                visionAddress = typed.Length == 0 ? null : typed;
-                SaveTalk(Talk with { VideoAddress = WatchSource.WithoutCredentials(WatchSource.Normalize(typed)) });
-                if (turnOn is not null && !Talk.Watch) turnOn.IsEnabled = canSee && typed.Length > 0;
-            };
-            looks.Add(address);
-            looks.Add(Note("Example: http://192.168.1.20:8080/shot.jpg. Passwords are used for this session only and aren't saved.",
-                new Thickness(28, 0, 0, 0)));
-            if (smartHome.Connected)
-            {
-                // Home Assistant cameras use their snapshot address; Martlet adds the saved Home Assistant token when it looks.
-                var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(28, 8, 0, 0) };
-                if (homeCameras is { Count: > 0 } found)
-                {
-                    var pick = new ComboBox { Width = 300, ItemsSource = found.Select(c => c.Camera.Name).ToArray(),
-                        SelectedIndex = found.ToList().FindIndex(c => c.Snapshot.AbsoluteUri == Talk.VideoAddress) };
-                    AutomationProperties.SetName(pick, "Home Assistant camera");
-                    AutomationProperties.SetAutomationId(pick, "VisionHomeCamera");
-                    pick.SelectionChanged += (_, _) =>
-                    {
-                        if (pick.SelectedIndex < 0) return;
-                        visionAddress = null;
-                        SaveTalk(Talk with { VideoAddress = found[pick.SelectedIndex].Snapshot.AbsoluteUri },
-                            render: true);
-                    };
-                    row.Children.Add(pick);
-                }
-                var list = PageButton(findingHomeCameras ? "Looking..." : homeCameras is null ? "Use a Home Assistant camera" : "Look again",
-                    () => FindHomeCamerasAsync().Forget(), id: "VisionHomeCameras");
-                list.IsEnabled = !findingHomeCameras;
-                list.Margin = new Thickness(homeCameras is { Count: > 0 } ? 10 : 0, 0, 0, 0);
-                row.Children.Add(list);
-                looks.Add(row);
-            }
-        }
-        page.Children.Add(Card([.. looks]));
-
-        page.Children.Add(Card([Heading("How often it comments"),
-            Note("Most looks end silently. Martlet won't interrupt while you're talking. This also sets how often Martlet reacts " +
-                "to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8)),
-            .. ChattinessPicker("VisionChattiness")]));
-        page.Children.Add(GazeCard(prefs));
-        // Which model makes the screen summaries (SenseJobRouting): the image model, else a Thinking pool model that sees.
-        var poolSees = SensePoolUsers.For(SenseKind.Image, ThinkingPoolSettings.Load(store?.DataDirectory), abilities);
-        page.Children.Add(ScreenSummaryCard(prefs, SavedSenseDecision(SenseJobKind.ScreenSummary)));
-
-        // What Martlet captures and where it goes, for what it looks at and how chatty it is (Turn vision on is above).
-        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source, image) +
-            SensePoolUsers.SummaryDisclosure(prefs.ScreenSummary, poolSees, image.Path == SensePath.Described), new Thickness(0, 0, 0, 0));
-        AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
-        page.Children.Add(Card(Heading("What Martlet sends"), disclosure));
-    }
-
-    /// <summary>How the comments line reads: the level, or Martlet decides with the level it picked while a conversation runs.</summary>
-    private string CommentsLabel(ChattinessChoice choice) =>
-        choice != ChattinessChoice.MartletDecides ? choice.ToString()
-        : conversation is { } live ? $"Martlet decides ({ChattinessTags.Name(live.DecidedChattiness)} right now)" : "Martlet decides";
+    /// <summary>What Martlet looks at, with a camera address typed this session before the saved one.</summary>
+    private WatchSource VisionSource(TalkPreferences prefs) => VisionPageModel.SourceOf(prefs, visionAddress);
 
     // Martlet switched how chatty it is: Vision and Listening say the level it picked.
     private void FollowChattiness()
@@ -796,163 +620,9 @@ public partial class MainWindow
             RenderTab();
     }
 
-    internal const string ChattinessAbout = "Martlet decides: Martlet picks Quiet, Normal or Chatty itself and switches as it goes, " +
-        "from what's happening and what you say. Ask it to hush, or to tell you what it thinks, and it follows. It starts at Normal.";
-
-    /// <summary>Companion's chattiness choice (Vision's How often it comments, and the same choice under Listening › Watch
-    /// along): Quiet, Normal, Chatty or Martlet decides, then what Martlet decides means and, while a conversation runs, the
-    /// level it picked.</summary>
-    private UIElement[] ChattinessPicker(string id)
-    {
-        var choice = ChattinessTags.Choice(Talk.ScreenChattiness);
-        var chatty = new ComboBox { Width = 280, ItemsSource = ChattinessChoices, SelectedIndex = (int)choice, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(chatty, "How often Martlet comments");
-        AutomationProperties.SetAutomationId(chatty, id);
-        chatty.SelectionChanged += (_, _) =>
-        {
-            if (chatty.SelectedIndex >= 0 && chatty.SelectedIndex != Talk.ScreenChattiness)
-                SaveTalk(Talk with { ScreenChattiness = chatty.SelectedIndex }, render: true);
-        };
-        var status = Note(ChattinessStatus(choice, conversation?.DecidedChattiness), new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(status, id + "Status");
-        return [chatty, status];
-    }
-
-    internal static string ChattinessStatus(ChattinessChoice choice, Chattiness? decided) => choice switch
-    {
-        ChattinessChoice.MartletDecides => ChattinessAbout +
-            (decided is { } level ? $" Right now it is {ChattinessTags.Name(level)}." : ""),
-        ChattinessChoice.Quiet => "Quiet: Martlet speaks up only when something is clearly remarkable.",
-        ChattinessChoice.Chatty => "Chatty: Martlet reacts more often, but still stays quiet when nothing is new.",
-        _ => "Normal: Martlet says something when it's worth saying."
-    };
-
-    /// <summary>Companion › Vision › Glances at your screen: the character keeps its usual gaze (the default; Companion ›
-    /// Character › Where the character looks), or Martlet decides with each new screenshot of your screen whether to glance at
-    /// something on it.</summary>
-    private Border GazeCard(TalkPreferences prefs)
-    {
-        var mouse = Choice("VisionGaze", "Keep its usual gaze",
-            "The character's eyes do what Companion › Eyes › Where the character looks says: by default, they follow your mouse.",
-            !prefs.DecideGaze, "VisionGaze-Mouse");
-        var decide = Choice("VisionGaze", "Martlet decides",
-            "With each new screenshot of your screen, the character keeps its usual gaze or glances at something interesting on " +
-            "the screen: something that just popped up or moved, or what it is about to remark on.",
-            prefs.DecideGaze, "VisionGaze-Martlet");
-        mouse.Checked += (_, _) => { if (Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = false }, render: true); };
-        decide.Checked += (_, _) => { if (!Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = true }, render: true); };
-        var status = Note(GazeStatus(prefs), new Thickness(0, 2, 0, 0));
-        AutomationProperties.SetAutomationId(status, "VisionGazeStatus");
-        return Card(Heading("Glances at your screen"), mouse, decide, status,
-            Note("It decides while vision watches your active window or whole screen and the character shows. Screenshots are " +
-                "compared on this PC; the Thinking model only chooses during the looks Martlet already takes, so nothing extra " +
-                "is sent.", new Thickness(0, 6, 0, 0)));
-    }
-
-    /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, the model that
-    /// <see cref="SenseJobRouting"/> picks for <see cref="SenseJobKind.ScreenSummary"/> (<paramref name="decision"/>: the image model,
-    /// else a Thinking model that sees in the Thinking pool, named in the status) sums up in the background what changed on the
-    /// screen, and the next reply gets it as a note.</summary>
-    private Border ScreenSummaryCard(TalkPreferences prefs, SenseDecision decision)
-    {
-        var canSee = decision.Taker != SenseTaker.Nobody;
-        var box = new CheckBox { Content = "Screen summary over time", IsChecked = prefs.ScreenSummary, Margin = new Thickness(0, 0, 0, 6) };
-        AutomationProperties.SetAutomationId(box, "VisionScreenSummary");
-        box.Checked += (_, _) => { if (!Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = true }, render: true); };
-        box.Unchecked += (_, _) => { if (Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = false }, render: true); };
-        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, decision);
-        var status = prefs.ScreenSummary && prefs.Watch && !canSee ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
-        AutomationProperties.SetAutomationId(status, "VisionScreenSummaryStatus");
-        return Card(Heading("Screen summary over time"), box, status,
-            Note("Each reply gets only the newest picture, so it starts to speak as fast as before. With this on, Martlet also " +
-                "keeps the last few pictures that changed (about 25 seconds, in memory only, never saved) and, every 15 seconds " +
-                "while they change or when you start to talk, sends a small sheet of them with the text read on them to your " +
-                "image model (when you chose one) or a Thinking model that sees in the Thinking pool, in the background. It is " +
-                "never the model your conversation uses. The one or two lines it " +
-                "answers (\"They switched from VS Code to a boss fight\") go with your next message as a note. A reply never " +
-                "waits for it. Each summary is one more request with a picture, which may cost more.", new Thickness(0, 6, 0, 0)));
-    }
-
-    /// <summary>The screen summary's status, from the decision of which model makes them (<paramref name="decision"/>): it names
-    /// that model and, when it is the image model, the Thinking pool model that takes over when it can't.</summary>
-    internal static string ScreenSummaryStatus(bool on, bool vision, SenseDecision decision) =>
-        !on ? "Off. Replies know only the newest picture."
-        : !vision ? "On, but vision is off. Turn vision on above."
-        : decision.Taker switch
-        {
-            SenseTaker.SenseModel => $"On. While Martlet watches, your image model ({decision.Name}) sums up what changed for your next message." +
-                (decision.Then is { Taker: SenseTaker.PoolMember } then ? $" When it can't, the Thinking pool does it ({then.Name})." : ""),
-            SenseTaker.PoolMember => $"On. While Martlet watches, a Thinking pool model that sees ({decision.Name}) sums up what changed for your next message.",
-            _ => "Off for now: no image model and no Thinking pool model that sees takes them. Choose an image model above, or add one " +
-                "that sees in Companion › Thinking pool."
-        };
-
-    private string GazeStatus(TalkPreferences prefs)
-    {
-        var usual = $"The character {CharacterGazeService.Describe(avatar.Gaze.Settings.Mode)}.";
-        if (!prefs.DecideGaze) return usual;
-        if (!prefs.Watch) return "Vision is off, so the character keeps its usual gaze. Turn vision on above. " + usual;
-        if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character keeps its usual gaze. " + usual;
-        return avatar.Gaze.Status;
-    }
-
-    /// <summary>Lists the cameras Windows offers to desktop apps, on request only; nothing is opened.</summary>
-    private async Task FindCamerasAsync()
-    {
-        if (findingCameras) return;
-        findingCameras = true;
-        RenderTab();
-        try
-        {
-            var cameras = await Task.Run(() => new VideoInput().Cameras());
-            visionCameras = cameras;
-            ActionText.Text = cameras.Count == 0
-                ? "Windows doesn't see any cameras. Connect a camera or enter a camera address."
-                : $"Found {cameras.Count} camera{(cameras.Count == 1 ? "" : "s")}.";
-            if (cameras.FirstOrDefault(c => c.Id == Talk.CameraId) is { } same) SaveTalk(Talk with { CameraName = same.Name });
-            else if (cameras.FirstOrDefault() is { } first) SaveTalk(Talk with { CameraId = first.Id, CameraName = first.Name });
-        }
-        catch (Exception error) when (error is VideoSourceException or System.Runtime.InteropServices.ExternalException)
-        {
-            ActionText.Text = error is VideoSourceException ? error.Message : "Windows couldn't list cameras right now. Try again in a moment.";
-        }
-        finally { findingCameras = false; }
-        if (!closing && openTab == CompanionTab.Vision) RenderTab();
-    }
-
-    /// <summary>Lists Home Assistant's cameras on request; picking one fills in its snapshot address.</summary>
-    private async Task FindHomeCamerasAsync()
-    {
-        if (findingHomeCameras) return;
-        findingHomeCameras = true;
-        RenderTab();
-        try
-        {
-            homeCameras = await smartHome.CamerasAsync(lifetime.Token);
-            ActionText.Text = homeCameras.Count == 0 ? "Home Assistant has no cameras."
-                : $"Home Assistant has {homeCameras.Count} camera{(homeCameras.Count == 1 ? "" : "s")}. Pick one above.";
-        }
-        catch (HomeAssistantException error) { ActionText.Text = error.Message; }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException)
-        {
-            if (!closing) ActionText.Text = "Couldn't reach Home Assistant. Check that it is running, then try again.";
-        }
-        finally { findingHomeCameras = false; }
-        if (!closing && openTab == CompanionTab.Vision) RenderTab();
-    }
-
     // ---------- small builders ----------
 
-    private static RadioButton Choice(string group, string title, string detail, bool isChecked, string id)
-    {
-        var text = new StackPanel();
-        text.Children.Add(new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
-        var option = new RadioButton { Content = text, GroupName = group, IsChecked = isChecked, Margin = new Thickness(0, 0, 0, 10) };
-        AutomationProperties.SetName(option, $"{title}: {detail}");
-        AutomationProperties.SetAutomationId(option, id);
-        return option;
-    }
+    // The radio Choice builder is in Pages\PageKit.cs.
 
     private static DockPanel Labeled(string label, UIElement control)
     {

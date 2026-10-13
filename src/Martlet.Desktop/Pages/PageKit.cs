@@ -74,6 +74,19 @@ internal static class PageKit
         return button;
     }
 
+    /// <summary>A large radio choice in <paramref name="group"/>: its <paramref name="title"/> in bold and its
+    /// <paramref name="detail"/> under it. Its automation name is both; <paramref name="id"/> is its automation ID.</summary>
+    internal static RadioButton Choice(string group, string title, string detail, bool isChecked, string id)
+    {
+        var text = new StackPanel();
+        text.Children.Add(new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
+        var option = new RadioButton { Content = text, GroupName = group, IsChecked = isChecked, Margin = new Thickness(0, 0, 0, 10) };
+        AutomationProperties.SetName(option, $"{title}: {detail}");
+        AutomationProperties.SetAutomationId(option, id);
+        return option;
+    }
+
     /// <summary>A row with a 90-pixel <paramref name="label"/> on the left and <paramref name="control"/> beside it.</summary>
     internal static DockPanel TerminalRow(string label, UIElement control)
     {

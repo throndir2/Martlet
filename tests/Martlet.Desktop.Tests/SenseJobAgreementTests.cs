@@ -94,7 +94,7 @@ public sealed class SenseJobAgreementTests
 
         // Screen summaries: Companion › Vision's status names the model, and the runner can make them only with one.
         var summary = controller.SenseDecision(SenseJobKind.ScreenSummary);
-        var status = MainWindow.ScreenSummaryStatus(true, true, summary);
+        var status = VisionPageModel.ScreenSummaryStatus(true, true, summary);
         Assert.Equal(summary.Taker != SenseTaker.Nobody, controller.ScreenDigestThinker.CanSee);
         if (summary.Name is { } summarizer) Assert.Contains($"({summarizer})", status);
         if (summary.Then is { } then) Assert.Contains($"({then.Name})", status);
