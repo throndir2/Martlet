@@ -21,8 +21,8 @@ audio model was NOT RUN; see [Checks](#checks).
   and hears, so one model does everything. Background jobs with a picture
   (screen summaries, touch zones, the eyes, check-ins with a screenshot) can
   also go to Thinking pool models that see. Companion › Vision lists them
-  under *Also gets your pictures*. Each job has its own order; see [Which
-  model looks at a picture](DECISION_MAP.md#which-model-looks-at-a-picture-picture-routing).
+  under *Also gets your pictures*. Each job has its own order; see [Who takes
+  each picture and recording](#who-takes-each-picture-and-recording).
 - **Which model writes Martlet's reply?** Always the text model: Companion ›
   Thinking. An image or audio model never talks to you. It only puts what it
   sees or hears into words for Thinking.
@@ -423,7 +423,9 @@ the default (the text model) nothing below runs and no request changes.
 
 Finding a character's touch zones and measuring its eyes send pictures of the
 character (never your screen) to a model that sees. They are [helper
-jobs](MEMORY.md#helper-jobs-on-the-thinking-pool):
+jobs](MEMORY.md#helper-jobs-on-the-thinking-pool), in the order of the
+*Touch zones and the character's eyes* row in
+[Who takes each picture and recording](#who-takes-each-picture-and-recording):
 
 1. A free Thinking pool member that sees takes the job first, as before.
 2. Otherwise, while pictures go to an image model of its own, that model takes
@@ -435,9 +437,10 @@ jobs](MEMORY.md#helper-jobs-on-the-thinking-pool):
    (4,096 tokens; 3 minutes for touch zones, 5 for the eyes).
 3. Otherwise the Thinking model takes it after any reply, as before.
 
-Companion › Touch (`TouchZonesVision`) names the model that takes the
-pictures, and *Detect zones* and *Measure the face* stay on while an image
-model of its own takes them, also with a Thinking model that reads only text.
+Companion › Touch (`TouchZonesVision`) and Companion › Eyes name the model that
+takes the pictures, from the same decision, and *Detect zones* and *Measure the
+face* stay on while an image model of its own takes them, also with a Thinking
+model that reads only text.
 
 ## Latency rules
 
@@ -510,14 +513,49 @@ another computer.
 The pool area entries are `PoolAreas.Vision` and `PoolAreas.Hearing`
 ([Pools](CLUSTER.md#pools-one-ordered-list-of-members-per-area)). Each PC keeps
 its own list, because which models fit beside Thinking depends on its
-hardware. An empty list means no model of its own. Then Thinking's own model
-takes the pictures or recordings that go with a reply (the list's summary says
-*Nothing in the list is on. Instead: Thinking's own model takes the pictures
-itself.*). That sentence is about replies only. Screen summaries and PC sound
-descriptions never go to Thinking's own model: they go to a Thinking pool
-model that sees or hears. Touch zones, the eyes and check-ins try the Thinking
-pool first too. *Also gets your pictures* (or *recordings*) under the list
-names those Thinking pool models (`SensePoolUsers`).
+hardware. An empty list means no model of its own. Then the list's summary
+says who takes each job instead, from the decisions below, for example
+*Nothing in the list is on. Instead: Thinking's own model (gemma4:e2b) takes
+the picture with a reply; diva (qwen2.5vl:7b) in the Thinking pool takes screen
+summaries, touch zones, the character's eyes and check-ins with a screenshot.*
+Devices › Sharing's line for the list says the same (`PoolListSummary`).
+*Also gets your pictures* (or *recordings*) under the list names those
+Thinking pool models (`SensePoolUsers`).
+
+## Who takes each picture and recording
+
+`SenseJobRouting` (Martlet.Conversation) owns which model takes each job with a
+picture or a recording. `SenseJobRouting.Rows` is the one table of the orders,
+and `SenseJobRouting.Decide` gives a `SenseDecision`: each step in order,
+whether it takes the job now and why. The first step that takes the job runs
+it. When that model can't take it after all, the next step that takes it runs
+it. The runners follow the decision (`ImageModelScreenDigestThinker`,
+`LiveConversationController.SoundJudge`, `AskHelperAsync`), and Companion's
+pages and MCP show it. They don't decide again.
+
+| Job | Order | Thinking pool job kind | When no one takes it |
+| --- | --- | --- | --- |
+| The picture with a reply | 1. The image model. 2. Thinking's own model, in the reply's request. | (none) | The reply goes without a picture. |
+| A screen summary | 1. The image model. 2. A Thinking pool member that sees. Never Thinking's own model: its prompt cache stays the conversation's. | `digest` (quick) | No screen summaries. |
+| Touch zones and the character's eyes | 1. A Thinking pool member that sees. 2. The image model. 3. Thinking's own model, after the reply. | `touch-zones` (long) | Detect zones is off. |
+| A check-in with a screenshot | 1. A Thinking pool member that sees. | `check-in` (long) | It waits. |
+| Your voice with a reply | 1. The audio model. 2. Thinking's own model. Each only when *Hear how you say it* allows it. | (none) | Thinking gets the transcript only. |
+| A PC sound description | 1. The audio model. 2. A Thinking pool member that hears. 3. The sound tagger on this PC's processor. | `digest` (quick) | Only the words this PC plays reach Thinking. |
+| A check-in with a recording | 1. A Thinking pool member that hears. | `check-in` (long) | It waits. |
+
+The two reply jobs read their path from `SenseRouting.For` (above). Helper jobs
+try the Thinking pool first because they are long and the image model serves
+the conversation; summaries try the image or audio model first because they
+are quick. Whether a model sees or hears is `ModelSenses`
+([What a model takes](#what-a-model-takes)). A Thinking pool member gets a job
+only when it may receive pictures and recordings and takes the job's kind.
+
+The page decides from the saved settings (`MainWindow.SenseDecisionFor`), and
+the conversation from what it runs with
+(`LiveConversationController.SenseDecision`). `SenseJobAgreementTests` checks,
+for each job and setup, that both pick the same model and that the page's text
+names it. The desktop writes each decision to `sense-models-status.json`
+(`jobs`).
 
 ## Finding out what a model can do
 
@@ -657,7 +695,7 @@ line in the desktop log.
 ## For developers
 
 The types are `SenseModels` and `SenseLists` (Martlet.Core), `ModelSenses`,
-`SenseRouting`, `SenseLanes`, `SensePool` and `SenseSetup`
+`SenseJobRouting`, `SenseRouting`, `SenseLanes`, `SensePool` and `SenseSetup`
 (Martlet.Conversation). The desktop's controller runs the jobs
 (`LiveConversationController.Senses.cs`).
 
@@ -704,7 +742,8 @@ Without a data folder, a refusal is kept in memory only.
 
 - MCP: `sense_models_status` reads a data folder's choices, routes, each
   kind's pool and the desktop's status file. `sense_models_check` rehearses
-  the routing, the lines and the pools with a simulated runner and members
+  the routing, the order of each job (`job-routing`), the lines and the pools
+  with a simulated runner and members
   ([MCP](MCP.md#image-and-audio-models)).
   `image_model_check` and `audio_model_check` rehearse the picture and voice
   paths against fixture endpoints on 127.0.0.1 with the production code.
@@ -712,7 +751,8 @@ Without a data folder, a refusal is kept in memory only.
   `model_lab` runs a fixture endpoint for the desktop's cards.
 - Tests: `SenseModelsTests` and `SenseListsTests` (members as places, the
   consent rules, the first lists from `sense-models.json`, hosts.json;
-  Martlet.Core.Tests), `ModelSensesTests`, `SenseRoutingTests`, `SenseLanesTests`,
+  Martlet.Core.Tests), `ModelSensesTests`, `SenseJobRoutingTests` (each job in
+  each setup), `SenseRoutingTests`, `SenseLanesTests`,
   `SensePoolTests` and `SenseSetupTests` (the lists made once, a damaged list
   file never replaced; Martlet.Conversation.Tests), `ModelVisionTestTests`
   (Martlet.Providers.Tests), and in Martlet.Desktop.Tests
@@ -725,7 +765,9 @@ Without a data folder, a refusal is kept in memory only.
   requests the same byte for byte), `AudioModelVoiceTests` (no recording
   goes to Thinking, the reply never waits, ready words go with it and late
   ones with the next request, the consent rule, shared hardware, the sound
-  digest's judge, the words and the defaults) and `SenseModelCardsTests`.
+  digest's judge, the words and the defaults), `SenseJobAgreementTests` (the
+  page and the conversation pick the same model for each job, and the page's
+  text names it) and `SenseModelCardsTests`.
 - NOT RUN: a real image or audio model, and the desktop log's `Reply latency`
   and `Thinking input` lines with real models. Each pull request says what it
   ran.

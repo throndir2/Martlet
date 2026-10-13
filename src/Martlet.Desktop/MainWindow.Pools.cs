@@ -30,6 +30,9 @@ internal sealed record PoolListOptions
     /// <summary>Lines under the members about models outside this list that do the area's work too (Vision: the Thinking pool's
     /// models that see); null: none.</summary>
     public Func<IEnumerable<UIElement>>? Also { get; init; }
+    /// <summary>What happens while nothing in the list is on, from the area's own decision (Vision and Hearing:
+    /// <see cref="MainWindow.SenseInstead"/>); null: the area's fallback.</summary>
+    public Func<string?>? Instead { get; init; }
     /// <summary>Runs after the list was saved, with the list before and after (the area follows it: its route, its backend).</summary>
     public Func<PoolList, PoolList, Task>? Saved { get; init; }
     /// <summary>Draws the page again after a change; null: the Companion page.</summary>
@@ -65,16 +68,7 @@ public partial class MainWindow
         var list = store is null ? new PoolList { Area = area.Id } : WorkSharingRoster.Pool(store.DataDirectory, area) ?? new PoolList { Area = area.Id };
         var stack = new List<UIElement> { Heading(options.Heading) };
         if (options.Intro is not null) stack.Add(Note(options.Intro, new Thickness(0, 0, 0, 8)));
-        var on = list.Members.Count(m => !m.Off);
-        var summary = Note(on == 0
-                ? area.Required ? $"Nothing in the list is on. Instead: {area.WhenEmpty}."
-                : area.ConversationFirst ? "Empty: a reply always waits for the conversation's own model."
-                : "Off: nothing in the list is on."
-                : area.ConversationFirst
-                    ? $"The conversation's own model goes first. When it is busy, a reply goes to the first free one of {on} below."
-                    : on == 1 ? "One member is on. Requests go to it."
-                    : $"{on} members are on. A request goes to the first free one, in this order; when all are busy it waits for the first to finish.",
-            new Thickness(0, 0, 0, 8));
+        var summary = Note(PoolListSummary.Describe(area, list, list.NoneOn ? options.Instead?.Invoke() : null), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(summary, id + "-Summary");
         stack.Add(summary);
         var companions = SharingCompanions();

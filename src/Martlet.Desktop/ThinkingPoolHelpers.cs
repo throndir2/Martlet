@@ -16,11 +16,13 @@ internal sealed class ThinkingPoolHelpers(Func<DesktopThinkingPool> pool) : IHel
     internal static ThinkingPriority? Priority(HelperJobKind kind) => ThinkingJobKinds.Helper(kind).Helper.Priority;
 
     internal static ThinkingCapability Needs(HelperCapability capability) =>
-        capability == HelperCapability.Vision ? ThinkingCapability.Text | ThinkingCapability.Vision : ThinkingCapability.Text;
+        capability == HelperCapability.Vision ? SenseJobRouting.Row(SenseJobKind.HelperPicture).Needs : ThinkingCapability.Text;
 
-    // The pool has no kind for "any helper": a member that can take one text kind can take them all.
+    // The pool has no kind for "any helper": a member that can take one text kind can take them all. A helper job with a picture
+    // is SenseJobRouting's HelperPicture job, on its pool kind.
     public bool Has(HelperCapability capability) =>
-        pool().CanRun(capability == HelperCapability.Vision ? ThinkingJobKind.TouchZones : ThinkingJobKind.Memory, Needs(capability));
+        pool().CanRun(capability == HelperCapability.Vision ? SenseJobRouting.Row(SenseJobKind.HelperPicture).PoolKind!.Value : ThinkingJobKind.Memory,
+            Needs(capability));
 
     public async Task<HelperPoolAnswer?> TryRunAsync(HelperJob job, CancellationToken token)
     {

@@ -552,11 +552,12 @@ public static partial class CheckIns
         (custom.ToolSets.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
 
     /// <summary>What a member must handle: text, what the owner <paramref name="chose"/>, pictures for a screenshot and recordings
-    /// for a recording.</summary>
+    /// for a recording (<see cref="SenseJobKind.CheckInScreenshot"/> and <see cref="SenseJobKind.CheckInRecording"/> in
+    /// <see cref="SenseJobRouting.Rows"/>: a Thinking pool member that sees or hears takes them, else they wait).</summary>
     public static ThinkingCapability Needs(ThinkingCapability chose, bool screenshot, CheckInRecording recording) =>
         ThinkingCapability.Text | chose & (ThinkingCapability.Vision | ThinkingCapability.Audio) |
-        (screenshot ? ThinkingCapability.Vision : ThinkingCapability.None) |
-        (recording != CheckInRecording.None ? ThinkingCapability.Audio : ThinkingCapability.None);
+        (screenshot ? SenseJobRouting.Row(SenseJobKind.CheckInScreenshot).Sense : ThinkingCapability.None) |
+        (recording != CheckInRecording.None ? SenseJobRouting.Row(SenseJobKind.CheckInRecording).Sense : ThinkingCapability.None);
 
     /// <summary>What a member must handle, in plain words: "text", "text and pictures", "text, pictures and recordings", "text and
     /// tool calls".</summary>

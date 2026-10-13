@@ -80,7 +80,7 @@ public sealed class PcSoundDigestTests
         Assert.Null(PoolSoundJudge.For(null));
         members = [text, ears];
         var judge = PoolSoundJudge.For(pool)!;
-        Assert.Equal("gemma4:e4b on this PC", judge.Name);
+        Assert.Equal("this PC (gemma4:e4b)", judge.Name);
         Assert.Equal(SoundJudgeKind.Pool, judge.Kind);
         var clip = new float[3 * PcSoundBuffer.SampleRate];
         for (var i = 0; i < clip.Length; i++) clip[i] = (float)(0.2 * Math.Sin(i * 0.1));
