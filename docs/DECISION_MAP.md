@@ -85,30 +85,36 @@ recordings* rows) and Companion › Listening.
 **What it decides:** whether one model takes pictures, recordings and tool
 calls, and what Martlet does when it can't tell ("unknown").
 
-**Moving.** Today five places decide, with different rules for paired
-computers, retired models and "unknown". The planned owner is `ModelSenses`
-(`src\Martlet.Conversation\ModelSenses.cs`): one rule for the Thinking route,
-a Vision or Hearing list member, a Thinking pool member and Ollama on this PC.
+**Owner:** `ModelSenses` (`src\Martlet.Conversation\ModelSenses.cs`): one
+rule for the Thinking route, a Vision or Hearing list member, a Thinking pool
+member and Ollama on this PC. `ModelSenses.For` gives the facts (sees, hears,
+calls tools) in one order for every place: what the route carries, a retired
+model, what Martlet found out (a paired computer's model by its gateway's
+origin), then the name. `ModelSenses.Takes` (`SenseUse`) is the one table for
+"unknown": a list member is tried, Thinking's reply tries pictures but not
+recordings, and a Thinking pool job needs a known yes
+([What a model takes](SENSE_MODELS.md#what-a-model-takes)).
 
-| Place that decides today | For which models |
+| Caller | For which models |
 | --- | --- |
-| `SenseRouting.Sees`, `SenseRouting.Hears` (`src\Martlet.Conversation\SenseRouting.cs`) | Vision and Hearing list members |
-| `SenseRouting.ThinkingSees`, `SenseRouting.ThinkingHears` | The Thinking route |
-| `LiveConversationConfiguration.Vision` (`src\Martlet.Desktop\LiveConversationConfiguration.cs`) | The Thinking route (a second copy) |
-| `ThinkingPoolCapabilities.For` (`src\Martlet.Conversation\ThinkingPool.cs`) | Thinking pool members, also tool calls |
+| `SenseRouting.For`, `SensePool.Refuses` (`src\Martlet.Conversation`) | The Thinking route and Vision and Hearing list members |
+| `LiveConversationConfiguration.Vision`, `Hearing`, `Tools` (`src\Martlet.Desktop\LiveConversationConfiguration.cs`) | The Thinking route in a running conversation |
+| `ThinkingPoolCapabilities.For` (`src\Martlet.Conversation\ThinkingPool.cs`) | Thinking pool members (recordings only on an endpoint) |
 | `MainWindow.LocalTakes` (`src\Martlet.Desktop\MainWindow.SenseModels.cs`) | Ollama on this PC |
+| `ModelSenses.Retired` | A retired Thinking model's message (Health, Companion › Thinking) |
 
 **Facts they read:** `ModelAbilities` (`model-abilities.json`,
 `src\Martlet.Core\Settings\ModelAbilities.cs`: server metadata, Test vision,
 Test hearing, refusals), then the model's name (`VisionModelCatalog`,
 `HearingModelCatalog`, `src\Martlet.Providers`).
 
-**Tests:** `SenseRoutingTests` and `ThinkingPoolTests`
+**Tests:** `ModelSensesTests`, `SenseRoutingTests` and `ThinkingPoolTests`
 (Martlet.Conversation.Tests); `ModelAbilitiesTests` (Martlet.Core.Tests);
 `VisionModelCatalogTests` and `ModelAbilityDetectionTests`
 (Martlet.Providers.Tests).
 
-**MCP:** `model_ability_check`, `hearing_check`, `sense_models_status`,
+**MCP:** `sense_models_check` (`one-rule-for-every-place`),
+`model_ability_check`, `hearing_check`, `sense_models_status`,
 `thinking_pool_status` (each member's `can`).
 
 ## Which Thinking pool member takes a job (Thinking pool job routing)
