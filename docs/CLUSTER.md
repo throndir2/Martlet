@@ -629,7 +629,7 @@ with the reason from its row here; `SettingsFilesTests` checks that they agree.
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 | Memory local models took in Ollama (`model-memory.json`) | Measured on this PC |
-| The Pictures, Vision, Hearing and Reading lists (`pools-local.json`) | Each computer chooses them itself |
+| The Picture making, Vision, Hearing and Reading lists (`pools-local.json`) | Each computer chooses them itself |
 | Which saved key each cloud pool member uses (`pool-keys.json`) | The keys are in this PC's Windows Credential Manager |
 | Embedding vectors for finding by meaning (memory's and reports' in memory only; guides' in `meaning\guides`) | Derived data each computer makes from what is shared; never a second copy of a fact, a guide or a report |
 | That this computer made or saw Martlet's [starter motions](AVATARS.md#starter-motions) made (`motion-starters.json` in the account's creations folder) | What this computer saw, so it never makes them again after you delete them; the motions themselves are shared creations |
