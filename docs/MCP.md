@@ -10318,14 +10318,20 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (or `SafeClickPrefixes` for a
+  `src\Martlet.Mcp.Protocol\AutomationPolicy.cs` (or `SafeClickPrefixes` for a
   family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
-  `SafeValuePrefixes`) so snapshots return their text (a value pattern's value,
-  a text block's text, or a status button's accessible name).
+  `SafeValuePrefixes`) in the same file so snapshots return their text (a value
+  pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
+- **One line for each ID:** write each entry as
+  `new("<ID>", "<page>", "<what it does or shows>")`, for example
+  `new("CheckInsOpenPool", "Companion › Check-ins", "Only opens Companion › Thinking pool.")`.
+  Say why it is safe ("saves nothing", "never the key"). Name controls that you
+  leave out on purpose in a comment line next to it
+  (`// Needs --allow-ui-effects: ...` or `// Never returned: ...`).
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
