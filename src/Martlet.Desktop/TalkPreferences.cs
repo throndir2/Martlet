@@ -42,6 +42,8 @@ namespace Martlet.Desktop;
 // Companion › Touch › Touch zones › When you touch Martlet while it talks (TouchInterrupts: any touch Martlet notices, the
 // default, only intimate touches, or never): a touch stops the reply or remark Martlet is saying, like talking over it, and its
 // reaction knows what Martlet was saying.
+// Companion › Reading › Read the screen (ReadEveryMs, one of ScreenReadPace.ChoicesMs, 3000 by default): while Martlet watches
+// your screen, it takes a full-size picture for reading at most this often and reads it when it changed.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
@@ -50,7 +52,8 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool JudgeTurns = true,
     bool DescribePcSounds = true, bool ScreenSummary = true, bool EarlyReplies = true, bool EarlyRepliesCloud = false,
     bool EarlyVoice = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true, bool QuickSounds = false,
-    int QuickSoundDelayMs = 700, Martlet.Conversation.TouchInterrupts TouchInterrupts = Martlet.Conversation.TouchInterrupts.Any)
+    int QuickSoundDelayMs = 700, Martlet.Conversation.TouchInterrupts TouchInterrupts = Martlet.Conversation.TouchInterrupts.Any,
+    int ReadEveryMs = Martlet.Core.Reading.ScreenReadPace.DefaultMs)
 {
     private const string FileName = "talk-preferences.json";
 
@@ -105,6 +108,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                     ? loaded.QuickSoundDelayMs : (int)Martlet.Conversation.QuickSoundOptions.DefaultDelay.TotalMilliseconds,
                 GazeUsual = loaded.GazeUsual is { } usual && Enum.IsDefined(usual) ? usual : null,
                 TouchInterrupts = Enum.IsDefined(loaded.TouchInterrupts) ? loaded.TouchInterrupts : Martlet.Conversation.TouchInterrupts.Any,
+                ReadEveryMs = Martlet.Core.Reading.ScreenReadPace.Normalize(loaded.ReadEveryMs),
                 Version = CurrentVersion
             };
         }

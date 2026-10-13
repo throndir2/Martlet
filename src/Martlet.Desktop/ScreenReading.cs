@@ -13,14 +13,16 @@ using Martlet.Discord.Calls;
 namespace Martlet.Desktop;
 
 /// <summary>One read of the text on a screenshot: the lines in reading order, their text, how much the text changed since the
-/// read before (0 to 1; 0 for the first read), how long it took, which engine read it, when, and the screenshot's size.</summary>
+/// read before (0 to 1; 0 for the first read), how long it took, which engine read it, when, the screenshot's size and how long
+/// after the read before it started (null for the first).</summary>
 internal sealed record ScreenRead(IReadOnlyList<ReadLine> Lines, string Text, double Change, TimeSpan Took, string Engine, DateTimeOffset At,
-    int Width = 0, int Height = 0)
+    int Width = 0, int Height = 0, TimeSpan? Gap = null)
 {
     /// <summary>The read in words, for Companion › Reading and the talk window's vision tooltip.</summary>
     internal string Describe() =>
         $"Read {Lines.Count} {(Lines.Count == 1 ? "line" : "lines")} with {Engine} in {Took.TotalMilliseconds:0} ms at {At.ToLocalTime():t}" +
-        (Width > 0 && Height > 0 ? $" ({Width} x {Height} screenshot)." : ".");
+        (Width > 0 && Height > 0 ? $" ({Width} x {Height} screenshot)" : "") +
+        (Gap is { } gap ? $", {gap.TotalSeconds:0.0} s after the read before." : ".");
 }
 
 /// <summary>Why the text on the screen couldn't be read (Windows has no OCR language, the host doesn't answer). <see cref="Busy"/>:
@@ -303,22 +305,19 @@ internal sealed class PoolScreenTextReader : IScreenTextReader
 
 /// <summary>
 /// Reads the text on the screen while Martlet watches it (docs/READING.md), one read at a time and never on the UI thread or a
-/// reply's path. A capture is read when no read is running and the picture changed, or the last read is older than
-/// <see cref="Refresh"/> (small text such as a score can change without changing the coarse picture much). Each read keeps
-/// only its text; the pixels are zeroed when it ends.
+/// reply's path. On its own pace (<see cref="ScreenReadPace"/>, Companion › Reading › Read the screen), apart from the looks'
+/// screenshots: at most once per <see cref="Every"/> it takes a full-size picture and reads it when no read is running and the
+/// picture changed, or the last read is older than <see cref="ScreenReadPace.Refresh"/>. Each read keeps only its text; the
+/// pixels are zeroed when it ends.
 /// </summary>
 internal sealed class ScreenReader : IDisposable
 {
-    /// <summary>A screen that looks the same is read again after this long.</summary>
-    internal static TimeSpan Refresh => TimeSpan.FromSeconds(9);
-    /// <summary>The picture changed at least this much (0 to 1) since the capture before: read it now.</summary>
-    internal const double PictureChange = 0.002;
-
     private readonly IScreenTextReader reader;
     private readonly TimeProvider clock;
+    private readonly ScreenReadPace pace;
     private readonly CancellationTokenSource lifetime = new();
     private Task<ScreenRead?>? running;
-    private long? lastStarted;
+    private long? lastRead;
     private volatile ScreenRead? latest;
     private volatile string? problem;
 
@@ -326,6 +325,14 @@ internal sealed class ScreenReader : IDisposable
     {
         this.reader = reader;
         this.clock = clock ?? TimeProvider.System;
+        pace = new(this.clock);
+    }
+
+    /// <summary>How often a full-size picture is taken for reading (Companion › Reading › Read the screen).</summary>
+    internal TimeSpan Every
+    {
+        get => pace.Every;
+        set => pace.Every = value;
     }
 
     /// <summary>The newest read of this PC's watching, for Companion › Reading (null until one finished).</summary>
@@ -343,41 +350,33 @@ internal sealed class ScreenReader : IDisposable
     /// <summary>Why the last read failed; null after one that worked.</summary>
     internal string? Problem => problem;
 
-    /// <summary>Starts reading <paramref name="frame"/> unless a read is running, or the picture barely changed and the last read
-    /// is recent. With <paramref name="fullSize"/> (the same look at full size, <see cref="IScreenGlancer.CaptureText"/>), that
-    /// picture is taken off the UI thread and read instead: small text survives only at full size. Returns the read (null when
-    /// it failed or the full-size look was skipped), or null when it didn't start.</summary>
-    internal Task<ScreenRead?>? Offer(ScreenFrame frame, Func<ScreenFrame?>? fullSize = null)
+    /// <summary>Called often (the talk window's timer): when no read runs and <see cref="Every"/> passed since the last picture,
+    /// takes the full-size picture (<paramref name="fullSize"/>, <see cref="IScreenGlancer.CaptureText"/>: small text survives
+    /// only at full size) off the UI thread and reads it when it changed since the last read or a while passed. Returns the
+    /// read (null when the picture was the same, skipped or the read failed), or null when nothing started.</summary>
+    internal Task<ScreenRead?>? Offer(Func<ScreenFrame?> fullSize)
     {
-        if (Busy || lifetime.IsCancellationRequested) return null;
-        if (latest is not null && frame.Change < PictureChange && lastStarted is { } at && clock.GetElapsedTime(at) < Refresh) return null;
-        if (fullSize is not null)
+        if (Busy || lifetime.IsCancellationRequested || !pace.Capture()) return null;
+        return running = Task.Run(async () =>
         {
-            lastStarted = clock.GetTimestamp();
-            return running = Task.Run(async () =>
+            if (lifetime.IsCancellationRequested) return null;
+            ScreenFrame? full;
+            try { full = fullSize(); }
+            catch (Exception error) when (error is InvalidOperationException or ArgumentException or OutOfMemoryException or
+                System.Runtime.InteropServices.ExternalException)
             {
-                if (lifetime.IsCancellationRequested) return null;
-                ScreenFrame? full;
-                try { full = fullSize(); }
-                catch (Exception error) when (error is InvalidOperationException or ArgumentException or OutOfMemoryException or
-                    System.Runtime.InteropServices.ExternalException)
-                {
-                    problem = $"Couldn't take a full-size picture of the screen ({error.Message}).";
-                    return null;
-                }
-                if (full is null) return null;
-                var (width, height) = (full.Width, full.Height);
-                if (lifetime.IsCancellationRequested)
-                {
-                    full.Clear();
-                    return null;
-                }
-                return full.TakePixels() is { } taken ? await ReadAsync(taken, width, height).ConfigureAwait(false) : null;
-            });
-        }
-        if (frame.CopyPixels() is not { } pixels) return null;
-        lastStarted = clock.GetTimestamp();
-        return running = ReadAsync(pixels, frame.Width, frame.Height);
+                problem = $"Couldn't take a full-size picture of the screen ({error.Message}).";
+                return null;
+            }
+            if (full is null) return null;
+            var (width, height) = (full.Width, full.Height);
+            if (lifetime.IsCancellationRequested || !pace.Read(full.Signature, always: latest is null))
+            {
+                full.Clear();
+                return null;
+            }
+            return full.TakePixels() is { } taken ? await ReadAsync(taken, width, height).ConfigureAwait(false) : null;
+        });
     }
 
     /// <summary>Reads one picture now (Companion › Reading's Read my screen now), even while watching reads too.</summary>
@@ -391,13 +390,15 @@ internal sealed class ScreenReader : IDisposable
     private async Task<ScreenRead?> ReadAsync(byte[] pixels, int width, int height)
     {
         var started = clock.GetTimestamp();
+        TimeSpan? gap = lastRead is { } before ? clock.GetElapsedTime(before, started) : null;
+        lastRead = started;
         try
         {
             var lines = ScreenText.Order(await reader.ReadAsync(pixels, width, height, lifetime.Token).ConfigureAwait(false));
             var text = ScreenText.Join(lines);
-            var before = latest;
-            var read = new ScreenRead(lines, text, before is null ? 0 : ScreenText.Change(before.Text, text),
-                clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow(), width, height);
+            var prior = latest;
+            var read = new ScreenRead(lines, text, prior is null ? 0 : ScreenText.Change(prior.Text, text),
+                clock.GetElapsedTime(started), reader.Engine, clock.GetUtcNow(), width, height, gap);
             latest = read;
             problem = null;
             return read;

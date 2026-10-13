@@ -1232,7 +1232,10 @@ internal sealed partial class McpServer(DesktopAutomation desktop, bool allowCha
             "dataDirectory): the list (pools-local.json, or made from reading.json until the page saves it), its members and the " +
             "places a read tries, first to last. poolCheck: the production list code, planner and queue with simulated computers " +
             "(NOT real hosts): the list's order, off when nothing is on, a busy computer passed over, a wait for the first to free, " +
-            "a friend's host left for its owner. Never captures the real screen.", new
+            "a friend's host left for its owner. pace (with dataDirectory): Companion › Reading › Read the screen (talk-preferences.json's " +
+            "ReadEveryMs: how often a full-size picture is read, 3000 by default). paceCheck: the production read pace for each choice " +
+            "over a simulated minute (reads of a changing screen with a fast and a slow reader, and of a still screen). Never " +
+            "captures the real screen.", new
         {
             dataDirectory = new { type = "string" },
             endpoint = new { type = "string", maxLength = 64 }

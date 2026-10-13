@@ -277,8 +277,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
         // Companion › Reading's model pills in a list member's settings ("ReadingModel-this-pc-ppocrv5-mobile",
-        // "ReadingModel-gpu-pc-ppocrv5-server", "ReadingModel-gpu-pc-rapidocr-ppocrv4") only show that model's details and the
-        // button that sets it up or switches to it there (Set up and Switch need --allow-ui-effects).
+        // "ReadingModel-gpu-pc-ppocrv5-mobile-gpu", "ReadingModel-gpu-pc-ppocrv5-server", "ReadingModel-gpu-pc-rapidocr-ppocrv4")
+        // only show that model's details and the button that sets it up or switches to it there (Set up and Switch need
+        // --allow-ui-effects).
         "ReadingModel-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
@@ -616,10 +617,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "PicturesConsent", "PicturesAddCloud", "PicturesCloudState",
         // Companion › Reading: what reads the text on the screen (ReadingNow), the newest read while watching and the Read my
         // screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds, the full-size screenshot's
-        // width x height and when, or why it couldn't), whether Windows can read text here and the buttons' labels. The list itself
-        // reads through "Pool-" and each member's settings through the "Reading" prefixes below. The text read from a real screen
-        // (ReadingTestText) is never returned.
-        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingTest",
+        // width x height, when and how long after the read before, or why it couldn't), whether Windows can read text here and the
+        // buttons' labels. Read the screen (ReadingEvery: the chosen option, from twice a second to every 10 seconds; choosing one
+        // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and what it means (ReadingEveryStatus). The
+        // list itself reads through "Pool-" and each member's settings through the "Reading" prefixes below. The text read from a
+        // real screen (ReadingTestText) is never returned.
+        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingTest", "ReadingEvery", "ReadingEveryStatus",
         // Companion › Motion (under Optional extras): whether and where Martlet makes body motions (MotionNow: "Martlet makes body
         // motions on m3-host (or the first free one of 2 computers)." or "Off. ..."), whether the character shown can play them
         // (MotionCharacter: a VRM can; a Live2D model can't), the link to Emotes and motions (MotionOpenEmotes, which only opens

@@ -1006,6 +1006,22 @@ a friend's host busy with its owner's work handing the read to your own
 computer, or, when it is the only one, leaving it for later (`Refusal`
 `later`). `poolCheck.ok` is true when every step passed.
 
+`reading_check` also shows how often Martlet reads. With `dataDirectory`,
+`pace` gives Companion › Reading › **Read the screen** (`talk-preferences.json`'s
+`ReadEveryMs`): `everyMs` (500, 1000, 2000, 3000 by default, 5000 or 10000),
+`describe` in words, `source`, `choicesMs`, `refreshSeconds` (9: a still
+screen is read again after this long) and `pictureChange`. `paceCheck` runs
+the production pace (`ScreenReadPace`) for each choice over a simulated minute,
+polled every 100 ms as the talk window does, one read at a time. For each
+choice it gives `changingFastPerMinute` (a screen that changes in every
+picture, with 150 ms reads, as on a graphics card; it must equal
+`expectedFastPerMinute`), `changingSlowPerMinute` (2 s reads, as PP-OCRv5
+mobile on a processor: the read sets the pace) and `stillPerMinute` (a still
+screen: at most one read every 9 seconds). `paceCheck.ok` is true when every
+choice matches. It uses simulated time and pictures only, **NOT the real
+screen**. In that simulated minute, twice a second gives 120 reads with fast
+reads and 30 with slow ones, where the old 3-second pace gives 20.
+
 On the test machine (a 24-thread processor, Docker Desktop), the workers read
 the drawn desktops as follows:
 
@@ -1029,15 +1045,21 @@ only shows or hides that member's settings. In them, This PC's engine pills
 so they need `--allow-ui-effects`, and `ReadingWindowsState` says whether Windows
 can read text here. For the Reading role, the model pills
 (`ReadingModel-<place>-<model>`, place `this-pc` or the host, model
-`ppocrv5-mobile`, `ppocrv5-server` or `rapidocr-ppocrv4`) are passive clicks:
-they only show that model. The server pill is disabled on a computer without an
-NVIDIA graphics card. `ReadingHostState-<place>` (where the role stands and with
+`ppocrv5-mobile`, `ppocrv5-mobile-gpu` (PP-OCRv5 mobile on the graphics card),
+`ppocrv5-server` or `rapidocr-ppocrv4`) are passive clicks:
+they only show that model. The pills that need a graphics card are disabled on a
+computer without an NVIDIA graphics card. `ReadingHostState-<place>` (where the role stands and with
 which model), `ReadingModelNote-<place>` (where the chosen model runs, how
 accurate it is and its download) and the labels of `ReadingSetUp-<place>` and
 `ReadingSwitch-<place>` are safe values. Set up and Switch (which changes a
 computer's Reading role to the chosen model) need `--allow-ui-effects`.
 `PickerCompare-Reading` only shows or hides the comparison table. `ReadingNow`,
 `ReadingLast`, `ReadingTestState` and the label of `ReadingTest` are safe values.
+`ReadingEvery` (*Read the screen*: the chosen option, from *Twice a second* to
+*Every 10 seconds*) and `ReadingEveryStatus` (what it means) are safe values.
+Choosing an option with `ui_select` saves `talk-preferences.json`, so it needs
+`--allow-ui-effects`; `reading_check`'s `pace` then shows it. `ReadingLast` and
+`ReadingTestState` also say how long after the read before a read started.
 Read my screen now (`ReadingTest`) captures the screen, so it needs
 `--allow-ui-effects` too. `ReadingTestState` gives the size of the full-size
 screenshot it read, for example *(1920 x 1080 screenshot)*. The text it read
