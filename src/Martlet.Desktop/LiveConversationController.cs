@@ -504,8 +504,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly LocalTranscriptionAdapter? localTranscription;
     // Parakeet on this PC, also used for the quick check of what is said over Martlet (BargeInGate): free and private.
     private readonly ILocalTranscriber? localWords;
-    // The Parakeet model on this PC that hears an utterance when Listening's own route fails (LocalSpeechSetup.ListeningStandIn).
-    private readonly Func<SetupRoute, string?>? listeningStandIn;
     private readonly IEndOfTurnJudge? turnJudge;
     private readonly SmartTurnJudge? smartTurn;
     private readonly object turnGate = new();
@@ -584,16 +582,17 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private LiveConversationConfiguration? configuration;
     private long revision, captureEpoch;
     private bool paused, muted, locked, disposed;
-    private readonly Dictionary<SetupRole, JobFailure> failures = [];
-
-    /// <summary>A request that failed since Martlet started and has not worked since: what it was, Martlet's own outcome codes
-    /// (never provider text or anything said) and when.</summary>
-    internal sealed record JobFailure(SetupRole Role, string What, string Outcome, DateTimeOffset At);
+    // The model and fallback choice: what the Thinking model refuses, failed jobs, retired models and Listening's stand-in.
+    private readonly ConversationRouting routing;
 
     /// <summary>Each job's latest failed request that no later request of that job has made good, in job order.</summary>
-    internal IReadOnlyList<JobFailure> RecentFailures { get { lock (gate) return [.. failures.Values.OrderBy(f => f.Role)]; } }
+    internal IReadOnlyList<ConversationRouting.JobFailure> RecentFailures => routing.RecentFailures;
     /// <summary>Raised off the dispatcher when <see cref="RecentFailures"/> changes.</summary>
-    internal event Action? FailuresChanged;
+    internal event Action? FailuresChanged
+    {
+        add => routing.FailuresChanged += value;
+        remove => routing.FailuresChanged -= value;
+    }
     // Always listening runs on its own slot beside replies (so it keeps hearing while Martlet thinks), with its own
     // speech-to-text credentials bound to the one utterance being transcribed.
     private readonly SetupOperationRunner listenSlot = new();
@@ -616,10 +615,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private string? activityNote;
     private long activityPostedAt;
     private long listenEpoch, spokeUntil;
-    // Thinking models that rejected a recording this app session; they get the transcript only until Martlet restarts.
-    private readonly HashSet<string> deafModels = new(StringComparer.Ordinal);
-    // Thinking models that refused the Thinking steps choice this app session; they get their own default until Martlet restarts.
-    private readonly HashSet<string> reasoningRefused = new(StringComparer.Ordinal);
     // Background work Martlet started during the conversation (think_longer). Each place Deep thinking thinks on (this PC's
     // choice, deep-thinking.json, read when the conversation is set up or the page saves it) has its own text runtime and
     // credentials, bound to its one think's request at a time, so thinks on several places run at once; and who the last
@@ -920,7 +915,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         localTranscription = localListener is null ? null : new(localListener, this.clock);
         localWords = localListener;
-        this.listeningStandIn = listeningStandIn;
+        // The Parakeet model on this PC that hears an utterance when Listening's own route fails (LocalSpeechSetup.ListeningStandIn).
+        routing = new(this.clock, dataDirectory, tools, localListener is null ? null : listeningStandIn, UseAbilities);
         context = new();
         captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
@@ -965,28 +961,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>Saves what Martlet found out about a Thinking model (model-abilities.json) and lets the running conversation use
     /// it at once. Nothing is saved without a data directory (tests).</summary>
-    internal void RecordAbility(ModelAbility ability)
-    {
-        if (dataDirectory is null) return;
-        var abilities = ModelAbilities.Load(dataDirectory).With(ability);
-        if (!abilities.Save(dataDirectory))
-        {
-            ErrorLog.Warn("Martlet couldn't save what it found out about the Thinking model (model-abilities.json).");
-            return;
-        }
-        UseAbilities(abilities);
-        AbilityRecorded?.Invoke(ability);
-    }
+    internal void RecordAbility(ModelAbility ability) => routing.RecordAbility(ability);
 
     /// <summary>A reply found something out about a model and saved it (a model its server retired, say): Home proposes a
     /// replacement at once. Raised after the request ended, never on its path.</summary>
-    internal event Action<ModelAbility>? AbilityRecorded;
+    internal event Action<ModelAbility>? AbilityRecorded
+    {
+        add => routing.AbilityRecorded += value;
+        remove => routing.AbilityRecorded -= value;
+    }
 
     /// <summary>Reads model-abilities.json again, after Martlet found out more or another computer shared it.</summary>
-    internal void ReloadAbilities()
-    {
-        if (dataDirectory is not null) UseAbilities(ModelAbilities.Load(dataDirectory));
-    }
+    internal void ReloadAbilities() => routing.ReloadAbilities();
 
     // The conversation, the Thinking pool's members and the image and audio models' routes (also before a talk window loads the
     // settings) follow what was found out at once.
@@ -1526,8 +1512,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var configured = utterance.Authorization.Configuration;
         if (!ThinkingTakesVoice(configured)) return false;
         if (!options.HearsWith(RecordingStaysOnThisPc(configured)) || configured.Hearing() != HearingSupport.Supported) return false;
-        lock (gate)
-            if (deafModels.Contains(configured.ToolModelKey())) return false;
+        if (routing.Deaf(configured)) return false;
         if (smartHome is { ControlEnabled: true, ModelToolsEnabled: false }) return false;
         return !(options.BargeIn && Speaking is not null && utterance.TalkOver is null);
     }
@@ -1956,15 +1941,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 said: operation.SaidLately, described: described is not null);
             ErrorLog.Info($"Turn took: {operation.Inputs} (a look).");
             var terminal = await turn.Completion.ConfigureAwait(false);
-            NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
+            routing.NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
             NoteInput(camera ? "Camera glance" : "Screen glance", terminal);
             if (decides) Decide(turn, terminal, camera ? "a camera look" : "a screen glance");
             var text = turn.Content.Text;
             var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
             operation.Passed = passed;
-            if (IsFailure(terminal))
-                LogReplyFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
-            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
+            if (ConversationRouting.IsFailure(terminal))
+                routing.LogReplyFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
+            else if (terminal.State == ConversationState.Completed) routing.Succeeded(SetupRole.Llm);
             if (terminal.State == ConversationState.Completed)
             {
                 lock (gate)
@@ -2164,7 +2149,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // Straight to Thinking: the recording alone, unless it can't go (the model refused one since, or hearing that was on
             // only by default no longer stays on this PC): then the reply waits for the words, as when transcribing first.
             var straight = operation.StraightWords is { Count: > 0 };
-            if (straight && (operation.Recording is null || !operation.Authorization.Hear || !Hears(operation.Authorization.Configuration)))
+            if (straight && (operation.Recording is null || !operation.Authorization.Hear || !routing.Hears(operation.Authorization.Configuration)))
             {
                 // What went straight is at most a message's recording, heard in at most that many pieces.
                 using var deadline = new CancellationTokenSource(
@@ -2355,7 +2340,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // The recording goes only to a Thinking model that hears and hasn't refused one this session (checked above for a
                 // recording sent alone; a model that refuses it after all is asked again with its words).
                 var recording = straight ? operation.Recording : operation.Authorization.Hear && configured.Hearing() == HearingSupport.Supported &&
-                    !deafModels.Contains(configured.ToolModelKey()) ? operation.Recording : null;
+                    !routing.Deaf(configured) ? operation.Recording : null;
                 // While vision is on, the newest picture of what it watches goes with the message, so the reply sees it too.
                 // A message too long to fit beside the picture goes without it.
                 var seen = operation.Authorization.Screen ? operation.Seen : null;
@@ -2435,7 +2420,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             picture is null && describedNote is null ? null : noticed, recalled, guide, songNote, whileSinging, touchNote),
                         silentReply: operation.MayPass ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyClosing(operation.Authorization.Voice), audio: recording, imageOptional: true,
-                        characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
+                        characterActions: characterActions, withoutReasoning: routing.RefusesReasoning(configured),
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
                         controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts, singsWithTags),
                         spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null,
@@ -2572,52 +2557,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var terminal = await turn.Completion.ConfigureAwait(false);
             // Touches a reply took but never answered (it was stopped or failed) wait for the next reply.
             if (terminal.State != ConversationState.Completed && operation.Touches is { } unanswered) touches.Restore(unanswered);
-            NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
+            routing.NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
             NoteInput(operation.Report ? "Background report" : "Reply", terminal);
             NoteFirstWords(configured, terminal);
             if (operation.BackgroundChattiness == ChattinessChoice.MartletDecides)
                 Decide(turn, terminal, operation.Report ? "bringing up background work"
                     : operation.PcAudio && operation.UserWords is null ? "what this PC played" : "your message");
-            // A model that rejected tools is asked without them from now on (for a week, on this PC).
-            if (terminal.ToolsRejected)
-            {
-                tools?.MarkUnsupported(configured.ToolModelKey());
-                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with tools; " +
-                    "Martlet asked again without tools and stops offering them to it for a week.");
-            }
-            // A model that rejected the recording gets the transcript only from now on (this app session), and Martlet remembers
-            // it can't hear (model-abilities.json, shared with the owner's other computers) until a check or test says otherwise.
-            if (terminal.AudioRejected)
-            {
-                lock (gate) deafModels.Add(configured.ToolModelKey());
-                var thinking = configured.Route(SetupRole.Llm);
-                // A paired computer older than recordings refused it before it left this PC: the model may hear, so update that
-                // computer instead of remembering the model as deaf.
-                if (thinking.RouteType == SetupRouteType.GatewayOllama && HostAudio.IsOld(thinking.Gateway?.HostId))
-                    ErrorLog.Info($"Martlet on {thinking.Gateway?.HostId} is older than recordings, so the Thinking model " +
-                        $"{thinking.ModelId} got the transcript only; update the Martlet host so Thinking hears your voice.");
-                else
-                {
-                    RecordAbility(new() { Origin = thinking.Origin, ModelId = thinking.ModelId, Hears = false, Source = "a refused recording",
-                        CheckedAt = DateTimeOffset.UtcNow });
-                    ErrorLog.Info($"The Thinking model {thinking.ModelId} rejected the request with your recording; " +
-                        "Martlet asked again with the transcript only and sends it only the transcript from now on.");
-                }
-            }
-            if (terminal.ImageRejected)
-                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the picture of your screen sent " +
-                    "with your message; Martlet asked again with your words only.");
-            // A model that always thinks refused Thinking steps Off (or its server refused the control): it gets its own default
-            // from now on (this app session).
-            if (terminal.ReasoningRejected)
-            {
-                lock (gate) reasoningRefused.Add(configured.ToolModelKey());
-                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} refused Thinking steps " +
-                    $"{(GenerationSettings.ThinkingSteps(configured.Generation) ? "On" : "Off")}; Martlet asked again with the model's own default and " +
-                    "uses it until it restarts. This model always thinks, so choose a model that can answer without thinking for the fastest replies.");
-            }
-            if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
-            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
+            routing.NoteRefusals(configured, terminal);
+            if (ConversationRouting.IsFailure(terminal)) routing.LogReplyFailure("Reply", configured, terminal);
+            else if (terminal.State == ConversationState.Completed) routing.Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
             var passed = operation.MayPass && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
             operation.Passed = passed;
@@ -2699,12 +2647,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         var remembered = spokenOwn is null ? null
                             : operation.PcAudio ? VoicePromptContext.Prefix(operation.Heard) + spokenOwn : said;
                         var remember = operation.MemoryRequested && !passed && remembered is not null;
-                        var heard = !passed && remembered is not null && operation.Heard is { Known.Count: > 0 } known &&
+                        // Learning names also runs for a message whose voice Martlet wasn't sure of (VoiceNaming.Worth).
+                        var heard = !passed && remembered is not null && operation.Heard is { Voices.Count: > 0 } known &&
                             voices is { Active: true } && VoiceNaming.Worth(known, spokenOwn!, turn.Content.Text,
                                 operation.Authorization.Configuration.CompanionNames) ? known : null;
                         // Whose new facts are: the voices recognized in the message (the speaker's, unless another is named).
                         var present = remember && operation.Heard is { Known.Count: > 0 } recognized ? recognized : null;
-                        // The after-reply request continues the reply's request (instructions, tools, earlier messages and the
+                        // Each after-reply request continues the reply's request (instructions, tools, earlier messages and the
                         // message), then the reply as the next reply's history has it, whether or not the reply called tools.
                         if (remember || heard is not null)
                             EnqueueAfterReplyLocked(operation.Authorization.Configuration, remember, heard, earlier, remembered!,
@@ -2844,13 +2793,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// run on this PC (<see cref="SpokenWords.MayTranscribe"/>).</summary>
     internal static TimeSpan TranscribeAfter => TimeSpan.FromSeconds(4);
 
-    // The Thinking model hears and hasn't refused a recording this app session.
-    private bool Hears(LiveConversationConfiguration configured)
-    {
-        if (configured.Hearing() != HearingSupport.Supported) return false;
-        lock (gate) return !deafModels.Contains(configured.ToolModelKey());
-    }
-
     // What memory recalls by for a message that has no words yet: the user's last message in the conversation (without what the
     // PC played), or nothing (then the speaker's and the newest facts).
     private static string StraightRecallQuery(IReadOnlyList<TextHistoryMessage> history) =>
@@ -2941,7 +2883,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (!keep.Passed && !keep.Cut && real && current)
             {
                 var remember = operation.MemoryRequested;
-                var heard = operation.Heard is { Known.Count: > 0 } known && voices is { Active: true } &&
+                var heard = operation.Heard is { Voices.Count: > 0 } known && voices is { Active: true } &&
                     VoiceNaming.Worth(known, userWords, keep.Reply, keep.Configured.CompanionNames) ? known : null;
                 var present = remember && operation.Heard is { Known.Count: > 0 } recognized ? recognized : null;
                 if (remember || heard is not null)
@@ -3413,12 +3355,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     AttemptFinished = terminal =>
                     {
                         attempts++;
-                        NoteFallback("Background thinking", configured, terminal);
+                        routing.NoteFallback("Background thinking", configured, terminal);
                         NoteInput("Background thinking", terminal, reply: false);
-                        if (IsFailure(terminal) && terminal.State != ConversationState.Canceled)
+                        if (ConversationRouting.IsFailure(terminal) && terminal.State != ConversationState.Canceled)
                         {
-                            if (here.Settings.Separate) ErrorLog.Warn($"Background thinking on {where} failed ({Describe(terminal)}).");
-                            else LogReplyFailure("Background thinking", configured, terminal);
+                            if (here.Settings.Separate) ErrorLog.Warn($"Background thinking on {where} failed ({ConversationRouting.Describe(terminal)}).");
+                            else routing.LogReplyFailure("Background thinking", configured, terminal);
                             // Its computer didn't answer: offline at once, so the think (and the next job) goes elsewhere.
                             if (terminal.ProviderFailure == ProviderFailureCode.Network) NoteUnreachable(here.Settings, job.Id);
                         }
@@ -3605,10 +3547,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     Doing = "Writing the lyrics",
                     AttemptFinished = terminal =>
                     {
-                        NoteFallback("Song lyrics", configured, terminal);
+                        routing.NoteFallback("Song lyrics", configured, terminal);
                         NoteInput("Song lyrics", terminal, reply: false);
-                        if (IsFailure(terminal) && terminal.State != ConversationState.Canceled)
-                            ErrorLog.Warn($"Singing: writing the lyrics on {at} failed ({Describe(terminal)}).");
+                        if (ConversationRouting.IsFailure(terminal) && terminal.State != ConversationState.Canceled)
+                            ErrorLog.Warn($"Singing: writing the lyrics on {at} failed ({ConversationRouting.Describe(terminal)}).");
                     }
                 };
                 return new(think, spot.Plan.ChecksFit ? (thinkingModel, place.ModelId!) : null, lease);
@@ -4191,8 +4133,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // With the Thinking model: within the reply's own bounds, its tools kept so the start is the reply's.
         var input = configured.FitsContext(full) ? full : ThinkLonger.Fit(full, new(configured.TextLimits.MaxInputBytes,
             configured.TextLimits.MaxHistoryMessages, configured.TextInputTokens, Tools: false));
-        bool withoutReasoning;
-        lock (gate) withoutReasoning = reasoningRefused.Contains(configured.ToolModelKey());
+        var withoutReasoning = routing.RefusesReasoning(configured);
         var request = configured.ThinkRequest(input, left, withoutReasoning, continuing);
         var authorization = new ConversationAuthorization(configured, voice: false, microphone: false, clock, () => true,
             settings.LoadAsync, vault, CancellationToken.None, textLimits: request.TextLimits, lifetime: left + TimeSpan.FromSeconds(5));
@@ -4466,7 +4407,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
         // Listening's own route failed moments ago: Parakeet on this PC hears this turn at once, instead of waiting for the route
         // to fail again (a computer that is off takes seconds to time out). The route is asked again after StandInFor.
-        if (RouteFailedAgo(stt) is { } ago && StandInModel(stt) is { } standIn)
+        if (routing.RouteFailedAgo(stt) is { } ago && routing.StandInModel(stt) is { } standIn)
         {
             operation.Publish(new("stt.uploading"));
             return await StandInAsync(operation, audio, null, standIn, worker, ago, piece).ConfigureAwait(false);
@@ -4511,43 +4452,26 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // Listening's own route (a paired host or OpenAI) failed: Parakeet on this PC's processor hears the same utterance, still
         // in memory, when a model is downloaded here. A route that answers is never held up by it.
         if (result.Outcome is TranscriptionOutcome.Failed or TranscriptionOutcome.DeadlineExceeded &&
-            result.Failure?.Code != ProviderFailureCode.AudioLimit && StandInModel(stt) is { } model)
+            result.Failure?.Code != ProviderFailureCode.AudioLimit && routing.StandInModel(stt) is { } model)
             return await StandInAsync(operation, audio, result, model, worker, piece: piece).ConfigureAwait(false);
         operation.Transcription = result;
         // The route answered: turns ask it first again.
-        if (result.Outcome is TranscriptionOutcome.Completed or TranscriptionOutcome.NoSpeech) lock (gate) routeFailed = null;
+        if (result.Outcome is TranscriptionOutcome.Completed or TranscriptionOutcome.NoSpeech) routing.AskRoute();
         if (result.Outcome == TranscriptionOutcome.Completed)
         {
-            Succeeded(SetupRole.Stt);
+            routing.Succeeded(SetupRole.Stt);
             return result;
         }
         if (piece && result.Outcome == TranscriptionOutcome.NoSpeech) return result;
         if (result.Outcome != TranscriptionOutcome.NoSpeech)
-            LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt, Outcome(result));
+            routing.LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt, Outcome(result));
         operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
         return null;
     }
 
     /// <summary>How long Listening's stand-in hears every turn at once after Listening's own route failed, before the route is
     /// asked again.</summary>
-    internal static readonly TimeSpan StandInFor = TimeSpan.FromSeconds(60);
-    // Listening's own route as it was when it last failed, and when (controller clock); null once it answers.
-    private (SetupRoute Route, long At)? routeFailed;
-
-    /// <summary>How long ago <paramref name="stt"/> failed, while that is less than <see cref="StandInFor"/>; null otherwise.</summary>
-    private TimeSpan? RouteFailedAgo(SetupRoute stt)
-    {
-        lock (gate)
-        {
-            if (routeFailed is not { } failed || failed.Route != stt) return null;
-            var ago = clock.GetElapsedTime(failed.At);
-            return ago < StandInFor ? ago : null;
-        }
-    }
-
-    /// <summary>The Parakeet model on this PC that hears an utterance in place of <paramref name="stt"/>, or null. Asked only once
-    /// the route failed, so a route that answers costs nothing more.</summary>
-    private string? StandInModel(SetupRoute stt) => localTranscription is null ? null : listeningStandIn?.Invoke(stt);
+    internal static TimeSpan StandInFor => ConversationRouting.StandInFor;
 
     /// <summary>Listening's own route failed (<paramref name="failed"/>), or failed <paramref name="ago"/> and isn't asked again
     /// yet (<paramref name="failed"/> null): Parakeet <paramref name="model"/> on this PC's processor hears the utterance with its
@@ -4577,14 +4501,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var stoodIn = heard.Outcome is TranscriptionOutcome.Completed or TranscriptionOutcome.NoSpeech;
         // Later turns skip the route only while the stand-in hears them; one that fails sends them back to the route.
         if (stoodIn && failed is not null)
-            lock (gate) routeFailed = (operation.Authorization.Configuration.Route(SetupRole.Stt), started);
+            routing.StoodIn(operation.Authorization.Configuration.Route(SetupRole.Stt), started);
         else if (!stoodIn && heard.Outcome != TranscriptionOutcome.Canceled)
-            lock (gate) routeFailed = null;
+            routing.AskRoute();
         var standIn = stoodIn ? $"Parakeet {model} on this PC heard it instead in {took}"
             : heard.Outcome == TranscriptionOutcome.Canceled ? null
             : $"Parakeet {model} on this PC couldn't hear it either ({Outcome(heard)}, {took})";
         if (failed is not null)
-            LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt, Outcome(failed) + (standIn is null ? "" : "; " + standIn));
+            routing.LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt, Outcome(failed) + (standIn is null ? "" : "; " + standIn));
         else if (standIn is not null)
         {
             var line = $"Listening: {standIn}, without asking Listening's own route: it failed {ago!.Value.TotalSeconds:0} s ago " +
@@ -4713,37 +4637,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         });
     }
 
-    private static bool IsFailure(ConversationSnapshot terminal) =>
-        terminal.State is ConversationState.Failed or ConversationState.Partial || terminal.ProviderFailure is not null ||
-        terminal.SpeechFailed;
-
-    // A reply whose voice failed is a Speaking failure: its text still completes, so Thinking answered and counts as working.
-    // The voice stopping never cuts the reply short; a reply that itself failed is a Thinking failure too.
-    private void LogReplyFailure(string what, LiveConversationConfiguration configured, ConversationSnapshot terminal)
-    {
-        if (terminal.SpeechFailed || terminal.FailedProvider == ProviderRole.Tts)
-            LogFailure("Spoken " + what.ToLowerInvariant(), configured, SetupRole.Tts, Describe(terminal));
-        if (terminal.State is ConversationState.Failed or ConversationState.Partial && terminal.FailedProvider != ProviderRole.Tts)
-            LogFailure(what, configured, SetupRole.Llm, Describe(terminal));
-        else if (terminal.TextComplete) Succeeded(SetupRole.Llm);
-    }
-
-    private static string Describe(ConversationSnapshot terminal) =>
-        $"state {terminal.State}, failure {terminal.Failure}" + TimeLimit(terminal.Failure) +
-        (terminal.SpeechFailed ? $", voice stopped {terminal.SpeechFailure}" + TimeLimit(terminal.SpeechFailure) : "") +
-        (terminal.ProviderFailure is { } provider ? $", provider {provider}" : "") +
-        (terminal.SequenceFailure is { } sequence ? $", stream {sequence.Issue}" : "") +
-        (terminal.Playback?.Error?.Code is { } audio ? $", audio {audio}" : "") +
-        (terminal.ToolCalls > 0 ? $", {terminal.ToolCalls} tool call(s)" : "") +
-        (terminal.ToolsRejected ? ", tools rejected" : "") +
-        (terminal.FellBackAfter is { } after ? $", Thinking fallback asked after {after}" : "");
-
-    // AuthorizationExpired and BudgetExpired are the request's own time window running out (a slow or loading model), never a
-    // key, sign-in or pairing problem.
-    internal static string TimeLimit(ConversationFailure? failure) => failure is ConversationFailure.AuthorizationExpired or
-        ConversationFailure.BudgetExpired or ConversationFailure.DeadlineExceeded
-        ? " (it ran out of time: the model took too long to answer; this is not a key or sign-in problem)" : "";
-
     // One local log line per Thinking request that answered: when its first words came and how much of its input the model
     // read from its prompt cache (never what was said). Replies and glances also update the talk window's context line.
     private void NoteInput(string what, ConversationSnapshot terminal, bool reply = true)
@@ -4759,64 +4652,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             lock (gate) lastCache = (tokens, fromCache);
     }
 
-    // A reply the fallback answered: Thinking itself failed, so say so in the log (the provider's own explanation is
-    // logged just before it by ProviderDiagnostics); the reply still counts as working. A model its server retired is noted too.
-    private void NoteFallback(string what, LiveConversationConfiguration configured, ConversationSnapshot terminal)
-    {
-        NoteRetired(configured, terminal);
-        if (terminal.FellBackAfter is not { } after || configured.Fallback is not { } fallback) return;
-        var route = configured.Route(SetupRole.Llm);
-        var answered = terminal.State is ConversationState.Completed or ConversationState.Refused;
-        ErrorLog.Warn($"{what}: Thinking failed ({after}) on {route.Origin}, model {route.ModelId}; the Thinking fallback " +
-            $"{fallback.Origin}, model {fallback.ModelId}, {(answered ? "answered instead" : "failed too")}.");
-    }
-
-    /// <summary>A Chat Completions model its server retired for good (HTTP 410 Gone: <see cref="ProviderFailureCode.ModelRetired"/>)
-    /// is remembered as retired on that route (model-abilities.json, shared with the owner's other computers), so Companion,
-    /// Health and the next conversation say so; a later reply from it clears that. It runs only after the request ended, from what
-    /// the reply already found, and touches the file only when that changes.</summary>
-    private void NoteRetired(LiveConversationConfiguration configured, ConversationSnapshot terminal)
-    {
-        var route = configured.Route(SetupRole.Llm);
-        if (route.RouteType != SetupRouteType.ChatCompletions) return;
-        var known = configured.Abilities.Find(route.Origin, route.ModelId)?.Retired;
-        var gone = terminal.FellBackAfter == nameof(ProviderFailureCode.ModelRetired) ||
-            terminal.FellBackAfter is null && terminal.FailedProvider == ProviderRole.Llm && terminal.ProviderFailure == ProviderFailureCode.ModelRetired;
-        if (gone && known is null)
-        {
-            var now = clock.GetUtcNow();
-            ModelAbility ability = new() { Origin = route.Origin, ModelId = route.ModelId, Retired = now, Source = ModelAbility.GoneAnswer, CheckedAt = now };
-            if (dataDirectory is not null) RecordAbility(ability);
-            else configured.UseAbilities(configured.Abilities.With(ability));
-            ErrorLog.Warn($"{route.Origin} answered that {route.ModelId} is gone (HTTP 410), so Martlet remembers it as retired there.");
-        }
-        else if (!gone && known is not null && terminal.FellBackAfter is null && terminal.State == ConversationState.Completed)
-        {
-            var cleared = (dataDirectory is null ? configured.Abilities : ModelAbilities.Load(dataDirectory)).Answered(route.Origin, route.ModelId);
-            if (dataDirectory is not null && !cleared.Save(dataDirectory))
-                ErrorLog.Warn("Martlet couldn't save what it found out about the Thinking model (model-abilities.json).");
-            else UseAbilities(cleared);
-            ErrorLog.Info($"{route.ModelId} answered again, so Martlet no longer counts it retired on {route.Origin}.");
-        }
-    }
-
-    // One local log line per failed request naming the route it used, never what was said. The provider's own
-    // explanation (HTTP status and message) is logged just before it by ProviderDiagnostics.
-    private void LogFailure(string what, LiveConversationConfiguration configured, SetupRole role, string outcome)
-    {
-        var route = configured.Routes.SingleOrDefault(r => r.Role == role);
-        ErrorLog.Warn($"{what} failed ({outcome}). {role} route: {route?.RouteType?.ToString() ?? "OpenAi"}, " +
-            $"{route?.Origin ?? "no destination"}, model {route?.ModelId ?? "none"}.");
-        lock (gate) failures[role] = new(role, what, outcome, clock.GetLocalNow());
-        FailuresChanged?.Invoke();
-    }
-
-    private void Succeeded(SetupRole role)
-    {
-        bool cleared;
-        lock (gate) cleared = failures.Remove(role);
-        if (cleared) FailuresChanged?.Invoke();
-    }
 
     // Lorebooks help but are never required: if lorebooks.json can't be used right now, the reply goes ahead without lore.
     private async Task<LorebookScanResult?> ScanLoreAsync(LiveConversationOperation operation, string current,
@@ -4878,10 +4713,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>Queues the one request after a reply: remembering (<paramref name="remember"/>) and learning the names of the
-    /// <paramref name="heard"/> voices, together when both are due. On a Thinking model on this PC it continues
-    /// <paramref name="sent"/>, the reply's own request, so the model's prompt cache keeps the conversation for the next reply.
-    /// New facts belong to the speaker among the <paramref name="present"/> voices (unless the model names another).</summary>
+    /// <summary>Queues what comes after a reply: learning the names of the <paramref name="heard"/> voices and remembering
+    /// (<paramref name="remember"/>), each in a Thinking request of its own, one after the other (names first, so the facts
+    /// remembered next already say the names learned). On a Thinking model on this PC each continues <paramref name="sent"/>,
+    /// the reply's own request, so the model's prompt cache keeps the conversation for the next reply. New facts belong to the
+    /// speaker among the <paramref name="present"/> voices (unless the model names another).</summary>
     private void EnqueueAfterReplyLocked(LiveConversationConfiguration configured, bool remember, HeardVoices? heard,
         IReadOnlyList<TextHistoryMessage> earlier, string user, string reply, BoundedTextInput? sent, HeardVoices? present = null)
     {
@@ -4903,7 +4739,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         string? EarlierReply, string User, string Reply, BoundedTextInput? Conversation, CancellationToken Token, HeardVoices? Present = null)
     {
         public override string ToString() => nameof(AfterReplyJob);
-        public string Purpose => Remember && Heard is not null ? "Remembering and learning names" : Remember ? "Remembering" : "Learning names";
     }
 
     private async Task AfterReplyAsync(Task previous, AfterReplyJob job)
@@ -4913,18 +4748,26 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? learned = null;
         try
         {
-            (report, learned) = await Task.Run(() => AfterReplyRunAsync(job)).ConfigureAwait(false);
-        }
-        catch (Exception error)
-        {
-            ErrorLog.Warn($"{job.Purpose} from a conversation exchange failed.", error);
-            if (job.Remember) report = new(Failure: "memory." + error.GetType().Name);
+            if (job.Heard is not null)
+            {
+                try { learned = await Task.Run(() => LearnNamesAsync(job)).ConfigureAwait(false); }
+                catch (Exception error) { ErrorLog.Warn($"{VoiceNaming.Purpose} from a conversation exchange failed.", error); }
+                if (learned is { Count: > 0 }) VoicesNamed?.Invoke(learned);
+            }
+            if (job.Remember)
+            {
+                try { report = await Task.Run(() => RememberAsync(job)).ConfigureAwait(false); }
+                catch (Exception error)
+                {
+                    ErrorLog.Warn("Remembering from a conversation exchange failed.", error);
+                    report = new(Failure: "memory." + error.GetType().Name);
+                }
+            }
         }
         finally
         {
             lock (gate) capturesPending--;
         }
-        if (learned is { Count: > 0 }) VoicesNamed?.Invoke(learned);
         if (!job.Remember) return;
         if (report is { Failure: { } failure })
         {
@@ -4941,96 +4784,131 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (report is not null) MemoryCaptured?.Invoke(report);
     }
 
-    private async Task<(MemoryCaptureReport? Report, IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? Learned)> AfterReplyRunAsync(
-        AfterReplyJob job)
+    /// <summary>Learning names: one Thinking request whose only job is who the people speaking are, from the voices Martlet
+    /// recognized (and, when it wasn't sure whose voice said the message, the one it sounded most like) and from what they
+    /// said. It goes to a Thinking pool member that takes naming jobs, at the helpers' priority and under the live floor, else to
+    /// the conversation's own Thinking model once the conversation is quiet. Only the checked lines change the voice list; a
+    /// SPOKE line only labels the message (no name, voiceprint or sample changes).</summary>
+    private async Task<IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>?> LearnNamesAsync(AfterReplyJob job)
     {
         var token = job.Token;
-        var remember = job.Remember;
-        MemoryCaptureReport? report = null;
-        IReadOnlyList<MemoryFact>? known = null;
-        IReadOnlyDictionary<Guid, string>? knownSpaces = null;
+        if (voices is not { } known || job.Heard is not { } heard) return null;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var naming = VoiceNaming.Context(heard, known.Roster, job.User, job.Configuration.CompanionNames);
+            // The people tools only when Martlet wasn't sure whose voice said the message (only a SPOKE line can use what they
+            // show) and a pool member that takes naming jobs calls tools. The conversation's own model never gets them.
+            var tools = naming.Unattributed && helpers.PoolCallsTools(HelperJobKind.SpeakerNaming) ? PeopleToolsFor(naming) : null;
+            var prompt = AfterReply.Prompt(null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts,
+                job.Conversation, job.Configuration.FitsContext, companion: job.Configuration.CharacterName);
+            // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
+            // own model continues the reply's request, after the reply finished speaking.
+            var (answer, failure, _) = await helpers.RunAsync(HelperJobKind.SpeakerNaming, VoiceNaming.Purpose, HelperCapability.Text,
+                () => VoiceNaming.Prompt(naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts,
+                    job.Configuration.CharacterName, tools is not null).Input,
+                worker => AskAsync(VoiceNaming.Purpose, job.Configuration, prompt.Input, worker), token, tools).ConfigureAwait(false);
+            if (answer is null)
+            {
+                if (failure is not null && !token.IsCancellationRequested)
+                    ErrorLog.Info($"{VoiceNaming.Purpose} got no answer ({failure}); no names changed.");
+                return null;
+            }
+            token.ThrowIfCancellationRequested();
+            var asked = VoiceNaming.Parse(answer, naming, job.Reply);
+            var (applied, refused) = known.Apply(asked.Updates);
+            // Why lines were left out, never the names (they are personal).
+            if (asked.Refused.Count + refused.Count > 0)
+                ErrorLog.Info($"{VoiceNaming.Purpose}: {applied.Count} change(s) made; left out: " +
+                    string.Join(", ", asked.Refused.Concat(refused).Select(r => r.Reason).Distinct()) + ".");
+            return applied;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception error) when (error is LiveActionException or ContractException or IOException or UnauthorizedAccessException or
+            InvalidOperationException)
+        {
+            ErrorLog.Info($"{VoiceNaming.Purpose} couldn't run ({(error is LiveActionException live ? live.Code : error.GetType().Name)}); " +
+                "no names changed.");
+            return null;
+        }
+    }
+
+    /// <summary>The people tools (<see cref="PeopleTools"/>) for one learning-names request: they read the voice list as it is
+    /// when called, and each voice they show may be named in the answer's SPOKE line.</summary>
+    private HelperTools PeopleToolsFor(VoiceNamingContext naming)
+    {
+        var host = new CheckInToolHost([PeopleTools.SetId], new(VoiceNaming.ToolCaller, VoiceNaming.Purpose, null, clock.GetUtcNow()),
+            new Dictionary<string, CheckInToolHandler>(StringComparer.Ordinal)
+            {
+                [PeopleTools.SetId] = (call, context, token) =>
+                {
+                    if (voices is not { } live) return new(new ConversationToolResult("People: voice recognition isn't available here.", true));
+                    var answer = PeopleTools.Run(call, live.Roster, live.IsYours, clock.GetUtcNow());
+                    naming.Saw(answer.Shown);
+                    return new(answer.Result);
+                }
+            });
+        return new(host.Tools, host, VoiceNaming.MaximumToolRounds);
+    }
+
+    /// <summary>Remembering: one Thinking request with the related facts already saved and the exchange. New facts belong to
+    /// the speaker among the voices recognized in the message, unless the model names another.</summary>
+    private async Task<MemoryCaptureReport?> RememberAsync(AfterReplyJob job)
+    {
+        const string Purpose = "Remembering";
+        var token = job.Token;
+        // Read after learning names, so the facts and the talk window use the names learned from this same exchange.
         var roster = voices?.Roster;
         // Whose new facts are: the speaker among the voices recognized in the message, when remembering has them.
         var speaker = job.Present?.Speaker?.Voice;
         try
         {
             token.ThrowIfCancellationRequested();
-            if (remember)
-            {
-                try
-                {
-                    // Facts that say related things in other words join the lexical matches (finding by meaning, after the reply).
-                    var similar = await MeaningFactsAsync(job.User, token).ConfigureAwait(false);
-                    var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
-                        MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token, similar), token).ConfigureAwait(false);
-                    (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
-                }
-                catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
-                    IOException or UnauthorizedAccessException or InvalidOperationException)
-                {
-                    // Memory can't be read now; learning names still goes ahead on its own.
-                    report = RememberingFailure(error, token);
-                    remember = false;
-                    if (job.Heard is null) return (report, null);
-                }
-            }
-            var naming = job.Heard is not null && voices is not null
-                ? VoiceNaming.Context(job.Heard, voices.Roster, job.User, job.Configuration.CompanionNames) : null;
-            var prompt = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
-                job.Configuration.Prompts, job.Conversation, job.Configuration.FitsContext, remember ? job.Present : null,
-                remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName);
-            var purpose = remember && job.Heard is not null ? "Remembering and learning names" : remember ? "Remembering" : "Learning names";
+            // Facts that say related things in other words join the lexical matches (finding by meaning, after the reply).
+            var similar = await MeaningFactsAsync(job.User, token).ConfigureAwait(false);
+            var recalled = await RetryStoreAsync(() => memory!.KnownFactsAsync(job.Configuration.Memory!, job.User,
+                MemoryCapture.MaximumShownFacts, MemoryPeople.Ids(speaker, roster), token, similar), token).ConfigureAwait(false);
+            var (known, knownSpaces) = (recalled.Facts, recalled.Spaces);
+            var people = MemoryPeople.Labels(known, roster);
+            var prompt = AfterReply.Prompt(known, null, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts,
+                job.Conversation, job.Configuration.FitsContext, job.Present, people, job.Configuration.CharacterName);
             // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
             // own model continues the reply's request as before, after the reply finished speaking.
             AfterReplyPrompt? pooled = null;
-            var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, purpose, HelperCapability.Text,
-                () => (pooled = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
-                    job.Configuration.Prompts, null, null, remember ? job.Present : null,
-                    remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName)).Input,
-                worker => AskAsync(purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
+            var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, Purpose, HelperCapability.Text,
+                () => (pooled = AfterReply.Prompt(known, null, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
+                    job.Configuration.Prompts, null, null, job.Present, people, job.Configuration.CharacterName)).Input,
+                worker => AskAsync(Purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
             if (onPool) prompt = pooled!;
-            if (answer is null)
-                return (remember && !token.IsCancellationRequested && failure is not null ? new(Failure: failure) : report, null);
-            IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? learned = null;
-            if (naming is not null && voices is not null)
+            if (answer is null) return !token.IsCancellationRequested && failure is not null ? new(Failure: failure) : null;
+            if (MemoryCapture.Parse(answer, prompt.ShownFacts, prompt.Voices, speaker?.Id) is not { Count: > 0 } operations) return null;
+            try
             {
-                token.ThrowIfCancellationRequested();
-                var asked = VoiceNaming.Parse(answer, naming, job.Reply);
-                var (applied, refused) = voices.Apply(asked.Updates);
-                learned = applied;
-                // Why lines were left out, never the names (they are personal).
-                if (asked.Refused.Count + refused.Count > 0)
-                    ErrorLog.Info($"Learning names: {applied.Count} change(s) made; left out: " +
-                        string.Join(", ", asked.Refused.Concat(refused).Select(r => r.Reason).Distinct()) + ".");
+                var shown = known.Take(prompt.ShownFacts).ToArray();
+                var changes = await RetryStoreAsync(() => memory!.RememberAsync(job.Configuration.Memory!.ConfigurationRevision, shown,
+                    operations, id => MemoryPeople.Canonical(id, roster), token, knownSpaces), token).ConfigureAwait(false);
+                // Whose each change is, as the talk window names them.
+                var whose = voices?.Roster ?? roster;
+                return changes.Count == 0 ? null
+                    : new(changes.Select(change => change with { Person = MemoryPeople.Label(change.VoiceId, whose) }).ToArray());
             }
-            if (remember && MemoryCapture.Parse(answer, prompt.ShownFacts, prompt.Voices, speaker?.Id) is { Count: > 0 } operations)
+            catch (Exception error) when (error is LiveActionException or DesktopMemoryException or MemoryException or
+                ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
             {
-                try
-                {
-                    var shown = known!.Take(prompt.ShownFacts).ToArray();
-                    var changes = await RetryStoreAsync(() => memory!.RememberAsync(job.Configuration.Memory!.ConfigurationRevision, shown,
-                        operations, id => MemoryPeople.Canonical(id, roster), token, knownSpaces), token).ConfigureAwait(false);
-                    // Whose each change is, as the talk window names them (with any name learned from this same answer).
-                    var whose = voices?.Roster ?? roster;
-                    report = changes.Count == 0 ? null
-                        : new(changes.Select(change => change with { Person = MemoryPeople.Label(change.VoiceId, whose) }).ToArray());
-                }
-                catch (Exception error) when (error is LiveActionException or DesktopMemoryException or MemoryException or
-                    ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
-                {
-                    report = RememberingFailure(error, token);
-                }
+                return RememberingFailure(error, token);
             }
-            return (report, learned);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            return (null, null);
+            return null;
         }
         catch (Exception error) when (error is LiveActionException or DesktopMemoryException or MemoryException or
             ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            return (remember ? RememberingFailure(error, token) : report, null);
+            return RememberingFailure(error, token);
         }
     }
 
@@ -5080,7 +4958,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var turn = capture.Start(request, authorization, token, purpose.ToLowerInvariant());
             var terminal = await turn.Completion.ConfigureAwait(false);
             await turn.OwnershipRelease.ConfigureAwait(false);
-            NoteFallback(purpose, configuration, terminal);
+            routing.NoteFallback(purpose, configuration, terminal);
             NoteInput(purpose, terminal, reply: false);
             if (turn.Snapshot.Quarantined)
                 lock (gate) captureQuarantined = true;
@@ -5093,12 +4971,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // Cut off by the max reply length: the lines it finished still count.
             var finished = terminal.ProviderFailure == ProviderFailureCode.OutputTokenLimit && text.LastIndexOf('\n') is > 0 and var end
                 ? text[..end] : null;
-            if (!token.IsCancellationRequested && IsFailure(terminal))
+            if (!token.IsCancellationRequested && ConversationRouting.IsFailure(terminal))
             {
-                if (nothing || finished is not null) ErrorLog.Warn($"{purpose} got no usable answer ({Describe(terminal)}); nothing changed.");
-                else LogFailure(purpose, configuration, SetupRole.Llm, Describe(terminal));
+                if (nothing || finished is not null) ErrorLog.Warn($"{purpose} got no usable answer ({ConversationRouting.Describe(terminal)}); nothing changed.");
+                else routing.LogFailure(purpose, configuration, SetupRole.Llm, ConversationRouting.Describe(terminal));
             }
-            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
+            else if (terminal.State == ConversationState.Completed) routing.Succeeded(SetupRole.Llm);
             return terminal.State == ConversationState.Completed ? (text, null)
                 : nothing ? (null, null)
                 : finished is not null ? (finished, null)
@@ -5112,14 +4990,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>A helper job outside a conversation (naming a character's emotes, finding its touch zones): on a Thinking pool
     /// member that can take it, else on the saved Thinking model (<see cref="AskThinkingAsync(string, string, string, BoundedImage?, CancellationToken)"/>)
-    /// once no reply runs or speaks. A job with a picture goes to the image model of its own instead of Thinking while pictures go
-    /// to it (<see cref="AskImageModelAsync"/>, docs/SENSE_MODELS.md).</summary>
+    /// once no reply runs or speaks. A job with a picture follows <see cref="SenseJobRouting"/>'s order for
+    /// <see cref="SenseJobKind.HelperPicture"/>: after the pool, the image model of its own while pictures go to it
+    /// (<see cref="AskImageModelAsync"/>), else Thinking.</summary>
     internal async Task<(string? Answer, string? Failure)> AskHelperAsync(HelperJobKind kind, string purpose, string instructions,
         string text, BoundedImage? image, CancellationToken token)
     {
         var (answer, failure, _) = await helpers.RunAsync(kind, purpose, image is null ? HelperCapability.Text : HelperCapability.Vision,
             () => new BoundedTextInput(text, instructions, image: image),
-            worker => image is not null && SenseRoute(SenseKind.Image).Described
+            worker => image is not null && SenseDecision(SenseJobKind.HelperPicture).After(SenseTaker.PoolMember)?.Taker == SenseTaker.SenseModel
                 ? AskImageModelAsync(kind, purpose, instructions, text, image, worker)
                 : AskThinkingAsync(purpose, instructions, text, image, worker), token).ConfigureAwait(false);
         return (answer, failure);

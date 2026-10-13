@@ -78,9 +78,10 @@ public sealed class LipSyncSharing
     }
 
     /// <summary>Streams one chunk of reply <paramref name="turnId"/> from the first of <paramref name="members"/> that takes it
-    /// (<see cref="Order{T}"/>). When every computer stays busy past <paramref name="wait"/> (or a shared host keeps its card for
-    /// its owner), the chunk ends with no frames and counts as <see cref="Skipped"/>. A computer that doesn't answer is passed
-    /// over; when none answers, or one fails for real, the failure is thrown.</summary>
+    /// (<see cref="Order{T}"/>, then <see cref="PoolRunner{TStop}.StreamAsync"/> at live priority). When every computer stays
+    /// busy past <paramref name="wait"/> (or a shared host keeps its card for its owner), the chunk ends with no frames and
+    /// counts as <see cref="Skipped"/>. A computer that doesn't answer is passed over; when none answers, or one fails for real,
+    /// the failure is thrown.</summary>
     public async IAsyncEnumerable<T> ChunkAsync<TTarget, T>(WorkQueue queue, Guid turnId, IReadOnlyList<TTarget> members,
         Func<TTarget, string> hostOf, Func<TTarget, CancellationToken, IAsyncEnumerable<T>> start, Func<Exception, WorkRefusal> classify,
         TimeSpan wait, TimeProvider? clock, [EnumeratorCancellation] CancellationToken token)
@@ -91,9 +92,9 @@ public sealed class LipSyncSharing
         if (members.Count == 0) throw new ArgumentException("Lip-sync's pool needs at least one computer.", nameof(members));
         var order = Order(members, hostOf, turnId);
         var first = hostOf(order[0]);
-        var time = clock ?? TimeProvider.System;
-        await using var items = queue.StreamAsync(PoolAreas.LipSync.Id, order, hostOf,
-                (target, t) => Noted(target, hostOf, turnId, first, start(target, t)), classify, time.GetUtcNow() + wait, clock, token)
+        // The pool runner streams the chunk; the chunk's computer is noted when its first frame arrives.
+        await using var items = new PoolRunner<TTarget>(PoolAreas.LipSync.Id, hostOf, classify, WorkPriority.Live, queue, clock)
+            .StreamAsync(order, (target, _, t) => start(target, t), wait, (target, _) => Note(hostOf(target), turnId, first), token)
             .GetAsyncEnumerator(token);
         var started = false;
         while (true)
@@ -112,22 +113,11 @@ public sealed class LipSyncSharing
         }
     }
 
-    // Records the computer that took the chunk when its first frame arrives.
-    private async IAsyncEnumerable<T> Noted<TTarget, T>(TTarget target, Func<TTarget, string> hostOf, Guid turnId, string first,
-        IAsyncEnumerable<T> source, [EnumeratorCancellation] CancellationToken token = default)
+    // Records the computer that took the chunk (its first frame arrived).
+    private void Note(string id, Guid turnId, string first)
     {
-        var noted = false;
-        await foreach (var item in source.WithCancellation(token).ConfigureAwait(false))
-        {
-            if (!noted)
-            {
-                noted = true;
-                var id = hostOf(target);
-                lock (gate) (turn, host) = (turnId, id);
-                Interlocked.Increment(ref chunks);
-                if (id != first) Interlocked.Increment(ref moved);
-            }
-            yield return item;
-        }
+        lock (gate) (turn, host) = (turnId, id);
+        Interlocked.Increment(ref chunks);
+        if (id != first) Interlocked.Increment(ref moved);
     }
 }

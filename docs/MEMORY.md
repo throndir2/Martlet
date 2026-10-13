@@ -396,9 +396,9 @@ facts (by their words, and by meaning when an embedding model can be used:
 [Finding by meaning](SEARCH.md#finding-by-meaning)), then sends one extra request (at most the max reply length in output
 tokens, same Thinking route and credential binding, its own one-request
 authorization) with the latest exchange, the previous exchange as context and
-those numbered facts. When [learning names](VOICES.md) is due after the same
-reply, it is the same request (Companion › Prompts › *Remembering and learning
-names together*), not a second one. On a Thinking model on this PC (Ollama or
+those numbered facts. When [learning names](VOICES.md#what-happens-in-a-conversation)
+is due after the same reply, it is a request of its own that runs first (a Naming
+job on the pool), so remembering reads the names it learned. On a Thinking model on this PC (Ollama or
 another server on loopback) that request continues the reply's own
 conversation instead of quoting an excerpt: the same instructions, tools (described
 again, never run) and earlier messages, the message and the reply, then the task.
@@ -417,11 +417,12 @@ member, the request goes to the conversation's Thinking model as described
 above, but only after the reply finishes speaking and while no other reply runs.
 
 <a id="helper-jobs-on-the-thinking-pool"></a>
-**Helper jobs on the Thinking pool.** Remembering, naming a character's emotes,
+**Helper jobs on the Thinking pool.** Remembering, learning the names of the
+people speaking, naming a character's emotes,
 deciding its touch temperament, finding its touch zones, measuring its eyes and
 writing the [memory brief](#the-memory-brief) are helper jobs. Each one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
 member that can take it (text, or vision for touch zones and the eyes), so it does not
-compete with the reply or its prompt cache. Memory, naming, temperament and the
+compete with the reply or its prompt cache. Memory, naming (learning names and emote naming go as Naming jobs), temperament and the
 eyes are low priority, and the memory brief is the lowest; touch zones are higher, because you wait for them. When no member
 can take a job, or the pool can't finish it, Martlet uses the conversation's
 Thinking model, after the reply finishes speaking (the memory brief only when that model is in the cloud). Tidying

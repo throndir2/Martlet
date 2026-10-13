@@ -115,16 +115,29 @@ on), while speech-to-text runs:
    about), recall puts the speaker's facts first, and each recalled fact says
    whose it is ([Whose memories](MEMORY.md#whose-memories)). The talk window labels
    the message with the speaker's name.
-4. **Learning names.** After a completed reply, if a voice in it has no name
-   yet, the words suggest a name came up ("my name is", "call me", "wrong
-   name", "thanks, Sam"...; greeting the companion by its own name doesn't
-   count) or someone says two voices are them ("that was me", "it's me, Sam"),
-   the exchange is sent once more to the same Thinking model in one extra
-   text-only request, the same one as [remembering](MEMORY.md) when both are
-   due. The request lists the companion's own names, every name each heard
-   voice goes by and, only when someone says they are the same person as
-   someone Martlet knows, up to eight other named voices. It answers at most
-   six lines:
+4. **Learning names.** After a completed reply, Martlet sends one Thinking
+   request whose only job is who the people speaking are, from their voices
+   and from what they say. It asks when a voice in the message has no name
+   yet, when it heard someone it couldn't tell apart for sure who sounded
+   like a voice it knows (an uncertain match, which the reply leaves
+   unattributed), when the words suggest a name came up ("my name is", "call
+   me", "wrong name", "thanks, Sam"...; greeting the companion by its own name
+   doesn't count) or when someone says two voices are them ("that was me",
+   "it's me, Sam"). The request is its own, apart from
+   [remembering](MEMORY.md), which has its own request after it. It goes to a
+   [Thinking pool](CONVERSATION.md#the-thinking-pool) member that takes Naming
+   jobs, at the helpers' low priority and stopped while the live conversation
+   needs that member; without one, to the conversation's Thinking model once
+   no reply runs or speaks (continuing the reply's request on a model on this
+   PC, so its prompt cache keeps the conversation). It never adds time before
+   a reply. The request lists the companion's own names, every name each
+   heard voice goes by, the voice an unsure speaker sounded most like and,
+   only when someone says they are the same person as someone Martlet knows
+   or names someone while Martlet wasn't sure who spoke, up to eight other
+   named voices. When Martlet wasn't sure who spoke and a pool member that
+   takes Naming jobs calls tools, the request may also call the
+   [People tools](#people-tools) to look up the other people Martlet knows. It
+   answers at most six lines:
    - `NAME V3: Sam`: a name the voice goes by. A voice collects every name it
      goes by (up to 40, names you typed first), each with a use count; the most used one is shown
      until you type a name yourself.
@@ -138,6 +151,16 @@ on), while speech-to-text runs:
      named one, else the one heard most; at most one merge per exchange, at
      least one of the voices must be in the message, and never two voices you
      named differently.
+   - `SPOKE V3`: whose voice said a message Martlet couldn't attribute for
+     sure, when the words and the voice it sounded most like agree, or the words
+     make it plain ("it's Sam here"). It is only a label: the talk window notes
+     *Martlet wasn't sure whose voice that was; it thinks Sam (voice 3) said
+     it.* It never gives a name, never merges and never teaches the voice (its
+     voiceprint, samples, heard count and last heard stay as they were): only
+     a confident acoustic match teaches a voice. At most one per exchange, only
+     when Martlet wasn't sure who spoke, and only for the voice it sounded most
+     like, another voice listed or one the People tools showed, never a voice
+     heard for sure in the message.
 
    Names go only to listed voices heard in the message, and only real names
    (at most three words, not "Voice N" or a placeholder such as "no name yet",
@@ -159,6 +182,36 @@ recognition only means nobody is named for that message. The utterance's
 samples are a private copy that is cleared when recognition ends; the only audio
 kept is a voice's clips while you haven't named it (below). `voices.json` holds
 only voiceprints (256 numbers per sample) and names.
+
+## People tools
+
+Martlet's Thinking model can look up the people in the voice list with two
+tools, the **People** tool set (`people`, `PeopleTools`):
+
+- `people_list` lists the voices, most recently heard first (at most 20), or
+  only those whose names contain a word or that have a tag (`query`: *Sam* or
+  *V3*). For each voice it gives its tag, the name Martlet uses first, its
+  other names (typed by you or learned in conversation, with how often a
+  learned one was used), whether it is the signed-in user, linked to someone's
+  Martlet account or the household owner, and how often and when it was last
+  heard.
+- `people_lately` lists who spoke lately: the voices heard in the last
+  `minutes` (1 to 10,080; 60 when not given), most recent first.
+
+The tools only read the list. They never change it, and they never give
+voiceprints, clips or audio. Their first line holds counts only (*People: 3
+voice(s) saved, 3 listed.*), because a check-in card shows it.
+
+Any check-in can tick **People** under *It may use these tools*
+([Check-in tool sets](CONVERSATION.md#check-in-tool-sets)); a PC with a data
+folder runs it, whether recognition is on or off. *Talking to someone else* and
+*Someone else is here* tick it by default. The set is optional: a check-in gets
+the tools only when a Thinking pool member that calls tools can take it, and it
+runs without them otherwise. Learning names gets the same
+tools when Martlet wasn't sure who spoke and a Thinking pool member that takes
+Naming jobs calls tools; the conversation's own Thinking model never gets them
+there. The live reply doesn't get them, so the start of every reply's request
+stays the same. MCP's `voices_people` runs them on a data folder's saved list.
 
 ## Where voice recognition runs
 

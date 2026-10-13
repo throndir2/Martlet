@@ -113,6 +113,29 @@ internal sealed partial class LiveConversationController
     /// words, or nowhere (docs/SENSE_MODELS.md). Cheap: no request and no file; a refusal recorded during use shows at once.</summary>
     internal SenseRoute SenseRoute(SenseKind kind) => SenseRoute(kind, Configuration);
 
+    /// <summary>Which model takes <paramref name="job"/> now (<see cref="SenseJobRouting.Decide"/>): the kind's route
+    /// (<see cref="SenseRoute(SenseKind)"/>), what Thinking's own model takes, the Thinking pool member the job's pool kind goes to
+    /// first (<see cref="DesktopThinkingPool.Find"/>) and the sound tagger. The runners follow it (the screen summary, the PC sound
+    /// description, a helper job with a picture); Companion's pages decide with the same rules from the saved settings
+    /// (<see cref="MainWindow.SenseDecisionFor"/>). Cheap: no request and no file.</summary>
+    internal SenseDecision SenseDecision(SenseJobKind job)
+    {
+        var row = SenseJobRouting.Row(job);
+        var configured = Configuration;
+        var known = configured is null ? (bool?)null
+            : row.Kind == SenseKind.Image ? ModelSenses.Known(configured.Vision()) : ModelSenses.Known(configured.Hearing());
+        var inputs = SenseJobInputs.For(SenseRoute(row.Kind), configured?.Routes.ThinkingRoute(), known) with
+        {
+            ThisPc = row.Order.Contains(SenseTaker.ThisPc) && (SoundTaggerHere ?? Martlet.Sherpa.SoundTagger.Included())
+        };
+        if (row.PoolKind is { } kind && ThinkingPool.Find(kind, row.Needs) is { } member)
+            inputs = inputs with { PoolKey = member.Id, PoolName = SenseJobInputs.Member(member.Name, member.Model) };
+        return SenseJobRouting.Decide(job, inputs);
+    }
+
+    /// <summary>Tests: whether the sound tagger is in Martlet's folder, in place of looking; null (the default) looks.</summary>
+    internal bool? SoundTaggerHere { get; set; }
+
     /// <summary>Where <paramref name="kind"/> goes for <paramref name="configured"/> (a turn's own configuration). Before a talk
     /// window loads the settings (null), a model of its own still goes by what Martlet found out about it (model-abilities.json),
     /// and a kind that goes to the text model says to set up Thinking.</summary>
@@ -440,6 +463,18 @@ internal sealed partial class LiveConversationController
                         model = lane.LastModel, problem = lane.LastProblem
                     },
                     pool = SensePoolStatus(kind, route)
+                };
+            }),
+            // Which model takes each job with a picture or a recording now (SenseJobRouting): each step in order, whether it takes the
+            // job and why. The runners follow it; Companion's pages show the same decision.
+            jobs = SenseJobRouting.Rows.Select(row =>
+            {
+                var decision = SenseDecision(row.Job);
+                return new
+                {
+                    job = row.Job.ToString(), kind = row.Kind.ToString(), name = row.Name, poolKind = row.PoolKind is { } pool ? ThinkingJobKinds.Name(pool) : null,
+                    taker = decision.Taker.ToString(), model = decision.Name, why = decision.Why,
+                    steps = decision.Steps.Select(s => new { taker = s.Taker.ToString(), takes = s.Takes, model = s.Name, why = s.Why })
                 };
             })
         }, new JsonSerializerOptions { WriteIndented = true });

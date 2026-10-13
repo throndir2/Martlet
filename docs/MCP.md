@@ -731,7 +731,14 @@ settings; before that, a kind that goes to the text model says to set up
 Thinking), and for each kind its path, model and why, `sharesConversation`, and
 its line (`busy`, `waiting`, `held` for a reply, `runs` and the `last` job's
 purpose, outcome, milliseconds, model and problem; never what was sent or
-said).
+said). Its `jobs` are the decisions of which model takes each job with a
+picture or a recording now (`SenseJobRouting`,
+[Who takes each picture and recording](SENSE_MODELS.md#who-takes-each-picture-and-recording)):
+for each `job` (`ReplyPicture`, `ScreenSummary`, `HelperPicture`,
+`CheckInScreenshot`, `ReplyVoice`, `PcSound`, `CheckInRecording`) its `kind`,
+`name`, `poolKind`, the `taker` (`SenseModel`, `PoolMember`, `ThinkingModel`,
+`ThisPc` or `Nobody`), its `model` and `why`, and each of its `steps` in order
+(`taker`, `takes`, `model`, `why`). The runners follow these decisions.
 
 Each kind's `pool` ([The image and audio pools](SENSE_MODELS.md#the-image-and-audio-pools))
 is in both parts. From the data directory, while a model of its own describes
@@ -750,7 +757,12 @@ paired computer's model that hears takes recordings), the one rule for what a
 model takes (`one-rule-for-every-place`, `ModelSenses`: a paired computer's
 Test vision counts for the Vision list and the Thinking pool alike, and a
 model Martlet can't tell about is tried from the list but gets no Thinking
-pool picture jobs), the `sense-models.json`
+pool picture jobs), the order of each job with a picture or a recording
+(`job-routing`, `SenseJobRouting`: with an image model, an audio model and a
+Thinking pool member, summaries go to the image and audio models first and
+helper jobs and check-ins to the pool first; with none, Thinking takes the
+reply's picture, recording and helper jobs and the sound tagger names PC
+sounds), the `sense-models.json`
 round trip and the lists made from it once (`lists-made-once`; a damaged list
 file reads as the text model), and the production lines (`SenseLanes`) with a
 simulated runner, NOT models: no model of its own, one job at a time, a newer
@@ -860,8 +872,11 @@ off* or *on*) end each Now card.
 
 Below it, each page has the shared pool list for its models (the pool list
 control, described with Devices › Sharing work): `Pool-vision-...` and `Pool-hearing-...`
-(`-Summary` reads *Nothing in the list is on. Instead: Thinking's own model
-takes the pictures itself.* for an empty list; `-Member-<i>` reads *1. This PC. Each companion PC
+(`-Summary` reads, for an empty list, who takes each job instead, from
+`SenseJobRouting`: *Nothing in the list is on. Instead: Thinking's own model
+(gemma4:e2b) takes the picture with a reply; diva (qwen2.5vl:7b) in the
+Thinking pool takes screen summaries, touch zones, the character's eyes and
+check-ins with a screenshot.*; `-Member-<i>` reads *1. This PC. Each companion PC
 itself; qwen2.5vl:7b: sees pictures; in use: it takes the pictures first.*).
 Under the members, *Also gets your pictures: the Thinking pool* names every
 Thinking pool model that sees (on Hearing: hears), so the page lists every
@@ -1576,13 +1591,36 @@ them and a name Martlet's reply gives itself are refused, a heard voice drops
 Jane, a voice learns a name, keeps five names and shows the one it asked for
 (CALL), a wrong learned name is dropped (NOT) but a typed one is kept, a voice
 not heard gets no name, and SAME merges V3 into the owner's voice once per
-exchange. With a `dataDirectory` whose settings have personas,
+exchange. Its SPOKE scenarios take a message whose speaker Martlet wasn't sure
+of (only V2 heard for sure; it sounded most like V1): `SPOKE V1` labels it and
+leaves the voice list exactly as it was (`spoke-labels-only`: same names,
+centroid, samples and heard count), a NAME line for V1 and a second SPOKE line
+are refused (`spoke-gives-no-name`), and SPOKE is refused when Martlet knew who
+spoke (`spoke-refused-when-known`) or names a voice that couldn't have said it
+(`spoke-refused-for-other-voice`). Its people scenarios run the
+[People tools](VOICES.md#people-tools) on the same fixture: `people-list` (names
+with typed or learned, the user, heard counts), `people-private` (the first line
+holds counts only and no voiceprint is in the answer), `people-find` (a name
+finds V2) and `people-lately`. With a `dataDirectory` whose settings have personas,
 `companionNames` lists their names (`companionSource`) and one more scenario
 refuses a saved persona's name. An optional `answer` (NAME/CALL/NOT/SAME lines
 about V1-V3, at most 8192 characters) and `reply` are checked against the same
 fixture: `answer.updates`, `refused` (line and reason), `applied` (what the talk
 window would say) and the fixture `voices` afterwards. It never reads or writes
 the saved voice list and uses no audio, model or network.
+
+`voices_people` runs the [People tools](VOICES.md#people-tools) (the `people`
+check-in tool set, which learning names uses too) on a data directory's saved
+`voices.json`, exactly as a check-in gets them: `tool` is `people_list`
+(optional `query`: a name, part of one, or a tag like V3) or `people_lately`
+(optional `minutes`, 1-10080, default 60). It returns `state` (`loaded`, `none`
+or `unreadable`), `signedIn` (an account is signed in, `accounts\session.json`,
+so "the signed-in user" is the voice linked to it; before accounts the voice
+marked as the owner's), `isError`, `firstLine` (what a check-in card shows:
+counts only), `shown` (how many voices it listed) and `text`, the tool's whole
+answer. The answer holds names, so it reads them only from the data directory
+you give (the script's disposable one without `dataDirectory`); it never holds
+voiceprints, clips or audio and changes nothing.
 
 `parakeet_check` runs Companion › Listening › *Parakeet in Martlet*'s models
 the way the desktop does (optional absolute `dataDirectory`; `speechDirectory`,
@@ -6502,7 +6540,8 @@ $env:MARTLET_SIMULATE_SITUATION = 'gaming'
 
 `helper_jobs_status` (optional absolute `dataDirectory`, default the current
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
-(`memory`: remembering and learning names after a reply; `action-naming`:
+(`memory`: remembering after a reply; `speaker-naming`: learning the names of
+the people speaking after a reply, a request of its own; `action-naming`:
 naming a character's emotes; `temperament`: deciding its touch temperament;
 `touch-zones`: finding its touch zones; `eyes`: measuring its eyes;
 `character-writing`: writing a character's personality in *Find a character*;
@@ -6517,7 +6556,8 @@ data directory. These keys use the same format as the Thinking pool's job
 kinds (lower-case words with hyphens); a `helper-jobs.json` written by an
 older Martlet has underscores (`action_naming`) until the next helper job
 writes it again. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
-Memory, Naming and TouchZones kinds (the eyes as a TouchZones job at the helpers'
+Memory, Naming and TouchZones kinds (learning names and emote naming as Naming
+jobs, the eyes as a TouchZones job at the helpers'
 low priority, the memory brief as a Memory job at the lowest priority;
 `ThinkingJobKinds.Rows` says which helper job runs as which kind);
 `thinking_pool_status` shows the pool itself.
@@ -6749,8 +6789,10 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, `maximumToolRounds` (4),
 `maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
-(each set's `id`, `name`, `does`, `tools` and `replaces`: the reply tools it
-takes over, such as `manage_memories` for `memory`), the job kind
+(each set's `id`, `name`, `does`, `tools`, `replaces`: the reply tools it
+takes over, such as `manage_memories` for `memory`, and `optional`: its tools
+only look things up, so a check-in gets them only when a member that calls tools
+can take it, as for `people`), the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
 and for triggers the `triggers` offered, `triggerAgeSeconds`, `exchangeAgeSeconds` (600),
 `touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
@@ -10431,7 +10473,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `long_talk_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `memory_brief_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `voices_people`, `f5_voices`, `cluster_status`, `network_status`, `accounts_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `thinking_trace`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `app_guides_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `memory_brief_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `local_model_facts`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `long_talk_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `household_sharing`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `situation_status`, `recommended_setup_status`, `lip_sync_pool_status`, `sound_digest_check` and `model_catalog_*` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

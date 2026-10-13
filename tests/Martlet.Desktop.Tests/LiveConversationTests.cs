@@ -1269,8 +1269,8 @@ public sealed class LiveConversationTests
         {
             RouteType = SetupRouteType.ChatCompletions, Origin = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
         }));
-        Assert.Contains("not a key or sign-in problem", LiveConversationController.TimeLimit(ConversationFailure.AuthorizationExpired));
-        Assert.Equal("", LiveConversationController.TimeLimit(ConversationFailure.ProviderFailed));
+        Assert.Contains("not a key or sign-in problem", ConversationRouting.TimeLimit(ConversationFailure.AuthorizationExpired));
+        Assert.Equal("", ConversationRouting.TimeLimit(ConversationFailure.ProviderFailed));
         fixture.NoEffects();
     }
 
@@ -3697,7 +3697,12 @@ internal sealed class LiveFixture : IAsyncDisposable
         if (History is not null) await History.Idle;
         Memory.Dispose();
         Voices?.Dispose();
-        if (System.IO.Directory.Exists(DirectoryPath)) System.IO.Directory.Delete(DirectoryPath, true);
+        // Status files (background-jobs.json and others) are written off the caller's thread: a write can still hold one briefly.
+        for (var attempt = 0; System.IO.Directory.Exists(DirectoryPath); attempt++)
+        {
+            try { System.IO.Directory.Delete(DirectoryPath, true); }
+            catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException && attempt < 40) { await Task.Delay(25); }
+        }
     }
     internal sealed class NativeFixture : ICredentialNative
     {

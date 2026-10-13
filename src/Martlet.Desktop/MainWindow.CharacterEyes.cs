@@ -79,22 +79,12 @@ public partial class MainWindow
         if (eyesCanSee && characterEyes.ClaimAutomatic()) MeasureEyesAsync(automatically: true).Forget();
     }
 
-    /// <summary>Whether a model can see the close-up: a Thinking pool member that can see, else the image model of its own while
-    /// pictures go to it, else the Thinking model unless it is known to be text-only (or a FIXTURE - NOT AI stand-in answers).</summary>
-    private (bool CanSee, string Line, string? Off) EyesSight()
-    {
-        conversation?.ReadThinkingPoolOnce();
-        var seer = conversation?.ThinkingPool.Find(ThinkingJobKind.TouchZones, ThinkingCapability.Text | ThinkingCapability.Vision);
-        return TouchZonesSight(homeSettings.ThinkingRoute(), SavedModelAbilities(),
-            seer is null ? null : seer.Name + (seer.Model is { Length: > 0 } model ? $" ({model})" : ""), CharacterEyeService.Fixture,
-            HelperImageModel());
-    }
-
-    /// <summary>The image model of its own that takes pictures now (Companion › Vision, sense-models.json), by name, or null: a
-    /// helper job with a picture goes to it when no Thinking pool member can take it (docs/SENSE_MODELS.md).</summary>
-    private string? HelperImageModel() =>
-        SenseRouting.For(SenseKind.Image, SavedSenses(), homeSettings.ThinkingRoute(),
-            SavedModelAbilities()) is { Described: true } route ? route.Name : null;
+    /// <summary>Whether a model can see the close-up, from <see cref="SenseJobRouting"/>'s decision for
+    /// <see cref="SenseJobKind.HelperPicture"/>: a Thinking pool member that can see, else the image model of its own while pictures
+    /// go to it, else the Thinking model unless it is known to be text-only (or a FIXTURE - NOT AI stand-in answers).</summary>
+    private (bool CanSee, string Line, string? Off) EyesSight() =>
+        TouchZonesSight(SavedSenseDecision(SenseJobKind.HelperPicture), homeSettings.ThinkingRoute(),
+            SavedModelAbilities(), CharacterEyeService.Fixture);
 
     private string EyesStatusText() => characterEyes.ModelId is null ? "Reading the character..."
         : CharacterEyes.Status(avatar.EyesFrom, characterEyes.Current, avatar.IsShowing, DateTimeOffset.Now);
