@@ -68,36 +68,27 @@ internal sealed class LipSyncPool(Func<AvatarRemoteHost, IAvatarHostLink?> open,
         return FromList(list, paired, assigned is not null && WorkSharingRoster.IsShared(assigned.HostId) ? assigned : null);
     }
 
-    /// <summary>The places for <paramref name="list"/> (<see cref="PoolRouting.Order"/>, then <see cref="Resolve"/>). A host a
-    /// friend shares with this PC (<paramref name="friend"/>), chosen for lip-sync on this PC, goes first: it never goes in your
-    /// shared list.</summary>
+    /// <summary>The places for <paramref name="list"/>, in order (<see cref="PoolRouting.Stops(PoolArea, PoolList?, string, Func{PoolMember, PoolStop?})"/>
+    /// with <see cref="Stop"/>): each computer once (a computer runs one Audio2Face relay), this PC's own service with its
+    /// endpoint setting. A host a friend shares with this PC (<paramref name="friend"/>), chosen for lip-sync on this PC, goes
+    /// first: it never goes in your shared list.</summary>
     internal static IReadOnlyList<LipSyncPlace> FromList(PoolList list, IReadOnlyDictionary<string, AvatarRemoteHost> paired,
         AvatarRemoteHost? friend = null)
     {
-        var places = Resolve(PoolRouting.Order(PoolAreas.LipSync, LipSyncSharing.OneRowPerComputer(list), WorkSharingRoster.Device,
-            m => Usable(m, paired)), paired);
+        IReadOnlyList<LipSyncPlace> places = [.. PoolRouting.Stops(PoolAreas.LipSync, LipSyncSharing.OneRowPerComputer(list), WorkSharingRoster.Device,
+                m => Stop(m, paired))
+            .Select(s => s.HostId is { } id ? new LipSyncPlace(s.Key, paired[id]) : new LipSyncPlace(s.Key, null, s.Member.Setting(PoolSettingKeys.Endpoint)))];
         return friend is null || places.Any(p => p.Host?.HostId == friend.HostId) ? places : [new("host:" + friend.HostId, friend), .. places];
     }
 
-    /// <summary>The places for <paramref name="order"/>: each computer once (a computer runs one Audio2Face relay), this PC's own
-    /// service with its endpoint setting.</summary>
-    internal static IReadOnlyList<LipSyncPlace> Resolve(PoolOrder order, IReadOnlyDictionary<string, AvatarRemoteHost> paired)
+    /// <summary>Where lip-sync runs <paramref name="member"/> on this PC now: this PC's own Audio2Face service (no host), or a
+    /// computer paired here; null when it can't. Its key in <see cref="WorkQueue"/> is the member's key.</summary>
+    internal static PoolStop? Stop(PoolMember member, IReadOnlyDictionary<string, AvatarRemoteHost> paired) => member.Kind switch
     {
-        List<LipSyncPlace> list = [];
-        foreach (var member in order.Members)
-        {
-            if (member.Kind == PoolMemberKind.ThisPc)
-                list.Add(new(member.Key, null, member.Setting(PoolSettingKeys.Endpoint)));
-            else if (member.HostId is { } id && paired.TryGetValue(id, out var host) && list.All(p => p.Host?.HostId != id))
-                list.Add(new(member.Key, host));
-        }
-        return list;
-    }
-
-    /// <summary>Whether lip-sync can use <paramref name="member"/> on this PC now: this PC's own service, or a computer paired
-    /// here.</summary>
-    internal static bool Usable(PoolMember member, IReadOnlyDictionary<string, AvatarRemoteHost> paired) =>
-        member.Kind == PoolMemberKind.ThisPc || member.Kind == PoolMemberKind.Computer && member.HostId is { } id && paired.ContainsKey(id);
+        PoolMemberKind.ThisPc => new(member, null),
+        PoolMemberKind.Computer when member.HostId is { } id && paired.ContainsKey(id) => new(member, id) { Key = member.Key },
+        _ => null
+    };
 
     /// <summary>Lip-sync's list made from the older choices, used until lip-sync's page saves one: empty (the voice's loudness)
     /// when lip-sync was off; otherwise the computer assigned to it with the other paired computers the shared plan says run

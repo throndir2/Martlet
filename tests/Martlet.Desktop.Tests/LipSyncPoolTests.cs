@@ -154,7 +154,7 @@ public sealed class LipSyncPoolTests
 
         var empty = PoolRouting.Order(PoolAreas.LipSync, new PoolList { Area = PoolAreas.LipSync.Id }, "desktop-test");
         Assert.True(empty.Fallback);
-        Assert.Empty(LipSyncPool.Resolve(empty, paired));
+        Assert.Empty(LipSyncPool.FromList(new PoolList { Area = PoolAreas.LipSync.Id }, paired));
         Assert.Equal("Voice loudness on this PC", PoolAreas.LipSync.WhenEmpty);
     }
 
