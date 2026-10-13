@@ -71,14 +71,19 @@ public sealed class PoolRunner<TStop>(string lane, Func<TStop, string> keyOf, Fu
     /// <summary>Runs one request on the first of <paramref name="stops"/> that takes it (see the class summary).
     /// <paramref name="attempt"/> does it on one stop. When every stop is busy, the request waits for the first to free, for
     /// <paramref name="wait"/> at most. Throws the last refusal when no stop took it.</summary>
+    public Task<PoolRun<TStop, T>> RunAsync<T>(IReadOnlyList<TStop> stops, Func<TStop, PoolTry, CancellationToken, Task<T>> attempt,
+        TimeSpan wait, CancellationToken token) => RunAsync(stops, attempt, clock.GetUtcNow() + wait, token);
+
+    /// <summary>Runs one request as <see cref="RunAsync{T}(IReadOnlyList{TStop}, Func{TStop, PoolTry, CancellationToken, Task{T}}, TimeSpan, CancellationToken)"/>
+    /// does, waiting for a busy stop until <paramref name="until"/> at most (a job with its own end time).</summary>
     public async Task<PoolRun<TStop, T>> RunAsync<T>(IReadOnlyList<TStop> stops, Func<TStop, PoolTry, CancellationToken, Task<T>> attempt,
-        TimeSpan wait, CancellationToken token)
+        DateTimeOffset until, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(stops);
         ArgumentNullException.ThrowIfNull(attempt);
         var run = new Run(stops, keyOf, classify);
         var result = await queue.RunAsync(lane, stops, keyOf, (stop, t) => run.TryAsync(stop, null, attempt, t), classify,
-            clock.GetUtcNow() + wait, clock, token, priority).ConfigureAwait(false);
+            until, clock, token, priority).ConfigureAwait(false);
         return run.Taken(result);
     }
 
